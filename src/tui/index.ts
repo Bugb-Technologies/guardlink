@@ -30,14 +30,11 @@ import {
   refreshModel,
   cmdHelp,
   cmdStatus,
-  cmdExposures,
-  cmdShow,
   cmdAssets,
   cmdFiles,
   cmdView,
   cmdInit,
   cmdParse,
-  cmdScan,
   cmdValidate,
   cmdDiff,
   cmdSarif,
@@ -54,9 +51,9 @@ import {
 // ─── Command registry ────────────────────────────────────────────────
 
 const COMMANDS = [
-  '/help', '/gal', '/init', '/parse', '/run', '/status', '/scan',
+  '/help', '/gal', '/init', '/parse', '/run', '/status',
   '/validate', '/diff', '/sarif',
-  '/exposures', '/show', '/assets', '/files', '/view',
+  '/assets', '/files', '/view',
   '/threat-report', '/threat-reports', '/annotate', '/model',
   '/report', '/dashboard',
   '/quit',
@@ -77,10 +74,7 @@ const PALETTE_COMMANDS: CommandEntry[] = [
   { command: '/init',       label: 'Initialize project' },
   { command: '/parse',      label: 'Parse annotations',    aliases: ['/run'] },
   { command: '/status',     label: 'Risk grade + stats' },
-  { command: '/scan',       label: 'Find unannotated code' },
   { command: '/validate',   label: 'Syntax + ref checks' },
-  { command: '/exposures',  label: 'List exposures by severity' },
-  { command: '/show',       label: 'Exposure detail + code context' },
   { command: '/assets',     label: 'Asset tree' },
   { command: '/files',      label: 'Annotated file tree' },
   { command: '/view',       label: 'File annotations + code' },
@@ -285,10 +279,7 @@ function printCommandList(): void {
     ['/init',       'Initialize project'],
     ['/parse',      'Parse annotations'],
     ['/status',     'Risk grade + stats'],
-    ['/scan',       'Find unannotated code'],
     ['/validate',   'Syntax + ref checks'],
-    ['/exposures',  'List exposures'],
-    ['/show <n>',   'Exposure detail + code'],
     ['/assets',     'Asset tree'],
     ['/files',      'Annotated file tree'],
     ['/view <file>','File annotations + code'],
@@ -339,15 +330,12 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
         case '/help':     cmdHelp(); break;
         case '/gal':      cmdGal(); break;
         case '/status':   cmdStatus(ctx); break;
-        case '/exposures': cmdExposures(args, ctx); break;
-        case '/show':     cmdShow(args, ctx); break;
         case '/assets':   cmdAssets(ctx); break;
         case '/files':    cmdFiles(ctx); break;
         case '/view':     cmdView(args, ctx); break;
         case '/init':     await cmdInit(args, ctx); break;
         case '/parse':
         case '/run':      await cmdParse(ctx); break;
-        case '/scan':     cmdScan(ctx); break;
         case '/validate': await cmdValidate(ctx); break;
         case '/diff':     await cmdDiff(args, ctx); break;
         case '/sarif':    await cmdSarif(args, ctx); break;
