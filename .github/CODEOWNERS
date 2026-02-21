@@ -1,0 +1,8 @@
+# Default owners for everything
+* @Animesh-Sri-bugb
+
+# Security-sensitive files
+.guardlink/ @Animesh-Sri-bugb
+src/mcp/ @Animesh-Sri-bugb
+src/analyzer/sarif.ts @Animesh-Sri-bugb
+docs/SPEC.md @Animesh-Sri-bugb

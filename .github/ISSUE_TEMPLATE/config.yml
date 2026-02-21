@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question
+    url: https://github.com/Bugb-Technologies/guardlink/discussions
+    about: Ask questions and discuss GuardLink usage
