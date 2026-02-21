@@ -12,6 +12,8 @@ interface TuiConfig {
   provider?: LLMProvider;
   model?: string;
   apiKey?: string;
+  aiMode?: 'cli-agent' | 'api';
+  cliAgent?: string;
 }
 
 /**

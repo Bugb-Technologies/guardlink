@@ -22,7 +22,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { parseProject } from '../parser/index.js';
 import { C, computeGrade, gradeColored, severityText } from './format.js';
 import { computeSeverity } from '../dashboard/data.js';
-import { resolveLLMConfig } from './config.js';
+import { resolveLLMConfig, loadTuiConfig } from './config.js';
 import { InputBox, type CommandEntry } from './input.js';
 import gradient from 'gradient-string';
 import {
@@ -222,9 +222,20 @@ function printBanner(ctx: TuiContext): void {
     }
   }
 
-  // AI provider (bottom of left column)
+  // AI provider or CLI agent (bottom of left column)
+  const tuiCfg = loadTuiConfig(ctx.root);
   const llm = resolveLLMConfig(ctx.root);
-  if (llm) {
+  if (tuiCfg?.aiMode === 'cli-agent' && tuiCfg?.cliAgent) {
+    const CLI_AGENT_NAMES: Record<string, string> = {
+      'claude-code': 'Claude Code',
+      'codex': 'Codex CLI',
+      'gemini': 'Gemini CLI',
+    };
+    const agentName = CLI_AGENT_NAMES[tuiCfg.cliAgent] || tuiCfg.cliAgent;
+    leftLines.push({ text: '', vis: 0 });
+    const aiVis = `AI: ${agentName} (CLI)`;
+    leftLines.push({ text: C.dim('AI: ') + C.cyan(agentName) + C.dim(' (CLI)'), vis: aiVis.length });
+  } else if (llm) {
     leftLines.push({ text: '', vis: 0 });
     const aiVis = `AI: ${llm.provider}/${llm.model}`;
     leftLines.push({ text: C.dim('AI: ') + C.cyan(`${llm.provider}/${llm.model}`), vis: aiVis.length });

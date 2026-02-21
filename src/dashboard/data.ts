@@ -5,6 +5,11 @@
 
 import type { ThreatModel } from '../types/index.js';
 
+/** Normalize a ref: strip leading # so that "#sqli" and "sqli" compare equal. */
+function normalizeRef(ref: string): string {
+  return ref.startsWith('#') ? ref.slice(1) : ref;
+}
+
 export interface DashboardStats {
   annotations: number;
   sourceFiles: number;
@@ -86,20 +91,23 @@ export function computeSeverity(model: ThreatModel): SeverityBreakdown {
 
 export function computeExposures(model: ThreatModel): ExposureRow[] {
   const mitigatedSet = new Set<string>();
-  for (const m of model.mitigations) mitigatedSet.add(`${m.asset}::${m.threat}`);
+  for (const m of model.mitigations) mitigatedSet.add(`${normalizeRef(m.asset)}::${normalizeRef(m.threat)}`);
   const acceptedSet = new Set<string>();
-  for (const a of model.acceptances) acceptedSet.add(`${a.asset}::${a.threat}`);
+  for (const a of model.acceptances) acceptedSet.add(`${normalizeRef(a.asset)}::${normalizeRef(a.threat)}`);
 
-  return model.exposures.map(e => ({
-    asset: e.asset,
-    threat: e.threat,
-    severity: e.severity || 'unset',
-    description: e.description || '',
-    file: e.location.file,
-    line: e.location.line,
-    mitigated: mitigatedSet.has(`${e.asset}::${e.threat}`),
-    accepted: acceptedSet.has(`${e.asset}::${e.threat}`),
-  }));
+  return model.exposures.map(e => {
+    const key = `${normalizeRef(e.asset)}::${normalizeRef(e.threat)}`;
+    return {
+      asset: e.asset,
+      threat: e.threat,
+      severity: e.severity || 'unset',
+      description: e.description || '',
+      file: e.location.file,
+      line: e.location.line,
+      mitigated: mitigatedSet.has(key),
+      accepted: acceptedSet.has(key),
+    };
+  });
 }
 
 export function computeAssetHeatmap(model: ThreatModel): AssetHeatmapEntry[] {

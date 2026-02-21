@@ -40,7 +40,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { parseProject } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures } from '../parser/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { generateReport } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
@@ -103,13 +103,7 @@ export function createServer(): McpServer {
     async ({ root }) => {
       const { model } = await getModel(root);
 
-      const mitigated = new Set<string>();
-      const accepted = new Set<string>();
-      for (const m of model.mitigations) mitigated.add(`${m.asset}::${m.threat}`);
-      for (const a of model.acceptances) accepted.add(`${a.asset}::${a.threat}`);
-      const unmitigated = model.exposures.filter(
-        e => !mitigated.has(`${e.asset}::${e.threat}`) && !accepted.has(`${e.asset}::${e.threat}`),
-      );
+      const unmitigated = findUnmitigatedExposures(model);
 
       const status = {
         assets: model.assets.length,
@@ -145,14 +139,12 @@ export function createServer(): McpServer {
       invalidateCache();
       const { model, diagnostics } = await getModel(root);
 
-      // Compute dangling refs
-      const definedIds = new Set<string>();
-      for (const a of model.assets) { if (a.id) definedIds.add(a.id); definedIds.add(a.path.join('.')); }
-      for (const t of model.threats) { if (t.id) definedIds.add(t.id); }
-      for (const c of model.controls) { if (c.id) definedIds.add(c.id); }
+      // Compute dangling refs using shared validation
+      const danglingDiags = findDanglingRefs(model);
+      const allDiags = [...diagnostics, ...danglingDiags];
 
-      const errors = diagnostics.filter(d => d.level === 'error');
-      const warnings = diagnostics.filter(d => d.level === 'warning');
+      const errors = allDiags.filter(d => d.level === 'error');
+      const warnings = allDiags.filter(d => d.level === 'warning');
 
       const result = {
         valid: errors.length === 0,

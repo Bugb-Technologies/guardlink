@@ -7,7 +7,7 @@
 
 import { resolve, basename, isAbsolute } from 'node:path';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
-import { parseProject } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures } from '../parser/index.js';
 import { initProject, detectProject, promptAgentSelection } from '../init/index.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
@@ -915,63 +915,37 @@ export async function cmdSarif(args: string, ctx: TuiContext): Promise<void> {
   console.log('');
 }
 
-// ─── Helpers: validate ───────────────────────────────────────────────
-
-function findDanglingRefs(model: ThreatModel): ParseDiagnostic[] {
-  const diagnostics: ParseDiagnostic[] = [];
-  const definedIds = new Set<string>();
-  for (const a of model.assets) if (a.id) definedIds.add(a.id);
-  for (const t of model.threats) if (t.id) definedIds.add(t.id);
-  for (const c of model.controls) if (c.id) definedIds.add(c.id);
-  for (const b of model.boundaries) if (b.id) definedIds.add(b.id);
-
-  const checkRef = (ref: string, loc: { file: string; line: number }) => {
-    if (ref.startsWith('#')) {
-      const id = ref.slice(1);
-      if (!definedIds.has(id)) {
-        diagnostics.push({
-          level: 'warning',
-          message: `Dangling reference: #${id} is never defined`,
-          file: loc.file,
-          line: loc.line,
-        });
-      }
-    }
-  };
-
-  for (const m of model.mitigations) {
-    checkRef(m.threat, m.location);
-    if (m.control) checkRef(m.control, m.location);
-  }
-  for (const e of model.exposures) checkRef(e.threat, e.location);
-  for (const a of model.acceptances) checkRef(a.threat, a.location);
-  for (const t of model.transfers) checkRef(t.threat, t.location);
-  if (model.validations) {
-    for (const v of model.validations) checkRef(v.control, v.location);
-  }
-
-  return diagnostics;
-}
-
-function findUnmitigatedExposures(model: ThreatModel) {
-  const mitigated = new Set<string>();
-  for (const m of model.mitigations) mitigated.add(`${m.asset}::${m.threat}`);
-  for (const a of model.acceptances) mitigated.add(`${a.asset}::${a.threat}`);
-  return model.exposures.filter(e => !mitigated.has(`${e.asset}::${e.threat}`));
-}
 
 // ─── /model ──────────────────────────────────────────────────────────
 
+const CLI_AGENT_OPTIONS = [
+  { id: 'claude-code', name: 'Claude Code' },
+  { id: 'codex',       name: 'Codex CLI' },
+  { id: 'gemini',      name: 'Gemini CLI' },
+] as const;
+
+const CLI_AGENT_NAMES: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  'codex': 'Codex CLI',
+  'gemini': 'Gemini CLI',
+};
+
 export async function cmdModel(ctx: TuiContext): Promise<void> {
   const current = resolveLLMConfig(ctx.root);
+  const tuiCfg = loadTuiConfig(ctx.root);
   const source = describeConfigSource(ctx.root);
 
-  if (current) {
+  // Show current configuration
+  if (tuiCfg?.aiMode === 'cli-agent' && tuiCfg?.cliAgent) {
+    const agentName = CLI_AGENT_NAMES[tuiCfg.cliAgent] || tuiCfg.cliAgent;
+    console.log(`  ${C.dim('Current:')} ${agentName} ${C.dim('(CLI Agent)')}`);  
+    console.log(`  ${C.dim('Source:')}  ${source}`);
+    console.log('');
+  } else if (current) {
     console.log(`  ${C.dim('Current:')} ${current.provider} / ${current.model}`);
     console.log(`  ${C.dim('Source:')}  ${source}`);
     console.log('');
 
-    // If config comes from env vars, offer to keep it
     if (source.includes('env var')) {
       const override = await ask(ctx, '  Override with project config? (y/N): ');
       if (override.toLowerCase() !== 'y') {
@@ -984,55 +958,97 @@ export async function cmdModel(ctx: TuiContext): Promise<void> {
     console.log('');
   }
 
-  // Provider selection
-  const providers = ['anthropic', 'openai', 'openrouter', 'deepseek', 'ollama'] as const;
-  console.log('  Select provider:');
-  providers.forEach((p, i) => console.log(`    ${C.bold(String(i + 1))} ${p}`));
+  // Step 1: Choose mode — CLI Agents or API
+  console.log('  How would you like to use AI?');
+  console.log(`    ${C.bold('1')} CLI Agents  ${C.dim('(terminal-based coding agents)')}`);
+  console.log(`    ${C.bold('2')} API         ${C.dim('(direct LLM API calls)')}`);
   console.log('');
 
-  const choice = await ask(ctx, `  Provider [1-${providers.length}]: `);
-  const idx = parseInt(choice, 10) - 1;
-  if (idx < 0 || idx >= providers.length) {
+  const modeChoice = await ask(ctx, '  Choice [1-2]: ');
+  const modeIdx = parseInt(modeChoice, 10);
+  if (modeIdx < 1 || modeIdx > 2) {
     console.log(C.warn('  Cancelled.'));
     return;
   }
 
-  const provider = providers[idx] as any;
+  if (modeIdx === 1) {
+    // ── CLI Agent selection ──
+    console.log('');
+    console.log('  Select CLI Agent:');
+    CLI_AGENT_OPTIONS.forEach((a, i) => console.log(`    ${C.bold(String(i + 1))} ${a.name}`));
+    console.log('');
 
-  // API key
-  let apiKey = '';
-  if (provider !== 'ollama') {
-    apiKey = await ask(ctx, '  API Key: ');
-    if (!apiKey) {
-      console.log(C.warn('  Cancelled — no API key provided.'));
+    const agentChoice = await ask(ctx, `  Agent [1-${CLI_AGENT_OPTIONS.length}]: `);
+    const agentIdx = parseInt(agentChoice, 10) - 1;
+    if (agentIdx < 0 || agentIdx >= CLI_AGENT_OPTIONS.length) {
+      console.log(C.warn('  Cancelled.'));
       return;
     }
+
+    const selectedAgent = CLI_AGENT_OPTIONS[agentIdx];
+    saveTuiConfig(ctx.root, {
+      aiMode: 'cli-agent',
+      cliAgent: selectedAgent.id,
+    });
+
+    console.log('');
+    console.log(`  ${C.success('✓')} Configured: ${C.bold(selectedAgent.name)} ${C.dim('(CLI Agent)')}`);
+    console.log(C.dim('    Saved to .guardlink/config.json'));
+    console.log(C.dim(`    Use /threat-report or /annotate — they will launch ${selectedAgent.name} automatically.`));
+    console.log('');
   } else {
-    apiKey = 'ollama-local';
+    // ── API provider selection ──
+    const providers = ['anthropic', 'openai', 'deepseek', 'openrouter', 'ollama'] as const;
+    console.log('');
+    console.log('  Select provider:');
+    providers.forEach((p, i) => console.log(`    ${C.bold(String(i + 1))} ${p}`));
+    console.log('');
+
+    const choice = await ask(ctx, `  Provider [1-${providers.length}]: `);
+    const idx = parseInt(choice, 10) - 1;
+    if (idx < 0 || idx >= providers.length) {
+      console.log(C.warn('  Cancelled.'));
+      return;
+    }
+
+    const provider = providers[idx] as any;
+
+    // API key
+    let apiKey = '';
+    if (provider !== 'ollama') {
+      apiKey = await ask(ctx, '  API Key: ');
+      if (!apiKey) {
+        console.log(C.warn('  Cancelled — no API key provided.'));
+        return;
+      }
+    } else {
+      apiKey = 'ollama-local';
+    }
+
+    // Model selection
+    const defaults: Record<string, string> = {
+      anthropic: 'claude-sonnet-4-5-20250929',
+      openai: 'gpt-4o',
+      openrouter: 'anthropic/claude-sonnet-4-5-20250929',
+      deepseek: 'deepseek-chat',
+      ollama: 'llama3.2',
+    };
+    const model = await ask(ctx, `  Model [${defaults[provider]}]: `);
+
+    saveTuiConfig(ctx.root, {
+      aiMode: 'api',
+      provider,
+      model: model || defaults[provider],
+      apiKey,
+    });
+
+    const displayKey = apiKey.length > 8 ? apiKey.slice(0, 6) + '•'.repeat(8) : '•'.repeat(8);
+    console.log('');
+    console.log(`  ${C.success('✓')} Configured: ${C.bold(model || defaults[provider])} (${provider})`);
+    console.log(`    Key: ${displayKey}`);
+    console.log(C.dim('    Saved to .guardlink/config.json'));
+    console.log('');
   }
-
-  // Model selection
-  const defaults: Record<string, string> = {
-    anthropic: 'claude-sonnet-4-5-20250929',
-    openai: 'gpt-4o',
-    openrouter: 'anthropic/claude-sonnet-4-5-20250929',
-    deepseek: 'deepseek-chat',
-    ollama: 'llama3.2',
-  };
-  const model = await ask(ctx, `  Model [${defaults[provider]}]: `);
-
-  saveTuiConfig(ctx.root, {
-    provider,
-    model: model || defaults[provider],
-    apiKey,
-  });
-
-  const displayKey = apiKey.length > 8 ? apiKey.slice(0, 6) + '•'.repeat(8) : '•'.repeat(8);
-  console.log('');
-  console.log(`  ${C.success('✓')} Configured: ${C.bold(model || defaults[provider])} (${provider})`);
-  console.log(`    Key: ${displayKey}`);
-  console.log(C.dim('    Saved to .guardlink/config.json'));
-  console.log('');
 }
 
 // ─── /threat-report ──────────────────────────────────────────────────

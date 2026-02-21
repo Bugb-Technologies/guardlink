@@ -458,7 +458,7 @@ async function getMermaidInstance() {
       background: '#ffffff', mainBkg: '#e8f4f8', nodeBorder: '#94a3b8',
       clusterBkg: '#f8fafc', clusterBorder: '#cbd5e1', fontSize: '12px', fontFamily: 'var(--font-ui)'
     },
-    flowchart: { curve: 'basis', padding: 15, nodeSpacing: 40, rankSpacing: 50, htmlLabels: true, useMaxWidth: false },
+    flowchart: { curve: 'basis', padding: 15, nodeSpacing: 40, rankSpacing: 50, htmlLabels: false, useMaxWidth: false },
     securityLevel: 'loose',
   });
   return mermaid;
@@ -490,8 +490,23 @@ async function renderMermaidPanel(panel) {
             });
           svg.call(zoom);
           
-          // Let the SVG fill the container
-          svg.attr('width', '100%').attr('height', '100%').style('max-width', 'none');
+          // Preserve natural SVG size so long labels are not clipped.
+          // Container scrolling handles overflow for large graphs.
+          const rootNode = inner.node();
+          if (rootNode && typeof rootNode.getBBox === 'function') {
+            const bbox = rootNode.getBBox();
+            const pad = 80;
+            const viewX = Math.floor(bbox.x - pad / 2);
+            const viewY = Math.floor(bbox.y - pad / 2);
+            const viewW = Math.max(900, Math.ceil(bbox.width + pad));
+            const viewH = Math.max(520, Math.ceil(bbox.height + pad));
+            svg
+              .attr('viewBox', viewX + ' ' + viewY + ' ' + viewW + ' ' + viewH)
+              .attr('width', viewW)
+              .attr('height', viewH)
+              .style('max-width', 'none')
+              .style('overflow', 'visible');
+          }
           
           // Double click to reset
           svg.on('dblclick.zoom', null); // disable default dblclick zoom
@@ -1230,8 +1245,9 @@ tr.clickable { cursor: pointer; } tr.clickable:hover { background: var(--table-h
 
 /* ── Diagrams ── */
 .diagram-hint { font-size: .75rem; color: var(--muted); margin-bottom: .6rem; }
-.mermaid-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 16px; overflow-x: auto; margin-bottom: 1rem; }
-.mermaid { text-align: center; } .mermaid svg { max-width: 100%; height: auto; }
+.mermaid-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 16px; overflow: auto; margin-bottom: 1rem; }
+.mermaid { text-align: left; width: max-content; min-width: 100%; }
+.mermaid svg { max-width: none; height: auto; display: block; }
 
 /* ── Heatmap ── */
 .heatmap { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }

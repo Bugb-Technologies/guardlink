@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { parseString } from '../src/parser/parse-file.js';
 import { normalizeName, resolveSeverity, unescapeDescription } from '../src/parser/normalize.js';
 import { stripCommentPrefix } from '../src/parser/comment-strip.js';
+import { findDanglingRefs, findUnmitigatedExposures } from '../src/parser/validate.js';
+import type { ThreatModel } from '../src/types/index.js';
 
 // ─── Normalize ───────────────────────────────────────────────────────
 
@@ -271,5 +273,168 @@ describe('parseString', () => {
     const { annotations, diagnostics } = parseString('// @param name The user name');
     expect(annotations).toHaveLength(0);
     expect(diagnostics).toHaveLength(0);
+  });
+
+  // ── Regression: @flows via + description ──
+
+  it('@flows via does not swallow description', () => {
+    const { annotations } = parseString(
+      '// @flows App.Frontend -> App.API via HTTPS/443 -- "TLS 1.3"'
+    );
+    expect(annotations).toHaveLength(1);
+    const f = annotations[0] as any;
+    expect(f.mechanism).toBe('HTTPS/443');
+    expect(f.description).toBe('TLS 1.3');
+  });
+
+  it('@flows via with multi-word mechanism preserves description', () => {
+    const { annotations } = parseString(
+      '// @flows App.A -> App.B via gRPC over TLS -- "Mutual TLS auth"'
+    );
+    expect(annotations).toHaveLength(1);
+    const f = annotations[0] as any;
+    expect(f.mechanism).toBe('gRPC over TLS');
+    expect(f.description).toBe('Mutual TLS auth');
+  });
+
+  it('@flows without via still parses description', () => {
+    const { annotations } = parseString(
+      '// @flows App.A -> App.B -- "Direct connection"'
+    );
+    expect(annotations).toHaveLength(1);
+    const f = annotations[0] as any;
+    expect(f.mechanism).toBeUndefined();
+    expect(f.description).toBe('Direct connection');
+  });
+
+  // ── Regression: @shield regex safety ──
+
+  it('@shield does not match @shield:begin', () => {
+    const { annotations } = parseString('// @shield:begin -- "Crypto block"');
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0].verb).toBe('shield:begin');
+  });
+
+  it('@shield does not match @shield:end', () => {
+    const { annotations } = parseString('// @shield:end');
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0].verb).toBe('shield:end');
+  });
+
+  it('@shield alone parses correctly', () => {
+    const { annotations } = parseString('// @shield -- "Proprietary"');
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0].verb).toBe('shield');
+  });
+});
+
+// ─── Validation: findDanglingRefs ─────────────────────────────────────
+
+function emptyModel(overrides: Partial<ThreatModel> = {}): ThreatModel {
+  return {
+    version: '1.0.0', project: 'test', generated_at: '', source_files: 0,
+    annotations_parsed: 0, assets: [], threats: [], controls: [],
+    mitigations: [], exposures: [], acceptances: [], transfers: [],
+    flows: [], boundaries: [], validations: [], audits: [], ownership: [],
+    data_handling: [], assumptions: [], shields: [], comments: [],
+    coverage: { total_symbols: 0, annotated_symbols: 0, coverage_percent: 0, unannotated_critical: [] },
+    ...overrides,
+  };
+}
+
+const loc = { file: 'test.ts', line: 1 };
+
+describe('findDanglingRefs', () => {
+  it('detects dangling threat ref in @mitigates', () => {
+    const model = emptyModel({
+      mitigations: [{ asset: 'App', threat: '#missing', description: '', location: loc }],
+    });
+    const diags = findDanglingRefs(model);
+    expect(diags).toHaveLength(1);
+    expect(diags[0].message).toContain('#missing');
+  });
+
+  it('detects dangling asset ref in @exposes', () => {
+    const model = emptyModel({
+      threats: [{ name: 'XSS', canonical_name: 'xss', id: 'xss', severity: 'high', external_refs: [], location: loc }],
+      exposures: [{ asset: '#missing-asset', threat: '#xss', severity: 'high', external_refs: [], location: loc }],
+    });
+    const diags = findDanglingRefs(model);
+    expect(diags).toHaveLength(1);
+    expect(diags[0].message).toContain('#missing-asset');
+  });
+
+  it('detects dangling refs in @flows source/target', () => {
+    const model = emptyModel({
+      flows: [{ source: '#missing-src', target: '#missing-tgt', location: loc }],
+    });
+    const diags = findDanglingRefs(model);
+    expect(diags).toHaveLength(2);
+  });
+
+  it('detects dangling asset ref in @handles', () => {
+    const model = emptyModel({
+      data_handling: [{ classification: 'pii', asset: '#ghost', location: loc }],
+    });
+    const diags = findDanglingRefs(model);
+    expect(diags).toHaveLength(1);
+    expect(diags[0].message).toContain('#ghost');
+  });
+
+  it('passes when all refs are defined', () => {
+    const model = emptyModel({
+      assets: [{ path: ['App'], id: 'app', location: loc }],
+      threats: [{ name: 'XSS', canonical_name: 'xss', id: 'xss', severity: 'high', external_refs: [], location: loc }],
+      exposures: [{ asset: '#app', threat: '#xss', severity: 'high', external_refs: [], location: loc }],
+    });
+    const diags = findDanglingRefs(model);
+    expect(diags).toHaveLength(0);
+  });
+
+  it('ignores dotted-path refs (not #id)', () => {
+    const model = emptyModel({
+      mitigations: [{ asset: 'App.Auth', threat: 'SQL_Injection', location: loc }],
+    });
+    const diags = findDanglingRefs(model);
+    expect(diags).toHaveLength(0);
+  });
+});
+
+// ─── Validation: findUnmitigatedExposures ─────────────────────────────
+
+describe('findUnmitigatedExposures', () => {
+  it('returns exposures with no mitigation or acceptance', () => {
+    const model = emptyModel({
+      exposures: [{ asset: '#app', threat: '#xss', severity: 'high', external_refs: [], location: loc }],
+    });
+    const unmitigated = findUnmitigatedExposures(model);
+    expect(unmitigated).toHaveLength(1);
+  });
+
+  it('excludes mitigated exposures', () => {
+    const model = emptyModel({
+      exposures: [{ asset: '#app', threat: '#xss', severity: 'high', external_refs: [], location: loc }],
+      mitigations: [{ asset: '#app', threat: '#xss', location: loc }],
+    });
+    const unmitigated = findUnmitigatedExposures(model);
+    expect(unmitigated).toHaveLength(0);
+  });
+
+  it('excludes accepted exposures', () => {
+    const model = emptyModel({
+      exposures: [{ asset: '#app', threat: '#xss', severity: 'high', external_refs: [], location: loc }],
+      acceptances: [{ asset: '#app', threat: '#xss', location: loc }],
+    });
+    const unmitigated = findUnmitigatedExposures(model);
+    expect(unmitigated).toHaveLength(0);
+  });
+
+  it('normalizes #id refs for consistent matching', () => {
+    const model = emptyModel({
+      exposures: [{ asset: '#app', threat: '#xss', severity: 'high', external_refs: [], location: loc }],
+      mitigations: [{ asset: 'app', threat: 'xss', location: loc }],
+    });
+    const unmitigated = findUnmitigatedExposures(model);
+    expect(unmitigated).toHaveLength(0);
   });
 });
