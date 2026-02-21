@@ -1,0 +1,62 @@
+# GuardLink CI — Copy to your project's .github/workflows/guardlink.yml
+#
+# What it does:
+#   1. Validates annotations (syntax errors, dangling refs, duplicate IDs)
+#   2. Shows threat model diff on PRs (what security posture changed)
+#   3. Uploads unmitigated exposures to GitHub Security tab via SARIF
+#   4. Posts a coverage summary as a PR comment
+
+name: GuardLink
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+jobs:
+  guardlink:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install GuardLink
+        run: npm install -g guardlink
+
+      # Gate: Fail if annotations have errors
+      - name: Validate annotations
+        run: guardlink validate .
+
+      # Diff: Show what changed (PRs only)
+      - name: Threat model diff
+        if: github.event_name == 'pull_request'
+        id: diff
+        run: |
+          DIFF=$(guardlink diff --from origin/${{ github.base_ref }} --to HEAD 2>&1) || true
+          echo "diff<<EOF" >> $GITHUB_OUTPUT
+          echo "$DIFF" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # SARIF: Upload to GitHub Security tab
+      - name: Export SARIF
+        if: always()
+        run: guardlink sarif . -o guardlink.sarif
+        continue-on-error: true
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: guardlink.sarif
+        continue-on-error: true

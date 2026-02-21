@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "guardlink": {
+      "command": "guardlink",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

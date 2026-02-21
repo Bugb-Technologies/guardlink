@@ -1,0 +1,97 @@
+{
+  "name": "guardlink",
+  "version": "1.0.0",
+  "description": "GuardLink — Security annotations for code. Threat modeling that lives in your codebase.",
+  "type": "module",
+  "bin": {
+    "guardlink": "./dist/cli/index.js",
+    "guardlink-mcp": "./dist/mcp/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./parser": {
+      "import": "./dist/parser/index.js",
+      "types": "./dist/parser/index.d.ts"
+    },
+    "./init": {
+      "import": "./dist/init/index.js",
+      "types": "./dist/init/index.d.ts"
+    },
+    "./report": {
+      "import": "./dist/report/index.js",
+      "types": "./dist/report/index.d.ts"
+    },
+    "./diff": {
+      "import": "./dist/diff/index.js",
+      "types": "./dist/diff/index.d.ts"
+    },
+    "./analyzer": {
+      "import": "./dist/analyzer/index.js",
+      "types": "./dist/analyzer/index.d.ts"
+    },
+    "./mcp": {
+      "import": "./dist/mcp/index.js",
+      "types": "./dist/mcp/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
+    "cli": "tsx src/cli/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "guardlink",
+    "security",
+    "threat-modeling",
+    "annotations",
+    "sast",
+    "sarif",
+    "devsecops",
+    "mcp",
+    "appsec",
+    "code-annotations",
+    "threat-model"
+  ],
+  "author": "BugB Technologies (https://bugb.io)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Bugb-Technologies/guardlink.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Bugb-Technologies/guardlink/issues"
+  },
+  "homepage": "https://github.com/Bugb-Technologies/guardlink#readme",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/gradient-string": "^1.1.6",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "chalk": "^5.4.0",
+    "commander": "^13.0.0",
+    "fast-glob": "^3.3.0",
+    "gradient-string": "^3.0.0"
+  }
+}

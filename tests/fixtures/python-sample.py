@@ -1,0 +1,6 @@
+# @asset App.ML.Pipeline (#ml-pipeline) -- "Machine learning inference pipeline"
+# @threat Prompt_Injection (#prompt-inj) [critical] cwe:CWE-77 -- "User input manipulates LLM"
+# @control Input_Sanitization (#sanitize) -- "Strip control chars and limit length"
+# @mitigates App.ML.Pipeline against #prompt-inj using #sanitize -- "Input cleaned"
+# @handles pii on App.ML.Pipeline -- "Processes user prompts containing PII"
+# @shield -- "Proprietary model architecture"

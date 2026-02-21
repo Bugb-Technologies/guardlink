@@ -1,0 +1,24 @@
+{
+  "version": "1.0.0",
+  "project": "guardlink",
+  "language": "typescript",
+  "definitions": "definitions.ts",
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.js",
+    "**/*.jsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    ".git",
+    "__pycache__",
+    "target",
+    "vendor",
+    ".next",
+    "tests",
+    "**/tests/**"
+  ]
+}

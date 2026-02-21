@@ -1,0 +1,24 @@
+# Build
+node_modules/
+dist/
+*.tsbuildinfo
+
+# OS
+.DS_Store
+
+# Generated outputs (not tracked — regenerate with guardlink commands)
+threat-model.json
+threat-model.md
+threat-dashboard.html
+*.sarif.json
+
+# IDE / Agent local state
+.claude/
+
+# GuardLink runtime (tracked: definitions.ts, config.json)
+.guardlink/threat-reports/
+.guardlink/*.json
+!.guardlink/config.json
+
+# Debug / internal
+_debug.ts
