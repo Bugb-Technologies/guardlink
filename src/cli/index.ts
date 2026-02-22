@@ -81,7 +81,7 @@ function detectProjectName(root: string, explicit?: string): string {
 program
   .name('guardlink')
   .description('GuardLink — Security annotations for code. Threat modeling that lives in your codebase.')
-  .version('1.0.0')
+  .version('1.1.0')
   .addHelpText('before', gradient(['#00ff41', '#00d4ff'])(ASCII_LOGO));
 
 // ─── init ────────────────────────────────────────────────────────────

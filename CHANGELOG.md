@@ -5,6 +5,34 @@ All notable changes to GuardLink CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-02-21
+
+### Added
+
+- **Validation**: Shared `findDanglingRefs` and `findUnmitigatedExposures` with consistent `#id`/bare-name normalization across CLI, TUI, and MCP
+- **Validation**: Expanded dangling ref checks to cover `@flows`, `@boundary`, `@audit`, `@owns`, `@handles`, `@assumes` annotations
+- **Diagrams**: Threat graph now renders `@transfers`, `@validates`, trust boundaries, data classifications, ownership, and CWE references
+- **Diagrams**: Heuristic icons for assets (👤 user, 🖥️ service, 🗄️ database) and flow mechanisms (🔐 TLS, 🌐 HTTP, 📨 queue)
+- **Prompts**: Flow-first threat modeling methodology with architecture mapping, trust boundary identification, and coupled annotation style guide
+- **Prompts**: Agent context now includes existing data flows and unmitigated exposures for smarter annotation
+- **Model**: Two-step `/model` configuration — CLI Agents (Claude Code, Codex, Gemini) or API providers
+- **Tests**: Dashboard diagram generation tests (label sanitization, severity resolution, transfers, validations)
+- **Tests**: Parser regression tests (`@flows` via + description, `@shield` vs `@shield:begin` disambiguation)
+- **Tests**: Validation unit tests (dangling refs, unmitigated exposure matching with ref normalization)
+- **README**: Manual installation instructions (build from source + npm link)
+
+### Fixed
+
+- **Parser**: `@flows` regex no longer swallows description when `via` mechanism is present
+- **Parser**: `@shield` no longer incorrectly matches `@shield:begin` and `@shield:end`
+- **Validation**: `#id` and bare-name refs now compare correctly (e.g., `#sqli` matches `sqli` in mitigations)
+
+### Removed
+
+- **TUI**: `/scan` command — redundant with `/status` coverage display; AI-driven annotation replaces manual symbol discovery
+- **TUI**: `/exposures` and `/show` commands — exposure data remains accessible via `/validate`, MCP `guardlink_status`, and `guardlink://unmitigated` resource
+- **Dependencies**: Removed accidental `build` package (unused)
+
 ## [1.0.0] — 2026-02-21
 
 Initial public release of GuardLink.

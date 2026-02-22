@@ -128,7 +128,7 @@ function getAnnotationId(ann: Annotation): string | undefined {
 
 function assembleModel(annotations: Annotation[], fileCount: number, project: string): ThreatModel {
   const model: ThreatModel = {
-    version: '1.0.0',
+    version: '1.1.0',
     project,
     generated_at: new Date().toISOString(),
     source_files: fileCount,

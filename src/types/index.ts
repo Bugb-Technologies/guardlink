@@ -160,7 +160,7 @@ export type Annotation =
 // ─── Threat Model (§5.1) ─────────────────────────────────────────────
 
 export interface ThreatModel {
-  version: '1.0.0';
+  version: string;
   project: string;
   generated_at: string;
   source_files: number;
