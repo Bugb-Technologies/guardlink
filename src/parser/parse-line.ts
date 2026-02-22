@@ -43,7 +43,7 @@ const PATTERNS: Record<string, RegExp> = {
   accepts: new RegExp(String.raw`^@accepts\s+(${THREAT_REF})\s+on\s+(${ASSET_REF})(?:\s+${DESC})?$`),
   accepts_v1: new RegExp(String.raw`^@accepts\s+(${THREAT_REF})\s+to\s+(${ASSET_REF})(?:\s+${DESC})?$`),
   transfers: new RegExp(String.raw`^@transfers\s+(${THREAT_REF})\s+from\s+(${ASSET_REF})\s+to\s+(${ASSET_REF})(?:\s+${DESC})?$`),
-  flows: new RegExp(String.raw`^@flows\s+(${ASSET_REF})\s+->\s+(${ASSET_REF})(?:\s+via\s+(.+?))?(?:\s+${DESC})?$`),
+  flows: new RegExp(String.raw`^@flows\s+(${ASSET_REF})\s+->\s+(${ASSET_REF})(?:\s+via\s+((?:(?!\s+--\s*").)+?))?(?:\s+${DESC})?$`),
   boundary: new RegExp(String.raw`^@boundary\s+(?:between\s+)?(${ASSET_REF})\s+and\s+(${ASSET_REF})(?:\s+${ID_DEF})?(?:\s+${DESC})?$`),
   boundary_pipe: new RegExp(String.raw`^@boundary\s+(${ASSET_REF})\s*\|\s*(${ASSET_REF})(?:\s+${ID_DEF})?(?:\s+${DESC})?$`),
   connects_v1: new RegExp(String.raw`^@connects\s+(${ASSET_REF})\s+to\s+(${ASSET_REF})(?:\s+${DESC})?$`),
@@ -60,7 +60,7 @@ const PATTERNS: Record<string, RegExp> = {
   comment: new RegExp(String.raw`^@comment(?:\s+${DESC})?$`),
 
   // Special
-  shield: new RegExp(String.raw`^@shield(?:\s+${DESC})?$`),
+  shield: new RegExp(String.raw`^@shield(?!:)(?:\s+${DESC})?$`),
   shield_begin: new RegExp(String.raw`^@shield:begin(?:\s+${DESC})?$`),
   shield_end: /^@shield:end$/,
 };
@@ -75,7 +75,7 @@ function extractExternalRefs(raw: string | undefined): string[] {
 // ─── Ref resolver: #id or Name → string ──────────────────────────────
 
 function resolveRef(ref: string): string {
-  return ref.startsWith('#') ? ref : ref;
+  return ref;
 }
 
 // ─── Main parser ─────────────────────────────────────────────────────

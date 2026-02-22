@@ -35,6 +35,20 @@ npm install -g guardlink
 
 Requires Node.js 18+.
 
+### Manual Installation
+
+To install from source:
+
+```bash
+# 1. Build the project
+npm run build
+
+# 2. Link globally
+npm link
+```
+
+To uninstall: `npm unlink -g guardlink`
+
 ## Quick Start
 
 ```bash
