@@ -24,5 +24,7 @@ jobs:
 
       - name: Publish to npm with OIDC trusted publishing
         run: |
-          sed -i '/_authToken/d' "$HOME/.npmrc"
+          # Remove _authToken lines from any .npmrc so npm uses OIDC
+          sed -i '/_authToken/d' .npmrc 2>/dev/null || true
+          sed -i '/_authToken/d' "$HOME/.npmrc" 2>/dev/null || true
           npm publish --provenance --access public
