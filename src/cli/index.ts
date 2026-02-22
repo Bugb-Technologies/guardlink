@@ -26,7 +26,7 @@
 import { Command } from 'commander';
 import { resolve, basename } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
-import { parseProject } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures } from '../parser/index.js';
 import { initProject, detectProject, promptAgentSelection } from '../init/index.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getCurrentRef } from '../diff/index.js';
@@ -81,7 +81,7 @@ function detectProjectName(root: string, explicit?: string): string {
 program
   .name('guardlink')
   .description('GuardLink — Security annotations for code. Threat modeling that lives in your codebase.')
-  .version('1.0.0')
+  .version('1.1.0')
   .addHelpText('before', gradient(['#00ff41', '#00d4ff'])(ASCII_LOGO));
 
 // ─── init ────────────────────────────────────────────────────────────
@@ -862,48 +862,3 @@ function printStatus(model: ThreatModel) {
   console.log(`Shields:          ${model.shields.length}`);
 }
 
-function findDanglingRefs(model: ThreatModel): ParseDiagnostic[] {
-  const diagnostics: ParseDiagnostic[] = [];
-
-  // Collect all defined IDs
-  const definedIds = new Set<string>();
-  for (const a of model.assets) if (a.id) definedIds.add(a.id);
-  for (const t of model.threats) if (t.id) definedIds.add(t.id);
-  for (const c of model.controls) if (c.id) definedIds.add(c.id);
-  for (const b of model.boundaries) if (b.id) definedIds.add(b.id);
-
-  // Check all references
-  const checkRef = (ref: string, loc: { file: string; line: number }) => {
-    if (ref.startsWith('#')) {
-      const id = ref.slice(1);
-      if (!definedIds.has(id)) {
-        diagnostics.push({
-          level: 'warning',
-          message: `Dangling reference: #${id} is never defined`,
-          file: loc.file,
-          line: loc.line,
-        });
-      }
-    }
-  };
-
-  for (const m of model.mitigations) {
-    checkRef(m.threat, m.location);
-    if (m.control) checkRef(m.control, m.location);
-  }
-  for (const e of model.exposures) checkRef(e.threat, e.location);
-  for (const a of model.acceptances) checkRef(a.threat, a.location);
-  for (const t of model.transfers) checkRef(t.threat, t.location);
-  for (const v of model.validations) checkRef(v.control, v.location);
-
-  return diagnostics;
-}
-
-function findUnmitigatedExposures(model: ThreatModel) {
-  // Build set of (asset, threat) pairs that are mitigated or accepted
-  const mitigated = new Set<string>();
-  for (const m of model.mitigations) mitigated.add(`${m.asset}::${m.threat}`);
-  for (const a of model.acceptances) mitigated.add(`${a.asset}::${a.threat}`);
-
-  return model.exposures.filter(e => !mitigated.has(`${e.asset}::${e.threat}`));
-}

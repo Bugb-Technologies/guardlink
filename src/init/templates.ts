@@ -208,7 +208,7 @@ ${c} ─── Your Definitions ────────────────
 
 export function configContent(project: ProjectInfo): string {
   return JSON.stringify({
-    version: '1.0.0',
+    version: '1.1.0',
     project: project.name,
     language: project.language,
     definitions: `definitions${project.definitionsExt}`,

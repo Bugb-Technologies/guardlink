@@ -22,7 +22,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { parseProject } from '../parser/index.js';
 import { C, computeGrade, gradeColored, severityText } from './format.js';
 import { computeSeverity } from '../dashboard/data.js';
-import { resolveLLMConfig } from './config.js';
+import { resolveLLMConfig, loadTuiConfig } from './config.js';
 import { InputBox, type CommandEntry } from './input.js';
 import gradient from 'gradient-string';
 import {
@@ -30,14 +30,11 @@ import {
   refreshModel,
   cmdHelp,
   cmdStatus,
-  cmdExposures,
-  cmdShow,
   cmdAssets,
   cmdFiles,
   cmdView,
   cmdInit,
   cmdParse,
-  cmdScan,
   cmdValidate,
   cmdDiff,
   cmdSarif,
@@ -54,9 +51,9 @@ import {
 // ─── Command registry ────────────────────────────────────────────────
 
 const COMMANDS = [
-  '/help', '/gal', '/init', '/parse', '/run', '/status', '/scan',
+  '/help', '/gal', '/init', '/parse', '/run', '/status',
   '/validate', '/diff', '/sarif',
-  '/exposures', '/show', '/assets', '/files', '/view',
+  '/assets', '/files', '/view',
   '/threat-report', '/threat-reports', '/annotate', '/model',
   '/report', '/dashboard',
   '/quit',
@@ -77,10 +74,7 @@ const PALETTE_COMMANDS: CommandEntry[] = [
   { command: '/init',       label: 'Initialize project' },
   { command: '/parse',      label: 'Parse annotations',    aliases: ['/run'] },
   { command: '/status',     label: 'Risk grade + stats' },
-  { command: '/scan',       label: 'Find unannotated code' },
   { command: '/validate',   label: 'Syntax + ref checks' },
-  { command: '/exposures',  label: 'List exposures by severity' },
-  { command: '/show',       label: 'Exposure detail + code context' },
   { command: '/assets',     label: 'Asset tree' },
   { command: '/files',      label: 'Annotated file tree' },
   { command: '/view',       label: 'File annotations + code' },
@@ -194,9 +188,9 @@ function printBanner(ctx: TuiContext): void {
     rightLines.push({ text: C.cyan.bold('Quick start'), vis: 'Quick start'.length });
     const tips: [string, string][] = [
       ['/init',      'Initialize project'],
-      ['/exposures', 'List by severity'],
+      ['/validate',  'Check annotations'],
       ['/files',     'Browse files'],
-      ['/show <n>',  'Detail + code'],
+      ['/assets',    'Asset tree'],
       ['/threat-report', 'AI threat report'],
     ];
     for (const [cmd, desc] of tips) {
@@ -222,9 +216,20 @@ function printBanner(ctx: TuiContext): void {
     }
   }
 
-  // AI provider (bottom of left column)
+  // AI provider or CLI agent (bottom of left column)
+  const tuiCfg = loadTuiConfig(ctx.root);
   const llm = resolveLLMConfig(ctx.root);
-  if (llm) {
+  if (tuiCfg?.aiMode === 'cli-agent' && tuiCfg?.cliAgent) {
+    const CLI_AGENT_NAMES: Record<string, string> = {
+      'claude-code': 'Claude Code',
+      'codex': 'Codex CLI',
+      'gemini': 'Gemini CLI',
+    };
+    const agentName = CLI_AGENT_NAMES[tuiCfg.cliAgent] || tuiCfg.cliAgent;
+    leftLines.push({ text: '', vis: 0 });
+    const aiVis = `AI: ${agentName} (CLI)`;
+    leftLines.push({ text: C.dim('AI: ') + C.cyan(agentName) + C.dim(' (CLI)'), vis: aiVis.length });
+  } else if (llm) {
     leftLines.push({ text: '', vis: 0 });
     const aiVis = `AI: ${llm.provider}/${llm.model}`;
     leftLines.push({ text: C.dim('AI: ') + C.cyan(`${llm.provider}/${llm.model}`), vis: aiVis.length });
@@ -274,10 +279,7 @@ function printCommandList(): void {
     ['/init',       'Initialize project'],
     ['/parse',      'Parse annotations'],
     ['/status',     'Risk grade + stats'],
-    ['/scan',       'Find unannotated code'],
     ['/validate',   'Syntax + ref checks'],
-    ['/exposures',  'List exposures'],
-    ['/show <n>',   'Exposure detail + code'],
     ['/assets',     'Asset tree'],
     ['/files',      'Annotated file tree'],
     ['/view <file>','File annotations + code'],
@@ -328,15 +330,12 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
         case '/help':     cmdHelp(); break;
         case '/gal':      cmdGal(); break;
         case '/status':   cmdStatus(ctx); break;
-        case '/exposures': cmdExposures(args, ctx); break;
-        case '/show':     cmdShow(args, ctx); break;
         case '/assets':   cmdAssets(ctx); break;
         case '/files':    cmdFiles(ctx); break;
         case '/view':     cmdView(args, ctx); break;
         case '/init':     await cmdInit(args, ctx); break;
         case '/parse':
         case '/run':      await cmdParse(ctx); break;
-        case '/scan':     cmdScan(ctx); break;
         case '/validate': await cmdValidate(ctx); break;
         case '/diff':     await cmdDiff(args, ctx); break;
         case '/sarif':    await cmdSarif(args, ctx); break;
@@ -390,7 +389,6 @@ export async function startTui(dir?: string): Promise<void> {
     root,
     model: null,
     projectName,
-    lastExposures: [],
     rl,
   };
 

@@ -11,8 +11,8 @@ import type { ThreatModel } from '../types/index.js';
 /**
  * Build a prompt for annotation agents.
  *
- * Includes the GuardLink reference doc (truncated), current model summary,
- * user instructions, and precise GAL syntax rules with common pitfalls.
+ * Includes the GuardLink reference doc, current model summary with flows and exposures,
+ * flow-first threat modeling methodology, and precise GAL syntax rules.
  */
 export function buildAnnotatePrompt(
   userPrompt: string,
@@ -25,9 +25,18 @@ export function buildAnnotatePrompt(
   if (existsSync(refPath)) {
     refDoc = readFileSync(refPath, 'utf-8');
   }
+  // Fall back to docs/GUARDLINK_REFERENCE.md
+  if (!refDoc) {
+    const docsRefPath = resolve(root, 'docs', 'GUARDLINK_REFERENCE.md');
+    if (existsSync(docsRefPath)) {
+      refDoc = readFileSync(docsRefPath, 'utf-8');
+    }
+  }
 
-  let modelSummary = 'No threat model parsed yet. Run `guardlink parse` after annotating.';
+  let modelSummary = 'No threat model parsed yet. This may be a fresh project — define assets, threats, and controls first.';
   let existingIds = '';
+  let existingFlows = '';
+  let existingExposures = '';
   if (model) {
     const parts = [
       `${model.annotations_parsed} annotations`,
@@ -36,6 +45,8 @@ export function buildAnnotatePrompt(
       `${model.threats.length} threats`,
       `${model.controls.length} controls`,
       `${model.mitigations.length} mitigations`,
+      `${model.flows.length} flows`,
+      `${model.boundaries.length} boundaries`,
     ];
     modelSummary = `Current model: ${parts.join(', ')}.`;
 
@@ -45,43 +56,210 @@ export function buildAnnotatePrompt(
     const controlIds = model.controls.filter(c => c.id).map(c => `#${c.id}`);
     if (threatIds.length + assetIds.length + controlIds.length > 0) {
       const sections: string[] = [];
-      if (threatIds.length) sections.push(`Threats: ${threatIds.join(', ')}`);
       if (assetIds.length) sections.push(`Assets: ${assetIds.join(', ')}`);
+      if (threatIds.length) sections.push(`Threats: ${threatIds.join(', ')}`);
       if (controlIds.length) sections.push(`Controls: ${controlIds.join(', ')}`);
-      existingIds = `\n\nExisting defined IDs (use these in @exposes, @mitigates, etc.):\n${sections.join('\n')}`;
+      existingIds = `\n\nExisting defined IDs (REUSE these — do NOT redefine):\n${sections.join('\n')}`;
+    }
+
+    // Include existing flows so agent understands the current flow graph
+    if (model.flows.length > 0) {
+      const flowLines = model.flows.slice(0, 30).map(f =>
+        `  ${f.source} -> ${f.target}${f.mechanism ? ` via ${f.mechanism}` : ''} (${f.location.file}:${f.location.line})`
+      );
+      existingFlows = `\n\nExisting data flows (extend these, don't duplicate):\n${flowLines.join('\n')}`;
+      if (model.flows.length > 30) existingFlows += `\n  ... and ${model.flows.length - 30} more`;
+    }
+
+    // Include unmitigated exposures so agent knows what still needs attention
+    const unmitigatedExposures = model.exposures.filter(e => {
+      return !model.mitigations.some(m => m.asset === e.asset && m.threat === e.threat)
+        && !model.acceptances.some(a => a.asset === e.asset && a.threat === e.threat);
+    });
+    if (unmitigatedExposures.length > 0) {
+      const expLines = unmitigatedExposures.slice(0, 20).map(e =>
+        `  ${e.asset} exposed to ${e.threat} [${e.severity || 'unrated'}] (${e.location.file}:${e.location.line})`
+      );
+      existingExposures = `\n\nOpen exposures (unmitigated — add @mitigates or @accepts for these):\n${expLines.join('\n')}`;
+      if (unmitigatedExposures.length > 20) existingExposures += `\n  ... and ${unmitigatedExposures.length - 20} more`;
     }
   }
 
-  return `You are annotating a codebase with GuardLink security annotations.
+  return `You are an expert security engineer performing threat modeling as code.
+Your job is to read this codebase deeply, understand how code flows between components, and annotate it with GuardLink (GAL) security annotations that accurately represent the security posture.
 
-${refDoc ? '## GuardLink Reference\n\n' + refDoc.slice(0, 4000) + '\n\n' : ''}## Current State
-${modelSummary}${existingIds}
+This is NOT a vulnerability scanner. You are building a living threat model embedded in the code itself.
+Annotations capture what COULD go wrong, what controls exist, and how data moves — not just confirmed bugs.
 
-## Task
+${refDoc ? '## GuardLink Annotation Language Reference\n\n' + refDoc.slice(0, 4000) + '\n\n' : ''}## Current State
+${modelSummary}${existingIds}${existingFlows}${existingExposures}
+
+## Your Task
 ${userPrompt}
 
-## PRECISE Annotation Syntax (follow EXACTLY)
+## HOW TO THINK — Flow-First Threat Modeling
 
-Definitions go in .guardlink/definitions.js (or .py/.rs). Source files use only relationship verbs.
+Before writing ANY annotation, you MUST understand the code deeply:
 
-### Definitions
+### Step 1: Map the Architecture
+Read ALL source files related to the area you're annotating. Trace:
+- Entry points (HTTP handlers, CLI commands, message consumers, event listeners)
+- Data paths (how user input flows through functions, classes, middleware, to storage or output)
+- Exit points (database writes, API calls, file I/O, rendered templates, responses)
+- Class hierarchies, inherited methods, shared utilities, middleware chains
+- Configuration and environment variable usage
+
+### Step 2: Identify Trust Boundaries
+Look for where trust changes:
+- External user → application code (HTTP boundary)
+- Application → database (data layer boundary)
+- Service → service (network boundary)
+- Frontend → backend (client/server boundary)
+- Application → third-party API (vendor boundary)
+- Internal code → spawned process (process boundary)
+
+### Step 3: Identify What Could Go Wrong
+At each boundary crossing and data transformation, ask:
+- What if this input is malicious? (@exposes)
+- What validation/sanitization exists? (@mitigates)
+- What sensitive data passes through here? (@handles)
+- Is there an assumption that could be violated? (@assumes)
+- Has the team accepted this risk intentionally? (@accepts)
+- Is this risk handled by someone else? (@transfers)
+
+### Step 4: Write Coupled Annotation Blocks
+NEVER write a single annotation in isolation. Every annotated location should tell a complete story.
+
+## ANNOTATION STYLE GUIDE — Write Like a Developer
+
+### Always Couple Annotations Together
+A file's doc-block should paint the full security picture of that module. Group annotations logically:
+
 \`\`\`
-// @shield:begin -- "Example annotations for agent prompt, excluded from parsing"
-// @asset Server.Auth (#auth) -- "Authentication service"
-// @threat SQL_Injection (#sqli) [P0] cwe:CWE-89 -- "Unsanitized input in SQL"
-// @control Prepared_Statements (#prepared-stmts) -- "Parameterized queries"
+// @shield:begin -- "Example annotation block for reference, excluded from parsing"
+//
+// GOOD — Complete story at a single code location:
+// @exposes #auth-api to #sqli [P1] cwe:CWE-89 -- "User-supplied email passed to findUser() query builder"
+// @mitigates #auth-api against #sqli using #input-validation -- "Zod schema validates email format before query"
+// @flows User_Input -> #auth-api via POST./login -- "Login form submits credentials"
+// @flows #auth-api -> #user-db via TypeORM.findOne -- "Authenticated user lookup"
+// @handles pii on #auth-api -- "Processes email, password, session tokens"
+// @comment -- "Password comparison uses bcrypt.compare with timing-safe equality"
+//
+// BAD — Isolated annotation with no context:
+// @exposes #auth-api to #sqli -- "SQL injection possible"
+//
 // @shield:end
 \`\`\`
 
-### Relationships (use in source files)
+### Description Style — Reference Actual Code
+Descriptions must reference the real code: function names, variable names, libraries, mechanisms.
+
 \`\`\`
-// @shield:begin -- "Example annotations for agent prompt, excluded from parsing"
+// @shield:begin -- "Description examples, excluded from parsing"
+//
+// GOOD: -- "req.body.token passed to jwt.verify() without audience check"
+// GOOD: -- "bcrypt rounds set to 12 via BCRYPT_COST env var"
+// GOOD: -- "Rate limiter uses express-rate-limit at 100req/15min on /api/*"
+//
+// BAD:  -- "Input not validated"             (too vague — WHICH input? WHERE?)
+// BAD:  -- "Uses encryption"                 (WHAT encryption? On WHAT data?)
+// BAD:  -- "Security vulnerability exists"   (meaningless — be specific)
+//
+// @shield:end
+\`\`\`
+
+### @flows — Stitch the Complete Data Path
+@flows is the backbone of the threat model. Trace data movement accurately:
+
+\`\`\`
+// @shield:begin -- "Flow examples, excluded from parsing"
+//
+// Trace a request through the full stack:
+// @flows User_Browser -> #api-gateway via HTTPS -- "Client sends auth request"
+// @flows #api-gateway -> #auth-service via internal.gRPC -- "Gateway forwards to auth microservice"
+// @flows #auth-service -> #user-db via pg.query -- "Looks up user record by email"
+// @flows #auth-service -> #session-store via redis.set -- "Stores session token with TTL"
+// @flows #auth-service -> User_Browser via Set-Cookie -- "Returns session cookie to client"
+//
+// @shield:end
+\`\`\`
+
+### @boundary — Mark Every Trust Zone Crossing
+Place @boundary annotations where trust level changes between two components:
+
+\`\`\`
+// @shield:begin -- "Boundary examples, excluded from parsing"
+//
+// @boundary between #api-gateway and External_Internet (#public-boundary) -- "TLS termination, rate limiting at edge"
+// @boundary between #backend and #database (#data-boundary) -- "Application to persistence layer, connection pooling via pgBouncer"
+// @boundary between #app and #payment-provider (#vendor-boundary) -- "PCI-DSS scope boundary, tokenized card data only"
+//
+// @shield:end
+\`\`\`
+
+### Where to Place Annotations
+Annotations go in the file's top doc-block comment OR directly above the security-relevant code:
+
+\`\`\`
+// @shield:begin -- "Placement examples, excluded from parsing"
+//
+// FILE-LEVEL (top doc-block) — for module-wide security properties:
+// Place @exposes, @mitigates, @flows, @handles, @boundary that describe the module as a whole
+//
+// INLINE (above specific functions/methods) — for function-specific concerns:
+// Place @exposes, @mitigates above the exact function where the risk or control lives
+// Place @comment above tricky security-relevant code to explain intent
+//
+// @shield:end
+\`\`\`
+
+### Severity — Be Honest, Not Alarmist
+Annotations capture what COULD go wrong, calibrated to realistic risk:
+- **[P0] / [critical]**: Directly exploitable by external attacker, severe impact (RCE, auth bypass, data breach)
+- **[P1] / [high]**: Exploitable with some conditions, significant impact (privilege escalation, data leak)
+- **[P2] / [medium]**: Requires specific conditions or insider access (SSRF, info disclosure)
+- **[P3] / [low]**: Minor impact or very difficult to exploit (timing side-channels, verbose errors)
+
+Don't rate everything P0. A SQL injection in an admin-only internal tool is different from one in a public API.
+
+### @comment — Always Add Context
+Every annotation block should include at least one @comment explaining non-obvious security decisions, assumptions, or context that helps future developers (and AI tools) understand the "why".
+
+### @shield — DO NOT USE Unless Explicitly Asked
+@shield and @shield:begin/@shield:end block AI coding assistants from reading the annotated code.
+This means any shielded code becomes invisible to AI tools — they cannot analyze, refactor, or annotate it.
+Do NOT add @shield annotations unless the user has EXPLICITLY requested it (e.g., "shield the crypto module").
+Adding @shield on your own initiative would actively harm the threat model by creating blind spots where AI cannot help.
+
+## PRECISE GAL Syntax
+
+Definitions go in .guardlink/definitions.{ts,js,py,rs}. Source files use only relationship verbs.
+
+### Definitions (in .guardlink/definitions file)
+\`\`\`
+// @shield:begin -- "Definition syntax examples, excluded from parsing"
+// @asset Server.Auth (#auth) -- "Authentication service handling login and session management"
+// @threat SQL_Injection (#sqli) [P0] cwe:CWE-89 -- "Unsanitized input reaches SQL query builder"
+// @control Prepared_Statements (#prepared-stmts) -- "Parameterized queries via ORM or driver placeholders"
+// @shield:end
+\`\`\`
+
+### Relationships (in source files)
+\`\`\`
+// @shield:begin -- "Relationship syntax examples, excluded from parsing"
 // @exposes #auth to #sqli [P0] cwe:CWE-89 owasp:A03:2021 -- "User input concatenated into query"
-// @mitigates #auth against #sqli using #prepared-stmts -- "Uses parameterized queries"
+// @mitigates #auth against #sqli using #prepared-stmts -- "Uses parameterized queries via sqlx"
+// @accepts #timing-attack on #auth -- "Acceptable given bcrypt constant-time comparison"
+// @transfers #ddos from #api to #cdn -- "Cloudflare handles L7 DDoS mitigation"
 // @flows req.body.username -> db.query via string-concat -- "User input flows to SQL"
-// @boundary between #frontend and #api (#trust-boundary) -- "Public/private boundary"
-// @handles pii on #auth -- "Processes user credentials"
-// @comment -- "TODO: add rate limiting to prevent brute force"
+// @boundary between #frontend and #api (#web-boundary) -- "TLS-terminated public/private boundary"
+// @handles pii on #auth -- "Processes email, password, session tokens"
+// @validates #prepared-stmts for #auth -- "Integration test sqlInjectionTest.ts confirms parameterized queries block SQLi payloads"
+// @audit #auth -- "Session token rotation logic needs cryptographic review"
+// @assumes #auth -- "Upstream API gateway has already validated TLS and rate-limited requests"
+// @owns security-team for #auth -- "Security team reviews all auth PRs"
+// @comment -- "Password hashing uses bcrypt with cost factor 12, migration from SHA256 completed in v2.1"
 // @shield:end
 \`\`\`
 
@@ -91,13 +269,13 @@ Definitions go in .guardlink/definitions.js (or .py/.rs). Source files use only 
    WRONG: \`@boundary api -- "desc"\`  (only one argument — will NOT parse)
    RIGHT: \`@boundary between #api and #client (#api-boundary) -- "Trust boundary"\`
 
-2. **@flows is ONE source → ONE target per line**: \`@flows <source> -> <target> via <mechanism>\`.
+2. **@flows is ONE source -> ONE target per line**: \`@flows <source> -> <target> via <mechanism>\`.
    WRONG: \`@flows A -> B, C -> D -- "desc"\`  (commas not supported)
    RIGHT: \`@flows A -> B via mechanism -- "desc"\` (one per line, repeat for multiple)
 
 3. **@exposes / @mitigates require DEFINED #id refs**: Every \`#id\` you reference must exist as a definition.
    Before using \`@exposes #app to #sqli\`, ensure \`@threat SQL_Injection (#sqli)\` exists in definitions.
-   Add new definitions to .guardlink/definitions.js FIRST, then reference them in source files.
+   Add new definitions to the .guardlink/definitions file FIRST, then reference them in source files.
 
 4. **Severity in square brackets**: \`[P0]\` \`[P1]\` \`[P2]\` \`[P3]\` or \`[critical]\` \`[high]\` \`[medium]\` \`[low]\`.
    Goes AFTER the threat ref in @exposes: \`@exposes #app to #sqli [P0] cwe:CWE-89\`
@@ -115,12 +293,30 @@ Definitions go in .guardlink/definitions.js (or .py/.rs). Source files use only 
 
 8. **External refs are space-separated after severity**: \`cwe:CWE-89 owasp:A03:2021 capec:CAPEC-66\`
 
+9. **@comment always needs -- and quotes**: \`@comment -- "your note here"\`.
+   A bare \`@comment\` without description is valid but useless. Always include context.
+
+10. **One annotation per comment line.** Do NOT put two @verbs on the same line.
+
 ## Workflow
-1. Read existing definitions in .guardlink/definitions.js — reuse existing IDs
-2. Add any NEW threat/control definitions FIRST
-3. Then add relationship annotations (@exposes, @mitigates, @flows, etc.) in source files
-4. Use the project's comment style (// for JS/TS, # for Python, etc.)
-5. Run guardlink_validate (MCP) or \`guardlink validate\` to check for errors
-6. Fix any validation errors before finishing
+
+1. **Read first, annotate second.** Read ALL related source files before writing any annotation.
+   Trace the full call chain: entry point → middleware → handler → service → repository → database.
+   Understand class hierarchies, shared utilities, and configuration.
+
+2. **Read existing definitions** in the .guardlink/definitions file — reuse existing IDs, never duplicate.
+
+3. **Add NEW definitions FIRST** if you need new assets, threats, or controls.
+   Group related definitions together with section comments.
+
+4. **Annotate in coupled blocks.** For each security-relevant location, write the complete story:
+   @exposes + @mitigates (or @accepts) + @flows + @comment at minimum.
+   Think: "what's the risk, what's the defense, how does data flow here, and what should the next developer know?"
+
+5. **Use the project's comment style** (// for JS/TS/Go/Rust, # for Python/Ruby/Shell, etc.)
+
+6. **Run validation** via guardlink_validate (MCP) or \`guardlink validate\` to check for errors.
+
+7. **Fix any validation errors** before finishing — especially dangling refs and malformed syntax.
 `;
 }

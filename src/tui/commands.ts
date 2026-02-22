@@ -7,16 +7,16 @@
 
 import { resolve, basename, isAbsolute } from 'node:path';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
-import { parseProject } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures } from '../parser/index.js';
 import { initProject, detectProject, promptAgentSelection } from '../init/index.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
-import { computeStats, computeSeverity, computeExposures } from '../dashboard/data.js';
+import { computeStats, computeSeverity } from '../dashboard/data.js';
 import { generateThreatReport, serializeModel, listThreatReports, loadThreatReportsForDashboard, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { diffModels, formatDiff, parseAtRef } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
-import type { ThreatModel, ParseDiagnostic, ThreatModelExposure } from '../types/index.js';
-import { C, severityBadge, severityText, severityTextPad, severityOrder, computeGrade, gradeColored, formatTable, readCodeContext, trunc, bar, fileLink, fileLinkTrunc } from './format.js';
+import type { ThreatModel, ParseDiagnostic } from '../types/index.js';
+import { C, severityBadge, severityText, severityOrder, computeGrade, gradeColored, formatTable, readCodeContext, trunc, bar, fileLink } from './format.js';
 import { resolveLLMConfig, saveTuiConfig, loadTuiConfig } from './config.js';
 import { AGENTS, parseAgentFlag, launchAgent, copyToClipboard, buildAnnotatePrompt, type AgentEntry } from '../agents/index.js';
 import { describeConfigSource } from '../agents/config.js';
@@ -42,8 +42,6 @@ export interface TuiContext {
   root: string;
   model: ThreatModel | null;
   projectName: string;
-  /** Cached exposure list for /show references */
-  lastExposures: ThreatModelExposure[];
   /** readline interface for prompting */
   rl: import('node:readline').Interface;
   /** Guard: true while ask() is waiting for sub-prompt input */
@@ -83,11 +81,8 @@ export function cmdHelp(): void {
     ['/init [name]',            'Initialize GuardLink in this project'],
     ['/parse',                  'Parse annotations, build threat model'],
     ['/status',                 'Risk grade + summary stats'],
-    ['/scan',                   'Find unannotated security-relevant functions'],
     ['/validate [--strict]',    'Check for syntax errors + dangling refs'],
     ['', ''],
-    ['/exposures [flags]',      'List exposures (--asset, --severity, --file, --threat)'],
-    ['/show <n>',               'Detail view of exposure #n with code context'],
     ['/assets',                 'Asset tree with threat/control counts'],
     ['/files',                  'Annotated file tree with exposure counts'],
     ['/view <file>',            'Show all annotations in a file with code context'],
@@ -330,105 +325,6 @@ export function cmdStatus(ctx: TuiContext): void {
     }
   }
 
-  console.log('');
-}
-
-// ─── /exposures ──────────────────────────────────────────────────────
-
-export function cmdExposures(args: string, ctx: TuiContext): void {
-  if (!ctx.model) {
-    console.log(C.warn('  No threat model. Run /parse first.'));
-    return;
-  }
-
-  const rows = computeExposures(ctx.model);
-  let filtered = rows.filter(r => !r.mitigated && !r.accepted); // open only by default
-
-  // Parse flags
-  const parts = args.split(/\s+/).filter(Boolean);
-  let showAll = false;
-  for (let i = 0; i < parts.length; i++) {
-    const flag = parts[i];
-    const val = parts[i + 1];
-    if (flag === '--asset' && val) { filtered = filtered.filter(r => r.asset.includes(val)); i++; }
-    else if (flag === '--severity' && val) { filtered = filtered.filter(r => r.severity === val.toLowerCase()); i++; }
-    else if (flag === '--file' && val) { filtered = filtered.filter(r => r.file.includes(val)); i++; }
-    else if (flag === '--threat' && val) { filtered = filtered.filter(r => r.threat.includes(val)); i++; }
-    else if (flag === '--all') { filtered = rows; showAll = true; }
-  }
-
-  // Sort by severity
-  filtered.sort((a, b) => severityOrder(a.severity) - severityOrder(b.severity));
-
-  // Cache for /show
-  ctx.lastExposures = filtered.map(r => {
-    const original = ctx.model!.exposures.find(e =>
-      e.asset === r.asset && e.threat === r.threat && e.location.file === r.file && e.location.line === r.line
-    );
-    return original!;
-  }).filter(Boolean);
-
-  if (filtered.length === 0) {
-    console.log(C.green('  No matching exposures found.'));
-    return;
-  }
-
-  console.log('');
-
-  // Determine terminal width for adaptive layout
-  const termWidth = process.stdout.columns || 100;
-
-  // Manual table (we need colored cells which formatTable can't do directly)
-  const header = `  ${C.dim('#'.padEnd(4))}${C.dim('SEVERITY'.padEnd(12))}${C.dim('ASSET'.padEnd(18))}${C.dim('THREAT'.padEnd(20))}${C.dim('FILE'.padEnd(30))}${C.dim('LINE')}`;
-  console.log(header);
-  console.log(C.dim('  ' + '─'.repeat(Math.min(termWidth - 4, 96))));
-
-  for (const [i, r] of filtered.entries()) {
-    const num = String(i + 1).padEnd(4);
-    const sev = severityTextPad(r.severity, 12);
-    const asset = trunc(r.asset, 16).padEnd(18);
-    const threat = trunc(r.threat, 18).padEnd(20);
-    const linkedFile = fileLinkTrunc(r.file, 28, r.line, ctx.root);
-    const filePad = ' '.repeat(Math.max(0, 30 - trunc(r.file, 28).length));
-    const line = `  ${num}${sev}${asset}${threat}${linkedFile}${filePad}${r.line}`;
-    console.log(line);
-  }
-
-  console.log('');
-  const countMsg = showAll
-    ? `  ${filtered.length} exposure(s) total`
-    : `  ${filtered.length} open exposure(s)`;
-  console.log(C.dim(countMsg + '  ·  /show <n> for detail  ·  --asset --severity --threat --file to filter'));
-  console.log('');
-}
-
-// ─── /show ───────────────────────────────────────────────────────────
-
-export function cmdShow(args: string, ctx: TuiContext): void {
-  const num = parseInt(args.trim(), 10);
-  if (!num || num < 1 || num > ctx.lastExposures.length) {
-    console.log(C.warn(`  Usage: /show <n> where n is 1-${ctx.lastExposures.length || '?'}. Run /exposures first.`));
-    return;
-  }
-
-  const exp = ctx.lastExposures[num - 1];
-  console.log('');
-  console.log(`  ${C.cyan('┌')} ${exp.asset} → ${exp.threat} ${severityBadge(exp.severity)}`);
-  if (exp.description) {
-    console.log(`  ${C.cyan('│')} ${exp.description}`);
-  }
-  if (exp.external_refs.length > 0) {
-    console.log(`  ${C.cyan('│')} ${C.dim(exp.external_refs.join(' · '))}`);
-  }
-  console.log(`  ${C.cyan('│')} ${C.dim(fileLink(exp.location.file, exp.location.line, ctx.root))}`);
-  console.log(`  ${C.cyan('│')}`);
-
-  // Code context
-  const { lines } = readCodeContext(exp.location.file, exp.location.line, ctx.root);
-  for (const l of lines) {
-    console.log(`  ${C.cyan('│')} ${l}`);
-  }
-  console.log(`  ${C.cyan('└')}`);
   console.log('');
 }
 
@@ -757,36 +653,6 @@ export async function cmdParse(ctx: TuiContext): Promise<void> {
   }
 }
 
-// ─── /scan ───────────────────────────────────────────────────────────
-
-export function cmdScan(ctx: TuiContext): void {
-  if (!ctx.model) {
-    console.log(C.warn('  No threat model. Run /parse first.'));
-    return;
-  }
-
-  const cov = ctx.model.coverage;
-  const pct = cov.coverage_percent;
-  console.log('');
-  console.log(`  ${C.bold('Coverage:')} ${cov.annotated_symbols}/${cov.total_symbols} symbols (${pct}%)`);
-
-  const unannotated = cov.unannotated_critical || [];
-  if (unannotated.length === 0) {
-    console.log(C.green('  All security-relevant symbols are annotated!'));
-  } else {
-    console.log(C.warn(`  ${unannotated.length} unannotated symbol(s):`));
-    console.log('');
-    const show = unannotated.slice(0, 25);
-    for (const u of show) {
-      console.log(`    ${C.dim(fileLink(u.file, u.line, ctx.root))}  ${u.kind} ${C.bold(u.name)}`);
-    }
-    if (unannotated.length > 25) {
-      console.log(C.dim(`    ... and ${unannotated.length - 25} more`));
-    }
-  }
-  console.log('');
-}
-
 // ─── /validate ───────────────────────────────────────────────────────
 
 export async function cmdValidate(ctx: TuiContext): Promise<void> {
@@ -915,63 +781,37 @@ export async function cmdSarif(args: string, ctx: TuiContext): Promise<void> {
   console.log('');
 }
 
-// ─── Helpers: validate ───────────────────────────────────────────────
-
-function findDanglingRefs(model: ThreatModel): ParseDiagnostic[] {
-  const diagnostics: ParseDiagnostic[] = [];
-  const definedIds = new Set<string>();
-  for (const a of model.assets) if (a.id) definedIds.add(a.id);
-  for (const t of model.threats) if (t.id) definedIds.add(t.id);
-  for (const c of model.controls) if (c.id) definedIds.add(c.id);
-  for (const b of model.boundaries) if (b.id) definedIds.add(b.id);
-
-  const checkRef = (ref: string, loc: { file: string; line: number }) => {
-    if (ref.startsWith('#')) {
-      const id = ref.slice(1);
-      if (!definedIds.has(id)) {
-        diagnostics.push({
-          level: 'warning',
-          message: `Dangling reference: #${id} is never defined`,
-          file: loc.file,
-          line: loc.line,
-        });
-      }
-    }
-  };
-
-  for (const m of model.mitigations) {
-    checkRef(m.threat, m.location);
-    if (m.control) checkRef(m.control, m.location);
-  }
-  for (const e of model.exposures) checkRef(e.threat, e.location);
-  for (const a of model.acceptances) checkRef(a.threat, a.location);
-  for (const t of model.transfers) checkRef(t.threat, t.location);
-  if (model.validations) {
-    for (const v of model.validations) checkRef(v.control, v.location);
-  }
-
-  return diagnostics;
-}
-
-function findUnmitigatedExposures(model: ThreatModel) {
-  const mitigated = new Set<string>();
-  for (const m of model.mitigations) mitigated.add(`${m.asset}::${m.threat}`);
-  for (const a of model.acceptances) mitigated.add(`${a.asset}::${a.threat}`);
-  return model.exposures.filter(e => !mitigated.has(`${e.asset}::${e.threat}`));
-}
 
 // ─── /model ──────────────────────────────────────────────────────────
 
+const CLI_AGENT_OPTIONS = [
+  { id: 'claude-code', name: 'Claude Code' },
+  { id: 'codex',       name: 'Codex CLI' },
+  { id: 'gemini',      name: 'Gemini CLI' },
+] as const;
+
+const CLI_AGENT_NAMES: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  'codex': 'Codex CLI',
+  'gemini': 'Gemini CLI',
+};
+
 export async function cmdModel(ctx: TuiContext): Promise<void> {
   const current = resolveLLMConfig(ctx.root);
+  const tuiCfg = loadTuiConfig(ctx.root);
   const source = describeConfigSource(ctx.root);
 
-  if (current) {
+  // Show current configuration
+  if (tuiCfg?.aiMode === 'cli-agent' && tuiCfg?.cliAgent) {
+    const agentName = CLI_AGENT_NAMES[tuiCfg.cliAgent] || tuiCfg.cliAgent;
+    console.log(`  ${C.dim('Current:')} ${agentName} ${C.dim('(CLI Agent)')}`);  
+    console.log(`  ${C.dim('Source:')}  ${source}`);
+    console.log('');
+  } else if (current) {
     console.log(`  ${C.dim('Current:')} ${current.provider} / ${current.model}`);
     console.log(`  ${C.dim('Source:')}  ${source}`);
     console.log('');
 
-    // If config comes from env vars, offer to keep it
     if (source.includes('env var')) {
       const override = await ask(ctx, '  Override with project config? (y/N): ');
       if (override.toLowerCase() !== 'y') {
@@ -984,55 +824,97 @@ export async function cmdModel(ctx: TuiContext): Promise<void> {
     console.log('');
   }
 
-  // Provider selection
-  const providers = ['anthropic', 'openai', 'openrouter', 'deepseek', 'ollama'] as const;
-  console.log('  Select provider:');
-  providers.forEach((p, i) => console.log(`    ${C.bold(String(i + 1))} ${p}`));
+  // Step 1: Choose mode — CLI Agents or API
+  console.log('  How would you like to use AI?');
+  console.log(`    ${C.bold('1')} CLI Agents  ${C.dim('(terminal-based coding agents)')}`);
+  console.log(`    ${C.bold('2')} API         ${C.dim('(direct LLM API calls)')}`);
   console.log('');
 
-  const choice = await ask(ctx, `  Provider [1-${providers.length}]: `);
-  const idx = parseInt(choice, 10) - 1;
-  if (idx < 0 || idx >= providers.length) {
+  const modeChoice = await ask(ctx, '  Choice [1-2]: ');
+  const modeIdx = parseInt(modeChoice, 10);
+  if (modeIdx < 1 || modeIdx > 2) {
     console.log(C.warn('  Cancelled.'));
     return;
   }
 
-  const provider = providers[idx] as any;
+  if (modeIdx === 1) {
+    // ── CLI Agent selection ──
+    console.log('');
+    console.log('  Select CLI Agent:');
+    CLI_AGENT_OPTIONS.forEach((a, i) => console.log(`    ${C.bold(String(i + 1))} ${a.name}`));
+    console.log('');
 
-  // API key
-  let apiKey = '';
-  if (provider !== 'ollama') {
-    apiKey = await ask(ctx, '  API Key: ');
-    if (!apiKey) {
-      console.log(C.warn('  Cancelled — no API key provided.'));
+    const agentChoice = await ask(ctx, `  Agent [1-${CLI_AGENT_OPTIONS.length}]: `);
+    const agentIdx = parseInt(agentChoice, 10) - 1;
+    if (agentIdx < 0 || agentIdx >= CLI_AGENT_OPTIONS.length) {
+      console.log(C.warn('  Cancelled.'));
       return;
     }
+
+    const selectedAgent = CLI_AGENT_OPTIONS[agentIdx];
+    saveTuiConfig(ctx.root, {
+      aiMode: 'cli-agent',
+      cliAgent: selectedAgent.id,
+    });
+
+    console.log('');
+    console.log(`  ${C.success('✓')} Configured: ${C.bold(selectedAgent.name)} ${C.dim('(CLI Agent)')}`);
+    console.log(C.dim('    Saved to .guardlink/config.json'));
+    console.log(C.dim(`    Use /threat-report or /annotate — they will launch ${selectedAgent.name} automatically.`));
+    console.log('');
   } else {
-    apiKey = 'ollama-local';
+    // ── API provider selection ──
+    const providers = ['anthropic', 'openai', 'deepseek', 'openrouter', 'ollama'] as const;
+    console.log('');
+    console.log('  Select provider:');
+    providers.forEach((p, i) => console.log(`    ${C.bold(String(i + 1))} ${p}`));
+    console.log('');
+
+    const choice = await ask(ctx, `  Provider [1-${providers.length}]: `);
+    const idx = parseInt(choice, 10) - 1;
+    if (idx < 0 || idx >= providers.length) {
+      console.log(C.warn('  Cancelled.'));
+      return;
+    }
+
+    const provider = providers[idx] as any;
+
+    // API key
+    let apiKey = '';
+    if (provider !== 'ollama') {
+      apiKey = await ask(ctx, '  API Key: ');
+      if (!apiKey) {
+        console.log(C.warn('  Cancelled — no API key provided.'));
+        return;
+      }
+    } else {
+      apiKey = 'ollama-local';
+    }
+
+    // Model selection
+    const defaults: Record<string, string> = {
+      anthropic: 'claude-sonnet-4-5-20250929',
+      openai: 'gpt-4o',
+      openrouter: 'anthropic/claude-sonnet-4-5-20250929',
+      deepseek: 'deepseek-chat',
+      ollama: 'llama3.2',
+    };
+    const model = await ask(ctx, `  Model [${defaults[provider]}]: `);
+
+    saveTuiConfig(ctx.root, {
+      aiMode: 'api',
+      provider,
+      model: model || defaults[provider],
+      apiKey,
+    });
+
+    const displayKey = apiKey.length > 8 ? apiKey.slice(0, 6) + '•'.repeat(8) : '•'.repeat(8);
+    console.log('');
+    console.log(`  ${C.success('✓')} Configured: ${C.bold(model || defaults[provider])} (${provider})`);
+    console.log(`    Key: ${displayKey}`);
+    console.log(C.dim('    Saved to .guardlink/config.json'));
+    console.log('');
   }
-
-  // Model selection
-  const defaults: Record<string, string> = {
-    anthropic: 'claude-sonnet-4-5-20250929',
-    openai: 'gpt-4o',
-    openrouter: 'anthropic/claude-sonnet-4-5-20250929',
-    deepseek: 'deepseek-chat',
-    ollama: 'llama3.2',
-  };
-  const model = await ask(ctx, `  Model [${defaults[provider]}]: `);
-
-  saveTuiConfig(ctx.root, {
-    provider,
-    model: model || defaults[provider],
-    apiKey,
-  });
-
-  const displayKey = apiKey.length > 8 ? apiKey.slice(0, 6) + '•'.repeat(8) : '•'.repeat(8);
-  console.log('');
-  console.log(`  ${C.success('✓')} Configured: ${C.bold(model || defaults[provider])} (${provider})`);
-  console.log(`    Key: ${displayKey}`);
-  console.log(C.dim('    Saved to .guardlink/config.json'));
-  console.log('');
 }
 
 // ─── /threat-report ──────────────────────────────────────────────────

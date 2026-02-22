@@ -22,6 +22,8 @@ interface SavedConfig {
   provider?: LLMProvider;
   model?: string;
   apiKey?: string;
+  aiMode?: 'cli-agent' | 'api';
+  cliAgent?: string;
 }
 
 const DEFAULT_MODELS: Record<LLMProvider, string> = {
@@ -204,7 +206,7 @@ export function describeConfigSource(
   if (process.env.OPENROUTER_API_KEY) return 'OPENROUTER_API_KEY env var';
   if (process.env.DEEPSEEK_API_KEY) return 'DEEPSEEK_API_KEY env var';
   const pc = readJsonFile(projectConfigPath(root));
-  if (pc && Object.keys(pc).length > 0 && pc.provider) return `.guardlink/${CONFIG_FILE}`;
+  if (pc && Object.keys(pc).length > 0 && (pc.provider || pc.aiMode)) return `.guardlink/${CONFIG_FILE}`;
   const lc = readJsonFile(legacyConfigPath(root));
   if (lc && Object.keys(lc).length > 0 && lc.provider) return `.guardlink/${LEGACY_CONFIG_FILE} (legacy)`;
   const gc = readJsonFile(globalConfigPath());

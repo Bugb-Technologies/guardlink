@@ -112,10 +112,8 @@ export async function promptAgentSelection(agentFiles: AgentFile[]): Promise<str
         selectedIds.push(optionalChoices[n - 1].id);
       }
     }
-  }
-
-  // Always include claude if nothing was detected or selected
-  if (selectedIds.length === 0) {
+  } else if (selectedIds.length === 0) {
+    // Only fall back to claude when the user skipped (empty input) and nothing was detected
     selectedIds.push('claude');
   }
 
