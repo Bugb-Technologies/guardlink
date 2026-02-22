@@ -188,9 +188,9 @@ function printBanner(ctx: TuiContext): void {
     rightLines.push({ text: C.cyan.bold('Quick start'), vis: 'Quick start'.length });
     const tips: [string, string][] = [
       ['/init',      'Initialize project'],
-      ['/exposures', 'List by severity'],
+      ['/validate',  'Check annotations'],
       ['/files',     'Browse files'],
-      ['/show <n>',  'Detail + code'],
+      ['/assets',    'Asset tree'],
       ['/threat-report', 'AI threat report'],
     ];
     for (const [cmd, desc] of tips) {
@@ -389,7 +389,6 @@ export async function startTui(dir?: string): Promise<void> {
     root,
     model: null,
     projectName,
-    lastExposures: [],
     rl,
   };
 

@@ -6,9 +6,9 @@
  *   ┌──────────────────────────────────────┐
  *   │ › type a command or question...      │
  *   └──────────────────────────────────────┘
- *     /exposures   List by severity
+ *     /validate    Check annotations
  *     /files       Browse files
- *     /show <n>    Detail + code
+ *     /assets      Asset tree
  *
  * Uses raw stdin mode for full keystroke control.
  */
@@ -32,7 +32,7 @@ export interface InputBoxOptions {
 }
 
 export interface CommandEntry {
-  command: string;   // e.g. "/exposures"
+  command: string;   // e.g. "/validate"
   label: string;     // e.g. "List by severity"
   aliases?: string[];
 }
