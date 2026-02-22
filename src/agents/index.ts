@@ -45,5 +45,6 @@ export function agentFromOpts(opts: Record<string, any>): AgentEntry | null {
   return null;
 }
 
-export { launchAgentForeground, launchAgentIDE, launchAgent, copyToClipboard } from './launcher.js';
+export { launchAgentForeground, launchAgentIDE, launchAgent, launchAgentInline, copyToClipboard } from './launcher.js';
+export type { InlineResult } from './launcher.js';
 export { buildAnnotatePrompt } from './prompts.js';

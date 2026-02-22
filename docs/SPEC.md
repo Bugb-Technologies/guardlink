@@ -866,7 +866,57 @@ A conforming GuardLink tool may expose a Model Context Protocol (MCP) server wit
 
 MCP integration enables real-time threat model awareness during coding sessions. Tools should support project-scoped MCP configuration (e.g., `.mcp.json` for Claude Code) so that the MCP server can be committed to the repository and automatically available to all developers.
 
-### 8.3. `@shield` Compliance
+### 8.3. AI-Powered Threat Analysis
+
+A conforming Level 4 implementation may provide AI-driven threat analysis that takes the parsed ThreatModel as input and produces structured reports using established threat modeling frameworks:
+
+| Framework | Description |
+|-----------|-------------|
+| STRIDE | Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege |
+| DREAD | Risk scoring: Damage, Reproducibility, Exploitability, Affected Users, Discoverability |
+| PASTA | Process for Attack Simulation and Threat Analysis — seven-stage methodology |
+| Attacker-centric | Persona-based analysis with kill chains, attack trees, and adversary motivation |
+| RAPID | Risk Assessment Process for Informed Decision-making |
+| General | Comprehensive analysis combining multiple frameworks as appropriate for the codebase |
+
+The analysis workflow:
+1. The tool serializes the ThreatModel (assets, threats, controls, flows, boundaries, exposures) into a prompt
+2. Project context (README, package manifest, directory structure) is included for architecture understanding
+3. Code snippets from annotated locations are extracted to provide real implementation context
+4. The prompt is sent to an LLM (via direct API or CLI agent) with framework-specific system instructions
+5. The AI reads the actual source files, cross-references annotations with code, and produces a structured report
+6. Reports are saved as timestamped markdown files in `.guardlink/threat-reports/`
+
+Analysis can be performed through multiple execution paths:
+- **Direct API**: Streaming LLM calls via Anthropic, OpenAI, OpenRouter, DeepSeek, or Ollama
+- **CLI Agents**: Inline execution via Claude Code, Codex CLI, or Gemini CLI (the agent reads the codebase directly)
+- **IDE Agents**: Prompt copied to clipboard for Cursor, Windsurf, or other IDE-integrated assistants
+
+Additional analysis capabilities:
+- **Extended thinking / reasoning mode**: Enables chain-of-thought reasoning for deeper analysis
+- **Web search grounding**: Augments analysis with real-time CVE, advisory, and vulnerability data
+- **Custom prompts**: Free-text analysis instructions for domain-specific or mixed-framework analysis
+
+### 8.4. Interactive Dashboard
+
+A conforming implementation may generate an interactive HTML dashboard that visualizes the threat model. The dashboard should include:
+- Risk grade and severity breakdown
+- Asset graph with threat/control relationships
+- Mermaid-based data flow diagrams generated from `@flows` and `@boundary` annotations
+- Exposure triage view with severity filtering
+- Annotation coverage statistics
+- Integrated AI threat report summaries (loaded from `.guardlink/threat-reports/`)
+
+### 8.5. Interactive TUI
+
+A conforming implementation may provide an interactive terminal interface (TUI) that combines:
+- Slash commands for all CLI operations (`/parse`, `/status`, `/validate`, `/exposures`, etc.)
+- Freeform AI chat for conversational threat model exploration
+- Exposure triage workflow (`/exposures` → `/show <n>` for detail + code context)
+- Coverage scanning (`/scan`) to identify unannotated security-relevant symbols
+- Integrated AI provider configuration (`/model`) supporting both direct API and CLI agent modes
+
+### 8.6. `@shield` Compliance
 
 AI tools claiming GuardLink Level 4 conformance (§9) must implement `@shield` exclusion as defined in §3.4. This is a compliance requirement for GuardLink-aware AI integrations. Code marked with `@shield` contains content the developer has explicitly decided should not be processed by external AI systems.
 
@@ -905,9 +955,12 @@ A Level 3 conforming implementation (includes Level 2) additionally:
 ### Level 4: AI-Integrated
 
 A Level 4 conforming implementation (includes Level 3) additionally:
-- Respects `@shield` exclusion markers (§3.4, §8.3)
+- Respects `@shield` exclusion markers (§3.4, §8.6)
 - Provides MCP server integration (§8.2) or equivalent
 - Supports AI-assisted annotation generation
+- May provide AI-powered threat analysis with framework-specific reports (§8.3)
+- May provide interactive dashboard visualization (§8.4)
+- May provide interactive TUI with exposure triage and AI chat (§8.5)
 
 ### Conformance Testing
 

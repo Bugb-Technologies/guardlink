@@ -57,7 +57,7 @@ Append after severity: \`cwe:CWE-89\`, \`owasp:A03:2021\`, \`capec:CAPEC-66\`, \
 
 1. **Define once, reference everywhere.** \`@asset\`, \`@threat\`, \`@control\` with \`(#id)\` go in \`.guardlink/definitions${project.definitionsExt}\`. Source files use relationship verbs only (\`@mitigates\`, \`@exposes\`, etc.).
 2. **Read definitions before adding.** Check for existing IDs first — avoid duplicates.
-3. **Every \`@exposes\` needs a plan.** Match with \`@mitigates\` (fix exists), \`@accepts\` (risk acknowledged), or TODO.
+3. **Every \`@exposes\` needs a response.** Match with \`@mitigates\` (fix exists), \`@audit\` (flag for review), or \`@accepts\` (human-only risk acceptance). AI agents must NEVER write \`@accepts\` — use \`@audit\` instead.
 4. **Always annotate security-relevant code.** At minimum, add \`@comment\` to document intent.
 5. **Use the full verb set.** \`@flows\` for data movement, \`@handles\` for data classification, \`@boundary\` for trust boundaries.
 
@@ -67,6 +67,7 @@ Append after severity: \`cwe:CWE-89\`, \`owasp:A03:2021\`, \`capec:CAPEC-66\`, \
 |-----------|------------|
 | New service/component | \`@asset\` in definitions, then reference in source |
 | Security gap exists | \`@exposes Asset to #threat\` |
+| Risk with no fix yet | \`@audit Asset\` + \`@comment\` explaining potential controls |
 | Implementing a fix | \`@mitigates Asset against #threat using #control\` |
 | Processing sensitive data | \`@handles pii on Asset\` |
 | Proprietary algorithm | \`@shield:begin\` ... \`@shield:end\` |
@@ -107,22 +108,37 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 
 ### Key Rules
 
-1. Definitions (\`@asset\`, \`@threat\`, \`@control\` with \`#id\`) go in \`.guardlink/definitions${project.definitionsExt}\` — read it before adding new ones.
-2. Source files use relationship verbs only: \`@mitigates\`, \`@exposes\`, \`@accepts\`, \`@flows\`, \`@handles\`, \`@boundary\`, \`@comment\`.
-3. Every \`@exposes\` needs a matching \`@mitigates\` or \`@accepts\`.
-4. Always add at least \`@comment\` on security-relevant code.
-5. Run \`guardlink validate .\` after making changes.
+1. Do not delete or mangle existing GuardLink annotations. Treat them as part of the code. Edit only when intentionally changing the threat model.
+2. Definitions (\`@asset\`, \`@threat\`, \`@control\` with \`(#id)\`) live in \`.guardlink/definitions${project.definitionsExt}\`. Reuse existing \`#id\`s — never redefine.
+3. Source files use relationship verbs only: \`@mitigates\`, \`@exposes\`, \`@flows\`, \`@handles\`, \`@boundary\`, \`@comment\`, \`@validates\`, \`@audit\`, \`@owns\`, \`@assumes\`, \`@transfers\`.
+4. Every \`@exposes\` should be paired with \`@mitigates\` or \`@audit\` (for human review). NEVER write \`@accepts\` — that is a human-only governance decision.
+5. Prefer coupled blocks that tell a complete story near the code they describe (risk + control + flow + note).
+6. Avoid \`@shield\` unless a human explicitly asks to hide code from AI — it creates blind spots.
 
-### MCP Tools Available
+### Workflow (while coding)
 
-Use \`guardlink_lookup\` to check existing definitions. Use \`guardlink_validate\` after annotating. Use \`guardlink_suggest <file>\` for recommendations.
+- Before adding new annotations: skim \`.guardlink/definitions${project.definitionsExt}\` to reuse IDs.
+- After changes: run \`guardlink validate .\` to catch syntax/dangling refs; run \`guardlink status .\` to check coverage; commit updates with the code.
+- When adding features: add or update annotations in the same PR.
 
-### Quick Syntax
+### Tools
+
+- MCP tools (when available, e.g., Claude Code): \`guardlink_lookup\`, \`guardlink_validate\`, \`guardlink_status\`, \`guardlink_parse\`, \`guardlink_suggest <file>\`.
+- CLI equivalents (always available): \`guardlink validate .\`, \`guardlink status .\`, \`guardlink parse .\`.
+
+### Quick Syntax (common verbs)
 
 \`\`\`
-@exposes Asset to #threat [P0] cwe:CWE-89 -- "description"
-@mitigates Asset against #threat using #control -- "how"
-@comment -- "security-relevant note"
+@exposes App.API to #sqli [P0] cwe:CWE-89 -- "req.body.email concatenated into SQL"
+@mitigates App.API against #sqli using #prepared-stmts -- "Parameterized queries via pg"
+@audit App.API -- "Timing attack risk — needs human review to assess bcrypt constant-time comparison"
+@flows User -> App.API via HTTPS -- "Login request path"
+@boundary between #api and #db (#data-boundary) -- "App → DB trust change"
+@handles pii on App.API -- "Processes email and session token"
+@validates #prepared-stmts for App.API -- "sqlInjectionTest.ts ensures placeholders used"
+@audit App.API -- "Token rotation logic needs crypto review"
+@owns security-team for App.API -- "Team responsible for reviews"
+@comment -- "Rate limit: 100 req/15min via express-rate-limit"
 \`\`\`
 `.trimStart();
 }
@@ -136,25 +152,29 @@ export function cursorRulesContent(project: ProjectInfo): string {
 
 This project uses GuardLink annotations in source code comments.
 
-## Annotation Syntax
-- @asset <Component.Path> (#id) -- "description"
-- @threat <Name> (#id) [P0|P1|P2|P3] cwe:CWE-NNN -- "description"
-- @control <Name> (#id) -- "description"
-- @mitigates <Asset> against <#threat> using <#control> -- "how"
-- @exposes <Asset> to <#threat> [severity] cwe:CWE-NNN -- "what"
-- @accepts <#threat> on <Asset> -- "why"
-- @flows <Source> -> <Target> via <mechanism> -- "details"
-- @boundary between <A> and <B> (#id) -- "trust boundary"
-- @handles <pii|phi|financial|secrets> on <Asset>
-- @shield:begin -- "reason" ... @shield:end
+## Key Rules
+- Preserve existing annotations — do not delete or mangle them. Edit only when intentionally changing the model.
+- Definitions (@asset, @threat, @control with (#id)) live in .guardlink/definitions${project.definitionsExt}. Reuse IDs — never redefine.
+- Source files use relationship verbs: @mitigates, @exposes, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers.
+- Pair @exposes with @mitigates or @audit. NEVER write @accepts — that is a human-only governance decision.
+- When no mitigation exists, use @audit to flag for human review + @comment to suggest potential controls.
+- Avoid @shield unless a human explicitly asks to hide code from AI.
 
-## Rules
-- All @asset, @threat, @control with (#id) go in .guardlink/definitions${project.definitionsExt}. Source files use only relationship verbs (@mitigates, @exposes, @accepts, @flows, etc).
-- Read definitions file before adding — check for existing IDs first.
-- Severity: P0=critical, P1=high, P2=medium, P3=low. Only P0-P3.
-- External refs: cwe:CWE-89, owasp:A03:2021, capec:CAPEC-66
-- Every @exposes needs a matching @mitigates or @accepts.
-- Run \`guardlink validate .\` to check annotations.
+## Workflow
+- Before changes: skim .guardlink/definitions${project.definitionsExt}.
+- After changes: run \`guardlink validate .\` and \`guardlink status .\`.
+
+## Quick Syntax
+- @exposes App.API to #sqli [P0] cwe:CWE-89 -- "req.body.email concatenated into SQL"
+- @mitigates App.API against #sqli using #prepared-stmts -- "Parameterized queries via pg"
+- @audit App.API -- "Timing attack risk — needs human review"
+- @flows User -> App.API via HTTPS -- "Login request"
+- @boundary between #api and #db (#data-boundary) -- "Trust change"
+- @handles pii on App.API -- "Processes email, token"
+- @validates #prepared-stmts for App.API -- "CI test ensures placeholders"
+- @audit App.API -- "Token rotation review"
+- @owns security-team for App.API -- "Team responsible"
+- @comment -- "Rate limit: 100 req/15min"
 `.trimStart();
 }
 

@@ -8,4 +8,4 @@ export type { ParseProjectOptions } from './parse-project.js';
 export { parseLine } from './parse-line.js';
 export { normalizeName, resolveSeverity, unescapeDescription } from './normalize.js';
 export { stripCommentPrefix, commentStyleForExt } from './comment-strip.js';
-export { findDanglingRefs, findUnmitigatedExposures } from './validate.js';
+export { findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures } from './validate.js';

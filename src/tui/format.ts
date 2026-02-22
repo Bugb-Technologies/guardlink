@@ -38,6 +38,69 @@ export const C = {
   info:     chalk.blue,
 };
 
+// ─── String Cleaning ─────────────────────────────────────────────────
+
+/** Strip ANSI escape codes from a string */
+export function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+}
+
+/** 
+ * Clean CLI framing artifacts from agent output before saving as markdown.
+ * Removes terminal boxes (╭─, │, ╰─), prompts (>_), and setup logs.
+ */
+export function cleanCliArtifacts(content: string): string {
+  let cleaned = stripAnsi(content);
+  
+  // Split into lines to filter out framing
+  const lines = cleaned.split('\n');
+  const filtered: string[] = [];
+  
+  let inCodeBlock = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // Track code blocks so we don't accidentally strip valid markdown tables inside them
+    if (line.trim().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+    }
+    
+    if (!inCodeBlock) {
+      // Remove CLI box drawing characters and terminal prompts
+      if (line.match(/^[╭│╰├>_]/) || line.includes('Update available!')) continue;
+      
+      // Remove Codex/Claude specific framing messages
+      if (line.includes('model: ') && line.includes('/model to change')) continue;
+      if (line.includes('directory: ~')) continue;
+      if (line.includes('Tip: New Try the Codex App')) continue;
+      if (line.includes('You are analyzing a codebase with GuardLink')) continue;
+      if (line.includes('You have access to the full source code')) continue;
+      
+      // Skip the echoed instructions/system prompt section if it leaked back out
+      if (line.match(/^• I’ll inspect/) || line.match(/^• Explored/)) continue;
+      if (line.match(/^─ Worked for/)) continue;
+      if (line.match(/^└ Read/) || line.match(/^└ Search/) || line.match(/^└ List/)) continue;
+      
+      // Stop completely if we hit the "Report saved" confirmation from the CLI
+      if (line.includes('✓ Report saved to')) break;
+    }
+    
+    filtered.push(line);
+  }
+  
+  // Find the actual start of the Markdown content (usually an H1 or H2)
+  const fullText = filtered.join('\n');
+  const match = fullText.match(/(?:^|\n)(#+ [^\n]+)/);
+  if (match && match.index !== undefined) {
+    // Return from the first Markdown heading onwards, trimmed
+    return fullText.slice(match.index).trim();
+  }
+  
+  return fullText.trim();
+}
+
 // ─── Severity badge ──────────────────────────────────────────────────
 
 export function severityBadge(sev?: string): string {

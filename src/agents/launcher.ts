@@ -17,8 +17,11 @@
  * @comment -- "copyToClipboard uses platform-specific clipboard commands (pbcopy, xclip, clip)"
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawnSync, spawn } from 'node:child_process';
 import { platform } from 'node:os';
+import { mkdtempSync, readFileSync, unlinkSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import type { AgentEntry } from './index.js';
 
 // ─── Clipboard ───────────────────────────────────────────────────────
@@ -133,6 +136,151 @@ export function launchAgentIDE(agent: AgentEntry, cwd: string): {
   } catch (err: any) {
     return { success: false, error: err.message };
   }
+}
+
+// ─── Inline (non-interactive) agent execution ────────────────────────
+
+export interface InlineResult {
+  content: string;
+  error?: string;
+}
+
+/**
+ * CLI agent command + args for non-interactive (print) mode.
+ * claude: `claude -p "<prompt>" --dangerously-skip-permissions ...`
+ * codex:  `codex exec "<prompt>" --dangerously-bypass-approvals-and-sandbox --color never -o <tmpfile>`
+ * gemini: `gemini --prompt "<prompt>" --approval-mode yolo`
+ *
+ * For codex, we use `-o <tmpfile>` to capture the final agent message to a file,
+ * which avoids any TTY/streaming issues. The tmpfile path is passed separately.
+ */
+function buildInlineArgs(agentId: string, prompt: string, codexOutputFile?: string): string[] | null {
+  switch (agentId) {
+    case 'claude-code':
+      return [
+        '-p', prompt,
+        '--dangerously-skip-permissions',
+        '--allowedTools', 'Read,Bash(cat *),Bash(find *),Bash(head *),Bash(tail *)',
+        '--output-format', 'text',
+      ];
+    case 'codex':
+      // `codex exec` runs non-interactively (no TTY needed).
+      // --color never: suppress ANSI escape codes in output.
+      // -o <file>: write the final agent message to a file for clean extraction.
+      // --skip-git-repo-check: allow running outside a git repo.
+      return [
+        'exec', prompt,
+        '--dangerously-bypass-approvals-and-sandbox',
+        '--color', 'never',
+        '--skip-git-repo-check',
+        ...(codexOutputFile ? ['-o', codexOutputFile] : []),
+      ];
+    case 'gemini':
+      return [
+        '--prompt', prompt,
+        '--approval-mode', 'yolo',
+      ];
+    default:
+      return null;
+  }
+}
+
+/**
+ * Run a CLI agent inline (non-interactive) and stream output.
+ *
+ * Instead of taking over the terminal, this spawns the agent with
+ * a print-mode flag and streams stdout back via onChunk.
+ * Returns the full collected output when done.
+ */
+export async function launchAgentInline(
+  agent: AgentEntry,
+  prompt: string,
+  cwd: string,
+  onChunk?: (text: string) => void,
+  opts?: { autoYes?: boolean }
+): Promise<InlineResult> {
+  if (!agent.cmd) {
+    return { content: '', error: `${agent.name} is not a terminal agent — cannot run inline` };
+  }
+
+  let cmd = agent.cmd;
+  let args = buildInlineArgs(agent.id, prompt);
+  if (!args) {
+    return { content: '', error: `Inline mode not supported for ${agent.name}` };
+  }
+
+  return new Promise<InlineResult>((resolve) => {
+    try {
+      // For Codex: use `codex exec` which is designed for non-interactive/headless use.
+      // It does NOT require a TTY for stdin or stdout.
+      // We use -o <tmpfile> so the final agent message is written to a file we can read
+      // back cleanly, avoiding any streaming/buffering issues with the live output.
+      let codexOutputFile: string | undefined;
+      if (agent.id === 'codex') {
+        const tmpDir = mkdtempSync(join(tmpdir(), 'guardlink-codex-'));
+        codexOutputFile = join(tmpDir, 'output.md');
+      }
+
+      args = buildInlineArgs(agent.id, prompt, codexOutputFile) as string[];
+
+      // Claude Code and Gemini still need stdin to be a real TTY (they check isatty(stdin)).
+      // Codex exec does not — it reads the prompt from the CLI arg, not stdin.
+      const stdinMode = agent.id === 'codex' ? 'pipe' : 'inherit';
+
+      const child = spawn(cmd, args, {
+        cwd,
+        stdio: [stdinMode, 'pipe', 'pipe'],
+        env: { ...process.env, NO_COLOR: '1' },
+      });
+
+      // For codex, close stdin immediately so it knows there's no interactive input.
+      if (agent.id === 'codex') {
+        child.stdin?.end();
+      }
+
+      let content = '';
+      let stderr = '';
+
+      child.stdout?.on('data', (data: Buffer) => {
+        const text = data.toString();
+        content += text;
+        if (onChunk) onChunk(text);
+      });
+
+      child.stderr?.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      child.on('error', (err: Error) => {
+        const msg = (err as any).code === 'ENOENT'
+          ? `${agent.name} (${agent.cmd}) not found. Install it first.`
+          : `Failed to launch ${agent.name}: ${err.message}`;
+        resolve({ content, error: msg });
+      });
+
+      child.on('close', (code: number | null) => {
+        // For codex, prefer the -o output file (final agent message) over streamed stdout.
+        if (codexOutputFile && existsSync(codexOutputFile)) {
+          try {
+            const fileContent = readFileSync(codexOutputFile, 'utf-8').trim();
+            unlinkSync(codexOutputFile);
+            if (fileContent) {
+              resolve({ content: fileContent });
+              return;
+            }
+          } catch { /* fall through to stdout content */ }
+        }
+
+        if (code !== 0 && code !== null && !content) {
+          resolve({ content, error: `${agent.name} exited with code ${code}${stderr ? ': ' + stderr.slice(0, 200) : ''}` });
+        } else {
+          resolve({ content });
+        }
+      });
+    } catch (err: any) {
+      resolve({ content: '', error: `Failed to launch ${agent.name}: ${err.message}` });
+    }
+  });
 }
 
 // ─── Unified agent launch ────────────────────────────────────────────

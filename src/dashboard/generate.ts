@@ -577,41 +577,37 @@ function formatAnalysisDate(ts) {
 
 function renderAIAnalysis() {
   window._aiAnalysisRendered = true;
-  const wrap = document.querySelector('.ai-analysis-wrap');
-  const explorer = document.getElementById('ai-analyses-explorer');
+  const selector = document.getElementById('report-selector');
   const container = document.getElementById('ai-content');
   if (!container) return;
 
   const list = savedAnalyses;
   const hasList = Array.isArray(list) && list.length > 0;
 
-  if (hasList) {
-    if (wrap) wrap.classList.add('has-explorer');
-    if (explorer) {
-      explorer.innerHTML = list.map((a, i) =>
-        '<div class="ai-analysis-item ' + (i === _selectedAnalysisIdx ? 'active' : '') + '" data-index="' + i + '" role="button" tabindex="0">' +
-        '<div class="aai-type">' + esc(a.label || a.framework || 'Analysis') + '</div>' +
-        '<div class="aai-date">' + esc(formatAnalysisDate(a.timestamp || '')) + '</div>' +
-        (a.model ? '<div class="aai-model">' + esc(a.model) + '</div>' : '') +
-        '</div>'
-      ).join('');
+  if (hasList && selector) {
+    // Populate dropdown with reports
+    selector.innerHTML = list.map((a, i) => {
+      const label = esc(a.label || a.framework || 'Analysis');
+      const date = esc(formatAnalysisDate(a.timestamp || ''));
+      const model = a.model ? ' — ' + esc(a.model) : '';
+      return '<option value="' + i + '">' + label + ' (' + date + ')' + model + '</option>';
+    }).join('');
 
-      explorer.querySelectorAll('.ai-analysis-item').forEach(function(el) {
-        el.addEventListener('click', function() {
-          var idx = parseInt(this.getAttribute('data-index'), 10);
-          if (idx === _selectedAnalysisIdx) return;
-          _selectedAnalysisIdx = idx;
-          explorer.querySelectorAll('.ai-analysis-item').forEach(function(item, i) {
-            item.classList.toggle('active', i === idx);
-          });
-          renderAIAnalysisContent(container, (list[idx] && list[idx].content) ? list[idx].content : '');
-        });
-      });
-    }
+    // Set initial selection
+    selector.value = String(_selectedAnalysisIdx);
+
+    // Handle dropdown change
+    selector.addEventListener('change', function() {
+      var idx = parseInt(this.value, 10);
+      if (isNaN(idx) || idx === _selectedAnalysisIdx) return;
+      _selectedAnalysisIdx = idx;
+      renderAIAnalysisContent(container, (list[idx] && list[idx].content) ? list[idx].content : '');
+    });
+
+    // Render initial content
     renderAIAnalysisContent(container, (list[_selectedAnalysisIdx] && list[_selectedAnalysisIdx].content) ? list[_selectedAnalysisIdx].content : '');
   } else {
-    if (wrap) wrap.classList.remove('has-explorer');
-    if (explorer) explorer.innerHTML = '';
+    if (selector) selector.style.display = 'none';
     renderAIAnalysisContent(container, '');
   }
 }
@@ -651,7 +647,12 @@ function renderSummaryPage(
     ${statCard(stats.flows, 'Data Flows')}
     ${statCard(stats.boundaries, 'Boundaries')}
     ${statCard(stats.transfers, 'Transfers')}
+    ${statCard(stats.validations, 'Validations', 'success')}
+    ${statCard(stats.audits, 'Audits')}
+    ${statCard(stats.assumptions, 'Assumptions')}
+    ${statCard(stats.ownership, 'Ownership')}
     ${statCard(stats.comments, 'Comments', 'muted')}
+    ${stats.shields > 0 ? statCard(stats.shields, 'Shields', 'muted') : ''}
   </div>
 
   <!-- Coverage Bar -->
@@ -708,10 +709,11 @@ function renderAIAnalysisPage(analyses: ThreatReportWithContent[]): string {
   return `
 <div id="sec-ai-analysis" class="section-content">
   <div class="sec-h"><span class="sec-icon">✨</span> Threat Reports</div>
-  <div class="ai-analysis-wrap">
-    <aside id="ai-analyses-explorer" class="ai-analyses-explorer" aria-label="Saved analyses"></aside>
-    <div id="ai-content" class="md-content ai-analysis-main"></div>
+  <div class="ai-analysis-controls">
+    <label for="report-selector" class="report-selector-label">Select Report:</label>
+    <select id="report-selector" class="report-selector" aria-label="Select threat report"></select>
   </div>
+  <div id="ai-content" class="md-content ai-analysis-main"></div>
 </div>`;
 }
 
@@ -913,6 +915,79 @@ function renderDataPage(model: ThreatModel): string {
     </tbody>
   </table>` : ''}
 
+  ${model.validations.length > 0 ? `
+  <div class="sub-h">Validations (${model.validations.length})</div>
+  <table>
+    <thead><tr><th>Control</th><th>Asset</th><th>Description</th><th>Location</th></tr></thead>
+    <tbody>
+    ${model.validations.map(v => `
+    <tr>
+      <td><code>${esc(v.control)}</code></td>
+      <td><code>${esc(v.asset)}</code></td>
+      <td>${esc(v.description || '—')}</td>
+      <td class="loc">${v.location ? `${esc(v.location.file)}:${v.location.line}` : ''}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
+  ${model.ownership.length > 0 ? `
+  <div class="sub-h">Ownership (${model.ownership.length})</div>
+  <table>
+    <thead><tr><th>Asset</th><th>Owner</th><th>Description</th><th>Location</th></tr></thead>
+    <tbody>
+    ${model.ownership.map(o => `
+    <tr>
+      <td><code>${esc(o.asset)}</code></td>
+      <td><strong>${esc(o.owner)}</strong></td>
+      <td>${esc(o.description || '—')}</td>
+      <td class="loc">${o.location ? `${esc(o.location.file)}:${o.location.line}` : ''}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
+  ${model.audits.length > 0 ? `
+  <div class="sub-h">Audit Items (${model.audits.length})</div>
+  <table>
+    <thead><tr><th>Asset</th><th>Description</th><th>Location</th></tr></thead>
+    <tbody>
+    ${model.audits.map(a => `
+    <tr>
+      <td><code>${esc(a.asset)}</code></td>
+      <td>${esc(a.description || 'Needs review')}</td>
+      <td class="loc">${a.location ? `${esc(a.location.file)}:${a.location.line}` : ''}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
+  ${model.assumptions.length > 0 ? `
+  <div class="sub-h">Assumptions (${model.assumptions.length})</div>
+  <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">Unverified assumptions that should be periodically reviewed.</p>
+  <table>
+    <thead><tr><th>Asset</th><th>Assumption</th><th>Location</th></tr></thead>
+    <tbody>
+    ${model.assumptions.map(a => `
+    <tr>
+      <td><code>${esc(a.asset)}</code></td>
+      <td>${esc(a.description || 'Unverified assumption')}</td>
+      <td class="loc">${a.location ? `${esc(a.location.file)}:${a.location.line}` : ''}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
+  ${model.shields.length > 0 ? `
+  <div class="sub-h">Shielded Regions (${model.shields.length})</div>
+  <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">Code regions where annotations are intentionally suppressed via <code>@shield</code>.</p>
+  <table>
+    <thead><tr><th>Reason</th><th>Location</th></tr></thead>
+    <tbody>
+    ${model.shields.map(s => `
+    <tr>
+      <td>${esc(s.reason || 'No reason provided')}</td>
+      <td class="loc">${s.location ? `${esc(s.location.file)}:${s.location.line}` : ''}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
   ${model.comments.length > 0 ? `
   <div class="sub-h">Developer Comments (${model.comments.length})</div>
   <table>
@@ -927,7 +1002,9 @@ function renderDataPage(model: ThreatModel): string {
   </table>` : ''}
 
   ${model.boundaries.length === 0 && model.data_handling.length === 0 && model.comments.length === 0
-    ? '<p class="empty-state">No data classifications, trust boundaries, or comments found.</p>' : ''}
+    && model.validations.length === 0 && model.ownership.length === 0 && model.audits.length === 0
+    && model.assumptions.length === 0 && model.shields.length === 0
+    ? '<p class="empty-state">No data classifications, trust boundaries, or lifecycle annotations found.</p>' : ''}
 </div>`;
 }
 
@@ -1015,6 +1092,12 @@ function buildFileAnnotations(model: ThreatModel, root?: string): FileAnnotation
   for (const t of model.transfers) addEntry('transfers', t as any, `${t.source} → ${t.target}`);
   for (const f of model.flows) addEntry('flow', f as any, `${f.source} → ${f.target}`);
   for (const b of model.boundaries) addEntry('boundary', b as any, `${b.asset_a} ↔ ${b.asset_b}`);
+  for (const h of model.data_handling) addEntry('handles', h as any, `${h.asset}: ${h.classification}`);
+  for (const v of model.validations) addEntry('validates', v as any, `${v.control} validates ${v.asset}`);
+  for (const o of model.ownership) addEntry('owns', o as any, `${o.owner} owns ${o.asset}`);
+  for (const a of model.audits) addEntry('audit', a as any, `Audit: ${a.asset}`);
+  for (const a of model.assumptions) addEntry('assumes', a as any, `Assumes: ${a.asset}`);
+  for (const s of model.shields) addEntry('shield', s as any, s.reason || 'Shielded region');
   for (const c of model.comments) addEntry('comment', c as any, c.description || 'Developer note');
 
   const result: FileAnnotationGroup[] = [];
@@ -1225,6 +1308,9 @@ tr.clickable { cursor: pointer; } tr.clickable:hover { background: var(--table-h
 .ann-mitigates { background: #1a3a1a; color: #3fb950; } .ann-accepts { background: #3a3a1a; color: #d29922; }
 .ann-transfers { background: #2a1a3a; color: #bc8cff; } .ann-flow { background: #2a2a2a; color: #8b949e; }
 .ann-boundary { background: #2a1a3a; color: #bc8cff; } .ann-data { background: #3a2a1a; color: #db6d28; }
+.ann-handles { background: #3a2a1a; color: #db6d28; } .ann-validates { background: #1a3a1a; color: #3fb950; }
+.ann-owns { background: #1c3a5e; color: #58a6ff; } .ann-audit { background: #3a3a1a; color: #d29922; }
+.ann-assumes { background: #3a3a1a; color: #d29922; } .ann-shield { background: #2a2a2a; color: #8b949e; }
 .ann-comment { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
 
 /* ── File Cards (Code Browser) ── */
@@ -1274,18 +1360,14 @@ tr.clickable { cursor: pointer; } tr.clickable:hover { background: var(--table-h
 .diagram-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .diagram-panel { display: none; } .diagram-panel.active { display: block; }
 
-/* ── AI Analysis Explorer ── */
-.ai-analysis-wrap { display: flex; gap: 1.5rem; margin-top: 0.75rem; min-height: 400px; }
-.ai-analyses-explorer { width: 240px; min-width: 240px; max-height: calc(100vh - 220px); overflow-y: auto; padding-right: 0.5rem; border-right: 1px solid var(--border); }
-.ai-analyses-explorer:empty { display: none; }
-.ai-analysis-wrap:not(.has-explorer) .ai-analyses-explorer { display: none; }
-.ai-analysis-main { flex: 1; min-width: 0; }
-.ai-analysis-item { padding: 0.5rem 0.6rem; margin-bottom: 0.35rem; border-radius: 6px; font-size: 0.8rem; cursor: pointer; border: 1px solid transparent; transition: background 0.15s, border-color 0.15s; }
-.ai-analysis-item:hover { background: var(--surface2); }
-.ai-analysis-item.active { background: rgba(45,212,167,.12); border-color: var(--accent); }
-.ai-analysis-item .aai-type { font-weight: 600; color: var(--accent); text-transform: capitalize; }
-.ai-analysis-item .aai-date { color: var(--muted); font-size: 0.72rem; margin-top: 0.2rem; }
-.ai-analysis-item .aai-model { color: var(--text-dim); font-size: 0.68rem; margin-top: 0.15rem; font-family: var(--font-mono); }
+/* ── AI Analysis Controls ── */
+.ai-analysis-controls { display: flex; align-items: center; gap: 0.75rem; margin: 0.75rem 0 1.25rem; }
+.report-selector-label { font-weight: 600; font-size: 0.88rem; color: var(--text); }
+.report-selector { flex: 1; max-width: 600px; padding: 0.5rem 0.75rem; font-size: 0.88rem; font-family: var(--font-base); background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.report-selector:hover { background: var(--surface3); border-color: var(--accent); }
+.report-selector:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(45,212,167,0.1); }
+.report-selector option { background: var(--surface); color: var(--text); padding: 0.5rem; }
+.ai-analysis-main { margin-top: 0.5rem; }
 .md-content h1 { font-size: 1.4rem; font-weight: 700; margin: 1.2rem 0 .6rem; color: var(--text); }
 .md-content h2 { font-size: 1.15rem; font-weight: 600; margin: 1rem 0 .5rem; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: .3rem; }
 .md-content h3 { font-size: 1rem; font-weight: 600; margin: .8rem 0 .4rem; color: var(--text); }

@@ -30,6 +30,9 @@ import {
   refreshModel,
   cmdHelp,
   cmdStatus,
+  cmdExposures,
+  cmdShow,
+  cmdScan,
   cmdAssets,
   cmdFiles,
   cmdView,
@@ -53,6 +56,7 @@ import {
 const COMMANDS = [
   '/help', '/gal', '/init', '/parse', '/run', '/status',
   '/validate', '/diff', '/sarif',
+  '/exposures', '/show', '/scan',
   '/assets', '/files', '/view',
   '/threat-report', '/threat-reports', '/annotate', '/model',
   '/report', '/dashboard',
@@ -75,6 +79,9 @@ const PALETTE_COMMANDS: CommandEntry[] = [
   { command: '/parse',      label: 'Parse annotations',    aliases: ['/run'] },
   { command: '/status',     label: 'Risk grade + stats' },
   { command: '/validate',   label: 'Syntax + ref checks' },
+  { command: '/exposures',  label: 'List open exposures by severity' },
+  { command: '/show',       label: 'Detail view for an exposure' },
+  { command: '/scan',       label: 'Annotation coverage scanner' },
   { command: '/assets',     label: 'Asset tree' },
   { command: '/files',      label: 'Annotated file tree' },
   { command: '/view',       label: 'File annotations + code' },
@@ -275,11 +282,14 @@ function getVersion(): string {
 // ─── Compact command list (shown on bare "/") ───────────────────────
 
 function printCommandList(): void {
-  const cmds: [string, string][] = [
+    const cmds: [string, string][] = [
     ['/init',       'Initialize project'],
     ['/parse',      'Parse annotations'],
     ['/status',     'Risk grade + stats'],
     ['/validate',   'Syntax + ref checks'],
+    ['/exposures',  'List open exposures'],
+    ['/show <n>',   'Detail + code context'],
+    ['/scan',       'Coverage scanner'],
     ['/assets',     'Asset tree'],
     ['/files',      'Annotated file tree'],
     ['/view <file>','File annotations + code'],
@@ -291,7 +301,7 @@ function printCommandList(): void {
     ['/dashboard',  'HTML dashboard'],
     ['/diff [ref]', 'Compare vs git ref'],
     ['/sarif',      'Export SARIF'],
-    ['/gal',        'GAL annotation language guide'],
+    ['/gal',        'GAL annotation guide'],
     ['/help',       'Full help'],
     ['/quit',       'Exit GuardLink CLI'],
   ];
@@ -330,6 +340,9 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
         case '/help':     cmdHelp(); break;
         case '/gal':      cmdGal(); break;
         case '/status':   cmdStatus(ctx); break;
+        case '/exposures': cmdExposures(args, ctx); break;
+        case '/show':     cmdShow(args, ctx); break;
+        case '/scan':     cmdScan(ctx); break;
         case '/assets':   cmdAssets(ctx); break;
         case '/files':    cmdFiles(ctx); break;
         case '/view':     cmdView(args, ctx); break;

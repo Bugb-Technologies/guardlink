@@ -22,6 +22,11 @@ export interface DashboardStats {
   transfers: number;
   flows: number;
   boundaries: number;
+  validations: number;
+  ownership: number;
+  audits: number;
+  assumptions: number;
+  shields: number;
   comments: number;
   coveragePercent: number;
   coverageAnnotated: number;
@@ -69,6 +74,11 @@ export function computeStats(model: ThreatModel): DashboardStats {
     transfers: model.transfers.length,
     flows: model.flows.length,
     boundaries: model.boundaries.length,
+    validations: model.validations.length,
+    ownership: model.ownership.length,
+    audits: model.audits.length,
+    assumptions: model.assumptions.length,
+    shields: model.shields.length,
     comments: model.comments.length,
     coveragePercent: model.coverage.coverage_percent,
     coverageAnnotated: model.coverage.annotated_symbols,
