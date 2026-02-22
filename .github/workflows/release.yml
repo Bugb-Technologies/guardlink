@@ -22,5 +22,7 @@ jobs:
       - run: npm run build
       - run: npm test
 
-      - name: Publish to npm
-        run: npm publish --provenance --access public
+      - name: Publish to npm with OIDC trusted publishing
+        run: |
+          sed -i '/_authToken/d' "$HOME/.npmrc"
+          npm publish --provenance --access public
