@@ -5,6 +5,43 @@ All notable changes to GuardLink CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-02-22
+
+### Added
+
+- **LLM**: Multi-provider support — Anthropic, OpenAI (Responses API), Google Gemini, DeepSeek (reasoning), Ollama, and OpenRouter
+- **LLM**: Tool-call system with CVE lookup (NVD), finding validation, and codebase search for grounded threat analysis
+- **LLM**: Extended thinking / reasoning token support for DeepSeek and Anthropic models
+- **Analyze**: Project context builder — automatically assembles architecture summary, data flows, and unmitigated exposures for LLM context
+- **Analyze**: Code snippet extractor — injects relevant source around annotations into threat reports
+- **CLI**: `threat-report` now accepts custom freeform prompts in addition to framework names
+- **CLI**: `--provider`, `--model`, `--api-key`, `--web-search` flags for threat report generation
+- **CLI**: Inline agent execution mode in launcher
+- **TUI**: Model catalog with provider selection (Anthropic, OpenAI, Google, DeepSeek, Ollama, OpenRouter)
+- **TUI**: Custom prompt input for threat reports alongside framework presets
+- **TUI**: Inline agent execution from TUI sessions
+- **TUI**: Restored `/exposures`, `/show`, `/scan` commands for exposure browsing and coverage scanning
+- **Dashboard**: Collapsible sidebar with SVG navigation icons and localStorage state persistence
+- **Dashboard**: Exposure computation helpers (`computeExposures`)
+- **Docs**: Updated GUARDLINK_REFERENCE.md and SPEC.md with new capabilities
+- **Validation**: Additional parser diagnostics
+
+### Fixed
+
+- **LLM**: Anthropic model IDs now use aliases (`claude-sonnet-4-6`, `claude-opus-4-6`) instead of invalid snapshot dates
+- **Dashboard**: Mermaid diagram render trigger restored on first Diagrams tab visit
+- **TUI**: CLI artifact cleaning (`cleanCliArtifacts`) for stripping agent-specific output formatting
+- **CI**: OIDC trusted publishing preserved across merges (npm ≥11.5.1, no `registry-url` override)
+
+### Changed
+
+- **CLI**: `threat-report` signature changed from `[framework] [dir]` to `[prompt...] -d <dir>` — directory is now a flag, prompt accepts freeform text
+- **Prompts**: Reframed annotations as developer hypotheses to validate rather than mandates, improving LLM annotation quality
+
+### Removed
+
+- **Util**: Removed empty `src/util/ansi.ts` placeholder (functionality already in `src/tui/format.ts`)
+
 ## [1.1.0] — 2026-02-21
 
 ### Added
