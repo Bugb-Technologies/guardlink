@@ -46,6 +46,8 @@ export interface TuiContext {
   rl: import('node:readline').Interface;
   /** Guard: true while ask() is waiting for sub-prompt input */
   _askActive?: boolean;
+  /** Cached exposure list from last /exposures call (used by /show) */
+  lastExposures: ThreatModelExposure[];
 }
 
 /** Re-parse the project and update context */
@@ -329,6 +331,131 @@ export function cmdStatus(ctx: TuiContext): void {
     }
   }
 
+  console.log('');
+}
+
+// ─── /exposures ──────────────────────────────────────────────────────
+
+export function cmdExposures(args: string, ctx: TuiContext): void {
+  if (!ctx.model) {
+    console.log(C.warn('  No threat model. Run /parse first.'));
+    return;
+  }
+
+  const rows = computeExposures(ctx.model);
+  let filtered = rows.filter(r => !r.mitigated && !r.accepted); // open only by default
+
+  // Parse flags
+  const parts = args.split(/\s+/).filter(Boolean);
+  let showAll = false;
+  for (let i = 0; i < parts.length; i++) {
+    const flag = parts[i];
+    const val = parts[i + 1];
+    if (flag === '--asset' && val) { filtered = filtered.filter(r => r.asset.includes(val)); i++; }
+    else if (flag === '--severity' && val) { filtered = filtered.filter(r => r.severity === val.toLowerCase()); i++; }
+    else if (flag === '--file' && val) { filtered = filtered.filter(r => r.file.includes(val)); i++; }
+    else if (flag === '--threat' && val) { filtered = filtered.filter(r => r.threat.includes(val)); i++; }
+    else if (flag === '--all') { filtered = rows; showAll = true; }
+  }
+
+  // Sort by severity
+  filtered.sort((a, b) => severityOrder(a.severity) - severityOrder(b.severity));
+
+  // Cache for /show
+  ctx.lastExposures = filtered.map(r => {
+    const original = ctx.model!.exposures.find(e =>
+      e.asset === r.asset && e.threat === r.threat && e.location.file === r.file && e.location.line === r.line
+    );
+    return original!;
+  }).filter(Boolean);
+
+  if (filtered.length === 0) {
+    console.log(C.green('  No matching exposures found.'));
+    return;
+  }
+
+  console.log('');
+
+  const termWidth = process.stdout.columns || 100;
+  const header = `  ${C.dim('#'.padEnd(4))}${C.dim('SEVERITY'.padEnd(12))}${C.dim('ASSET'.padEnd(18))}${C.dim('THREAT'.padEnd(20))}${C.dim('FILE'.padEnd(30))}${C.dim('LINE')}`;
+  console.log(header);
+  console.log(C.dim('  ' + '─'.repeat(Math.min(termWidth - 4, 96))));
+
+  for (const [i, r] of filtered.entries()) {
+    const num = String(i + 1).padEnd(4);
+    const sev = severityTextPad(r.severity, 12);
+    const asset = trunc(r.asset, 16).padEnd(18);
+    const threat = trunc(r.threat, 18).padEnd(20);
+    const linkedFile = fileLinkTrunc(r.file, 28, r.line, ctx.root);
+    const filePad = ' '.repeat(Math.max(0, 30 - trunc(r.file, 28).length));
+    const line = `  ${num}${sev}${asset}${threat}${linkedFile}${filePad}${r.line}`;
+    console.log(line);
+  }
+
+  console.log('');
+  const countMsg = showAll
+    ? `  ${filtered.length} exposure(s) total`
+    : `  ${filtered.length} open exposure(s)`;
+  console.log(C.dim(countMsg + '  ·  /show <n> for detail  ·  --asset --severity --threat --file to filter'));
+  console.log('');
+}
+
+// ─── /show ───────────────────────────────────────────────────────────
+
+export function cmdShow(args: string, ctx: TuiContext): void {
+  const num = parseInt(args.trim(), 10);
+  if (!num || num < 1 || num > ctx.lastExposures.length) {
+    console.log(C.warn(`  Usage: /show <n> where n is 1-${ctx.lastExposures.length || '?'}. Run /exposures first.`));
+    return;
+  }
+
+  const exp = ctx.lastExposures[num - 1];
+  console.log('');
+  console.log(`  ${C.cyan('┌')} ${exp.asset} → ${exp.threat} ${severityBadge(exp.severity)}`);
+  if (exp.description) {
+    console.log(`  ${C.cyan('│')} ${exp.description}`);
+  }
+  if (exp.external_refs.length > 0) {
+    console.log(`  ${C.cyan('│')} ${C.dim(exp.external_refs.join(' · '))}`);
+  }
+  console.log(`  ${C.cyan('│')} ${C.dim(fileLink(exp.location.file, exp.location.line, ctx.root))}`);
+  console.log(`  ${C.cyan('│')}`);
+
+  const { lines } = readCodeContext(exp.location.file, exp.location.line, ctx.root);
+  for (const l of lines) {
+    console.log(`  ${C.cyan('│')} ${l}`);
+  }
+  console.log(`  ${C.cyan('└')}`);
+  console.log('');
+}
+
+// ─── /scan ───────────────────────────────────────────────────────────
+
+export function cmdScan(ctx: TuiContext): void {
+  if (!ctx.model) {
+    console.log(C.warn('  No threat model. Run /parse first.'));
+    return;
+  }
+
+  const cov = ctx.model.coverage;
+  const pct = cov.coverage_percent;
+  console.log('');
+  console.log(`  ${C.bold('Coverage:')} ${cov.annotated_symbols}/${cov.total_symbols} symbols (${pct}%)`);
+
+  const unannotated = cov.unannotated_critical || [];
+  if (unannotated.length === 0) {
+    console.log(C.green('  All security-relevant symbols are annotated!'));
+  } else {
+    console.log(C.warn(`  ${unannotated.length} unannotated symbol(s):`));
+    console.log('');
+    const show = unannotated.slice(0, 25);
+    for (const u of show) {
+      console.log(`    ${C.dim(fileLink(u.file, u.line, ctx.root))}  ${u.kind} ${C.bold(u.name)}`);
+    }
+    if (unannotated.length > 25) {
+      console.log(C.dim(`    ... and ${unannotated.length - 25} more`));
+    }
+  }
   console.log('');
 }
 
@@ -826,11 +953,11 @@ const CLI_AGENT_NAMES: Record<string, string> = {
 /** Provider model catalogs — popular models per provider, ordered by capability */
 const PROVIDER_MODELS: Record<string, ModelOption[]> = {
   anthropic: [
-    { id: 'claude-sonnet-4-6-20260217',  name: 'Claude Sonnet 4.6',    desc: 'Latest, frontier coding & agents' },
-    { id: 'claude-opus-4-6-20260205',    name: 'Claude Opus 4.6',      desc: 'Most intelligent, complex reasoning' },
-    { id: 'claude-sonnet-4-5-20251120',  name: 'Claude Sonnet 4.5',    desc: 'Previous gen, strong all-rounder' },
-    { id: 'claude-opus-4-5-20251120',    name: 'Claude Opus 4.5',      desc: 'Previous gen, deep analysis' },
-    { id: 'claude-haiku-4-5-20251022',   name: 'Claude Haiku 4.5',     desc: 'Fastest, lowest cost' },
+    { id: 'claude-sonnet-4-6',  name: 'Claude Sonnet 4.6',    desc: 'Latest, frontier coding & agents' },
+    { id: 'claude-opus-4-6',    name: 'Claude Opus 4.6',      desc: 'Most intelligent, complex reasoning' },
+    { id: 'claude-sonnet-4-5',  name: 'Claude Sonnet 4.5',    desc: 'Previous gen, strong all-rounder' },
+    { id: 'claude-opus-4-5',    name: 'Claude Opus 4.5',      desc: 'Previous gen, deep analysis' },
+    { id: 'claude-haiku-4-5',   name: 'Claude Haiku 4.5',     desc: 'Fastest, lowest cost' },
   ],
   openai: [
     { id: 'gpt-5.2',                     name: 'GPT-5.2',              desc: 'Latest flagship, smartest & most precise' },
@@ -857,8 +984,8 @@ const PROVIDER_MODELS: Record<string, ModelOption[]> = {
     { id: 'deepseek-reasoner',            name: 'DeepSeek R1',          desc: 'Thinking mode, best for analysis' },
   ],
   openrouter: [
-    { id: 'anthropic/claude-sonnet-4-6-20260217',  name: 'Claude Sonnet 4.6',     desc: 'Anthropic via OpenRouter' },
-    { id: 'anthropic/claude-opus-4-6-20260205',    name: 'Claude Opus 4.6',       desc: 'Anthropic via OpenRouter' },
+    { id: 'anthropic/claude-sonnet-4-6',  name: 'Claude Sonnet 4.6',     desc: 'Anthropic via OpenRouter' },
+    { id: 'anthropic/claude-opus-4-6',    name: 'Claude Opus 4.6',       desc: 'Anthropic via OpenRouter' },
     { id: 'openai/gpt-5.2',                        name: 'GPT-5.2',              desc: 'OpenAI via OpenRouter' },
     { id: 'openai/o3',                              name: 'o3',                    desc: 'OpenAI reasoning via OpenRouter' },
     { id: 'google/gemini-2.5-pro',                  name: 'Gemini 2.5 Pro',       desc: 'Google via OpenRouter' },

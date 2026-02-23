@@ -403,6 +403,7 @@ export async function startTui(dir?: string): Promise<void> {
     model: null,
     projectName,
     rl,
+    lastExposures: [],
   };
 
   // Try loading existing model

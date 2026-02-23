@@ -98,10 +98,10 @@ export interface LLMResponse {
 // ─── Defaults ────────────────────────────────────────────────────────
 
 const DEFAULT_MODELS: Record<LLMProvider, string> = {
-  anthropic: 'claude-sonnet-4-6-20260217',
+  anthropic: 'claude-sonnet-4-6',
   openai: 'gpt-5.2',
   google: 'gemini-2.5-flash',
-  openrouter: 'anthropic/claude-sonnet-4-6-20260217',
+  openrouter: 'anthropic/claude-sonnet-4-6',
   deepseek: 'deepseek-chat',
   ollama: 'llama3.2',
 };

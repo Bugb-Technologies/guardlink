@@ -83,15 +83,21 @@ ${CSS_CONTENT}
 <div class="layout">
 
 <!-- ═══════════ SIDEBAR ═══════════ -->
-<nav class="sidebar">
-  <a class="active" onclick="showSection('summary',this)"><span class="nav-icon">◆</span> Executive Summary</a>
-  <a onclick="showSection('ai-analysis',this)"><span class="nav-icon">✨</span> Threat Reports</a>
-  <a onclick="showSection('threats',this)"><span class="nav-icon">⚠</span> Threats &amp; Exposures</a>
-  <a onclick="showSection('diagrams',this)"><span class="nav-icon">◉</span> Diagrams</a>
-  <a onclick="showSection('code',this)"><span class="nav-icon">&lt;/&gt;</span> Code &amp; Annotations</a>
-  <div class="sep"></div>
-  <a onclick="showSection('data',this)"><span class="nav-icon">🔒</span> Data &amp; Boundaries</a>
-  <a onclick="showSection('assets',this)"><span class="nav-icon">🗺</span> Asset Heatmap</a>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-nav">
+    <a class="active" onclick="showSection('summary',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l6 4v6l-6 4-6-4V6l6-4z"/></svg></span> <span class="nav-text">Executive Summary</span></a>
+    <a onclick="showSection('ai-analysis',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l2 5h5l-4 3 2 5-5-3-5 3 2-5-4-3h5l2-5z"/></svg></span> <span class="nav-text">Threat Reports</span></a>
+    <a onclick="showSection('threats',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L1 15h14L8 1zm0 4l3 8H5l3-8z"/></svg></span> <span class="nav-text">Threats &amp; Exposures</span></a>
+    <a onclick="showSection('diagrams',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="8" cy="8" r="2"/></svg></span> <span class="nav-text">Diagrams</span></a>
+    <a onclick="showSection('code',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M5 4L1 8l4 4v-2L3 8l2-2V4zm6 0v2l2 2-2 2v2l4-4-4-4z"/></svg></span> <span class="nav-text">Code &amp; Annotations</span></a>
+    <div class="sep"></div>
+    <a onclick="showSection('data',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2h8v2H4V2zm0 3h8v2H4V5zm0 3h8v2H4V8zm0 3h8v2H4v-2zm-2-9v12h12V2H2zm1 1h10v10H3V3z"/></svg></span> <span class="nav-text">Data &amp; Boundaries</span></a>
+    <a onclick="showSection('assets',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3h14v10H1V3zm1 1v8h12V4H2zm2 2h8v1H4V6zm0 2h6v1H4V8z"/></svg></span> <span class="nav-text">Asset Heatmap</span></a>
+  </div>
+  <button id="sidebarToggle" onclick="toggleSidebar()" title="Collapse sidebar">
+    <svg class="chevron-left" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M10 2L4 8l6 6V2z"/></svg>
+    <svg class="chevron-right" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6 2v12l6-6-6-6z"/></svg>
+  </button>
 </nav>
 
 <!-- ═══════════ MAIN ═══════════ -->
@@ -133,15 +139,27 @@ function showSection(id, el) {
   const sec = document.getElementById('sec-' + id);
   if (sec) sec.classList.add('active');
   if (el) el.classList.add('active');
-  // Re-render mermaid if switching to diagrams
+  closeDrawer();
   if (id === 'diagrams' && !window._mermaidRendered) {
     setTimeout(() => { renderMermaid(); }, 100);
   }
-  // Render AI analysis explorer on first visit
   if (id === 'ai-analysis' && !window._aiAnalysisRendered) {
     renderAIAnalysis();
   }
 }
+
+/* ===== SIDEBAR TOGGLE ===== */
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  sidebar.classList.toggle('collapsed');
+  localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+}
+
+// Restore sidebar state on load
+window.addEventListener('DOMContentLoaded', () => {
+  const collapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+  if (collapsed) document.getElementById('sidebar').classList.add('collapsed');
+});
 
 /* ===== FILE TOGGLE ===== */
 function toggleFile(header) {
@@ -1211,12 +1229,23 @@ code { background: var(--border); padding: 1px 4px; border-radius: 3px; font-siz
 [data-theme="light"] .icon-moon { display: none; }
 
 /* ── Layout ── */
-.layout { display: flex; height: calc(100vh - 48px); }
-.sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; padding: .6rem 0; }
+.layout { display: flex; height: calc(100vh - 48px); position: relative; }
+.sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: all .25s ease; }
+.sidebar-nav { flex: 1; overflow-y: auto; padding: .6rem 0; }
+.sidebar.collapsed { width: 50px; min-width: 50px; }
+.sidebar.collapsed .nav-text { display: none; }
+.sidebar.collapsed .sep { margin: .5rem .5rem; }
+.sidebar.collapsed .chevron-left { display: none; }
+.sidebar.collapsed .chevron-right { display: block; }
+#sidebarToggle { background: var(--surface2); border: none; border-top: 1px solid var(--border); padding: .8rem; cursor: pointer; color: var(--muted); transition: all .2s; display: flex; align-items: center; justify-content: center; width: 100%; }
+#sidebarToggle:hover { background: var(--border); color: var(--accent); }
+#sidebarToggle svg { display: block; }
+#sidebarToggle .chevron-right { display: none; }
 .sidebar a { display: flex; align-items: center; gap: .6rem; padding: .55rem 1rem; font-size: .8rem; color: var(--muted); cursor: pointer; border-left: 3px solid transparent; transition: all .12s; user-select: none; }
 .sidebar a:hover { background: var(--surface2); color: var(--text); }
 .sidebar a.active { color: var(--accent); border-left-color: var(--accent); background: rgba(45,212,167,.08); }
-.sidebar .nav-icon { font-size: 1rem; width: 20px; text-align: center; }
+.sidebar .nav-icon { width: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sidebar .nav-icon svg { display: block; }
 .sidebar .sep { height: 1px; background: var(--border); margin: .5rem 1rem; }
 .main { flex: 1; overflow-y: auto; padding: 0; }
 .section-content { display: none; padding: 1.2rem 1.5rem; } .section-content.active { display: block; }
@@ -1385,8 +1414,8 @@ tr.clickable { cursor: pointer; } tr.clickable:hover { background: var(--table-h
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
-  .sidebar { width: 50px; min-width: 50px; } .sidebar a span:not(.nav-icon) { display: none; }
+  .sidebar { width: 50px; min-width: 50px; } .sidebar .nav-text { display: none; }
   .topnav .tn-stat { display: none; }
 }
-@media print { .topnav, .sidebar { display: none; } .main { margin: 0; } .layout { display: block; } #themeToggle { display: none; } }
+@media print { .topnav, .sidebar, #sidebarToggle { display: none; } .main { margin: 0; } .layout { display: block; } #themeToggle { display: none; } }
 `;
