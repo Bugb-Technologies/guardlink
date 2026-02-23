@@ -2,8 +2,6 @@
 
 <img src=".github/guardlink_banner.png" alt="GuardLink" width="600">
 
-# GuardLink
-
 [![npm version](https://img.shields.io/npm/v/guardlink.svg)](https://www.npmjs.com/package/guardlink)
 [![CI](https://github.com/Bugb-Technologies/guardlink/actions/workflows/ci.yml/badge.svg)](https://github.com/Bugb-Technologies/guardlink/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
