@@ -201,11 +201,13 @@ export function createServer(): McpServer {
     {
       root: z.string().describe('Project root directory').default('.'),
       framework: z.enum(['stride', 'dread', 'pasta', 'attacker', 'rapid', 'general']).describe('Analysis framework').default('general'),
-      provider: z.string().describe('LLM provider: anthropic, openai, openrouter, deepseek (auto-detected from env)').optional(),
+      provider: z.string().describe('LLM provider: anthropic, openai, google, openrouter, deepseek (auto-detected from env)').optional(),
       model: z.string().describe('Model name override').optional(),
       custom_prompt: z.string().describe('Custom analysis prompt to replace the framework header').optional(),
+      web_search: z.boolean().describe('Enable web search grounding for real-time vulnerability intelligence (OpenAI)').optional(),
+      thinking: z.boolean().describe('Enable extended thinking / reasoning mode (Anthropic, DeepSeek)').optional(),
     },
-    async ({ root, framework, provider, model: modelName, custom_prompt }) => {
+    async ({ root, framework, provider, model: modelName, custom_prompt, web_search, thinking }) => {
       const { model: threatModel } = await getModel(root);
       if (threatModel.annotations_parsed === 0) {
         return {
@@ -246,6 +248,8 @@ export function createServer(): McpServer {
           llmConfig,
           customPrompt: custom_prompt,
           stream: false,
+          webSearch: web_search,
+          extendedThinking: thinking,
         });
 
         return {

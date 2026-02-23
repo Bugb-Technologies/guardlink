@@ -72,15 +72,15 @@ export function buildAnnotatePrompt(
     }
 
     // Include unmitigated exposures so agent knows what still needs attention
+    // NOTE: Do NOT filter out @accepts — agents should see ALL exposures without real mitigations
     const unmitigatedExposures = model.exposures.filter(e => {
-      return !model.mitigations.some(m => m.asset === e.asset && m.threat === e.threat)
-        && !model.acceptances.some(a => a.asset === e.asset && a.threat === e.threat);
+      return !model.mitigations.some(m => m.asset === e.asset && m.threat === e.threat);
     });
     if (unmitigatedExposures.length > 0) {
       const expLines = unmitigatedExposures.slice(0, 20).map(e =>
         `  ${e.asset} exposed to ${e.threat} [${e.severity || 'unrated'}] (${e.location.file}:${e.location.line})`
       );
-      existingExposures = `\n\nOpen exposures (unmitigated — add @mitigates or @accepts for these):\n${expLines.join('\n')}`;
+      existingExposures = `\n\nOpen exposures (no mitigation in code — add @mitigates if a control exists, or @audit to flag for human review):\n${expLines.join('\n')}`;
       if (unmitigatedExposures.length > 20) existingExposures += `\n  ... and ${unmitigatedExposures.length - 20} more`;
     }
   }
@@ -124,7 +124,7 @@ At each boundary crossing and data transformation, ask:
 - What validation/sanitization exists? (@mitigates)
 - What sensitive data passes through here? (@handles)
 - Is there an assumption that could be violated? (@assumes)
-- Has the team accepted this risk intentionally? (@accepts)
+- Does this need human security review? (@audit)
 - Is this risk handled by someone else? (@transfers)
 
 ### Step 4: Write Coupled Annotation Blocks
@@ -226,6 +226,33 @@ Don't rate everything P0. A SQL injection in an admin-only internal tool is diff
 ### @comment — Always Add Context
 Every annotation block should include at least one @comment explaining non-obvious security decisions, assumptions, or context that helps future developers (and AI tools) understand the "why".
 
+### @accepts — NEVER USE (Human-Only Decision)
+@accepts marks a risk as intentionally unmitigated. This is a **human-only governance decision** — it requires conscious risk ownership by a person or team.
+As an AI agent, you MUST NEVER write @accepts annotations. You cannot accept risk on behalf of humans.
+
+Instead, when you find an exposure with no mitigation in the code:
+1. Write the @exposes annotation to document the risk
+2. Add @audit to flag it for human security review
+3. Add @comment explaining what controls COULD be added
+4. Optionally add @assumes to document any assumptions the code makes
+
+Example — what to do when no mitigation exists:
+\`\`\`
+// @shield:begin -- "@accepts alternative examples, excluded from parsing"
+//
+// WRONG (AI rubber-stamping risk):
+// @accepts #prompt-injection on #ai-endpoint -- "Relying on model safety filters"
+//
+// RIGHT (flag for human review):
+// @exposes #ai-endpoint to #prompt-injection [P1] cwe:CWE-77 -- "User prompt passed directly to LLM API without sanitization"
+// @audit #ai-endpoint -- "No prompt sanitization — needs human review to decide: add input filter or accept risk"
+// @comment -- "Potential controls: #prompt-filter (input sanitization), #output-validator (response filtering)"
+//
+// @shield:end
+\`\`\`
+
+Leaving exposures unmitigated is HONEST. The dashboard and reports will surface them as open risks for humans to triage.
+
 ### @shield — DO NOT USE Unless Explicitly Asked
 @shield and @shield:begin/@shield:end block AI coding assistants from reading the annotated code.
 This means any shielded code becomes invisible to AI tools — they cannot analyze, refactor, or annotate it.
@@ -250,7 +277,7 @@ Definitions go in .guardlink/definitions.{ts,js,py,rs}. Source files use only re
 // @shield:begin -- "Relationship syntax examples, excluded from parsing"
 // @exposes #auth to #sqli [P0] cwe:CWE-89 owasp:A03:2021 -- "User input concatenated into query"
 // @mitigates #auth against #sqli using #prepared-stmts -- "Uses parameterized queries via sqlx"
-// @accepts #timing-attack on #auth -- "Acceptable given bcrypt constant-time comparison"
+// @audit #auth -- "Timing attack risk — needs human review to decide if bcrypt constant-time comparison is sufficient"
 // @transfers #ddos from #api to #cdn -- "Cloudflare handles L7 DDoS mitigation"
 // @flows req.body.username -> db.query via string-concat -- "User input flows to SQL"
 // @boundary between #frontend and #api (#web-boundary) -- "TLS-terminated public/private boundary"
@@ -310,8 +337,9 @@ Definitions go in .guardlink/definitions.{ts,js,py,rs}. Source files use only re
    Group related definitions together with section comments.
 
 4. **Annotate in coupled blocks.** For each security-relevant location, write the complete story:
-   @exposes + @mitigates (or @accepts) + @flows + @comment at minimum.
+   @exposes + @mitigates (or @audit if no mitigation exists) + @flows + @comment at minimum.
    Think: "what's the risk, what's the defense, how does data flow here, and what should the next developer know?"
+   NEVER write @accepts — that is a human-only governance decision. Use @audit to flag unmitigated risks for review.
 
 5. **Use the project's comment style** (// for JS/TS/Go/Rust, # for Python/Ruby/Shell, etc.)
 

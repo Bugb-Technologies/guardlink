@@ -24,13 +24,21 @@ interface SavedConfig {
   apiKey?: string;
   aiMode?: 'cli-agent' | 'api';
   cliAgent?: string;
+  /** Enable extended thinking (Anthropic) / reasoning (DeepSeek) */
+  extendedThinking?: boolean;
+  /** Enable web search grounding (OpenAI Responses API) */
+  webSearch?: boolean;
+  /** Response format: 'text' or 'json' */
+  responseFormat?: 'text' | 'json';
 }
 
 const DEFAULT_MODELS: Record<LLMProvider, string> = {
-  anthropic: 'claude-sonnet-4-5-20250929',
-  openai: 'gpt-4o',
-  openrouter: 'anthropic/claude-sonnet-4-5-20250929',
+  anthropic: 'claude-sonnet-4-6',
+  openai: 'gpt-5.2',
+  google: 'gemini-2.5-flash',
+  openrouter: 'anthropic/claude-sonnet-4-6',
   deepseek: 'deepseek-chat',
+  ollama: 'llama3.2',
 };
 
 const CONFIG_FILE = 'config.json';
@@ -87,7 +95,7 @@ export function resolveConfig(
     const provider = flags.provider as LLMProvider;
     return {
       provider,
-      model: flags.model || DEFAULT_MODELS[provider] || 'gpt-4o',
+      model: flags.model || DEFAULT_MODELS[provider] || 'gpt-5.2',
       apiKey: flags.apiKey,
     };
   }
@@ -118,6 +126,7 @@ export function resolveConfig(
       provider: projectCfg.provider,
       model: flags?.model || projectCfg.model || DEFAULT_MODELS[projectCfg.provider],
       apiKey: projectCfg.apiKey,
+      ...savedConfigExtras(projectCfg),
     };
   }
 
@@ -128,10 +137,20 @@ export function resolveConfig(
       provider: globalCfg.provider,
       model: flags?.model || globalCfg.model || DEFAULT_MODELS[globalCfg.provider],
       apiKey: globalCfg.apiKey,
+      ...savedConfigExtras(globalCfg),
     };
   }
 
   return null;
+}
+
+/** Extract optional LLM config extras from saved config */
+function savedConfigExtras(cfg: SavedConfig): Partial<LLMConfig> {
+  const extras: Partial<LLMConfig> = {};
+  if (cfg.extendedThinking) extras.extendedThinking = true;
+  if (cfg.webSearch) extras.webSearch = true;
+  if (cfg.responseFormat) extras.responseFormat = cfg.responseFormat;
+  return extras;
 }
 
 /** Resolve from provider-specific env vars (ANTHROPIC_API_KEY, etc.) */
@@ -139,6 +158,8 @@ function resolveFromEnv(modelOverride?: string): LLMConfig | null {
   const checks: [string, LLMProvider][] = [
     ['ANTHROPIC_API_KEY', 'anthropic'],
     ['OPENAI_API_KEY', 'openai'],
+    ['GOOGLE_API_KEY', 'google'],
+    ['GEMINI_API_KEY', 'google'],
     ['OPENROUTER_API_KEY', 'openrouter'],
     ['DEEPSEEK_API_KEY', 'deepseek'],
   ];
@@ -160,6 +181,7 @@ function detectProviderFromKey(key: string): LLMProvider | null {
   if (key.startsWith('sk-ant-')) return 'anthropic';
   if (key.startsWith('sk-or-')) return 'openrouter';
   if (key.startsWith('sk-')) return 'openai';  // OpenAI uses sk- prefix
+  if (key.startsWith('AIza')) return 'google';  // Google API keys start with AIza
   return null;  // Can't detect — need GUARDLINK_LLM_PROVIDER
 }
 
@@ -203,6 +225,8 @@ export function describeConfigSource(
   if (process.env.GUARDLINK_LLM_KEY) return 'GUARDLINK_LLM_KEY env var';
   if (process.env.ANTHROPIC_API_KEY) return 'ANTHROPIC_API_KEY env var';
   if (process.env.OPENAI_API_KEY) return 'OPENAI_API_KEY env var';
+  if (process.env.GOOGLE_API_KEY) return 'GOOGLE_API_KEY env var';
+  if (process.env.GEMINI_API_KEY) return 'GEMINI_API_KEY env var';
   if (process.env.OPENROUTER_API_KEY) return 'OPENROUTER_API_KEY env var';
   if (process.env.DEEPSEEK_API_KEY) return 'DEEPSEEK_API_KEY env var';
   const pc = readJsonFile(projectConfigPath(root));

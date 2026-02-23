@@ -55,6 +55,10 @@ export function generateReport(model: ThreatModel): string {
   if (severityCounts.low > 0) lines.push(`| ↳ Low (P3) | ${severityCounts.low} |`);
   lines.push(`| Data flows | ${model.flows.length} |`);
   lines.push(`| Trust boundaries | ${model.boundaries.length} |`);
+  lines.push(`| Risk transfers | ${model.transfers.length} |`);
+  lines.push(`| Validations | ${model.validations.length} |`);
+  lines.push(`| Ownership records | ${model.ownership.length} |`);
+  if (model.shields.length > 0) lines.push(`| Shielded regions | ${model.shields.length} |`);
   lines.push('');
 
   // ── Threat Model Diagram ──
@@ -109,6 +113,20 @@ export function generateReport(model: ThreatModel): string {
     lines.push('');
   }
 
+  // ── Trust Boundaries ──
+  if (model.boundaries.length > 0) {
+    lines.push('## 🔒 Trust Boundaries');
+    lines.push('');
+    lines.push('| Side A | Side B | Boundary ID | Description | Location |');
+    lines.push('|--------|--------|-------------|-------------|----------|');
+    for (const b of model.boundaries) {
+      const desc = b.description ? truncate(b.description, 50) : '—';
+      const id = b.id || '—';
+      lines.push(`| ${b.asset_a} | ${b.asset_b} | ${id} | ${desc} | ${b.location.file}:${b.location.line} |`);
+    }
+    lines.push('');
+  }
+
   // ── Data Flows ──
   if (model.flows.length > 0) {
     lines.push('## 📊 Data Flows');
@@ -136,6 +154,43 @@ export function generateReport(model: ThreatModel): string {
     lines.push('');
   }
 
+  // ── Risk Transfers ──
+  if (model.transfers.length > 0) {
+    lines.push('## 🔀 Risk Transfers');
+    lines.push('');
+    lines.push('| Source | Threat | Target | Description | Location |');
+    lines.push('|--------|--------|--------|-------------|----------|');
+    for (const t of model.transfers) {
+      const desc = t.description ? truncate(t.description, 50) : '—';
+      lines.push(`| ${t.source} | ${t.threat} | ${t.target} | ${desc} | ${t.location.file}:${t.location.line} |`);
+    }
+    lines.push('');
+  }
+
+  // ── Validations ──
+  if (model.validations.length > 0) {
+    lines.push('## ✔ Validations');
+    lines.push('');
+    lines.push('| Control | Asset | Description | Location |');
+    lines.push('|---------|-------|-------------|----------|');
+    for (const v of model.validations) {
+      const desc = v.description ? truncate(v.description, 50) : '—';
+      lines.push(`| ${v.control} | ${v.asset} | ${desc} | ${v.location.file}:${v.location.line} |`);
+    }
+    lines.push('');
+  }
+
+  // ── Ownership ──
+  if (model.ownership.length > 0) {
+    lines.push('## 👤 Ownership');
+    lines.push('');
+    for (const o of model.ownership) {
+      const desc = o.description ? ` — ${o.description}` : '';
+      lines.push(`- **${o.asset}** owned by **${o.owner}**${desc} (${o.location.file}:${o.location.line})`);
+    }
+    lines.push('');
+  }
+
   // ── Audit Items ──
   if (model.audits.length > 0) {
     lines.push('## 🔍 Audit Items');
@@ -156,6 +211,19 @@ export function generateReport(model: ThreatModel): string {
     for (const a of model.assumptions) {
       const desc = a.description || 'Unverified assumption';
       lines.push(`- **${a.asset}** — ${desc} (${a.location.file}:${a.location.line})`);
+    }
+    lines.push('');
+  }
+
+  // ── Shielded Regions ──
+  if (model.shields.length > 0) {
+    lines.push('## 🛡️ Shielded Regions');
+    lines.push('');
+    lines.push('Code regions where annotations are intentionally suppressed via `@shield`.');
+    lines.push('');
+    for (const s of model.shields) {
+      const reason = s.reason || 'No reason provided';
+      lines.push(`- ${reason} (${s.location.file}:${s.location.line})`);
     }
     lines.push('');
   }

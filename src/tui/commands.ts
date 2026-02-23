@@ -7,18 +7,18 @@
 
 import { resolve, basename, isAbsolute } from 'node:path';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures } from '../parser/index.js';
 import { initProject, detectProject, promptAgentSelection } from '../init/index.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
-import { computeStats, computeSeverity } from '../dashboard/data.js';
-import { generateThreatReport, serializeModel, listThreatReports, loadThreatReportsForDashboard, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
+import { computeStats, computeSeverity, computeExposures } from '../dashboard/data.js';
+import { generateThreatReport, serializeModel, listThreatReports, loadThreatReportsForDashboard, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, buildProjectContext, extractCodeSnippets, type AnalysisFramework } from '../analyze/index.js';
 import { diffModels, formatDiff, parseAtRef } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
-import type { ThreatModel, ParseDiagnostic } from '../types/index.js';
-import { C, severityBadge, severityText, severityOrder, computeGrade, gradeColored, formatTable, readCodeContext, trunc, bar, fileLink } from './format.js';
+import type { ThreatModel, ParseDiagnostic, ThreatModelExposure } from '../types/index.js';
+import { C, severityBadge, severityText, severityTextPad, severityOrder, computeGrade, gradeColored, formatTable, readCodeContext, trunc, bar, fileLink, fileLinkTrunc, cleanCliArtifacts } from './format.js';
 import { resolveLLMConfig, saveTuiConfig, loadTuiConfig } from './config.js';
-import { AGENTS, parseAgentFlag, launchAgent, copyToClipboard, buildAnnotatePrompt, type AgentEntry } from '../agents/index.js';
+import { AGENTS, parseAgentFlag, launchAgent, launchAgentInline, copyToClipboard, buildAnnotatePrompt, type AgentEntry } from '../agents/index.js';
 import { describeConfigSource } from '../agents/config.js';
 
 // ─── Shared context ──────────────────────────────────────────────────
@@ -46,6 +46,8 @@ export interface TuiContext {
   rl: import('node:readline').Interface;
   /** Guard: true while ask() is waiting for sub-prompt input */
   _askActive?: boolean;
+  /** Cached exposure list from last /exposures call (used by /show) */
+  lastExposures: ThreatModelExposure[];
 }
 
 /** Re-parse the project and update context */
@@ -83,14 +85,17 @@ export function cmdHelp(): void {
     ['/status',                 'Risk grade + summary stats'],
     ['/validate [--strict]',    'Check for syntax errors + dangling refs'],
     ['', ''],
+    ['/exposures [--all]',      'List open exposures by severity (filter: --asset --severity --threat --file)'],
+    ['/show <n>',               'Detail view + code context for an exposure (from /exposures list)'],
+    ['/scan',                   'Annotation coverage scanner — find unannotated symbols'],
     ['/assets',                 'Asset tree with threat/control counts'],
     ['/files',                  'Annotated file tree with exposure counts'],
     ['/view <file>',            'Show all annotations in a file with code context'],
     ['', ''],
-    ['/threat-report <fw>',    'AI threat report (stride|dread|pasta|attacker|rapid|general)'],
+    ['/threat-report <fw>',    'AI threat report (stride|dread|pasta|attacker|rapid|general|custom)'],
     ['/threat-reports',         'List saved AI threat reports'],
     ['/annotate <prompt>',      'Launch coding agent to annotate codebase'],
-    ['/model',                  'Set AI provider + API key'],
+    ['/model',                  'Set AI provider (API or CLI agent: Claude Code, Codex, Gemini)'],
     ['(freeform text)',         'Chat about your threat model with AI'],
     ['', ''],
     ['/report',                 'Generate markdown + JSON report'],
@@ -98,6 +103,7 @@ export function cmdHelp(): void {
     ['/diff [ref]',             'Compare model against a git ref (default: HEAD~1)'],
     ['/sarif [-o file]',        'Export SARIF 2.1.0 for GitHub / VS Code'],
     ['', ''],
+    ['/gal',                    'GAL annotation language guide'],
     ['/help',                   'This help'],
     ['/quit',                   'Exit'],
   ];
@@ -325,6 +331,131 @@ export function cmdStatus(ctx: TuiContext): void {
     }
   }
 
+  console.log('');
+}
+
+// ─── /exposures ──────────────────────────────────────────────────────
+
+export function cmdExposures(args: string, ctx: TuiContext): void {
+  if (!ctx.model) {
+    console.log(C.warn('  No threat model. Run /parse first.'));
+    return;
+  }
+
+  const rows = computeExposures(ctx.model);
+  let filtered = rows.filter(r => !r.mitigated && !r.accepted); // open only by default
+
+  // Parse flags
+  const parts = args.split(/\s+/).filter(Boolean);
+  let showAll = false;
+  for (let i = 0; i < parts.length; i++) {
+    const flag = parts[i];
+    const val = parts[i + 1];
+    if (flag === '--asset' && val) { filtered = filtered.filter(r => r.asset.includes(val)); i++; }
+    else if (flag === '--severity' && val) { filtered = filtered.filter(r => r.severity === val.toLowerCase()); i++; }
+    else if (flag === '--file' && val) { filtered = filtered.filter(r => r.file.includes(val)); i++; }
+    else if (flag === '--threat' && val) { filtered = filtered.filter(r => r.threat.includes(val)); i++; }
+    else if (flag === '--all') { filtered = rows; showAll = true; }
+  }
+
+  // Sort by severity
+  filtered.sort((a, b) => severityOrder(a.severity) - severityOrder(b.severity));
+
+  // Cache for /show
+  ctx.lastExposures = filtered.map(r => {
+    const original = ctx.model!.exposures.find(e =>
+      e.asset === r.asset && e.threat === r.threat && e.location.file === r.file && e.location.line === r.line
+    );
+    return original!;
+  }).filter(Boolean);
+
+  if (filtered.length === 0) {
+    console.log(C.green('  No matching exposures found.'));
+    return;
+  }
+
+  console.log('');
+
+  const termWidth = process.stdout.columns || 100;
+  const header = `  ${C.dim('#'.padEnd(4))}${C.dim('SEVERITY'.padEnd(12))}${C.dim('ASSET'.padEnd(18))}${C.dim('THREAT'.padEnd(20))}${C.dim('FILE'.padEnd(30))}${C.dim('LINE')}`;
+  console.log(header);
+  console.log(C.dim('  ' + '─'.repeat(Math.min(termWidth - 4, 96))));
+
+  for (const [i, r] of filtered.entries()) {
+    const num = String(i + 1).padEnd(4);
+    const sev = severityTextPad(r.severity, 12);
+    const asset = trunc(r.asset, 16).padEnd(18);
+    const threat = trunc(r.threat, 18).padEnd(20);
+    const linkedFile = fileLinkTrunc(r.file, 28, r.line, ctx.root);
+    const filePad = ' '.repeat(Math.max(0, 30 - trunc(r.file, 28).length));
+    const line = `  ${num}${sev}${asset}${threat}${linkedFile}${filePad}${r.line}`;
+    console.log(line);
+  }
+
+  console.log('');
+  const countMsg = showAll
+    ? `  ${filtered.length} exposure(s) total`
+    : `  ${filtered.length} open exposure(s)`;
+  console.log(C.dim(countMsg + '  ·  /show <n> for detail  ·  --asset --severity --threat --file to filter'));
+  console.log('');
+}
+
+// ─── /show ───────────────────────────────────────────────────────────
+
+export function cmdShow(args: string, ctx: TuiContext): void {
+  const num = parseInt(args.trim(), 10);
+  if (!num || num < 1 || num > ctx.lastExposures.length) {
+    console.log(C.warn(`  Usage: /show <n> where n is 1-${ctx.lastExposures.length || '?'}. Run /exposures first.`));
+    return;
+  }
+
+  const exp = ctx.lastExposures[num - 1];
+  console.log('');
+  console.log(`  ${C.cyan('┌')} ${exp.asset} → ${exp.threat} ${severityBadge(exp.severity)}`);
+  if (exp.description) {
+    console.log(`  ${C.cyan('│')} ${exp.description}`);
+  }
+  if (exp.external_refs.length > 0) {
+    console.log(`  ${C.cyan('│')} ${C.dim(exp.external_refs.join(' · '))}`);
+  }
+  console.log(`  ${C.cyan('│')} ${C.dim(fileLink(exp.location.file, exp.location.line, ctx.root))}`);
+  console.log(`  ${C.cyan('│')}`);
+
+  const { lines } = readCodeContext(exp.location.file, exp.location.line, ctx.root);
+  for (const l of lines) {
+    console.log(`  ${C.cyan('│')} ${l}`);
+  }
+  console.log(`  ${C.cyan('└')}`);
+  console.log('');
+}
+
+// ─── /scan ───────────────────────────────────────────────────────────
+
+export function cmdScan(ctx: TuiContext): void {
+  if (!ctx.model) {
+    console.log(C.warn('  No threat model. Run /parse first.'));
+    return;
+  }
+
+  const cov = ctx.model.coverage;
+  const pct = cov.coverage_percent;
+  console.log('');
+  console.log(`  ${C.bold('Coverage:')} ${cov.annotated_symbols}/${cov.total_symbols} symbols (${pct}%)`);
+
+  const unannotated = cov.unannotated_critical || [];
+  if (unannotated.length === 0) {
+    console.log(C.green('  All security-relevant symbols are annotated!'));
+  } else {
+    console.log(C.warn(`  ${unannotated.length} unannotated symbol(s):`));
+    console.log('');
+    const show = unannotated.slice(0, 25);
+    for (const u of show) {
+      console.log(`    ${C.dim(fileLink(u.file, u.line, ctx.root))}  ${u.kind} ${C.bold(u.name)}`);
+    }
+    if (unannotated.length > 25) {
+      console.log(C.dim(`    ... and ${unannotated.length - 25} more`));
+    }
+  }
   console.log('');
 }
 
@@ -663,10 +794,17 @@ export async function cmdValidate(ctx: TuiContext): Promise<void> {
 
     // Dangling refs
     const danglingDiags = findDanglingRefs(model);
-    const allDiags = [...diagnostics, ...danglingDiags];
+
+    // Check for @accepts without @audit (governance concern)
+    const acceptAuditDiags = findAcceptedWithoutAudit(model);
+
+    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags];
 
     // Unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);
+
+    // Accepted-but-unmitigated exposures
+    const acceptedOnly = findAcceptedExposures(model);
 
     // Print diagnostics
     const errors = allDiags.filter(d => d.level === 'error');
@@ -690,14 +828,24 @@ export async function cmdValidate(ctx: TuiContext): Promise<void> {
       }
     }
 
+    if (acceptedOnly.length > 0) {
+      console.log('');
+      console.log(C.warn(`  ⚡ ${acceptedOnly.length} accepted-but-unmitigated exposure(s) (no control in code):`));
+      for (const a of acceptedOnly) {
+        const sev = a.severity ? severityBadge(a.severity) : C.dim('unset');
+        console.log(`    ${sev} ${a.asset} → ${a.threat}  ${C.dim(fileLink(a.location.file, a.location.line, ctx.root))}`);
+      }
+    }
+
     console.log('');
-    if (errors.length === 0 && unmitigated.length === 0) {
+    if (errors.length === 0 && unmitigated.length === 0 && acceptedOnly.length === 0) {
       console.log(C.success('  ✓ All annotations valid, no unmitigated exposures.'));
     } else {
       const parts: string[] = [];
       if (errors.length > 0) parts.push(`${errors.length} error(s)`);
       if (warnings.length > 0) parts.push(`${warnings.length} warning(s)`);
       if (unmitigated.length > 0) parts.push(`${unmitigated.length} unmitigated`);
+      if (acceptedOnly.length > 0) parts.push(`${acceptedOnly.length} accepted without mitigation`);
       console.log(`  ${parts.join(', ')}`);
     }
   } catch (err: any) {
@@ -784,17 +932,109 @@ export async function cmdSarif(args: string, ctx: TuiContext): Promise<void> {
 
 // ─── /model ──────────────────────────────────────────────────────────
 
-const CLI_AGENT_OPTIONS = [
-  { id: 'claude-code', name: 'Claude Code' },
-  { id: 'codex',       name: 'Codex CLI' },
-  { id: 'gemini',      name: 'Gemini CLI' },
-] as const;
+interface ModelOption {
+  id: string;
+  name: string;
+  desc: string;
+}
+
+const CLI_AGENT_OPTIONS: ModelOption[] = [
+  { id: 'claude-code', name: 'Claude Code',  desc: 'Anthropic\'s coding agent (claude cli)' },
+  { id: 'codex',       name: 'Codex CLI',    desc: 'OpenAI\'s coding agent (codex cli)' },
+  { id: 'gemini',      name: 'Gemini CLI',   desc: 'Google\'s coding agent (gemini cli)' },
+];
 
 const CLI_AGENT_NAMES: Record<string, string> = {
   'claude-code': 'Claude Code',
   'codex': 'Codex CLI',
   'gemini': 'Gemini CLI',
 };
+
+/** Provider model catalogs — popular models per provider, ordered by capability */
+const PROVIDER_MODELS: Record<string, ModelOption[]> = {
+  anthropic: [
+    { id: 'claude-sonnet-4-6',  name: 'Claude Sonnet 4.6',    desc: 'Latest, frontier coding & agents' },
+    { id: 'claude-opus-4-6',    name: 'Claude Opus 4.6',      desc: 'Most intelligent, complex reasoning' },
+    { id: 'claude-sonnet-4-5',  name: 'Claude Sonnet 4.5',    desc: 'Previous gen, strong all-rounder' },
+    { id: 'claude-opus-4-5',    name: 'Claude Opus 4.5',      desc: 'Previous gen, deep analysis' },
+    { id: 'claude-haiku-4-5',   name: 'Claude Haiku 4.5',     desc: 'Fastest, lowest cost' },
+  ],
+  openai: [
+    { id: 'gpt-5.2',                     name: 'GPT-5.2',              desc: 'Latest flagship, smartest & most precise' },
+    { id: 'gpt-5.2-pro',                 name: 'GPT-5.2 Pro',          desc: 'Enhanced GPT-5.2 for complex tasks' },
+    { id: 'gpt-5',                        name: 'GPT-5',                desc: 'Frontier model with reasoning' },
+    { id: 'gpt-5-mini',                  name: 'GPT-5 Mini',           desc: 'Fast and affordable' },
+    { id: 'gpt-5-nano',                  name: 'GPT-5 Nano',           desc: 'Fastest, lowest cost' },
+    { id: 'gpt-5.1-codex',              name: 'GPT-5.1 Codex',        desc: 'Optimized for agentic coding' },
+    { id: 'o3',                           name: 'o3',                    desc: 'Reasoning model, complex analysis' },
+    { id: 'o4-mini',                      name: 'o4-mini',               desc: 'Fast reasoning model' },
+    { id: 'gpt-4.1',                     name: 'GPT-4.1',              desc: 'Previous gen flagship' },
+    { id: 'gpt-4.1-mini',               name: 'GPT-4.1 Mini',         desc: 'Previous gen, fast' },
+  ],
+  google: [
+    { id: 'gemini-2.5-flash',            name: 'Gemini 2.5 Flash',     desc: 'Best price-performance, reasoning' },
+    { id: 'gemini-2.5-pro',              name: 'Gemini 2.5 Pro',       desc: 'Most advanced, deep reasoning & coding' },
+    { id: 'gemini-2.5-flash-lite',       name: 'Gemini 2.5 Flash-Lite', desc: 'Fastest, most budget-friendly' },
+    { id: 'gemini-3-flash-preview',      name: 'Gemini 3 Flash',       desc: 'Preview: frontier-class at low cost' },
+    { id: 'gemini-3-pro-preview',        name: 'Gemini 3 Pro',         desc: 'Preview: state-of-the-art reasoning' },
+    { id: 'gemini-3.1-pro-preview',      name: 'Gemini 3.1 Pro',       desc: 'Preview: advanced agentic & coding' },
+  ],
+  deepseek: [
+    { id: 'deepseek-chat',               name: 'DeepSeek V3.2',        desc: 'General purpose, fast (128K context)' },
+    { id: 'deepseek-reasoner',            name: 'DeepSeek R1',          desc: 'Thinking mode, best for analysis' },
+  ],
+  openrouter: [
+    { id: 'anthropic/claude-sonnet-4-6',  name: 'Claude Sonnet 4.6',     desc: 'Anthropic via OpenRouter' },
+    { id: 'anthropic/claude-opus-4-6',    name: 'Claude Opus 4.6',       desc: 'Anthropic via OpenRouter' },
+    { id: 'openai/gpt-5.2',                        name: 'GPT-5.2',              desc: 'OpenAI via OpenRouter' },
+    { id: 'openai/o3',                              name: 'o3',                    desc: 'OpenAI reasoning via OpenRouter' },
+    { id: 'google/gemini-2.5-pro',                  name: 'Gemini 2.5 Pro',       desc: 'Google via OpenRouter' },
+    { id: 'google/gemini-2.5-flash',                name: 'Gemini 2.5 Flash',     desc: 'Google via OpenRouter' },
+    { id: 'deepseek/deepseek-r1',                   name: 'DeepSeek R1',          desc: 'DeepSeek via OpenRouter' },
+  ],
+  ollama: [
+    { id: 'llama3.2',                    name: 'Llama 3.2',            desc: 'Meta, good general purpose' },
+    { id: 'qwen2.5-coder:32b',           name: 'Qwen 2.5 Coder 32B',  desc: 'Best local coding model' },
+    { id: 'deepseek-r1:32b',             name: 'DeepSeek R1 32B',      desc: 'Local reasoning model' },
+    { id: 'gemma3:27b',                  name: 'Gemma 3 27B',          desc: 'Google, strong local model' },
+    { id: 'mistral',                      name: 'Mistral 7B',           desc: 'Lightweight, fast' },
+  ],
+};
+
+/** Helper to display a numbered model selection menu and return the chosen model ID */
+async function pickModel(ctx: TuiContext, provider: string): Promise<string | null> {
+  const models = PROVIDER_MODELS[provider];
+  if (!models || models.length === 0) {
+    // Fallback to free-text for unknown providers
+    const model = await ask(ctx, '  Model name: ');
+    return model || null;
+  }
+
+  console.log('');
+  console.log('  Select model:');
+  for (let i = 0; i < models.length; i++) {
+    const m = models[i];
+    console.log(`    ${C.bold(String(i + 1))} ${m.name.padEnd(24)} ${C.dim(m.desc)}`);
+  }
+  console.log(`    ${C.bold(String(models.length + 1))} ${C.dim('Custom (enter model ID manually)')}`);
+  console.log('');
+
+  const choice = await ask(ctx, `  Model [1-${models.length + 1}]: `);
+  const idx = parseInt(choice, 10) - 1;
+
+  if (idx < 0 || idx > models.length) {
+    console.log(C.warn('  Cancelled.'));
+    return null;
+  }
+
+  if (idx === models.length) {
+    // Custom model
+    const custom = await ask(ctx, '  Model ID: ');
+    return custom || null;
+  }
+
+  return models[idx].id;
+}
 
 export async function cmdModel(ctx: TuiContext): Promise<void> {
   const current = resolveLLMConfig(ctx.root);
@@ -841,7 +1081,10 @@ export async function cmdModel(ctx: TuiContext): Promise<void> {
     // ── CLI Agent selection ──
     console.log('');
     console.log('  Select CLI Agent:');
-    CLI_AGENT_OPTIONS.forEach((a, i) => console.log(`    ${C.bold(String(i + 1))} ${a.name}`));
+    for (let i = 0; i < CLI_AGENT_OPTIONS.length; i++) {
+      const a = CLI_AGENT_OPTIONS[i];
+      console.log(`    ${C.bold(String(i + 1))} ${a.name.padEnd(16)} ${C.dim(a.desc)}`);
+    }
     console.log('');
 
     const agentChoice = await ask(ctx, `  Agent [1-${CLI_AGENT_OPTIONS.length}]: `);
@@ -864,10 +1107,20 @@ export async function cmdModel(ctx: TuiContext): Promise<void> {
     console.log('');
   } else {
     // ── API provider selection ──
-    const providers = ['anthropic', 'openai', 'deepseek', 'openrouter', 'ollama'] as const;
+    const providers: ModelOption[] = [
+      { id: 'anthropic',   name: 'Anthropic',   desc: 'Claude Sonnet 4.6, Opus 4.6, Haiku 4.5' },
+      { id: 'openai',      name: 'OpenAI',      desc: 'GPT-5.2, o3, o4-mini, GPT-5.1 Codex' },
+      { id: 'google',      name: 'Google',       desc: 'Gemini 2.5 Flash/Pro, Gemini 3 Pro' },
+      { id: 'deepseek',    name: 'DeepSeek',    desc: 'DeepSeek V3.2, R1 reasoning' },
+      { id: 'openrouter',  name: 'OpenRouter',  desc: 'Multi-provider gateway' },
+      { id: 'ollama',      name: 'Ollama',      desc: 'Local models (Llama, Qwen, Gemma)' },
+    ];
     console.log('');
     console.log('  Select provider:');
-    providers.forEach((p, i) => console.log(`    ${C.bold(String(i + 1))} ${p}`));
+    for (let i = 0; i < providers.length; i++) {
+      const p = providers[i];
+      console.log(`    ${C.bold(String(i + 1))} ${p.name.padEnd(14)} ${C.dim(p.desc)}`);
+    }
     console.log('');
 
     const choice = await ask(ctx, `  Provider [1-${providers.length}]: `);
@@ -877,11 +1130,16 @@ export async function cmdModel(ctx: TuiContext): Promise<void> {
       return;
     }
 
-    const provider = providers[idx] as any;
+    const provider = providers[idx].id as import('../analyze/llm.js').LLMProvider;
+
+    // Model selection — numbered menu
+    const modelId = await pickModel(ctx, provider);
+    if (!modelId) return;
 
     // API key
     let apiKey = '';
     if (provider !== 'ollama') {
+      console.log('');
       apiKey = await ask(ctx, '  API Key: ');
       if (!apiKey) {
         console.log(C.warn('  Cancelled — no API key provided.'));
@@ -891,27 +1149,20 @@ export async function cmdModel(ctx: TuiContext): Promise<void> {
       apiKey = 'ollama-local';
     }
 
-    // Model selection
-    const defaults: Record<string, string> = {
-      anthropic: 'claude-sonnet-4-5-20250929',
-      openai: 'gpt-4o',
-      openrouter: 'anthropic/claude-sonnet-4-5-20250929',
-      deepseek: 'deepseek-chat',
-      ollama: 'llama3.2',
-    };
-    const model = await ask(ctx, `  Model [${defaults[provider]}]: `);
-
     saveTuiConfig(ctx.root, {
       aiMode: 'api',
       provider,
-      model: model || defaults[provider],
+      model: modelId,
       apiKey,
     });
 
     const displayKey = apiKey.length > 8 ? apiKey.slice(0, 6) + '•'.repeat(8) : '•'.repeat(8);
+    // Find display name for the model
+    const modelEntry = PROVIDER_MODELS[provider]?.find(m => m.id === modelId);
+    const modelDisplay = modelEntry ? `${modelEntry.name} (${modelId})` : modelId;
     console.log('');
-    console.log(`  ${C.success('✓')} Configured: ${C.bold(model || defaults[provider])} (${provider})`);
-    console.log(`    Key: ${displayKey}`);
+    console.log(`  ${C.success('✓')} Configured: ${C.bold(modelDisplay)}`);
+    console.log(`    Provider: ${providers[idx].name}  Key: ${displayKey}`);
     console.log(C.dim('    Saved to .guardlink/config.json'));
     console.log('');
   }
@@ -919,47 +1170,31 @@ export async function cmdModel(ctx: TuiContext): Promise<void> {
 
 // ─── /threat-report ──────────────────────────────────────────────────
 
-export async function cmdThreatReport(args: string, ctx: TuiContext): Promise<void> {
-  if (!ctx.model) {
-    console.log(C.warn('  No threat model. Run /parse first.'));
-    return;
-  }
+/**
+ * Build the full analysis prompt for CLI agents.
+ * Includes system prompt, serialized model, project context, code snippets,
+ * and instructions to read source code.
+ */
+function buildAgentAnalysisPrompt(
+  root: string,
+  model: ThreatModel,
+  fw: AnalysisFramework,
+  customPrompt: string | undefined,
+  reportLabel: string,
+): string {
+  const modelJson = serializeModel(model);
+  const projectContext = buildProjectContext(root);
+  const codeSnippets = extractCodeSnippets(root, model);
+  const systemPrompt = FRAMEWORK_PROMPTS[fw];
+  const userMessage = buildUserMessage(modelJson, fw, customPrompt, projectContext || undefined, codeSnippets || undefined);
 
-  const { agent, cleanArgs } = parseAgentFlag(args);
-  const framework = cleanArgs.trim().toLowerCase() || '';
-  const validFrameworks = ['stride', 'dread', 'pasta', 'attacker', 'rapid', 'general'];
-
-  if (!framework) {
-    console.log('');
-    console.log(`  ${C.bold('Threat report frameworks:')}`);
-    for (const fw of validFrameworks) {
-      console.log(`    ${C.bold('/threat-report ' + fw.padEnd(12))} ${C.dim(FRAMEWORK_LABELS[fw as AnalysisFramework])}`);
-    }
-    console.log('');
-    console.log(C.dim('  Flags: --claude-code  --codex  --gemini  --cursor  --windsurf  --clipboard'));
-    console.log(C.dim('  Without flag: uses configured API provider (see /model)'));
-    console.log(C.dim('  Example: /threat-report stride --claude-code'));
-    console.log('');
-    return;
-  }
-
-  const isStandard = validFrameworks.includes(framework);
-  const fw = (isStandard ? framework : 'general') as AnalysisFramework;
-  const customPrompt = isStandard ? undefined : cleanArgs.trim();
-
-  // ── Agent path: spawn CLI agent or copy to clipboard ──
-  if (agent) {
-    const modelJson = serializeModel(ctx.model);
-    const systemPrompt = FRAMEWORK_PROMPTS[fw];
-    const userMessage = buildUserMessage(modelJson, fw, customPrompt);
-
-    const analysisPrompt = `You are analyzing a codebase with GuardLink security annotations.
+  return `You are analyzing a codebase with GuardLink security annotations.
 You have access to the full source code in the current directory.
 
 ${systemPrompt}
 
 ## Task
-Read the source code and GuardLink annotations, then produce a thorough ${FRAMEWORK_LABELS[fw]}.
+Read the source code and GuardLink annotations, then produce a thorough ${reportLabel}.
 
 ## Threat Model (serialized from annotations)
 ${userMessage}
@@ -968,52 +1203,163 @@ ${userMessage}
 1. Read the actual source files to understand the code — don't just rely on the serialized model above
 2. Cross-reference the annotations with the real code to validate findings
 3. Produce the full report as markdown
-4. Save the output to .guardlink/threat-reports/ with a timestamped filename
-5. Be specific — reference actual files, functions, and line numbers from the codebase`;
+4. Be specific — reference actual files, functions, and line numbers from the codebase
+5. Output ONLY the markdown report content — do NOT add any metadata comments, save confirmations, or file path messages
+6. Do NOT include lines like "Generated by...", "Agent:", "Project:", or "The report file write was blocked..."`;
+}
 
-    console.log(`  ${C.dim('Sending')} ${FRAMEWORK_LABELS[fw]} ${C.dim('to')} ${agent.name}${C.dim('...')}`);
+/**
+ * Save inline agent output as a threat report markdown file.
+ */
+function saveInlineReport(
+  root: string,
+  content: string,
+  fw: AnalysisFramework,
+  agentName: string,
+  project: string,
+  annotationCount: number,
+): string {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const reportsDir = resolve(root, '.guardlink', 'threat-reports');
+  if (!existsSync(reportsDir)) mkdirSync(reportsDir, { recursive: true });
+
+  const filename = `${timestamp}-${fw}.md`;
+  const filepath = resolve(reportsDir, filename);
+
+  const cleanedContent = cleanCliArtifacts(content);
+
+  const header = `---
+framework: ${fw}
+label: ${FRAMEWORK_LABELS[fw]}
+model: ${agentName}
+timestamp: ${new Date().toISOString()}
+project: ${project}
+annotations: ${annotationCount}
+---
+
+# ${FRAMEWORK_LABELS[fw]}
+
+> Generated by \`guardlink threat-report ${fw}\` on ${new Date().toISOString().slice(0, 10)}
+> Agent: ${agentName} | Project: ${project} | Annotations: ${annotationCount}
+
+`;
+
+  writeFileSync(filepath, header + cleanedContent + '\n');
+  return `.guardlink/threat-reports/${filename}`;
+}
+
+export async function cmdThreatReport(args: string, ctx: TuiContext): Promise<void> {
+  if (!ctx.model) {
+    console.log(C.warn('  No threat model. Run /parse first.'));
+    return;
+  }
+
+  // Parse any explicit --agent flag override
+  const { agent: flagAgent, cleanArgs } = parseAgentFlag(args);
+  const input = cleanArgs.trim();
+  const validFrameworks = ['stride', 'dread', 'pasta', 'attacker', 'rapid', 'general'];
+
+  // Show help when no arguments given
+  if (!input) {
+    console.log('');
+    console.log(`  ${C.bold('Threat report frameworks:')}`);
+    for (const fw of validFrameworks) {
+      console.log(`    ${C.bold('/threat-report ' + fw.padEnd(12))} ${C.dim(FRAMEWORK_LABELS[fw as AnalysisFramework])}`);
+    }
+    console.log('');
+    console.log(`  ${C.bold('Custom prompt:')}`);
+    console.log(C.dim('    /threat-report <any text>   Uses your text as the analysis prompt'));
+    console.log(C.dim('    Example: /threat-report Create a comprehensive report mixing STRIDE and DREAD'));
+    console.log('');
+    console.log(C.dim('  Uses the AI provider configured via /model (API or CLI agent).'));
+    console.log(C.dim('  Override with: --claude-code  --codex  --gemini  --clipboard'));
+    console.log('');
+    return;
+  }
+
+  // Determine framework vs custom prompt
+  const inputLower = input.toLowerCase();
+  const isStandard = validFrameworks.includes(inputLower);
+  const fw = (isStandard ? inputLower : 'general') as AnalysisFramework;
+  const customPrompt = isStandard ? undefined : input;
+  const reportLabel = customPrompt ? 'Custom Threat Analysis' : FRAMEWORK_LABELS[fw];
+
+  // ── Resolve execution method ──
+  // Priority: explicit --flag > /model config > env-var API
+  const tuiCfg = loadTuiConfig(ctx.root);
+
+  // Resolve the agent to use (flag override or configured CLI agent)
+  let agent: AgentEntry | null = flagAgent;
+  if (!agent && tuiCfg?.aiMode === 'cli-agent' && tuiCfg?.cliAgent) {
+    agent = AGENTS.find(a => a.id === tuiCfg.cliAgent) || null;
+  }
+
+  // ── Path 1: CLI Agent (inline, non-interactive) ──
+  if (agent && agent.cmd) {
+    const analysisPrompt = buildAgentAnalysisPrompt(ctx.root, ctx.model, fw, customPrompt, reportLabel);
+
+    console.log(`  ${C.dim('Generating')} ${reportLabel} ${C.dim('via')} ${agent.name} ${C.dim('(inline)...')}`);
+    console.log(C.dim(`    Annotations: ${ctx.model.annotations_parsed} | Exposures: ${ctx.model.exposures.length}`));
     console.log('');
 
-    // Use shared launcher — foreground for terminal agents, IDE open for others
-    if (agent.cmd) {
-      const copied = copyToClipboard(analysisPrompt);
-      if (copied) {
-        console.log(C.success(`  ✓ Prompt copied to clipboard (${analysisPrompt.length.toLocaleString()} chars)`));
-      }
-      console.log(`  ${C.dim('Launching')} ${agent.name} ${C.dim('in foreground...')}`);
+    const result = await launchAgentInline(
+      agent,
+      analysisPrompt,
+      ctx.root,
+      (text) => process.stdout.write(text),
+      { autoYes: true },
+    );
+
+    if (result.error) {
+      console.log(C.error(`\n  ✗ ${result.error}`));
       console.log('');
-      const result = launchAgent(agent, analysisPrompt, ctx.root);
-      if (result.error) {
-        console.log(C.error(`  ✗ ${result.error}`));
-      } else {
-        console.log(`\n  ${C.success('✓')} ${agent.name} session ended.`);
-        console.log(`  Run ${C.bold('/threat-reports')} to see saved results.`);
-      }
-    } else {
-      const result = launchAgent(agent, analysisPrompt, ctx.root);
-      if (result.clipboardCopied) {
-        console.log(C.success(`  ✓ Prompt copied to clipboard (${analysisPrompt.length.toLocaleString()} chars)`));
-      }
-      if (result.launched && agent.app) {
-        console.log(`  ${C.success('✓')} ${agent.name} launched with project: ${ctx.projectName}`);
-        console.log(`\n  Paste (Cmd+V) the prompt in ${agent.name}.`);
-      } else if (result.error) {
-        console.log(C.error(`  ✗ ${result.error}`));
-      }
+      return;
+    }
+
+    process.stdout.write('\n');
+
+    // Save the agent's output as a report
+    if (result.content.trim()) {
+      const savedTo = saveInlineReport(
+        ctx.root, result.content, fw, agent.name,
+        ctx.model.project, ctx.model.annotations_parsed,
+      );
+      console.log('');
+      console.log(`  ${C.success('✓')} Report saved to ${savedTo}`);
     }
     console.log('');
     return;
   }
 
-  // ── API path: direct LLM call ──
-  const llmConfig = resolveLLMConfig(ctx.root);
-  if (!llmConfig) {
-    console.log(C.warn('  No AI provider configured. Run /model first, or use --claude-code / --codex.'));
-    console.log(C.dim('  Or set ANTHROPIC_API_KEY / OPENAI_API_KEY in environment.'));
+  // ── Path 2: Clipboard / IDE agent (copy prompt, open app) ──
+  if (agent && !agent.cmd) {
+    const analysisPrompt = buildAgentAnalysisPrompt(ctx.root, ctx.model, fw, customPrompt, reportLabel);
+
+    const result = launchAgent(agent, analysisPrompt, ctx.root);
+    if (result.clipboardCopied) {
+      console.log(C.success(`  ✓ Prompt copied to clipboard (${analysisPrompt.length.toLocaleString()} chars)`));
+    }
+    if (result.launched && agent.app) {
+      console.log(`  ${C.success('✓')} ${agent.name} launched with project: ${ctx.projectName}`);
+      console.log(`\n  Paste (Cmd+V) the prompt in ${agent.name}.`);
+    } else if (result.error) {
+      console.log(C.error(`  ✗ ${result.error}`));
+    }
+    console.log('');
     return;
   }
 
-  console.log(`  ${C.dim('Generating report with')} ${llmConfig.model}${C.dim('...')}`);
+  // ── Path 3: Direct API call ──
+  const llmConfig = resolveLLMConfig(ctx.root);
+  if (!llmConfig) {
+    console.log(C.warn('  No AI provider configured. Run /model first.'));
+    console.log(C.dim('  Or set ANTHROPIC_API_KEY / OPENAI_API_KEY in environment.'));
+    console.log(C.dim('  Or use: /threat-report <prompt> --claude-code'));
+    return;
+  }
+
+  console.log(`  ${C.dim('Generating')} ${reportLabel} ${C.dim('with')} ${llmConfig.model}${C.dim('...')}`);
+  console.log(C.dim(`    Annotations: ${ctx.model.annotations_parsed} | Exposures: ${ctx.model.exposures.length}`));
   console.log('');
 
   try {
@@ -1135,8 +1481,12 @@ export async function cmdAnnotate(args: string, ctx: TuiContext): Promise<void> 
 // ─── Freeform AI Chat ────────────────────────────────────────────────
 
 export async function cmdChat(text: string, ctx: TuiContext): Promise<void> {
+  const tuiCfg = loadTuiConfig(ctx.root);
   const llmConfig = resolveLLMConfig(ctx.root);
-  if (!llmConfig) {
+
+  const useAgent = tuiCfg?.aiMode === 'cli-agent' && !!tuiCfg?.cliAgent;
+
+  if (!useAgent && !llmConfig) {
     console.log(C.warn('  No AI provider configured. Run /model first, or set an API key in environment.'));
     return;
   }
@@ -1162,23 +1512,51 @@ Keep responses under 500 words unless the user asks for detail.`;
     userMessage = `Threat model context:\n${JSON.stringify(compact, null, 2)}\n\nUser question: ${text}`;
   }
 
-  console.log('');
-  console.log(C.dim(`  Thinking via ${llmConfig.model}...`));
-  console.log('');
+  if (useAgent) {
+    const agent = AGENTS.find(a => a.id === tuiCfg.cliAgent);
+    if (!agent) {
+      console.log(C.error(`  ✗ Configured agent ${tuiCfg.cliAgent} not found.`));
+      return;
+    }
 
-  try {
-    const { chatCompletion } = await import('../analyze/llm.js');
-    const response = await chatCompletion(
-      llmConfig,
-      systemPrompt,
-      userMessage,
+    console.log('');
+    console.log(C.dim(`  Thinking via ${agent.name}...`));
+    console.log('');
+
+    const prompt = `${systemPrompt}\n\n${userMessage}`;
+
+    const result = await launchAgentInline(
+      agent,
+      prompt,
+      ctx.root,
       (chunk) => process.stdout.write(chunk),
+      { autoYes: true }
     );
 
-    process.stdout.write('\n\n');
-  } catch (err: any) {
-    console.log(C.error(`  ✗ AI request failed: ${err.message}`));
+    if (result.error) {
+      console.log(C.error(`\n  ✗ AI request failed: ${result.error}`));
+    } else {
+      console.log('\n');
+    }
+  } else {
     console.log('');
+    console.log(C.dim(`  Thinking via ${llmConfig!.model}...`));
+    console.log('');
+
+    try {
+      const { chatCompletion } = await import('../analyze/llm.js');
+      await chatCompletion(
+        llmConfig!,
+        systemPrompt,
+        userMessage,
+        (chunk) => process.stdout.write(chunk),
+      );
+
+      process.stdout.write('\n\n');
+    } catch (err: any) {
+      console.log(C.error(`  ✗ AI request failed: ${err.message}`));
+      console.log('');
+    }
   }
 }
 

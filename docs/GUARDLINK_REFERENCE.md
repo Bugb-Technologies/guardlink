@@ -59,14 +59,106 @@ Append after severity: `cwe:CWE-89`, `owasp:A03:2021`, `capec:CAPEC-66`, `attack
 | Proprietary algorithm | `@shield:begin` ... `@shield:end` |
 | Unsure which annotation | `@comment -- "describe what you see"` |
 
-## Commands
+## CLI Commands
 
 ```bash
-guardlink validate .          # Check for errors
-guardlink report .            # Generate threat-model.md
-guardlink status .            # Coverage summary
-guardlink suggest <file>      # Get annotation suggestions
+# Core
+guardlink init [dir]                    # Initialize .guardlink/ and agent instruction files
+guardlink parse [dir]                   # Parse annotations → ThreatModel JSON
+guardlink status [dir]                  # Risk grade + coverage summary
+guardlink validate [dir] [--strict]     # Syntax errors, dangling refs, unmitigated exposures
+
+# Reports & Export
+guardlink report [dir]                  # Generate threat-model.md + optional JSON
+guardlink dashboard [dir]               # Interactive HTML dashboard with Mermaid diagrams
+guardlink sarif [dir] [-o file]         # SARIF 2.1.0 for GitHub Advanced Security / VS Code
+guardlink diff [ref]                    # Compare threat model against a git ref (default: HEAD~1)
+
+# AI-Powered Analysis
+guardlink threat-report <fw|prompt>     # AI threat report (see frameworks below)
+guardlink threat-reports                # List saved threat reports
+guardlink annotate <prompt>             # Launch coding agent to add annotations
+guardlink config <show|set|clear>       # Manage LLM provider / CLI agent configuration
+
+# Interactive
+guardlink tui [dir]                     # Interactive TUI: slash commands + AI chat
+guardlink mcp                           # Start MCP server (stdio) for Claude Code, Cursor, etc.
+guardlink gal                           # Display GAL annotation language quick reference
 ```
+
+## Threat Report Frameworks
+
+```bash
+guardlink threat-report stride          # STRIDE (Spoofing, Tampering, Repudiation, Info Disclosure, DoS, Elevation)
+guardlink threat-report dread           # DREAD risk scoring
+guardlink threat-report pasta           # PASTA (Process for Attack Simulation and Threat Analysis)
+guardlink threat-report attacker        # Attacker-centric (personas, kill chains, attack trees)
+guardlink threat-report rapid           # RAPID threat model
+guardlink threat-report general         # General-purpose comprehensive analysis
+guardlink threat-report "<custom>"      # Custom prompt — any free-text analysis instructions
+```
+
+## AI Agent Flags
+
+All AI commands (`threat-report`, `annotate`) support:
+
+```bash
+--claude-code     # Run via Claude Code CLI (inline)
+--codex           # Run via Codex CLI (inline)
+--gemini          # Run via Gemini CLI (inline)
+--cursor          # Open Cursor IDE with prompt on clipboard
+--windsurf        # Open Windsurf IDE with prompt on clipboard
+--clipboard       # Copy prompt to clipboard only
+```
+
+Additional `threat-report` flags:
+
+```bash
+--thinking        # Enable extended thinking / reasoning mode
+--web-search      # Enable web search grounding (OpenAI Responses API)
+--provider <p>    # Direct API: anthropic, openai, openrouter, deepseek
+--model <m>       # Override model name
+```
+
+## TUI Commands
+
+Run `guardlink tui` for the interactive terminal interface:
+
+```
+/init [name]             Initialize project
+/parse                   Parse annotations, build threat model
+/status                  Risk grade + summary stats
+/validate                Check for errors + dangling refs
+/exposures [--all]       List open exposures by severity (--asset --severity --threat --file)
+/show <n>                Detail view + code context for exposure
+/scan                    Coverage scanner — find unannotated symbols
+/assets                  Asset tree with threat/control counts
+/files                   Annotated file tree with exposure counts
+/view <file>             Show all annotations in a file with code context
+/threat-report <fw>      AI threat report (frameworks above or custom text)
+/threat-reports          List saved reports
+/annotate <prompt>       Launch coding agent to annotate codebase
+/model                   Set AI provider (API or CLI agent)
+/report                  Generate markdown + JSON report
+/dashboard               Generate HTML dashboard + open browser
+/diff [ref]              Compare model vs git ref (default: HEAD~1)
+/sarif [-o file]         Export SARIF 2.1.0
+/gal                     GAL annotation language guide
+(freeform text)          Chat about your threat model with AI
+```
+
+## Critical Syntax Rules
+
+1. **@boundary requires TWO assets**: `@boundary between #A and #B` or `@boundary #A | #B`.
+2. **@flows is ONE source → ONE target per line**: `@flows <source> -> <target> via <mechanism>`.
+3. **@exposes / @mitigates require defined #id refs**: Every `#id` must have a definition in `.guardlink/definitions.*`.
+4. **Severity in square brackets**: `[P0]` `[P1]` `[P2]` `[P3]` or `[critical]` `[high]` `[medium]` `[low]`. Goes AFTER the threat ref.
+5. **Descriptions in double quotes after --**: `-- "description text here"`.
+6. **IDs use parentheses in definitions, hash in references**: Define `(#sqli)`, reference `#sqli`.
+7. **Asset references**: Use `#id` or `Dotted.Path` — no spaces or special chars.
+8. **External refs space-separated after severity**: `cwe:CWE-89 owasp:A03:2021 capec:CAPEC-66`.
+9. **@comment always needs -- and quotes**: `@comment -- "your note here"`.
+10. **One annotation per comment line.** Do NOT put two @verbs on the same line.
 
 ## MCP Tools
 

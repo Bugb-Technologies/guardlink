@@ -83,15 +83,21 @@ ${CSS_CONTENT}
 <div class="layout">
 
 <!-- ═══════════ SIDEBAR ═══════════ -->
-<nav class="sidebar">
-  <a class="active" onclick="showSection('summary',this)"><span class="nav-icon">◆</span> Executive Summary</a>
-  <a onclick="showSection('ai-analysis',this)"><span class="nav-icon">✨</span> Threat Reports</a>
-  <a onclick="showSection('threats',this)"><span class="nav-icon">⚠</span> Threats &amp; Exposures</a>
-  <a onclick="showSection('diagrams',this)"><span class="nav-icon">◉</span> Diagrams</a>
-  <a onclick="showSection('code',this)"><span class="nav-icon">&lt;/&gt;</span> Code &amp; Annotations</a>
-  <div class="sep"></div>
-  <a onclick="showSection('data',this)"><span class="nav-icon">🔒</span> Data &amp; Boundaries</a>
-  <a onclick="showSection('assets',this)"><span class="nav-icon">🗺</span> Asset Heatmap</a>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-nav">
+    <a class="active" onclick="showSection('summary',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l6 4v6l-6 4-6-4V6l6-4z"/></svg></span> <span class="nav-text">Executive Summary</span></a>
+    <a onclick="showSection('ai-analysis',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l2 5h5l-4 3 2 5-5-3-5 3 2-5-4-3h5l2-5z"/></svg></span> <span class="nav-text">Threat Reports</span></a>
+    <a onclick="showSection('threats',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L1 15h14L8 1zm0 4l3 8H5l3-8z"/></svg></span> <span class="nav-text">Threats &amp; Exposures</span></a>
+    <a onclick="showSection('diagrams',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="8" cy="8" r="2"/></svg></span> <span class="nav-text">Diagrams</span></a>
+    <a onclick="showSection('code',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M5 4L1 8l4 4v-2L3 8l2-2V4zm6 0v2l2 2-2 2v2l4-4-4-4z"/></svg></span> <span class="nav-text">Code &amp; Annotations</span></a>
+    <div class="sep"></div>
+    <a onclick="showSection('data',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2h8v2H4V2zm0 3h8v2H4V5zm0 3h8v2H4V8zm0 3h8v2H4v-2zm-2-9v12h12V2H2zm1 1h10v10H3V3z"/></svg></span> <span class="nav-text">Data &amp; Boundaries</span></a>
+    <a onclick="showSection('assets',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3h14v10H1V3zm1 1v8h12V4H2zm2 2h8v1H4V6zm0 2h6v1H4V8z"/></svg></span> <span class="nav-text">Asset Heatmap</span></a>
+  </div>
+  <button id="sidebarToggle" onclick="toggleSidebar()" title="Collapse sidebar">
+    <svg class="chevron-left" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M10 2L4 8l6 6V2z"/></svg>
+    <svg class="chevron-right" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6 2v12l6-6-6-6z"/></svg>
+  </button>
 </nav>
 
 <!-- ═══════════ MAIN ═══════════ -->
@@ -133,15 +139,27 @@ function showSection(id, el) {
   const sec = document.getElementById('sec-' + id);
   if (sec) sec.classList.add('active');
   if (el) el.classList.add('active');
-  // Re-render mermaid if switching to diagrams
+  closeDrawer();
   if (id === 'diagrams' && !window._mermaidRendered) {
     setTimeout(() => { renderMermaid(); }, 100);
   }
-  // Render AI analysis explorer on first visit
   if (id === 'ai-analysis' && !window._aiAnalysisRendered) {
     renderAIAnalysis();
   }
 }
+
+/* ===== SIDEBAR TOGGLE ===== */
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  sidebar.classList.toggle('collapsed');
+  localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+}
+
+// Restore sidebar state on load
+window.addEventListener('DOMContentLoaded', () => {
+  const collapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+  if (collapsed) document.getElementById('sidebar').classList.add('collapsed');
+});
 
 /* ===== FILE TOGGLE ===== */
 function toggleFile(header) {
@@ -577,41 +595,37 @@ function formatAnalysisDate(ts) {
 
 function renderAIAnalysis() {
   window._aiAnalysisRendered = true;
-  const wrap = document.querySelector('.ai-analysis-wrap');
-  const explorer = document.getElementById('ai-analyses-explorer');
+  const selector = document.getElementById('report-selector');
   const container = document.getElementById('ai-content');
   if (!container) return;
 
   const list = savedAnalyses;
   const hasList = Array.isArray(list) && list.length > 0;
 
-  if (hasList) {
-    if (wrap) wrap.classList.add('has-explorer');
-    if (explorer) {
-      explorer.innerHTML = list.map((a, i) =>
-        '<div class="ai-analysis-item ' + (i === _selectedAnalysisIdx ? 'active' : '') + '" data-index="' + i + '" role="button" tabindex="0">' +
-        '<div class="aai-type">' + esc(a.label || a.framework || 'Analysis') + '</div>' +
-        '<div class="aai-date">' + esc(formatAnalysisDate(a.timestamp || '')) + '</div>' +
-        (a.model ? '<div class="aai-model">' + esc(a.model) + '</div>' : '') +
-        '</div>'
-      ).join('');
+  if (hasList && selector) {
+    // Populate dropdown with reports
+    selector.innerHTML = list.map((a, i) => {
+      const label = esc(a.label || a.framework || 'Analysis');
+      const date = esc(formatAnalysisDate(a.timestamp || ''));
+      const model = a.model ? ' — ' + esc(a.model) : '';
+      return '<option value="' + i + '">' + label + ' (' + date + ')' + model + '</option>';
+    }).join('');
 
-      explorer.querySelectorAll('.ai-analysis-item').forEach(function(el) {
-        el.addEventListener('click', function() {
-          var idx = parseInt(this.getAttribute('data-index'), 10);
-          if (idx === _selectedAnalysisIdx) return;
-          _selectedAnalysisIdx = idx;
-          explorer.querySelectorAll('.ai-analysis-item').forEach(function(item, i) {
-            item.classList.toggle('active', i === idx);
-          });
-          renderAIAnalysisContent(container, (list[idx] && list[idx].content) ? list[idx].content : '');
-        });
-      });
-    }
+    // Set initial selection
+    selector.value = String(_selectedAnalysisIdx);
+
+    // Handle dropdown change
+    selector.addEventListener('change', function() {
+      var idx = parseInt(this.value, 10);
+      if (isNaN(idx) || idx === _selectedAnalysisIdx) return;
+      _selectedAnalysisIdx = idx;
+      renderAIAnalysisContent(container, (list[idx] && list[idx].content) ? list[idx].content : '');
+    });
+
+    // Render initial content
     renderAIAnalysisContent(container, (list[_selectedAnalysisIdx] && list[_selectedAnalysisIdx].content) ? list[_selectedAnalysisIdx].content : '');
   } else {
-    if (wrap) wrap.classList.remove('has-explorer');
-    if (explorer) explorer.innerHTML = '';
+    if (selector) selector.style.display = 'none';
     renderAIAnalysisContent(container, '');
   }
 }
@@ -651,7 +665,12 @@ function renderSummaryPage(
     ${statCard(stats.flows, 'Data Flows')}
     ${statCard(stats.boundaries, 'Boundaries')}
     ${statCard(stats.transfers, 'Transfers')}
+    ${statCard(stats.validations, 'Validations', 'success')}
+    ${statCard(stats.audits, 'Audits')}
+    ${statCard(stats.assumptions, 'Assumptions')}
+    ${statCard(stats.ownership, 'Ownership')}
     ${statCard(stats.comments, 'Comments', 'muted')}
+    ${stats.shields > 0 ? statCard(stats.shields, 'Shields', 'muted') : ''}
   </div>
 
   <!-- Coverage Bar -->
@@ -708,10 +727,11 @@ function renderAIAnalysisPage(analyses: ThreatReportWithContent[]): string {
   return `
 <div id="sec-ai-analysis" class="section-content">
   <div class="sec-h"><span class="sec-icon">✨</span> Threat Reports</div>
-  <div class="ai-analysis-wrap">
-    <aside id="ai-analyses-explorer" class="ai-analyses-explorer" aria-label="Saved analyses"></aside>
-    <div id="ai-content" class="md-content ai-analysis-main"></div>
+  <div class="ai-analysis-controls">
+    <label for="report-selector" class="report-selector-label">Select Report:</label>
+    <select id="report-selector" class="report-selector" aria-label="Select threat report"></select>
   </div>
+  <div id="ai-content" class="md-content ai-analysis-main"></div>
 </div>`;
 }
 
@@ -913,6 +933,79 @@ function renderDataPage(model: ThreatModel): string {
     </tbody>
   </table>` : ''}
 
+  ${model.validations.length > 0 ? `
+  <div class="sub-h">Validations (${model.validations.length})</div>
+  <table>
+    <thead><tr><th>Control</th><th>Asset</th><th>Description</th><th>Location</th></tr></thead>
+    <tbody>
+    ${model.validations.map(v => `
+    <tr>
+      <td><code>${esc(v.control)}</code></td>
+      <td><code>${esc(v.asset)}</code></td>
+      <td>${esc(v.description || '—')}</td>
+      <td class="loc">${v.location ? `${esc(v.location.file)}:${v.location.line}` : ''}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
+  ${model.ownership.length > 0 ? `
+  <div class="sub-h">Ownership (${model.ownership.length})</div>
+  <table>
+    <thead><tr><th>Asset</th><th>Owner</th><th>Description</th><th>Location</th></tr></thead>
+    <tbody>
+    ${model.ownership.map(o => `
+    <tr>
+      <td><code>${esc(o.asset)}</code></td>
+      <td><strong>${esc(o.owner)}</strong></td>
+      <td>${esc(o.description || '—')}</td>
+      <td class="loc">${o.location ? `${esc(o.location.file)}:${o.location.line}` : ''}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
+  ${model.audits.length > 0 ? `
+  <div class="sub-h">Audit Items (${model.audits.length})</div>
+  <table>
+    <thead><tr><th>Asset</th><th>Description</th><th>Location</th></tr></thead>
+    <tbody>
+    ${model.audits.map(a => `
+    <tr>
+      <td><code>${esc(a.asset)}</code></td>
+      <td>${esc(a.description || 'Needs review')}</td>
+      <td class="loc">${a.location ? `${esc(a.location.file)}:${a.location.line}` : ''}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
+  ${model.assumptions.length > 0 ? `
+  <div class="sub-h">Assumptions (${model.assumptions.length})</div>
+  <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">Unverified assumptions that should be periodically reviewed.</p>
+  <table>
+    <thead><tr><th>Asset</th><th>Assumption</th><th>Location</th></tr></thead>
+    <tbody>
+    ${model.assumptions.map(a => `
+    <tr>
+      <td><code>${esc(a.asset)}</code></td>
+      <td>${esc(a.description || 'Unverified assumption')}</td>
+      <td class="loc">${a.location ? `${esc(a.location.file)}:${a.location.line}` : ''}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
+  ${model.shields.length > 0 ? `
+  <div class="sub-h">Shielded Regions (${model.shields.length})</div>
+  <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">Code regions where annotations are intentionally suppressed via <code>@shield</code>.</p>
+  <table>
+    <thead><tr><th>Reason</th><th>Location</th></tr></thead>
+    <tbody>
+    ${model.shields.map(s => `
+    <tr>
+      <td>${esc(s.reason || 'No reason provided')}</td>
+      <td class="loc">${s.location ? `${esc(s.location.file)}:${s.location.line}` : ''}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
   ${model.comments.length > 0 ? `
   <div class="sub-h">Developer Comments (${model.comments.length})</div>
   <table>
@@ -927,7 +1020,9 @@ function renderDataPage(model: ThreatModel): string {
   </table>` : ''}
 
   ${model.boundaries.length === 0 && model.data_handling.length === 0 && model.comments.length === 0
-    ? '<p class="empty-state">No data classifications, trust boundaries, or comments found.</p>' : ''}
+    && model.validations.length === 0 && model.ownership.length === 0 && model.audits.length === 0
+    && model.assumptions.length === 0 && model.shields.length === 0
+    ? '<p class="empty-state">No data classifications, trust boundaries, or lifecycle annotations found.</p>' : ''}
 </div>`;
 }
 
@@ -1015,6 +1110,12 @@ function buildFileAnnotations(model: ThreatModel, root?: string): FileAnnotation
   for (const t of model.transfers) addEntry('transfers', t as any, `${t.source} → ${t.target}`);
   for (const f of model.flows) addEntry('flow', f as any, `${f.source} → ${f.target}`);
   for (const b of model.boundaries) addEntry('boundary', b as any, `${b.asset_a} ↔ ${b.asset_b}`);
+  for (const h of model.data_handling) addEntry('handles', h as any, `${h.asset}: ${h.classification}`);
+  for (const v of model.validations) addEntry('validates', v as any, `${v.control} validates ${v.asset}`);
+  for (const o of model.ownership) addEntry('owns', o as any, `${o.owner} owns ${o.asset}`);
+  for (const a of model.audits) addEntry('audit', a as any, `Audit: ${a.asset}`);
+  for (const a of model.assumptions) addEntry('assumes', a as any, `Assumes: ${a.asset}`);
+  for (const s of model.shields) addEntry('shield', s as any, s.reason || 'Shielded region');
   for (const c of model.comments) addEntry('comment', c as any, c.description || 'Developer note');
 
   const result: FileAnnotationGroup[] = [];
@@ -1128,12 +1229,23 @@ code { background: var(--border); padding: 1px 4px; border-radius: 3px; font-siz
 [data-theme="light"] .icon-moon { display: none; }
 
 /* ── Layout ── */
-.layout { display: flex; height: calc(100vh - 48px); }
-.sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; padding: .6rem 0; }
+.layout { display: flex; height: calc(100vh - 48px); position: relative; }
+.sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: all .25s ease; }
+.sidebar-nav { flex: 1; overflow-y: auto; padding: .6rem 0; }
+.sidebar.collapsed { width: 50px; min-width: 50px; }
+.sidebar.collapsed .nav-text { display: none; }
+.sidebar.collapsed .sep { margin: .5rem .5rem; }
+.sidebar.collapsed .chevron-left { display: none; }
+.sidebar.collapsed .chevron-right { display: block; }
+#sidebarToggle { background: var(--surface2); border: none; border-top: 1px solid var(--border); padding: .8rem; cursor: pointer; color: var(--muted); transition: all .2s; display: flex; align-items: center; justify-content: center; width: 100%; }
+#sidebarToggle:hover { background: var(--border); color: var(--accent); }
+#sidebarToggle svg { display: block; }
+#sidebarToggle .chevron-right { display: none; }
 .sidebar a { display: flex; align-items: center; gap: .6rem; padding: .55rem 1rem; font-size: .8rem; color: var(--muted); cursor: pointer; border-left: 3px solid transparent; transition: all .12s; user-select: none; }
 .sidebar a:hover { background: var(--surface2); color: var(--text); }
 .sidebar a.active { color: var(--accent); border-left-color: var(--accent); background: rgba(45,212,167,.08); }
-.sidebar .nav-icon { font-size: 1rem; width: 20px; text-align: center; }
+.sidebar .nav-icon { width: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sidebar .nav-icon svg { display: block; }
 .sidebar .sep { height: 1px; background: var(--border); margin: .5rem 1rem; }
 .main { flex: 1; overflow-y: auto; padding: 0; }
 .section-content { display: none; padding: 1.2rem 1.5rem; } .section-content.active { display: block; }
@@ -1225,6 +1337,9 @@ tr.clickable { cursor: pointer; } tr.clickable:hover { background: var(--table-h
 .ann-mitigates { background: #1a3a1a; color: #3fb950; } .ann-accepts { background: #3a3a1a; color: #d29922; }
 .ann-transfers { background: #2a1a3a; color: #bc8cff; } .ann-flow { background: #2a2a2a; color: #8b949e; }
 .ann-boundary { background: #2a1a3a; color: #bc8cff; } .ann-data { background: #3a2a1a; color: #db6d28; }
+.ann-handles { background: #3a2a1a; color: #db6d28; } .ann-validates { background: #1a3a1a; color: #3fb950; }
+.ann-owns { background: #1c3a5e; color: #58a6ff; } .ann-audit { background: #3a3a1a; color: #d29922; }
+.ann-assumes { background: #3a3a1a; color: #d29922; } .ann-shield { background: #2a2a2a; color: #8b949e; }
 .ann-comment { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
 
 /* ── File Cards (Code Browser) ── */
@@ -1274,18 +1389,14 @@ tr.clickable { cursor: pointer; } tr.clickable:hover { background: var(--table-h
 .diagram-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .diagram-panel { display: none; } .diagram-panel.active { display: block; }
 
-/* ── AI Analysis Explorer ── */
-.ai-analysis-wrap { display: flex; gap: 1.5rem; margin-top: 0.75rem; min-height: 400px; }
-.ai-analyses-explorer { width: 240px; min-width: 240px; max-height: calc(100vh - 220px); overflow-y: auto; padding-right: 0.5rem; border-right: 1px solid var(--border); }
-.ai-analyses-explorer:empty { display: none; }
-.ai-analysis-wrap:not(.has-explorer) .ai-analyses-explorer { display: none; }
-.ai-analysis-main { flex: 1; min-width: 0; }
-.ai-analysis-item { padding: 0.5rem 0.6rem; margin-bottom: 0.35rem; border-radius: 6px; font-size: 0.8rem; cursor: pointer; border: 1px solid transparent; transition: background 0.15s, border-color 0.15s; }
-.ai-analysis-item:hover { background: var(--surface2); }
-.ai-analysis-item.active { background: rgba(45,212,167,.12); border-color: var(--accent); }
-.ai-analysis-item .aai-type { font-weight: 600; color: var(--accent); text-transform: capitalize; }
-.ai-analysis-item .aai-date { color: var(--muted); font-size: 0.72rem; margin-top: 0.2rem; }
-.ai-analysis-item .aai-model { color: var(--text-dim); font-size: 0.68rem; margin-top: 0.15rem; font-family: var(--font-mono); }
+/* ── AI Analysis Controls ── */
+.ai-analysis-controls { display: flex; align-items: center; gap: 0.75rem; margin: 0.75rem 0 1.25rem; }
+.report-selector-label { font-weight: 600; font-size: 0.88rem; color: var(--text); }
+.report-selector { flex: 1; max-width: 600px; padding: 0.5rem 0.75rem; font-size: 0.88rem; font-family: var(--font-base); background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.report-selector:hover { background: var(--surface3); border-color: var(--accent); }
+.report-selector:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(45,212,167,0.1); }
+.report-selector option { background: var(--surface); color: var(--text); padding: 0.5rem; }
+.ai-analysis-main { margin-top: 0.5rem; }
 .md-content h1 { font-size: 1.4rem; font-weight: 700; margin: 1.2rem 0 .6rem; color: var(--text); }
 .md-content h2 { font-size: 1.15rem; font-weight: 600; margin: 1rem 0 .5rem; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: .3rem; }
 .md-content h3 { font-size: 1rem; font-weight: 600; margin: .8rem 0 .4rem; color: var(--text); }
@@ -1303,8 +1414,8 @@ tr.clickable { cursor: pointer; } tr.clickable:hover { background: var(--table-h
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
-  .sidebar { width: 50px; min-width: 50px; } .sidebar a span:not(.nav-icon) { display: none; }
+  .sidebar { width: 50px; min-width: 50px; } .sidebar .nav-text { display: none; }
   .topnav .tn-stat { display: none; }
 }
-@media print { .topnav, .sidebar { display: none; } .main { margin: 0; } .layout { display: block; } #themeToggle { display: none; } }
+@media print { .topnav, .sidebar, #sidebarToggle { display: none; } .main { margin: 0; } .layout { display: block; } #themeToggle { display: none; } }
 `;

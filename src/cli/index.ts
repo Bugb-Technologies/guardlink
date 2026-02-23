@@ -4,13 +4,21 @@
  * GuardLink CLI — Reference Implementation
  *
  * Usage:
- *   guardlink init [dir]        Initialize GuardLink in a project
- *   guardlink parse [dir]       Parse annotations, output ThreatModel JSON
- *   guardlink status [dir]      Show annotation coverage summary
- *   guardlink validate [dir]    Check for syntax errors and dangling refs
- *   guardlink analyze [framework] AI-powered threat analysis (STRIDE, DREAD, etc.)
- *   guardlink annotate <prompt>  Launch coding agent for annotation
- *   guardlink config <action>    Manage LLM provider configuration
+ *   guardlink init [dir]              Initialize GuardLink in a project
+ *   guardlink parse [dir]             Parse annotations, output ThreatModel JSON
+ *   guardlink status [dir]            Show annotation coverage summary
+ *   guardlink validate [dir]          Check for syntax errors and dangling refs
+ *   guardlink report [dir]            Generate markdown + JSON threat model report
+ *   guardlink diff [ref]              Compare threat model against a git ref
+ *   guardlink sarif [dir]             Export SARIF 2.1.0 for GitHub / VS Code
+ *   guardlink threat-report <prompt>  AI-powered threat analysis (STRIDE, DREAD, PASTA, etc.)
+ *   guardlink threat-reports          List saved AI threat reports
+ *   guardlink annotate <prompt>       Launch coding agent to add annotations
+ *   guardlink config <action>         Manage LLM provider configuration
+ *   guardlink dashboard [dir]         Generate interactive HTML dashboard
+ *   guardlink mcp                     Start MCP server (stdio) for Claude Code, Cursor, etc.
+ *   guardlink tui [dir]               Interactive TUI with slash commands + AI chat
+ *   guardlink gal                     Display GAL annotation language quick reference
  *
  * @exposes #cli to #path-traversal [high] cwe:CWE-22 -- "Accepts directory paths from command line arguments"
  * @exposes #cli to #arbitrary-write [high] cwe:CWE-73 -- "Writes reports and SARIF to user-specified output paths"
@@ -25,8 +33,8 @@
 
 import { Command } from 'commander';
 import { resolve, basename } from 'node:path';
-import { readFileSync, existsSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures } from '../parser/index.js';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures } from '../parser/index.js';
 import { initProject, detectProject, promptAgentSelection } from '../init/index.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getCurrentRef } from '../diff/index.js';
@@ -34,7 +42,7 @@ import { generateSarif } from '../analyzer/index.js';
 import { startStdioServer } from '../mcp/index.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, serializeModel, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
-import { AGENTS, agentFromOpts, launchAgent, buildAnnotatePrompt } from '../agents/index.js';
+import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt } from '../agents/index.js';
 import { resolveConfig, saveProjectConfig, saveGlobalConfig, loadProjectConfig, loadGlobalConfig, maskKey, describeConfigSource } from '../agents/config.js';
 import type { ThreatModel, ParseDiagnostic } from '../types/index.js';
 import gradient from 'gradient-string';
@@ -216,10 +224,17 @@ program
 
     // Check for dangling refs
     const danglingDiags = findDanglingRefs(model);
-    const allDiags = [...diagnostics, ...danglingDiags];
+
+    // Check for @accepts without @audit (governance concern)
+    const acceptAuditDiags = findAcceptedWithoutAudit(model);
+
+    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags];
 
     // Check for unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);
+
+    // Check for accepted-but-unmitigated exposures (risk acceptance without real controls)
+    const acceptedOnly = findAcceptedExposures(model);
 
     printDiagnostics(allDiags);
 
@@ -230,11 +245,20 @@ program
       }
     }
 
+    if (acceptedOnly.length > 0) {
+      console.error(`\n⚡ ${acceptedOnly.length} accepted-but-unmitigated exposure(s) (risk accepted, no control in code):`);
+      for (const a of acceptedOnly) {
+        console.error(`   ${a.asset} → ${a.threat} [${a.severity || 'unset'}] (${a.location.file}:${a.location.line})`);
+      }
+    }
+
     const errorCount = allDiags.filter(d => d.level === 'error').length;
     const hasUnmitigated = unmitigated.length > 0;
 
-    if (errorCount === 0 && !hasUnmitigated) {
+    if (errorCount === 0 && !hasUnmitigated && acceptedOnly.length === 0) {
       console.error('\n✓ All annotations valid, no unmitigated exposures.');
+    } else if (errorCount === 0 && !hasUnmitigated && acceptedOnly.length > 0) {
+      console.error(`\nValidation passed. ${acceptedOnly.length} exposure(s) accepted without mitigation — ensure these are intentional human decisions.`);
     } else if (errorCount === 0 && hasUnmitigated) {
       console.error(`\nValidation passed with ${unmitigated.length} unmitigated exposure(s).`);
     }
@@ -385,39 +409,39 @@ program
 
 program
   .command('threat-report')
-  .description('Generate an AI threat report using a security framework (STRIDE, DREAD, PASTA, etc.)')
-  .argument('[framework]', 'Framework: stride, dread, pasta, attacker, rapid, general', 'general')
-  .argument('[dir]', 'Project directory', '.')
+  .description('Generate an AI threat report using a framework or custom prompt')
+  .argument('[prompt...]', 'Framework (stride, dread, pasta, attacker, rapid, general) or custom prompt text')
+  .option('-d, --dir <dir>', 'Project directory', '.')
   .option('-p, --project <n>', 'Project name', 'unknown')
-  .option('--provider <provider>', 'LLM provider: anthropic, openai, openrouter, deepseek (auto-detected from env)')
+  .option('--provider <provider>', 'LLM provider: anthropic, openai, google, openrouter, deepseek (auto-detected from env)')
   .option('--model <model>', 'Model name (default: provider-specific)')
   .option('--api-key <key>', 'API key (default: from env variable)')
   .option('--no-stream', 'Disable streaming output')
-  .option('--custom <prompt>', 'Custom analysis prompt (replaces framework prompt header)')
-  .option('--claude-code', 'Launch Claude Code in foreground')
-  .option('--codex', 'Launch Codex CLI in foreground')
-  .option('--gemini', 'Launch Gemini CLI in foreground')
+  .option('--web-search', 'Enable web search grounding (OpenAI only)')
+  .option('--thinking', 'Enable extended thinking / reasoning (Anthropic, DeepSeek only)')
+  .option('--claude-code', 'Run via Claude Code (inline)')
+  .option('--codex', 'Run via Codex CLI (inline)')
+  .option('--gemini', 'Run via Gemini CLI (inline)')
   .option('--cursor', 'Open Cursor IDE with prompt on clipboard')
   .option('--windsurf', 'Open Windsurf IDE with prompt on clipboard')
   .option('--clipboard', 'Copy threat report prompt to clipboard only')
-  .action(async (framework: string, dir: string, opts: {
-    project: string; provider?: string; model?: string; apiKey?: string;
-    stream?: boolean; custom?: string;
+  .action(async (promptParts: string[], opts: {
+    dir: string; project: string; provider?: string; model?: string; apiKey?: string;
+    stream?: boolean; webSearch?: boolean; thinking?: boolean;
     claudeCode?: boolean; codex?: boolean; gemini?: boolean;
     cursor?: boolean; windsurf?: boolean; clipboard?: boolean;
   }) => {
-    const root = resolve(dir);
+    const root = resolve(opts.dir);
     const project = detectProjectName(root, opts.project);
+    const input = promptParts.join(' ').trim();
 
-    // Validate framework
+    // Determine framework vs custom prompt
     const validFrameworks = ['stride', 'dread', 'pasta', 'attacker', 'rapid', 'general'];
-    if (!validFrameworks.includes(framework)) {
-      console.error(`Unknown framework: ${framework}`);
-      console.error(`Available: ${validFrameworks.join(', ')}`);
-      process.exit(1);
-    }
-
-    const fw = framework as AnalysisFramework;
+    const inputLower = input.toLowerCase();
+    const isStandard = validFrameworks.includes(inputLower);
+    const fw = (isStandard ? inputLower : 'general') as AnalysisFramework;
+    const customPrompt = isStandard ? undefined : (input || undefined);
+    const reportLabel = customPrompt ? 'Custom Threat Analysis' : FRAMEWORK_LABELS[fw];
 
     // Parse project
     const { model, diagnostics } = await parseProject({ root, project });
@@ -429,69 +453,117 @@ program
       process.exit(1);
     }
 
-    // Resolve agent (same pattern as annotate)
-    const agent = agentFromOpts(opts);
+    // Build analysis prompt (shared by agent and API paths)
+    const serialized = serializeModel(model);
+    const { buildProjectContext, extractCodeSnippets } = await import('../analyze/index.js');
+    const projectContext = buildProjectContext(root);
+    const codeSnippets = extractCodeSnippets(root, model);
+    const systemPrompt = FRAMEWORK_PROMPTS[fw];
+    const userMessage = buildUserMessage(serialized, fw, customPrompt, projectContext || undefined, codeSnippets || undefined);
+    const analysisPrompt = `You are analyzing a codebase with GuardLink security annotations.
+You have access to the full source code in the current directory.
 
-    // ── Agent path: build prompt, launch agent ──
-    if (agent) {
-      const serialized = serializeModel(model);
-      const systemPrompt = FRAMEWORK_PROMPTS[fw] || FRAMEWORK_PROMPTS.general;
-      const userMessage = buildUserMessage(serialized, fw, opts.custom);
-      const fullPrompt = `${systemPrompt}\n\n${userMessage}\n\nAlso read the source files to understand code context. Save the report to .guardlink/threat-reports/ as a markdown file.`;
+${systemPrompt}
 
-      console.log(`Generating ${FRAMEWORK_LABELS[fw]} via ${agent.name}...`);
-      if (agent.cmd) {
-        console.log(`${agent.name} will take over this terminal. Exit the agent to return.\n`);
+## Task
+Read the source code and GuardLink annotations, then produce a thorough ${reportLabel}.
+
+## Threat Model (serialized from annotations)
+${userMessage}
+
+## Instructions
+1. Read the actual source files to understand the code — don't just rely on the serialized model above
+2. Cross-reference the annotations with the real code to validate findings
+3. Produce the full report as markdown
+4. Be specific — reference actual files, functions, and line numbers from the codebase
+5. Output ONLY the markdown report content — do NOT add any metadata comments, save confirmations, or file path messages
+6. Do NOT include lines like "Generated by...", "Agent:", "Project:", or "The report file write was blocked..."`;
+
+    // Resolve agent: explicit flag > project config CLI agent
+    let agent = agentFromOpts(opts);
+    if (!agent) {
+      const projCfg = loadProjectConfig(root);
+      if (projCfg?.aiMode === 'cli-agent' && projCfg?.cliAgent) {
+        agent = AGENTS.find(a => a.id === projCfg.cliAgent) || null;
       }
+    }
 
-      const result = launchAgent(agent, fullPrompt, root);
+    // ── Path 1: CLI Agent (inline, non-interactive) ──
+    if (agent && agent.cmd) {
+      console.error(`\n🔍 ${reportLabel}`);
+      console.error(`   Agent: ${agent.name} (inline)`);
+      console.error(`   Annotations: ${model.annotations_parsed} | Exposures: ${model.exposures.length}\n`);
 
-      if (result.clipboardCopied) {
-        console.log(`✓ Prompt copied to clipboard (${fullPrompt.length.toLocaleString()} chars)`);
-      }
+      const result = await launchAgentInline(
+        agent,
+        analysisPrompt,
+        root,
+        (text) => process.stdout.write(text),
+        { autoYes: true },
+      );
 
       if (result.error) {
-        console.error(`✗ ${result.error}`);
-        if (result.clipboardCopied) {
-          console.log('Prompt is on your clipboard — paste it manually.');
-        }
+        console.error(`\n✗ ${result.error}`);
         process.exit(1);
       }
 
-      if (agent.cmd && result.launched) {
-        console.log(`\n✓ ${agent.name} session ended.`);
-        console.log('  Run: guardlink threat-reports  to see saved reports.');
-      } else if (agent.app && result.launched) {
+      process.stdout.write('\n');
+
+      // Save the agent's output as a report
+      if (result.content.trim()) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const reportsDir = resolve(root, '.guardlink', 'threat-reports');
+        if (!existsSync(reportsDir)) mkdirSync(reportsDir, { recursive: true });
+        const filename = `${timestamp}-${fw}.md`;
+        const filepath = resolve(reportsDir, filename);
+        
+        // Clean ANSI codes and CLI artifacts from the output before saving
+        const { cleanCliArtifacts } = await import('../tui/format.js');
+        const cleanedContent = cleanCliArtifacts(result.content);
+        
+        const header = `---\nframework: ${fw}\nlabel: ${FRAMEWORK_LABELS[fw]}\nmodel: ${agent.name}\ntimestamp: ${new Date().toISOString()}\nproject: ${project}\nannotations: ${model.annotations_parsed}\n---\n\n# ${FRAMEWORK_LABELS[fw]}\n\n> Generated by \`guardlink threat-report ${fw}\` on ${new Date().toISOString().slice(0, 10)}\n> Agent: ${agent.name} | Project: ${project} | Annotations: ${model.annotations_parsed}\n\n`;
+        writeFileSync(filepath, header + cleanedContent + '\n');
+        console.error(`\n✓ Report saved to .guardlink/threat-reports/${filename}`);
+      }
+      return;
+    }
+
+    // ── Path 2: Clipboard / IDE agent ──
+    if (agent && !agent.cmd) {
+      const result = launchAgent(agent, analysisPrompt, root);
+      if (result.clipboardCopied) {
+        console.log(`✓ Prompt copied to clipboard (${analysisPrompt.length.toLocaleString()} chars)`);
+      }
+      if (result.launched && agent.app) {
         console.log(`✓ ${agent.name} launched with project: ${project}`);
         console.log('\nPaste (Cmd+V) the prompt in the AI chat panel.');
         console.log('When done, run: guardlink threat-reports');
       } else if (agent.id === 'clipboard') {
         console.log('\nPaste the prompt into your preferred AI tool.');
         console.log('When done, run: guardlink threat-reports');
+      } else if (result.error) {
+        console.error(`✗ ${result.error}`);
+        process.exit(1);
       }
       return;
     }
 
-    // ── API path: direct LLM call (no agent flag) ──
+    // ── Path 3: Direct API call ──
     const llmConfig = buildConfig({
       provider: opts.provider,
       model: opts.model,
       apiKey: opts.apiKey,
-    });
+    }) || resolveConfig(root);
 
     if (!llmConfig) {
-      // No agent, no API key — show usage like annotate does
-      console.error('No agent or API key specified. Use one of:');
-      for (const a of AGENTS) {
-        console.error(`  ${a.flag.padEnd(16)} ${a.name}`);
-      }
-      console.error('');
-      console.error('Or set an API key: ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.');
-      console.error('Or use: --provider anthropic --api-key sk-...');
+      console.error('No AI provider configured. Use one of:');
+      console.error('  guardlink config          Configure API provider');
+      console.error('  --claude-code / --codex   Use a CLI agent');
+      console.error('  ANTHROPIC_API_KEY=...     Set env var');
       process.exit(1);
     }
 
-    console.error(`\n🔍 ${FRAMEWORK_LABELS[fw]}`);
+    console.error(`\n🔍 ${reportLabel}`);
     console.error(`   Provider: ${llmConfig.provider} | Model: ${llmConfig.model}`);
     console.error(`   Annotations: ${model.annotations_parsed} | Exposures: ${model.exposures.length}\n`);
 
@@ -501,9 +573,11 @@ program
         model,
         framework: fw,
         llmConfig,
-        customPrompt: opts.custom,
+        customPrompt,
         stream: opts.stream !== false,
         onChunk: opts.stream !== false ? (text) => process.stdout.write(text) : undefined,
+        webSearch: opts.webSearch,
+        extendedThinking: opts.thinking,
       });
 
       if (opts.stream !== false) {
@@ -515,6 +589,9 @@ program
       console.error(`\n✓ Report saved to ${result.savedTo}`);
       if (result.inputTokens || result.outputTokens) {
         console.error(`  Tokens: ${result.inputTokens || '?'} in / ${result.outputTokens || '?'} out`);
+      }
+      if (result.thinkingTokens) {
+        console.error(`  Thinking: ${result.thinkingTokens} tokens`);
       }
     } catch (err: any) {
       console.error(`\n✗ Threat report generation failed: ${err.message}`);
@@ -629,7 +706,7 @@ program
   .command('config')
   .description('Manage LLM provider configuration')
   .argument('<action>', 'Action: set, show, clear')
-  .argument('[key]', 'Config key: provider, api-key, model')
+  .argument('[key]', 'Config key: provider, api-key, model, ai-mode, cli-agent')
   .argument('[value]', 'Value to set')
   .option('--global', 'Use global config (~/.config/guardlink/) instead of project')
   .action(async (action: string, key?: string, value?: string, opts?: { global?: boolean }) => {
@@ -640,16 +717,24 @@ program
       case 'show': {
         const config = resolveConfig(root);
         const source = describeConfigSource(root);
+        const projCfg = isGlobal ? loadGlobalConfig() : loadProjectConfig(root);
+        const aiMode = projCfg?.aiMode || 'api';
+        const cliAgent = projCfg?.cliAgent;
+
+        console.log(`AI Mode:   ${aiMode}${cliAgent ? ` (${cliAgent})` : ''}`);
         if (config) {
           console.log(`Provider:  ${config.provider}`);
           console.log(`Model:     ${config.model}`);
           console.log(`API Key:   ${maskKey(config.apiKey)}`);
           console.log(`Source:    ${source}`);
-        } else {
+        } else if (aiMode !== 'cli-agent') {
           console.log('No LLM configuration found.');
           console.log('\nSet one with:');
           console.log('  guardlink config set provider anthropic');
           console.log('  guardlink config set api-key sk-ant-...');
+          console.log('\nOr use a CLI agent:');
+          console.log('  guardlink config set ai-mode cli-agent');
+          console.log('  guardlink config set cli-agent claude-code');
           console.log('\nOr set environment variables:');
           console.log('  export GUARDLINK_LLM_KEY=sk-ant-...');
           console.log('  export GUARDLINK_LLM_PROVIDER=anthropic');
@@ -660,7 +745,7 @@ program
       case 'set': {
         if (!key || !value) {
           console.error('Usage: guardlink config set <key> <value>');
-          console.error('Keys: provider, api-key, model');
+          console.error('Keys: provider, api-key, model, ai-mode, cli-agent');
           process.exit(1);
         }
 
@@ -668,11 +753,14 @@ program
           ? loadGlobalConfig() || {}
           : loadProjectConfig(root) || {};
 
+        const validProviders = ['anthropic', 'openai', 'google', 'openrouter', 'deepseek', 'ollama'];
+        const validAgentIds = AGENTS.map(a => a.id);
+
         switch (key) {
           case 'provider':
-            if (!['anthropic', 'openai', 'openrouter', 'deepseek'].includes(value)) {
+            if (!validProviders.includes(value)) {
               console.error(`Unknown provider: ${value}`);
-              console.error('Available: anthropic, openai, openrouter, deepseek');
+              console.error(`Available: ${validProviders.join(', ')}`);
               process.exit(1);
             }
             (existing as any).provider = value;
@@ -683,8 +771,25 @@ program
           case 'model':
             (existing as any).model = value;
             break;
+          case 'ai-mode':
+            if (!['api', 'cli-agent'].includes(value)) {
+              console.error(`Unknown ai-mode: ${value}`);
+              console.error('Available: api, cli-agent');
+              process.exit(1);
+            }
+            (existing as any).aiMode = value;
+            break;
+          case 'cli-agent':
+            if (!validAgentIds.includes(value)) {
+              console.error(`Unknown cli-agent: ${value}`);
+              console.error(`Available: ${validAgentIds.join(', ')}`);
+              process.exit(1);
+            }
+            (existing as any).cliAgent = value;
+            (existing as any).aiMode = 'cli-agent';
+            break;
           default:
-            console.error(`Unknown config key: ${key}. Use: provider, api-key, model`);
+            console.error(`Unknown config key: ${key}. Use: provider, api-key, model, ai-mode, cli-agent`);
             process.exit(1);
         }
 
@@ -766,7 +871,7 @@ program
   .command('tui')
   .description('Interactive TUI — slash commands, AI chat, exposure triage')
   .argument('[dir]', 'project directory', '.')
-  .option('--provider <provider>', 'LLM provider for this session (anthropic, openai, openrouter, deepseek)')
+  .option('--provider <provider>', 'LLM provider for this session (anthropic, openai, google, openrouter, deepseek)')
   .option('--api-key <key>', 'LLM API key for this session (not persisted)')
   .option('--model <model>', 'LLM model override')
   .action(async (dir: string, opts: { provider?: string; apiKey?: string; model?: string }) => {
@@ -782,37 +887,154 @@ program
   .description('Display GuardLink Annotation Language (GAL) quick reference')
   .action(() => {
     import('chalk').then(({ default: c }) => {
+      const H = (s: string) => c.bold.cyan(s);
+      const V = (s: string) => c.bold.cyanBright(s);
+      const K = (s: string) => c.yellow(s);
+      const D = (s: string) => c.dim(s);
+      const EX = (s: string) => c.green(s);
+
       console.log(gradient(['#00ff41', '#00d4ff'])(ASCII_LOGO));
-      console.log(`${c.bold.bgCyan.black(' GUARDLINK ANNOTATION LANGUAGE (GAL) ')}\n`);
-      console.log(`${c.bold('Syntax:')}`);
-      console.log(`  // @verb <args> [qualifiers] [refs] -- "description"\n`);
-      
-      console.log(`${c.bold('Definition Verbs:')}`);
-      console.log(`  ${c.green('@asset')}    <path> (#id)         ${c.gray('Declare a component')}`);
-      console.log(`  ${c.green('@threat')}   <name> (#id) [sev]   ${c.gray('Declare a threat')}`);
-      console.log(`  ${c.green('@control')}  <name> (#id)         ${c.gray('Declare a security control')}\n`);
+      console.log('');
+      console.log(H('  ══════════════════════════════════════════════════════════'));
+      console.log(H('  GAL — GuardLink Annotation Language'));
+      console.log(H('  ══════════════════════════════════════════════════════════'));
+      console.log('');
+      console.log(D('  Annotations live in source code comments. GuardLink parses'));
+      console.log(D('  them to build a live threat model from your codebase.'));
+      console.log('');
+      console.log(D('  Syntax:  @verb  subject  [preposition  object]  [: description]'));
+      console.log('');
 
-      console.log(`${c.bold('Relationship Verbs:')}`);
-      console.log(`  ${c.green('@mitigates')} <asset> against <threat> using <control>`);
-      console.log(`  ${c.green('@exposes')}   <asset> to <threat> [severity]`);
-      console.log(`  ${c.green('@flows')}     <source> -> <target> via <mechanism>`);
-      console.log(`  ${c.green('@boundary')}  between <asset-a> and <asset-b> (#id)\n`);
+      // ── DEFINITIONS ──
+      console.log(H('  ── Definitions ─────────────────────────────────────────────'));
+      console.log('');
 
-      console.log(`${c.bold('Lifecycle & Metadata:')}`);
-      console.log(`  ${c.green('@handles')}   <data> on <asset>    ${c.gray('Data classification')}`);
-      console.log(`  ${c.green('@owns')}      <owner> for <asset>  ${c.gray('Security ownership')}`);
-      console.log(`  ${c.green('@assumes')}   <asset>              ${c.gray('Security assumption')}`);
-      console.log(`  ${c.green('@shield')}    [-- "reason"]        ${c.gray('AI exclusion marker')}\n`);
+      console.log(`  ${V('@asset')}  ${K('<path>')}  ${D('[: description]')}`);
+      console.log(D('    Declare a named asset (component, service, data store).'));
+      console.log(D('    Path uses dot notation for hierarchy.'));
+      console.log(EX('    // @asset  api.auth.token_store  : Stores JWT refresh tokens'));
+      console.log(EX('    // @asset  db.users'));
+      console.log('');
 
-      console.log(`${c.bold('Severity Levels:')}`);
-      console.log(`  [critical] | [high] | [medium] | [low]`);
-      console.log(`  [P0]       | [P1]   | [P2]     | [P3]\n`);
+      console.log(`  ${V('@threat')}  ${K('<name>')}  ${D('[severity: critical|high|medium|low]  [: description]')}`);
+      console.log(D('    Declare a named threat. Severity aliases: P0=critical P1=high P2=medium P3=low.'));
+      console.log(EX('    // @threat  SQL Injection  severity:high  : Unsanitized input reaches DB'));
+      console.log(EX('    // @threat  Token Theft  severity:P0'));
+      console.log('');
 
-      console.log(`${c.bold('Data Classifications:')}`);
-      console.log(`  pii | secrets | financial | phi | internal | public\n`);
+      console.log(`  ${V('@control')}  ${K('<name>')}  ${D('[: description]')}`);
+      console.log(D('    Declare a security control (mitigation mechanism).'));
+      console.log(EX('    // @control  Input Validation  : Sanitize all user-supplied strings'));
+      console.log(EX('    // @control  Rate Limiting'));
+      console.log('');
 
-      console.log(`${c.bold('Example:')}`);
-      console.log(`  ${c.gray('// @mitigates #api against #sqli using #prepared-stmts -- "Parameterized query"')}\n`);
+      // ── RELATIONSHIPS ──
+      console.log(H('  ── Relationships ───────────────────────────────────────────'));
+      console.log('');
+
+      console.log(`  ${V('@exposes')}  ${K('<asset>')}  ${D('to')}  ${K('<threat>')}  ${D('[severity: ...]  [: description]')}`);
+      console.log(D('    Mark an asset as exposed to a threat at this code location.'));
+      console.log(D('    This is the primary annotation — every exposure creates a finding.'));
+      console.log(EX('    // @exposes  api.auth  to  SQL Injection  severity:high'));
+      console.log(EX('    // @exposes  db.users  to  Token Theft  severity:critical  : No token rotation'));
+      console.log('');
+
+      console.log(`  ${V('@mitigates')}  ${K('<asset>')}  ${D('against')}  ${K('<threat>')}  ${D('[with')}  ${K('<control>')}${D(']  [: description]')}`);
+      console.log(D('    Mark that a control mitigates a threat on an asset.'));
+      console.log(D('    Closes the exposure — removes it from open findings.'));
+      console.log(EX('    // @mitigates  api.auth  against  SQL Injection  with  Input Validation'));
+      console.log(EX('    // @mitigates  db.users  against  Token Theft  : Rotation implemented in v2'));
+      console.log('');
+
+      console.log(`  ${V('@accepts')}  ${K('<threat>')}  ${D('on')}  ${K('<asset>')}  ${D('[: reason]')}`);
+      console.log(D('    Explicitly accept a risk. Removes it from open findings.'));
+      console.log(D('    Use when the risk is known and intentionally not mitigated.'));
+      console.log(EX('    // @accepts  Timing Attack  on  api.auth  : Acceptable for current threat model'));
+      console.log('');
+
+      console.log(`  ${V('@transfers')}  ${K('<threat>')}  ${D('from')}  ${K('<source>')}  ${D('to')}  ${K('<target>')}  ${D('[: description]')}`);
+      console.log(D('    Transfer responsibility for a threat to another asset/team.'));
+      console.log(EX('    // @transfers  DDoS  from  api.gateway  to  cdn.cloudflare  : Handled by CDN layer'));
+      console.log('');
+
+      // ── DATA FLOWS ──
+      console.log(H('  ── Data Flows & Boundaries ─────────────────────────────────'));
+      console.log('');
+
+      console.log(`  ${V('@flows')}  ${K('<source>')}  ${D('to')}  ${K('<target>')}  ${D('[via')}  ${K('<mechanism>')}${D(']  [: description]')}`);
+      console.log(D('    Document data movement between components.'));
+      console.log(D('    Appears in the Data Flow Diagram.'));
+      console.log(EX('    // @flows  api.auth  to  db.users  via  TLS 1.3'));
+      console.log(EX('    // @flows  mobile.app  to  api.gateway  via  HTTPS  : User credentials'));
+      console.log('');
+
+      console.log(`  ${V('@boundary')}  ${K('<asset_a>')}  ${D('and')}  ${K('<asset_b>')}  ${D('[: description]')}`);
+      console.log(D('    Declare a trust boundary between two assets.'));
+      console.log(D('    Groups assets in the Data Flow Diagram.'));
+      console.log(EX('    // @boundary  internet  and  api.gateway  : Public-facing edge'));
+      console.log(EX('    // @boundary  api.gateway  and  db.users  : Internal network boundary'));
+      console.log('');
+
+      // ── LIFECYCLE ──
+      console.log(H('  ── Lifecycle & Governance ──────────────────────────────────'));
+      console.log('');
+
+      console.log(`  ${V('@handles')}  ${K('<classification>')}  ${D('on')}  ${K('<asset>')}  ${D('[: description]')}`);
+      console.log(D('    Declare data classification handled by an asset.'));
+      console.log(D('    Classifications: pii  phi  financial  secrets  internal  public'));
+      console.log(EX('    // @handles  pii  on  db.users  : Stores name, email, phone'));
+      console.log(EX('    // @handles  secrets  on  api.auth.token_store'));
+      console.log('');
+
+      console.log(`  ${V('@owns')}  ${K('<owner>')}  ${K('<asset>')}  ${D('[: description]')}`);
+      console.log(D('    Assign ownership of an asset to a team or person.'));
+      console.log(EX('    // @owns  platform-team  api.auth'));
+      console.log('');
+
+      console.log(`  ${V('@validates')}  ${K('<control>')}  ${D('on')}  ${K('<asset>')}  ${D('[: description]')}`);
+      console.log(D('    Assert that a control has been validated/tested on an asset.'));
+      console.log(EX('    // @validates  Input Validation  on  api.auth  : Pen-tested 2024-Q3'));
+      console.log('');
+
+      console.log(`  ${V('@audit')}  ${K('<asset>')}  ${D('[: description]')}`);
+      console.log(D('    Mark that this code path is an audit trail point.'));
+      console.log(EX('    // @audit  db.users  : All writes logged to audit_log table'));
+      console.log('');
+
+      console.log(`  ${V('@assumes')}  ${K('<asset>')}  ${D('[: description]')}`);
+      console.log(D('    Document a security assumption about an asset.'));
+      console.log(EX('    // @assumes  api.gateway  : Upstream WAF filters malformed requests'));
+      console.log('');
+
+      console.log(`  ${V('@comment')}  ${D('[: description]')}`);
+      console.log(D('    Free-form developer security note (no structural effect).'));
+      console.log(EX('    // @comment  : TODO — add rate limiting before v2 launch'));
+      console.log('');
+
+      // ── SHIELD BLOCKS ──
+      console.log(H('  ── Shield Blocks ───────────────────────────────────────────'));
+      console.log('');
+      console.log(`  ${V('@shield:begin')}  ${D('/')}  ${V('@shield:end')}`);
+      console.log(D('    Wrap a code block to mark it as security-sensitive.'));
+      console.log(D('    GuardLink will flag unannotated symbols inside the block.'));
+      console.log(EX('    // @shield:begin'));
+      console.log(EX('    function verifyToken(token: string) { ... }'));
+      console.log(EX('    // @shield:end'));
+      console.log('');
+
+      // ── TIPS ──
+      console.log(H('  ── Tips ────────────────────────────────────────────────────'));
+      console.log('');
+      console.log(D('  • Annotations work in any comment style: // /* # -- <!-- -->'));
+      console.log(D('  • Place annotations on the line ABOVE the code they describe'));
+      console.log(D('  • Asset names are case-insensitive and normalized (spaces→underscores)'));
+      console.log(D('  • Threat/control names can reference IDs with #id syntax'));
+      console.log(D('  • Run guardlink parse after adding annotations to update the threat model'));
+      console.log(D('  • Run guardlink validate to check for syntax errors and dangling references'));
+      console.log(D('  • Run guardlink annotate to have an AI agent add annotations automatically'));
+      console.log('');
+      console.log(H('  ══════════════════════════════════════════════════════════'));
+      console.log('');
     });
   });
 

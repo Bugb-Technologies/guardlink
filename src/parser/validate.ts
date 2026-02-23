@@ -101,3 +101,53 @@ export function findUnmitigatedExposures(model: ThreatModel): ThreatModelExposur
     !covered.has(`${normalizeRef(e.asset)}::${normalizeRef(e.threat)}`)
   );
 }
+
+/**
+ * Find @accepts annotations where the accepted asset has no corresponding @audit.
+ * Risk acceptance without an audit trail is a governance concern — the acceptance
+ * may be rubber-stamped (e.g., by an AI agent) rather than a deliberate human decision.
+ */
+export function findAcceptedWithoutAudit(model: ThreatModel): ParseDiagnostic[] {
+  const diagnostics: ParseDiagnostic[] = [];
+
+  // Build set of audited assets (normalized)
+  const auditedAssets = new Set<string>();
+  for (const a of model.audits) {
+    auditedAssets.add(normalizeRef(a.asset));
+  }
+
+  for (const acc of model.acceptances) {
+    const assetNorm = normalizeRef(acc.asset);
+    if (!auditedAssets.has(assetNorm)) {
+      diagnostics.push({
+        level: 'warning',
+        message: `@accepts ${acc.threat} on ${acc.asset} without @audit — risk acceptance should be paired with @audit for traceability`,
+        file: acc.location.file,
+        line: acc.location.line,
+      });
+    }
+  }
+
+  return diagnostics;
+}
+
+/**
+ * Find exposures that are covered ONLY by @accepts (no real @mitigates).
+ * These are "accepted but unmitigated" — the risk exists and no control is in place.
+ * Useful for dashboards and reports to distinguish real mitigations from risk acceptance.
+ */
+export function findAcceptedExposures(model: ThreatModel): ThreatModelExposure[] {
+  const mitigated = new Set<string>();
+  for (const m of model.mitigations) {
+    mitigated.add(`${normalizeRef(m.asset)}::${normalizeRef(m.threat)}`);
+  }
+  const accepted = new Set<string>();
+  for (const a of model.acceptances) {
+    accepted.add(`${normalizeRef(a.asset)}::${normalizeRef(a.threat)}`);
+  }
+
+  return model.exposures.filter(e => {
+    const key = `${normalizeRef(e.asset)}::${normalizeRef(e.threat)}`;
+    return accepted.has(key) && !mitigated.has(key);
+  });
+}
