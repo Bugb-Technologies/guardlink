@@ -3,6 +3,7 @@
  */
 
 import type { ProjectInfo } from './detect.js';
+import type { ThreatModel } from '../types/index.js';
 
 // ─── Canonical reference document ────────────────────────────────────
 
@@ -141,6 +142,120 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 @comment -- "Rate limit: 100 req/15min via express-rate-limit"
 \`\`\`
 `.trimStart();
+}
+
+// ─── Model-aware instruction block (for sync) ──────────────────────
+
+/**
+ * Build a threat model context section that gets embedded into agent instructions.
+ * Contains real asset/threat/control IDs, open exposures, and existing flows
+ * so any coding agent knows the current security posture.
+ */
+export function buildModelContext(model: ThreatModel): string {
+  const sections: string[] = [];
+
+  // Existing defined IDs
+  const assetIds = model.assets.filter(a => a.id).map(a => `#${a.id} (${a.path})`);
+  const threatIds = model.threats.filter(t => t.id).map(t => `#${t.id} (${t.name})${t.severity ? ` [${t.severity}]` : ''}`);
+  const controlIds = model.controls.filter(c => c.id).map(c => `#${c.id} (${c.name})`);
+
+  if (assetIds.length + threatIds.length + controlIds.length > 0) {
+    sections.push('### Current Definitions (REUSE these IDs — do NOT redefine)\n');
+    if (assetIds.length) sections.push(`**Assets:** ${assetIds.join(', ')}`);
+    if (threatIds.length) sections.push(`**Threats:** ${threatIds.join(', ')}`);
+    if (controlIds.length) sections.push(`**Controls:** ${controlIds.join(', ')}`);
+  }
+
+  // Open exposures (unmitigated)
+  const unmitigated = model.exposures.filter(e =>
+    !model.mitigations.some(m => m.asset === e.asset && m.threat === e.threat)
+  );
+  if (unmitigated.length > 0) {
+    sections.push('\n### Open Exposures (need @mitigates or @audit)\n');
+    const lines = unmitigated.slice(0, 25).map(e =>
+      `- ${e.asset} exposed to ${e.threat}${e.severity ? ` [${e.severity}]` : ''} (${e.location.file}:${e.location.line})`
+    );
+    sections.push(lines.join('\n'));
+    if (unmitigated.length > 25) sections.push(`- ... and ${unmitigated.length - 25} more`);
+  }
+
+  // Existing flows (top 20)
+  if (model.flows.length > 0) {
+    sections.push('\n### Existing Data Flows (extend, don\'t duplicate)\n');
+    const flowLines = model.flows.slice(0, 20).map(f =>
+      `- ${f.source} -> ${f.target}${f.mechanism ? ` via ${f.mechanism}` : ''}`
+    );
+    sections.push(flowLines.join('\n'));
+    if (model.flows.length > 20) sections.push(`- ... and ${model.flows.length - 20} more`);
+  }
+
+  // Summary stats
+  const stats = [
+    `${model.annotations_parsed} annotations`,
+    `${model.assets.length} assets`,
+    `${model.threats.length} threats`,
+    `${model.controls.length} controls`,
+    `${model.exposures.length} exposures`,
+    `${model.mitigations.length} mitigations`,
+    `${model.flows.length} flows`,
+  ].join(', ');
+  sections.push(`\n### Model Stats\n\n${stats}`);
+
+  return sections.join('\n');
+}
+
+/**
+ * Enhanced agent instructions that include live threat model context.
+ * Used by `guardlink sync` to keep all agent instruction files up to date.
+ */
+export function agentInstructionsWithModel(project: ProjectInfo, model: ThreatModel | null): string {
+  const base = agentInstructions(project);
+
+  if (!model || model.annotations_parsed === 0) {
+    return base;
+  }
+
+  const modelCtx = buildModelContext(model);
+  return `${base}
+## Live Threat Model Context (auto-synced by \`guardlink sync\`)
+
+${modelCtx}
+
+> **Note:** This section is auto-generated. Run \`guardlink sync\` to update after code changes.
+> Any coding agent (Cursor, Claude, Copilot, Windsurf, etc.) should reference these IDs
+> and continue annotating new code using the same threat model vocabulary.
+`;
+}
+
+/**
+ * Enhanced cursor rules content with model context.
+ */
+export function cursorRulesContentWithModel(project: ProjectInfo, model: ThreatModel | null): string {
+  const base = cursorRulesContent(project);
+
+  if (!model || model.annotations_parsed === 0) {
+    return base;
+  }
+
+  const modelCtx = buildModelContext(model);
+  return `${base}
+## Live Threat Model Context (auto-synced by \`guardlink sync\`)
+
+${modelCtx}
+`;
+}
+
+/**
+ * Enhanced cursor .mdc content with model context.
+ */
+export function cursorMdcContentWithModel(project: ProjectInfo, model: ThreatModel | null): string {
+  return `---
+description: GuardLink security annotation rules
+globs:
+alwaysApply: true
+---
+
+${cursorRulesContentWithModel(project, model)}`;
 }
 
 // ─── Cursor-specific format ──────────────────────────────────────────

@@ -6,14 +6,6 @@
  * Claude Code-style inline REPL: stays in your terminal,
  * slash commands + freeform AI chat, Ctrl+C to exit.
  *
- * @exposes #tui to #path-traversal [high] cwe:CWE-22 -- "Accepts directory path as startup argument"
- * @exposes #tui to #prompt-injection [medium] cwe:CWE-77 -- "User input passed to AI chat mode"
- * @accepts #prompt-injection on #tui -- "Freeform AI chat is an intentional feature"
- * @mitigates #tui against #path-traversal using #path-validation -- "resolve() normalizes directory path"
- * @boundary between #tui and #llm-client (#tui-llm-boundary) -- "Freeform chat input crosses trust boundary to LLM"
- * @flows User -> #tui via readline -- "Interactive command input from terminal"
- * @flows #tui -> #parser via parseProject -- "Commands trigger parsing operations"
- * @flows #tui -> #llm-client via cmdChat -- "Freeform text dispatched to AI provider"
  */
 
 import { createInterface, type Interface } from 'node:readline';
@@ -30,9 +22,6 @@ import {
   refreshModel,
   cmdHelp,
   cmdStatus,
-  cmdExposures,
-  cmdShow,
-  cmdScan,
   cmdAssets,
   cmdFiles,
   cmdView,
@@ -46,6 +35,8 @@ import {
   cmdThreatReports,
   cmdAnnotate,
   cmdChat,
+  cmdClear,
+  cmdSync,
   cmdReport,
   cmdDashboard,
   cmdGal,
@@ -56,9 +47,9 @@ import {
 const COMMANDS = [
   '/help', '/gal', '/init', '/parse', '/run', '/status',
   '/validate', '/diff', '/sarif',
-  '/exposures', '/show', '/scan',
   '/assets', '/files', '/view',
   '/threat-report', '/threat-reports', '/annotate', '/model',
+  '/clear', '/sync',
   '/report', '/dashboard',
   '/quit',
 ];
@@ -89,6 +80,8 @@ const PALETTE_COMMANDS: CommandEntry[] = [
   { command: '/threat-reports', label: 'List saved threat reports' },
   { command: '/annotate',   label: 'Launch coding agent' },
   { command: '/model',      label: 'Set AI provider' },
+  { command: '/clear',      label: 'Remove all annotations from source files' },
+  { command: '/sync',       label: 'Sync agent instructions with current threat model' },
   { command: '/report',     label: 'Generate markdown report' },
   { command: '/dashboard',  label: 'HTML dashboard' },
   { command: '/diff',       label: 'Compare vs git ref' },
@@ -297,6 +290,8 @@ function printCommandList(): void {
     ['/threat-reports','List saved reports'],
     ['/annotate',   'Launch coding agent'],
     ['/model',      'Set AI provider'],
+    ['/clear',      'Clear all annotations'],
+    ['/sync',       'Sync agent instructions'],
     ['/report',     'Generate reports'],
     ['/dashboard',  'HTML dashboard'],
     ['/diff [ref]', 'Compare vs git ref'],
@@ -340,9 +335,6 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
         case '/help':     cmdHelp(); break;
         case '/gal':      cmdGal(); break;
         case '/status':   cmdStatus(ctx); break;
-        case '/exposures': cmdExposures(args, ctx); break;
-        case '/show':     cmdShow(args, ctx); break;
-        case '/scan':     cmdScan(ctx); break;
         case '/assets':   cmdAssets(ctx); break;
         case '/files':    cmdFiles(ctx); break;
         case '/view':     cmdView(args, ctx); break;
@@ -356,6 +348,8 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
         case '/threat-report':  await cmdThreatReport(args, ctx); break;
         case '/threat-reports': cmdThreatReports(ctx); break;
         case '/annotate': await cmdAnnotate(args, ctx); break;
+        case '/clear':    await cmdClear(args, ctx); break;
+        case '/sync':     await cmdSync(ctx); break;
         case '/report':   await cmdReport(ctx); break;
         case '/dashboard': await cmdDashboard(ctx); break;
         default:

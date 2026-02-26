@@ -14,28 +14,21 @@
  *   guardlink threat-report <prompt>  AI-powered threat analysis (STRIDE, DREAD, PASTA, etc.)
  *   guardlink threat-reports          List saved AI threat reports
  *   guardlink annotate <prompt>       Launch coding agent to add annotations
+ *   guardlink clear [dir]             Remove all GuardLink annotations from source files
+ *   guardlink sync [dir]              Sync agent instruction files with current threat model
  *   guardlink config <action>         Manage LLM provider configuration
  *   guardlink dashboard [dir]         Generate interactive HTML dashboard
  *   guardlink mcp                     Start MCP server (stdio) for Claude Code, Cursor, etc.
  *   guardlink tui [dir]               Interactive TUI with slash commands + AI chat
  *   guardlink gal                     Display GAL annotation language quick reference
  *
- * @exposes #cli to #path-traversal [high] cwe:CWE-22 -- "Accepts directory paths from command line arguments"
- * @exposes #cli to #arbitrary-write [high] cwe:CWE-73 -- "Writes reports and SARIF to user-specified output paths"
- * @accepts #arbitrary-write on #cli -- "Intentional feature: users specify output paths for reports"
- * @mitigates #cli against #path-traversal using #path-validation -- "resolve() normalizes paths before passing to submodules"
- * @boundary between #cli and #parser (#cli-parser-boundary) -- "CLI is the primary user input trust boundary"
- * @flows User -> #cli via argv -- "User provides directory paths and options via command line"
- * @flows #cli -> #parser via parseProject -- "CLI dispatches parsed commands to parser"
- * @flows #cli -> #report via generateReport -- "CLI writes report output"
- * @flows #cli -> #init via initProject -- "CLI initializes project structure"
  */
 
 import { Command } from 'commander';
 import { resolve, basename } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures } from '../parser/index.js';
-import { initProject, detectProject, promptAgentSelection } from '../init/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, clearAnnotations } from '../parser/index.js';
+import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getCurrentRef } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
@@ -192,6 +185,14 @@ program
       console.log(json);
     }
 
+    // Auto-sync agent instruction files with updated model
+    if (model.annotations_parsed > 0) {
+      const syncResult = syncAgentFiles({ root, model });
+      if (syncResult.updated.length > 0) {
+        console.error(`↻ Synced ${syncResult.updated.length} agent instruction file(s)`);
+      }
+    }
+
     process.exit(diagnostics.some(d => d.level === 'error') ? 1 : 0);
   });
 
@@ -261,6 +262,14 @@ program
       console.error(`\nValidation passed. ${acceptedOnly.length} exposure(s) accepted without mitigation — ensure these are intentional human decisions.`);
     } else if (errorCount === 0 && hasUnmitigated) {
       console.error(`\nValidation passed with ${unmitigated.length} unmitigated exposure(s).`);
+    }
+
+    // Auto-sync agent instruction files with updated model
+    if (model.annotations_parsed > 0) {
+      const syncResult = syncAgentFiles({ root, model });
+      if (syncResult.updated.length > 0) {
+        console.error(`↻ Synced ${syncResult.updated.length} agent instruction file(s)`);
+      }
     }
 
     // Exit 1 on errors always; also on unmitigated if --strict
@@ -700,6 +709,109 @@ program
     }
   });
 
+// ─── clear ───────────────────────────────────────────────────────────
+
+program
+  .command('clear')
+  .description('Remove all GuardLink annotations from source files — start fresh')
+  .argument('[dir]', 'Project directory', '.')
+  .option('--dry-run', 'Show what would be removed without modifying files')
+  .option('--include-definitions', 'Also clear .guardlink/definitions files')
+  .option('-y, --yes', 'Skip confirmation prompt')
+  .action(async (dir: string, opts: { dryRun?: boolean; includeDefinitions?: boolean; yes?: boolean }) => {
+    const root = resolve(dir);
+
+    // First, show what will be cleared
+    const preview = await clearAnnotations({
+      root,
+      dryRun: true,
+      includeDefinitions: opts.includeDefinitions,
+    });
+
+    if (preview.totalRemoved === 0) {
+      console.log('No GuardLink annotations found in source files.');
+      return;
+    }
+
+    console.log(`\nFound ${preview.totalRemoved} annotation line(s) across ${preview.modifiedFiles.length} file(s):\n`);
+    for (const [file, count] of preview.perFile) {
+      console.log(`  ${file}  (${count} line${count > 1 ? 's' : ''})`);
+    }
+    console.log('');
+
+    if (opts.dryRun) {
+      console.log('(dry run) No files were modified.');
+      return;
+    }
+
+    // Confirmation prompt
+    if (!opts.yes) {
+      if (!process.stdin.isTTY) {
+        console.error('Use --yes to confirm in non-interactive mode.');
+        process.exit(1);
+      }
+
+      const readline = await import('node:readline');
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const answer = await new Promise<string>(resolve => {
+        rl.question('⚠  This will remove all annotations from source files. Continue? (y/N): ', resolve);
+      });
+      rl.close();
+
+      if (answer.trim().toLowerCase() !== 'y') {
+        console.log('Cancelled.');
+        return;
+      }
+    }
+
+    // Actually clear
+    const result = await clearAnnotations({
+      root,
+      dryRun: false,
+      includeDefinitions: opts.includeDefinitions,
+    });
+
+    console.log(`\n✓ Removed ${result.totalRemoved} annotation line(s) from ${result.modifiedFiles.length} file(s).`);
+    console.log('  Run: guardlink annotate  to re-annotate from scratch.');
+  });
+
+// ─── sync ────────────────────────────────────────────────────────────
+
+program
+  .command('sync')
+  .description('Sync agent instruction files with current threat model — keeps ALL coding agents up to date')
+  .argument('[dir]', 'Project directory', '.')
+  .option('--dry-run', 'Show what would be updated without modifying files')
+  .action(async (dir: string, opts: { dryRun?: boolean }) => {
+    const root = resolve(dir);
+
+    // Parse the current model
+    const { model, diagnostics } = await parseProject({ root, project: basename(root) });
+
+    if (model.annotations_parsed === 0) {
+      console.log('No annotations found. Run: guardlink annotate  to add annotations first.');
+      console.log('Syncing agent files with base instructions (no model context)...\n');
+    }
+
+    const result = syncAgentFiles({ root, model, dryRun: opts.dryRun });
+
+    if (result.updated.length > 0) {
+      console.log(`${opts.dryRun ? '(dry run) Would update' : '✓ Updated'} ${result.updated.length} agent instruction file(s):\n`);
+      for (const f of result.updated) {
+        console.log(`  ${f}`);
+      }
+    }
+    if (result.skipped.length > 0) {
+      console.log(`\nSkipped: ${result.skipped.join(', ')}`);
+    }
+
+    if (!opts.dryRun && model.annotations_parsed > 0) {
+      console.log(`\n✓ All agent instruction files now include live threat model context.`);
+      console.log(`  ${model.assets.length} assets, ${model.threats.length} threats, ${model.controls.length} controls, ${model.exposures.length} exposures.`);
+      console.log('  Any coding agent (Cursor, Claude, Copilot, Windsurf, etc.) will see these IDs.');
+    }
+  });
+
 // ─── config ──────────────────────────────────────────────────────────
 
 program
@@ -1083,4 +1195,3 @@ function printStatus(model: ThreatModel) {
   console.log(`Comments:         ${model.comments.length}`);
   console.log(`Shields:          ${model.shields.length}`);
 }
-

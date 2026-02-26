@@ -136,27 +136,17 @@ NEVER write a single annotation in isolation. Every annotated location should te
 A file's doc-block should paint the full security picture of that module. Group annotations logically:
 
 \`\`\`
-// @shield:begin -- "Example annotation block for reference, excluded from parsing"
 //
 // GOOD — Complete story at a single code location:
-// @exposes #auth-api to #sqli [P1] cwe:CWE-89 -- "User-supplied email passed to findUser() query builder"
-// @mitigates #auth-api against #sqli using #input-validation -- "Zod schema validates email format before query"
-// @flows User_Input -> #auth-api via POST./login -- "Login form submits credentials"
-// @flows #auth-api -> #user-db via TypeORM.findOne -- "Authenticated user lookup"
-// @handles pii on #auth-api -- "Processes email, password, session tokens"
-// @comment -- "Password comparison uses bcrypt.compare with timing-safe equality"
 //
 // BAD — Isolated annotation with no context:
-// @exposes #auth-api to #sqli -- "SQL injection possible"
 //
-// @shield:end
 \`\`\`
 
 ### Description Style — Reference Actual Code
 Descriptions must reference the real code: function names, variable names, libraries, mechanisms.
 
 \`\`\`
-// @shield:begin -- "Description examples, excluded from parsing"
 //
 // GOOD: -- "req.body.token passed to jwt.verify() without audience check"
 // GOOD: -- "bcrypt rounds set to 12 via BCRYPT_COST env var"
@@ -166,43 +156,29 @@ Descriptions must reference the real code: function names, variable names, libra
 // BAD:  -- "Uses encryption"                 (WHAT encryption? On WHAT data?)
 // BAD:  -- "Security vulnerability exists"   (meaningless — be specific)
 //
-// @shield:end
 \`\`\`
 
 ### @flows — Stitch the Complete Data Path
 @flows is the backbone of the threat model. Trace data movement accurately:
 
 \`\`\`
-// @shield:begin -- "Flow examples, excluded from parsing"
 //
 // Trace a request through the full stack:
-// @flows User_Browser -> #api-gateway via HTTPS -- "Client sends auth request"
-// @flows #api-gateway -> #auth-service via internal.gRPC -- "Gateway forwards to auth microservice"
-// @flows #auth-service -> #user-db via pg.query -- "Looks up user record by email"
-// @flows #auth-service -> #session-store via redis.set -- "Stores session token with TTL"
-// @flows #auth-service -> User_Browser via Set-Cookie -- "Returns session cookie to client"
 //
-// @shield:end
 \`\`\`
 
 ### @boundary — Mark Every Trust Zone Crossing
 Place @boundary annotations where trust level changes between two components:
 
 \`\`\`
-// @shield:begin -- "Boundary examples, excluded from parsing"
 //
-// @boundary between #api-gateway and External_Internet (#public-boundary) -- "TLS termination, rate limiting at edge"
-// @boundary between #backend and #database (#data-boundary) -- "Application to persistence layer, connection pooling via pgBouncer"
-// @boundary between #app and #payment-provider (#vendor-boundary) -- "PCI-DSS scope boundary, tokenized card data only"
 //
-// @shield:end
 \`\`\`
 
 ### Where to Place Annotations
 Annotations go in the file's top doc-block comment OR directly above the security-relevant code:
 
 \`\`\`
-// @shield:begin -- "Placement examples, excluded from parsing"
 //
 // FILE-LEVEL (top doc-block) — for module-wide security properties:
 // Place @exposes, @mitigates, @flows, @handles, @boundary that describe the module as a whole
@@ -211,7 +187,6 @@ Annotations go in the file's top doc-block comment OR directly above the securit
 // Place @exposes, @mitigates above the exact function where the risk or control lives
 // Place @comment above tricky security-relevant code to explain intent
 //
-// @shield:end
 \`\`\`
 
 ### Severity — Be Honest, Not Alarmist
@@ -238,17 +213,11 @@ Instead, when you find an exposure with no mitigation in the code:
 
 Example — what to do when no mitigation exists:
 \`\`\`
-// @shield:begin -- "@accepts alternative examples, excluded from parsing"
 //
 // WRONG (AI rubber-stamping risk):
-// @accepts #prompt-injection on #ai-endpoint -- "Relying on model safety filters"
 //
 // RIGHT (flag for human review):
-// @exposes #ai-endpoint to #prompt-injection [P1] cwe:CWE-77 -- "User prompt passed directly to LLM API without sanitization"
-// @audit #ai-endpoint -- "No prompt sanitization — needs human review to decide: add input filter or accept risk"
-// @comment -- "Potential controls: #prompt-filter (input sanitization), #output-validator (response filtering)"
 //
-// @shield:end
 \`\`\`
 
 Leaving exposures unmitigated is HONEST. The dashboard and reports will surface them as open risks for humans to triage.
@@ -265,29 +234,10 @@ Definitions go in .guardlink/definitions.{ts,js,py,rs}. Source files use only re
 
 ### Definitions (in .guardlink/definitions file)
 \`\`\`
-// @shield:begin -- "Definition syntax examples, excluded from parsing"
-// @asset Server.Auth (#auth) -- "Authentication service handling login and session management"
-// @threat SQL_Injection (#sqli) [P0] cwe:CWE-89 -- "Unsanitized input reaches SQL query builder"
-// @control Prepared_Statements (#prepared-stmts) -- "Parameterized queries via ORM or driver placeholders"
-// @shield:end
 \`\`\`
 
 ### Relationships (in source files)
 \`\`\`
-// @shield:begin -- "Relationship syntax examples, excluded from parsing"
-// @exposes #auth to #sqli [P0] cwe:CWE-89 owasp:A03:2021 -- "User input concatenated into query"
-// @mitigates #auth against #sqli using #prepared-stmts -- "Uses parameterized queries via sqlx"
-// @audit #auth -- "Timing attack risk — needs human review to decide if bcrypt constant-time comparison is sufficient"
-// @transfers #ddos from #api to #cdn -- "Cloudflare handles L7 DDoS mitigation"
-// @flows req.body.username -> db.query via string-concat -- "User input flows to SQL"
-// @boundary between #frontend and #api (#web-boundary) -- "TLS-terminated public/private boundary"
-// @handles pii on #auth -- "Processes email, password, session tokens"
-// @validates #prepared-stmts for #auth -- "Integration test sqlInjectionTest.ts confirms parameterized queries block SQLi payloads"
-// @audit #auth -- "Session token rotation logic needs cryptographic review"
-// @assumes #auth -- "Upstream API gateway has already validated TLS and rate-limited requests"
-// @owns security-team for #auth -- "Security team reviews all auth PRs"
-// @comment -- "Password hashing uses bcrypt with cost factor 12, migration from SHA256 completed in v2.1"
-// @shield:end
 \`\`\`
 
 ## CRITICAL SYNTAX RULES (violations cause parse errors)

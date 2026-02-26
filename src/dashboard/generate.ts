@@ -5,11 +5,6 @@
  * 7 pages: Summary, AI Analysis, Threats, Diagrams, Code, Data, Assets.
  * Mermaid.js via CDN for diagrams. Zero build step.
  *
- * @exposes #dashboard to #xss [high] cwe:CWE-79 -- "Interpolates threat model data into HTML output"
- * @mitigates #dashboard against #xss using #output-encoding -- "esc() function HTML-encodes all dynamic content"
- * @flows #parser -> #dashboard via ThreatModel -- "Dashboard receives parsed threat model for visualization"
- * @flows #dashboard -> Filesystem via writeFile -- "Generated HTML written to disk"
- * @comment -- "esc() defined at line ~399 and ~1016 performs HTML entity encoding"
  */
 
 import type { ThreatModel } from '../types/index.js';

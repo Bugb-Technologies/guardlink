@@ -7,8 +7,8 @@
 
 import { resolve, basename, isAbsolute } from 'node:path';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures } from '../parser/index.js';
-import { initProject, detectProject, promptAgentSelection } from '../init/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, clearAnnotations } from '../parser/index.js';
+import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
 import { computeStats, computeSeverity, computeExposures } from '../dashboard/data.js';
@@ -96,6 +96,8 @@ export function cmdHelp(): void {
     ['/threat-reports',         'List saved AI threat reports'],
     ['/annotate <prompt>',      'Launch coding agent to annotate codebase'],
     ['/model',                  'Set AI provider (API or CLI agent: Claude Code, Codex, Gemini)'],
+    ['/clear',                  'Remove all annotations from source files (start fresh)'],
+    ['/sync',                   'Sync agent instruction files with current threat model'],
     ['(freeform text)',         'Chat about your threat model with AI'],
     ['', ''],
     ['/report',                 'Generate markdown + JSON report'],
@@ -778,6 +780,14 @@ export async function cmdParse(ctx: TuiContext): Promise<void> {
     console.log(`  ${C.success('✓')} Parsed ${C.bold(String(model.annotations_parsed))} annotations from ${model.source_files} files`);
     console.log(`    ${model.assets.length} assets · ${model.threats.length} threats · ${model.controls.length} controls`);
     console.log(`    ${model.exposures.length} exposures · ${model.mitigations.length} mitigations · Grade: ${gradeColored(grade)}`);
+
+    // Auto-sync agent instruction files with updated model
+    if (model.annotations_parsed > 0) {
+      const syncResult = syncAgentFiles({ root: ctx.root, model });
+      if (syncResult.updated.length > 0) {
+        console.log(C.dim(`    ↻ Synced ${syncResult.updated.length} agent instruction file(s)`));
+      }
+    }
     console.log('');
   } catch (err: any) {
     console.log(C.error(`  ✗ Parse failed: ${err.message}`));
@@ -1560,7 +1570,98 @@ Keep responses under 500 words unless the user asks for detail.`;
   }
 }
 
-// ─── /report ─────────────────────────────────────────────────────────
+// ─── /clear ──────────────────────────────────────────────────────
+
+export async function cmdClear(args: string, ctx: TuiContext): Promise<void> {
+  const includeDefinitions = args.includes('--include-definitions');
+  const isDryRun = args.includes('--dry-run');
+
+  // Preview what will be cleared
+  console.log(C.dim('  Scanning for annotations...'));
+  const preview = await clearAnnotations({
+    root: ctx.root,
+    dryRun: true,
+    includeDefinitions,
+  });
+
+  if (preview.totalRemoved === 0) {
+    console.log('');
+    console.log(C.dim('  No GuardLink annotations found in source files.'));
+    console.log('');
+    return;
+  }
+
+  console.log('');
+  console.log(`  Found ${C.bold(String(preview.totalRemoved))} annotation line(s) across ${C.bold(String(preview.modifiedFiles.length))} file(s):`);
+  console.log('');
+  for (const [file, count] of preview.perFile) {
+    console.log(`    ${fileLink(file, undefined, ctx.root)}  ${C.dim(`(${count} line${count > 1 ? 's' : ''})`)}`);
+  }
+  console.log('');
+
+  if (isDryRun) {
+    console.log(C.dim('  (dry run) No files were modified.'));
+    console.log('');
+    return;
+  }
+
+  // Confirmation
+  const answer = await ask(ctx, `  ${C.warn('⚠')}  Remove all annotations? This cannot be undone. (y/N): `);
+  if (answer.trim().toLowerCase() !== 'y') {
+    console.log(C.dim('  Cancelled.'));
+    console.log('');
+    return;
+  }
+
+  // Actually clear
+  const result = await clearAnnotations({
+    root: ctx.root,
+    dryRun: false,
+    includeDefinitions,
+  });
+
+  console.log('');
+  console.log(`  ${C.success('✓')} Removed ${C.bold(String(result.totalRemoved))} annotation line(s) from ${result.modifiedFiles.length} file(s).`);
+  console.log(C.dim('    Run /annotate to re-annotate from scratch, or /parse to update the model.'));
+
+  // Reset the model since annotations are gone
+  ctx.model = null;
+  ctx.lastExposures = [];
+  console.log('');
+}
+
+// ─── /sync ───────────────────────────────────────────────────────
+
+export async function cmdSync(ctx: TuiContext): Promise<void> {
+  if (!ctx.model) {
+    console.log(C.warn('  No threat model. Run /parse first.'));
+    return;
+  }
+
+  console.log(C.dim('  Syncing agent instruction files with current threat model...'));
+  console.log('');
+
+  const result = syncAgentFiles({ root: ctx.root, model: ctx.model });
+
+  if (result.updated.length > 0) {
+    console.log(`  ${C.success('✓')} Updated ${C.bold(String(result.updated.length))} agent instruction file(s):`);
+    console.log('');
+    for (const f of result.updated) {
+      console.log(`    ${fileLink(f, undefined, ctx.root)}`);
+    }
+  }
+  if (result.skipped.length > 0) {
+    console.log('');
+    console.log(C.dim(`  Skipped: ${result.skipped.join(', ')}`));
+  }
+
+  console.log('');
+  console.log(`  ${C.dim(`${ctx.model.assets.length} assets, ${ctx.model.threats.length} threats, ${ctx.model.controls.length} controls, ${ctx.model.exposures.length} exposures synced.`)}`);
+  console.log(C.dim('  Any coding agent (Cursor, Claude, Copilot, Windsurf, etc.) will see these IDs.'));
+  console.log('');
+}
+
+// ─── /report ─────────────────────────────────────────────────────
 
 export async function cmdReport(ctx: TuiContext): Promise<void> {
   if (!ctx.model) {

@@ -2,9 +2,6 @@
  * GuardLink — Line-level annotation parser.
  * Parses a single comment line into a typed Annotation.
  *
- * @exposes #parser to #redos [medium] cwe:CWE-1333 -- "Complex regex patterns run against untrusted annotation content"
- * @mitigates #parser against #redos using #regex-anchoring -- "All patterns use ^ anchor and defined character classes"
- * @comment -- "PATTERNS object contains all annotation regex; patterns are pre-compiled for performance"
  */
 
 import type {

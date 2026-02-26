@@ -5,12 +5,6 @@
  * directory with shared definitions, and injects GuardLink instructions
  * into agent instruction files (CLAUDE.md, .cursorrules, etc.).
  *
- * @exposes #init to #arbitrary-write [high] cwe:CWE-73 -- "Writes config files and agent instructions to user-specified root"
- * @exposes #init to #path-traversal [high] cwe:CWE-22 -- "Creates directories and files based on user-provided root path"
- * @mitigates #init against #arbitrary-write using #path-validation -- "Files written only to .guardlink/ subdirectory and known agent file locations"
- * @mitigates #init against #path-traversal using #path-validation -- "join() used with fixed relative paths within root"
- * @flows #cli -> #init via initProject -- "CLI passes user-specified root directory"
- * @flows #init -> Filesystem via writeFileSync -- "Creates config.json, definitions.ts, agent instruction files"
  */
 
 import { existsSync, readFileSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
@@ -18,14 +12,18 @@ import { join, dirname } from 'node:path';
 import { detectProject, type ProjectInfo, type AgentFile } from './detect.js';
 import {
   agentInstructions,
+  agentInstructionsWithModel,
   cursorRulesContent,
+  cursorRulesContentWithModel,
   cursorMdcContent,
+  cursorMdcContentWithModel,
   definitionsContent,
   configContent,
   mcpConfig,
   referenceDocContent,
   GITIGNORE_ENTRY,
 } from './templates.js';
+import type { ThreatModel } from '../types/index.js';
 import { AGENT_CHOICES } from './picker.js';
 
 export { detectProject, type ProjectInfo, type AgentFile } from './detect.js';
@@ -161,7 +159,8 @@ function updateAgentFiles(
   const updated: string[] = [];
   const skipped: string[] = [];
 
-  const ids = agentIds ?? ['claude'];
+  // Default: write ALL agent files so switching agents is seamless
+  const ids = agentIds ?? AGENT_CHOICES.map(c => c.id);
 
   for (const id of ids) {
     const choice = AGENT_CHOICES.find(c => c.id === id);
@@ -256,9 +255,7 @@ function injectIntoAgentFile(
 }
 
 function buildClaudeMdFromScratch(project: ProjectInfo): string {
-  return `# ${toPascalCase(project.name)} — Project Instructions
-
-${wrapMarkers(agentInstructions(project))}`;
+  return buildMdFromScratch(project, null);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -289,10 +286,98 @@ function ensureDir(dir: string): void {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 
+// ─── Sync: regenerate agent files with live threat model ─────────────
+
+export interface SyncOptions {
+  root: string;
+  model: ThreatModel | null;
+  dryRun?: boolean;
+}
+
+export interface SyncResult {
+  updated: string[];
+  skipped: string[];
+}
+
+/**
+ * Regenerate ALL agent instruction files with live threat model context.
+ * Called after parse/validate/annotate to keep instructions up to date.
+ * Uses marker-based replacement so user content outside markers is preserved.
+ */
+export function syncAgentFiles(options: SyncOptions): SyncResult {
+  const { root, model, dryRun = false } = options;
+  const project = detectProject(root);
+  const updated: string[] = [];
+  const skipped: string[] = [];
+
+  for (const choice of AGENT_CHOICES) {
+    const filePath = join(root, choice.file);
+    const exists = existsSync(filePath);
+
+    if (!exists) {
+      // Create fresh with model context
+      if (choice.file.endsWith('.mdc')) {
+        if (!dryRun) {
+          ensureDir(dirname(filePath));
+          writeFileSync(filePath, cursorMdcContentWithModel(project, model));
+        }
+        updated.push(choice.file);
+      } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
+        if (!dryRun) {
+          ensureDir(dirname(filePath));
+          writeFileSync(filePath, wrapMarkers(cursorRulesContentWithModel(project, model)));
+        }
+        updated.push(choice.file);
+      } else if (choice.file.endsWith('settings.json')) {
+        skipped.push(`${choice.file} (json format — not supported)`);
+      } else {
+        // Markdown-based: CLAUDE.md, AGENTS.md, copilot-instructions.md, etc.
+        if (!dryRun) {
+          ensureDir(dirname(filePath));
+          writeFileSync(filePath, buildMdFromScratch(project, model));
+        }
+        updated.push(choice.file);
+      }
+    } else {
+      // File exists — update the GuardLink block (marker-based replacement)
+      if (choice.file.endsWith('.mdc')) {
+        if (!dryRun) {
+          writeFileSync(filePath, cursorMdcContentWithModel(project, model));
+        }
+        updated.push(choice.file);
+      } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
+        const existing = readFileSync(filePath, 'utf-8');
+        if (!dryRun) {
+          const block = wrapMarkers(cursorRulesContentWithModel(project, model));
+          writeFileSync(filePath, replaceOrAppend(existing, block));
+        }
+        updated.push(choice.file);
+      } else if (choice.file.endsWith('settings.json')) {
+        skipped.push(`${choice.file} (json format — not supported)`);
+      } else {
+        const existing = readFileSync(filePath, 'utf-8');
+        if (!dryRun) {
+          const block = wrapMarkers(agentInstructionsWithModel(project, model));
+          writeFileSync(filePath, replaceOrAppend(existing, block));
+        }
+        updated.push(choice.file);
+      }
+    }
+  }
+
+  return { updated, skipped };
+}
+
 function toPascalCase(s: string): string {
   return s
     .replace(/[-_./]/g, ' ')
     .split(/\s+/)
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join('');
+}
+
+function buildMdFromScratch(project: ProjectInfo, model: ThreatModel | null): string {
+  return `# ${toPascalCase(project.name)} — Project Instructions
+
+${wrapMarkers(agentInstructionsWithModel(project, model))}`;
 }

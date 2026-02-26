@@ -12,12 +12,6 @@
  *   2. Parse errors (annotation syntax problems)
  *   3. Dangling references (broken #id refs)
  *
- * @exposes #sarif to #info-disclosure [low] cwe:CWE-200 -- "SARIF output contains detailed threat model findings"
- * @accepts #info-disclosure on #sarif -- "SARIF export for security tools is the intended feature"
- * @exposes #sarif to #arbitrary-write [high] cwe:CWE-73 -- "SARIF written to user-specified output path"
- * @mitigates #sarif against #arbitrary-write using #path-validation -- "CLI resolves output path before write"
- * @flows #parser -> #sarif via ThreatModel -- "SARIF generator receives parsed threat model"
- * @flows #sarif -> External_Security_Tools via SARIF_JSON -- "Output consumed by GitHub, VS Code, etc."
  */
 
 import type { ThreatModel, ThreatModelExposure, ParseDiagnostic, Severity } from '../types/index.js';

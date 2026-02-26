@@ -22,19 +22,6 @@
  *
  * Transport: stdio (for Claude Code .mcp.json, Cursor, etc.)
  *
- * @exposes #mcp to #path-traversal [high] cwe:CWE-22 -- "All tools accept root param from external AI agents"
- * @exposes #mcp to #prompt-injection [medium] cwe:CWE-77 -- "guardlink_suggest output fed back to calling LLM"
- * @exposes #mcp to #arbitrary-write [high] cwe:CWE-73 -- "guardlink_report and guardlink_dashboard write files"
- * @exposes #mcp to #data-exposure [medium] cwe:CWE-200 -- "Exposes threat model details to connected agents"
- * @accepts #path-traversal on #mcp -- "MCP clients (Claude Code, Cursor) are trusted local agents"
- * @accepts #arbitrary-write on #mcp -- "MCP clients are trusted local agents with filesystem access"
- * @accepts #prompt-injection on #mcp -- "Suggest output is intended for LLM consumption"
- * @accepts #data-exposure on #mcp -- "Exposing threat model to agents is the core MCP feature"
- * @boundary between #mcp and External_AI_Agents (#mcp-boundary) -- "Primary trust boundary: external AI agents invoke tools over stdio"
- * @flows External_AI_Agents -> #mcp via stdio -- "Tool calls received from AI agent over stdio transport"
- * @flows #mcp -> #parser via getModel -- "MCP tools invoke parser to build threat model"
- * @flows #mcp -> External_AI_Agents via response -- "Tool results returned to calling agent"
- * @handles internal on #mcp -- "Processes and exposes security-sensitive threat model data"
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
