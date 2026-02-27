@@ -1,6 +1,11 @@
 /**
  * GuardLink init — Project detection utilities.
  * Detects language, project name, and existing agent instruction files.
+ *
+ * @exposes #init to #path-traversal [low] cwe:CWE-22 -- "Reads package.json, pyproject.toml, etc. from root"
+ * @mitigates #init against #path-traversal using #path-validation -- "join() with root constrains; reads well-known files only"
+ * @flows ProjectRoot -> #init via detectProject -- "Project detection input"
+ * @comment -- "Detection is read-only; no file writes"
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';

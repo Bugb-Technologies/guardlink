@@ -3,12 +3,28 @@
  *
  * Each command function takes (args, ctx) and prints output directly.
  * Returns void. Throws on fatal errors.
+ *
+ * @exposes #tui to #path-traversal [high] cwe:CWE-22 -- "File paths from user args in /view, /sarif -o"
+ * @mitigates #tui against #path-traversal using #path-validation -- "resolve() with ctx.root constrains file access"
+ * @exposes #tui to #arbitrary-write [high] cwe:CWE-73 -- "/report, /sarif, /dashboard write files"
+ * @mitigates #tui against #arbitrary-write using #path-validation -- "Output paths resolved relative to project root"
+ * @exposes #tui to #cmd-injection [high] cwe:CWE-78 -- "/annotate and /threat-report spawn child processes"
+ * @audit #tui -- "Child process spawning delegated to agents/launcher.ts"
+ * @exposes #tui to #api-key-exposure [high] cwe:CWE-798 -- "/model handles API key input and storage"
+ * @mitigates #tui against #api-key-exposure using #key-redaction -- "API keys masked in /model show output"
+ * @exposes #tui to #prompt-injection [medium] cwe:CWE-77 -- "Freeform chat sends user text to LLM"
+ * @audit #tui -- "User freeform text passed to LLM via cmdChat; model context is read-only"
+ * @flows UserArgs -> #tui via args -- "Command argument input"
+ * @flows #tui -> FileSystem via writeFile -- "Report/config output"
+ * @flows #tui -> #agent-launcher via launchAgent -- "Agent spawn path"
+ * @flows #tui -> #llm-client via chatCompletion -- "LLM API call path"
+ * @handles secrets on #tui -- "Processes and stores API keys via /model"
  */
 
 import { resolve, basename, isAbsolute } from 'node:path';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures } from '../parser/index.js';
-import { initProject, detectProject, promptAgentSelection } from '../init/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, clearAnnotations } from '../parser/index.js';
+import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
 import { computeStats, computeSeverity, computeExposures } from '../dashboard/data.js';
@@ -20,6 +36,7 @@ import { C, severityBadge, severityText, severityTextPad, severityOrder, compute
 import { resolveLLMConfig, saveTuiConfig, loadTuiConfig } from './config.js';
 import { AGENTS, parseAgentFlag, launchAgent, launchAgentInline, copyToClipboard, buildAnnotatePrompt, type AgentEntry } from '../agents/index.js';
 import { describeConfigSource } from '../agents/config.js';
+import { getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview, type ReviewResult } from '../review/index.js';
 
 // ─── Shared context ──────────────────────────────────────────────────
 
@@ -96,6 +113,9 @@ export function cmdHelp(): void {
     ['/threat-reports',         'List saved AI threat reports'],
     ['/annotate <prompt>',      'Launch coding agent to annotate codebase'],
     ['/model',                  'Set AI provider (API or CLI agent: Claude Code, Codex, Gemini)'],
+    ['/clear',                  'Remove all annotations from source files (start fresh)'],
+    ['/sync',                   'Sync agent instruction files with current threat model'],
+    ['/review [severity]',      'Interactive governance review of unmitigated exposures'],
     ['(freeform text)',         'Chat about your threat model with AI'],
     ['', ''],
     ['/report',                 'Generate markdown + JSON report'],
@@ -303,7 +323,10 @@ export function cmdStatus(ctx: TuiContext): void {
   console.log(`  ${C.dim('Assets:')} ${stats.assets}  ${C.dim('Threats:')} ${stats.threats}  ${C.dim('Controls:')} ${stats.controls}`);
   console.log(`  ${C.dim('Flows:')} ${stats.flows}  ${C.dim('Boundaries:')} ${stats.boundaries}  ${C.dim('Annotations:')} ${stats.annotations}`);
   console.log(`  ${C.dim('Coverage:')} ${stats.coverageAnnotated}/${stats.coverageTotal} symbols (${stats.coveragePercent}%)`);
-
+  console.log(`  ${C.dim('Files:')} ${m.annotated_files.length} annotated, ${m.unannotated_files.length} not annotated of ${m.source_files} scanned`);
+  if (m.unannotated_files.length > 0) {
+    console.log(`  ${C.dim('Run')} /unannotated ${C.dim('to list files without annotations')}`);
+  }
   // Top threats
   if (m.exposures.length > 0) {
     const threatCounts = new Map<string, { count: number; maxSev: string }>();
@@ -778,6 +801,14 @@ export async function cmdParse(ctx: TuiContext): Promise<void> {
     console.log(`  ${C.success('✓')} Parsed ${C.bold(String(model.annotations_parsed))} annotations from ${model.source_files} files`);
     console.log(`    ${model.assets.length} assets · ${model.threats.length} threats · ${model.controls.length} controls`);
     console.log(`    ${model.exposures.length} exposures · ${model.mitigations.length} mitigations · Grade: ${gradeColored(grade)}`);
+
+    // Auto-sync agent instruction files with updated model
+    if (model.annotations_parsed > 0) {
+      const syncResult = syncAgentFiles({ root: ctx.root, model });
+      if (syncResult.updated.length > 0) {
+        console.log(C.dim(`    ↻ Synced ${syncResult.updated.length} agent instruction file(s)`));
+      }
+    }
     console.log('');
   } catch (err: any) {
     console.log(C.error(`  ✗ Parse failed: ${err.message}`));
@@ -1558,6 +1589,200 @@ Keep responses under 500 words unless the user asks for detail.`;
       console.log('');
     }
   }
+}
+
+// ─── /clear ──────────────────────────────────────────────────────
+
+export async function cmdClear(args: string, ctx: TuiContext): Promise<void> {
+  const includeDefinitions = args.includes('--include-definitions');
+  const isDryRun = args.includes('--dry-run');
+
+  console.log(C.dim('  Scanning for annotations...'));
+  const preview = await clearAnnotations({
+    root: ctx.root,
+    dryRun: true,
+    includeDefinitions,
+  });
+
+  if (preview.totalRemoved === 0) {
+    console.log('');
+    console.log(C.dim('  No GuardLink annotations found in source files.'));
+    console.log('');
+    return;
+  }
+
+  console.log('');
+  console.log(`  Found ${C.bold(String(preview.totalRemoved))} annotation line(s) across ${C.bold(String(preview.modifiedFiles.length))} file(s):`);
+  console.log('');
+  for (const [file, count] of preview.perFile) {
+    console.log(`    ${file}  ${C.dim(`(${count} line${count > 1 ? 's' : ''})`)}`);
+  }
+  console.log('');
+
+  if (isDryRun) {
+    console.log(C.dim('  (dry run) No files were modified.'));
+    console.log('');
+    return;
+  }
+
+  const answer = await ask(ctx, `  ${C.warn('⚠')}  Remove all annotations? This cannot be undone. (y/N): `);
+  if (answer.trim().toLowerCase() !== 'y') {
+    console.log(C.dim('  Cancelled.'));
+    console.log('');
+    return;
+  }
+
+  const result = await clearAnnotations({
+    root: ctx.root,
+    dryRun: false,
+    includeDefinitions,
+  });
+
+  console.log('');
+  console.log(`  ${C.success('✓')} Removed ${C.bold(String(result.totalRemoved))} annotation line(s) from ${result.modifiedFiles.length} file(s).`);
+  console.log(C.dim('    Run /annotate to re-annotate from scratch, or /parse to update the model.'));
+
+  ctx.model = null;
+  ctx.lastExposures = [];
+  console.log('');
+}
+
+// ─── /sync ───────────────────────────────────────────────────────
+
+export async function cmdSync(ctx: TuiContext): Promise<void> {
+  if (!ctx.model) {
+    console.log(C.warn('  No threat model. Run /parse first.'));
+    return;
+  }
+
+  console.log(C.dim('  Syncing agent instruction files with current threat model...'));
+  console.log('');
+
+  const result = syncAgentFiles({ root: ctx.root, model: ctx.model });
+
+  if (result.updated.length > 0) {
+    console.log(`  ${C.success('✓')} Updated ${C.bold(String(result.updated.length))} agent instruction file(s):`);
+    console.log('');
+    for (const f of result.updated) {
+      console.log(`    ${f}`);
+    }
+  }
+  if (result.skipped.length > 0) {
+    console.log('');
+    console.log(C.dim(`  Skipped: ${result.skipped.join(', ')}`));
+  }
+
+  console.log('');
+  console.log(`  ${C.dim(`${ctx.model.assets.length} assets, ${ctx.model.threats.length} threats, ${ctx.model.controls.length} controls, ${ctx.model.exposures.length} exposures synced.`)}`);
+  console.log(C.dim('  Any coding agent (Cursor, Claude, Copilot, Windsurf, etc.) will see these IDs.'));
+  console.log('');
+}
+
+// ─── /unannotated ────────────────────────────────────────────────────
+
+export function cmdUnannotated(ctx: TuiContext): void {
+  if (!ctx.model) {
+    console.log(C.warn('  No threat model. Run /parse first.'));
+    return;
+  }
+
+  const files = ctx.model.unannotated_files;
+  if (files.length === 0) {
+    console.log(`\n  ${C.success('✓')} All source files have GuardLink annotations.\n`);
+    return;
+  }
+
+  console.log(`\n  ${C.warn('⚠')} ${C.bold(String(files.length))} source file(s) with no annotations:\n`);
+  for (const f of files) {
+    console.log(`    ${f}`);
+  }
+  console.log(`\n  ${C.dim('Not all files need annotations — only those that touch security boundaries.')}`);
+  console.log('');
+}
+
+// ─── /review ─────────────────────────────────────────────────────────
+
+export async function cmdReview(args: string, ctx: TuiContext): Promise<void> {
+  if (!ctx.model) {
+    console.log(C.warn('  No threat model. Run /parse first.'));
+    return;
+  }
+
+  let exposures = getReviewableExposures(ctx.model);
+
+  // Parse severity filter from args (e.g., "/review critical,high")
+  if (args) {
+    const allowed = new Set(args.split(',').map(s => s.trim().toLowerCase()));
+    exposures = exposures.filter(e => allowed.has(e.exposure.severity || 'low'));
+    exposures = exposures.map((e, i) => ({ ...e, index: i + 1 }));
+  }
+
+  if (exposures.length === 0) {
+    console.log(`\n  ${C.success('✓')} No unmitigated exposures to review.\n`);
+    return;
+  }
+
+  console.log(`\n  ${C.bold('guardlink review')} — ${exposures.length} unmitigated exposure(s)\n`);
+
+  const results: ReviewResult[] = [];
+
+  for (const reviewable of exposures) {
+    const e = reviewable.exposure;
+    const sev = severityText(e.severity || 'low');
+    console.log(`  ${C.bold(`[${reviewable.index}/${exposures.length}]`)} ${e.asset} → ${e.threat} ${sev}`);
+    console.log(`    File: ${fileLink(e.location.file, e.location.line)}`);
+    console.log(`    Exposure: ${C.dim('"' + (e.description || 'no description') + '"')}`);
+    console.log('');
+    console.log(`    ${C.bold('a')} Accept    ${C.dim('— risk acknowledged and intentional')}`);
+    console.log(`    ${C.bold('r')} Remediate ${C.dim('— mark as planned fix')}`);
+    console.log(`    ${C.bold('s')} Skip      ${C.dim('— leave open for now')}`);
+    console.log(`    ${C.bold('q')} Quit`);
+    console.log('');
+
+    const choice = (await ask(ctx, '    Choice [a/r/s/q]: ')).toLowerCase();
+
+    if (choice === 'q') {
+      console.log(`\n  ${C.dim('Review ended.')}\n`);
+      break;
+    }
+
+    if (choice === 'a') {
+      let justification = '';
+      while (!justification) {
+        justification = await ask(ctx, '    Justification (required): ');
+        if (!justification) console.log(C.warn('    ⚠  Justification is mandatory for acceptance.'));
+      }
+      const result = await applyReviewAction(ctx.root, reviewable, { decision: 'accept', justification });
+      results.push(result);
+      console.log(`    ${C.success('✓')} Accepted — ${result.linesInserted} line(s) written\n`);
+    } else if (choice === 'r') {
+      let note = '';
+      while (!note) {
+        note = await ask(ctx, '    Remediation note (required): ');
+        if (!note) console.log(C.warn('    ⚠  Remediation note is mandatory.'));
+      }
+      const result = await applyReviewAction(ctx.root, reviewable, { decision: 'remediate', justification: note });
+      results.push(result);
+      console.log(`    ${C.success('✓')} Marked for remediation — ${result.linesInserted} line(s) written\n`);
+    } else {
+      results.push({ exposure: reviewable, action: { decision: 'skip', justification: '' }, linesInserted: 0 });
+      console.log(`    ${C.dim('— Skipped')}\n`);
+    }
+  }
+
+  if (results.length > 0) {
+    console.log(`\n  ${summarizeReview(results)}`);
+
+    // Re-parse and sync if annotations were written
+    if (results.some(r => r.linesInserted > 0)) {
+      await refreshModel(ctx);
+      try {
+        const syncResult = syncAgentFiles({ root: ctx.root, model: ctx.model });
+        if (syncResult.updated.length > 0) console.log(`  ${C.dim('↻ Synced')} ${syncResult.updated.length} agent instruction file(s)`);
+      } catch {}
+    }
+  }
+  console.log('');
 }
 
 // ─── /report ─────────────────────────────────────────────────────────

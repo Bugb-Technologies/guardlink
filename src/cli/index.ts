@@ -20,22 +20,25 @@
  *   guardlink tui [dir]               Interactive TUI with slash commands + AI chat
  *   guardlink gal                     Display GAL annotation language quick reference
  *
- * @exposes #cli to #path-traversal [high] cwe:CWE-22 -- "Accepts directory paths from command line arguments"
- * @exposes #cli to #arbitrary-write [high] cwe:CWE-73 -- "Writes reports and SARIF to user-specified output paths"
- * @accepts #arbitrary-write on #cli -- "Intentional feature: users specify output paths for reports"
- * @mitigates #cli against #path-traversal using #path-validation -- "resolve() normalizes paths before passing to submodules"
- * @boundary between #cli and #parser (#cli-parser-boundary) -- "CLI is the primary user input trust boundary"
- * @flows User -> #cli via argv -- "User provides directory paths and options via command line"
- * @flows #cli -> #parser via parseProject -- "CLI dispatches parsed commands to parser"
- * @flows #cli -> #report via generateReport -- "CLI writes report output"
- * @flows #cli -> #init via initProject -- "CLI initializes project structure"
+ * @exposes #cli to #path-traversal [high] cwe:CWE-22 -- "User-supplied dir argument resolved via path.resolve"
+ * @mitigates #cli against #path-traversal using #path-validation -- "resolve() canonicalizes paths; cwd-relative by design"
+ * @exposes #cli to #arbitrary-write [high] cwe:CWE-73 -- "init/report/sarif/dashboard write files to user-specified paths"
+ * @mitigates #cli against #arbitrary-write using #path-validation -- "Output paths resolved relative to project root"
+ * @exposes #cli to #api-key-exposure [high] cwe:CWE-798 -- "API keys handled in config set/show commands"
+ * @mitigates #cli against #api-key-exposure using #key-redaction -- "maskKey() redacts keys in show output"
+ * @exposes #cli to #cmd-injection [critical] cwe:CWE-78 -- "Agent launcher spawns child processes"
+ * @audit #cli -- "Child process spawning delegated to agents/launcher.ts with explicit args"
+ * @flows UserArgs -> #cli via process.argv -- "CLI argument input path"
+ * @flows #cli -> FileSystem via writeFile -- "Report/config output path"
+ * @boundary #cli and UserInput (#cli-input-boundary) -- "Trust boundary at CLI argument parsing"
+ * @handles secrets on #cli -- "Processes API keys via config commands"
  */
 
 import { Command } from 'commander';
 import { resolve, basename } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures } from '../parser/index.js';
-import { initProject, detectProject, promptAgentSelection } from '../init/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, clearAnnotations } from '../parser/index.js';
+import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getCurrentRef } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
@@ -44,6 +47,7 @@ import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard,
 import { generateDashboardHTML } from '../dashboard/index.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt } from '../agents/index.js';
 import { resolveConfig, saveProjectConfig, saveGlobalConfig, loadProjectConfig, loadGlobalConfig, maskKey, describeConfigSource } from '../agents/config.js';
+import { getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview, type ReviewResult } from '../review/index.js';
 import type { ThreatModel, ParseDiagnostic } from '../types/index.js';
 import gradient from 'gradient-string';
 
@@ -202,12 +206,25 @@ program
   .description('Show annotation coverage summary')
   .argument('[dir]', 'Project directory to scan', '.')
   .option('-p, --project <n>', 'Project name', 'unknown')
-  .action(async (dir: string, opts: { project: string }) => {
+  .option('--not-annotated', 'List source files with no GuardLink annotations')
+  .action(async (dir: string, opts: { project: string; notAnnotated?: boolean }) => {
     const root = resolve(dir);
     const { model, diagnostics } = await parseProject({ root, project: opts.project });
 
     printDiagnostics(diagnostics);
     printStatus(model);
+
+    if (opts.notAnnotated) {
+      printUnannotatedFiles(model);
+    }
+
+    // Auto-sync agent instruction files with updated model
+    if (model.annotations_parsed > 0) {
+      const syncResult = syncAgentFiles({ root, model });
+      if (syncResult.updated.length > 0) {
+        console.error(`↻ Synced ${syncResult.updated.length} agent instruction file(s)`);
+      }
+    }
   });
 
 // ─── validate ────────────────────────────────────────────────────────
@@ -261,6 +278,14 @@ program
       console.error(`\nValidation passed. ${acceptedOnly.length} exposure(s) accepted without mitigation — ensure these are intentional human decisions.`);
     } else if (errorCount === 0 && hasUnmitigated) {
       console.error(`\nValidation passed with ${unmitigated.length} unmitigated exposure(s).`);
+    }
+
+    // Auto-sync agent instruction files with updated model
+    if (model.annotations_parsed > 0) {
+      const syncResult = syncAgentFiles({ root, model });
+      if (syncResult.updated.length > 0) {
+        console.error(`↻ Synced ${syncResult.updated.length} agent instruction file(s)`);
+      }
     }
 
     // Exit 1 on errors always; also on unmitigated if --strict
@@ -700,6 +725,227 @@ program
     }
   });
 
+// ─── clear ───────────────────────────────────────────────────────────
+
+program
+  .command('clear')
+  .description('Remove all GuardLink annotations from source files — start fresh')
+  .argument('[dir]', 'Project directory', '.')
+  .option('--dry-run', 'Show what would be removed without modifying files')
+  .option('--include-definitions', 'Also clear .guardlink/definitions files')
+  .option('-y, --yes', 'Skip confirmation prompt')
+  .action(async (dir: string, opts: { dryRun?: boolean; includeDefinitions?: boolean; yes?: boolean }) => {
+    const root = resolve(dir);
+
+    // First, show what will be cleared
+    const preview = await clearAnnotations({
+      root,
+      dryRun: true,
+      includeDefinitions: opts.includeDefinitions,
+    });
+
+    if (preview.totalRemoved === 0) {
+      console.log('No GuardLink annotations found in source files.');
+      return;
+    }
+
+    console.log(`\nFound ${preview.totalRemoved} annotation line(s) across ${preview.modifiedFiles.length} file(s):\n`);
+    for (const [file, count] of preview.perFile) {
+      console.log(`  ${file}  (${count} line${count > 1 ? 's' : ''})`);
+    }
+    console.log('');
+
+    if (opts.dryRun) {
+      console.log('(dry run) No files were modified.');
+      return;
+    }
+
+    // Confirmation prompt
+    if (!opts.yes) {
+      if (!process.stdin.isTTY) {
+        console.error('Use --yes to confirm in non-interactive mode.');
+        process.exit(1);
+      }
+
+      const readline = await import('node:readline');
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const answer = await new Promise<string>(resolve => {
+        rl.question('⚠  This will remove all annotations from source files. Continue? (y/N): ', resolve);
+      });
+      rl.close();
+
+      if (answer.trim().toLowerCase() !== 'y') {
+        console.log('Cancelled.');
+        return;
+      }
+    }
+
+    // Actually clear
+    const result = await clearAnnotations({
+      root,
+      dryRun: false,
+      includeDefinitions: opts.includeDefinitions,
+    });
+
+    console.log(`\n✓ Removed ${result.totalRemoved} annotation line(s) from ${result.modifiedFiles.length} file(s).`);
+    console.log('  Run: guardlink annotate  to re-annotate from scratch.');
+  });
+
+// ─── sync ────────────────────────────────────────────────────────────
+
+program
+  .command('sync')
+  .description('Sync agent instruction files with current threat model — keeps ALL coding agents up to date')
+  .argument('[dir]', 'Project directory', '.')
+  .option('--dry-run', 'Show what would be updated without modifying files')
+  .action(async (dir: string, opts: { dryRun?: boolean }) => {
+    const root = resolve(dir);
+
+    // Parse the current model
+    const { model } = await parseProject({ root, project: basename(root) });
+
+    if (model.annotations_parsed === 0) {
+      console.log('No annotations found. Run: guardlink annotate  to add annotations first.');
+      console.log('Syncing agent files with base instructions (no model context)...\n');
+    }
+
+    const result = syncAgentFiles({ root, model, dryRun: opts.dryRun });
+
+    if (result.updated.length > 0) {
+      console.log(`${opts.dryRun ? '(dry run) Would update' : '✓ Updated'} ${result.updated.length} agent instruction file(s):\n`);
+      for (const f of result.updated) {
+        console.log(`  ${f}`);
+      }
+    }
+    if (result.skipped.length > 0) {
+      console.log(`\nSkipped: ${result.skipped.join(', ')}`);
+    }
+
+    if (!opts.dryRun && model.annotations_parsed > 0) {
+      console.log(`\n✓ All agent instruction files now include live threat model context.`);
+      console.log(`  ${model.assets.length} assets, ${model.threats.length} threats, ${model.controls.length} controls, ${model.exposures.length} exposures.`);
+      console.log('  Any coding agent (Cursor, Claude, Copilot, Windsurf, etc.) will see these IDs.');
+    }
+  });
+
+// ─── unannotated ─────────────────────────────────────────────────────
+
+program
+  .command('unannotated')
+  .description('List source files with no GuardLink annotations')
+  .argument('[dir]', 'Project directory to scan', '.')
+  .option('-p, --project <n>', 'Project name', 'unknown')
+  .action(async (dir: string, opts: { project: string }) => {
+    const root = resolve(dir);
+    const { model } = await parseProject({ root, project: opts.project });
+    printUnannotatedFiles(model);
+  });
+
+// ─── review ──────────────────────────────────────────────────────────
+
+program
+  .command('review')
+  .description('Interactive governance review of unmitigated exposures — accept, remediate, or skip')
+  .argument('[dir]', 'Project directory to scan', '.')
+  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('--severity <levels>', 'Filter by severity: critical,high,medium,low', undefined)
+  .option('--list', 'Just list reviewable exposures without prompting')
+  .action(async (dir: string, opts: { project: string; severity?: string; list?: boolean }) => {
+    const root = resolve(dir);
+    const { model } = await parseProject({ root, project: opts.project });
+    let exposures = getReviewableExposures(model);
+
+    // Filter by severity if requested
+    if (opts.severity) {
+      const allowed = new Set(opts.severity.split(',').map(s => s.trim().toLowerCase()));
+      exposures = exposures.filter(e => allowed.has(e.exposure.severity || 'low'));
+      // Re-index after filtering
+      exposures = exposures.map((e, i) => ({ ...e, index: i + 1 }));
+    }
+
+    if (exposures.length === 0) {
+      console.error('✓ No unmitigated exposures to review.');
+      return;
+    }
+
+    // List-only mode
+    if (opts.list) {
+      console.error(`\n${exposures.length} unmitigated exposure(s):\n`);
+      for (const r of exposures) {
+        const e = r.exposure;
+        console.error(`  ${r.index}. ${e.asset} → ${e.threat} [${e.severity || '?'}]  (${e.location.file}:${e.location.line})`);
+      }
+      console.error('');
+      return;
+    }
+
+    // Interactive review
+    const { createInterface } = await import('node:readline');
+    const rl = createInterface({ input: process.stdin, output: process.stderr });
+    const ask = (q: string): Promise<string> =>
+      new Promise(resolve => rl.question(q, resolve));
+
+    console.error(`\n  guardlink review — ${exposures.length} unmitigated exposure(s)\n`);
+
+    const results: ReviewResult[] = [];
+
+    for (const reviewable of exposures) {
+      console.error(formatExposureForReview(reviewable, exposures.length));
+      console.error('');
+      console.error('  (a) Accept — risk acknowledged and intentional');
+      console.error('  (r) Remediate — mark as planned fix');
+      console.error('  (s) Skip — leave open for now');
+      console.error('  (q) Quit review');
+      console.error('');
+
+      const choice = (await ask('  Choice [a/r/s/q]: ')).trim().toLowerCase();
+
+      if (choice === 'q') {
+        console.error('\n  Review ended.\n');
+        break;
+      }
+
+      if (choice === 'a') {
+        let justification = '';
+        while (!justification) {
+          justification = (await ask('  Justification (required): ')).trim();
+          if (!justification) console.error('  ⚠  Justification is mandatory for acceptance.');
+        }
+        const result = await applyReviewAction(root, reviewable, { decision: 'accept', justification });
+        results.push(result);
+        console.error(`  ✓ Accepted — ${result.linesInserted} line(s) written to ${reviewable.exposure.location.file}\n`);
+      } else if (choice === 'r') {
+        let note = '';
+        while (!note) {
+          note = (await ask('  Remediation note (required): ')).trim();
+          if (!note) console.error('  ⚠  Remediation note is mandatory.');
+        }
+        const result = await applyReviewAction(root, reviewable, { decision: 'remediate', justification: note });
+        results.push(result);
+        console.error(`  ✓ Marked for remediation — ${result.linesInserted} line(s) written to ${reviewable.exposure.location.file}\n`);
+      } else {
+        results.push({ exposure: reviewable, action: { decision: 'skip', justification: '' }, linesInserted: 0 });
+        console.error('  — Skipped\n');
+      }
+    }
+
+    rl.close();
+
+    if (results.length > 0) {
+      console.error(summarizeReview(results));
+
+      // Auto-sync agent files if any annotations were written
+      if (results.some(r => r.linesInserted > 0)) {
+        try {
+          // Re-parse to get updated model
+          const { model: newModel } = await parseProject({ root, project: opts.project });
+          const syncResult = syncAgentFiles({ root, model: newModel });
+          if (syncResult.updated.length > 0) console.error(`↻ Synced ${syncResult.updated.length} agent instruction file(s)`);
+        } catch {}
+      }
+    }
+  });
+
 // ─── config ──────────────────────────────────────────────────────────
 
 program
@@ -1064,6 +1310,8 @@ function printStatus(model: ThreatModel) {
   console.log(`GuardLink Status: ${model.project}`);
   console.log(`${'─'.repeat(40)}`);
   console.log(`Files scanned:    ${model.source_files}`);
+  console.log(`  Annotated:      ${model.annotated_files.length}`);
+  console.log(`  Not annotated:  ${model.unannotated_files.length}`);
   console.log(`Annotations:      ${model.annotations_parsed}`);
   console.log(`${'─'.repeat(40)}`);
   console.log(`Assets:           ${model.assets.length}`);
@@ -1084,3 +1332,13 @@ function printStatus(model: ThreatModel) {
   console.log(`Shields:          ${model.shields.length}`);
 }
 
+function printUnannotatedFiles(model: ThreatModel) {
+  if (model.unannotated_files.length === 0) {
+    console.log(`\n✓ All source files have GuardLink annotations.`);
+    return;
+  }
+  console.log(`\n⚠  ${model.unannotated_files.length} source file(s) with no annotations:`);
+  for (const f of model.unannotated_files) {
+    console.log(`   ${f}`);
+  }
+}

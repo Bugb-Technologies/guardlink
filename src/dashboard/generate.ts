@@ -5,11 +5,14 @@
  * 7 pages: Summary, AI Analysis, Threats, Diagrams, Code, Data, Assets.
  * Mermaid.js via CDN for diagrams. Zero build step.
  *
- * @exposes #dashboard to #xss [high] cwe:CWE-79 -- "Interpolates threat model data into HTML output"
- * @mitigates #dashboard against #xss using #output-encoding -- "esc() function HTML-encodes all dynamic content"
- * @flows #parser -> #dashboard via ThreatModel -- "Dashboard receives parsed threat model for visualization"
- * @flows #dashboard -> Filesystem via writeFile -- "Generated HTML written to disk"
- * @comment -- "esc() defined at line ~399 and ~1016 performs HTML entity encoding"
+ * @exposes #dashboard to #xss [high] cwe:CWE-79 -- "Generates HTML with user-controlled threat model data"
+ * @mitigates #dashboard against #xss using #output-encoding -- "esc() HTML-encodes all interpolated values"
+ * @exposes #dashboard to #path-traversal [medium] cwe:CWE-22 -- "readFileSync reads code files for annotation context"
+ * @mitigates #dashboard against #path-traversal using #path-validation -- "resolve() with root constrains file access"
+ * @flows ThreatModel -> #dashboard via computeStats -- "Model statistics input"
+ * @flows SourceFiles -> #dashboard via readFileSync -- "Code snippet reads"
+ * @flows #dashboard -> HTML via return -- "Generated HTML output"
+ * @handles internal on #dashboard -- "Processes and displays threat model data"
  */
 
 import type { ThreatModel } from '../types/index.js';
@@ -107,7 +110,7 @@ ${renderSummaryPage(stats, severity, riskScore, unmitigated, exposures, model, m
 ${renderAIAnalysisPage(analyses || [])}
 ${renderThreatsPage(exposures, model)}
 ${renderDiagramsPage(threatGraph, dataFlow, attackSurface)}
-${renderCodePage(fileAnnotations)}
+${renderCodePage(fileAnnotations, model)}
 ${renderDataPage(model)}
 ${renderAssetsPage(heatmap)}
 
@@ -863,7 +866,10 @@ function renderDiagramsPage(threatGraph: string, dataFlow: string, attackSurface
 </div>`;
 }
 
-function renderCodePage(fileAnnotations: FileAnnotationGroup[]): string {
+function renderCodePage(fileAnnotations: FileAnnotationGroup[], model: ThreatModel): string {
+  const unannotated = model.unannotated_files || [];
+  const annotatedCount = model.annotated_files?.length || fileAnnotations.length;
+  const totalFiles = annotatedCount + unannotated.length;
   return `
 <div id="sec-code" class="section-content">
   <div class="sec-h"><span class="sec-icon">&lt;/&gt;</span> Code &amp; Annotations</div>
@@ -894,6 +900,23 @@ function renderCodePage(fileAnnotations: FileAnnotationGroup[]): string {
       </div>`).join('')}
     </div>
   </div>`).join('') : '<p class="empty-state">No annotations found.</p>'}
+
+  <!-- File Coverage Summary -->
+  <div class="sub-h" style="margin-top:1.5rem">File Coverage</div>
+  <div style="display:flex;align-items:center;gap:.8rem;margin-bottom:.3rem">
+    <span style="font-size:.88rem;font-weight:600;color:${totalFiles > 0 && annotatedCount / totalFiles >= 0.7 ? 'var(--green)' : annotatedCount / totalFiles >= 0.4 ? 'var(--yellow)' : 'var(--red)'}">${annotatedCount} of ${totalFiles} files</span>
+    <span style="color:var(--muted);font-size:.82rem">have GuardLink annotations</span>
+  </div>
+  ${totalFiles > 0 ? `<div class="posture-bar"><div class="posture-fill ${annotatedCount / totalFiles >= 0.7 ? 'good' : annotatedCount / totalFiles >= 0.4 ? 'warn' : 'bad'}" style="width:${Math.round(annotatedCount / totalFiles * 100)}%"></div></div>` : ''}
+
+  ${unannotated.length > 0 ? `
+  <div class="sub-h" style="color:var(--yellow);margin-top:1rem">⚠ Unannotated Files (${unannotated.length})</div>
+  <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">
+    Source files with no GuardLink annotations. Not all files need annotations — only those touching security boundaries.
+  </p>
+  <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:1rem">
+    ${unannotated.map(f => `<div style="font-family:var(--font-mono);font-size:.78rem;padding:.3rem .6rem;background:var(--surface2);border-left:3px solid var(--yellow);border-radius:2px">${esc(f)}</div>`).join('')}
+  </div>` : `<p style="color:var(--green);font-size:.82rem;margin-top:.5rem">✓ All source files have annotations.</p>`}
 </div>`;
 }
 

@@ -3,6 +3,7 @@
  */
 
 import type { ProjectInfo } from './detect.js';
+import type { ThreatModel } from '../types/index.js';
 
 // ─── Canonical reference document ────────────────────────────────────
 
@@ -25,7 +26,7 @@ DEFINE   @asset <Component.Path> (#id) -- "description"
 
 RELATE   @mitigates <Asset> against <#threat> using <#control> -- "how"
          @exposes <Asset> to <#threat> [severity] cwe:CWE-NNN -- "what's wrong"
-         @accepts <#threat> on <Asset> -- "why acceptable"
+         @accepts <#threat> on <Asset> -- "HUMAN-ONLY — AI agents must use @audit instead"
          @transfers <#threat> from <Source> to <Target> -- "who handles it"
 
 FLOW     @flows <Source> -> <Target> via <mechanism> -- "details"
@@ -55,19 +56,20 @@ Append after severity: \`cwe:CWE-89\`, \`owasp:A03:2021\`, \`capec:CAPEC-66\`, \
 
 ## Rules
 
-1. **Define once, reference everywhere.** \`@asset\`, \`@threat\`, \`@control\` with \`(#id)\` go in \`.guardlink/definitions${project.definitionsExt}\`. Source files use relationship verbs only (\`@mitigates\`, \`@exposes\`, etc.).
-2. **Read definitions before adding.** Check for existing IDs first — avoid duplicates.
-3. **Every \`@exposes\` needs a response.** Match with \`@mitigates\` (fix exists), \`@audit\` (flag for review), or \`@accepts\` (human-only risk acceptance). AI agents must NEVER write \`@accepts\` — use \`@audit\` instead.
-4. **Always annotate security-relevant code.** At minimum, add \`@comment\` to document intent.
+1. **Annotate as you code.** When you write or modify security-relevant code (endpoints, auth, data access, validation, I/O, crypto, process spawning), add annotations in the same change. This is required, not optional.
+2. **Define once, reference everywhere.** \`@asset\`, \`@threat\`, \`@control\` with \`(#id)\` go in \`.guardlink/definitions${project.definitionsExt}\`. Source files use relationship verbs only (\`@mitigates\`, \`@exposes\`, etc.).
+3. **Read definitions before adding.** Check for existing IDs first — avoid duplicates.
+4. **Every \`@exposes\` needs a response.** Match with \`@mitigates\` (fix exists) or \`@audit\` (flag for human review). AI agents must NEVER write \`@accepts\` — that is a human-only governance decision. Use \`@audit\` instead.
 5. **Use the full verb set.** \`@flows\` for data movement, \`@handles\` for data classification, \`@boundary\` for trust boundaries.
 
 ## When Writing Code
 
 | Situation | Annotation |
 |-----------|------------|
+| Writing new endpoint/handler | \`@exposes\` + \`@mitigates\` (or \`@audit\`) + \`@flows\` + \`@comment\` — tell the complete story |
 | New service/component | \`@asset\` in definitions, then reference in source |
-| Security gap exists | \`@exposes Asset to #threat\` |
-| Risk with no fix yet | \`@audit Asset\` + \`@comment\` explaining potential controls |
+| Security gap exists | \`@exposes Asset to #threat\` + \`@audit Asset\` |
+| Risk with no fix yet | \`@audit Asset\` + \`@comment\` explaining potential controls. NEVER \`@accepts\`. |
 | Implementing a fix | \`@mitigates Asset against #threat using #control\` |
 | Processing sensitive data | \`@handles pii on Asset\` |
 | Proprietary algorithm | \`@shield:begin\` ... \`@shield:end\` |
@@ -106,20 +108,26 @@ export function agentInstructions(project: ProjectInfo): string {
 This project uses [GuardLink](https://guardlink.bugb.io) annotations in source code comments.
 **Full reference: \`docs/GUARDLINK_REFERENCE.md\`**
 
+### Core Requirement
+
+**Every time you write or modify code that touches security-relevant behavior, you MUST add GuardLink annotations in the same change.** This includes: new endpoints, authentication/authorization logic, data validation, database queries, file I/O, external API calls, crypto operations, process spawning, user input handling, and configuration parsing. Do NOT annotate pure business logic, formatting utilities, UI components, or helper functions that never touch security boundaries.
+
 ### Key Rules
 
-1. Do not delete or mangle existing GuardLink annotations. Treat them as part of the code. Edit only when intentionally changing the threat model.
-2. Definitions (\`@asset\`, \`@threat\`, \`@control\` with \`(#id)\`) live in \`.guardlink/definitions${project.definitionsExt}\`. Reuse existing \`#id\`s — never redefine.
-3. Source files use relationship verbs only: \`@mitigates\`, \`@exposes\`, \`@flows\`, \`@handles\`, \`@boundary\`, \`@comment\`, \`@validates\`, \`@audit\`, \`@owns\`, \`@assumes\`, \`@transfers\`.
-4. Every \`@exposes\` should be paired with \`@mitigates\` or \`@audit\` (for human review). NEVER write \`@accepts\` — that is a human-only governance decision.
-5. Prefer coupled blocks that tell a complete story near the code they describe (risk + control + flow + note).
-6. Avoid \`@shield\` unless a human explicitly asks to hide code from AI — it creates blind spots.
+1. **Annotate new code.** When you add a function, endpoint, or module that handles user input, accesses data, crosses a trust boundary, or could fail in a security-relevant way — add \`@exposes\`, \`@mitigates\`, \`@flows\`, \`@handles\`, or at minimum \`@comment\` annotations. This is not optional.
+2. **NEVER write \`@accepts\`.** That is a human-only governance decision. When you find a risk with no mitigation in code, write \`@exposes\` to document the risk + \`@audit\` to flag it for human review + \`@comment\` to suggest potential controls.
+3. Do not delete or mangle existing annotations. Treat them as part of the code. Edit only when intentionally changing the threat model.
+4. Definitions (\`@asset\`, \`@threat\`, \`@control\` with \`(#id)\`) live in \`.guardlink/definitions${project.definitionsExt}\`. Reuse existing \`#id\`s — never redefine. If you need a new asset or threat, add the definition there first, then reference it in source files.
+5. Source files use relationship verbs only: \`@mitigates\`, \`@exposes\`, \`@flows\`, \`@handles\`, \`@boundary\`, \`@comment\`, \`@validates\`, \`@audit\`, \`@owns\`, \`@assumes\`, \`@transfers\`.
+6. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note. Never write a lone \`@exposes\` without follow-up.
+7. Avoid \`@shield\` unless a human explicitly asks to hide code from AI — it creates blind spots.
 
 ### Workflow (while coding)
 
-- Before adding new annotations: skim \`.guardlink/definitions${project.definitionsExt}\` to reuse IDs.
-- After changes: run \`guardlink validate .\` to catch syntax/dangling refs; run \`guardlink status .\` to check coverage; commit updates with the code.
-- When adding features: add or update annotations in the same PR.
+- Before writing code: skim \`.guardlink/definitions${project.definitionsExt}\` to understand existing assets, threats, and controls.
+- While writing code: add annotations above or in the doc-block of security-relevant functions as you write them — not as a separate pass afterward.
+- After changes: run \`guardlink validate .\` to catch syntax/dangling refs; run \`guardlink status .\` to check coverage; commit annotation updates with the code.
+- After adding annotations: run \`guardlink sync\` to update all agent instruction files with the current threat model context. This ensures every agent sees the latest assets, threats, controls, and open exposures.
 
 ### Tools
 
@@ -143,6 +151,120 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 `.trimStart();
 }
 
+// ─── Model-aware instruction block (for sync) ──────────────────────
+
+/**
+ * Build a threat model context section that gets embedded into agent instructions.
+ * Contains real asset/threat/control IDs, open exposures, and existing flows
+ * so any coding agent knows the current security posture.
+ */
+export function buildModelContext(model: ThreatModel): string {
+  const sections: string[] = [];
+
+  // Existing defined IDs
+  const assetIds = model.assets.filter(a => a.id).map(a => `#${a.id} (${a.path})`);
+  const threatIds = model.threats.filter(t => t.id).map(t => `#${t.id} (${t.name})${t.severity ? ` [${t.severity}]` : ''}`);
+  const controlIds = model.controls.filter(c => c.id).map(c => `#${c.id} (${c.name})`);
+
+  if (assetIds.length + threatIds.length + controlIds.length > 0) {
+    sections.push('### Current Definitions (REUSE these IDs — do NOT redefine)\n');
+    if (assetIds.length) sections.push(`**Assets:** ${assetIds.join(', ')}`);
+    if (threatIds.length) sections.push(`**Threats:** ${threatIds.join(', ')}`);
+    if (controlIds.length) sections.push(`**Controls:** ${controlIds.join(', ')}`);
+  }
+
+  // Open exposures (unmitigated)
+  const unmitigated = model.exposures.filter(e =>
+    !model.mitigations.some(m => m.asset === e.asset && m.threat === e.threat)
+  );
+  if (unmitigated.length > 0) {
+    sections.push('\n### Open Exposures (need @mitigates or @audit)\n');
+    const lines = unmitigated.slice(0, 25).map(e =>
+      `- ${e.asset} exposed to ${e.threat}${e.severity ? ` [${e.severity}]` : ''} (${e.location.file}:${e.location.line})`
+    );
+    sections.push(lines.join('\n'));
+    if (unmitigated.length > 25) sections.push(`- ... and ${unmitigated.length - 25} more`);
+  }
+
+  // Existing flows (top 20)
+  if (model.flows.length > 0) {
+    sections.push('\n### Existing Data Flows (extend, don\'t duplicate)\n');
+    const flowLines = model.flows.slice(0, 20).map(f =>
+      `- ${f.source} -> ${f.target}${f.mechanism ? ` via ${f.mechanism}` : ''}`
+    );
+    sections.push(flowLines.join('\n'));
+    if (model.flows.length > 20) sections.push(`- ... and ${model.flows.length - 20} more`);
+  }
+
+  // Summary stats
+  const stats = [
+    `${model.annotations_parsed} annotations`,
+    `${model.assets.length} assets`,
+    `${model.threats.length} threats`,
+    `${model.controls.length} controls`,
+    `${model.exposures.length} exposures`,
+    `${model.mitigations.length} mitigations`,
+    `${model.flows.length} flows`,
+  ].join(', ');
+  sections.push(`\n### Model Stats\n\n${stats}`);
+
+  return sections.join('\n');
+}
+
+/**
+ * Enhanced agent instructions that include live threat model context.
+ * Used by `guardlink sync` to keep all agent instruction files up to date.
+ */
+export function agentInstructionsWithModel(project: ProjectInfo, model: ThreatModel | null): string {
+  const base = agentInstructions(project);
+
+  if (!model || model.annotations_parsed === 0) {
+    return base;
+  }
+
+  const modelCtx = buildModelContext(model);
+  return `${base}
+## Live Threat Model Context (auto-synced by \`guardlink sync\`)
+
+${modelCtx}
+
+> **Note:** This section is auto-generated. Run \`guardlink sync\` to update after code changes.
+> Any coding agent (Cursor, Claude, Copilot, Windsurf, etc.) should reference these IDs
+> and continue annotating new code using the same threat model vocabulary.
+`;
+}
+
+/**
+ * Enhanced cursor rules content with model context.
+ */
+export function cursorRulesContentWithModel(project: ProjectInfo, model: ThreatModel | null): string {
+  const base = cursorRulesContent(project);
+
+  if (!model || model.annotations_parsed === 0) {
+    return base;
+  }
+
+  const modelCtx = buildModelContext(model);
+  return `${base}
+## Live Threat Model Context (auto-synced by \`guardlink sync\`)
+
+${modelCtx}
+`;
+}
+
+/**
+ * Enhanced cursor .mdc content with model context.
+ */
+export function cursorMdcContentWithModel(project: ProjectInfo, model: ThreatModel | null): string {
+  return `---
+description: GuardLink security annotation rules
+globs:
+alwaysApply: true
+---
+
+${cursorRulesContentWithModel(project, model)}`;
+}
+
 // ─── Cursor-specific format ──────────────────────────────────────────
 
 export function cursorRulesContent(project: ProjectInfo): string {
@@ -152,17 +274,23 @@ export function cursorRulesContent(project: ProjectInfo): string {
 
 This project uses GuardLink annotations in source code comments.
 
+## Core Requirement
+Every time you write or modify code that touches security-relevant behavior, you MUST add GuardLink annotations in the same change. This includes: new endpoints, auth logic, data validation, database queries, file I/O, external API calls, crypto, process spawning, user input handling, config parsing. Do NOT annotate pure business logic, formatting utilities, UI components, or helpers that never touch security boundaries.
+
 ## Key Rules
-- Preserve existing annotations — do not delete or mangle them. Edit only when intentionally changing the model.
-- Definitions (@asset, @threat, @control with (#id)) live in .guardlink/definitions${project.definitionsExt}. Reuse IDs — never redefine.
+- ANNOTATE NEW CODE. When you add a function or endpoint that handles user input, accesses data, or crosses a trust boundary — add @exposes, @mitigates, @flows, @handles, or at minimum @comment. This is not optional.
+- NEVER write @accepts — that is a human-only governance decision. For risks with no mitigation: write @exposes + @audit + @comment suggesting potential controls.
+- Preserve existing annotations — do not delete or mangle them.
+- Definitions (@asset, @threat, @control with (#id)) live in .guardlink/definitions${project.definitionsExt}. Reuse IDs — never redefine. Add new definitions there first, then reference in source files.
 - Source files use relationship verbs: @mitigates, @exposes, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers.
-- Pair @exposes with @mitigates or @audit. NEVER write @accepts — that is a human-only governance decision.
-- When no mitigation exists, use @audit to flag for human review + @comment to suggest potential controls.
+- Write coupled annotation blocks: risk + control (or audit) + data flow + context note.
 - Avoid @shield unless a human explicitly asks to hide code from AI.
 
 ## Workflow
-- Before changes: skim .guardlink/definitions${project.definitionsExt}.
+- Before writing code: skim .guardlink/definitions${project.definitionsExt} to understand existing IDs.
+- While writing code: add annotations as you write, not as a separate pass afterward.
 - After changes: run \`guardlink validate .\` and \`guardlink status .\`.
+- After adding annotations: run \`guardlink sync\` to update all agent instruction files with current threat model context.
 
 ## Quick Syntax
 - @exposes App.API to #sqli [P0] cwe:CWE-89 -- "req.body.email concatenated into SQL"

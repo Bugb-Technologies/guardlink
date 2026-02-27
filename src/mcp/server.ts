@@ -22,25 +22,29 @@
  *
  * Transport: stdio (for Claude Code .mcp.json, Cursor, etc.)
  *
- * @exposes #mcp to #path-traversal [high] cwe:CWE-22 -- "All tools accept root param from external AI agents"
- * @exposes #mcp to #prompt-injection [medium] cwe:CWE-77 -- "guardlink_suggest output fed back to calling LLM"
- * @exposes #mcp to #arbitrary-write [high] cwe:CWE-73 -- "guardlink_report and guardlink_dashboard write files"
- * @exposes #mcp to #data-exposure [medium] cwe:CWE-200 -- "Exposes threat model details to connected agents"
- * @accepts #path-traversal on #mcp -- "MCP clients (Claude Code, Cursor) are trusted local agents"
- * @accepts #arbitrary-write on #mcp -- "MCP clients are trusted local agents with filesystem access"
- * @accepts #prompt-injection on #mcp -- "Suggest output is intended for LLM consumption"
- * @accepts #data-exposure on #mcp -- "Exposing threat model to agents is the core MCP feature"
- * @boundary between #mcp and External_AI_Agents (#mcp-boundary) -- "Primary trust boundary: external AI agents invoke tools over stdio"
- * @flows External_AI_Agents -> #mcp via stdio -- "Tool calls received from AI agent over stdio transport"
- * @flows #mcp -> #parser via getModel -- "MCP tools invoke parser to build threat model"
- * @flows #mcp -> External_AI_Agents via response -- "Tool results returned to calling agent"
- * @handles internal on #mcp -- "Processes and exposes security-sensitive threat model data"
+ * @exposes #mcp to #path-traversal [high] cwe:CWE-22 -- "Tool arguments include 'root' directory path from external client"
+ * @mitigates #mcp against #path-traversal using #path-validation -- "Zod schema validates root; resolve() canonicalizes"
+ * @exposes #mcp to #arbitrary-write [high] cwe:CWE-73 -- "report, dashboard, sarif tools write files"
+ * @mitigates #mcp against #arbitrary-write using #path-validation -- "Output paths resolved relative to validated root"
+ * @exposes #mcp to #prompt-injection [medium] cwe:CWE-77 -- "annotate and threat_report tools pass user prompts to LLM"
+ * @audit #mcp -- "User prompts passed to LLM; model context is read-only"
+ * @exposes #mcp to #api-key-exposure [medium] cwe:CWE-798 -- "threat_report tool uses API keys from environment"
+ * @mitigates #mcp against #api-key-exposure using #key-redaction -- "Keys from env only; never logged or returned"
+ * @exposes #mcp to #data-exposure [medium] cwe:CWE-200 -- "Resources expose full threat model to MCP clients"
+ * @audit #mcp -- "Threat model data intentionally exposed to connected agents"
+ * @flows MCPClient -> #mcp via tool_call -- "Tool invocation input"
+ * @flows #mcp -> FileSystem via writeFile -- "Report/dashboard output"
+ * @flows #mcp -> #llm-client via generateThreatReport -- "LLM API call path"
+ * @flows #mcp -> MCPClient via resource -- "Threat model data output"
+ * @boundary #mcp and MCPClient (#mcp-tool-boundary) -- "Trust boundary at tool argument parsing"
+ * @handles internal on #mcp -- "Processes project annotations and threat model data"
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, clearAnnotations } from '../parser/index.js';
+import { getReviewableExposures, applyReviewAction, type ReviewableExposure } from '../review/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { generateReport } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
@@ -49,6 +53,7 @@ import { lookup, type LookupQuery } from './lookup.js';
 import { suggestAnnotations } from './suggest.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModel, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
+import { syncAgentFiles } from '../init/index.js';
 import type { ThreatModel } from '../types/index.js';
 
 // ─── Cached model ────────────────────────────────────────────────────
@@ -78,7 +83,7 @@ function invalidateCache() {
 export function createServer(): McpServer {
   const server = new McpServer({
     name: 'guardlink',
-    version: '1.1.0',
+    version: '1.3.0',
   });
 
   // ── Tool: guardlink_parse ──
@@ -424,6 +429,164 @@ export function createServer(): McpServer {
       const reports = listThreatReports(root);
       return {
         content: [{ type: 'text', text: JSON.stringify(reports, null, 2) }],
+      };
+    },
+  );
+
+  // ── Tool: guardlink_sync ──
+  server.tool(
+    'guardlink_sync',
+    'Sync all agent instruction files (CLAUDE.md, .cursorrules, etc.) with the current threat model. Injects live asset/threat/control IDs, open exposures, and data flows so every coding agent knows the current security posture. Run after adding or changing annotations.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+    },
+    async ({ root }) => {
+      const { model } = await getModel(root);
+      const result = syncAgentFiles({ root, model });
+      const summary = [
+        `Synced ${result.updated.length} agent instruction file(s): ${result.updated.join(', ')}`,
+        result.skipped.length > 0 ? `Skipped: ${result.skipped.join(', ')}` : '',
+        `Model: ${model.assets.length} assets, ${model.threats.length} threats, ${model.controls.length} controls, ${model.exposures.length} exposures`,
+      ].filter(Boolean).join('\n');
+      return {
+        content: [{ type: 'text', text: summary }],
+      };
+    },
+  );
+
+  // ── Tool: guardlink_clear ──
+  server.tool(
+    'guardlink_clear',
+    'Remove all GuardLink annotations from source files. Use --dry-run to preview without modifying files. WARNING: destructive operation — requires explicit user confirmation before calling without dry-run.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      dry_run: z.boolean().describe('If true, only show what would be removed').default(true),
+      include_definitions: z.boolean().describe('Also clear .guardlink/definitions files').default(false),
+    },
+    async ({ root, dry_run, include_definitions }) => {
+      const result = await clearAnnotations({
+        root,
+        dryRun: dry_run,
+        includeDefinitions: include_definitions,
+      });
+
+      if (result.totalRemoved === 0) {
+        return { content: [{ type: 'text', text: 'No GuardLink annotations found in source files.' }] };
+      }
+
+      const fileList = Array.from(result.perFile.entries())
+        .map(([file, count]) => `  ${file} (${count} line${count > 1 ? 's' : ''})`)
+        .join('\n');
+
+      const mode = dry_run ? '(DRY RUN) Would remove' : 'Removed';
+      return {
+        content: [{ type: 'text', text: `${mode} ${result.totalRemoved} annotation line(s) from ${result.modifiedFiles.length} file(s):\n${fileList}` }],
+      };
+    },
+  );
+
+  // ── Tool: guardlink_unannotated ──
+  server.tool(
+    'guardlink_unannotated',
+    'List source files that have no GuardLink annotations. Useful for identifying coverage gaps. Not all files need annotations — only those touching security boundaries (endpoints, auth, data access, I/O, crypto).',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+    },
+    async ({ root }) => {
+      const { model } = await getModel(root);
+      const unannotated = model.unannotated_files || [];
+      const annotated = model.annotated_files || [];
+      const total = annotated.length + unannotated.length;
+
+      if (unannotated.length === 0) {
+        return { content: [{ type: 'text', text: `All ${total} source files have GuardLink annotations.` }] };
+      }
+
+      const fileList = unannotated.map(f => `  ${f}`).join('\n');
+      return {
+        content: [{ type: 'text', text: `${annotated.length} of ${total} files annotated. ${unannotated.length} file(s) with no annotations:\n${fileList}\n\nNot all files need annotations — only those touching security boundaries.` }],
+      };
+    },
+  );
+
+  // ── Tool: guardlink_review_list ──
+  server.tool(
+    'guardlink_review_list',
+    'List all unmitigated exposures eligible for governance review, sorted by severity. Returns exposure IDs, details, and severity. Use guardlink_review_accept to record decisions. IMPORTANT: Acceptance decisions require explicit human confirmation — do not accept exposures without asking the user first.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      severity: z.string().optional().describe('Filter by severity: "critical,high" etc.'),
+    },
+    async ({ root, severity }) => {
+      invalidateCache();
+      const { model } = await getModel(root);
+      let exposures = getReviewableExposures(model);
+
+      if (severity) {
+        const allowed = new Set(severity.split(',').map((s: string) => s.trim().toLowerCase()));
+        exposures = exposures.filter(e => allowed.has(e.exposure.severity || 'low'));
+        exposures = exposures.map((e, i) => ({ ...e, index: i + 1 }));
+      }
+
+      if (exposures.length === 0) {
+        return { content: [{ type: 'text', text: 'No unmitigated exposures to review.' }] };
+      }
+
+      const items = exposures.map(r => ({
+        id: r.id,
+        index: r.index,
+        asset: r.exposure.asset,
+        threat: r.exposure.threat,
+        severity: r.exposure.severity,
+        file: r.exposure.location.file,
+        line: r.exposure.location.line,
+        description: r.exposure.description,
+      }));
+
+      return { content: [{ type: 'text', text: JSON.stringify(items, null, 2) }] };
+    },
+  );
+
+  // ── Tool: guardlink_review_accept ──
+  server.tool(
+    'guardlink_review_accept',
+    'Record a governance decision for an unmitigated exposure. Writes @accepts + @audit (for accept) or @audit (for remediate) directly into the source file. IMPORTANT: This modifies source files. Only call after explicit human confirmation of the decision and justification.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      exposure_id: z.string().describe('Exposure ID from guardlink_review_list (format: "file:line")'),
+      decision: z.enum(['accept', 'remediate', 'skip']).describe('accept = risk acknowledged; remediate = planned fix; skip = no action'),
+      justification: z.string().describe('Required explanation for accept/remediate decisions'),
+    },
+    async ({ root, exposure_id, decision, justification }) => {
+      if (decision !== 'skip' && !justification.trim()) {
+        return { content: [{ type: 'text', text: 'Error: Justification is required for accept and remediate decisions.' }] };
+      }
+
+      invalidateCache();
+      const { model } = await getModel(root);
+      const exposures = getReviewableExposures(model);
+      const target = exposures.find(e => e.id === exposure_id);
+
+      if (!target) {
+        return { content: [{ type: 'text', text: `Error: Exposure "${exposure_id}" not found. Use guardlink_review_list to get valid IDs.` }] };
+      }
+
+      const result = await applyReviewAction(root, target, { decision, justification });
+      invalidateCache();
+
+      if (decision === 'skip') {
+        return { content: [{ type: 'text', text: `Skipped: ${target.exposure.asset} → ${target.exposure.threat}` }] };
+      }
+
+      // Sync agent files after modification
+      try {
+        const { model: newModel } = await getModel(root);
+        syncAgentFiles({ root, model: newModel });
+      } catch {}
+
+      const verb = decision === 'accept' ? 'Accepted' : 'Marked for remediation';
+      return {
+        content: [{ type: 'text', text: `${verb}: ${target.exposure.asset} → ${target.exposure.threat} [${target.exposure.severity}]\nJustification: ${justification}\n${result.linesInserted} annotation line(s) written to ${target.exposure.location.file}` }],
       };
     },
   );

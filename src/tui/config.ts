@@ -3,6 +3,12 @@
  *
  * Now delegates to the unified agents/config.ts resolution chain.
  * Keeps backward compatibility with tui-config.json (legacy).
+ *
+ * @exposes #tui to #api-key-exposure [high] cwe:CWE-798 -- "API keys loaded from and saved to config files"
+ * @mitigates #tui against #api-key-exposure using #key-redaction -- "Delegates to agents/config.ts with masking"
+ * @flows ConfigFile -> #tui via loadProjectConfig -- "Config load path"
+ * @flows #tui -> ConfigFile via saveProjectConfig -- "Config save path"
+ * @handles secrets on #tui -- "API keys stored in .guardlink/config.json"
  */
 
 import type { LLMConfig, LLMProvider } from '../analyze/llm.js';

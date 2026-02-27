@@ -12,7 +12,7 @@
 
 **Security annotations that live in your code. Your threat model updates when your code changes.**
 
-> **This repository is secured by GuardLink.** Run `guardlink status .` to see 152 annotations across 12 assets, 13 threats, and 10 controls — maintained by AI agents, validated in CI.
+> **This repository is secured by GuardLink.** Run `guardlink status .` to see 272 annotations across 12 assets, 13 threats, and 10 controls — maintained by AI agents, validated in CI.
 
 ```javascript
 // @asset PaymentService (#payments) -- "Handles card transactions"
@@ -174,6 +174,11 @@ GuardLink ships an MCP server and behavioral directives for AI coding agents. Af
 | `guardlink threat-report [fw]` | AI threat report (stride/dread/pasta/attacker/rapid/general) |
 | `guardlink threat-reports` | List saved AI threat reports |
 | `guardlink annotate [prompt]` | Launch a coding agent to add annotations |
+| `guardlink review [dir]` | Interactive governance review — accept, remediate, or skip unmitigated exposures |
+| `guardlink review --list` | List reviewable exposures without prompting |
+| `guardlink clear [dir]` | Remove all annotations from source files (with `--dry-run` preview) |
+| `guardlink sync [dir]` | Sync agent instruction files with current threat model |
+| `guardlink unannotated [dir]` | List source files with no annotations |
 | `guardlink config` | Set AI provider and API key |
 | `guardlink mcp` | Start MCP server for AI agent integration |
 

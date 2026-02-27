@@ -3,13 +3,10 @@
  * Produces a human-readable threat model report with
  * embedded Mermaid diagram, finding tables, and coverage stats.
  *
- * @exposes #report to #arbitrary-write [high] cwe:CWE-73 -- "Report written to user-specified output path"
- * @exposes #report to #info-disclosure [low] cwe:CWE-200 -- "Report contains detailed threat model information"
- * @accepts #info-disclosure on #report -- "Detailed threat model report is the intended output"
- * @mitigates #report against #arbitrary-write using #path-validation -- "CLI resolves output path before passing to report generator"
- * @flows #parser -> #report via ThreatModel -- "Report generator receives parsed threat model"
- * @flows #report -> Filesystem via writeFile -- "Generated markdown written to disk by CLI"
- * @handles internal on #report -- "Processes and formats security-sensitive threat model data"
+ * @comment -- "Pure function: transforms ThreatModel to markdown string"
+ * @comment -- "No file I/O; caller (CLI/MCP) handles write"
+ * @flows ThreatModel -> #report via generateReport -- "Model input"
+ * @flows #report -> Markdown via return -- "Report output"
  */
 
 import type { ThreatModel, ThreatModelExposure, Severity } from '../types/index.js';

@@ -165,6 +165,8 @@ export interface ThreatModel {
   generated_at: string;
   source_files: number;
   annotations_parsed: number;
+  annotated_files: string[];
+  unannotated_files: string[];
 
   assets: ThreatModelAsset[];
   threats: ThreatModelThreat[];

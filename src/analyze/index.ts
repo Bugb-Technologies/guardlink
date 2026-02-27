@@ -5,13 +5,16 @@
  * specific prompt, streams the response, and saves timestamped results
  * to .guardlink/threat-reports/.
  *
- * @exposes #llm-client to #arbitrary-write [high] cwe:CWE-73 -- "Writes threat reports to .guardlink/threat-reports/"
- * @exposes #llm-client to #prompt-injection [medium] cwe:CWE-77 -- "Serialized threat model embedded in LLM prompt"
- * @accepts #prompt-injection on #llm-client -- "Core feature: threat model serialized as LLM prompt for analysis"
- * @mitigates #llm-client against #arbitrary-write using #path-validation -- "Reports written to fixed .guardlink/threat-reports/ subdirectory"
- * @flows #parser -> #llm-client via ThreatModel -- "Parsed model data serialized for LLM analysis"
- * @flows #llm-client -> Filesystem via writeFileSync -- "Analysis results saved as markdown files"
- * @handles internal on #llm-client -- "Processes security-sensitive threat model for AI analysis"
+ * @exposes #llm-client to #path-traversal [medium] cwe:CWE-22 -- "buildProjectContext reads files from root-relative paths"
+ * @mitigates #llm-client against #path-traversal using #path-validation -- "join() with root constrains file access"
+ * @exposes #llm-client to #arbitrary-write [medium] cwe:CWE-73 -- "writeFileSync saves threat reports to .guardlink/"
+ * @mitigates #llm-client against #arbitrary-write using #path-validation -- "Output path is fixed to .guardlink/threat-reports/"
+ * @exposes #llm-client to #data-exposure [low] cwe:CWE-200 -- "Serializes full threat model and code snippets for LLM"
+ * @audit #llm-client -- "Threat model data intentionally sent to LLM for analysis"
+ * @flows ThreatModel -> #llm-client via serializeModel -- "Model serialization input"
+ * @flows ProjectFiles -> #llm-client via readFileSync -- "Project context read"
+ * @flows #llm-client -> ReportFile via writeFileSync -- "Report output"
+ * @handles internal on #llm-client -- "Processes project dependencies, env examples, code snippets"
  */
 
 import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from 'node:fs';

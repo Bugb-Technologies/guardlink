@@ -7,14 +7,17 @@
  *
  * Clipboard copy is always performed first regardless of agent type.
  *
- * @exposes #agent-launcher to #child-proc-injection [high] cwe:CWE-78 -- "Spawns child processes for AI coding agents"
- * @exposes #agent-launcher to #cmd-injection [critical] cwe:CWE-78 -- "Windows launch uses shell:true in spawnSync"
- * @mitigates #agent-launcher against #child-proc-injection using #process-sandbox -- "Agent commands are fixed binaries (claude, codex), not user-controlled"
- * @mitigates #agent-launcher against #cmd-injection using #param-commands -- "spawnSync with args array on macOS/Linux, only Windows uses shell"
- * @flows #cli -> #agent-launcher via launchAgent -- "CLI invokes agent with prompt and cwd"
- * @flows #agent-launcher -> External_Process via spawnSync -- "Spawns claude, codex, cursor, etc."
- * @boundary between #agent-launcher and External_AI_Agents (#agent-boundary) -- "Process spawn crosses trust boundary to external AI tools"
- * @comment -- "copyToClipboard uses platform-specific clipboard commands (pbcopy, xclip, clip)"
+ * @exposes #agent-launcher to #child-proc-injection [critical] cwe:CWE-78 -- "spawn/spawnSync execute external binaries"
+ * @mitigates #agent-launcher against #child-proc-injection using #param-commands -- "Binary names from hardcoded AGENTS registry; no shell interpolation"
+ * @mitigates #agent-launcher against #cmd-injection using #param-commands -- "Arguments passed as array, not shell string"
+ * @exposes #agent-launcher to #prompt-injection [medium] cwe:CWE-77 -- "User prompt passed to agent CLI as argument"
+ * @audit #agent-launcher -- "Prompt content is opaque to agent binary; injection risk depends on agent implementation"
+ * @exposes #agent-launcher to #dos [low] cwe:CWE-400 -- "No timeout on foreground spawn; agent controls duration"
+ * @comment -- "Timeout intentionally omitted for interactive sessions; inline mode has implicit control"
+ * @flows UserPrompt -> #agent-launcher via launchAgent -- "Prompt input path"
+ * @flows #agent-launcher -> AgentProcess via spawn -- "Process spawn path"
+ * @flows AgentProcess -> #agent-launcher via stdout -- "Agent output capture"
+ * @boundary #agent-launcher and AgentProcess (#agent-boundary) -- "Trust boundary at process spawn"
  */
 
 import { spawnSync, spawn } from 'node:child_process';

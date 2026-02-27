@@ -9,3 +9,5 @@ export { parseLine } from './parse-line.js';
 export { normalizeName, resolveSeverity, unescapeDescription } from './normalize.js';
 export { stripCommentPrefix, commentStyleForExt } from './comment-strip.js';
 export { findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures } from './validate.js';
+export { clearAnnotations } from './clear.js';
+export type { ClearAnnotationsOptions, ClearAnnotationsResult } from './clear.js';

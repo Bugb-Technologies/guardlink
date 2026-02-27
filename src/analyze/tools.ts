@@ -6,10 +6,16 @@
  *   - validate_finding: Cross-reference a finding against the parsed model
  *   - search_codebase: Search project files for patterns
  *
- * @flows External_LLM_APIs -> #llm-tools via tool_call -- "LLM requests tool execution"
- * @flows #llm-tools -> External_LLM_APIs via tool_result -- "Tool results returned to LLM"
- * @exposes #llm-tools to #ssrf [medium] cwe:CWE-918 -- "lookup_cve fetches external URLs"
- * @mitigates #llm-tools against #ssrf using #url-allowlist -- "Only fetches from known CVE databases"
+ * @exposes #llm-client to #ssrf [medium] cwe:CWE-918 -- "lookupCve fetches from NVD API with user-controlled CVE ID"
+ * @mitigates #llm-client against #ssrf using #input-sanitize -- "CVE ID validated with strict regex; URL hardcoded to NVD"
+ * @exposes #llm-client to #path-traversal [medium] cwe:CWE-22 -- "searchCodebase reads files from project root"
+ * @mitigates #llm-client against #path-traversal using #glob-filtering -- "skipDirs excludes sensitive directories; relative() bounds output"
+ * @exposes #llm-client to #dos [low] cwe:CWE-400 -- "searchCodebase reads many files; bounded by maxResults"
+ * @mitigates #llm-client against #dos using #resource-limits -- "maxResults caps output; stat.size < 500KB filter"
+ * @flows LLMToolCall -> #llm-client via createToolExecutor -- "Tool invocation input"
+ * @flows #llm-client -> NVD via fetch -- "CVE lookup API call"
+ * @flows ProjectFiles -> #llm-client via readFileSync -- "Codebase search reads"
+ * @boundary #llm-client and NVD (#nvd-api-boundary) -- "Trust boundary at external API"
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';

@@ -3,6 +3,9 @@
  *
  * Used by CLI, TUI, and MCP to identify and resolve coding agents
  * (Claude Code, Codex, Cursor, Windsurf, Gemini, clipboard).
+ *
+ * @comment -- "Agent binaries are hardcoded; no user-controlled binary names"
+ * @comment -- "parseAgentFlag extracts flags from args; no injection risk"
  */
 
 // ─── Agent registry ──────────────────────────────────────────────────

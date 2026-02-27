@@ -2,13 +2,13 @@
  * GuardLink — Project-level parser.
  * Walks a directory, parses all source files, and assembles a ThreatModel.
  *
- * @exposes #parser to #path-traversal [high] cwe:CWE-22 -- "Accepts user-provided root directory for file scanning"
- * @exposes #parser to #dos [medium] cwe:CWE-400 -- "Iterates all files in directory tree, may exhaust memory on large repos"
- * @mitigates #parser against #path-traversal using #glob-filtering -- "fast-glob with explicit exclude patterns prevents access outside project"
- * @mitigates #parser against #dos using #glob-filtering -- "Default excludes (node_modules, dist, .git) limit scope"
- * @flows #cli -> #parser via parseProject -- "CLI passes user-specified root directory to parser"
- * @flows #mcp -> #parser via parseProject -- "MCP server passes root param from AI agents"
- * @handles internal on #parser -- "Processes source files to extract security annotation metadata"
+ * @exposes #parser to #path-traversal [high] cwe:CWE-22 -- "Glob patterns could escape root directory"
+ * @mitigates #parser against #path-traversal using #glob-filtering -- "DEFAULT_EXCLUDE blocks node_modules, .git; fast-glob cwd constrains scan"
+ * @exposes #parser to #dos [medium] cwe:CWE-400 -- "Large projects with many files could exhaust memory"
+ * @mitigates #parser against #dos using #resource-limits -- "DEFAULT_EXCLUDE skips build artifacts, tests; limits effective file count"
+ * @flows ProjectRoot -> #parser via fast-glob -- "Directory traversal path"
+ * @flows #parser -> ThreatModel via assembleModel -- "Aggregated threat model output"
+ * @boundary #parser and FileSystem (#fs-boundary) -- "Trust boundary between parser and disk I/O"
  */
 
 import fg from 'fast-glob';
@@ -82,15 +82,20 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   // Parse all files
   const allAnnotations: Annotation[] = [];
   const allDiagnostics: ParseDiagnostic[] = [];
+  const filesWithAnnotations = new Set<string>();
 
   for (const file of files) {
     const result = await parseFile(file);
+    const relPath = relative(root, file);
     // Normalize file paths to relative
     for (const ann of result.annotations) {
-      ann.location.file = relative(root, ann.location.file);
+      ann.location.file = relPath;
     }
     for (const diag of result.diagnostics) {
-      diag.file = relative(root, diag.file);
+      diag.file = relPath;
+    }
+    if (result.annotations.length > 0) {
+      filesWithAnnotations.add(relPath);
     }
     allAnnotations.push(...result.annotations);
     allDiagnostics.push(...result.diagnostics);
@@ -115,8 +120,15 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     }
   }
 
+  // Compute annotated vs unannotated files (exclude .guardlink/ definitions from unannotated)
+  const allRelPaths = files.map(f => relative(root, f));
+  const annotatedFiles = [...filesWithAnnotations].sort();
+  const unannotatedFiles = allRelPaths
+    .filter(f => !filesWithAnnotations.has(f) && !f.startsWith('.guardlink/') && !f.startsWith('.guardlink\\'))
+    .sort();
+
   // Assemble ThreatModel
-  const model = assembleModel(allAnnotations, files.length, project);
+  const model = assembleModel(allAnnotations, files.length, project, annotatedFiles, unannotatedFiles);
 
   return { model, diagnostics: allDiagnostics };
 }
@@ -126,13 +138,15 @@ function getAnnotationId(ann: Annotation): string | undefined {
   return undefined;
 }
 
-function assembleModel(annotations: Annotation[], fileCount: number, project: string): ThreatModel {
+function assembleModel(annotations: Annotation[], fileCount: number, project: string, annotatedFiles: string[], unannotatedFiles: string[]): ThreatModel {
   const model: ThreatModel = {
     version: '1.1.0',
     project,
     generated_at: new Date().toISOString(),
     source_files: fileCount,
     annotations_parsed: annotations.length,
+    annotated_files: annotatedFiles,
+    unannotated_files: unannotatedFiles,
     assets: [],
     threats: [],
     controls: [],
