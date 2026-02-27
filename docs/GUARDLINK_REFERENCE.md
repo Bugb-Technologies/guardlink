@@ -82,6 +82,13 @@ guardlink threat-reports                # List saved threat reports
 guardlink annotate <prompt>             # Launch coding agent to add annotations
 guardlink config <show|set|clear>       # Manage LLM provider / CLI agent configuration
 
+# Governance & Maintenance
+guardlink review [dir]                  # Interactive review of unmitigated exposures (accept/remediate/skip)
+guardlink review --list [--severity X]  # List reviewable exposures without prompting
+guardlink clear [dir] [--dry-run]       # Remove all annotations from source files
+guardlink sync [dir]                    # Sync agent instruction files with current threat model
+guardlink unannotated [dir]             # List source files with no annotations
+
 # Interactive
 guardlink tui [dir]                     # Interactive TUI: slash commands + AI chat
 guardlink mcp                           # Start MCP server (stdio) for Claude Code, Cursor, etc.

@@ -57,12 +57,12 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 
 ### Open Exposures (need @mitigates or @audit)
 
-- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:15)
 - #agent-launcher exposed to #prompt-injection [medium] (src/agents/launcher.ts:13)
 - #agent-launcher exposed to #dos [low] (src/agents/launcher.ts:15)
 - #agent-launcher exposed to #prompt-injection [high] (src/agents/prompts.ts:6)
 - #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
 - #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
+- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:15)
 - #cli exposed to #cmd-injection [critical] (src/cli/index.ts:29)
 - #init exposed to #data-exposure [low] (src/init/index.ts:12)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
@@ -75,8 +75,6 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 
 ### Existing Data Flows (extend, don't duplicate)
 
-- ThreatModel -> #sarif via generateSarif
-- #sarif -> SarifLog via return
 - EnvVars -> #agent-launcher via process.env
 - ConfigFile -> #agent-launcher via readFileSync
 - #agent-launcher -> ConfigFile via writeFileSync
@@ -95,6 +93,8 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 - LLMToolCall -> #llm-client via createToolExecutor
 - #llm-client -> NVD via fetch
 - ProjectFiles -> #llm-client via readFileSync
+- ThreatModel -> #sarif via generateSarif
+- #sarif -> SarifLog via return
 - ... and 42 more
 
 ### Model Stats
@@ -106,6 +106,8 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 > and continue annotating new code using the same threat model vocabulary.
 
 <!-- guardlink:end -->
+
+
 
 
 
