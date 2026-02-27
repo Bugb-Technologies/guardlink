@@ -1,6 +1,6 @@
 {
   "name": "guardlink",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "GuardLink — Security annotations for code. Threat modeling that lives in your codebase.",
   "type": "module",
   "bin": {
