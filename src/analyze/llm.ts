@@ -10,6 +10,17 @@
  *
  * Zero dependencies — uses Node 20+ built-in fetch.
  *
+ * @exposes #llm-client to #ssrf [medium] cwe:CWE-918 -- "fetch() calls external LLM API endpoints"
+ * @mitigates #llm-client against #ssrf using #config-validation -- "BASE_URLS are hardcoded; baseUrl override is optional config"
+ * @exposes #llm-client to #api-key-exposure [high] cwe:CWE-798 -- "API keys passed in Authorization headers"
+ * @mitigates #llm-client against #api-key-exposure using #key-redaction -- "Keys never logged; passed directly to API"
+ * @exposes #llm-client to #prompt-injection [medium] cwe:CWE-77 -- "User prompts sent to LLM API"
+ * @audit #llm-client -- "Prompt injection mitigated by LLM provider safety; local code is read-only"
+ * @flows LLMConfig -> #llm-client via chatCompletion -- "Config and prompt input"
+ * @flows #llm-client -> LLMProvider via fetch -- "API request output"
+ * @flows LLMProvider -> #llm-client via response -- "API response input"
+ * @boundary #llm-client and LLMProvider (#llm-api-boundary) -- "Trust boundary at external API call"
+ * @handles secrets on #llm-client -- "Processes API keys for authentication"
  */
 
 export type LLMProvider = 'anthropic' | 'openai' | 'google' | 'openrouter' | 'deepseek' | 'ollama';

@@ -3,6 +3,22 @@
  *
  * Each command function takes (args, ctx) and prints output directly.
  * Returns void. Throws on fatal errors.
+ *
+ * @exposes #tui to #path-traversal [high] cwe:CWE-22 -- "File paths from user args in /view, /sarif -o"
+ * @mitigates #tui against #path-traversal using #path-validation -- "resolve() with ctx.root constrains file access"
+ * @exposes #tui to #arbitrary-write [high] cwe:CWE-73 -- "/report, /sarif, /dashboard write files"
+ * @mitigates #tui against #arbitrary-write using #path-validation -- "Output paths resolved relative to project root"
+ * @exposes #tui to #cmd-injection [high] cwe:CWE-78 -- "/annotate and /threat-report spawn child processes"
+ * @audit #tui -- "Child process spawning delegated to agents/launcher.ts"
+ * @exposes #tui to #api-key-exposure [high] cwe:CWE-798 -- "/model handles API key input and storage"
+ * @mitigates #tui against #api-key-exposure using #key-redaction -- "API keys masked in /model show output"
+ * @exposes #tui to #prompt-injection [medium] cwe:CWE-77 -- "Freeform chat sends user text to LLM"
+ * @audit #tui -- "User freeform text passed to LLM via cmdChat; model context is read-only"
+ * @flows UserArgs -> #tui via args -- "Command argument input"
+ * @flows #tui -> FileSystem via writeFile -- "Report/config output"
+ * @flows #tui -> #agent-launcher via launchAgent -- "Agent spawn path"
+ * @flows #tui -> #llm-client via chatCompletion -- "LLM API call path"
+ * @handles secrets on #tui -- "Processes and stores API keys via /model"
  */
 
 import { resolve, basename, isAbsolute } from 'node:path';

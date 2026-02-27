@@ -6,6 +6,14 @@
  * Claude Code-style inline REPL: stays in your terminal,
  * slash commands + freeform AI chat, Ctrl+C to exit.
  *
+ * @exposes #tui to #path-traversal [high] cwe:CWE-22 -- "User-supplied dir argument resolved via path.resolve"
+ * @mitigates #tui against #path-traversal using #path-validation -- "resolve() canonicalizes paths; starts from cwd"
+ * @exposes #tui to #api-key-exposure [medium] cwe:CWE-798 -- "API keys displayed in banner via resolveLLMConfig"
+ * @audit #tui -- "API keys masked via maskKey() in banner display"
+ * @flows UserInput -> #tui via readline -- "Interactive command input"
+ * @flows #tui -> Commands via dispatch -- "Command routing"
+ * @boundary #tui and UserInput (#tui-input-boundary) -- "Trust boundary at interactive input"
+ * @handles secrets on #tui -- "Displays LLM config including masked API keys"
  */
 
 import { createInterface, type Interface } from 'node:readline';

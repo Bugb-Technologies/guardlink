@@ -3,6 +3,16 @@
  * Resolves git refs to threat models by checking out files at a given commit
  * and parsing them in a temp directory.
  *
+ * @exposes #diff to #cmd-injection [high] cwe:CWE-78 -- "execSync runs git commands with ref argument"
+ * @mitigates #diff against #cmd-injection using #input-sanitize -- "rev-parse validates ref exists before use in other commands"
+ * @exposes #diff to #arbitrary-write [medium] cwe:CWE-73 -- "writeFileSync creates files in temp directory"
+ * @mitigates #diff against #arbitrary-write using #path-validation -- "mkdtempSync creates isolated temp dir; rmSync cleans up"
+ * @exposes #diff to #path-traversal [medium] cwe:CWE-22 -- "git show extracts files based on ls-tree output"
+ * @mitigates #diff against #path-traversal using #glob-filtering -- "Files constrained to relevantFiles from git ls-tree"
+ * @flows GitRef -> #diff via execSync -- "Git command execution"
+ * @flows #diff -> TempDir via writeFileSync -- "Extracted file writes"
+ * @flows #diff -> ThreatModel via parseProject -- "Parsed model output"
+ * @boundary #diff and GitRepo (#git-boundary) -- "Trust boundary at git command execution"
  */
 
 import { execSync } from 'node:child_process';

@@ -22,6 +22,22 @@
  *
  * Transport: stdio (for Claude Code .mcp.json, Cursor, etc.)
  *
+ * @exposes #mcp to #path-traversal [high] cwe:CWE-22 -- "Tool arguments include 'root' directory path from external client"
+ * @mitigates #mcp against #path-traversal using #path-validation -- "Zod schema validates root; resolve() canonicalizes"
+ * @exposes #mcp to #arbitrary-write [high] cwe:CWE-73 -- "report, dashboard, sarif tools write files"
+ * @mitigates #mcp against #arbitrary-write using #path-validation -- "Output paths resolved relative to validated root"
+ * @exposes #mcp to #prompt-injection [medium] cwe:CWE-77 -- "annotate and threat_report tools pass user prompts to LLM"
+ * @audit #mcp -- "User prompts passed to LLM; model context is read-only"
+ * @exposes #mcp to #api-key-exposure [medium] cwe:CWE-798 -- "threat_report tool uses API keys from environment"
+ * @mitigates #mcp against #api-key-exposure using #key-redaction -- "Keys from env only; never logged or returned"
+ * @exposes #mcp to #data-exposure [medium] cwe:CWE-200 -- "Resources expose full threat model to MCP clients"
+ * @audit #mcp -- "Threat model data intentionally exposed to connected agents"
+ * @flows MCPClient -> #mcp via tool_call -- "Tool invocation input"
+ * @flows #mcp -> FileSystem via writeFile -- "Report/dashboard output"
+ * @flows #mcp -> #llm-client via generateThreatReport -- "LLM API call path"
+ * @flows #mcp -> MCPClient via resource -- "Threat model data output"
+ * @boundary #mcp and MCPClient (#mcp-tool-boundary) -- "Trust boundary at tool argument parsing"
+ * @handles internal on #mcp -- "Processes project annotations and threat model data"
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';

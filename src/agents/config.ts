@@ -9,6 +9,17 @@
  *   5. Global config: ~/.config/guardlink/config.json
  *
  * Replaces the fragmented tui-config.json / CLI flag / env var resolution.
+ *
+ * @exposes #agent-launcher to #api-key-exposure [high] cwe:CWE-798 -- "API keys loaded from env vars, files; stored in config.json"
+ * @mitigates #agent-launcher against #api-key-exposure using #key-redaction -- "maskKey() redacts keys for display; keys never logged"
+ * @exposes #agent-launcher to #path-traversal [medium] cwe:CWE-22 -- "Config paths resolved from root and homedir"
+ * @mitigates #agent-launcher against #path-traversal using #path-validation -- "join() with known base dirs constrains paths"
+ * @exposes #agent-launcher to #arbitrary-write [medium] cwe:CWE-73 -- "saveProjectConfig writes to .guardlink/config.json"
+ * @mitigates #agent-launcher against #arbitrary-write using #path-validation -- "Output path is fixed relative to project root"
+ * @flows EnvVars -> #agent-launcher via process.env -- "Environment variable input"
+ * @flows ConfigFile -> #agent-launcher via readFileSync -- "Config file read"
+ * @flows #agent-launcher -> ConfigFile via writeFileSync -- "Config file write"
+ * @handles secrets on #agent-launcher -- "Processes and stores LLM API keys"
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';

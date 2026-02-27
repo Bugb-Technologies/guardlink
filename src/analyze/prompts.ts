@@ -3,6 +3,9 @@
  *
  * Each framework produces a structured security analysis from the
  * serialized threat model. The LLM acts as a senior security architect.
+ *
+ * @comment -- "Prompt templates are static; no user input interpolation in system prompts"
+ * @comment -- "customPrompt is appended to user message, not system prompt — bounded injection risk"
  */
 
 export type AnalysisFramework = 'stride' | 'dread' | 'pasta' | 'attacker' | 'rapid' | 'general';

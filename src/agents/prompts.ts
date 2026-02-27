@@ -2,6 +2,15 @@
  * GuardLink Agents — Prompt builders for annotation and analysis.
  *
  * Extracted from tui/commands.ts for shared use across CLI, TUI, MCP.
+ *
+ * @exposes #agent-launcher to #prompt-injection [high] cwe:CWE-77 -- "User prompt concatenated into agent instruction text"
+ * @audit #agent-launcher -- "Prompt injection mitigated by agent's own safety measures; GuardLink prompt is read-only context"
+ * @exposes #agent-launcher to #path-traversal [medium] cwe:CWE-22 -- "Reads reference docs from root-relative paths"
+ * @mitigates #agent-launcher against #path-traversal using #path-validation -- "resolve() with root constrains file access"
+ * @flows UserPrompt -> #agent-launcher via buildAnnotatePrompt -- "User instruction input"
+ * @flows ThreatModel -> #agent-launcher via model -- "Model context injection"
+ * @flows #agent-launcher -> AgentPrompt via return -- "Assembled prompt output"
+ * @handles internal on #agent-launcher -- "Serializes threat model IDs and flows into prompt"
  */
 
 import { existsSync, readFileSync } from 'node:fs';

@@ -3,6 +3,10 @@
  * Produces a human-readable threat model report with
  * embedded Mermaid diagram, finding tables, and coverage stats.
  *
+ * @comment -- "Pure function: transforms ThreatModel to markdown string"
+ * @comment -- "No file I/O; caller (CLI/MCP) handles write"
+ * @flows ThreatModel -> #report via generateReport -- "Model input"
+ * @flows #report -> Markdown via return -- "Report output"
  */
 
 import type { ThreatModel, ThreatModelExposure, Severity } from '../types/index.js';

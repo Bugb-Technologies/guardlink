@@ -2,6 +2,13 @@
  * GuardLink — Project-level parser.
  * Walks a directory, parses all source files, and assembles a ThreatModel.
  *
+ * @exposes #parser to #path-traversal [high] cwe:CWE-22 -- "Glob patterns could escape root directory"
+ * @mitigates #parser against #path-traversal using #glob-filtering -- "DEFAULT_EXCLUDE blocks node_modules, .git; fast-glob cwd constrains scan"
+ * @exposes #parser to #dos [medium] cwe:CWE-400 -- "Large projects with many files could exhaust memory"
+ * @mitigates #parser against #dos using #resource-limits -- "DEFAULT_EXCLUDE skips build artifacts, tests; limits effective file count"
+ * @flows ProjectRoot -> #parser via fast-glob -- "Directory traversal path"
+ * @flows #parser -> ThreatModel via assembleModel -- "Aggregated threat model output"
+ * @boundary #parser and FileSystem (#fs-boundary) -- "Trust boundary between parser and disk I/O"
  */
 
 import fg from 'fast-glob';

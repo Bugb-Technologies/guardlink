@@ -11,6 +11,12 @@
  *     /assets      Asset tree
  *
  * Uses raw stdin mode for full keystroke control.
+ *
+ * @exposes #tui to #dos [low] cwe:CWE-400 -- "Rapid keystrokes could consume CPU in raw mode"
+ * @mitigates #tui against #dos using #resource-limits -- "Keystroke buffer bounded by terminal width"
+ * @flows RawStdin -> #tui via process.stdin -- "Raw keystroke input"
+ * @flows #tui -> Terminal via process.stdout -- "ANSI escape sequence output"
+ * @comment -- "Raw mode enables full keystroke control for command palette"
  */
 
 import chalk from 'chalk';

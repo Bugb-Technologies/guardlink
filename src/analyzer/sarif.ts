@@ -12,6 +12,11 @@
  *   2. Parse errors (annotation syntax problems)
  *   3. Dangling references (broken #id refs)
  *
+ * @exposes #sarif to #data-exposure [low] cwe:CWE-200 -- "Exposes threat model findings to SARIF consumers"
+ * @audit #sarif -- "SARIF output intentionally reveals security findings for CI/CD integration"
+ * @comment -- "Pure function: transforms ThreatModel to SARIF JSON; no I/O"
+ * @flows ThreatModel -> #sarif via generateSarif -- "Model input"
+ * @flows #sarif -> SarifLog via return -- "SARIF output"
  */
 
 import type { ThreatModel, ThreatModelExposure, ParseDiagnostic, Severity } from '../types/index.js';

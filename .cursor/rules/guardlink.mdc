@@ -42,49 +42,52 @@ Every time you write or modify code that touches security-relevant behavior, you
 
 ### Current Definitions (REUSE these IDs — do NOT redefine)
 
-**Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest), #auth (Server,Auth)
-**Threats:** #path-traversal (Path_Traversal) [high], #cmd-injection (Command_Injection) [critical], #xss (Cross_Site_Scripting) [high], #api-key-exposure (API_Key_Exposure) [high], #ssrf (Server_Side_Request_Forgery) [medium], #redos (ReDoS) [medium], #arbitrary-write (Arbitrary_File_Write) [high], #prompt-injection (Prompt_Injection) [medium], #dos (Denial_of_Service) [medium], #data-exposure (Sensitive_Data_Exposure) [medium], #insecure-deser (Insecure_Deserialization) [medium], #child-proc-injection (Child_Process_Injection) [high], #info-disclosure (Information_Disclosure) [low], #sqli (SQL_Injection) [critical]
-**Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring), #prepared-stmts (Prepared_Statements)
+**Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest)
+**Threats:** #path-traversal (Path_Traversal) [high], #cmd-injection (Command_Injection) [critical], #xss (Cross_Site_Scripting) [high], #api-key-exposure (API_Key_Exposure) [high], #ssrf (Server_Side_Request_Forgery) [medium], #redos (ReDoS) [medium], #arbitrary-write (Arbitrary_File_Write) [high], #prompt-injection (Prompt_Injection) [medium], #dos (Denial_of_Service) [medium], #data-exposure (Sensitive_Data_Exposure) [medium], #insecure-deser (Insecure_Deserialization) [medium], #child-proc-injection (Child_Process_Injection) [high], #info-disclosure (Information_Disclosure) [low]
+**Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring)
 
 ### Open Exposures (need @mitigates or @audit)
 
-- #ai-endpoint exposed to #prompt-injection [high] (src/agents/prompts.ts:247)
-- #sarif exposed to #info-disclosure [low] (src/analyzer/sarif.ts:15)
-- #llm-client exposed to #prompt-injection [medium] (src/analyze/index.ts:9)
-- #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:15)
-- #cli exposed to #arbitrary-write [high] (src/cli/index.ts:24)
-- #mcp exposed to #path-traversal [high] (src/mcp/server.ts:25)
-- #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:26)
-- #mcp exposed to #arbitrary-write [high] (src/mcp/server.ts:27)
-- #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:28)
-- #suggest exposed to #prompt-injection [medium] (src/mcp/suggest.ts:13)
-- #report exposed to #info-disclosure [low] (src/report/report.ts:7)
-- #tui exposed to #prompt-injection [medium] (src/tui/index.ts:10)
+- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:15)
+- #agent-launcher exposed to #prompt-injection [medium] (src/agents/launcher.ts:13)
+- #agent-launcher exposed to #dos [low] (src/agents/launcher.ts:15)
+- #agent-launcher exposed to #prompt-injection [high] (src/agents/prompts.ts:6)
+- #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
+- #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
+- #cli exposed to #cmd-injection [critical] (src/cli/index.ts:29)
+- #init exposed to #data-exposure [low] (src/init/index.ts:12)
+- #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
+- #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:29)
+- #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:33)
+- #suggest exposed to #dos [low] (src/mcp/suggest.ts:16)
+- #parser exposed to #arbitrary-write [high] (src/parser/clear.ts:7)
+- #tui exposed to #cmd-injection [high] (src/tui/commands.ts:11)
+- #tui exposed to #prompt-injection [medium] (src/tui/commands.ts:15)
 
 ### Existing Data Flows (extend, don't duplicate)
 
-- #cli -> #agent-launcher via launchAgent
-- #agent-launcher -> External_Process via spawnSync
-- User_Input -> #auth-api via POST./login
-- #auth-api -> #user-db via TypeORM.findOne
-- User_Browser -> #api-gateway via HTTPS
-- #api-gateway -> #auth-service via internal.gRPC
-- #auth-service -> #user-db via pg.query
-- #auth-service -> #session-store via redis.set
-- #auth-service -> User_Browser via Set-Cookie
-- req.body.username -> db.query via string-concat
-- #parser -> #sarif via ThreatModel
-- #sarif -> External_Security_Tools via SARIF_JSON
-- #parser -> #llm-client via ThreatModel
-- #llm-client -> Filesystem via writeFileSync
-- #llm-client -> External_LLM_APIs via fetch
-- External_LLM_APIs -> #llm-client via response
-- External_LLM_APIs -> #llm-tools via tool_call
-- #llm-tools -> External_LLM_APIs via tool_result
-- User -> #cli via argv
-- #cli -> #parser via parseProject
-- ... and 20 more
+- ThreatModel -> #sarif via generateSarif
+- #sarif -> SarifLog via return
+- EnvVars -> #agent-launcher via process.env
+- ConfigFile -> #agent-launcher via readFileSync
+- #agent-launcher -> ConfigFile via writeFileSync
+- UserPrompt -> #agent-launcher via launchAgent
+- #agent-launcher -> AgentProcess via spawn
+- AgentProcess -> #agent-launcher via stdout
+- UserPrompt -> #agent-launcher via buildAnnotatePrompt
+- ThreatModel -> #agent-launcher via model
+- #agent-launcher -> AgentPrompt via return
+- ThreatModel -> #llm-client via serializeModel
+- ProjectFiles -> #llm-client via readFileSync
+- #llm-client -> ReportFile via writeFileSync
+- LLMConfig -> #llm-client via chatCompletion
+- #llm-client -> LLMProvider via fetch
+- LLMProvider -> #llm-client via response
+- LLMToolCall -> #llm-client via createToolExecutor
+- #llm-client -> NVD via fetch
+- ProjectFiles -> #llm-client via readFileSync
+- ... and 40 more
 
 ### Model Stats
 
-193 annotations, 13 assets, 14 threats, 11 controls, 35 exposures, 21 mitigations, 40 flows
+266 annotations, 12 assets, 13 threats, 10 controls, 59 exposures, 41 mitigations, 60 flows

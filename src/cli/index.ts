@@ -20,6 +20,18 @@
  *   guardlink tui [dir]               Interactive TUI with slash commands + AI chat
  *   guardlink gal                     Display GAL annotation language quick reference
  *
+ * @exposes #cli to #path-traversal [high] cwe:CWE-22 -- "User-supplied dir argument resolved via path.resolve"
+ * @mitigates #cli against #path-traversal using #path-validation -- "resolve() canonicalizes paths; cwd-relative by design"
+ * @exposes #cli to #arbitrary-write [high] cwe:CWE-73 -- "init/report/sarif/dashboard write files to user-specified paths"
+ * @mitigates #cli against #arbitrary-write using #path-validation -- "Output paths resolved relative to project root"
+ * @exposes #cli to #api-key-exposure [high] cwe:CWE-798 -- "API keys handled in config set/show commands"
+ * @mitigates #cli against #api-key-exposure using #key-redaction -- "maskKey() redacts keys in show output"
+ * @exposes #cli to #cmd-injection [critical] cwe:CWE-78 -- "Agent launcher spawns child processes"
+ * @audit #cli -- "Child process spawning delegated to agents/launcher.ts with explicit args"
+ * @flows UserArgs -> #cli via process.argv -- "CLI argument input path"
+ * @flows #cli -> FileSystem via writeFile -- "Report/config output path"
+ * @boundary #cli and UserInput (#cli-input-boundary) -- "Trust boundary at CLI argument parsing"
+ * @handles secrets on #cli -- "Processes API keys via config commands"
  */
 
 import { Command } from 'commander';

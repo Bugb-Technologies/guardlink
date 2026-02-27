@@ -5,6 +5,14 @@
  * 7 pages: Summary, AI Analysis, Threats, Diagrams, Code, Data, Assets.
  * Mermaid.js via CDN for diagrams. Zero build step.
  *
+ * @exposes #dashboard to #xss [high] cwe:CWE-79 -- "Generates HTML with user-controlled threat model data"
+ * @mitigates #dashboard against #xss using #output-encoding -- "esc() HTML-encodes all interpolated values"
+ * @exposes #dashboard to #path-traversal [medium] cwe:CWE-22 -- "readFileSync reads code files for annotation context"
+ * @mitigates #dashboard against #path-traversal using #path-validation -- "resolve() with root constrains file access"
+ * @flows ThreatModel -> #dashboard via computeStats -- "Model statistics input"
+ * @flows SourceFiles -> #dashboard via readFileSync -- "Code snippet reads"
+ * @flows #dashboard -> HTML via return -- "Generated HTML output"
+ * @handles internal on #dashboard -- "Processes and displays threat model data"
  */
 
 import type { ThreatModel } from '../types/index.js';
