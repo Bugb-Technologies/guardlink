@@ -82,15 +82,20 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   // Parse all files
   const allAnnotations: Annotation[] = [];
   const allDiagnostics: ParseDiagnostic[] = [];
+  const filesWithAnnotations = new Set<string>();
 
   for (const file of files) {
     const result = await parseFile(file);
+    const relPath = relative(root, file);
     // Normalize file paths to relative
     for (const ann of result.annotations) {
-      ann.location.file = relative(root, ann.location.file);
+      ann.location.file = relPath;
     }
     for (const diag of result.diagnostics) {
-      diag.file = relative(root, diag.file);
+      diag.file = relPath;
+    }
+    if (result.annotations.length > 0) {
+      filesWithAnnotations.add(relPath);
     }
     allAnnotations.push(...result.annotations);
     allDiagnostics.push(...result.diagnostics);
@@ -115,8 +120,15 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     }
   }
 
+  // Compute annotated vs unannotated files (exclude .guardlink/ definitions from unannotated)
+  const allRelPaths = files.map(f => relative(root, f));
+  const annotatedFiles = [...filesWithAnnotations].sort();
+  const unannotatedFiles = allRelPaths
+    .filter(f => !filesWithAnnotations.has(f) && !f.startsWith('.guardlink/') && !f.startsWith('.guardlink\\'))
+    .sort();
+
   // Assemble ThreatModel
-  const model = assembleModel(allAnnotations, files.length, project);
+  const model = assembleModel(allAnnotations, files.length, project, annotatedFiles, unannotatedFiles);
 
   return { model, diagnostics: allDiagnostics };
 }
@@ -126,13 +138,15 @@ function getAnnotationId(ann: Annotation): string | undefined {
   return undefined;
 }
 
-function assembleModel(annotations: Annotation[], fileCount: number, project: string): ThreatModel {
+function assembleModel(annotations: Annotation[], fileCount: number, project: string, annotatedFiles: string[], unannotatedFiles: string[]): ThreatModel {
   const model: ThreatModel = {
     version: '1.1.0',
     project,
     generated_at: new Date().toISOString(),
     source_files: fileCount,
     annotations_parsed: annotations.length,
+    annotated_files: annotatedFiles,
+    unannotated_files: unannotatedFiles,
     assets: [],
     threats: [],
     controls: [],

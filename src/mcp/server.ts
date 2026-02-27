@@ -40,7 +40,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, clearAnnotations } from '../parser/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { generateReport } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
@@ -49,6 +49,7 @@ import { lookup, type LookupQuery } from './lookup.js';
 import { suggestAnnotations } from './suggest.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModel, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
+import { syncAgentFiles } from '../init/index.js';
 import type { ThreatModel } from '../types/index.js';
 
 // ─── Cached model ────────────────────────────────────────────────────
@@ -424,6 +425,82 @@ export function createServer(): McpServer {
       const reports = listThreatReports(root);
       return {
         content: [{ type: 'text', text: JSON.stringify(reports, null, 2) }],
+      };
+    },
+  );
+
+  // ── Tool: guardlink_sync ──
+  server.tool(
+    'guardlink_sync',
+    'Sync all agent instruction files (CLAUDE.md, .cursorrules, etc.) with the current threat model. Injects live asset/threat/control IDs, open exposures, and data flows so every coding agent knows the current security posture. Run after adding or changing annotations.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+    },
+    async ({ root }) => {
+      const { model } = await getModel(root);
+      const result = syncAgentFiles({ root, model });
+      const summary = [
+        `Synced ${result.updated.length} agent instruction file(s): ${result.updated.join(', ')}`,
+        result.skipped.length > 0 ? `Skipped: ${result.skipped.join(', ')}` : '',
+        `Model: ${model.assets.length} assets, ${model.threats.length} threats, ${model.controls.length} controls, ${model.exposures.length} exposures`,
+      ].filter(Boolean).join('\n');
+      return {
+        content: [{ type: 'text', text: summary }],
+      };
+    },
+  );
+
+  // ── Tool: guardlink_clear ──
+  server.tool(
+    'guardlink_clear',
+    'Remove all GuardLink annotations from source files. Use --dry-run to preview without modifying files. WARNING: destructive operation — requires explicit user confirmation before calling without dry-run.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      dry_run: z.boolean().describe('If true, only show what would be removed').default(true),
+      include_definitions: z.boolean().describe('Also clear .guardlink/definitions files').default(false),
+    },
+    async ({ root, dry_run, include_definitions }) => {
+      const result = await clearAnnotations({
+        root,
+        dryRun: dry_run,
+        includeDefinitions: include_definitions,
+      });
+
+      if (result.totalRemoved === 0) {
+        return { content: [{ type: 'text', text: 'No GuardLink annotations found in source files.' }] };
+      }
+
+      const fileList = Array.from(result.perFile.entries())
+        .map(([file, count]) => `  ${file} (${count} line${count > 1 ? 's' : ''})`)
+        .join('\n');
+
+      const mode = dry_run ? '(DRY RUN) Would remove' : 'Removed';
+      return {
+        content: [{ type: 'text', text: `${mode} ${result.totalRemoved} annotation line(s) from ${result.modifiedFiles.length} file(s):\n${fileList}` }],
+      };
+    },
+  );
+
+  // ── Tool: guardlink_unannotated ──
+  server.tool(
+    'guardlink_unannotated',
+    'List source files that have no GuardLink annotations. Useful for identifying coverage gaps. Not all files need annotations — only those touching security boundaries (endpoints, auth, data access, I/O, crypto).',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+    },
+    async ({ root }) => {
+      const { model } = await getModel(root);
+      const unannotated = model.unannotated_files || [];
+      const annotated = model.annotated_files || [];
+      const total = annotated.length + unannotated.length;
+
+      if (unannotated.length === 0) {
+        return { content: [{ type: 'text', text: `All ${total} source files have GuardLink annotations.` }] };
+      }
+
+      const fileList = unannotated.map(f => `  ${f}`).join('\n');
+      return {
+        content: [{ type: 'text', text: `${annotated.length} of ${total} files annotated. ${unannotated.length} file(s) with no annotations:\n${fileList}\n\nNot all files need annotations — only those touching security boundaries.` }],
       };
     },
   );

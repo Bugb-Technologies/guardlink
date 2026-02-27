@@ -82,11 +82,12 @@ export async function promptAgentSelection(agentFiles: AgentFile[]): Promise<str
 
   // Optional agents
   if (optionalChoices.length > 0) {
-    console.error('\n  Also add instructions for? (comma-separated numbers, Enter to skip)\n');
+    console.error(`\n  Also add instructions for? (comma-separated numbers, Enter to skip)\n`);
     for (let i = 0; i < optionalChoices.length; i++) {
       const c = optionalChoices[i];
       console.error(`    ${i + 1}. ${c.label.padEnd(18)} → ${c.file}`);
     }
+    console.error(`    ${optionalChoices.length + 1}. ${'All of the above'.padEnd(18)}`);
     console.error('');
   }
 
@@ -104,12 +105,21 @@ export async function promptAgentSelection(agentFiles: AgentFile[]): Promise<str
   rl.close();
 
   const selectedIds = [...detectedIds];
+  const trimmed = answer.trim().toLowerCase();
+  const allIdx = optionalChoices.length + 1;
 
-  if (answer.trim()) {
-    const nums = answer.split(/[,\s]+/).map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
-    for (const n of nums) {
-      if (n >= 1 && n <= optionalChoices.length) {
-        selectedIds.push(optionalChoices[n - 1].id);
+  if (trimmed) {
+    const nums = trimmed.split(/[,\s]+/).map(s => parseInt(s, 10)).filter(n => !isNaN(n));
+    if (nums.includes(allIdx)) {
+      // "All of the above" selected
+      for (const c of optionalChoices) {
+        selectedIds.push(c.id);
+      }
+    } else {
+      for (const n of nums) {
+        if (n >= 1 && n <= optionalChoices.length) {
+          selectedIds.push(optionalChoices[n - 1].id);
+        }
       }
     }
   } else if (selectedIds.length === 0) {

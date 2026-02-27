@@ -46,6 +46,9 @@ import {
   cmdThreatReports,
   cmdAnnotate,
   cmdChat,
+  cmdClear,
+  cmdSync,
+  cmdUnannotated,
   cmdReport,
   cmdDashboard,
   cmdGal,
@@ -59,6 +62,7 @@ const COMMANDS = [
   '/exposures', '/show', '/scan',
   '/assets', '/files', '/view',
   '/threat-report', '/threat-reports', '/annotate', '/model',
+  '/clear', '/sync', '/unannotated',
   '/report', '/dashboard',
   '/quit',
 ];
@@ -89,6 +93,9 @@ const PALETTE_COMMANDS: CommandEntry[] = [
   { command: '/threat-reports', label: 'List saved threat reports' },
   { command: '/annotate',   label: 'Launch coding agent' },
   { command: '/model',      label: 'Set AI provider' },
+  { command: '/clear',      label: 'Remove all annotations from source files' },
+  { command: '/sync',       label: 'Sync agent instructions with current threat model' },
+  { command: '/unannotated', label: 'List source files with no annotations' },
   { command: '/report',     label: 'Generate markdown report' },
   { command: '/dashboard',  label: 'HTML dashboard' },
   { command: '/diff',       label: 'Compare vs git ref' },
@@ -297,6 +304,9 @@ function printCommandList(): void {
     ['/threat-reports','List saved reports'],
     ['/annotate',   'Launch coding agent'],
     ['/model',      'Set AI provider'],
+    ['/clear',      'Clear all annotations'],
+    ['/sync',       'Sync agent instructions'],
+    ['/unannotated', 'List files without annotations'],
     ['/report',     'Generate reports'],
     ['/dashboard',  'HTML dashboard'],
     ['/diff [ref]', 'Compare vs git ref'],
@@ -356,6 +366,9 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
         case '/threat-report':  await cmdThreatReport(args, ctx); break;
         case '/threat-reports': cmdThreatReports(ctx); break;
         case '/annotate': await cmdAnnotate(args, ctx); break;
+        case '/clear':    await cmdClear(args, ctx); break;
+        case '/sync':     await cmdSync(ctx); break;
+        case '/unannotated': cmdUnannotated(ctx); break;
         case '/report':   await cmdReport(ctx); break;
         case '/dashboard': await cmdDashboard(ctx); break;
         default:
