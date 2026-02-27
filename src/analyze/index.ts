@@ -5,13 +5,6 @@
  * specific prompt, streams the response, and saves timestamped results
  * to .guardlink/threat-reports/.
  *
- * @exposes #llm-client to #arbitrary-write [high] cwe:CWE-73 -- "Writes threat reports to .guardlink/threat-reports/"
- * @exposes #llm-client to #prompt-injection [medium] cwe:CWE-77 -- "Serialized threat model embedded in LLM prompt"
- * @accepts #prompt-injection on #llm-client -- "Core feature: threat model serialized as LLM prompt for analysis"
- * @mitigates #llm-client against #arbitrary-write using #path-validation -- "Reports written to fixed .guardlink/threat-reports/ subdirectory"
- * @flows #parser -> #llm-client via ThreatModel -- "Parsed model data serialized for LLM analysis"
- * @flows #llm-client -> Filesystem via writeFileSync -- "Analysis results saved as markdown files"
- * @handles internal on #llm-client -- "Processes security-sensitive threat model for AI analysis"
  */
 
 import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from 'node:fs';

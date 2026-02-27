@@ -10,16 +10,6 @@
  *
  * Zero dependencies — uses Node 20+ built-in fetch.
  *
- * @exposes #llm-client to #api-key-exposure [high] cwe:CWE-798 -- "Reads API keys from environment variables"
- * @exposes #llm-client to #ssrf [medium] cwe:CWE-918 -- "Makes HTTP requests to configurable provider URLs"
- * @exposes #llm-client to #prompt-injection [medium] cwe:CWE-77 -- "Sends threat model content as LLM prompt"
- * @accepts #prompt-injection on #llm-client -- "Core feature: threat model data is sent to LLM for analysis"
- * @mitigates #llm-client against #ssrf using #config-validation -- "BASE_URLS are hardcoded to known providers"
- * @mitigates #llm-client against #api-key-exposure using #key-redaction -- "Keys read from env, not logged"
- * @handles secrets on #llm-client -- "API keys held in memory during request lifecycle"
- * @boundary between #llm-client and External_LLM_APIs (#llm-boundary) -- "HTTP requests cross network trust boundary to external AI providers"
- * @flows #llm-client -> External_LLM_APIs via fetch -- "HTTP POST with auth headers and prompt payload"
- * @flows External_LLM_APIs -> #llm-client via response -- "Streaming or complete response from LLM provider"
  */
 
 export type LLMProvider = 'anthropic' | 'openai' | 'google' | 'openrouter' | 'deepseek' | 'ollama';

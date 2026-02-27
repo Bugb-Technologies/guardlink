@@ -5,12 +5,6 @@
  * directory with shared definitions, and injects GuardLink instructions
  * into agent instruction files (CLAUDE.md, .cursorrules, etc.).
  *
- * @exposes #init to #arbitrary-write [high] cwe:CWE-73 -- "Writes config files and agent instructions to user-specified root"
- * @exposes #init to #path-traversal [high] cwe:CWE-22 -- "Creates directories and files based on user-provided root path"
- * @mitigates #init against #arbitrary-write using #path-validation -- "Files written only to .guardlink/ subdirectory and known agent file locations"
- * @mitigates #init against #path-traversal using #path-validation -- "join() used with fixed relative paths within root"
- * @flows #cli -> #init via initProject -- "CLI passes user-specified root directory"
- * @flows #init -> Filesystem via writeFileSync -- "Creates config.json, definitions.ts, agent instruction files"
  */
 
 import { existsSync, readFileSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';

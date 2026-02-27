@@ -1,0 +1,87 @@
+<!-- guardlink:begin -->
+# GuardLink Security Annotations
+
+This project uses GuardLink annotations in source code comments.
+
+## Core Requirement
+Every time you write or modify code that touches security-relevant behavior, you MUST add GuardLink annotations in the same change. This includes: new endpoints, auth logic, data validation, database queries, file I/O, external API calls, crypto, process spawning, user input handling, config parsing. Do NOT annotate pure business logic, formatting utilities, UI components, or helpers that never touch security boundaries.
+
+## Key Rules
+- ANNOTATE NEW CODE. When you add a function or endpoint that handles user input, accesses data, or crosses a trust boundary — add @exposes, @mitigates, @flows, @handles, or at minimum @comment. This is not optional.
+- NEVER write @accepts — that is a human-only governance decision. For risks with no mitigation: write @exposes + @audit + @comment suggesting potential controls.
+- Preserve existing annotations — do not delete or mangle them.
+- Definitions (@asset, @threat, @control with (#id)) live in .guardlink/definitions.ts. Reuse IDs — never redefine. Add new definitions there first, then reference in source files.
+- Source files use relationship verbs: @mitigates, @exposes, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers.
+- Write coupled annotation blocks: risk + control (or audit) + data flow + context note.
+- Avoid @shield unless a human explicitly asks to hide code from AI.
+
+## Workflow
+- Before writing code: skim .guardlink/definitions.ts to understand existing IDs.
+- While writing code: add annotations as you write, not as a separate pass afterward.
+- After changes: run `guardlink validate .` and `guardlink status .`.
+- After adding annotations: run `guardlink sync` to update all agent instruction files with current threat model context.
+
+## Quick Syntax
+- @exposes App.API to #sqli [P0] cwe:CWE-89 -- "req.body.email concatenated into SQL"
+- @mitigates App.API against #sqli using #prepared-stmts -- "Parameterized queries via pg"
+- @audit App.API -- "Timing attack risk — needs human review"
+- @flows User -> App.API via HTTPS -- "Login request"
+- @boundary between #api and #db (#data-boundary) -- "Trust change"
+- @handles pii on App.API -- "Processes email, token"
+- @validates #prepared-stmts for App.API -- "CI test ensures placeholders"
+- @audit App.API -- "Token rotation review"
+- @owns security-team for App.API -- "Team responsible"
+- @comment -- "Rate limit: 100 req/15min"
+
+## Live Threat Model Context (auto-synced by `guardlink sync`)
+
+### Current Definitions (REUSE these IDs — do NOT redefine)
+
+**Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest), #auth (Server,Auth)
+**Threats:** #path-traversal (Path_Traversal) [high], #cmd-injection (Command_Injection) [critical], #xss (Cross_Site_Scripting) [high], #api-key-exposure (API_Key_Exposure) [high], #ssrf (Server_Side_Request_Forgery) [medium], #redos (ReDoS) [medium], #arbitrary-write (Arbitrary_File_Write) [high], #prompt-injection (Prompt_Injection) [medium], #dos (Denial_of_Service) [medium], #data-exposure (Sensitive_Data_Exposure) [medium], #insecure-deser (Insecure_Deserialization) [medium], #child-proc-injection (Child_Process_Injection) [high], #info-disclosure (Information_Disclosure) [low], #sqli (SQL_Injection) [critical]
+**Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring), #prepared-stmts (Prepared_Statements)
+
+### Open Exposures (need @mitigates or @audit)
+
+- #ai-endpoint exposed to #prompt-injection [high] (src/agents/prompts.ts:247)
+- #sarif exposed to #info-disclosure [low] (src/analyzer/sarif.ts:15)
+- #llm-client exposed to #prompt-injection [medium] (src/analyze/index.ts:9)
+- #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:15)
+- #cli exposed to #arbitrary-write [high] (src/cli/index.ts:24)
+- #mcp exposed to #path-traversal [high] (src/mcp/server.ts:25)
+- #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:26)
+- #mcp exposed to #arbitrary-write [high] (src/mcp/server.ts:27)
+- #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:28)
+- #suggest exposed to #prompt-injection [medium] (src/mcp/suggest.ts:13)
+- #report exposed to #info-disclosure [low] (src/report/report.ts:7)
+- #tui exposed to #prompt-injection [medium] (src/tui/index.ts:10)
+
+### Existing Data Flows (extend, don't duplicate)
+
+- #cli -> #agent-launcher via launchAgent
+- #agent-launcher -> External_Process via spawnSync
+- User_Input -> #auth-api via POST./login
+- #auth-api -> #user-db via TypeORM.findOne
+- User_Browser -> #api-gateway via HTTPS
+- #api-gateway -> #auth-service via internal.gRPC
+- #auth-service -> #user-db via pg.query
+- #auth-service -> #session-store via redis.set
+- #auth-service -> User_Browser via Set-Cookie
+- req.body.username -> db.query via string-concat
+- #parser -> #sarif via ThreatModel
+- #sarif -> External_Security_Tools via SARIF_JSON
+- #parser -> #llm-client via ThreatModel
+- #llm-client -> Filesystem via writeFileSync
+- #llm-client -> External_LLM_APIs via fetch
+- External_LLM_APIs -> #llm-client via response
+- External_LLM_APIs -> #llm-tools via tool_call
+- #llm-tools -> External_LLM_APIs via tool_result
+- User -> #cli via argv
+- #cli -> #parser via parseProject
+- ... and 20 more
+
+### Model Stats
+
+193 annotations, 13 assets, 14 threats, 11 controls, 35 exposures, 21 mitigations, 40 flows
+
+<!-- guardlink:end -->

@@ -6,14 +6,6 @@
  * Claude Code-style inline REPL: stays in your terminal,
  * slash commands + freeform AI chat, Ctrl+C to exit.
  *
- * @exposes #tui to #path-traversal [high] cwe:CWE-22 -- "Accepts directory path as startup argument"
- * @exposes #tui to #prompt-injection [medium] cwe:CWE-77 -- "User input passed to AI chat mode"
- * @accepts #prompt-injection on #tui -- "Freeform AI chat is an intentional feature"
- * @mitigates #tui against #path-traversal using #path-validation -- "resolve() normalizes directory path"
- * @boundary between #tui and #llm-client (#tui-llm-boundary) -- "Freeform chat input crosses trust boundary to LLM"
- * @flows User -> #tui via readline -- "Interactive command input from terminal"
- * @flows #tui -> #parser via parseProject -- "Commands trigger parsing operations"
- * @flows #tui -> #llm-client via cmdChat -- "Freeform text dispatched to AI provider"
  */
 
 import { createInterface, type Interface } from 'node:readline';

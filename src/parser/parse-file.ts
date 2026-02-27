@@ -2,8 +2,6 @@
  * GuardLink — File-level parser.
  * Reads source files and extracts all GuardLink annotations.
  *
- * @exposes #parser to #path-traversal [high] cwe:CWE-22 -- "Reads files from disk using provided file path"
- * @comment -- "File paths are controlled by parse-project glob results, not direct user input"
  */
 
 import { readFile } from 'node:fs/promises';

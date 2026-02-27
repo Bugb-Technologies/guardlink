@@ -20,15 +20,6 @@
  *   guardlink tui [dir]               Interactive TUI with slash commands + AI chat
  *   guardlink gal                     Display GAL annotation language quick reference
  *
- * @exposes #cli to #path-traversal [high] cwe:CWE-22 -- "Accepts directory paths from command line arguments"
- * @exposes #cli to #arbitrary-write [high] cwe:CWE-73 -- "Writes reports and SARIF to user-specified output paths"
- * @accepts #arbitrary-write on #cli -- "Intentional feature: users specify output paths for reports"
- * @mitigates #cli against #path-traversal using #path-validation -- "resolve() normalizes paths before passing to submodules"
- * @boundary between #cli and #parser (#cli-parser-boundary) -- "CLI is the primary user input trust boundary"
- * @flows User -> #cli via argv -- "User provides directory paths and options via command line"
- * @flows #cli -> #parser via parseProject -- "CLI dispatches parsed commands to parser"
- * @flows #cli -> #report via generateReport -- "CLI writes report output"
- * @flows #cli -> #init via initProject -- "CLI initializes project structure"
  */
 
 import { Command } from 'commander';
@@ -1233,4 +1224,3 @@ function printUnannotatedFiles(model: ThreatModel) {
     console.log(`   ${f}`);
   }
 }
-

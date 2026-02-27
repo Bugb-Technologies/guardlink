@@ -6,10 +6,6 @@
  *   - validate_finding: Cross-reference a finding against the parsed model
  *   - search_codebase: Search project files for patterns
  *
- * @flows External_LLM_APIs -> #llm-tools via tool_call -- "LLM requests tool execution"
- * @flows #llm-tools -> External_LLM_APIs via tool_result -- "Tool results returned to LLM"
- * @exposes #llm-tools to #ssrf [medium] cwe:CWE-918 -- "lookup_cve fetches external URLs"
- * @mitigates #llm-tools against #ssrf using #url-allowlist -- "Only fetches from known CVE databases"
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';

@@ -3,13 +3,6 @@
  * Resolves git refs to threat models by checking out files at a given commit
  * and parsing them in a temp directory.
  *
- * @exposes #diff to #cmd-injection [critical] cwe:CWE-78 -- "Invokes git commands with execSync using user-provided ref"
- * @exposes #diff to #path-traversal [high] cwe:CWE-22 -- "Writes files to temp directory based on git ls-tree output"
- * @mitigates #diff against #cmd-injection using #param-commands -- "Git ref validated via git rev-parse before use in other commands"
- * @mitigates #diff against #path-traversal using #resource-limits -- "Files written only to mkdtempSync temp directory"
- * @flows #cli -> #diff via parseAtRef -- "CLI passes git ref from user arguments"
- * @flows #diff -> git via execSync -- "Executes git rev-parse, git ls-tree, git show commands"
- * @comment -- "Temp directory cleaned up in finally block after parsing"
  */
 
 import { execSync } from 'node:child_process';
