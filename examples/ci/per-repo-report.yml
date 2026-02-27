@@ -1,0 +1,95 @@
+# GuardLink CI — Per-Repo Report Generation
+#
+# Copy to each service repo's .github/workflows/guardlink.yml
+#
+# What it does:
+#   1. Validates annotations (syntax errors, dangling refs, duplicate IDs)
+#   2. Generates report JSON for workspace merge
+#   3. Shows threat model diff on PRs
+#   4. Uploads SARIF to GitHub Security tab
+#   5. Uploads report JSON as artifact (consumed by workspace merge workflow)
+#
+# The report artifact is named "guardlink-report" and retained for 30 days.
+# The workspace merge workflow downloads these artifacts from all repos.
+
+name: GuardLink
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+jobs:
+  guardlink:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install GuardLink
+        run: npm install -g guardlink
+
+      # ── Validate ───────────────────────────────────────────
+      - name: Validate annotations
+        run: guardlink validate .
+
+      # ── Generate report JSON (push to main only) ───────────
+      - name: Generate report JSON
+        if: github.event_name == 'push'
+        run: guardlink report --format json -o guardlink-report.json
+
+      - name: Upload report artifact
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: guardlink-report
+          path: guardlink-report.json
+          retention-days: 30
+
+      # ── PR diff ────────────────────────────────────────────
+      - name: Threat model diff
+        if: github.event_name == 'pull_request'
+        id: diff
+        run: |
+          DIFF=$(guardlink diff --from origin/${{ github.base_ref }} --to HEAD 2>&1) || true
+          echo "diff<<EOF" >> $GITHUB_OUTPUT
+          echo "$DIFF" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post diff comment
+        if: github.event_name == 'pull_request' && steps.diff.outputs.diff != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const diff = `${{ steps.diff.outputs.diff }}`;
+            if (!diff.trim()) return;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## 🛡️ GuardLink Threat Model Diff\n\n\`\`\`\n${diff}\n\`\`\``,
+            });
+
+      # ── SARIF ──────────────────────────────────────────────
+      - name: Export SARIF
+        if: always()
+        run: guardlink sarif . -o guardlink.sarif
+        continue-on-error: true
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: guardlink.sarif
+        continue-on-error: true

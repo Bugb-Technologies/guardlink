@@ -1,0 +1,182 @@
+# GuardLink CI — Workspace Merge (Weekly Threat Model Roll-Up)
+#
+# Place in a central repo (e.g. "infra", "security", or a dedicated
+# "threat-model" repo). Downloads per-repo report artifacts from all
+# workspace repos and merges them into a unified dashboard.
+#
+# Prerequisites:
+#   1. Each service repo runs per-repo-report.yml (uploads guardlink-report artifact)
+#   2. A GitHub PAT with `actions:read` scope on all workspace repos,
+#      stored as the GUARDLINK_PAT secret in this repo
+#   3. Update the REPOS list below with your actual org/repo names
+#
+# What it does:
+#   1. Downloads the latest report JSON artifact from each workspace repo
+#   2. Merges all reports into a unified threat model
+#   3. Compares against last week's merge (--diff-against)
+#   4. Generates a workspace dashboard (HTML)
+#   5. Uploads merged JSON + dashboard + weekly diff as artifacts
+#   6. (Optional) Deploys dashboard to GitHub Pages
+#   7. (Optional) Posts summary to Slack
+
+name: GuardLink Workspace Merge
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday at 9:00 UTC
+  workflow_dispatch:
+    inputs:
+      skip_diff:
+        description: 'Skip diff against previous merge'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write    # needed for committing merged report
+  pages: write       # needed for GitHub Pages deployment (optional)
+  actions: read
+
+# ── Configure your workspace repos here ──────────────────────
+env:
+  # Space-separated list of org/repo names in your workspace
+  REPOS: "your-org/payment-service your-org/auth-service your-org/api-gateway"
+  # Workspace name (shown in dashboard header)
+  WORKSPACE_NAME: "your-workspace"
+  # Artifact name uploaded by per-repo-report.yml
+  ARTIFACT_NAME: "guardlink-report"
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # need previous commit for diff
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install GuardLink
+        run: npm install -g guardlink
+
+      # ── Download report artifacts from all repos ───────────
+      - name: Download reports
+        env:
+          GH_TOKEN: ${{ secrets.GUARDLINK_PAT }}
+        run: |
+          mkdir -p reports
+          for REPO in $REPOS; do
+            REPO_NAME=$(echo "$REPO" | cut -d'/' -f2)
+            echo "⏳ Fetching report from $REPO..."
+
+            # Get the latest successful workflow run on main/master
+            RUN_ID=$(gh api \
+              "repos/$REPO/actions/runs?branch=main&status=success&per_page=5" \
+              --jq '.workflow_runs[0].id' 2>/dev/null)
+
+            if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+              # Try master branch
+              RUN_ID=$(gh api \
+                "repos/$REPO/actions/runs?branch=master&status=success&per_page=5" \
+                --jq '.workflow_runs[0].id' 2>/dev/null)
+            fi
+
+            if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+              echo "  ⚠ No successful run found for $REPO — skipping"
+              continue
+            fi
+
+            # Find the report artifact in that run
+            ARTIFACT_ID=$(gh api \
+              "repos/$REPO/actions/runs/$RUN_ID/artifacts" \
+              --jq ".artifacts[] | select(.name==\"$ARTIFACT_NAME\") | .id" 2>/dev/null)
+
+            if [ -z "$ARTIFACT_ID" ] || [ "$ARTIFACT_ID" = "null" ]; then
+              echo "  ⚠ No '$ARTIFACT_NAME' artifact in run $RUN_ID for $REPO — skipping"
+              continue
+            fi
+
+            # Download and extract
+            gh api "repos/$REPO/actions/artifacts/$ARTIFACT_ID/zip" > "/tmp/$REPO_NAME.zip"
+            unzip -o "/tmp/$REPO_NAME.zip" -d "/tmp/$REPO_NAME"
+            cp /tmp/$REPO_NAME/guardlink-report.json "reports/$REPO_NAME.json"
+            echo "  ✓ Downloaded report for $REPO_NAME"
+          done
+
+          REPORT_COUNT=$(ls reports/*.json 2>/dev/null | wc -l | tr -d ' ')
+          echo "📦 Downloaded $REPORT_COUNT report(s)"
+
+          if [ "$REPORT_COUNT" -eq 0 ]; then
+            echo "::error::No reports downloaded. Check GUARDLINK_PAT permissions and repo names."
+            exit 1
+          fi
+
+      # ── Merge reports ────────────────────────────────────────
+      - name: Merge workspace reports
+        run: |
+          MERGE_ARGS="reports/*.json --workspace $WORKSPACE_NAME"
+          MERGE_ARGS="$MERGE_ARGS --json merged/workspace-report.json"
+          MERGE_ARGS="$MERGE_ARGS -o merged/workspace-dashboard.html"
+
+          # Diff against previous merge if available
+          if [ "${{ inputs.skip_diff }}" != "true" ] && [ -f previous/workspace-report.json ]; then
+            MERGE_ARGS="$MERGE_ARGS --diff-against previous/workspace-report.json"
+          fi
+
+          mkdir -p merged
+          guardlink merge $MERGE_ARGS
+
+      # ── Preserve current merge for next week's diff ────────
+      - name: Archive current merge as baseline
+        run: |
+          mkdir -p previous
+          cp merged/workspace-report.json previous/workspace-report.json
+
+      - name: Commit baseline for next run
+        run: |
+          git config user.name "guardlink-bot"
+          git config user.email "guardlink-bot@users.noreply.github.com"
+          git add previous/workspace-report.json
+          git diff --cached --quiet || git commit -m "chore: update workspace merge baseline [skip ci]"
+          git push || echo "⚠ Could not push baseline — next diff will be skipped"
+
+      # ── Upload results ─────────────────────────────────────
+      - name: Upload merged artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: guardlink-workspace-merge
+          path: |
+            merged/workspace-report.json
+            merged/workspace-dashboard.html
+            merged/*-weekly-diff.md
+          retention-days: 90
+
+      # ── (Optional) Deploy dashboard to GitHub Pages ────────
+      # Uncomment the block below to publish the dashboard.
+      # Requires: Settings → Pages → Source = "GitHub Actions"
+      #
+      # - name: Setup Pages
+      #   uses: actions/configure-pages@v4
+      #
+      # - name: Upload Pages artifact
+      #   uses: actions/upload-pages-artifact@v3
+      #   with:
+      #     path: merged/
+      #
+      # - name: Deploy to GitHub Pages
+      #   uses: actions/deploy-pages@v4
+
+      # ── (Optional) Post summary to Slack ───────────────────
+      # Uncomment and set SLACK_WEBHOOK_URL secret.
+      #
+      # - name: Post to Slack
+      #   if: always()
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #   run: |
+      #     if [ -z "$SLACK_WEBHOOK_URL" ]; then exit 0; fi
+      #     SUMMARY=$(cat merged/*-weekly-diff.md 2>/dev/null || echo "Workspace merge completed — see artifacts for details.")
+      #     curl -X POST "$SLACK_WEBHOOK_URL" \
+      #       -H 'Content-Type: application/json' \
+      #       -d "{\"text\": \"🛡️ *GuardLink Weekly Report*\n\n\`\`\`${SUMMARY:0:2000}\`\`\`\"}"
