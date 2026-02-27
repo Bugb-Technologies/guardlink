@@ -43,10 +43,10 @@ Every time you write or modify code that touches security-relevant behavior, you
 
 ### Open Exposures (need @mitigates or @audit)
 
+- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:15)
 - #agent-launcher exposed to #prompt-injection [medium] (src/agents/launcher.ts:13)
 - #agent-launcher exposed to #dos [low] (src/agents/launcher.ts:15)
 - #agent-launcher exposed to #prompt-injection [high] (src/agents/prompts.ts:6)
-- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:15)
 - #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
 - #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
 - #cli exposed to #cmd-injection [critical] (src/cli/index.ts:29)
@@ -61,6 +61,8 @@ Every time you write or modify code that touches security-relevant behavior, you
 
 ### Existing Data Flows (extend, don't duplicate)
 
+- ThreatModel -> #sarif via generateSarif
+- #sarif -> SarifLog via return
 - EnvVars -> #agent-launcher via process.env
 - ConfigFile -> #agent-launcher via readFileSync
 - #agent-launcher -> ConfigFile via writeFileSync
@@ -70,8 +72,6 @@ Every time you write or modify code that touches security-relevant behavior, you
 - UserPrompt -> #agent-launcher via buildAnnotatePrompt
 - ThreatModel -> #agent-launcher via model
 - #agent-launcher -> AgentPrompt via return
-- ThreatModel -> #sarif via generateSarif
-- #sarif -> SarifLog via return
 - ThreatModel -> #llm-client via serializeModel
 - ProjectFiles -> #llm-client via readFileSync
 - #llm-client -> ReportFile via writeFileSync
@@ -88,6 +88,7 @@ Every time you write or modify code that touches security-relevant behavior, you
 272 annotations, 12 assets, 13 threats, 10 controls, 60 exposures, 42 mitigations, 62 flows
 
 <!-- guardlink:end -->
+
 
 
 
