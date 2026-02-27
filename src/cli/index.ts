@@ -47,6 +47,7 @@ import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard,
 import { generateDashboardHTML } from '../dashboard/index.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt } from '../agents/index.js';
 import { resolveConfig, saveProjectConfig, saveGlobalConfig, loadProjectConfig, loadGlobalConfig, maskKey, describeConfigSource } from '../agents/config.js';
+import { getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview, type ReviewResult } from '../review/index.js';
 import type { ThreatModel, ParseDiagnostic } from '../types/index.js';
 import gradient from 'gradient-string';
 
@@ -838,6 +839,111 @@ program
     const root = resolve(dir);
     const { model } = await parseProject({ root, project: opts.project });
     printUnannotatedFiles(model);
+  });
+
+// ─── review ──────────────────────────────────────────────────────────
+
+program
+  .command('review')
+  .description('Interactive governance review of unmitigated exposures — accept, remediate, or skip')
+  .argument('[dir]', 'Project directory to scan', '.')
+  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('--severity <levels>', 'Filter by severity: critical,high,medium,low', undefined)
+  .option('--list', 'Just list reviewable exposures without prompting')
+  .action(async (dir: string, opts: { project: string; severity?: string; list?: boolean }) => {
+    const root = resolve(dir);
+    const { model } = await parseProject({ root, project: opts.project });
+    let exposures = getReviewableExposures(model);
+
+    // Filter by severity if requested
+    if (opts.severity) {
+      const allowed = new Set(opts.severity.split(',').map(s => s.trim().toLowerCase()));
+      exposures = exposures.filter(e => allowed.has(e.exposure.severity || 'low'));
+      // Re-index after filtering
+      exposures = exposures.map((e, i) => ({ ...e, index: i + 1 }));
+    }
+
+    if (exposures.length === 0) {
+      console.error('✓ No unmitigated exposures to review.');
+      return;
+    }
+
+    // List-only mode
+    if (opts.list) {
+      console.error(`\n${exposures.length} unmitigated exposure(s):\n`);
+      for (const r of exposures) {
+        const e = r.exposure;
+        console.error(`  ${r.index}. ${e.asset} → ${e.threat} [${e.severity || '?'}]  (${e.location.file}:${e.location.line})`);
+      }
+      console.error('');
+      return;
+    }
+
+    // Interactive review
+    const { createInterface } = await import('node:readline');
+    const rl = createInterface({ input: process.stdin, output: process.stderr });
+    const ask = (q: string): Promise<string> =>
+      new Promise(resolve => rl.question(q, resolve));
+
+    console.error(`\n  guardlink review — ${exposures.length} unmitigated exposure(s)\n`);
+
+    const results: ReviewResult[] = [];
+
+    for (const reviewable of exposures) {
+      console.error(formatExposureForReview(reviewable, exposures.length));
+      console.error('');
+      console.error('  (a) Accept — risk acknowledged and intentional');
+      console.error('  (r) Remediate — mark as planned fix');
+      console.error('  (s) Skip — leave open for now');
+      console.error('  (q) Quit review');
+      console.error('');
+
+      const choice = (await ask('  Choice [a/r/s/q]: ')).trim().toLowerCase();
+
+      if (choice === 'q') {
+        console.error('\n  Review ended.\n');
+        break;
+      }
+
+      if (choice === 'a') {
+        let justification = '';
+        while (!justification) {
+          justification = (await ask('  Justification (required): ')).trim();
+          if (!justification) console.error('  ⚠  Justification is mandatory for acceptance.');
+        }
+        const result = await applyReviewAction(root, reviewable, { decision: 'accept', justification });
+        results.push(result);
+        console.error(`  ✓ Accepted — ${result.linesInserted} line(s) written to ${reviewable.exposure.location.file}\n`);
+      } else if (choice === 'r') {
+        let note = '';
+        while (!note) {
+          note = (await ask('  Remediation note (required): ')).trim();
+          if (!note) console.error('  ⚠  Remediation note is mandatory.');
+        }
+        const result = await applyReviewAction(root, reviewable, { decision: 'remediate', justification: note });
+        results.push(result);
+        console.error(`  ✓ Marked for remediation — ${result.linesInserted} line(s) written to ${reviewable.exposure.location.file}\n`);
+      } else {
+        results.push({ exposure: reviewable, action: { decision: 'skip', justification: '' }, linesInserted: 0 });
+        console.error('  — Skipped\n');
+      }
+    }
+
+    rl.close();
+
+    if (results.length > 0) {
+      console.error(summarizeReview(results));
+
+      // Auto-sync agent files if any annotations were written
+      if (results.some(r => r.linesInserted > 0)) {
+        try {
+          // Re-parse to get updated model
+          const { model: newModel } = await parseProject({ root, project: opts.project });
+          const syncResult = syncAgentFiles({ root, model: newModel });
+          if (syncResult.updated.length > 0) console.error(`↻ Synced ${syncResult.updated.length} agent instruction file(s)`);
+        } catch {}
+      }
+    }
   });
 
 // ─── config ──────────────────────────────────────────────────────────

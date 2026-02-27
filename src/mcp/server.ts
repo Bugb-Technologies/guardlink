@@ -44,6 +44,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { parseProject, findDanglingRefs, findUnmitigatedExposures, clearAnnotations } from '../parser/index.js';
+import { getReviewableExposures, applyReviewAction, type ReviewableExposure } from '../review/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { generateReport } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
@@ -504,6 +505,88 @@ export function createServer(): McpServer {
       const fileList = unannotated.map(f => `  ${f}`).join('\n');
       return {
         content: [{ type: 'text', text: `${annotated.length} of ${total} files annotated. ${unannotated.length} file(s) with no annotations:\n${fileList}\n\nNot all files need annotations — only those touching security boundaries.` }],
+      };
+    },
+  );
+
+  // ── Tool: guardlink_review_list ──
+  server.tool(
+    'guardlink_review_list',
+    'List all unmitigated exposures eligible for governance review, sorted by severity. Returns exposure IDs, details, and severity. Use guardlink_review_accept to record decisions. IMPORTANT: Acceptance decisions require explicit human confirmation — do not accept exposures without asking the user first.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      severity: z.string().optional().describe('Filter by severity: "critical,high" etc.'),
+    },
+    async ({ root, severity }) => {
+      invalidateCache();
+      const { model } = await getModel(root);
+      let exposures = getReviewableExposures(model);
+
+      if (severity) {
+        const allowed = new Set(severity.split(',').map((s: string) => s.trim().toLowerCase()));
+        exposures = exposures.filter(e => allowed.has(e.exposure.severity || 'low'));
+        exposures = exposures.map((e, i) => ({ ...e, index: i + 1 }));
+      }
+
+      if (exposures.length === 0) {
+        return { content: [{ type: 'text', text: 'No unmitigated exposures to review.' }] };
+      }
+
+      const items = exposures.map(r => ({
+        id: r.id,
+        index: r.index,
+        asset: r.exposure.asset,
+        threat: r.exposure.threat,
+        severity: r.exposure.severity,
+        file: r.exposure.location.file,
+        line: r.exposure.location.line,
+        description: r.exposure.description,
+      }));
+
+      return { content: [{ type: 'text', text: JSON.stringify(items, null, 2) }] };
+    },
+  );
+
+  // ── Tool: guardlink_review_accept ──
+  server.tool(
+    'guardlink_review_accept',
+    'Record a governance decision for an unmitigated exposure. Writes @accepts + @audit (for accept) or @audit (for remediate) directly into the source file. IMPORTANT: This modifies source files. Only call after explicit human confirmation of the decision and justification.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      exposure_id: z.string().describe('Exposure ID from guardlink_review_list (format: "file:line")'),
+      decision: z.enum(['accept', 'remediate', 'skip']).describe('accept = risk acknowledged; remediate = planned fix; skip = no action'),
+      justification: z.string().describe('Required explanation for accept/remediate decisions'),
+    },
+    async ({ root, exposure_id, decision, justification }) => {
+      if (decision !== 'skip' && !justification.trim()) {
+        return { content: [{ type: 'text', text: 'Error: Justification is required for accept and remediate decisions.' }] };
+      }
+
+      invalidateCache();
+      const { model } = await getModel(root);
+      const exposures = getReviewableExposures(model);
+      const target = exposures.find(e => e.id === exposure_id);
+
+      if (!target) {
+        return { content: [{ type: 'text', text: `Error: Exposure "${exposure_id}" not found. Use guardlink_review_list to get valid IDs.` }] };
+      }
+
+      const result = await applyReviewAction(root, target, { decision, justification });
+      invalidateCache();
+
+      if (decision === 'skip') {
+        return { content: [{ type: 'text', text: `Skipped: ${target.exposure.asset} → ${target.exposure.threat}` }] };
+      }
+
+      // Sync agent files after modification
+      try {
+        const { model: newModel } = await getModel(root);
+        syncAgentFiles({ root, model: newModel });
+      } catch {}
+
+      const verb = decision === 'accept' ? 'Accepted' : 'Marked for remediation';
+      return {
+        content: [{ type: 'text', text: `${verb}: ${target.exposure.asset} → ${target.exposure.threat} [${target.exposure.severity}]\nJustification: ${justification}\n${result.linesInserted} annotation line(s) written to ${target.exposure.location.file}` }],
       };
     },
   );

@@ -36,6 +36,7 @@ import { C, severityBadge, severityText, severityTextPad, severityOrder, compute
 import { resolveLLMConfig, saveTuiConfig, loadTuiConfig } from './config.js';
 import { AGENTS, parseAgentFlag, launchAgent, launchAgentInline, copyToClipboard, buildAnnotatePrompt, type AgentEntry } from '../agents/index.js';
 import { describeConfigSource } from '../agents/config.js';
+import { getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview, type ReviewResult } from '../review/index.js';
 
 // ─── Shared context ──────────────────────────────────────────────────
 
@@ -114,6 +115,7 @@ export function cmdHelp(): void {
     ['/model',                  'Set AI provider (API or CLI agent: Claude Code, Codex, Gemini)'],
     ['/clear',                  'Remove all annotations from source files (start fresh)'],
     ['/sync',                   'Sync agent instruction files with current threat model'],
+    ['/review [severity]',      'Interactive governance review of unmitigated exposures'],
     ['(freeform text)',         'Chat about your threat model with AI'],
     ['', ''],
     ['/report',                 'Generate markdown + JSON report'],
@@ -1695,6 +1697,91 @@ export function cmdUnannotated(ctx: TuiContext): void {
     console.log(`    ${f}`);
   }
   console.log(`\n  ${C.dim('Not all files need annotations — only those that touch security boundaries.')}`);
+  console.log('');
+}
+
+// ─── /review ─────────────────────────────────────────────────────────
+
+export async function cmdReview(args: string, ctx: TuiContext): Promise<void> {
+  if (!ctx.model) {
+    console.log(C.warn('  No threat model. Run /parse first.'));
+    return;
+  }
+
+  let exposures = getReviewableExposures(ctx.model);
+
+  // Parse severity filter from args (e.g., "/review critical,high")
+  if (args) {
+    const allowed = new Set(args.split(',').map(s => s.trim().toLowerCase()));
+    exposures = exposures.filter(e => allowed.has(e.exposure.severity || 'low'));
+    exposures = exposures.map((e, i) => ({ ...e, index: i + 1 }));
+  }
+
+  if (exposures.length === 0) {
+    console.log(`\n  ${C.success('✓')} No unmitigated exposures to review.\n`);
+    return;
+  }
+
+  console.log(`\n  ${C.bold('guardlink review')} — ${exposures.length} unmitigated exposure(s)\n`);
+
+  const results: ReviewResult[] = [];
+
+  for (const reviewable of exposures) {
+    const e = reviewable.exposure;
+    const sev = severityText(e.severity || 'low');
+    console.log(`  ${C.bold(`[${reviewable.index}/${exposures.length}]`)} ${e.asset} → ${e.threat} ${sev}`);
+    console.log(`    File: ${fileLink(e.location.file, e.location.line)}`);
+    console.log(`    Exposure: ${C.dim('"' + (e.description || 'no description') + '"')}`);
+    console.log('');
+    console.log(`    ${C.bold('a')} Accept    ${C.dim('— risk acknowledged and intentional')}`);
+    console.log(`    ${C.bold('r')} Remediate ${C.dim('— mark as planned fix')}`);
+    console.log(`    ${C.bold('s')} Skip      ${C.dim('— leave open for now')}`);
+    console.log(`    ${C.bold('q')} Quit`);
+    console.log('');
+
+    const choice = (await ask(ctx, '    Choice [a/r/s/q]: ')).toLowerCase();
+
+    if (choice === 'q') {
+      console.log(`\n  ${C.dim('Review ended.')}\n`);
+      break;
+    }
+
+    if (choice === 'a') {
+      let justification = '';
+      while (!justification) {
+        justification = await ask(ctx, '    Justification (required): ');
+        if (!justification) console.log(C.warn('    ⚠  Justification is mandatory for acceptance.'));
+      }
+      const result = await applyReviewAction(ctx.root, reviewable, { decision: 'accept', justification });
+      results.push(result);
+      console.log(`    ${C.success('✓')} Accepted — ${result.linesInserted} line(s) written\n`);
+    } else if (choice === 'r') {
+      let note = '';
+      while (!note) {
+        note = await ask(ctx, '    Remediation note (required): ');
+        if (!note) console.log(C.warn('    ⚠  Remediation note is mandatory.'));
+      }
+      const result = await applyReviewAction(ctx.root, reviewable, { decision: 'remediate', justification: note });
+      results.push(result);
+      console.log(`    ${C.success('✓')} Marked for remediation — ${result.linesInserted} line(s) written\n`);
+    } else {
+      results.push({ exposure: reviewable, action: { decision: 'skip', justification: '' }, linesInserted: 0 });
+      console.log(`    ${C.dim('— Skipped')}\n`);
+    }
+  }
+
+  if (results.length > 0) {
+    console.log(`\n  ${summarizeReview(results)}`);
+
+    // Re-parse and sync if annotations were written
+    if (results.some(r => r.linesInserted > 0)) {
+      await refreshModel(ctx);
+      try {
+        const syncResult = syncAgentFiles({ root: ctx.root, model: ctx.model });
+        if (syncResult.updated.length > 0) console.log(`  ${C.dim('↻ Synced')} ${syncResult.updated.length} agent instruction file(s)`);
+      } catch {}
+    }
+  }
   console.log('');
 }
 

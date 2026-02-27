@@ -49,6 +49,7 @@ import {
   cmdClear,
   cmdSync,
   cmdUnannotated,
+  cmdReview,
   cmdReport,
   cmdDashboard,
   cmdGal,
@@ -62,7 +63,7 @@ const COMMANDS = [
   '/exposures', '/show', '/scan',
   '/assets', '/files', '/view',
   '/threat-report', '/threat-reports', '/annotate', '/model',
-  '/clear', '/sync', '/unannotated',
+  '/clear', '/sync', '/unannotated', '/review',
   '/report', '/dashboard',
   '/quit',
 ];
@@ -96,6 +97,7 @@ const PALETTE_COMMANDS: CommandEntry[] = [
   { command: '/clear',      label: 'Remove all annotations from source files' },
   { command: '/sync',       label: 'Sync agent instructions with current threat model' },
   { command: '/unannotated', label: 'List source files with no annotations' },
+  { command: '/review',     label: 'Review unmitigated exposures — accept, remediate, or skip' },
   { command: '/report',     label: 'Generate markdown report' },
   { command: '/dashboard',  label: 'HTML dashboard' },
   { command: '/diff',       label: 'Compare vs git ref' },
@@ -369,6 +371,7 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
         case '/clear':    await cmdClear(args, ctx); break;
         case '/sync':     await cmdSync(ctx); break;
         case '/unannotated': cmdUnannotated(ctx); break;
+        case '/review':   await cmdReview(args, ctx); break;
         case '/report':   await cmdReport(ctx); break;
         case '/dashboard': await cmdDashboard(ctx); break;
         default:
