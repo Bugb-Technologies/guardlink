@@ -14,6 +14,7 @@
  *   guardlink_sarif    — Export SARIF 2.1.0
  *   guardlink_diff     — Compare threat model against a git ref
  *   guardlink_threat_reports — List saved AI threat report files
+ *   guardlink_workspace_info — Workspace config, siblings, tag prefixes
  *
  * Resources:
  *   guardlink://model        — Full ThreatModel JSON
@@ -54,6 +55,7 @@ import { suggestAnnotations } from './suggest.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModel, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
+import { loadWorkspaceConfig } from '../workspace/index.js';
 import type { ThreatModel } from '../types/index.js';
 
 // ─── Cached model ────────────────────────────────────────────────────
@@ -587,6 +589,50 @@ export function createServer(): McpServer {
       const verb = decision === 'accept' ? 'Accepted' : 'Marked for remediation';
       return {
         content: [{ type: 'text', text: `${verb}: ${target.exposure.asset} → ${target.exposure.threat} [${target.exposure.severity}]\nJustification: ${justification}\n${result.linesInserted} annotation line(s) written to ${target.exposure.location.file}` }],
+      };
+    },
+  );
+
+  // ── Tool: guardlink_workspace_info ──
+  server.tool(
+    'guardlink_workspace_info',
+    'Get workspace configuration for multi-repo threat modeling. Returns workspace name, this repo\'s identity, sibling repos, and their tag prefixes. Use this to understand cross-repo references when writing annotations. Returns null fields if the repo is not part of a workspace.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+    },
+    async ({ root }) => {
+      const config = loadWorkspaceConfig(root);
+
+      if (!config) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({
+            workspace: null,
+            message: 'This repo is not part of a workspace. Use "guardlink link-project" to create one.',
+          }, null, 2) }],
+        };
+      }
+
+      const siblings = config.repos.filter(r => r.name !== config.this_repo);
+
+      return {
+        content: [{ type: 'text', text: JSON.stringify({
+          workspace: config.workspace,
+          this_repo: config.this_repo,
+          tag_prefix: `#${config.this_repo}.`,
+          siblings: siblings.map(r => ({
+            name: r.name,
+            tag_prefix: `#${r.name}.`,
+            registry: r.registry || null,
+          })),
+          total_repos: config.repos.length,
+          cross_repo_annotation_rules: [
+            `Use #${config.this_repo}.<component> for assets defined in this repo`,
+            `Reference sibling assets/threats/controls by their tag prefix (e.g. #${siblings[0]?.name || 'sibling'}.<component>)`,
+            'Do not redefine assets that belong to another repo — reference by tag',
+            'Cross-repo @flows are encouraged: @flows #data from #this.component to #sibling.endpoint',
+            'External refs resolve during workspace merge, not local validation',
+          ],
+        }, null, 2) }],
       };
     },
   );

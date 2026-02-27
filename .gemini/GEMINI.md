@@ -51,23 +51,23 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 
 ### Current Definitions (REUSE these IDs — do NOT redefine)
 
-**Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest)
-**Threats:** #path-traversal (Path_Traversal) [high], #cmd-injection (Command_Injection) [critical], #xss (Cross_Site_Scripting) [high], #api-key-exposure (API_Key_Exposure) [high], #ssrf (Server_Side_Request_Forgery) [medium], #redos (ReDoS) [medium], #arbitrary-write (Arbitrary_File_Write) [high], #prompt-injection (Prompt_Injection) [medium], #dos (Denial_of_Service) [medium], #data-exposure (Sensitive_Data_Exposure) [medium], #insecure-deser (Insecure_Deserialization) [medium], #child-proc-injection (Child_Process_Injection) [high], #info-disclosure (Information_Disclosure) [low]
+**Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest), #workspace-link (Workspace,Link), #merge-engine (Workspace,Merge), #report-metadata (Workspace,Metadata), #workspace-config (Workspace,Config)
+**Threats:** #path-traversal (Path_Traversal) [high], #cmd-injection (Command_Injection) [critical], #xss (Cross_Site_Scripting) [high], #api-key-exposure (API_Key_Exposure) [high], #ssrf (Server_Side_Request_Forgery) [medium], #redos (ReDoS) [medium], #arbitrary-write (Arbitrary_File_Write) [high], #prompt-injection (Prompt_Injection) [medium], #dos (Denial_of_Service) [medium], #data-exposure (Sensitive_Data_Exposure) [medium], #insecure-deser (Insecure_Deserialization) [medium], #child-proc-injection (Child_Process_Injection) [high], #info-disclosure (Information_Disclosure) [low], #tag-collision (Tag_Collision) [medium], #config-tamper (Config_Tampering) [medium]
 **Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring)
 
 ### Open Exposures (need @mitigates or @audit)
 
+- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:15)
+- #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
+- #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
 - #agent-launcher exposed to #prompt-injection [medium] (src/agents/launcher.ts:13)
 - #agent-launcher exposed to #dos [low] (src/agents/launcher.ts:15)
 - #agent-launcher exposed to #prompt-injection [high] (src/agents/prompts.ts:6)
-- #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
-- #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
-- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:15)
-- #cli exposed to #cmd-injection [critical] (src/cli/index.ts:29)
+- #cli exposed to #cmd-injection [critical] (src/cli/index.ts:31)
 - #init exposed to #data-exposure [low] (src/init/index.ts:12)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
-- #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:29)
-- #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:33)
+- #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:30)
+- #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:34)
 - #suggest exposed to #dos [low] (src/mcp/suggest.ts:16)
 - #parser exposed to #arbitrary-write [high] (src/parser/clear.ts:7)
 - #tui exposed to #cmd-injection [high] (src/tui/commands.ts:11)
@@ -75,15 +75,8 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 
 ### Existing Data Flows (extend, don't duplicate)
 
-- EnvVars -> #agent-launcher via process.env
-- ConfigFile -> #agent-launcher via readFileSync
-- #agent-launcher -> ConfigFile via writeFileSync
-- UserPrompt -> #agent-launcher via launchAgent
-- #agent-launcher -> AgentProcess via spawn
-- AgentProcess -> #agent-launcher via stdout
-- UserPrompt -> #agent-launcher via buildAnnotatePrompt
-- ThreatModel -> #agent-launcher via model
-- #agent-launcher -> AgentPrompt via return
+- ThreatModel -> #sarif via generateSarif
+- #sarif -> SarifLog via return
 - ThreatModel -> #llm-client via serializeModel
 - ProjectFiles -> #llm-client via readFileSync
 - #llm-client -> ReportFile via writeFileSync
@@ -93,19 +86,30 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 - LLMToolCall -> #llm-client via createToolExecutor
 - #llm-client -> NVD via fetch
 - ProjectFiles -> #llm-client via readFileSync
-- ThreatModel -> #sarif via generateSarif
-- #sarif -> SarifLog via return
-- ... and 42 more
+- EnvVars -> #agent-launcher via process.env
+- ConfigFile -> #agent-launcher via readFileSync
+- #agent-launcher -> ConfigFile via writeFileSync
+- UserPrompt -> #agent-launcher via launchAgent
+- #agent-launcher -> AgentProcess via spawn
+- AgentProcess -> #agent-launcher via stdout
+- UserPrompt -> #agent-launcher via buildAnnotatePrompt
+- ThreatModel -> #agent-launcher via model
+- #agent-launcher -> AgentPrompt via return
+- ... and 48 more
 
 ### Model Stats
 
-272 annotations, 12 assets, 13 threats, 10 controls, 60 exposures, 42 mitigations, 62 flows
+287 annotations, 16 assets, 15 threats, 10 controls, 60 exposures, 44 mitigations, 68 flows
 
 > **Note:** This section is auto-generated. Run `guardlink sync` to update after code changes.
 > Any coding agent (Cursor, Claude, Copilot, Windsurf, etc.) should reference these IDs
 > and continue annotating new code using the same threat model vocabulary.
 
 <!-- guardlink:end -->
+
+
+
+
 
 
 

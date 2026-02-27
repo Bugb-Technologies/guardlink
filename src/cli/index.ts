@@ -19,6 +19,8 @@
  *   guardlink mcp                     Start MCP server (stdio) for Claude Code, Cursor, etc.
  *   guardlink tui [dir]               Interactive TUI with slash commands + AI chat
  *   guardlink gal                     Display GAL annotation language quick reference
+ *   guardlink link-project <repos...>  Link repos into a shared workspace
+ *   guardlink merge <files...>         Merge repo reports into unified dashboard
  *
  * @exposes #cli to #path-traversal [high] cwe:CWE-22 -- "User-supplied dir argument resolved via path.resolve"
  * @mitigates #cli against #path-traversal using #path-validation -- "resolve() canonicalizes paths; cwd-relative by design"
@@ -48,6 +50,8 @@ import { generateDashboardHTML } from '../dashboard/index.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt } from '../agents/index.js';
 import { resolveConfig, saveProjectConfig, saveGlobalConfig, loadProjectConfig, loadGlobalConfig, maskKey, describeConfigSource } from '../agents/config.js';
 import { getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview, type ReviewResult } from '../review/index.js';
+import { populateMetadata, mergeReports, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace } from '../workspace/index.js';
+import type { MergedReport, LinkResult } from '../workspace/index.js';
 import type { ThreatModel, ParseDiagnostic } from '../types/index.js';
 import gradient from 'gradient-string';
 
@@ -299,10 +303,11 @@ program
   .description('Generate a threat model report with Mermaid diagram')
   .argument('[dir]', 'Project directory to scan', '.')
   .option('-p, --project <n>', 'Project name', 'unknown')
-  .option('-o, --output <file>', 'Write report to file (default: threat-model.md)')
+  .option('-o, --output <file>', 'Write report to file')
+  .option('-f, --format <fmt>', 'Output format: md, json, or both (default: md)', 'md')
   .option('--diagram-only', 'Output only the Mermaid diagram, no report wrapper')
-  .option('--json', 'Also output threat-model.json alongside the report')
-  .action(async (dir: string, opts: { project: string; output?: string; diagramOnly?: boolean; json?: boolean }) => {
+  .option('--json', 'Also output threat-model.json alongside the report (legacy; prefer --format)')
+  .action(async (dir: string, opts: { project: string; output?: string; format: string; diagramOnly?: boolean; json?: boolean }) => {
     const root = resolve(dir);
     const { model, diagnostics } = await parseProject({ root, project: opts.project });
 
@@ -313,9 +318,12 @@ program
       console.error(`Fix errors above before generating report.\n`);
     }
 
+    // Enrich with provenance metadata (git SHA, branch, workspace, schema version)
+    const enrichedModel = populateMetadata(model, root);
+
     if (opts.diagramOnly) {
       // Just output Mermaid
-      const mermaid = generateMermaid(model);
+      const mermaid = generateMermaid(enrichedModel);
       if (opts.output) {
         const { writeFile } = await import('node:fs/promises');
         await writeFile(opts.output, mermaid + '\n');
@@ -323,19 +331,29 @@ program
       } else {
         console.log(mermaid);
       }
-    } else {
-      // Full report
-      const report = generateReport(model);
-      const outFile = opts.output || 'threat-model.md';
-      const { writeFile } = await import('node:fs/promises');
-      await writeFile(resolve(root, outFile), report + '\n');
-      console.error(`✓ Wrote threat model report to ${outFile}`);
+      return;
+    }
 
-      if (opts.json) {
-        const jsonFile = outFile.replace(/\.md$/, '.json');
-        await writeFile(resolve(root, jsonFile), JSON.stringify(model, null, 2) + '\n');
-        console.error(`✓ Wrote threat model JSON to ${jsonFile}`);
-      }
+    const { writeFile } = await import('node:fs/promises');
+    const wantJson = opts.format === 'json' || opts.format === 'both' || opts.json;
+    const wantMd = opts.format === 'md' || opts.format === 'both' || opts.json;
+
+    if (wantMd) {
+      const report = generateReport(enrichedModel);
+      const mdFile = opts.output || (opts.format === 'md' ? 'threat-model.md' : 'threat-model.md');
+      await writeFile(resolve(root, mdFile), report + '\n');
+      console.error(`✓ Wrote threat model report to ${mdFile}`);
+    }
+
+    if (wantJson) {
+      const jsonFile = opts.output && opts.format === 'json'
+        ? opts.output
+        : (opts.output || 'threat-model').replace(/\.md$/, '') + '.json';
+      await writeFile(
+        resolve(root, jsonFile),
+        JSON.stringify(enrichedModel, null, 2) + '\n',
+      );
+      console.error(`✓ Wrote threat model JSON to ${jsonFile} (schema v${enrichedModel.metadata?.schema_version})`);
     }
   });
 
@@ -1102,6 +1120,247 @@ program
     await writeFile(resolve(root, outFile), html);
     console.error(`✓ Dashboard generated: ${outFile}`);
     console.error(`  Open in browser to view. Toggle ☀️/🌙 for light/dark mode.`);
+  });
+
+// ─── link-project ────────────────────────────────────────────────────
+
+program
+  .command('link-project')
+  .description('Link repos into a shared workspace for cross-repo threat modeling')
+  .argument('[repos...]', 'Repo directories to link (fresh setup: 2+ paths)')
+  .option('-w, --workspace <n>', 'Workspace name (fresh link only)', 'workspace')
+  .option('-r, --registry <url>', 'GitHub/GitLab org base URL (e.g. github.com/unstructured)')
+  .option('--add <path>', 'Add a new repo to an existing workspace (provide path to new repo)')
+  .option('--remove <name>', 'Remove a repo from the workspace by name')
+  .option('--from <path>', 'Existing workspace repo to read config from (used with --add or --remove)')
+  .action(async (repos: string[], opts: { workspace: string; registry?: string; add?: string; remove?: string; from?: string }) => {
+    let result: LinkResult;
+
+    if (opts.remove) {
+      // ── Remove mode: remove a repo from an existing workspace ──
+      if (!opts.from) {
+        console.error('⚠ --remove requires --from <existing-workspace-repo-path>');
+        console.error('  Example: guardlink link-project --remove payment-svc --from ./api-gateway');
+        process.exit(1);
+      }
+
+      console.error(`Removing "${opts.remove}" from workspace...`);
+      console.error(`  Reference repo: ${opts.from}`);
+      console.error('');
+
+      result = removeFromWorkspace({
+        repoName: opts.remove,
+        existingRepoPath: opts.from,
+      });
+
+      for (const name of result.updated) {
+        console.error(`  ↻ ${name} — workspace.yaml updated`);
+      }
+      for (const f of result.agentFilesUpdated) {
+        if (f.includes('(cleaned)')) console.error(`  🧹 ${f}`);
+      }
+      for (const s of result.skipped) {
+        console.error(`  ✗ ${s.name} — ${s.reason}`);
+      }
+      console.error('');
+
+      if (result.updated.length > 0) {
+        console.error(`✓ Removed "${opts.remove}", updated ${result.updated.length} remaining repo(s)`);
+        console.error('');
+        console.error('Next steps:');
+        console.error('  1. Review and commit changes in each updated repo');
+      } else if (result.skipped.length > 0) {
+        process.exit(1);
+      }
+    } else if (opts.add) {
+      // ── Add mode: add a new repo to an existing workspace ──
+      if (!opts.from) {
+        console.error('⚠ --add requires --from <existing-workspace-repo-path>');
+        console.error('  Example: guardlink link-project --add ./new-service --from ./api-gateway');
+        process.exit(1);
+      }
+
+      console.error(`Adding repo to existing workspace...`);
+      console.error(`  New repo:      ${opts.add}`);
+      console.error(`  From workspace: ${opts.from}`);
+      console.error('');
+
+      result = addToWorkspace({
+        newRepoPath: opts.add,
+        existingRepoPath: opts.from,
+        registry: opts.registry,
+      });
+
+      // Report results
+      for (const name of result.initialized) {
+        console.error(`  ⚡ ${name} — auto-initialized (no prior guardlink setup)`);
+      }
+      for (const name of result.linked) {
+        console.error(`  ✓ ${name} — linked to workspace`);
+      }
+      for (const name of result.updated) {
+        console.error(`  ↻ ${name} — workspace.yaml updated`);
+      }
+      for (const s of result.skipped) {
+        console.error(`  ✗ ${s.name} — skipped: ${s.reason}`);
+      }
+      console.error('');
+
+      if (result.linked.length > 0 || result.updated.length > 0) {
+        const total = result.linked.length + result.updated.length;
+        console.error(`✓ ${result.linked.length} repo(s) added, ${result.updated.length} existing repo(s) updated`);
+        if (result.agentFilesUpdated.length > 0) {
+          console.error(`  ↻ Updated ${result.agentFilesUpdated.length} agent instruction file(s)`);
+        }
+        // Warn about repos not found on disk
+        // (they're in workspace.yaml but we couldn't locate their directory)
+        console.error('');
+        console.error('Next steps:');
+        console.error('  1. Review and commit changes in each updated repo');
+        console.error('  2. Add "guardlink report --format json" to the new repo\'s CI');
+        console.error('  3. Run "guardlink merge" with all repo reports');
+      } else {
+        console.error('✗ No repos were added. Check the paths provided.');
+        process.exit(1);
+      }
+    } else {
+      // ── Fresh link mode: link N repos together ──
+      if (repos.length < 2) {
+        console.error('⚠ Fresh linking requires at least 2 repo paths.');
+        console.error('  To add a repo to an existing workspace, use:');
+        console.error('  guardlink link-project --add <new-repo> --from <existing-repo>');
+        process.exit(1);
+      }
+
+      console.error(`Linking ${repos.length} repos into workspace "${opts.workspace}"...`);
+      console.error('');
+
+      result = linkProject({
+        workspace: opts.workspace,
+        repoPaths: repos,
+        registry: opts.registry,
+      });
+
+      for (const name of result.initialized) {
+        console.error(`  ⚡ ${name} — auto-initialized (no prior guardlink setup)`);
+      }
+      for (const name of result.linked) {
+        console.error(`  ✓ ${name} — workspace.yaml written, agent files updated`);
+      }
+      for (const s of result.skipped) {
+        console.error(`  ✗ ${s.name} — skipped: ${s.reason}`);
+      }
+      console.error('');
+
+      if (result.linked.length > 0) {
+        console.error(`✓ Linked ${result.linked.length} repo(s) into "${opts.workspace}"`);
+        if (result.agentFilesUpdated.length > 0) {
+          console.error(`  ↻ Updated ${result.agentFilesUpdated.length} agent instruction file(s)`);
+        }
+        console.error('');
+        console.error('Next steps:');
+        console.error('  1. Review and commit .guardlink/workspace.yaml in each repo');
+        console.error('  2. Add "guardlink report --format json -o guardlink-report.json" to each repo\'s CI');
+        console.error('  3. Use "guardlink merge" to combine reports into a unified dashboard');
+      } else {
+        console.error('✗ No repos were linked. Check the paths provided.');
+        process.exit(1);
+      }
+    }
+  });
+
+// ─── merge ───────────────────────────────────────────────────────────
+
+program
+  .command('merge')
+  .description('Merge multiple repo report JSONs into a unified workspace threat model')
+  .argument('<files...>', 'Report JSON file paths (glob supported)')
+  .option('-o, --output <file>', 'Output file for merged dashboard HTML (default: workspace-dashboard.html)')
+  .option('--json <file>', 'Also write merged report JSON to this file')
+  .option('--diff-against <file>', 'Compare against a previous merged JSON for weekly summary')
+  .option('-w, --workspace <name>', 'Workspace name (auto-detected from reports if not set)')
+  .option('--summary-only', 'Print only the text summary, skip dashboard generation')
+  .action(async (
+    files: string[],
+    opts: { output?: string; json?: string; diffAgainst?: string; workspace?: string; summaryOnly?: boolean },
+  ) => {
+    const { writeFile, readFile } = await import('node:fs/promises');
+    const { resolve: resolvePath } = await import('node:path');
+
+    // Resolve file paths (support globs via shell expansion — files already expanded by shell)
+    const resolvedFiles = files.map(f => resolvePath(f));
+
+    if (resolvedFiles.length === 0) {
+      console.error('✗ No report files provided.');
+      process.exit(1);
+    }
+
+    console.error(`Merging ${resolvedFiles.length} report(s)...`);
+
+    // Run merge
+    const merged = await mergeReports(resolvedFiles, {
+      workspace: opts.workspace,
+    });
+
+    const t = merged.totals;
+
+    // Print summary to stderr
+    console.error('');
+    console.error(`✓ ${merged.workspace} — ${t.repos_loaded}/${t.repos} repos loaded`);
+    console.error(`  ${t.annotations} annotations | ${t.assets} assets | ${t.threats} threats | ${t.controls} controls`);
+    console.error(`  ${t.mitigations} mitigations | ${t.exposures} exposures | ${t.unmitigated_exposures} unmitigated`);
+    console.error(`  ${t.flows} flows | ${t.external_refs_resolved} refs resolved | ${t.external_refs_unresolved} unresolved`);
+
+    // Print warnings
+    for (const w of merged.warnings) {
+      const icon = w.level === 'error' ? '✗' : w.level === 'warning' ? '⚠' : 'ℹ';
+      console.error(`  ${icon} ${w.message}`);
+    }
+    console.error('');
+
+    // Write merged JSON
+    if (opts.json) {
+      const jsonPath = resolvePath(opts.json);
+      await writeFile(jsonPath, JSON.stringify(merged, null, 2) + '\n');
+      console.error(`✓ Wrote merged JSON to ${opts.json}`);
+    }
+
+    // Diff against previous
+    if (opts.diffAgainst) {
+      try {
+        const prevRaw = await readFile(resolvePath(opts.diffAgainst), 'utf-8');
+        const previous: MergedReport = JSON.parse(prevRaw);
+        const diff = diffMergedReports(merged, previous);
+        const diffMd = formatDiffSummary(diff, merged.workspace);
+
+        // Write diff markdown
+        const diffFile = (opts.json || 'workspace-merge').replace(/\.json$/, '') + '-weekly-diff.md';
+        await writeFile(resolvePath(diffFile), diffMd + '\n');
+        console.error(`✓ Wrote weekly diff to ${diffFile}`);
+
+        // Also print a compact version to stderr
+        const riskIcon = diff.risk_delta === 'increased' ? '🔴'
+          : diff.risk_delta === 'decreased' ? '🟢' : '⚪';
+        console.error(`  ${riskIcon} Risk ${diff.risk_delta} since last merge`);
+        if (diff.new_unmitigated > 0) console.error(`  🔴 +${diff.new_unmitigated} new unmitigated exposure(s)`);
+        if (diff.resolved_unmitigated > 0) console.error(`  🟢 ${diff.resolved_unmitigated} exposure(s) now mitigated`);
+        if (diff.mitigations_removed > 0) console.error(`  ⚠️  ${diff.mitigations_removed} mitigation(s) removed`);
+        console.error('');
+      } catch (err) {
+        console.error(`⚠ Could not diff against ${opts.diffAgainst}: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
+    // Generate dashboard HTML (unless --summary-only)
+    if (!opts.summaryOnly) {
+      const html = generateDashboardHTML(merged.model);
+      const outFile = opts.output || 'workspace-dashboard.html';
+      await writeFile(resolvePath(outFile), html);
+      console.error(`✓ Wrote workspace dashboard to ${outFile}`);
+    }
+
+    // Print full markdown summary to stdout (pipeable)
+    console.log(formatMergeSummary(merged));
   });
 
 // ─── mcp ─────────────────────────────────────────────────────────────

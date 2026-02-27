@@ -22,8 +22,10 @@ import type {
   HandlesAnnotation, AssumesAnnotation, ShieldAnnotation,
   CommentAnnotation,
   DataClassification,
+  ExternalRef, AnnotationVerb, SourceLocation,
 } from '../types/index.js';
 import { parseFile } from './parse-file.js';
+import { loadWorkspaceConfig } from '../workspace/index.js';
 
 export interface ParseProjectOptions {
   /** Root directory to scan */
@@ -129,6 +131,9 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
 
   // Assemble ThreatModel
   const model = assembleModel(allAnnotations, files.length, project, annotatedFiles, unannotatedFiles);
+
+  // Detect cross-repo tag references (requires workspace.yaml)
+  model.external_refs = detectExternalRefs(model, root);
 
   return { model, diagnostics: allDiagnostics };
 }
@@ -330,5 +335,103 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
     }
   }
 
+  // Detect external (cross-repo) tag references
+  // (moved to parseProject where root is available)
+
   return model;
+}
+
+// ─── External ref detection ──────────────────────────────────────────
+
+/**
+ * Detect tag references that point to definitions in sibling repos.
+ *
+ * A tag like `#auth-lib.token-verify` is external if:
+ *   - It contains a dot separator
+ *   - The prefix before the first dot matches a sibling repo name
+ *   - The tag is not defined locally (not in this repo's assets/threats/controls)
+ *
+ * Requires workspace.yaml to be present — returns [] if not in a workspace.
+ */
+function detectExternalRefs(model: ThreatModel, root: string): ExternalRef[] {
+  const config = loadWorkspaceConfig(root);
+  if (!config) return [];
+
+  // Sibling repo names (exclude this repo)
+  const siblingNames = new Set(
+    config.repos
+      .filter(r => r.name !== config.this_repo)
+      .map(r => r.name),
+  );
+  if (siblingNames.size === 0) return [];
+
+  // Local definitions — both with and without # prefix
+  const localIds = new Set<string>();
+  for (const a of model.assets) {
+    if (a.id) { localIds.add(a.id); localIds.add(`#${a.id}`); }
+  }
+  for (const t of model.threats) {
+    if (t.id) { localIds.add(t.id); localIds.add(`#${t.id}`); }
+  }
+  for (const c of model.controls) {
+    if (c.id) { localIds.add(c.id); localIds.add(`#${c.id}`); }
+  }
+
+  const refs: ExternalRef[] = [];
+  const seen = new Set<string>(); // dedup by tag+file+line
+
+  function checkTag(tag: string | undefined, verb: AnnotationVerb, location: SourceLocation) {
+    if (!tag) return;
+    const key = `${tag}:${location.file}:${location.line}`;
+    if (seen.has(key)) return;
+
+    // Skip if locally defined
+    if (localIds.has(tag)) return;
+
+    // Strip leading # for prefix extraction
+    const bare = tag.startsWith('#') ? tag.slice(1) : tag;
+    const dotIdx = bare.indexOf('.');
+    if (dotIdx < 1) return; // no dot or starts with dot — not a repo prefix
+
+    const prefix = bare.slice(0, dotIdx);
+    if (!siblingNames.has(prefix)) return;
+
+    seen.add(key);
+    refs.push({
+      tag,
+      context_verb: verb,
+      location,
+      inferred_repo: prefix,
+    });
+  }
+
+  // Scan all relationship annotations for cross-repo tags
+  for (const m of model.mitigations) {
+    checkTag(m.asset, 'mitigates', m.location);
+    checkTag(m.threat, 'mitigates', m.location);
+    if (m.control) checkTag(m.control, 'mitigates', m.location);
+  }
+  for (const e of model.exposures) {
+    checkTag(e.asset, 'exposes', e.location);
+    checkTag(e.threat, 'exposes', e.location);
+  }
+  for (const a of model.acceptances) {
+    checkTag(a.asset, 'accepts', a.location);
+    checkTag(a.threat, 'accepts', a.location);
+  }
+  for (const t of model.transfers) {
+    checkTag(t.source, 'transfers', t.location);
+    checkTag(t.target, 'transfers', t.location);
+    checkTag(t.threat, 'transfers', t.location);
+  }
+  for (const f of model.flows) {
+    checkTag(f.source, 'flows', f.location);
+    checkTag(f.target, 'flows', f.location);
+  }
+  for (const b of model.boundaries) {
+    checkTag(b.asset_a, 'boundary', b.location);
+    checkTag(b.asset_b, 'boundary', b.location);
+  }
+
+  return refs;
 }
