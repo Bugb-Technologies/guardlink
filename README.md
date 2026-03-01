@@ -59,6 +59,9 @@ To uninstall: `npm unlink -g guardlink`
 # Initialize in your project (detects your AI agent automatically)
 guardlink init
 
+# Let AI annotate your project - Launch a coding agent to add annotations
+guardlink annotate [prompt]
+
 # Let your AI coding agent annotate, or write annotations manually
 # Then validate
 guardlink validate .
@@ -162,6 +165,7 @@ GuardLink ships an MCP server and behavioral directives for AI coding agents. Af
 | Command | Description |
 |---------|-------------|
 | `guardlink init [dir]` | Initialize project with definitions, config, and agent integration |
+| `guardlink annotate [prompt]` | Launch a coding agent to add annotations |
 | `guardlink parse [dir]` | Parse all annotations, output ThreatModel JSON |
 | `guardlink status [dir]` | Coverage summary: assets, threats, mitigations, exposures |
 | `guardlink validate [dir]` | Check for syntax errors, dangling refs, duplicate IDs |
@@ -174,7 +178,6 @@ GuardLink ships an MCP server and behavioral directives for AI coding agents. Af
 | `guardlink sarif [dir]` | Export unmitigated exposures as SARIF 2.1.0 |
 | `guardlink threat-report [fw]` | AI threat report (stride/dread/pasta/attacker/rapid/general) |
 | `guardlink threat-reports` | List saved AI threat reports |
-| `guardlink annotate [prompt]` | Launch a coding agent to add annotations |
 | `guardlink review [dir]` | Interactive governance review — accept, remediate, or skip unmitigated exposures |
 | `guardlink review --list` | List reviewable exposures without prompting |
 | `guardlink clear [dir]` | Remove all annotations from source files (with `--dry-run` preview) |
