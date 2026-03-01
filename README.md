@@ -151,6 +151,7 @@ GuardLink ships an MCP server and behavioral directives for AI coding agents. Af
 | `guardlink_dashboard` | Generate HTML dashboard |
 | `guardlink_sarif` | Export SARIF 2.1.0 |
 | `guardlink_diff` | Compare threat model against a git ref |
+| `guardlink_workspace_info` | Workspace config, sibling repos, tag prefixes for cross-repo annotations |
 
 **Resources:** `guardlink://model`, `guardlink://definitions`, `guardlink://config`
 
@@ -179,6 +180,11 @@ GuardLink ships an MCP server and behavioral directives for AI coding agents. Af
 | `guardlink clear [dir]` | Remove all annotations from source files (with `--dry-run` preview) |
 | `guardlink sync [dir]` | Sync agent instruction files with current threat model |
 | `guardlink unannotated [dir]` | List source files with no annotations |
+| `guardlink link-project <repos...>` | Link repos into a shared workspace for cross-repo threat modeling |
+| `guardlink link-project --add <repo>` | Add a repo to an existing workspace |
+| `guardlink link-project --remove <name>` | Remove a repo from a workspace |
+| `guardlink merge <files...>` | Merge per-repo report JSONs into a unified workspace dashboard |
+| `guardlink report --format json` | Generate report JSON with metadata (repo, workspace, commit SHA) |
 | `guardlink config` | Set AI provider and API key |
 | `guardlink mcp` | Start MCP server for AI agent integration |
 
@@ -282,6 +288,10 @@ jobs:
 
 See [`examples/github-action.yml`](examples/github-action.yml) for a full example with PR comments and SARIF upload.
 
+### Multi-Repo CI
+
+For workspace setups, GuardLink provides two additional workflow templates: a per-repo workflow that generates report JSON artifacts on every push, and a workspace merge workflow that runs weekly to combine all repos into a unified dashboard. See the [CI setup guide](examples/ci/README.md) for step-by-step instructions.
+
 ### What CI Catches
 
 - **New route, no annotations:** `guardlink diff` shows "+1 endpoint, 0 mitigations" — the team sees the gap.
@@ -291,6 +301,35 @@ See [`examples/github-action.yml`](examples/github-action.yml) for a full exampl
 ### SARIF
 
 `guardlink sarif` exports unmitigated exposures as SARIF 2.1.0. Upload to GitHub Advanced Security and every `@exposes` appears as a code scanning alert with file, line, severity, and CWE.
+
+---
+
+## Multi-Repo Workspaces
+
+In microservices architectures, a single repo only has part of the security picture. `PaymentService` is defined in `repo-payments`, exposed in `repo-gateway`, mitigated in `repo-auth-lib`. GuardLink workspaces link these repos so the threat model spans service boundaries.
+
+```bash
+# Link three repos into a workspace
+guardlink link-project ./payment-svc ./auth-lib ./api-gateway \
+  --workspace acme-platform
+
+# Each repo gets .guardlink/workspace.yaml + agent files updated with cross-repo context
+# Agents now know about sibling services and use tag prefixes like #payment-svc.refund
+
+# Generate per-repo JSON reports (in each repo or in CI)
+guardlink report --format json -o guardlink-report.json
+
+# Merge all reports into a unified dashboard
+guardlink merge payment-svc.json auth-lib.json api-gateway.json \
+  -o dashboard.html --json merged.json
+
+# Week-over-week diff for security leads
+guardlink merge *.json --diff-against last-week.json --json merged.json
+```
+
+Annotations reference sibling repos by tag prefix — `@flows #request from #api-gateway.router to #payment-svc.refund` — and these references resolve during merge. `guardlink validate` flags them as external refs locally, but they're expected and won't block CI.
+
+For automated weekly dashboards, see the [CI setup guide](examples/ci/README.md). Full workspace documentation: [docs/WORKSPACE.md](docs/WORKSPACE.md).
 
 ---
 
