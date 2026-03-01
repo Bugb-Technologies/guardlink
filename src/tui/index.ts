@@ -53,6 +53,9 @@ import {
   cmdReport,
   cmdDashboard,
   cmdGal,
+  cmdWorkspace,
+  cmdLink,
+  cmdMerge,
 } from './commands.js';
 
 // ─── Command registry ────────────────────────────────────────────────
@@ -65,6 +68,7 @@ const COMMANDS = [
   '/threat-report', '/threat-reports', '/annotate', '/model',
   '/clear', '/sync', '/unannotated', '/review',
   '/report', '/dashboard',
+  '/workspace', '/link', '/merge',
   '/quit',
 ];
 
@@ -102,6 +106,9 @@ const PALETTE_COMMANDS: CommandEntry[] = [
   { command: '/dashboard',  label: 'HTML dashboard' },
   { command: '/diff',       label: 'Compare vs git ref' },
   { command: '/sarif',      label: 'Export SARIF 2.1.0' },
+  { command: '/workspace',  label: 'Show workspace config and linked repos' },
+  { command: '/link',       label: 'Link repos into workspace (--add / --remove)' },
+  { command: '/merge',      label: 'Merge report JSONs into unified dashboard' },
   { command: '/gal',        label: 'GAL annotation language guide' },
   { command: '/help',       label: 'Show all commands' },
   { command: '/quit',       label: 'Exit GuardLink CLI',   aliases: ['/exit', '/q'] },
@@ -313,6 +320,9 @@ function printCommandList(): void {
     ['/dashboard',  'HTML dashboard'],
     ['/diff [ref]', 'Compare vs git ref'],
     ['/sarif',      'Export SARIF'],
+    ['/workspace',  'Workspace config + linked repos'],
+    ['/link',       'Link repos (--add / --remove)'],
+    ['/merge',      'Merge report JSONs'],
     ['/gal',        'GAL annotation guide'],
     ['/help',       'Full help'],
     ['/quit',       'Exit GuardLink CLI'],
@@ -374,6 +384,9 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
         case '/review':   await cmdReview(args, ctx); break;
         case '/report':   await cmdReport(ctx); break;
         case '/dashboard': await cmdDashboard(ctx); break;
+        case '/workspace': cmdWorkspace(ctx); break;
+        case '/link':     await cmdLink(args, ctx); break;
+        case '/merge':    await cmdMerge(args, ctx); break;
         default:
           // Fuzzy match
           const matches = COMMANDS.filter(c => c.startsWith(cmd));

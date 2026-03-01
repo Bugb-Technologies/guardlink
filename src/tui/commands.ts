@@ -37,6 +37,8 @@ import { resolveLLMConfig, saveTuiConfig, loadTuiConfig } from './config.js';
 import { AGENTS, parseAgentFlag, launchAgent, launchAgentInline, copyToClipboard, buildAnnotatePrompt, type AgentEntry } from '../agents/index.js';
 import { describeConfigSource } from '../agents/config.js';
 import { getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview, type ReviewResult } from '../review/index.js';
+import { loadWorkspaceConfig, linkProject, addToWorkspace, removeFromWorkspace, mergeReports, formatMergeSummary, diffMergedReports, formatDiffSummary, populateMetadata } from '../workspace/index.js';
+import type { MergedReport } from '../workspace/index.js';
 
 // ─── Shared context ──────────────────────────────────────────────────
 
@@ -122,6 +124,10 @@ export function cmdHelp(): void {
     ['/dashboard',              'Generate HTML dashboard + open browser'],
     ['/diff [ref]',             'Compare model against a git ref (default: HEAD~1)'],
     ['/sarif [-o file]',        'Export SARIF 2.1.0 for GitHub / VS Code'],
+    ['', ''],
+    ['/workspace',              'Show workspace config and linked repos'],
+    ['/link <repos...>',        'Link repos into a workspace (--add / --remove)'],
+    ['/merge <files...>',       'Merge report JSONs into unified dashboard'],
     ['', ''],
     ['/gal',                    'GAL annotation language guide'],
     ['/help',                   'This help'],
@@ -1829,6 +1835,237 @@ export async function cmdDashboard(ctx: TuiContext): Promise<void> {
     console.log(C.dim('    Opened in browser.'));
   } catch {
     console.log(C.dim('    Open the file in your browser.'));
+  }
+  console.log('');
+}
+
+// ─── /workspace ──────────────────────────────────────────────────────
+
+export function cmdWorkspace(ctx: TuiContext): void {
+  const config = loadWorkspaceConfig(ctx.root);
+  if (!config) {
+    console.log('');
+    console.log(C.warn('  This repo is not part of a workspace.'));
+    console.log(C.dim('  Use /link to create one, or guardlink link-project in the CLI.'));
+    console.log('');
+    return;
+  }
+
+  console.log('');
+  console.log(`  ${C.bold('Workspace:')} ${config.workspace}`);
+  console.log(`  ${C.bold('This repo:')} ${config.this_repo}`);
+  console.log('');
+  console.log(`  ${C.bold('Linked repos')} (${config.repos.length}):`);
+  for (const r of config.repos) {
+    const isSelf = r.name === config.this_repo ? C.dim(' (this)') : '';
+    const reg = r.registry ? C.dim(` → ${r.registry}`) : '';
+    console.log(`    ${r.name === config.this_repo ? C.green('●') : C.cyan('○')} ${r.name}${isSelf}${reg}`);
+  }
+  console.log('');
+  console.log(C.dim('  /merge to combine reports · /link --add to add a repo · /link --remove to remove'));
+  console.log('');
+}
+
+// ─── /link ───────────────────────────────────────────────────────────
+
+export async function cmdLink(args: string, ctx: TuiContext): Promise<void> {
+  const parts = args.trim().split(/\s+/).filter(Boolean);
+
+  // Parse flags
+  let addPath: string | undefined;
+  let removeName: string | undefined;
+  let workspace = 'workspace';
+  let registry: string | undefined;
+  const repoPaths: string[] = [];
+
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    if (p === '--add' && parts[i + 1]) { addPath = parts[++i]; }
+    else if (p === '--remove' && parts[i + 1]) { removeName = parts[++i]; }
+    else if ((p === '-w' || p === '--workspace') && parts[i + 1]) { workspace = parts[++i]; }
+    else if ((p === '-r' || p === '--registry') && parts[i + 1]) { registry = parts[++i]; }
+    else { repoPaths.push(p); }
+  }
+
+  if (removeName) {
+    // ── Remove mode ──
+    console.log(C.dim(`  Removing "${removeName}" from workspace...`));
+    const result = removeFromWorkspace({
+      repoName: removeName,
+      existingRepoPath: ctx.root,
+    });
+
+    for (const name of result.updated) console.log(`  ${C.green('↻')} ${name} — updated`);
+    for (const f of result.agentFilesUpdated) {
+      if (f.includes('(cleaned)')) console.log(`  ${C.dim('🧹')} ${f}`);
+    }
+    for (const s of result.skipped) console.log(`  ${C.warn('✗')} ${s.name} — ${s.reason}`);
+
+    if (result.updated.length > 0) {
+      console.log('');
+      console.log(C.success(`  ✓ Removed "${removeName}", updated ${result.updated.length} repo(s)`));
+    }
+
+  } else if (addPath) {
+    // ── Add mode (--from is implicit: ctx.root) ──
+    console.log(C.dim(`  Adding ${addPath} to workspace...`));
+    const result = addToWorkspace({
+      newRepoPath: resolve(addPath),
+      existingRepoPath: ctx.root,
+      registry,
+    });
+
+    for (const name of result.initialized) console.log(`  ${C.cyan('⚡')} ${name} — auto-initialized`);
+    for (const name of result.linked) console.log(`  ${C.green('✓')} ${name} — linked`);
+    for (const name of result.updated) console.log(`  ${C.green('↻')} ${name} — updated`);
+    for (const s of result.skipped) console.log(`  ${C.warn('✗')} ${s.name} — ${s.reason}`);
+
+    if (result.linked.length > 0 || result.updated.length > 0) {
+      console.log('');
+      console.log(C.success(`  ✓ ${result.linked.length} added, ${result.updated.length} updated`));
+    }
+
+  } else if (repoPaths.length >= 2) {
+    // ── Fresh link mode ──
+    console.log(C.dim(`  Linking ${repoPaths.length} repos into "${workspace}"...`));
+    const result = linkProject({
+      workspace,
+      repoPaths: repoPaths.map(p => resolve(p)),
+      registry,
+    });
+
+    for (const name of result.initialized) console.log(`  ${C.cyan('⚡')} ${name} — auto-initialized`);
+    for (const name of result.linked) console.log(`  ${C.green('✓')} ${name} — linked`);
+    for (const s of result.skipped) console.log(`  ${C.warn('✗')} ${s.name} — ${s.reason}`);
+
+    if (result.linked.length > 0) {
+      console.log('');
+      console.log(C.success(`  ✓ Linked ${result.linked.length} repo(s) into "${workspace}"`));
+    }
+
+  } else {
+    console.log('');
+    console.log(`  ${C.bold('Usage:')}`);
+    console.log(`    /link <repo1> <repo2> ...           ${C.dim('Fresh workspace setup')}`);
+    console.log(`    /link --add <repo-path>             ${C.dim('Add a repo (uses current repo as reference)')}`);
+    console.log(`    /link --remove <repo-name>          ${C.dim('Remove a repo by name')}`);
+    console.log(`    /link -w <name> -r <registry> ...   ${C.dim('Set workspace name and registry')}`);
+  }
+  console.log('');
+}
+
+// ─── /merge ──────────────────────────────────────────────────────────
+
+export async function cmdMerge(args: string, ctx: TuiContext): Promise<void> {
+  const parts = args.trim().split(/\s+/).filter(Boolean);
+
+  // Parse flags
+  let outputFile: string | undefined;
+  let jsonFile: string | undefined;
+  let diffAgainst: string | undefined;
+  let workspaceName: string | undefined;
+  const files: string[] = [];
+
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    if ((p === '-o' || p === '--output') && parts[i + 1]) { outputFile = parts[++i]; }
+    else if (p === '--json' && parts[i + 1]) { jsonFile = parts[++i]; }
+    else if (p === '--diff-against' && parts[i + 1]) { diffAgainst = parts[++i]; }
+    else if ((p === '-w' || p === '--workspace') && parts[i + 1]) { workspaceName = parts[++i]; }
+    else { files.push(resolve(p)); }
+  }
+
+  if (files.length === 0) {
+    console.log('');
+    console.log(`  ${C.bold('Usage:')}`);
+    console.log(`    /merge <report1.json> <report2.json> ...`);
+    console.log(`    /merge *.json -o dashboard.html --json merged.json`);
+    console.log(`    /merge *.json --diff-against last-week.json`);
+    console.log('');
+    return;
+  }
+
+  console.log(C.dim(`  Merging ${files.length} report(s)...`));
+
+  // Load and merge
+  const reportJsons: any[] = [];
+  for (const f of files) {
+    if (!existsSync(f)) {
+      console.log(C.warn(`  ✗ File not found: ${f}`));
+      continue;
+    }
+    try {
+      reportJsons.push(JSON.parse(readFileSync(f, 'utf-8')));
+    } catch (err) {
+      console.log(C.warn(`  ✗ Invalid JSON: ${f}`));
+    }
+  }
+
+  if (reportJsons.length === 0) {
+    console.log(C.error('  No valid reports to merge.'));
+    console.log('');
+    return;
+  }
+
+  const merged = await mergeReports(reportJsons, { workspace: workspaceName });
+
+  // Summary
+  const t = merged.totals;
+  console.log('');
+  console.log(`  ${C.bold(merged.workspace)} — ${merged.repo_statuses.filter(r => r.loaded).length}/${merged.repo_statuses.length} repos loaded`);
+  console.log(`  ${t.annotations} annotations | ${t.assets} assets | ${t.threats} threats | ${t.controls} controls`);
+  console.log(`  ${t.mitigations} mitigations | ${t.exposures} exposures | ${t.unmitigated_exposures} unmitigated`);
+  console.log(`  ${t.flows} flows | ${t.external_refs_resolved} refs resolved | ${t.external_refs_unresolved} unresolved`);
+
+  // Warnings
+  for (const w of merged.warnings) {
+    console.log(`  ${C.warn('⚠')} ${w.message}`);
+  }
+
+  // Write JSON
+  if (jsonFile) {
+    writeFileSync(resolve(jsonFile), JSON.stringify(merged, null, 2));
+    console.log(`  ${C.green('✓')} Wrote merged JSON to ${jsonFile}`);
+  }
+
+  // Diff
+  if (diffAgainst && existsSync(resolve(diffAgainst))) {
+    try {
+      const previous: MergedReport = JSON.parse(readFileSync(resolve(diffAgainst), 'utf-8'));
+      const diff = diffMergedReports(merged, previous);
+
+      if (diff.risk_delta === 'decreased') {
+        console.log(`  ${C.green('🟢')} Risk decreased since last merge`);
+      } else if (diff.risk_delta === 'increased') {
+        console.log(`  ${C.red('🔴')} Risk increased since last merge`);
+      } else {
+        console.log(`  ${C.dim('⚪')} Risk unchanged`);
+      }
+
+      if (diff.resolved_unmitigated > 0) {
+        console.log(`  ${C.green('🟢')} ${diff.resolved_unmitigated} exposure(s) now mitigated`);
+      }
+      if (diff.new_unmitigated > 0) {
+        console.log(`  ${C.red('🔴')} ${diff.new_unmitigated} new unmitigated exposure(s)`);
+      }
+    } catch {
+      console.log(C.warn(`  ✗ Could not parse diff file: ${diffAgainst}`));
+    }
+  }
+
+  // Dashboard
+  if (outputFile || !jsonFile) {
+    const dashPath = resolve(outputFile || 'workspace-dashboard.html');
+    const html = generateDashboardHTML(merged.model);
+    writeFileSync(dashPath, html);
+    console.log(`  ${C.green('✓')} Dashboard: ${outputFile || 'workspace-dashboard.html'}`);
+  }
+
+  // Print summary
+  const summary = formatMergeSummary(merged);
+  console.log('');
+  for (const line of summary.split('\n').slice(0, 15)) {
+    console.log(`  ${line}`);
   }
   console.log('');
 }

@@ -157,6 +157,47 @@ export type Annotation =
   | CommentAnnotation
   | ShieldAnnotation;
 
+// ─── Report Metadata ─────────────────────────────────────────────────
+
+/**
+ * Provenance metadata embedded in every report JSON.
+ * Enables merge to verify sources and diff to track history.
+ */
+export interface ReportMetadata {
+  /** Schema version for the report JSON format (semver) */
+  schema_version: string;
+  /** GuardLink CLI version that generated this report */
+  guardlink_version: string;
+  /** Repository name (from workspace.yaml this_repo, or project name) */
+  repo: string;
+  /** Git commit SHA at generation time (null if not a git repo) */
+  commit_sha: string | null;
+  /** Git branch at generation time (null if not a git repo) */
+  branch: string | null;
+  /** ISO 8601 timestamp of report generation */
+  generated_at: string;
+  /** Workspace name if this repo is part of a workspace */
+  workspace?: string;
+}
+
+// ─── External References ─────────────────────────────────────────────
+
+/**
+ * A tag reference that points to a definition in another repo.
+ * Detected during parsing when a tag uses a service prefix not
+ * matching any local asset/threat/control definition.
+ */
+export interface ExternalRef {
+  /** The referenced tag (e.g. "#auth-lib.token-verify") */
+  tag: string;
+  /** The verb context where this ref appears (e.g. "mitigates", "flows") */
+  context_verb: AnnotationVerb;
+  /** Where the reference was found */
+  location: SourceLocation;
+  /** Inferred target repo from tag prefix (e.g. "auth-lib") */
+  inferred_repo?: string;
+}
+
 // ─── Threat Model (§5.1) ─────────────────────────────────────────────
 
 export interface ThreatModel {
@@ -167,6 +208,12 @@ export interface ThreatModel {
   annotations_parsed: number;
   annotated_files: string[];
   unannotated_files: string[];
+
+  /** Report provenance — always populated in report JSON output */
+  metadata?: ReportMetadata;
+
+  /** Cross-repo tag references detected during parsing */
+  external_refs?: ExternalRef[];
 
   assets: ThreatModelAsset[];
   threats: ThreatModelThreat[];

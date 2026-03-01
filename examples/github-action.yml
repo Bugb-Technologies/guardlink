@@ -5,6 +5,9 @@
 #   2. Shows threat model diff on PRs (what security posture changed)
 #   3. Uploads unmitigated exposures to GitHub Security tab via SARIF
 #   4. Posts a coverage summary as a PR comment
+#
+# For multi-repo workspaces, see examples/ci/ which adds report JSON
+# generation and a weekly workspace merge workflow.
 
 name: GuardLink
 
