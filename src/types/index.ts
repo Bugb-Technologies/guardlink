@@ -11,6 +11,8 @@ export type SeverityAlias = 'P0' | 'P1' | 'P2' | 'P3';
 
 export type DataClassification = 'pii' | 'phi' | 'financial' | 'secrets' | 'internal' | 'public';
 
+export type ThreatOrigin = 'external' | 'internal' | 'mixed' | 'potentially-external' | 'potentially-internal';
+
 export type AnnotationVerb =
   // Definition
   | 'asset' | 'threat' | 'control'
@@ -74,6 +76,7 @@ export interface ExposesAnnotation extends BaseAnnotation {
   threat: string;
   severity?: Severity;
   external_refs: string[];
+  origin?: ThreatOrigin;
 }
 
 export interface AcceptsAnnotation extends BaseAnnotation {
@@ -227,6 +230,7 @@ export interface ThreatModelExposure {
   severity?: Severity;
   external_refs: string[];
   description?: string;
+  origin?: ThreatOrigin;
   location: SourceLocation;
 }
 
@@ -234,6 +238,7 @@ export interface ThreatModelAcceptance {
   threat: string;
   asset: string;
   description?: string;
+  origin?: ThreatOrigin;
   location: SourceLocation;
 }
 

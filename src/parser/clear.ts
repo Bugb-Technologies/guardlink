@@ -4,8 +4,8 @@
  *
  * Used by `guardlink clear` and `/clear` to let users start fresh with annotations.
  *
- * @exposes #parser to #arbitrary-write [high] cwe:CWE-73 -- "Writes modified content back to discovered files"
- * @exposes #parser to #path-traversal [high] cwe:CWE-22 -- "Glob patterns determine which files are modified"
+ * @exposes #parser to #arbitrary-write [high] cwe:CWE-73 -- "[internal] Writes modified content back to discovered files; only local dev triggers guardlink clear"
+ * @exposes #parser to #path-traversal [high] cwe:CWE-22 -- "[internal] Glob patterns determine which files are modified; local dev controls the target directory"
  * @mitigates #parser against #path-traversal using #glob-filtering -- "DEFAULT_EXCLUDE blocks sensitive dirs; cwd constrains scope"
  * @audit #parser -- "Destructive operation requires explicit user confirmation via dryRun flag"
  * @flows ProjectRoot -> #parser via fast-glob -- "File discovery path"

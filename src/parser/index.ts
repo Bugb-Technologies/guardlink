@@ -1,5 +1,10 @@
 /**
  * GuardLink Parser — Public API
+ *
+ * @comment -- "Public parser API re-exports: all filesystem functions accept caller-supplied paths; consumers must supply project-owned root paths only — path traversal risks documented in #parser apply when used as a library"
+ * @flows LibraryConsumer -> #parser via parseFile -- "Consumer-supplied file path for single-file annotation parsing"
+ * @flows LibraryConsumer -> #parser via parseProject -- "Consumer-supplied root for full project scan"
+ * @flows LibraryConsumer -> #parser via clearAnnotations -- "Consumer-supplied root for destructive annotation removal across project files"
  */
 
 export { parseFile, parseString } from './parse-file.js';

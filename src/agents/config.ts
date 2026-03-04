@@ -10,12 +10,15 @@
  *
  * Replaces the fragmented tui-config.json / CLI flag / env var resolution.
  *
- * @exposes #agent-launcher to #api-key-exposure [high] cwe:CWE-798 -- "API keys loaded from env vars, files; stored in config.json"
+ * @exposes #agent-launcher to #api-key-exposure [high] cwe:CWE-798 -- "[internal] API keys loaded from env vars, files; stored in config.json; local dev manages their own keys"
  * @mitigates #agent-launcher against #api-key-exposure using #key-redaction -- "maskKey() redacts keys for display; keys never logged"
- * @exposes #agent-launcher to #path-traversal [medium] cwe:CWE-22 -- "Config paths resolved from root and homedir"
+ * @exposes #agent-launcher to #path-traversal [medium] cwe:CWE-22 -- "[internal] Config paths resolved from root and homedir; local dev controls project directory"
  * @mitigates #agent-launcher against #path-traversal using #path-validation -- "join() with known base dirs constrains paths"
- * @exposes #agent-launcher to #arbitrary-write [medium] cwe:CWE-73 -- "saveProjectConfig writes to .guardlink/config.json"
+ * @exposes #agent-launcher to #arbitrary-write [medium] cwe:CWE-73 -- "[internal] saveProjectConfig writes to .guardlink/config.json; local dev triggers config save"
  * @mitigates #agent-launcher against #arbitrary-write using #path-validation -- "Output path is fixed relative to project root"
+ * @exposes #agent-launcher to #insecure-deser [medium] cwe:CWE-502 -- "[mixed] readJsonFile() uses JSON.parse on .guardlink/config.json without schema validation; PR-contributed project config could override provider to an attacker-controlled URL (SSRF), supply unexpected field types, or poison the model/apiKey fields passed to the LLM client"
+ * @audit #agent-launcher -- "readJsonFile needs runtime type-checking: validate provider is an allowed enum, model is a non-empty string, apiKey passes prefix heuristic; consider zod schema for SavedConfig"
+ * @comment -- "Resolution order: CLI flags > env vars > project config.json > global config.json; a compromised project-level .guardlink/config.json affects all guardlink LLM commands run in that project"
  * @flows EnvVars -> #agent-launcher via process.env -- "Environment variable input"
  * @flows ConfigFile -> #agent-launcher via readFileSync -- "Config file read"
  * @flows #agent-launcher -> ConfigFile via writeFileSync -- "Config file write"

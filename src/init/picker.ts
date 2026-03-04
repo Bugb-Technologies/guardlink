@@ -5,6 +5,10 @@
  *   - Always-created files (reference doc, AGENTS.md, .mcp.json)
  *   - Auto-detected agents (directories found on disk)
  *   - Optional agents the user can additionally select
+ *
+ * @flows UserInput -> #init via promptAgentSelection -- "comma-separated numbers from stdin parsed to select agent instruction files to generate"
+ * @mitigates #init against #cmd-injection using #input-sanitize -- "parseInt/isNaN parsing rejects non-numeric input; agent IDs resolved from fixed AGENT_CHOICES array, no arbitrary strings used as paths"
+ * @comment -- "resolveAgentFiles() maps parsed integers back to hardcoded AgentChoice objects with fixed file paths — no user-controlled string is used directly as a file path"
  */
 
 import { createInterface } from 'node:readline';

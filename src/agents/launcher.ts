@@ -7,12 +7,12 @@
  *
  * Clipboard copy is always performed first regardless of agent type.
  *
- * @exposes #agent-launcher to #child-proc-injection [critical] cwe:CWE-78 -- "spawn/spawnSync execute external binaries"
+ * @exposes #agent-launcher to #child-proc-injection [critical] cwe:CWE-78 -- "[internal] spawn/spawnSync execute external binaries; local dev triggers annotate/threat-report commands"
  * @mitigates #agent-launcher against #child-proc-injection using #param-commands -- "Binary names from hardcoded AGENTS registry; no shell interpolation"
  * @mitigates #agent-launcher against #cmd-injection using #param-commands -- "Arguments passed as array, not shell string"
- * @exposes #agent-launcher to #prompt-injection [medium] cwe:CWE-77 -- "User prompt passed to agent CLI as argument"
+ * @exposes #agent-launcher to #prompt-injection [medium] cwe:CWE-77 -- "[internal] User prompt passed to agent CLI as argument; local dev types the prompt"
  * @audit #agent-launcher -- "Prompt content is opaque to agent binary; injection risk depends on agent implementation"
- * @exposes #agent-launcher to #dos [low] cwe:CWE-400 -- "No timeout on foreground spawn; agent controls duration"
+ * @exposes #agent-launcher to #dos [low] cwe:CWE-400 -- "[internal] No timeout on foreground spawn; agent controls duration; local dev can Ctrl+C"
  * @comment -- "Timeout intentionally omitted for interactive sessions; inline mode has implicit control"
  * @flows UserPrompt -> #agent-launcher via launchAgent -- "Prompt input path"
  * @flows #agent-launcher -> AgentProcess via spawn -- "Process spawn path"
@@ -156,6 +156,12 @@ export interface InlineResult {
  *
  * For codex, we use `-o <tmpfile>` to capture the final agent message to a file,
  * which avoids any TTY/streaming issues. The tmpfile path is passed separately.
+ *
+ * @exposes #agent-launcher to #prompt-injection [critical] cwe:CWE-77 -- "[mixed] Agents launched with permission bypass flags (--dangerously-skip-permissions, --dangerously-bypass-approvals, --approval-mode yolo); prompt constructed from threat model which includes PR-contributed annotations — injected content could direct agent to write malicious files"
+ * @accepts #prompt-injection on #agent-launcher -- "Accepted: permission bypass flags are required for non-interactive inline mode; the prompt is constructed internally by GuardLink (not arbitrary user input), and claude-code is restricted via --allowedTools to read-only operations"
+ * @audit #agent-launcher -- "Permission bypass flags eliminate agent safety guardrails; combined with prompt injection, this creates a code-execution path from annotation input — e.g. user prompt controls what an unconstrained codex/gemini agent writes to disk"
+ * @comment -- "Partial mitigation for claude-code: --allowedTools restricts to Read and Bash(cat/find/head/tail) — limits write surface; codex and gemini have no tool restrictions in inline mode"
+ * @flows InjectedPrompt -> #agent-launcher via buildInlineArgs -- "User-controlled prompt reaches agent binary that has safety guardrails disabled"
  */
 function buildInlineArgs(agentId: string, prompt: string, codexOutputFile?: string): string[] | null {
   switch (agentId) {
@@ -164,7 +170,11 @@ function buildInlineArgs(agentId: string, prompt: string, codexOutputFile?: stri
         '-p', prompt,
         '--dangerously-skip-permissions',
         '--allowedTools', 'Read,Bash(cat *),Bash(find *),Bash(head *),Bash(tail *)',
-        '--output-format', 'text',
+        // stream-json emits one complete JSON object per line per turn, so we can
+        // collect text from every assistant turn — not just the final message.
+        // --verbose is required by Claude Code when using stream-json with -p.
+        '--output-format', 'stream-json',
+        '--verbose',
       ];
     case 'codex':
       // `codex exec` runs non-interactively (no TTY needed).
@@ -186,6 +196,31 @@ function buildInlineArgs(agentId: string, prompt: string, codexOutputFile?: stri
     default:
       return null;
   }
+}
+
+/**
+ * Extract text content from a single Claude Code stream-json event line.
+ * Claude Code's --output-format stream-json emits one complete JSON object
+ * per line per turn. Assistant turns have the shape:
+ *   {"type":"assistant","message":{"content":[{"type":"text","text":"..."}],...}}
+ * We collect text blocks from every assistant turn so the full multi-turn
+ * report is captured, not just the final message.
+ *
+ * @comment -- "Pure JSON parser; no I/O or security boundary"
+ */
+function extractClaudeStreamText(line: string): string {
+  if (!line.trim()) return '';
+  try {
+    const event = JSON.parse(line) as Record<string, unknown>;
+    const msg = event.message as Record<string, unknown> | undefined;
+    if (event.type === 'assistant' && Array.isArray(msg?.content)) {
+      return (msg.content as Array<Record<string, unknown>>)
+        .filter((b) => b.type === 'text' && typeof b.text === 'string')
+        .map((b) => b.text as string)
+        .join('');
+    }
+  } catch { /* not JSON or unrecognised event — skip */ }
+  return '';
 }
 
 /**
@@ -243,11 +278,28 @@ export async function launchAgentInline(
 
       let content = '';
       let stderr = '';
+      // Buffer for incomplete lines when parsing claude-code stream-json output.
+      let jsonLineBuffer = '';
 
       child.stdout?.on('data', (data: Buffer) => {
-        const text = data.toString();
-        content += text;
-        if (onChunk) onChunk(text);
+        if (agent.id === 'claude-code') {
+          // stream-json: parse newline-delimited JSON events and extract assistant text.
+          // This captures every turn's text, not just the final message.
+          jsonLineBuffer += data.toString();
+          const lines = jsonLineBuffer.split('\n');
+          jsonLineBuffer = lines.pop() ?? '';
+          for (const line of lines) {
+            const text = extractClaudeStreamText(line);
+            if (text) {
+              content += text;
+              if (onChunk) onChunk(text);
+            }
+          }
+        } else {
+          const text = data.toString();
+          content += text;
+          if (onChunk) onChunk(text);
+        }
       });
 
       child.stderr?.on('data', (data: Buffer) => {
@@ -262,6 +314,12 @@ export async function launchAgentInline(
       });
 
       child.on('close', (code: number | null) => {
+        // Flush any incomplete JSON line left in the buffer (claude-code stream-json).
+        if (agent.id === 'claude-code' && jsonLineBuffer.trim()) {
+          const text = extractClaudeStreamText(jsonLineBuffer);
+          if (text) content += text;
+        }
+
         // For codex, prefer the -o output file (final agent message) over streamed stdout.
         if (codexOutputFile && existsSync(codexOutputFile)) {
           try {

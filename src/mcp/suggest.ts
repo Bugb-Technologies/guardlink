@@ -9,11 +9,11 @@
  *
  * Designed for both file-based and diff-based analysis (§8.2).
  *
- * @exposes #suggest to #path-traversal [high] cwe:CWE-22 -- "File path from MCP client joined with root"
+ * @exposes #suggest to #path-traversal [high] cwe:CWE-22 -- "[potentially-external] File path from MCP client joined with root; MCP client controls file path argument"
  * @mitigates #suggest against #path-traversal using #path-validation -- "join() with validated root constrains access"
- * @exposes #suggest to #redos [medium] cwe:CWE-1333 -- "Complex regex patterns applied to source code"
+ * @exposes #suggest to #redos [medium] cwe:CWE-1333 -- "[mixed] Complex regex patterns applied to source code from local and PR-contributed files"
  * @mitigates #suggest against #redos using #regex-anchoring -- "Patterns designed with bounded quantifiers"
- * @exposes #suggest to #dos [low] cwe:CWE-400 -- "Large files loaded into memory for pattern scanning"
+ * @exposes #suggest to #dos [low] cwe:CWE-400 -- "[mixed] Large files loaded into memory for pattern scanning; file size from local dev or PR-contributed source"
  * @flows FilePath -> #suggest via readFileSync -- "File read path"
  * @flows #suggest -> Suggestions via suggestAnnotations -- "Suggestion output"
  * @comment -- "Skips node_modules and .guardlink directories"

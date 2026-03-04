@@ -1,3 +1,9 @@
+# @exposes #cicd to #supply-chain [critical] cwe:CWE-829 -- "[external] Release workflow holds id-token:write for OIDC npm publishing; unpinned actions/checkout@v4 and actions/setup-node@v4 could be compromised to publish malicious packages to the entire GuardLink npm user base"
+# @audit #cicd -- "Pin all actions to SHA hashes before the release pipeline runs; the OIDC trusted publish flow is correct but depends on action integrity upstream"
+# @flows ExternalActions -> #cicd via uses -- "Third-party action code has implicit write access to npm registry via OIDC token in release context"
+# @handles secrets on #cicd -- "GITHUB_TOKEN with id-token:write permission used for npm OIDC trusted publishing (--provenance flag)"
+# @comment -- "npm publish --provenance --access public runs after tests pass; OIDC token issued by GitHub OIDC provider, not a stored secret"
+
 name: Release
 
 on:

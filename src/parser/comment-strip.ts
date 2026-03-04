@@ -1,6 +1,14 @@
 /**
  * Comment prefix stripping per §2.9.
  * Strips the host language's comment prefix to expose the annotation text.
+ *
+ * @comment -- "Returns null for non-comment lines; parse-file.ts skips null results entirely, ensuring non-comment source code is never misidentified as an annotation"
+ * @comment -- "# prefix matches Python, Ruby, Shell, YAML, and Terraform — annotating YAML/Terraform infra files is intentional and documented GuardLink behavior"
+ * @comment -- "Block-comment star handler (lines starting with * but not the closing delimiter) supports Javadoc-style doc blocks without misreading end-of-comment markers"
+ * @exposes #parser to #redos [low] cwe:CWE-1333 -- "[mixed] HTML comment (.*?) and OCaml/Haskell block regexes use non-greedy quantifiers that could backtrack on crafted single-line inputs from local or PR-contributed source files"
+ * @mitigates #parser against #redos using #regex-anchoring -- "All block-comment patterns are anchored with ^ and $; parse-file.ts splits content on \\n so each call receives exactly one line, bounding backtrack depth"
+ * @flows SourceLine -> #parser via stripCommentPrefix -- "Raw source line in → stripped annotation text (or null) forwarded to parseLine"
+ * @boundary between SourceCode and #parser (#strip-boundary) -- "First filtering layer: untrusted source file content passes through comment stripping before any annotation parsing begins"
  */
 
 /**

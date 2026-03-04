@@ -5,11 +5,11 @@
  * directory with shared definitions, and injects GuardLink instructions
  * into agent instruction files (CLAUDE.md, .cursorrules, etc.).
  *
- * @exposes #init to #arbitrary-write [high] cwe:CWE-73 -- "Creates/modifies files: .guardlink/, CLAUDE.md, .cursorrules, etc."
+ * @exposes #init to #arbitrary-write [high] cwe:CWE-73 -- "[internal] Creates/modifies files: .guardlink/, CLAUDE.md, .cursorrules, etc.; local dev triggers guardlink init"
  * @mitigates #init against #arbitrary-write using #path-validation -- "All paths are relative to root; join() constrains"
- * @exposes #init to #path-traversal [medium] cwe:CWE-22 -- "Reads/writes files based on root argument"
+ * @exposes #init to #path-traversal [medium] cwe:CWE-22 -- "[internal] Reads/writes files based on root argument; local dev controls project root"
  * @mitigates #init against #path-traversal using #path-validation -- "join() with explicit root constrains file access"
- * @exposes #init to #data-exposure [low] cwe:CWE-200 -- "Writes API key config to .guardlink/config.json"
+ * @exposes #init to #data-exposure [low] cwe:CWE-200 -- "[internal] Writes API key config to .guardlink/config.json; local dev manages their own keys"
  * @audit #init -- "Config file may contain API keys; .gitignore entry added automatically"
  * @flows ProjectRoot -> #init via options.root -- "Project root input"
  * @flows #init -> AgentFiles via writeFileSync -- "Agent instruction file writes"

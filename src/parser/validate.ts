@@ -3,6 +3,15 @@
  *
  * Extracted from cli/index.ts and tui/commands.ts to eliminate duplication
  * and ensure consistent validation logic across all entry points.
+ *
+ * @comment -- "Operates on already-parsed ThreatModel; all inputs are trusted (parser-validated), not raw user text"
+ * @comment -- "findAcceptedWithoutAudit is itself a security governance control: detects @accepts lacking a paired @audit, catching AI rubber-stamping of risk acceptance decisions"
+ * @comment -- "normalizeRef strips leading # so #sqli and sqli compare equal; inconsistency here would cause false 'mitigated' coverage in findUnmitigatedExposures"
+ * @flows ThreatModel -> #parser via findDanglingRefs -- "Walks all relationship arrays checking every #id ref against the defined-ID set"
+ * @flows ThreatModel -> #parser via findUnmitigatedExposures -- "Computes exposures minus (mitigations ∪ acceptances) using normalized ref keys"
+ * @flows #parser -> ParseDiagnostic via findDanglingRefs -- "Diagnostic output with file paths and line numbers returned to CLI/TUI/MCP callers"
+ * @exposes #parser to #info-disclosure [low] cwe:CWE-200 -- "[potentially-external] Dangling-ref diagnostics embed annotation file paths and line numbers; these are included in MCP tool responses visible to connected AI agents"
+ * @audit #parser -- "File-path leakage in diagnostics is acceptable for a developer CLI tool; confirm MCP callers do not surface raw diagnostic messages to untrusted principals"
  */
 
 import type { ThreatModel, ThreatModelExposure, ParseDiagnostic } from '../types/index.js';

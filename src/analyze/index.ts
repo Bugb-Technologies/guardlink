@@ -5,11 +5,11 @@
  * specific prompt, streams the response, and saves timestamped results
  * to .guardlink/threat-reports/.
  *
- * @exposes #llm-client to #path-traversal [medium] cwe:CWE-22 -- "buildProjectContext reads files from root-relative paths"
+ * @exposes #llm-client to #path-traversal [medium] cwe:CWE-22 -- "[internal] buildProjectContext reads files from root-relative paths; local dev controls project root"
  * @mitigates #llm-client against #path-traversal using #path-validation -- "join() with root constrains file access"
- * @exposes #llm-client to #arbitrary-write [medium] cwe:CWE-73 -- "writeFileSync saves threat reports to .guardlink/"
+ * @exposes #llm-client to #arbitrary-write [medium] cwe:CWE-73 -- "[internal] writeFileSync saves threat reports to .guardlink/; fixed output path"
  * @mitigates #llm-client against #arbitrary-write using #path-validation -- "Output path is fixed to .guardlink/threat-reports/"
- * @exposes #llm-client to #data-exposure [low] cwe:CWE-200 -- "Serializes full threat model and code snippets for LLM"
+ * @exposes #llm-client to #data-exposure [low] cwe:CWE-200 -- "[potentially-external] Serializes full threat model and code snippets sent to external LLM API providers"
  * @audit #llm-client -- "Threat model data intentionally sent to LLM for analysis"
  * @flows ThreatModel -> #llm-client via serializeModel -- "Model serialization input"
  * @flows ProjectFiles -> #llm-client via readFileSync -- "Project context read"
@@ -210,6 +210,10 @@ export function buildProjectContext(root: string): string {
 
 // ─── Code snippet extractor ──────────────────────────────────────────
 
+// @exposes #llm-client to #prompt-injection [high] cwe:CWE-77 -- "[mixed] Embeds raw source file content in LLM prompts; adversarial code comments in PR-contributed project files become LLM instruction context"
+// @audit #llm-client -- "XML delimiter injection: code containing </code_snippets> breaks context framing in buildUserMessage; no snippet content sanitization"
+// @comment -- "Potential controls: escape XML-like tag sequences in snippet content; add canary delimiter strings around each snippet block"
+// @flows SourceFiles -> #llm-client via extractCodeSnippets -- "Raw source code lines injected into LLM user message inside <code_snippets> XML block"
 /**
  * Extract source code snippets around annotated lines.
  *
@@ -515,6 +519,13 @@ const THREAT_REPORTS_DIR = 'threat-reports';
 /** Legacy storage directory (read fallback) */
 const LEGACY_ANALYSES_DIR = 'analyses';
 
+// @exposes #llm-client to #prompt-injection [medium] cwe:CWE-77 -- "[internal] customPrompt from caller prepended to user message with only 'Additional focus:' string framing; local dev types the custom prompt"
+// @audit #llm-client -- "customPrompt is caller-supplied text injected verbatim into the LLM user message; instruction-override payloads could follow the prefix"
+// @comment -- "Potential control: wrap customPrompt in <custom_focus> XML tags and instruct LLM to treat it as supplementary data, not instructions"
+// @flows UserInput -> #llm-client via customPrompt -- "Caller-controlled analysis focus injected into LLM user message alongside serialized threat model"
+// @exposes #llm-client to #xss [high] cwe:CWE-79 -- "[external] response.content written verbatim via writeFileSync to .guardlink/threat-reports/; reports later embedded in HTML dashboard via loadThreatReportsForDashboard without sanitization — prompt-injected LLM can emit <script> or <img onerror=> payloads that execute in the browser when dashboard is opened"
+// @audit #llm-client -- "Stored XSS path: LLM response → disk (writeFileSync line ~586) → loadThreatReportsForDashboard → generateDashboardHTML; dashboard must HTML-encode report content or use a markdown renderer with XSS filtering before embedding"
+// @comment -- "Potential control: #output-encoding — apply HTML entity encoding on response.content before writeFileSync, or sanitize at dashboard render time using DOMPurify/marked with sanitize:true"
 export async function generateThreatReport(opts: ThreatReportOptions): Promise<ThreatReportResult> {
   const { root, model, framework, llmConfig, customPrompt } = opts;
   const snippetContext = opts.snippetContext ?? 8;

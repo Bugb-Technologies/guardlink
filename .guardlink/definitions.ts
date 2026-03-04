@@ -24,6 +24,7 @@
 // @asset GuardLink.Report (#report) -- "Generates markdown threat model reports with Mermaid diagrams"
 // @asset GuardLink.SARIF (#sarif) -- "Exports findings as SARIF 2.1.0 JSON for security tooling"
 // @asset GuardLink.Suggest (#suggest) -- "Analyzes code patterns to suggest appropriate security annotations"
+// @asset GuardLink.CICD (#cicd) -- "GitHub Actions CI/CD pipeline — build, test, and npm publish via OIDC trusted publishing"
 
 // ─── THREATS ──────────────────────────────────────────────────────────
 // Security threats that can impact the application
@@ -41,6 +42,8 @@
 // @threat Insecure_Deserialization (#insecure-deser) [medium] cwe:CWE-502 -- "Unsafe parsing of JSON/YAML configuration files"
 // @threat Child_Process_Injection (#child-proc-injection) [high] cwe:CWE-78 -- "Agent launcher executing attacker-controlled commands via process spawn"
 // @threat Information_Disclosure (#info-disclosure) [low] cwe:CWE-200 -- "Unintended exposure of internal paths, structure, or implementation details"
+// @threat Annotation_Injection (#annotation-injection) [high] cwe:CWE-74 -- "User-supplied text written to annotation description fields contains embedded annotation syntax (newlines + @verb), forging threat model entries on next parse"
+// @threat Supply_Chain_Compromise (#supply-chain) [critical] cwe:CWE-829 -- "Compromised third-party CI/CD action (unpinned tag reference) executes arbitrary code with publish credentials"
 
 // ─── CONTROLS ─────────────────────────────────────────────────────────
 // Security controls that mitigate threats

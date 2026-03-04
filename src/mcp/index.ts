@@ -1,7 +1,7 @@
 /**
  * GuardLink MCP Server — exports and stdio entry point.
  *
- * @exposes #mcp to #cmd-injection [high] cwe:CWE-78 -- "Accepts tool calls from external MCP clients"
+ * @exposes #mcp to #cmd-injection [high] cwe:CWE-78 -- "[potentially-external] Accepts tool calls from MCP clients over stdio; currently local but protocol could be networked"
  * @audit #mcp -- "All tool calls validated by server.ts before execution"
  * @flows MCPClient -> #mcp via stdio -- "MCP protocol transport"
  * @boundary #mcp and MCPClient (#mcp-boundary) -- "Trust boundary at MCP protocol"

@@ -5,7 +5,9 @@
  * serialized threat model. The LLM acts as a senior security architect.
  *
  * @comment -- "Prompt templates are static; no user input interpolation in system prompts"
- * @comment -- "customPrompt is appended to user message, not system prompt — bounded injection risk"
+ * @exposes #llm-client to #prompt-injection [medium] cwe:CWE-77 -- "[internal] buildUserMessage interpolates customPrompt into user message with only 'Additional focus:' prefix framing; local dev types the custom prompt"
+ * @audit #llm-client -- "System prompts fully static; injection surface limited to user message customPrompt field but no delimiter guards prevent instruction-override sequences"
+ * @comment -- "Partial mitigation: customPrompt goes to user message only, not system prompt; LLM still processes it in instruction context"
  */
 
 export type AnalysisFramework = 'stride' | 'dread' | 'pasta' | 'attacker' | 'rapid' | 'general';

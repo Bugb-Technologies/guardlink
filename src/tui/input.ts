@@ -12,7 +12,7 @@
  *
  * Uses raw stdin mode for full keystroke control.
  *
- * @exposes #tui to #dos [low] cwe:CWE-400 -- "Rapid keystrokes could consume CPU in raw mode"
+ * @exposes #tui to #dos [low] cwe:CWE-400 -- "[internal] Rapid keystrokes could consume CPU in raw mode; only local dev interacts with TUI"
  * @mitigates #tui against #dos using #resource-limits -- "Keystroke buffer bounded by terminal width"
  * @flows RawStdin -> #tui via process.stdin -- "Raw keystroke input"
  * @flows #tui -> Terminal via process.stdout -- "ANSI escape sequence output"

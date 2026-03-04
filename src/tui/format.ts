@@ -1,6 +1,14 @@
 /**
  * GuardLink TUI — Terminal formatting utilities.
  * Color badges, tables, code blocks, and risk grades.
+ *
+ * @exposes #tui to #path-traversal [P2] cwe:CWE-22 -- "[mixed] readCodeContext() calls path.resolve(root, filePath) without checking the result stays within the project root; annotation location paths from a PR-contributed .guardlink config could traverse the boundary"
+ * @audit #tui -- "readCodeContext: add canonicalization check (resolved.startsWith(root)) before readFileSync call; current try/catch silently swallows traversal errors limiting impact but is not a real control"
+ * @exposes #tui to #info-disclosure [P3] cwe:CWE-200 -- "[internal] fileLink()/fileLinkTrunc() embed absolute file paths (including user home directory) in OSC 8 escape sequences written to terminal output; only visible to local dev"
+ * @mitigates #tui against #path-traversal using #path-validation -- "try/catch in readCodeContext prevents file content from being returned on error; isAbsolute check ensures root-relative resolution is only applied when root is provided"
+ * @flows AnnotationLocation -> #tui via readCodeContext -- "file path and line number from annotation used to read code context from disk via readFileSync"
+ * @flows #tui -> TerminalOutput via fileLink -- "absolute file URIs (file://...) embedded in OSC 8 hyperlink escape sequences and written to stdout"
+ * @comment -- "cleanCliArtifacts() processes agent output strings — the regex patterns are static and not derived from user input so no ReDoS risk; stripAnsi uses a fixed ANSI escape pattern"
  */
 
 import chalk from 'chalk';

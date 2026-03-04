@@ -1,5 +1,11 @@
 /**
  * GuardLink Diff — Human-readable output formatter.
+ *
+ * @exposes #diff to #data-exposure [P3] cwe:CWE-200 -- "[potentially-external] formatDiffMarkdown() embeds unmitigated exposure details (asset, threat, file:line) in PR comment bodies; security posture visible to anyone with repo read access"
+ * @flows #diff -> TextReport via formatDiff -- "human-readable diff written to stdout including new/resolved exposure counts"
+ * @flows #diff -> MarkdownReport via formatDiffMarkdown -- "GitHub-flavored markdown table with new unmitigated exposures for PR comment injection"
+ * @handles internal on #diff -- "formats security model delta including file paths, threat names, and severity levels"
+ * @comment -- "formatDiffMarkdown uses backtick-enclosed file:line refs in markdown tables; GitHub strips unsafe HTML so no injection risk, but security posture is exposed to all PR reviewers — intentional design for developer-facing threat visibility"
  */
 
 import type { ThreatModelDiff, Change } from './engine.js';

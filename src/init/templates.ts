@@ -1,5 +1,14 @@
 /**
  * GuardLink init — Template content for generated files.
+ *
+ * @exposes #init to #prompt-injection [P1] cwe:CWE-77 -- "[external] buildModelContext() embeds raw threat model data (asset names, descriptions, file paths) into agent instruction files (CLAUDE.md, AGENTS.md); a supply-chain attacker who controls annotation content in a dependency could inject adversarial instructions into AI coding agents"
+ * @audit #init -- "threat model data injected into agent files without escaping; attacker controlling a .guardlink/definitions.ts in a dependency could inject instructions into AI agents reading CLAUDE.md — needs human review to decide on escaping strategy vs. intentional passthrough"
+ * @flows ThreatModel -> #init via buildModelContext -- "live asset IDs, threat IDs, open exposures, and data flows embedded into agent instruction content"
+ * @flows #init -> AgentFile via agentInstructionsWithModel -- "agent instruction files (CLAUDE.md, AGENTS.md, .cursorrules etc.) written with embedded threat model context"
+ * @flows ProjectInfo -> #init via definitionsContent -- "project name and comment prefix used to generate definitions file scaffold"
+ * @flows ProjectInfo -> #init via configContent -- "project metadata written as JSON via JSON.stringify — injection-safe"
+ * @handles internal on #init -- "processes threat model data including asset IDs, threat descriptions, and file paths that are written verbatim into agent files"
+ * @comment -- "agentInstructions() generates static template content — no user data; buildModelContext() injects live model data which includes user-defined strings from @comment/@exposes descriptions in source annotations"
  */
 
 import type { ProjectInfo } from './detect.js';
@@ -25,7 +34,7 @@ DEFINE   @asset <Component.Path> (#id) -- "description"
          @control <Name> (#id) -- "description"
 
 RELATE   @mitigates <Asset> against <#threat> using <#control> -- "how"
-         @exposes <Asset> to <#threat> [severity] cwe:CWE-NNN -- "what's wrong"
+         @exposes <Asset> to <#threat> [severity] cwe:CWE-NNN -- "[origin] what's wrong"
          @accepts <#threat> on <Asset> -- "HUMAN-ONLY — AI agents must use @audit instead"
          @transfers <#threat> from <Source> to <Target> -- "who handles it"
 
@@ -50,6 +59,23 @@ PROTECT  @shield -- "reason"
 
 \`[P0]\` = critical, \`[P1]\` = high, \`[P2]\` = medium, \`[P3]\` = low
 
+## Threat Origin (required in @exposes descriptions)
+
+Every \`@exposes\` description MUST start with a threat origin tag:
+
+| Tag | Meaning |
+|-----|--------|
+| \`[external]\` | Exploitable by unauthenticated external attackers |
+| \`[internal]\` | Only exploitable by authenticated users or insiders |
+| \`[mixed]\` | Both external and internal exploit paths exist |
+| \`[potentially-external]\` | Internal today, but no code-level gate if exposure changes |
+| \`[potentially-internal]\` | External-facing, but realistic exploit needs insider knowledge |
+
+Examples:
+- \`@exposes #api to #sqli [P0] -- "[external] req.body.email concatenated into SQL"\`
+- \`@exposes #admin to #bac [P1] -- "[internal] Admin role check uses client-side flag"\`
+- \`@exposes #config to #ssrf [P2] -- "[potentially-external] Internal endpoint accepts URL param — behind VPN, no code-level restriction"\`
+
 ## External References
 
 Append after severity: \`cwe:CWE-89\`, \`owasp:A03:2021\`, \`capec:CAPEC-66\`, \`attack:T1190\`
@@ -60,7 +86,8 @@ Append after severity: \`cwe:CWE-89\`, \`owasp:A03:2021\`, \`capec:CAPEC-66\`, \
 2. **Define once, reference everywhere.** \`@asset\`, \`@threat\`, \`@control\` with \`(#id)\` go in \`.guardlink/definitions${project.definitionsExt}\`. Source files use relationship verbs only (\`@mitigates\`, \`@exposes\`, etc.).
 3. **Read definitions before adding.** Check for existing IDs first — avoid duplicates.
 4. **Every \`@exposes\` needs a response.** Match with \`@mitigates\` (fix exists) or \`@audit\` (flag for human review). AI agents must NEVER write \`@accepts\` — that is a human-only governance decision. Use \`@audit\` instead.
-5. **Use the full verb set.** \`@flows\` for data movement, \`@handles\` for data classification, \`@boundary\` for trust boundaries.
+5. **Classify threat origin.** Every \`@exposes\` description must start with \`[external]\`, \`[internal]\`, \`[mixed]\`, \`[potentially-external]\`, or \`[potentially-internal]\`.
+6. **Use the full verb set.** \`@flows\` for data movement, \`@handles\` for data classification, \`@boundary\` for trust boundaries.
 
 ## When Writing Code
 
@@ -68,7 +95,7 @@ Append after severity: \`cwe:CWE-89\`, \`owasp:A03:2021\`, \`capec:CAPEC-66\`, \
 |-----------|------------|
 | Writing new endpoint/handler | \`@exposes\` + \`@mitigates\` (or \`@audit\`) + \`@flows\` + \`@comment\` — tell the complete story |
 | New service/component | \`@asset\` in definitions, then reference in source |
-| Security gap exists | \`@exposes Asset to #threat\` + \`@audit Asset\` |
+| Security gap exists | \`@exposes Asset to #threat -- "[origin] description"\` + \`@audit Asset\` |
 | Risk with no fix yet | \`@audit Asset\` + \`@comment\` explaining potential controls. NEVER \`@accepts\`. |
 | Implementing a fix | \`@mitigates Asset against #threat using #control\` |
 | Processing sensitive data | \`@handles pii on Asset\` |
@@ -116,11 +143,12 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 
 1. **Annotate new code.** When you add a function, endpoint, or module that handles user input, accesses data, crosses a trust boundary, or could fail in a security-relevant way — add \`@exposes\`, \`@mitigates\`, \`@flows\`, \`@handles\`, or at minimum \`@comment\` annotations. This is not optional.
 2. **NEVER write \`@accepts\`.** That is a human-only governance decision. When you find a risk with no mitigation in code, write \`@exposes\` to document the risk + \`@audit\` to flag it for human review + \`@comment\` to suggest potential controls.
-3. Do not delete or mangle existing annotations. Treat them as part of the code. Edit only when intentionally changing the threat model.
-4. Definitions (\`@asset\`, \`@threat\`, \`@control\` with \`(#id)\`) live in \`.guardlink/definitions${project.definitionsExt}\`. Reuse existing \`#id\`s — never redefine. If you need a new asset or threat, add the definition there first, then reference it in source files.
-5. Source files use relationship verbs only: \`@mitigates\`, \`@exposes\`, \`@flows\`, \`@handles\`, \`@boundary\`, \`@comment\`, \`@validates\`, \`@audit\`, \`@owns\`, \`@assumes\`, \`@transfers\`.
-6. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note. Never write a lone \`@exposes\` without follow-up.
-7. Avoid \`@shield\` unless a human explicitly asks to hide code from AI — it creates blind spots.
+3. **Classify threat origin in every \`@exposes\` description.** Start the \`--\` description with one of: \`[external]\`, \`[internal]\`, \`[mixed]\`, \`[potentially-external]\`, \`[potentially-internal]\` to indicate who can trigger the threat. This is critical for triage — a \`[critical]\` internal-only finding is fundamentally different from an \`[external]\` one.
+4. Do not delete or mangle existing annotations. Treat them as part of the code. Edit only when intentionally changing the threat model.
+5. Definitions (\`@asset\`, \`@threat\`, \`@control\` with \`(#id)\`) live in \`.guardlink/definitions${project.definitionsExt}\`. Reuse existing \`#id\`s — never redefine. If you need a new asset or threat, add the definition there first, then reference it in source files.
+6. Source files use relationship verbs only: \`@mitigates\`, \`@exposes\`, \`@flows\`, \`@handles\`, \`@boundary\`, \`@comment\`, \`@validates\`, \`@audit\`, \`@owns\`, \`@assumes\`, \`@transfers\`.
+7. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note. Never write a lone \`@exposes\` without follow-up.
+8. Avoid \`@shield\` unless a human explicitly asks to hide code from AI — it creates blind spots.
 
 ### Workflow (while coding)
 
@@ -137,16 +165,16 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 ### Quick Syntax (common verbs)
 
 \`\`\`
-@exposes App.API to #sqli [P0] cwe:CWE-89 -- "req.body.email concatenated into SQL"
+@exposes App.API to #sqli [P0] cwe:CWE-89 -- "[external] req.body.email concatenated into SQL"
 @mitigates App.API against #sqli using #prepared-stmts -- "Parameterized queries via pg"
 @audit App.API -- "Timing attack risk — needs human review to assess bcrypt constant-time comparison"
 @flows User -> App.API via HTTPS -- "Login request path"
 @boundary between #api and #db (#data-boundary) -- "App → DB trust change"
-@handles pii on App.API -- "Processes email and session token"
-@validates #prepared-stmts for App.API -- "sqlInjectionTest.ts ensures placeholders used"
-@audit App.API -- "Token rotation logic needs crypto review"
-@owns security-team for App.API -- "Team responsible for reviews"
-@comment -- "Rate limit: 100 req/15min via express-rate-limit"
+@handles pii on App.API -- "Processes email, token"
+@validates #prepared-stmts for App.API -- "CI test ensures placeholders"
+@audit App.API -- "Token rotation review"
+@owns security-team for App.API -- "Team responsible"
+@comment -- "Rate limit: 100 req/15min"
 \`\`\`
 `.trimStart();
 }
@@ -280,6 +308,7 @@ Every time you write or modify code that touches security-relevant behavior, you
 ## Key Rules
 - ANNOTATE NEW CODE. When you add a function or endpoint that handles user input, accesses data, or crosses a trust boundary — add @exposes, @mitigates, @flows, @handles, or at minimum @comment. This is not optional.
 - NEVER write @accepts — that is a human-only governance decision. For risks with no mitigation: write @exposes + @audit + @comment suggesting potential controls.
+- Classify threat origin in every @exposes description. Start the -- description with one of: [external], [internal], [mixed], [potentially-external], [potentially-internal] to indicate who can trigger the threat.
 - Preserve existing annotations — do not delete or mangle them.
 - Definitions (@asset, @threat, @control with (#id)) live in .guardlink/definitions${project.definitionsExt}. Reuse IDs — never redefine. Add new definitions there first, then reference in source files.
 - Source files use relationship verbs: @mitigates, @exposes, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers.
@@ -293,7 +322,7 @@ Every time you write or modify code that touches security-relevant behavior, you
 - After adding annotations: run \`guardlink sync\` to update all agent instruction files with current threat model context.
 
 ## Quick Syntax
-- @exposes App.API to #sqli [P0] cwe:CWE-89 -- "req.body.email concatenated into SQL"
+- @exposes App.API to #sqli [P0] cwe:CWE-89 -- "[external] req.body.email concatenated into SQL"
 - @mitigates App.API against #sqli using #prepared-stmts -- "Parameterized queries via pg"
 - @audit App.API -- "Timing attack risk — needs human review"
 - @flows User -> App.API via HTTPS -- "Login request"

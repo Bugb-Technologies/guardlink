@@ -2,14 +2,17 @@
  * GuardLink — Line-level annotation parser.
  * Parses a single comment line into a typed Annotation.
  *
- * @exposes #parser to #redos [medium] cwe:CWE-1333 -- "Complex regex patterns applied to annotation text"
+ * @exposes #parser to #redos [medium] cwe:CWE-1333 -- "[mixed] Complex regex patterns applied to annotation text from local and PR-contributed source files"
  * @mitigates #parser against #redos using #regex-anchoring -- "All patterns are anchored (^...$) to prevent backtracking"
  * @comment -- "Regex patterns designed with bounded quantifiers and explicit structure"
+ * @comment -- "resolveRef is intentionally a no-op: refs are stored verbatim (#sqli or bare sqli); cross-ref normalization is deferred to validate.ts::normalizeRef at validation time"
+ * @flows AnnotationLine -> #parser via parseLine -- "Stripped comment text → typed Annotation or ParseDiagnostic"
+ * @flows #parser -> Annotation via parseLine -- "Parsed annotation with verb, fields, and location metadata returned to parse-file.ts"
  */
 
 import type {
   Annotation, AnnotationVerb, Severity, DataClassification,
-  ParseDiagnostic, SourceLocation,
+  ParseDiagnostic, SourceLocation, ThreatOrigin,
 } from '../types/index.js';
 import { normalizeName, resolveSeverity, unescapeDescription } from './normalize.js';
 
@@ -145,10 +148,12 @@ export function parseLine(
 
   // ── @exposes ──
   if ((m = trimmed.match(PATTERNS.exposes))) {
+    const d = desc(m[5]);
     return ok({
       ...base, verb: 'exposes', asset: m[1], threat: resolveRef(m[2]),
       severity: m[3] ? resolveSeverity(m[3]) : undefined,
-      external_refs: extractExternalRefs(m[4]), description: desc(m[5]),
+      external_refs: extractExternalRefs(m[4]), description: d,
+      origin: extractOrigin(d),
     });
   }
 
@@ -279,4 +284,12 @@ function ok(annotation: Annotation): ParseLineResult {
 function desc(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   return unescapeDescription(raw);
+}
+
+const ORIGIN_RE = /^\[(external|internal|mixed|potentially-external|potentially-internal)\]\s*/i;
+
+function extractOrigin(description: string | undefined): ThreatOrigin | undefined {
+  if (!description) return undefined;
+  const m = description.match(ORIGIN_RE);
+  return m ? m[1].toLowerCase() as ThreatOrigin : undefined;
 }

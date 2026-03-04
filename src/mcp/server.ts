@@ -22,15 +22,15 @@
  *
  * Transport: stdio (for Claude Code .mcp.json, Cursor, etc.)
  *
- * @exposes #mcp to #path-traversal [high] cwe:CWE-22 -- "Tool arguments include 'root' directory path from external client"
+ * @exposes #mcp to #path-traversal [high] cwe:CWE-22 -- "[potentially-external] Tool arguments include 'root' directory path from MCP client; currently local stdio but protocol allows network transport"
  * @mitigates #mcp against #path-traversal using #path-validation -- "Zod schema validates root; resolve() canonicalizes"
- * @exposes #mcp to #arbitrary-write [high] cwe:CWE-73 -- "report, dashboard, sarif tools write files"
+ * @exposes #mcp to #arbitrary-write [high] cwe:CWE-73 -- "[potentially-external] report, dashboard, sarif tools write files; MCP client controls output paths"
  * @mitigates #mcp against #arbitrary-write using #path-validation -- "Output paths resolved relative to validated root"
- * @exposes #mcp to #prompt-injection [medium] cwe:CWE-77 -- "annotate and threat_report tools pass user prompts to LLM"
+ * @exposes #mcp to #prompt-injection [medium] cwe:CWE-77 -- "[potentially-external] annotate and threat_report tools pass MCP client prompts to LLM"
  * @audit #mcp -- "User prompts passed to LLM; model context is read-only"
- * @exposes #mcp to #api-key-exposure [medium] cwe:CWE-798 -- "threat_report tool uses API keys from environment"
+ * @exposes #mcp to #api-key-exposure [medium] cwe:CWE-798 -- "[internal] threat_report tool uses API keys from local environment; keys never returned to MCP client"
  * @mitigates #mcp against #api-key-exposure using #key-redaction -- "Keys from env only; never logged or returned"
- * @exposes #mcp to #data-exposure [medium] cwe:CWE-200 -- "Resources expose full threat model to MCP clients"
+ * @exposes #mcp to #data-exposure [medium] cwe:CWE-200 -- "[potentially-external] Resources expose full threat model to MCP clients; security posture visible to any connected agent"
  * @audit #mcp -- "Threat model data intentionally exposed to connected agents"
  * @flows MCPClient -> #mcp via tool_call -- "Tool invocation input"
  * @flows #mcp -> FileSystem via writeFile -- "Report/dashboard output"
@@ -200,6 +200,9 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_threat_report ──
+  // @exposes #mcp to #prompt-injection [high] cwe:CWE-77 -- "[external] custom_prompt MCP parameter flows to generateThreatReport → buildUserMessage with only 'Additional focus:' prefix framing; MCP client (which may itself be a compromised AI agent) can override framework analysis instructions via this field"
+  // @audit #mcp -- "MCP-sourced custom_prompt is higher severity than CLI path: MCP client is potentially an AI agent acting on behalf of untrusted user input; combined with agentic tool use (search_codebase, lookup_cve) this creates a critical injection chain"
+  // @comment -- "Potential control: wrap custom_prompt in XML delimiter tags in buildUserMessage and instruct system prompt to treat the tagged block as supplementary data only, not as overriding instructions"
   server.tool(
     'guardlink_threat_report',
     'Generate an AI threat report using a security framework (STRIDE, DREAD, PASTA, attacker, rapid, general). If an LLM API key is set in environment, runs analysis internally and saves result. If no API key is set, returns the framework prompt and serialized threat model for the calling agent to analyze directly — write the result as markdown to .guardlink/threat-reports/.',
@@ -278,6 +281,9 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_annotate ──
+  // @exposes #mcp to #prompt-injection [high] cwe:CWE-77 -- "[potentially-external] MCP client prompt flows through buildAnnotatePrompt() and is returned as the annotation agent's instruction set; compromised MCP client creates agent-to-agent injection chain"
+  // @audit #mcp -- "Chain: MCPClientPrompt → buildAnnotatePrompt() → callingAgent instructions; MCP client (which may itself be an AI agent) controls what annotation instructions are built and returned for use in source file modification"
+  // @comment -- "Annotation agent typically has file-write access; MCP prompt injection could cause annotation agent to write malicious annotations or read unintended files"
   server.tool(
     'guardlink_annotate',
     'Build an annotation prompt with project context, GuardLink reference docs, and GAL syntax guidelines. The calling agent should use this prompt to read source files and add security annotations directly. Returns the prompt text — the agent should then read files, decide annotation placement, and write comments.',
@@ -548,6 +554,9 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_review_accept ──
+  // @exposes #mcp to #annotation-injection [high] cwe:CWE-74 -- "[external] justification MCP parameter flows to applyReviewAction → buildAcceptLines/buildRemediateLines → escapeDesc() which strips \" and \\ but NOT newlines; a compromised AI agent calling this tool can embed \\n// @accepts #cmd-injection on #cli into source files, forging governance annotations"
+  // @audit #mcp -- "Annotation injection via MCP: newline-embedded justification writes forged @accepts lines into source files, silently clearing critical exposures from the threat model on the next guardlink parse call — no human visible in the diff if the agent commits immediately after"
+  // @comment -- "Mitigation needed in review/index.ts escapeDesc(): strip \\n and \\r before writing; reject justification strings containing annotation verb sequences (// @, # @, * @accepts)"
   server.tool(
     'guardlink_review_accept',
     'Record a governance decision for an unmitigated exposure. Writes @accepts + @audit (for accept) or @audit (for remediate) directly into the source file. IMPORTANT: This modifies source files. Only call after explicit human confirmation of the decision and justification.',

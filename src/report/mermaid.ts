@@ -9,6 +9,12 @@
  * 5. Distinct shapes: Actors (()), Processes [], Data stores [()]
  * 6. Deduplicate: One node per asset, one label per data classification
  * 7. Top-down layout: External → boundary → internal → data
+ *
+ * @exposes #report to #xss [P2] cwe:CWE-79 -- "[mixed] generateMermaid() embeds asset/threat names from local and PR-contributed annotations in Mermaid diagram strings; esc() only replaces quotes and newlines, insufficient for full HTML/SVG injection prevention when rendered in markdown viewers"
+ * @audit #report -- "esc() replaces '\"' with '#quot;' and '\\n' with ' ' but does not strip angle brackets or other HTML metacharacters; Mermaid diagrams in GitHub markdown are sandboxed but local/self-hosted renderers may not be — needs human review"
+ * @flows ThreatModel -> #report via generateMermaid -- "Mermaid diagram string generated from threat model assets, flows, boundaries, and unmitigated exposures"
+ * @handles internal on #report -- "processes exposure details, flow mechanisms, data classifications, and boundary descriptions from user-defined annotations"
+ * @comment -- "emitNode() applies esc() for labels but nid() is safe for node IDs (non-alphanumeric → _); threat labels are derived from user annotation strings and embedded in diagram node text"
  */
 
 import type { ThreatModel } from '../types/index.js';

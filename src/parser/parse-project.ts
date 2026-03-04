@@ -2,13 +2,15 @@
  * GuardLink — Project-level parser.
  * Walks a directory, parses all source files, and assembles a ThreatModel.
  *
- * @exposes #parser to #path-traversal [high] cwe:CWE-22 -- "Glob patterns could escape root directory"
+ * @exposes #parser to #path-traversal [high] cwe:CWE-22 -- "[mixed] Glob patterns from .guardlink config could escape root directory; config may come from PR-contributed files"
  * @mitigates #parser against #path-traversal using #glob-filtering -- "DEFAULT_EXCLUDE blocks node_modules, .git; fast-glob cwd constrains scan"
- * @exposes #parser to #dos [medium] cwe:CWE-400 -- "Large projects with many files could exhaust memory"
+ * @exposes #parser to #dos [medium] cwe:CWE-400 -- "[mixed] Large projects with many files could exhaust memory; file count includes PR-contributed source files"
  * @mitigates #parser against #dos using #resource-limits -- "DEFAULT_EXCLUDE skips build artifacts, tests; limits effective file count"
  * @flows ProjectRoot -> #parser via fast-glob -- "Directory traversal path"
  * @flows #parser -> ThreatModel via assembleModel -- "Aggregated threat model output"
  * @boundary #parser and FileSystem (#fs-boundary) -- "Trust boundary between parser and disk I/O"
+ * @comment -- "Duplicate ID detection in parseProject: a later @asset/@threat/@control redefining an existing #id emits an error diagnostic; first definition wins — prevents silent annotation redefinition from altering the threat model"
+ * @comment -- "assembleModel second pass inherits severity from @threat definitions to @exposes entries that lack inline severity; uses 'as any' cast that bypasses TypeScript's type narrowing on the severity field"
  */
 
 import fg from 'fast-glob';
@@ -220,7 +222,7 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
         model.exposures.push({
           asset: e.asset, threat: e.threat, severity: e.severity,
           external_refs: e.external_refs,
-          description: e.description, location: e.location,
+          description: e.description, origin: e.origin, location: e.location,
         });
         break;
       }

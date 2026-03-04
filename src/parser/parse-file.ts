@@ -2,11 +2,13 @@
  * GuardLink — File-level parser.
  * Reads source files and extracts all GuardLink annotations.
  *
- * @exposes #parser to #path-traversal [high] cwe:CWE-22 -- "File path from caller read via readFile; no validation here"
- * @exposes #parser to #dos [medium] cwe:CWE-400 -- "Large files loaded entirely into memory"
+ * @exposes #parser to #path-traversal [high] cwe:CWE-22 -- "[internal] File path from caller read via readFile; no validation here — local dev controls which files are parsed"
+ * @exposes #parser to #dos [medium] cwe:CWE-400 -- "[mixed] Large files loaded entirely into memory; local dev or PR-contributed oversized source files"
  * @audit #parser -- "Path validation delegated to callers (CLI/MCP validate root)"
  * @flows FilePath -> #parser via readFile -- "Disk read path"
  * @flows #parser -> Annotations via parseString -- "Parsed annotation output"
+ * @comment -- "inShield flag in parseString is the only stateful parser element; @shield:end always resets it regardless of nesting depth, so a missing @shield:begin cannot leave the parser permanently shielded"
+ * @comment -- "Continuation lines (-- \"...\") are appended to lastAnnotation.description; lastAnnotation resets on any non-comment or non-continuation line, preventing description bleed across annotation boundaries"
  */
 
 import { readFile } from 'node:fs/promises';

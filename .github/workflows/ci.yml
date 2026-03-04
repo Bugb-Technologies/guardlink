@@ -1,3 +1,8 @@
+# @exposes #cicd to #supply-chain [high] cwe:CWE-829 -- "[external] actions/checkout@v4 and actions/setup-node@v4 use mutable tag refs; a compromised upstream action tag executes arbitrary code with GITHUB_TOKEN in the CI runner"
+# @audit #cicd -- "Pin actions to immutable SHA hashes (e.g. actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683) to prevent tag-redirect supply chain attacks"
+# @flows ExternalActions -> #cicd via uses -- "Third-party GitHub Action code injected into CI runner environment"
+# @comment -- "CI runs on ubuntu-latest; guardlink validate/status dogfood steps use the built dist artifact, not a published package"
+
 name: CI
 
 on:

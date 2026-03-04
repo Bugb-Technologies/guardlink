@@ -6,9 +6,9 @@
  * Claude Code-style inline REPL: stays in your terminal,
  * slash commands + freeform AI chat, Ctrl+C to exit.
  *
- * @exposes #tui to #path-traversal [high] cwe:CWE-22 -- "User-supplied dir argument resolved via path.resolve"
+ * @exposes #tui to #path-traversal [high] cwe:CWE-22 -- "[internal] User-supplied dir argument resolved via path.resolve; local dev controls TUI launch args"
  * @mitigates #tui against #path-traversal using #path-validation -- "resolve() canonicalizes paths; starts from cwd"
- * @exposes #tui to #api-key-exposure [medium] cwe:CWE-798 -- "API keys displayed in banner via resolveLLMConfig"
+ * @exposes #tui to #api-key-exposure [medium] cwe:CWE-798 -- "[internal] API keys displayed in banner via resolveLLMConfig; only visible to local dev in their terminal"
  * @audit #tui -- "API keys masked via maskKey() in banner display"
  * @flows UserInput -> #tui via readline -- "Interactive command input"
  * @flows #tui -> Commands via dispatch -- "Command routing"

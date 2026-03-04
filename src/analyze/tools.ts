@@ -6,11 +6,11 @@
  *   - validate_finding: Cross-reference a finding against the parsed model
  *   - search_codebase: Search project files for patterns
  *
- * @exposes #llm-client to #ssrf [medium] cwe:CWE-918 -- "lookupCve fetches from NVD API with user-controlled CVE ID"
+ * @exposes #llm-client to #ssrf [medium] cwe:CWE-918 -- "[mixed] lookupCve fetches from NVD API with LLM-controlled CVE ID; LLM processes PR-contributed code that may influence tool calls"
  * @mitigates #llm-client against #ssrf using #input-sanitize -- "CVE ID validated with strict regex; URL hardcoded to NVD"
- * @exposes #llm-client to #path-traversal [medium] cwe:CWE-22 -- "searchCodebase reads files from project root"
+ * @exposes #llm-client to #path-traversal [medium] cwe:CWE-22 -- "[mixed] searchCodebase reads files from project root; LLM controls search patterns including paths"
  * @mitigates #llm-client against #path-traversal using #glob-filtering -- "skipDirs excludes sensitive directories; relative() bounds output"
- * @exposes #llm-client to #dos [low] cwe:CWE-400 -- "searchCodebase reads many files; bounded by maxResults"
+ * @exposes #llm-client to #dos [low] cwe:CWE-400 -- "[mixed] searchCodebase reads many files including PR-contributed source; bounded by maxResults"
  * @mitigates #llm-client against #dos using #resource-limits -- "maxResults caps output; stat.size < 500KB filter"
  * @flows LLMToolCall -> #llm-client via createToolExecutor -- "Tool invocation input"
  * @flows #llm-client -> NVD via fetch -- "CVE lookup API call"
@@ -193,6 +193,10 @@ function validateFinding(
   }
 }
 
+// @exposes #llm-client to #prompt-injection [high] cwe:CWE-77 -- "[mixed] LLM-controlled search_codebase tool returns raw source file lines back into LLM conversation; PR-contributed project files may contain adversarial content that amplifies injection"
+// @audit #llm-client -- "Amplification loop: initial injection via snippet → LLM calls search_codebase with targeted pattern → more adversarial content returned → injection amplified across tool rounds"
+// @comment -- "Partial mitigations: maxResults capped at 20; skipDirs excludes .guardlink and node_modules; does NOT prevent adversarial content in legitimate source files"
+// @flows LLMToolCall -> #llm-client via searchCodebase -- "LLM directs file search with arbitrary pattern; matching lines returned into LLM conversation context"
 /** Search project source files for a pattern */
 function searchCodebase(
   root: string,

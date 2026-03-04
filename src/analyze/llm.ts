@@ -10,11 +10,11 @@
  *
  * Zero dependencies — uses Node 20+ built-in fetch.
  *
- * @exposes #llm-client to #ssrf [medium] cwe:CWE-918 -- "fetch() calls external LLM API endpoints"
+ * @exposes #llm-client to #ssrf [medium] cwe:CWE-918 -- "[mixed] fetch() calls external LLM API endpoints; baseUrl from PR-contributed .guardlink/config.json could point to attacker-controlled URL"
  * @mitigates #llm-client against #ssrf using #config-validation -- "BASE_URLS are hardcoded; baseUrl override is optional config"
- * @exposes #llm-client to #api-key-exposure [high] cwe:CWE-798 -- "API keys passed in Authorization headers"
+ * @exposes #llm-client to #api-key-exposure [high] cwe:CWE-798 -- "[internal] API keys passed in Authorization headers to external LLM providers; local dev manages their own keys"
  * @mitigates #llm-client against #api-key-exposure using #key-redaction -- "Keys never logged; passed directly to API"
- * @exposes #llm-client to #prompt-injection [medium] cwe:CWE-77 -- "User prompts sent to LLM API"
+ * @exposes #llm-client to #prompt-injection [medium] cwe:CWE-77 -- "[internal] User prompts sent to LLM API; local dev types the prompt"
  * @audit #llm-client -- "Prompt injection mitigated by LLM provider safety; local code is read-only"
  * @flows LLMConfig -> #llm-client via chatCompletion -- "Config and prompt input"
  * @flows #llm-client -> LLMProvider via fetch -- "API request output"
@@ -204,6 +204,9 @@ interface AnthropicRawResponse extends LLMResponse {
   _rawContent?: any[];
 }
 
+// @exposes #llm-client to #prompt-injection [high] cwe:CWE-77 -- "[mixed] Agentic tool loop executes LLM-generated tool call arguments for up to maxToolRounds iterations; prompt-injected LLM controls search patterns, CVE IDs, and asset/threat arguments passed to tool implementations; project code includes PR-contributed files"
+// @audit #llm-client -- "Tool call arguments from LLM (JSON.parse of curToolArgs) used without semantic validation; injection chain: initial prompt injection → LLM directs search_codebase → more adversarial code returned → amplified injection in subsequent rounds"
+// @comment -- "Bounded by maxToolRounds (default 5); tool implementations validate argument format but LLM controls which tools are called and with what values"
 /** Wrapper with agentic tool-call loop */
 async function callAnthropicWithTools(
   config: LLMConfig,
@@ -537,6 +540,9 @@ async function callOpenAIResponses(
   }
 }
 
+// @exposes #llm-client to #prompt-injection [high] cwe:CWE-77 -- "[potentially-external] handleOpenAIToolLoop implements OpenAI/Gemini/DeepSeek agentic tool loop with up to maxToolRounds iterations; prompt-injected LLM controls function_call name and arguments across rounds — same amplification risk as callAnthropicWithTools"
+// @audit #llm-client -- "OpenAI Responses API tool loop: injected LLM directs search_codebase with arbitrary patterns, retrieving more adversarial content which amplifies injection in subsequent rounds; applies to all OpenAI-compatible providers (Google Gemini, DeepSeek, OpenRouter)"
+// @comment -- "Bounded by maxToolRounds (default 5); tool argument validation in createToolExecutor partially constrains blast radius but LLM controls which tools are called"
 /** Agentic tool-call loop for OpenAI Responses API */
 async function handleOpenAIToolLoop(
   config: LLMConfig, baseUrl: string, headers: Record<string, string>,

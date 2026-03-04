@@ -1,6 +1,12 @@
 /**
  * GuardLink Dashboard — Data transformation.
  * Converts ThreatModel into dashboard-ready statistics.
+ *
+ * @flows ThreatModel -> #dashboard via computeStats -- "annotation counts, asset/threat/control totals, coverage stats"
+ * @flows ThreatModel -> #dashboard via computeExposures -- "exposure rows with mitigated/accepted status computed in memory"
+ * @flows ThreatModel -> #dashboard via computeAssetHeatmap -- "per-asset risk heatmap built from exposure and mitigation counts"
+ * @handles internal on #dashboard -- "processes full security posture: exposure descriptions, file paths, data classifications"
+ * @comment -- "pure in-memory transformer — no disk I/O; XSS/injection risk lives in the HTML generator that renders these structs"
  */
 
 import type { ThreatModel } from '../types/index.js';
@@ -46,6 +52,7 @@ export interface ExposureRow {
   threat: string;
   severity: string;
   description: string;
+  origin: string;
   file: string;
   line: number;
   mitigated: boolean;
@@ -112,6 +119,7 @@ export function computeExposures(model: ThreatModel): ExposureRow[] {
       threat: e.threat,
       severity: e.severity || 'unset',
       description: e.description || '',
+      origin: e.origin || '',
       file: e.location.file,
       line: e.location.line,
       mitigated: mitigatedSet.has(key),

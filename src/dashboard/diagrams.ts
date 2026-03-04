@@ -5,6 +5,14 @@
  * 1. Threat Model Graph — assets, threats, controls, relationships
  * 2. Data Flow Diagram — @flows with trust boundaries
  * 3. Attack Surface — exposures grouped by severity
+ *
+ * @exposes #dashboard to #xss [P2] cwe:CWE-79 -- "[mixed] label()/labelFull() strip some chars but asset/threat names from PR-contributed annotations are embedded verbatim in Mermaid strings that get rendered as HTML in the dashboard"
+ * @audit #dashboard -- "label() strips []{};|` and replaces quotes but doesn't fully guard against Mermaid node label injection; mid() converts non-alphanumeric to _ which is safe for node IDs; review whether subgraph label embedding is sufficient against SVG/HTML injection"
+ * @flows ThreatModel -> #dashboard via generateThreatGraph -- "threat graph Mermaid string built from model assets, threats, controls, boundaries"
+ * @flows ThreatModel -> #dashboard via generateDataFlowDiagram -- "data flow diagram built from model flows and boundaries"
+ * @flows ThreatModel -> #dashboard via generateAttackSurface -- "attack surface map built from model exposures grouped by asset and severity"
+ * @handles internal on #dashboard -- "asset names, threat names, exposure descriptions, data classifications, owner IDs all embedded in diagram output"
+ * @comment -- "mid() is the safe path for node IDs; label()/labelFull() are the risky path for human-readable labels — they strip a fixed set of chars rather than allowlisting"
  */
 
 import type { ThreatModel } from '../types/index.js';

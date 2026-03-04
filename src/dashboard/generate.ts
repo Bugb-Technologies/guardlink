@@ -5,9 +5,9 @@
  * 7 pages: Summary, AI Analysis, Threats, Diagrams, Code, Data, Assets.
  * Mermaid.js via CDN for diagrams. Zero build step.
  *
- * @exposes #dashboard to #xss [high] cwe:CWE-79 -- "Generates HTML with user-controlled threat model data"
+ * @exposes #dashboard to #xss [high] cwe:CWE-79 -- "[mixed] Generates HTML with threat model data from local and PR-contributed annotations; malicious descriptions could bypass esc() if not called consistently"
  * @mitigates #dashboard against #xss using #output-encoding -- "esc() HTML-encodes all interpolated values"
- * @exposes #dashboard to #path-traversal [medium] cwe:CWE-22 -- "readFileSync reads code files for annotation context"
+ * @exposes #dashboard to #path-traversal [medium] cwe:CWE-22 -- "[internal] readFileSync reads code files for annotation context; local dev controls project root"
  * @mitigates #dashboard against #path-traversal using #path-validation -- "resolve() with root constrains file access"
  * @flows ThreatModel -> #dashboard via computeStats -- "Model statistics input"
  * @flows SourceFiles -> #dashboard via readFileSync -- "Code snippet reads"
@@ -91,6 +91,7 @@ ${CSS_CONTENT}
     <a class="active" onclick="showSection('summary',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l6 4v6l-6 4-6-4V6l6-4z"/></svg></span> <span class="nav-text">Executive Summary</span></a>
     <a onclick="showSection('ai-analysis',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l2 5h5l-4 3 2 5-5-3-5 3 2-5-4-3h5l2-5z"/></svg></span> <span class="nav-text">Threat Reports</span></a>
     <a onclick="showSection('threats',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L1 15h14L8 1zm0 4l3 8H5l3-8z"/></svg></span> <span class="nav-text">Threats &amp; Exposures</span></a>
+    <a onclick="showSection('accepts',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm3.5 5.5l-4 4L5 8"/></svg></span> <span class="nav-text">Risk Accepts</span></a>
     <a onclick="showSection('diagrams',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="8" cy="8" r="2"/></svg></span> <span class="nav-text">Diagrams</span></a>
     <a onclick="showSection('code',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M5 4L1 8l4 4v-2L3 8l2-2V4zm6 0v2l2 2-2 2v2l4-4-4-4z"/></svg></span> <span class="nav-text">Code &amp; Annotations</span></a>
     <div class="sep"></div>
@@ -109,6 +110,7 @@ ${CSS_CONTENT}
 ${renderSummaryPage(stats, severity, riskScore, unmitigated, exposures, model, mitigatedCount, mitigationCoveragePercent)}
 ${renderAIAnalysisPage(analyses || [])}
 ${renderThreatsPage(exposures, model)}
+${renderAcceptsPage(exposures, model)}
 ${renderDiagramsPage(threatGraph, dataFlow, attackSurface)}
 ${renderCodePage(fileAnnotations, model)}
 ${renderDataPage(model)}
@@ -181,6 +183,7 @@ function openDrawer(type, idx) {
     title.textContent = e.threat + ' (Open)';
     h += sec('Status', '<span style="color:var(--red);font-weight:600">OPEN — No mitigation</span>');
     h += sec('Severity', '<span class="fc-sev ' + sevCls(e.severity) + '">' + esc(e.severity) + '</span>');
+    if (e.origin) h += sec('Origin', originBdg(e.origin));
     h += sec('Asset', '<code>' + esc(e.asset) + '</code>');
     h += sec('Threat', '<code>' + esc(e.threat) + '</code>');
     if (e.description) h += sec('Description', esc(e.description));
@@ -191,6 +194,7 @@ function openDrawer(type, idx) {
     title.textContent = e.threat + ' (Mitigated)';
     h += sec('Status', '<span style="color:var(--green);font-weight:600">MITIGATED</span>');
     h += sec('Severity', '<span class="fc-sev ' + sevCls(e.severity) + '">' + esc(e.severity) + '</span>');
+    if (e.origin) h += sec('Origin', originBdg(e.origin));
     h += sec('Asset', '<code>' + esc(e.asset) + '</code>');
     if (e.description) h += sec('Description', esc(e.description));
     h += sec('Location', '<span style="font-family:var(--font-mono);font-size:.78rem;color:var(--muted)">' + esc(e.file) + ':' + e.line + '</span>');
@@ -201,6 +205,7 @@ function openDrawer(type, idx) {
     const color = e.mitigated ? 'var(--green)' : e.accepted ? 'var(--sev-low)' : 'var(--red)';
     h += sec('Status', '<span style="color:' + color + ';font-weight:600">' + status + '</span>');
     h += sec('Severity', '<span class="fc-sev ' + sevCls(e.severity) + '">' + esc(e.severity) + '</span>');
+    if (e.origin) h += sec('Origin', originBdg(e.origin));
     h += sec('Asset', '<code>' + esc(e.asset) + '</code>');
     if (e.description) h += sec('Description', esc(e.description));
     h += sec('Location', '<span style="font-family:var(--font-mono);font-size:.78rem;color:var(--muted)">' + esc(e.file) + ':' + e.line + '</span>');
@@ -432,6 +437,11 @@ function sevCls(s) {
   if (l === 'medium' || l === 'p2') return 'med';
   if (l === 'low' || l === 'p3') return 'low';
   return 'unset';
+}
+function originBdg(o) {
+  if (!o) return '';
+  var cls = o.startsWith('potentially') ? 'potential' : o === 'mixed' ? 'mixed' : o === 'external' ? 'external' : o === 'internal' ? 'internal' : 'unknown';
+  return '<span class="origin-badge origin-' + cls + '">' + esc(o) + '</span>';
 }
 
 /* ===== THEME ===== */
@@ -694,6 +704,28 @@ function renderSummaryPage(
     ${severity.unset > 0 ? severityBar('Unset', severity.unset, stats.exposures, 'unset') : ''}
   </div>
 
+  <!-- Origin Breakdown (Open Threats) -->
+  ${(() => {
+    const oExternal = unmitigated.filter(e => e.origin === 'external').length;
+    const oInternal = unmitigated.filter(e => e.origin === 'internal').length;
+    const oMixed = unmitigated.filter(e => e.origin === 'mixed').length;
+    const oPotExt = unmitigated.filter(e => e.origin === 'potentially-external').length;
+    const oPotInt = unmitigated.filter(e => e.origin === 'potentially-internal').length;
+    const oUnknown = unmitigated.filter(e => !e.origin).length;
+    const total = unmitigated.length;
+    if (total === 0) return '';
+    return `
+  <div class="sub-h">Threat Origin Breakdown <span style="font-weight:400;color:var(--muted);font-size:.82rem">(${total} open)</span></div>
+  <div class="origin-chart">
+    ${oExternal > 0 ? `<div class="origin-row"><span class="origin-label"><span class="origin-badge origin-external">external</span></span><div class="origin-bar-track"><div class="origin-bar-fill external" style="width:${Math.round(oExternal/total*100)}%"></div></div><span class="origin-count">${oExternal}</span></div>` : ''}
+    ${oPotExt > 0 ? `<div class="origin-row"><span class="origin-label"><span class="origin-badge origin-potential">potentially-external</span></span><div class="origin-bar-track"><div class="origin-bar-fill potential-ext" style="width:${Math.round(oPotExt/total*100)}%"></div></div><span class="origin-count">${oPotExt}</span></div>` : ''}
+    ${oMixed > 0 ? `<div class="origin-row"><span class="origin-label"><span class="origin-badge origin-mixed">mixed</span></span><div class="origin-bar-track"><div class="origin-bar-fill mixed" style="width:${Math.round(oMixed/total*100)}%"></div></div><span class="origin-count">${oMixed}</span></div>` : ''}
+    ${oInternal > 0 ? `<div class="origin-row"><span class="origin-label"><span class="origin-badge origin-internal">internal</span></span><div class="origin-bar-track"><div class="origin-bar-fill internal" style="width:${Math.round(oInternal/total*100)}%"></div></div><span class="origin-count">${oInternal}</span></div>` : ''}
+    ${oPotInt > 0 ? `<div class="origin-row"><span class="origin-label"><span class="origin-badge origin-potential">potentially-internal</span></span><div class="origin-bar-track"><div class="origin-bar-fill potential-int" style="width:${Math.round(oPotInt/total*100)}%"></div></div><span class="origin-count">${oPotInt}</span></div>` : ''}
+    ${oUnknown > 0 ? `<div class="origin-row"><span class="origin-label"><span class="origin-badge origin-unknown">unknown</span></span><div class="origin-bar-track"><div class="origin-bar-fill unknown" style="width:${Math.round(oUnknown/total*100)}%"></div></div><span class="origin-count">${oUnknown}</span></div>` : ''}
+  </div>`;
+  })()}
+
   ${unmitigated.length > 0 ? `
   <!-- Open Threats -->
   <div class="sub-h" style="color:var(--red)">⚠ Open Threats (No Mitigation)</div>
@@ -702,6 +734,7 @@ function renderSummaryPage(
     <div class="fc-top">
       <span class="fc-risk">${esc(e.threat)}</span>
       <span class="fc-sev ${sevClass(e.severity)}">${esc(e.severity)}</span>
+      ${e.origin ? originBadge(e.origin) : ''}
     </div>
     ${e.description ? `<div class="fc-desc">${esc(e.description)}</div>` : ''}
     <div class="fc-assets">Asset: ${esc(e.asset)}</div>
@@ -751,12 +784,13 @@ function renderThreatsPage(exposures: ExposureRow[], model: ThreatModel): string
   <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">Exposed in code but <strong>not mitigated</strong> by any control.</p>
   ${open.length > 0 ? `
   <table>
-    <thead><tr><th>Asset</th><th>Threat</th><th>Severity</th><th>Description</th><th>Location</th></tr></thead>
+    <thead><tr><th>Asset</th><th>Threat</th><th>Origin</th><th>Severity</th><th>Description</th><th>Location</th></tr></thead>
     <tbody>
     ${open.map((e, i) => `
     <tr class="clickable" onclick="openDrawer('open_exposure', ${i})">
       <td><code>${esc(e.asset)}</code></td>
       <td><code>${esc(e.threat)}</code></td>
+      <td>${originBadge(e.origin)}</td>
       <td><span class="fc-sev ${sevClass(e.severity)}">${esc(e.severity)}</span></td>
       <td>${esc(e.description || '—')}</td>
       <td class="loc">${esc(e.file)}:${e.line}</td>
@@ -767,12 +801,13 @@ function renderThreatsPage(exposures: ExposureRow[], model: ThreatModel): string
   <div class="sub-h" style="color:var(--green)">Mitigated Threats (${mitigated.length})</div>
   ${mitigated.length > 0 ? `
   <table>
-    <thead><tr><th>Asset</th><th>Threat</th><th>Severity</th><th>Description</th><th>Location</th></tr></thead>
+    <thead><tr><th>Asset</th><th>Threat</th><th>Origin</th><th>Severity</th><th>Description</th><th>Location</th></tr></thead>
     <tbody>
     ${mitigated.map((e, i) => `
     <tr class="clickable" onclick="openDrawer('mitigated_exposure', ${i})">
       <td><code>${esc(e.asset)}</code></td>
       <td><code>${esc(e.threat)}</code></td>
+      <td>${originBadge(e.origin)}</td>
       <td><span class="fc-sev ${sevClass(e.severity)}">${esc(e.severity)}</span></td>
       <td>${esc(e.description || '—')}</td>
       <td class="loc">${esc(e.file)}:${e.line}</td>
@@ -783,12 +818,13 @@ function renderThreatsPage(exposures: ExposureRow[], model: ThreatModel): string
   ${accepted.length > 0 ? `
   <div class="sub-h" style="color:var(--yellow)">Accepted Risks (${accepted.length})</div>
   <table>
-    <thead><tr><th>Asset</th><th>Threat</th><th>Severity</th><th>Description</th><th>Location</th></tr></thead>
+    <thead><tr><th>Asset</th><th>Threat</th><th>Origin</th><th>Severity</th><th>Description</th><th>Location</th></tr></thead>
     <tbody>
     ${accepted.map(e => `
     <tr>
       <td><code>${esc(e.asset)}</code></td>
       <td><code>${esc(e.threat)}</code></td>
+      <td>${originBadge(e.origin)}</td>
       <td><span class="fc-sev ${sevClass(e.severity)}">${esc(e.severity)}</span></td>
       <td>${esc(e.description || '—')}</td>
       <td class="loc">${esc(e.file)}:${e.line}</td>
@@ -815,19 +851,121 @@ function renderThreatsPage(exposures: ExposureRow[], model: ThreatModel): string
   ${exposures.length > 0 ? `
   <div class="sub-h">All Exposures (${exposures.length})</div>
   <table>
-    <thead><tr><th>Status</th><th>Asset</th><th>Threat</th><th>Severity</th><th>Description</th><th>Location</th></tr></thead>
+    <thead><tr><th>Status</th><th>Asset</th><th>Threat</th><th>Origin</th><th>Severity</th><th>Description</th><th>Location</th></tr></thead>
     <tbody>
     ${exposures.map((e, i) => `
     <tr class="clickable ${!e.mitigated && !e.accepted ? 'row-open' : ''}" onclick="openDrawer('exposure', ${i})">
       <td>${e.mitigated ? '<span class="badge badge-green">Mitigated</span>' : e.accepted ? '<span class="badge badge-blue">Accepted</span>' : '<span class="badge badge-red">Open</span>'}</td>
       <td><code>${esc(e.asset)}</code></td>
       <td><code>${esc(e.threat)}</code></td>
+      <td>${originBadge(e.origin)}</td>
       <td><span class="fc-sev ${sevClass(e.severity)}">${esc(e.severity)}</span></td>
       <td>${esc(e.description || '—')}</td>
       <td class="loc">${esc(e.file)}:${e.line}</td>
     </tr>`).join('')}
     </tbody>
   </table>` : ''}
+</div>`;
+}
+
+function renderAcceptsPage(exposures: ExposureRow[], model: ThreatModel): string {
+  const accepted = exposures.filter(e => e.accepted);
+  const acceptances = model.acceptances || [];
+
+  // Find related audits and comments for each acceptance
+  const auditsByAsset = new Map<string, typeof model.audits>();
+  for (const a of model.audits) {
+    const key = a.asset;
+    if (!auditsByAsset.has(key)) auditsByAsset.set(key, []);
+    auditsByAsset.get(key)!.push(a);
+  }
+
+  // Find comments near acceptances (same file, within 5 lines)
+  const commentsByLoc = new Map<string, typeof model.comments>();
+  for (const c of model.comments) {
+    const key = `${c.location.file}`;
+    if (!commentsByLoc.has(key)) commentsByLoc.set(key, []);
+    commentsByLoc.get(key)!.push(c);
+  }
+
+  return `
+<div id="sec-accepts" class="section-content">
+  <div class="sec-h"><span class="sec-icon">✓</span> Risk Accepts</div>
+  <p style="color:var(--muted);font-size:.78rem;margin-bottom:1rem">
+    Risks that have been <strong>explicitly accepted</strong> via <code>@accepts</code> annotations.
+    These are human governance decisions — the risk is acknowledged but no technical control is applied.
+    <span style="color:var(--yellow)">Every acceptance should have an accompanying <code>@audit</code> and <code>@comment</code>.</span>
+  </p>
+
+  ${acceptances.length > 0 ? `
+  <div class="stats-grid" style="margin-bottom:1.5rem">
+    ${statCard(acceptances.length, 'Total Accepts', 'yellow')}
+    ${statCard(accepted.filter(e => e.severity === 'critical' || e.severity === 'high').length, 'High/Critical Accepted', 'red')}
+    ${statCard(acceptances.filter(a => !auditsByAsset.has(a.asset) || !auditsByAsset.get(a.asset)!.some(au => au.description)).length, 'Without Audit', 'red')}
+    ${statCard(accepted.filter(e => e.origin === 'external' || e.origin === 'mixed').length, 'External-facing', 'red')}
+  </div>
+
+  <div class="sub-h" style="color:var(--yellow)">Accepted Risk Decisions (${acceptances.length})</div>
+  <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">Each acceptance represents a conscious decision to <strong>not mitigate</strong> an identified risk.</p>
+
+  <div style="display:flex;flex-direction:column;gap:1rem">
+  ${acceptances.map((ac, i) => {
+    const relatedExposure = accepted.find(e => e.asset === ac.asset && e.threat === ac.threat);
+    const relatedAudits = auditsByAsset.get(ac.asset) || [];
+    const fileComments = (commentsByLoc.get(ac.location.file) || []).filter(c =>
+      Math.abs(c.location.line - ac.location.line) <= 5
+    );
+    const sev = relatedExposure?.severity || 'unset';
+    const origin = relatedExposure?.origin || '';
+    const borderColor = sev === 'critical' ? 'var(--sev-crit)' : sev === 'high' ? 'var(--sev-high)' : sev === 'medium' ? 'var(--sev-med)' : 'var(--yellow)';
+
+    return `
+    <div class="accept-card" style="background:var(--surface2);border:1px solid var(--border);border-left:4px solid ${borderColor};border-radius:6px;padding:1rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem">
+        <div style="display:flex;align-items:center;gap:.6rem">
+          <span style="font-size:1.1rem">⚠</span>
+          <strong style="font-size:.9rem">${esc(ac.threat)}</strong>
+          <code style="font-size:.7rem;color:var(--muted)">${esc(ac.asset)}</code>
+        </div>
+        <div style="display:flex;align-items:center;gap:.5rem">
+          ${origin ? originBadge(origin) : ''}
+          <span class="fc-sev ${sevClass(sev)}">${esc(sev)}</span>
+        </div>
+      </div>
+      ${ac.description ? `<div style="font-size:.8rem;margin-bottom:.5rem;color:var(--text)">${esc(ac.description)}</div>` : ''}
+      ${relatedExposure?.description ? `<div style="font-size:.75rem;margin-bottom:.5rem;padding:.4rem .6rem;background:var(--badge-red-bg);border-radius:4px;color:var(--muted)"><strong>Exposure:</strong> ${esc(relatedExposure.description)}</div>` : ''}
+      ${relatedAudits.length > 0 ? relatedAudits.map(au => `
+        <div style="font-size:.75rem;margin-bottom:.3rem;padding:.4rem .6rem;background:var(--badge-blue-bg);border-radius:4px;color:var(--muted)"><strong>Audit:</strong> ${esc(au.description || 'Needs review')}</div>
+      `).join('') : `
+        <div style="font-size:.75rem;margin-bottom:.3rem;padding:.4rem .6rem;background:var(--badge-red-bg);border:1px solid var(--sev-crit);border-radius:4px;color:var(--sev-crit)"><strong>⚠ Missing @audit</strong> — every @accepts should have an accompanying @audit for accountability</div>
+      `}
+      ${fileComments.length > 0 ? fileComments.map(c => `
+        <div style="font-size:.75rem;margin-bottom:.3rem;padding:.4rem .6rem;background:var(--surface);border-radius:4px;color:var(--muted)"><strong>Comment:</strong> ${esc(c.description || '')}</div>
+      `).join('') : ''}
+      <div style="font-family:var(--font-mono);font-size:.7rem;color:var(--muted);margin-top:.4rem">${esc(ac.location.file)}:${ac.location.line}</div>
+    </div>`;
+  }).join('')}
+  </div>
+
+  ${accepted.length > 0 ? `
+  <div class="sub-h" style="margin-top:2rem">Accepted Exposures by Origin</div>
+  <div class="stats-grid" style="margin-bottom:1rem">
+    ${statCard(accepted.filter(e => e.origin === 'external').length, 'External', 'red')}
+    ${statCard(accepted.filter(e => e.origin === 'internal').length, 'Internal', 'green')}
+    ${statCard(accepted.filter(e => e.origin === 'mixed').length, 'Mixed', 'yellow')}
+    ${statCard(accepted.filter(e => e.origin.startsWith('potentially')).length, 'Potentially', 'blue')}
+  </div>` : ''}
+
+  ` : `
+  <div class="empty-state" style="text-align:center;padding:3rem">
+    <div style="font-size:2rem;margin-bottom:1rem">✓</div>
+    <div style="font-size:1rem;font-weight:600;margin-bottom:.5rem">No Risk Acceptances</div>
+    <p style="color:var(--muted);font-size:.85rem;max-width:400px;margin:0 auto">
+      No <code>@accepts</code> annotations found. This is the ideal state — risks should be mitigated with controls
+      (<code>@mitigates</code>) or flagged for review (<code>@audit</code>). Use <code>@accepts</code> only when
+      a human has made a conscious decision to accept a known risk.
+    </p>
+  </div>`}
 </div>`;
 }
 
@@ -1184,6 +1322,12 @@ function sevClass(s: string): string {
   return 'unset';
 }
 
+function originBadge(origin: string): string {
+  if (!origin) return '<span class="origin-badge origin-unknown">—</span>';
+  const cls = origin.startsWith('potentially') ? 'potential' : origin === 'mixed' ? 'mixed' : origin === 'external' ? 'external' : origin === 'internal' ? 'internal' : 'unknown';
+  return `<span class="origin-badge origin-${cls}">${esc(origin)}</span>`;
+}
+
 function computeRiskGrade(sev: SeverityBreakdown, unmitigatedCount: number, totalExposures: number) {
   if (sev.critical > 0) return { grade: 'F', label: 'Critical Risk', summary: `${sev.critical} critical exposure(s) require immediate attention` };
   if (sev.high >= 3 || unmitigatedCount >= 5) return { grade: 'D', label: 'High Risk', summary: `${unmitigatedCount} unmitigated exposure(s), ${sev.high} high severity` };
@@ -1338,6 +1482,32 @@ code { background: var(--border); padding: 1px 4px; border-radius: 3px; font-siz
 .fc-sev.crit { background: var(--sev-crit); color: #fff; } .fc-sev.high { background: var(--sev-high); color: #fff; }
 .fc-sev.med { background: var(--sev-med); color: #000; } .fc-sev.low { background: var(--border); color: var(--muted); }
 .fc-sev.unset { background: var(--border); color: var(--muted); }
+
+/* ── Origin Badges ── */
+.origin-badge { font-size: .65rem; padding: 1px 6px; border-radius: 3px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; }
+.origin-external { background: var(--sev-crit); color: #fff; }
+.origin-internal { background: var(--green); color: #fff; }
+.origin-mixed { background: var(--sev-med); color: #000; }
+.origin-potential { background: var(--purple); color: #fff; }
+.origin-unknown { background: var(--border); color: var(--muted); }
+
+/* ── Origin Chart ── */
+.origin-chart { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1.2rem; }
+.origin-row { display: flex; align-items: center; gap: .6rem; }
+.origin-label { min-width: 140px; text-align: right; }
+.origin-bar-track { flex: 1; height: 20px; background: var(--surface2); border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+.origin-bar-fill { height: 100%; border-radius: 3px; transition: width .4s ease; min-width: 4px; }
+.origin-bar-fill.external { background: var(--sev-crit); }
+.origin-bar-fill.potential-ext { background: var(--purple); }
+.origin-bar-fill.mixed { background: var(--sev-med); }
+.origin-bar-fill.internal { background: var(--green); }
+.origin-bar-fill.potential-int { background: var(--blue); }
+.origin-bar-fill.unknown { background: var(--border); }
+.origin-count { min-width: 28px; font-size: .78rem; font-weight: 600; color: var(--text); font-family: var(--font-mono); }
+
+/* ── Stat card yellow variant ── */
+.stat-yellow .value { color: var(--yellow); }
+.stat-blue .value { color: var(--blue); }
 
 /* ── Tables ── */
 table { width: 100%; border-collapse: collapse; background: var(--surface2); border-radius: 6px; overflow: hidden; margin-bottom: .8rem; }

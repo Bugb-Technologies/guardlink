@@ -11,6 +11,12 @@
  *     relationships by (asset, threat) or (source, target) composite keys
  *   - Delta categories: added, removed, modified (severity/description changed)
  *   - Risk delta: tracks net change in unmitigated exposure count
+ *
+ * @flows ThreatModel -> #diff via diffModels -- "two threat model snapshots compared; delta includes exposure changes, severity modifications, new/removed assets"
+ * @flows #diff -> DiffResult via diffByKey -- "structured delta emitted for consumption by formatter or CI gate"
+ * @handles internal on #diff -- "processes threat model data including file paths, descriptions, and full security posture of both before/after models"
+ * @comment -- "identity key functions (assetKey, exposureKey, etc.) use model-internal IDs; no user-supplied data is executed — purely structural comparison with no I/O"
+ * @comment -- "computeUnmitigated() is the CI gate function — determines riskDelta which drives pass/fail in CI pipelines"
  */
 
 import type {

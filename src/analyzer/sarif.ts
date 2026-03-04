@@ -12,7 +12,7 @@
  *   2. Parse errors (annotation syntax problems)
  *   3. Dangling references (broken #id refs)
  *
- * @exposes #sarif to #data-exposure [low] cwe:CWE-200 -- "Exposes threat model findings to SARIF consumers"
+ * @exposes #sarif to #data-exposure [low] cwe:CWE-200 -- "[potentially-external] Exposes threat model findings to SARIF consumers; CI/CD integration may surface findings to external security tools"
  * @audit #sarif -- "SARIF output intentionally reveals security findings for CI/CD integration"
  * @comment -- "Pure function: transforms ThreatModel to SARIF JSON; no I/O"
  * @flows ThreatModel -> #sarif via generateSarif -- "Model input"

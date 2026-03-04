@@ -4,7 +4,7 @@
  * Now delegates to the unified agents/config.ts resolution chain.
  * Keeps backward compatibility with tui-config.json (legacy).
  *
- * @exposes #tui to #api-key-exposure [high] cwe:CWE-798 -- "API keys loaded from and saved to config files"
+ * @exposes #tui to #api-key-exposure [high] cwe:CWE-798 -- "[internal] API keys loaded from and saved to config files; local dev manages their own keys on disk"
  * @mitigates #tui against #api-key-exposure using #key-redaction -- "Delegates to agents/config.ts with masking"
  * @flows ConfigFile -> #tui via loadProjectConfig -- "Config load path"
  * @flows #tui -> ConfigFile via saveProjectConfig -- "Config save path"

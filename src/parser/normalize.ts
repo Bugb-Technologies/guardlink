@@ -1,4 +1,16 @@
 /**
+ * GuardLink — Name normalization and description utilities.
+ *
+ * @comment -- "normalizeName applies NFKC before lowercasing: visually similar Unicode chars (homographs) may collapse to the same canonical_name, causing silent collision in deduplication and search"
+ * @comment -- "resolveSeverity returns undefined for unknown severity strings; callers must handle undefined to avoid silently omitting severity from @exposes entries in the ThreatModel"
+ * @comment -- "unescapeDescription reverses backslash escapes (\\\" and \\\\) only; output is NOT HTML-encoded — downstream renderers must independently sanitize before inserting into HTML"
+ * @exposes #parser to #xss [low] cwe:CWE-79 -- "[mixed] unescapeDescription does not HTML-encode its output; annotation descriptions from local or PR-contributed source files containing <script> or event attributes rendered in the HTML dashboard without escaping become XSS vectors"
+ * @audit #parser -- "HTML dashboard and markdown report generators must independently HTML-encode all description fields; unescapeDescription is not an HTML sanitizer"
+ * @flows RawAnnotationText -> #parser via unescapeDescription -- "Quoted annotation string → unescaped description stored in ThreatModel"
+ * @flows #parser -> canonical_name via normalizeName -- "Normalized name written to canonical_name field in asset/threat/control model entries for deduplication and search"
+ */
+
+/**
  * Name normalization per §2.10 of the GuardLink spec.
  *
  * Algorithm:

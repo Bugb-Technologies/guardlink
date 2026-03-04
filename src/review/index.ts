@@ -7,11 +7,15 @@
  *   remediate — write @audit with planned-fix note
  *   skip    — leave open for now
  *
- * @exposes #cli to #arbitrary-write [medium] cwe:CWE-73 -- "Writes @accepts/@audit annotations into source files"
+ * @exposes #cli to #arbitrary-write [medium] cwe:CWE-73 -- "[internal] Writes @accepts/@audit annotations into source files; local dev triggers review workflow"
  * @mitigates #cli against #arbitrary-write using #path-validation -- "Only modifies files already in the parsed project"
+ * @exposes #cli to #annotation-injection [high] cwe:CWE-74 -- "[potentially-external] buildAcceptLines/buildRemediateLines write user justification verbatim to source files; escapeDesc() only escapes \" and \\, not newlines — MCP callers (potentially compromised agents) can embed // @accepts #threat on #asset via \\n in JSON justification field"
+ * @audit #cli -- "escapeDesc() must strip \\n and \\r; via MCP guardlink_review_accept a compromised AI agent can forge @accepts annotations clearing critical exposures from the threat model"
+ * @comment -- "Potential control: strip newlines from justification before escapeDesc(); validate no annotation-start sequences (// @, # @, * @) survive into the written string"
  * @audit #cli -- "Review decisions require human justification; no empty accepts allowed"
  * @flows ThreatModel -> #cli via getReviewableExposures -- "Exposure list input"
  * @flows #cli -> SourceFiles via writeFile -- "Annotation insertion output"
+ * @flows UserJustification -> #cli via applyReviewAction -- "User-supplied justification text written into source annotation description fields"
  * @handles internal on #cli -- "Processes exposure metadata and user justification text"
  */
 

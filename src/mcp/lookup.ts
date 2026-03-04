@@ -13,7 +13,7 @@
  *   - "boundary #config" → boundaries involving asset
  *   - Free text → fuzzy match across assets, threats, controls
  *
- * @exposes #mcp to #redos [low] cwe:CWE-1333 -- "Regex patterns applied to query strings"
+ * @exposes #mcp to #redos [low] cwe:CWE-1333 -- "[potentially-external] Regex patterns applied to query strings from MCP clients; currently local stdio but protocol allows network transport"
  * @mitigates #mcp against #redos using #regex-anchoring -- "Patterns are simple and bounded"
  * @flows QueryString -> #mcp via lookup -- "Query input path"
  * @comment -- "Pure function; no I/O; operates on in-memory ThreatModel"
