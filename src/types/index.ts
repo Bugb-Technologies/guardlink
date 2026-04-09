@@ -16,8 +16,12 @@ export type AnnotationVerb =
   | 'asset' | 'threat' | 'control'
   // Relationship
   | 'mitigates' | 'exposes' | 'accepts' | 'transfers' | 'flows' | 'boundary'
+  // Evidence
+  | 'confirmed'
   // Lifecycle
   | 'validates' | 'audit' | 'owns' | 'handles' | 'assumes'
+  // Metadata
+  | 'feature'
   // Special
   | 'comment' | 'shield' | 'shield:begin' | 'shield:end';
 
@@ -72,6 +76,14 @@ export interface ExposesAnnotation extends BaseAnnotation {
   verb: 'exposes';
   asset: string;
   threat: string;
+  severity?: Severity;
+  external_refs: string[];
+}
+
+export interface ConfirmedAnnotation extends BaseAnnotation {
+  verb: 'confirmed';
+  threat: string;
+  asset: string;
   severity?: Severity;
   external_refs: string[];
 }
@@ -135,6 +147,11 @@ export interface ShieldAnnotation extends BaseAnnotation {
   verb: 'shield' | 'shield:begin' | 'shield:end';
 }
 
+export interface FeatureAnnotation extends BaseAnnotation {
+  verb: 'feature';
+  feature: string;
+}
+
 export interface CommentAnnotation extends BaseAnnotation {
   verb: 'comment';
 }
@@ -145,6 +162,7 @@ export type Annotation =
   | ControlAnnotation
   | MitigatesAnnotation
   | ExposesAnnotation
+  | ConfirmedAnnotation
   | AcceptsAnnotation
   | TransfersAnnotation
   | FlowsAnnotation
@@ -154,6 +172,7 @@ export type Annotation =
   | OwnsAnnotation
   | HandlesAnnotation
   | AssumesAnnotation
+  | FeatureAnnotation
   | CommentAnnotation
   | ShieldAnnotation;
 
@@ -215,11 +234,15 @@ export interface ThreatModel {
   /** Cross-repo tag references detected during parsing */
   external_refs?: ExternalRef[];
 
+  /** User-provided project description / threat model prompt (from .guardlink/prompt.md) */
+  prompt?: string;
+
   assets: ThreatModelAsset[];
   threats: ThreatModelThreat[];
   controls: ThreatModelControl[];
   mitigations: ThreatModelMitigation[];
   exposures: ThreatModelExposure[];
+  confirmed: ThreatModelConfirmed[];
   acceptances: ThreatModelAcceptance[];
   transfers: ThreatModelTransfer[];
   flows: ThreatModelFlow[];
@@ -230,6 +253,7 @@ export interface ThreatModel {
   data_handling: ThreatModelDataHandling[];
   assumptions: ThreatModelAssumption[];
   shields: ThreatModelShield[];
+  features: ThreatModelFeature[];
   comments: ThreatModelComment[];
 
   coverage: CoverageStats;
@@ -271,6 +295,15 @@ export interface ThreatModelMitigation {
 export interface ThreatModelExposure {
   asset: string;
   threat: string;
+  severity?: Severity;
+  external_refs: string[];
+  description?: string;
+  location: SourceLocation;
+}
+
+export interface ThreatModelConfirmed {
+  threat: string;
+  asset: string;
   severity?: Severity;
   external_refs: string[];
   description?: string;
@@ -343,6 +376,12 @@ export interface ThreatModelAssumption {
 
 export interface ThreatModelShield {
   reason?: string;
+  location: SourceLocation;
+}
+
+export interface ThreatModelFeature {
+  feature: string;
+  description?: string;
   location: SourceLocation;
 }
 

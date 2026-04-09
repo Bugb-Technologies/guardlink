@@ -178,6 +178,8 @@ GuardLink ships an MCP server and behavioral directives for AI coding agents. Af
 | `guardlink sarif [dir]` | Export unmitigated exposures as SARIF 2.1.0 |
 | `guardlink threat-report [fw]` | AI threat report (stride/dread/pasta/attacker/rapid/general) |
 | `guardlink threat-reports` | List saved AI threat reports |
+| `guardlink translate [prompt]` | Generate CERT-X-GEN pentest templates from threat model findings |
+| `guardlink ask <query>` | Ask a natural-language question about the threat model and codebase |
 | `guardlink review [dir]` | Interactive governance review — accept, remediate, or skip unmitigated exposures |
 | `guardlink review --list` | List reviewable exposures without prompting |
 | `guardlink clear [dir]` | Remove all annotations from source files (with `--dry-run` preview) |
@@ -241,6 +243,8 @@ GuardLink annotations go in comments in any language. The parser supports `//`, 
 | `@control` | Define a security control | `@control WAF (#waf)` |
 | `@mitigates` | Control protects asset against threat | `@mitigates #api against #sqli using #prepared-stmts` |
 | `@exposes` | Asset vulnerable to threat | `@exposes #api to #xss [P1]` |
+| `@confirmed` | Threat verified exploitable (pentest/scan) | `@confirmed #sqli on #api [critical] -- "Verified in pen test"` |
+| `@feature` | Tag code with a product feature name | `@feature "SSO Login" -- "Single sign-on authentication flow"` |
 | `@accepts` | Risk acknowledged | `@accepts #dos on #api -- "By design"` |
 | `@transfers` | Risk moved between assets | `@transfers #sqli from #api to #db` |
 | `@flow` | Data flow between assets | `@flow #api -> #db via "SQL"` |
@@ -303,7 +307,31 @@ For workspace setups, GuardLink provides two additional workflow templates: a pe
 
 ### SARIF
 
-`guardlink sarif` exports unmitigated exposures as SARIF 2.1.0. Upload to GitHub Advanced Security and every `@exposes` appears as a code scanning alert with file, line, severity, and CWE.
+`guardlink sarif` exports unmitigated exposures and `@confirmed` findings as SARIF 2.1.0. Upload to GitHub Advanced Security: unmitigated `@exposes` appear as warnings or errors by severity; `@confirmed` exploitable findings appear as errors.
+
+### Pentest Integration
+
+GuardLink bridges threat modeling and penetration testing in both directions.
+
+**From threat model to pentest templates** — `guardlink translate` reads your `@exposes` annotations and generates CERT-X-GEN (CXG) pentest template stubs targeting the specific threats you've documented. Run it with any agent backend:
+
+```bash
+guardlink translate --claude-code
+guardlink translate "focus on injection paths" --clipboard
+```
+
+**From pentest results back to the threat model** — Drop CXG scan result JSON files into `.guardlink/pentest-findings/`. GuardLink reads them automatically and:
+- Injects findings as empirical evidence in `guardlink threat-report` and AI analyses
+- Displays a **Pentest Findings** section in `guardlink dashboard`
+- Teaches agents to cross-reference scan results against `@exposes` annotations
+
+**Marking verified findings** — When a pentest or scan proves a threat is exploitable, add `@confirmed` to close the loop:
+
+```typescript
+// @confirmed #sqli on App.API [critical] cwe:CWE-89 -- "CXG scan 2026-04: time-based blind SQLi on /login confirmed"
+```
+
+`@confirmed` is distinct from `@exposes` (hypothesis) — it means real, verified, not a false positive.
 
 ---
 

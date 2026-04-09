@@ -24,7 +24,7 @@ GuardLink extends the original ThreatSpec specification (dormant since 2020) wit
 
 **1.3. Annotations are structured data.** While readable as English, every annotation has a deterministic grammar that can be parsed by regex into typed data structures. Ambiguous or free-form syntax is avoided.
 
-**1.4. Annotations capture intent, not implementation.** An `@exposes` annotation says "this code is vulnerable to X" — it does not describe how the vulnerability works. A `@mitigates` annotation says "this code defends against X" — it does not duplicate the implementation. The annotation is a pointer from code to the threat model.
+**1.4. Annotations capture intent, not implementation.** An `@exposes` annotation says "this code is vulnerable to X" — it does not describe how the vulnerability works. A `@mitigates` annotation says "this code defends against X" — it does not duplicate the implementation. A `@confirmed` annotation says "this threat was verified exploitable here" with evidence summarized in the description — it is not a false positive. The annotation is a pointer from code to the threat model.
 
 **1.5. Annotations are incremental.** A codebase does not need 100% annotation coverage to be useful. A single `@exposes` annotation on a critical endpoint is valuable. Tools should work with partial annotation and measure coverage over time.
 
@@ -335,6 +335,40 @@ Declares that code at this location leaves an asset vulnerable to a named threat
 @app.get("/users/{user_id}")
 def get_user(user_id: int):
     return db.get_user(user_id)  # Anyone can access any user
+```
+
+#### `@confirmed` — Verified Exploitable Finding
+
+```
+@confirmed <threat> on <asset> [<severity>] [<external-refs>] [-- "<description>"]
+```
+
+Declares that a threat against an asset has been **verified** through penetration testing, automated security scanning with reproducible evidence, or manual exploitation — not a theoretical risk. This is distinct from `@exposes` (developer hypothesis) and from `@accepts` (governance decision to live with risk). Tools should surface `@confirmed` as highest-priority findings (e.g., SARIF `error`, dashboard emphasis).
+
+The optional `[severity]` reflects **observed** impact from verification; it may differ from the severity on a matching `@exposes` or `@threat` definition.
+
+```typescript
+// @confirmed #secret-exposure on App.Config [critical] cwe:CWE-798 -- "TruffleHog + manual: live API key in committed .env.example, verified against provider"
+```
+
+#### `@feature` — Feature Tag
+
+```
+@feature "<feature-name>" [-- "<description>"]
+```
+
+Tags the file with a named product feature. All annotations in a file that carries `@feature "X"` are associated with that feature. A file may carry multiple `@feature` tags. Feature names are free-form quoted strings.
+
+Feature tags are metadata only — they have no effect on validation or coverage scoring. Their purpose is to allow threat model consumers (CLI, dashboard, reports) to filter or scope the model to a subset of the system:
+
+- `guardlink status . --feature "SSO Login"` — coverage stats for one feature
+- `guardlink report . --feature "Payments"` — report scoped to that feature
+- Dashboard feature filter dropdown
+
+```typescript
+// @feature "SSO Login" -- "Single sign-on authentication flow"
+// @feature "Payment Processing"
+export async function handleOAuthCallback(req: Request) { ... }
 ```
 
 #### `@accepts` — Acknowledge a Risk

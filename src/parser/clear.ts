@@ -23,7 +23,7 @@ import { parseLine } from './parse-line.js';
 
 const GUARDLINK_VERBS = new Set([
   'asset', 'threat', 'control',
-  'mitigates', 'exposes', 'accepts', 'transfers', 'flows', 'boundary',
+  'mitigates', 'exposes', 'confirmed', 'accepts', 'transfers', 'flows', 'boundary',
   'validates', 'audit', 'owns', 'handles', 'assumes',
   'comment', 'shield', 'shield:begin', 'shield:end',
   // v1 compat

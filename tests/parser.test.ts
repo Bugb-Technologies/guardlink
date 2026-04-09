@@ -110,6 +110,20 @@ describe('parseString', () => {
     expect(e.external_refs).toEqual(['cwe:CWE-639']);
   });
 
+  it('parses @confirmed with severity and external refs', () => {
+    const { annotations } = parseString(
+      '// @confirmed #idor on App.API [critical] cwe:CWE-639 -- "Pen test reproduced IDOR"'
+    );
+    expect(annotations).toHaveLength(1);
+    const c = annotations[0] as any;
+    expect(c.verb).toBe('confirmed');
+    expect(c.threat).toBe('#idor');
+    expect(c.asset).toBe('App.API');
+    expect(c.severity).toBe('critical');
+    expect(c.external_refs).toEqual(['cwe:CWE-639']);
+    expect(c.description).toBe('Pen test reproduced IDOR');
+  });
+
   it('parses @accepts', () => {
     const { annotations } = parseString(
       '// @accepts #info-disclosure on App.Health -- "Public endpoint"'
@@ -362,6 +376,16 @@ describe('findDanglingRefs', () => {
     const diags = findDanglingRefs(model);
     expect(diags).toHaveLength(1);
     expect(diags[0].message).toContain('#missing-asset');
+  });
+
+  it('detects dangling threat ref in @confirmed', () => {
+    const model = emptyModel({
+      assets: [{ path: ['App'], id: 'app', location: loc }],
+      confirmed: [{ asset: '#app', threat: '#ghost-threat', severity: 'high', external_refs: [], location: loc }],
+    });
+    const diags = findDanglingRefs(model);
+    expect(diags).toHaveLength(1);
+    expect(diags[0].message).toContain('#ghost-threat');
   });
 
   it('detects dangling refs in @flows source/target', () => {

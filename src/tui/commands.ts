@@ -23,12 +23,12 @@
 
 import { resolve, basename, isAbsolute } from 'node:path';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, clearAnnotations } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
 import { computeStats, computeSeverity, computeExposures } from '../dashboard/data.js';
-import { generateThreatReport, serializeModel, listThreatReports, loadThreatReportsForDashboard, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, buildProjectContext, extractCodeSnippets, type AnalysisFramework } from '../analyze/index.js';
+import { generateThreatReport, serializeModel, listThreatReports, loadThreatReportsForDashboard, loadPentestData, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, buildProjectContext, extractCodeSnippets, type AnalysisFramework } from '../analyze/index.js';
 import { diffModels, formatDiff, parseAtRef } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import type { ThreatModel, ParseDiagnostic, ThreatModelExposure } from '../types/index.js';
@@ -129,6 +129,7 @@ export function cmdHelp(): void {
     ['/workspace',              'Show workspace config and linked repos'],
     ['/link <repos...>',        'Link repos into a workspace (--add / --remove)'],
     ['/merge <files...>',       'Merge report JSONs into unified dashboard'],
+    ['/feature [name]',         'List all features or show detail for one'],
     ['', ''],
     ['/gal',                    'GAL annotation language guide'],
     ['/help',                   'This help'],
@@ -266,6 +267,18 @@ export function cmdGal(): void {
   console.log(`  ${V('@assumes')}  ${K('<asset>')}  ${D('[-- "description"]')}`);
   console.log(D('    Document a security assumption about an asset.'));
   console.log(EX('    // @assumes  api.gateway  -- "Upstream WAF filters malformed requests"'));
+  console.log('');
+
+  // ── FEATURE TAGGING ──────────────────────────────────────────────
+  console.log(H('  ── Feature Tagging ─────────────────────────────────────────'));
+  console.log('');
+
+  console.log(`  ${V('@feature')}  ${K('"Feature Name"')}  ${D('[-- "description"]')}`);
+  console.log(D('    Tag code with a feature name for filtering reports and dashboards.'));
+  console.log(D('    A file can have multiple @feature tags. All annotations in that file'));
+  console.log(D('    are associated with the tagged features.'));
+  console.log(EX('    // @feature "SSO Login" -- "Single sign-on authentication flow"'));
+  console.log(EX('    // @feature "Payment Processing"'));
   console.log('');
 
   console.log(`  ${V('@comment')}  ${D('[-- "description"]')}`);
@@ -1841,7 +1854,8 @@ export async function cmdDashboard(ctx: TuiContext): Promise<void> {
   }
 
   const analyses = loadThreatReportsForDashboard(ctx.root);
-  const html = generateDashboardHTML(ctx.model, ctx.root, analyses);
+  const pentestData = loadPentestData(ctx.root);
+  const html = generateDashboardHTML(ctx.model, ctx.root, analyses, pentestData);
   const outFile = resolve(ctx.root, 'threat-dashboard.html');
   const { writeFile } = await import('node:fs/promises');
   await writeFile(outFile, html);
@@ -1883,6 +1897,77 @@ export function cmdWorkspace(ctx: TuiContext): void {
   }
   console.log('');
   console.log(C.dim('  /merge to combine reports · /link --add to add a repo · /link --remove to remove'));
+  console.log('');
+}
+
+// ─── /feature ────────────────────────────────────────────────────────
+
+export function cmdFeature(args: string, ctx: TuiContext): void {
+  if (!ctx.model) {
+    console.log(C.warn('  No threat model. Run /parse first.'));
+    return;
+  }
+
+  const features = listFeatures(ctx.model);
+  if (features.length === 0) {
+    console.log('  No @feature annotations found.');
+    console.log(C.dim('  Tag code with: // @feature "Feature Name" -- "description"'));
+    console.log('');
+    return;
+  }
+
+  const name = args.trim();
+  if (name) {
+    // Show detail for specific feature
+    const filtered = filterByFeature(ctx.model, [name]);
+    const total = filtered.assets.length + filtered.threats.length +
+      filtered.controls.length + filtered.mitigations.length + filtered.exposures.length +
+      filtered.confirmed.length + filtered.flows.length + filtered.boundaries.length;
+
+    if (total === 0) {
+      console.log(C.warn(`  No annotations found for feature "${name}".`));
+      console.log(`  Available: ${features.map(f => `"${f}"`).join(', ')}`);
+      console.log('');
+      return;
+    }
+
+    console.log(`  Feature: ${C.bold(`"${name}"`)}`);
+    console.log('');
+    console.log(`    Assets:       ${filtered.assets.length}`);
+    console.log(`    Threats:      ${filtered.threats.length}`);
+    console.log(`    Controls:     ${filtered.controls.length}`);
+    console.log(`    Mitigations:  ${filtered.mitigations.length}`);
+    console.log(`    Exposures:    ${filtered.exposures.length}`);
+    if (filtered.confirmed.length > 0) console.log(`    Confirmed:    ${filtered.confirmed.length} 🔴`);
+    console.log(`    Flows:        ${filtered.flows.length}`);
+    console.log(`    Boundaries:   ${filtered.boundaries.length}`);
+
+    if (filtered.exposures.length > 0) {
+      console.log('');
+      console.log(`    ${C.bold('Exposures:')}`);
+      for (const e of filtered.exposures) {
+        console.log(`      ${e.asset} → ${e.threat} ${severityBadge(e.severity || 'unset')} (${fileLink(e.location.file, e.location.line)})`);
+      }
+    }
+    console.log('');
+    return;
+  }
+
+  // List all features
+  const summaries = getFeatureSummaries(ctx.model);
+  console.log(`  ${C.bold('Features:')}`);
+  console.log('');
+  for (const s of summaries) {
+    const files = s.files.length === 1 ? '1 file' : `${s.files.length} files`;
+    const exposureInfo = s.exposures > 0 ? C.red(` | ${s.exposures} exposure(s)`) : '';
+    const confirmedInfo = s.confirmed > 0 ? C.red(` | ${s.confirmed} confirmed`) : '';
+    console.log(`    ${C.cyan(`"${s.name}"`)}  (${files}, ${s.annotations} annotations${exposureInfo}${confirmedInfo})`);
+    for (const f of s.files) {
+      console.log(`      → ${C.dim(f)}`);
+    }
+  }
+  console.log('');
+  console.log(C.dim(`  ${features.length} feature(s) total. Use /feature <name> for detail.`));
   console.log('');
 }
 

@@ -16,11 +16,11 @@ import { relative } from 'node:path';
 import type {
   Annotation, ThreatModel, ParseResult, ParseDiagnostic,
   AssetAnnotation, ThreatAnnotation, ControlAnnotation,
-  MitigatesAnnotation, ExposesAnnotation, AcceptsAnnotation,
+  MitigatesAnnotation, ExposesAnnotation, ConfirmedAnnotation, AcceptsAnnotation,
   TransfersAnnotation, FlowsAnnotation, BoundaryAnnotation,
   ValidatesAnnotation, AuditAnnotation, OwnsAnnotation,
   HandlesAnnotation, AssumesAnnotation, ShieldAnnotation,
-  CommentAnnotation,
+  FeatureAnnotation, CommentAnnotation,
   DataClassification,
   ExternalRef, AnnotationVerb, SourceLocation,
 } from '../types/index.js';
@@ -157,6 +157,7 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
     controls: [],
     mitigations: [],
     exposures: [],
+    confirmed: [],
     acceptances: [],
     transfers: [],
     flows: [],
@@ -167,6 +168,7 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
     data_handling: [],
     assumptions: [],
     shields: [],
+    features: [],
     comments: [],
     coverage: {
       total_symbols: 0,
@@ -226,6 +228,15 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
           asset: e.asset, threat: e.threat, severity: e.severity,
           external_refs: e.external_refs,
           description: e.description, location: e.location,
+        });
+        break;
+      }
+      case 'confirmed': {
+        const cf = ann as ConfirmedAnnotation;
+        model.confirmed.push({
+          threat: cf.threat, asset: cf.asset, severity: cf.severity,
+          external_refs: cf.external_refs,
+          description: cf.description, location: cf.location,
         });
         break;
       }
@@ -299,6 +310,14 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
         model.assumptions.push({
           asset: a.asset,
           description: a.description, location: a.location,
+        });
+        break;
+      }
+      case 'feature': {
+        const feat = ann as FeatureAnnotation;
+        model.features.push({
+          feature: feat.feature,
+          description: feat.description, location: feat.location,
         });
         break;
       }

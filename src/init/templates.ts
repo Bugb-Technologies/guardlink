@@ -40,6 +40,8 @@ LIFECYCLE
          @handles <pii|phi|financial|secrets|internal|public> on <Asset>
          @assumes <Asset> -- "unverified assumption"
 
+METADATA @feature "Feature Name" -- "tag code with a feature for filtering"
+
 COMMENT  @comment -- "security-relevant developer note"
 
 PROTECT  @shield -- "reason"
@@ -73,6 +75,7 @@ Append after severity: \`cwe:CWE-89\`, \`owasp:A03:2021\`, \`capec:CAPEC-66\`, \
 | Implementing a fix | \`@mitigates Asset against #threat using #control\` |
 | Processing sensitive data | \`@handles pii on Asset\` |
 | Proprietary algorithm | \`@shield:begin\` ... \`@shield:end\` |
+| Tagging code to a feature | \`@feature "SSO Login" -- "Single sign-on flow"\` |
 | Unsure which annotation | \`@comment -- "describe what you see"\` |
 
 ## Commands
@@ -82,6 +85,8 @@ guardlink validate .          # Check for errors
 guardlink report .            # Generate threat-model.md
 guardlink status .            # Coverage summary
 guardlink suggest <file>      # Get annotation suggestions
+guardlink feature list        # List all @feature tags
+guardlink feature show <name> # Show model for a specific feature
 \`\`\`
 
 ## MCP Tools
@@ -116,11 +121,12 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 
 1. **Annotate new code.** When you add a function, endpoint, or module that handles user input, accesses data, crosses a trust boundary, or could fail in a security-relevant way — add \`@exposes\`, \`@mitigates\`, \`@flows\`, \`@handles\`, or at minimum \`@comment\` annotations. This is not optional.
 2. **NEVER write \`@accepts\`.** That is a human-only governance decision. When you find a risk with no mitigation in code, write \`@exposes\` to document the risk + \`@audit\` to flag it for human review + \`@comment\` to suggest potential controls.
-3. Do not delete or mangle existing annotations. Treat them as part of the code. Edit only when intentionally changing the threat model.
-4. Definitions (\`@asset\`, \`@threat\`, \`@control\` with \`(#id)\`) live in \`.guardlink/definitions${project.definitionsExt}\`. Reuse existing \`#id\`s — never redefine. If you need a new asset or threat, add the definition there first, then reference it in source files.
-5. Source files use relationship verbs only: \`@mitigates\`, \`@exposes\`, \`@flows\`, \`@handles\`, \`@boundary\`, \`@comment\`, \`@validates\`, \`@audit\`, \`@owns\`, \`@assumes\`, \`@transfers\`.
-6. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note. Never write a lone \`@exposes\` without follow-up.
-7. Avoid \`@shield\` unless a human explicitly asks to hide code from AI — it creates blind spots.
+3. **Use \`@confirmed\` for verified exploits.** When a pentest, CXG scan, or manual reproduction proves a threat is exploitable, mark it with \`@confirmed #threat on Asset [severity] -- "evidence"\`. This is distinct from \`@exposes\` (theoretical) — \`@confirmed\` means real, verified, not a false positive. Include severity based on actual observed impact.
+4. Do not delete or mangle existing annotations. Treat them as part of the code. Edit only when intentionally changing the threat model.
+5. Definitions (\`@asset\`, \`@threat\`, \`@control\` with \`(#id)\`) live in \`.guardlink/definitions${project.definitionsExt}\`. Reuse existing \`#id\`s — never redefine. If you need a new asset or threat, add the definition there first, then reference it in source files.
+6. Source files use relationship verbs only: \`@mitigates\`, \`@exposes\`, \`@confirmed\`, \`@flows\`, \`@handles\`, \`@boundary\`, \`@comment\`, \`@validates\`, \`@audit\`, \`@owns\`, \`@assumes\`, \`@transfers\`, \`@feature\`.
+7. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note. Never write a lone \`@exposes\` without follow-up.
+8. Avoid \`@shield\` unless a human explicitly asks to hide code from AI — it creates blind spots.
 
 ### Workflow (while coding)
 
@@ -145,6 +151,8 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 @handles pii on App.API -- "Processes email and session token"
 @validates #prepared-stmts for App.API -- "sqlInjectionTest.ts ensures placeholders used"
 @audit App.API -- "Token rotation logic needs crypto review"
+@confirmed #sqli on App.API [critical] cwe:CWE-89 -- "Pentest verified: raw SQL injection via email param"
+@feature "SSO Login" -- "Single sign-on authentication flow"
 @owns security-team for App.API -- "Team responsible for reviews"
 @comment -- "Rate limit: 100 req/15min via express-rate-limit"
 \`\`\`
@@ -186,6 +194,16 @@ export function buildModelContext(model: ThreatModel): string {
     if (unmitigated.length > 25) sections.push(`- ... and ${unmitigated.length - 25} more`);
   }
 
+  // Confirmed exploitable findings
+  if ((model.confirmed || []).length > 0) {
+    sections.push('\n### 🔴 Confirmed Exploitable (verified, not false positives)\n');
+    const confirmedLines = model.confirmed.slice(0, 25).map(c =>
+      `- ${c.asset} confirmed ${c.threat}${c.severity ? ` [${c.severity}]` : ''} (${c.location.file}:${c.location.line})`
+    );
+    sections.push(confirmedLines.join('\n'));
+    if (model.confirmed.length > 25) sections.push(`- ... and ${model.confirmed.length - 25} more`);
+  }
+
   // Existing flows (top 20)
   if (model.flows.length > 0) {
     sections.push('\n### Existing Data Flows (extend, don\'t duplicate)\n');
@@ -196,6 +214,13 @@ export function buildModelContext(model: ThreatModel): string {
     if (model.flows.length > 20) sections.push(`- ... and ${model.flows.length - 20} more`);
   }
 
+  // Features
+  const uniqueFeatures = new Set((model.features || []).map(f => f.feature));
+  if (uniqueFeatures.size > 0) {
+    sections.push('\n### Features (filter with `--feature`)\n');
+    sections.push([...uniqueFeatures].sort().map(f => `- "${f}"`).join('\n'));
+  }
+
   // Summary stats
   const stats = [
     `${model.annotations_parsed} annotations`,
@@ -203,8 +228,10 @@ export function buildModelContext(model: ThreatModel): string {
     `${model.threats.length} threats`,
     `${model.controls.length} controls`,
     `${model.exposures.length} exposures`,
+    `${(model.confirmed || []).length} confirmed`,
     `${model.mitigations.length} mitigations`,
     `${model.flows.length} flows`,
+    ...(uniqueFeatures.size > 0 ? [`${uniqueFeatures.size} features`] : []),
   ].join(', ');
   sections.push(`\n### Model Stats\n\n${stats}`);
 
@@ -280,9 +307,10 @@ Every time you write or modify code that touches security-relevant behavior, you
 ## Key Rules
 - ANNOTATE NEW CODE. When you add a function or endpoint that handles user input, accesses data, or crosses a trust boundary — add @exposes, @mitigates, @flows, @handles, or at minimum @comment. This is not optional.
 - NEVER write @accepts — that is a human-only governance decision. For risks with no mitigation: write @exposes + @audit + @comment suggesting potential controls.
+- Use @confirmed for verified exploits. When pentest/scanning/manual reproduction proves a threat is exploitable: @confirmed #threat on Asset [severity] -- "evidence". Distinct from @exposes (theoretical) — @confirmed means real, verified, no false positives.
 - Preserve existing annotations — do not delete or mangle them.
 - Definitions (@asset, @threat, @control with (#id)) live in .guardlink/definitions${project.definitionsExt}. Reuse IDs — never redefine. Add new definitions there first, then reference in source files.
-- Source files use relationship verbs: @mitigates, @exposes, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers.
+- Source files use relationship verbs: @mitigates, @exposes, @confirmed, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers, @feature.
 - Write coupled annotation blocks: risk + control (or audit) + data flow + context note.
 - Avoid @shield unless a human explicitly asks to hide code from AI.
 
@@ -301,6 +329,8 @@ Every time you write or modify code that touches security-relevant behavior, you
 - @handles pii on App.API -- "Processes email, token"
 - @validates #prepared-stmts for App.API -- "CI test ensures placeholders"
 - @audit App.API -- "Token rotation review"
+- @confirmed #sqli on App.API [critical] cwe:CWE-89 -- "Pentest verified: raw SQL injection via email param"
+- @feature "SSO Login" -- "Single sign-on authentication flow"
 - @owns security-team for App.API -- "Team responsible"
 - @comment -- "Rate limit: 100 req/15min"
 `.trimStart();
@@ -416,6 +446,43 @@ function defaultIncludeForLanguage(lang: string): string[] {
 
 
 // ─── MCP configuration ──────────────────────────────────────────────
+
+// ─── Project description template ─────────────────────────────────
+
+/**
+ * Generate skeleton .guardlink/prompt.md for `guardlink report`.
+ *
+ * During `init` this creates a placeholder that guides users (and AI agents
+ * during `annotate`) on what to fill in. The content feeds into the
+ * "Application Overview" section of the generated threat model report.
+ */
+export function promptMdContent(project: ProjectInfo): string {
+  return `# ${project.name} — Project Description
+
+<!-- This file feeds into \`guardlink report\` as the Application Overview section. -->
+<!-- Fill it in manually, or let \`guardlink annotate\` generate it with AI assistance. -->
+
+## What This Application Does
+
+<!-- Brief description: what does the project do, who are its users? -->
+
+## Key Components
+
+<!-- List the major modules, services, or subsystems (e.g., API server, auth service, worker queue). -->
+
+## Trust Boundaries
+
+<!-- Where does trust change? e.g., public internet → API gateway, app → database, app → third-party API. -->
+
+## Data Sensitivity
+
+<!-- What sensitive data does this project handle? (PII, credentials, financial data, health records, etc.) -->
+
+## Deployment Context
+
+<!-- How and where is this deployed? (cloud provider, containerized, on-prem, CI/CD pipeline, etc.) -->
+`;
+}
 
 /**
  * Generate .mcp.json for Claude Code auto-configuration.

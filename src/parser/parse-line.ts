@@ -40,6 +40,7 @@ const PATTERNS: Record<string, RegExp> = {
   mitigates: new RegExp(String.raw`^@mitigates\s+(${ASSET_REF})\s+against\s+(${THREAT_REF})(?:\s+using\s+(${THREAT_REF}))?(?:\s+${DESC})?$`),
   mitigates_v1: new RegExp(String.raw`^@mitigates\s+(${ASSET_REF})\s+against\s+(${THREAT_REF})(?:\s+with\s+(${THREAT_REF}))?(?:\s+${DESC})?$`),
   exposes: new RegExp(String.raw`^@exposes\s+(${ASSET_REF})\s+to\s+(${THREAT_REF})(?:\s+${SEVERITY})?${EXT_REFS_OPT}(?:\s+${DESC})?$`),
+  confirmed: new RegExp(String.raw`^@confirmed\s+(${THREAT_REF})\s+on\s+(${ASSET_REF})(?:\s+${SEVERITY})?${EXT_REFS_OPT}(?:\s+${DESC})?$`),
   accepts: new RegExp(String.raw`^@accepts\s+(${THREAT_REF})\s+on\s+(${ASSET_REF})(?:\s+${DESC})?$`),
   accepts_v1: new RegExp(String.raw`^@accepts\s+(${THREAT_REF})\s+to\s+(${ASSET_REF})(?:\s+${DESC})?$`),
   transfers: new RegExp(String.raw`^@transfers\s+(${THREAT_REF})\s+from\s+(${ASSET_REF})\s+to\s+(${ASSET_REF})(?:\s+${DESC})?$`),
@@ -55,6 +56,9 @@ const PATTERNS: Record<string, RegExp> = {
   owns: new RegExp(String.raw`^@owns\s+([a-zA-Z0-9_-]+)\s+for\s+(${ASSET_REF})(?:\s+${DESC})?$`),
   handles: new RegExp(String.raw`^@handles\s+(pii|phi|financial|secrets|internal|public)\s+on\s+(${ASSET_REF})(?:\s+${DESC})?$`, 'i'),
   assumes: new RegExp(String.raw`^@assumes\s+(${ASSET_REF})(?:\s+${DESC})?$`),
+
+  // Metadata — feature tagging
+  feature: new RegExp(String.raw`^@feature\s+"((?:[^"\\]|\\.)*)"(?:\s+${DESC})?$`),
 
   // Comment — developer note, description only
   comment: new RegExp(String.raw`^@comment(?:\s+${DESC})?$`),
@@ -152,6 +156,15 @@ export function parseLine(
     });
   }
 
+  // ── @confirmed ──
+  if ((m = trimmed.match(PATTERNS.confirmed))) {
+    return ok({
+      ...base, verb: 'confirmed', threat: resolveRef(m[1]), asset: m[2],
+      severity: m[3] ? resolveSeverity(m[3]) : undefined,
+      external_refs: extractExternalRefs(m[4]), description: desc(m[5]),
+    });
+  }
+
   // ── @accepts ──
   if ((m = trimmed.match(PATTERNS.accepts)) || (m = trimmed.match(PATTERNS.accepts_v1))) {
     return ok({ ...base, verb: 'accepts', threat: resolveRef(m[1]), asset: m[2], description: desc(m[3]) });
@@ -225,6 +238,11 @@ export function parseLine(
     return ok({ ...base, verb: 'assumes', asset: m[1], description: desc(m[2]) });
   }
 
+  // ── @feature ──
+  if ((m = trimmed.match(PATTERNS.feature))) {
+    return ok({ ...base, verb: 'feature', feature: unescapeDescription(m[1]), description: desc(m[2]) });
+  }
+
   // ── @comment ──
   if ((m = trimmed.match(PATTERNS.comment))) {
     return ok({ ...base, verb: 'comment', description: desc(m[1]) });
@@ -245,9 +263,9 @@ export function parseLine(
   const verbMatch = trimmed.match(/^@(\S+)/);
   if (verbMatch) {
     const knownVerbs: Set<string> = new Set([
-      'asset', 'threat', 'control', 'mitigates', 'exposes', 'accepts',
+      'asset', 'threat', 'control', 'mitigates', 'exposes', 'confirmed', 'accepts',
       'transfers', 'flows', 'boundary', 'validates', 'audit', 'owns',
-      'handles', 'assumes', 'comment', 'shield', 'shield:begin', 'shield:end',
+      'handles', 'assumes', 'feature', 'comment', 'shield', 'shield:begin', 'shield:end',
       // v1 compat
       'review', 'connects',
     ]);

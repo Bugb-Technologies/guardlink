@@ -3,7 +3,7 @@
  *
  * Tools:
  *   guardlink_parse    — Parse annotations, return threat model
- *   guardlink_status   — Coverage stats and unmitigated exposures
+ *   guardlink_status   — Coverage stats, unmitigated exposures, confirmed count
  *   guardlink_validate — Syntax errors and dangling references
  *   guardlink_suggest  — Given a code diff or file, suggest annotations
  *   guardlink_lookup   — Query the threat model graph
@@ -39,6 +39,7 @@
  * @flows #mcp -> MCPClient via resource -- "Threat model data output"
  * @boundary #mcp and MCPClient (#mcp-tool-boundary) -- "Trust boundary at tool argument parsing"
  * @handles internal on #mcp -- "Processes project annotations and threat model data"
+ * @feature "MCP Integration" -- "Model Context Protocol server for AI agent tooling"
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -52,7 +53,7 @@ import { generateDashboardHTML } from '../dashboard/index.js';
 import { diffModels, parseAtRef, formatDiffMarkdown } from '../diff/index.js';
 import { lookup, type LookupQuery } from './lookup.js';
 import { suggestAnnotations } from './suggest.js';
-import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModel, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
+import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, loadPentestData, buildConfig, serializeModel, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
 import { loadWorkspaceConfig } from '../workspace/index.js';
@@ -105,12 +106,14 @@ export function createServer(): McpServer {
   // ── Tool: guardlink_status ──
   server.tool(
     'guardlink_status',
-    'Return coverage statistics: asset/threat/control counts, unmitigated exposures, coverage percentage',
+    'Return coverage statistics: asset/threat/control counts, unmitigated exposures, @confirmed count, coverage percentage',
     { root: z.string().describe('Project root directory').default('.') },
     async ({ root }) => {
       const { model } = await getModel(root);
 
       const unmitigated = findUnmitigatedExposures(model);
+
+      const uniqueFeatures = new Set((model.features || []).map(f => f.feature));
 
       const status = {
         assets: model.assets.length,
@@ -118,9 +121,11 @@ export function createServer(): McpServer {
         controls: model.controls.length,
         mitigations: model.mitigations.length,
         exposures: model.exposures.length,
+        confirmed: (model.confirmed || []).length,
         acceptances: model.acceptances.length,
         flows: model.flows.length,
         boundaries: model.boundaries.length,
+        features: [...uniqueFeatures].sort(),
         unmitigated: unmitigated.map(e => ({
           asset: e.asset,
           threat: e.threat,
@@ -187,10 +192,10 @@ export function createServer(): McpServer {
   // ── Tool: guardlink_lookup ──
   server.tool(
     'guardlink_lookup',
-    'Query the threat model graph. Find assets, threats, controls, flows, exposures by ID or relationship. Examples: "what threats target #auth?", "flows into Scanner", "unmitigated exposures"',
+    'Query the threat model graph. Find assets, threats, controls, flows, exposures by ID or relationship. Examples: "what threats target #auth?", "flows into Scanner", "unmitigated exposures", "confirmed"',
     {
       root: z.string().describe('Project root directory').default('.'),
-      query: z.string().describe('Natural language or structured query: asset ID, threat ID, "flows into X", "threats for X", "unmitigated", "controls for X"'),
+      query: z.string().describe('Natural language or structured query: asset ID, threat ID, "flows into X", "threats for X", "unmitigated", "confirmed", "controls for X"'),
     },
     async ({ root, query }) => {
       const { model } = await getModel(root);
@@ -326,8 +331,15 @@ export function createServer(): McpServer {
       if (model.annotations_parsed === 0) {
         return { content: [{ type: 'text', text: JSON.stringify({ error: 'No annotations found.' }) }] };
       }
-      const { writeFile } = await import('node:fs/promises');
+      const { writeFile, readFile } = await import('node:fs/promises');
       const { resolve } = await import('node:path');
+
+      // Load project description from .guardlink/prompt.md if it exists
+      try {
+        const promptContent = await readFile(resolve(root, '.guardlink', 'prompt.md'), 'utf-8');
+        if (promptContent.trim()) model.prompt = promptContent.trim();
+      } catch { /* no prompt file */ }
+
       const report = generateReport(model);
       await writeFile(resolve(root, output), report + '\n');
       const jsonFile = output.replace(/\.md$/, '.json');
@@ -359,7 +371,8 @@ export function createServer(): McpServer {
       const { writeFile } = await import('node:fs/promises');
       const { resolve } = await import('node:path');
       const analyses = loadThreatReportsForDashboard(root);
-      const html = generateDashboardHTML(model, root, analyses);
+      const pentestData = loadPentestData(root);
+      const html = generateDashboardHTML(model, root, analyses, pentestData);
       await writeFile(resolve(root, output), html);
       return {
         content: [{ type: 'text', text: JSON.stringify({

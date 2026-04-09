@@ -13,37 +13,44 @@
  * @flows SourceFiles -> #dashboard via readFileSync -- "Code snippet reads"
  * @flows #dashboard -> HTML via return -- "Generated HTML output"
  * @handles internal on #dashboard -- "Processes and displays threat model data"
+ * @feature "Dashboard" -- "Interactive HTML threat model dashboard"
  */
 
 import type { ThreatModel } from '../types/index.js';
-import { computeStats, computeSeverity, computeExposures, computeAssetHeatmap } from './data.js';
-import type { DashboardStats, SeverityBreakdown, ExposureRow, AssetHeatmapEntry } from './data.js';
+import { listFeatures } from '../parser/feature-filter.js';
+import { computeStats, computeSeverity, computeExposures, computeConfirmed, computeAssetHeatmap } from './data.js';
+import type { DashboardStats, SeverityBreakdown, ExposureRow, ConfirmedRow, AssetHeatmapEntry } from './data.js';
 import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface } from './diagrams.js';
-import type { ThreatReportWithContent } from '../analyze/index.js';
+import type { ThreatReportWithContent, PentestData } from '../analyze/index.js';
 import { readFileSync } from 'fs';
 import { resolve, isAbsolute } from 'path';
 
-export function generateDashboardHTML(model: ThreatModel, root?: string, analyses?: ThreatReportWithContent[]): string {
+export function generateDashboardHTML(model: ThreatModel, root?: string, analyses?: ThreatReportWithContent[], pentestData?: PentestData): string {
   const stats = computeStats(model);
   const severity = computeSeverity(model);
   const exposures = computeExposures(model);
+  const confirmedRows = computeConfirmed(model);
   const heatmap = computeAssetHeatmap(model);
   const threatGraph = generateThreatGraph(model);
   const dataFlow = generateDataFlowDiagram(model);
   const attackSurface = generateAttackSurface(model);
+  const featureNames = listFeatures(model);
   const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
   const unmitigated = exposures.filter(e => !e.mitigated && !e.accepted);
   const mitigatedCount = exposures.filter(e => e.mitigated).length;
   const mitigationCoveragePercent = exposures.length > 0
     ? Math.round((mitigatedCount / exposures.length) * 100)
     : 0;
-  const riskScore = computeRiskGrade(severity, unmitigated.length, exposures.length);
+  const riskScore = computeRiskGrade(severity, unmitigated.length, exposures.length, confirmedRows.length);
 
   // Build file annotations data for code browser + drawer
   const fileAnnotations = buildFileAnnotations(model, root);
 
   // Build analysis data for drawer
   const analysisData = buildAnalysisData(model, exposures);
+
+  // Pentest data (may be null/empty)
+  const pentest = pentestData || { scans: [], templates: [], totalFindings: 0, findingsBySeverity: {} };
 
   // Check for saved AI analyses
   // (we embed the latest one if model has it, otherwise empty)
@@ -77,10 +84,24 @@ ${CSS_CONTENT}
     <div class="tn-stat"><span>Open</span> <span class="tn-v red">${unmitigated.length}</span></div>
     <div class="tn-stat"><span>Controls</span> <span class="tn-v green">${stats.controls}</span></div>
     <div class="tn-stat"><span>Coverage</span> <span class="tn-v ${stats.coveragePercent >= 70 ? 'green' : stats.coveragePercent >= 40 ? 'yellow' : 'red'}">${stats.coveragePercent}%</span></div>
+${featureNames.length > 0 ? `    <div class="tn-stat feature-filter-wrap">
+      <select id="featureFilter" onchange="applyFeatureFilter(this.value)" title="Filter by feature" style="background:var(--surface2);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:.75rem;font-family:var(--font-ui);cursor:pointer;max-width:160px">
+        <option value="">All Features</option>
+${featureNames.map(f => `        <option value="${esc(f)}">${esc(f)}</option>`).join('\n')}
+      </select>
+    </div>` : ''}
     <button id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark mode">
       <span class="icon-sun">☀️</span><span class="icon-moon">🌙</span>
     </button>
   </div>
+</div>
+
+<!-- Feature filter banner -->
+<div id="feature-banner" style="display:none;align-items:center;gap:8px;padding:6px 16px;background:var(--accent);color:#fff;font-size:.82rem;font-weight:500">
+  <span>Filtered to feature:</span>
+  <strong id="feature-banner-name"></strong>
+  <span id="feature-banner-files" style="opacity:.7"></span>
+  <button onclick="document.getElementById('featureFilter').value='';applyFeatureFilter('')" style="margin-left:auto;background:rgba(255,255,255,.2);border:none;color:#fff;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:.75rem">Clear Filter</button>
 </div>
 
 <div class="layout">
@@ -90,6 +111,7 @@ ${CSS_CONTENT}
   <div class="sidebar-nav">
     <a class="active" onclick="showSection('summary',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l6 4v6l-6 4-6-4V6l6-4z"/></svg></span> <span class="nav-text">Executive Summary</span></a>
     <a onclick="showSection('ai-analysis',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l2 5h5l-4 3 2 5-5-3-5 3 2-5-4-3h5l2-5z"/></svg></span> <span class="nav-text">Threat Reports</span></a>
+    <a onclick="showSection('pentest',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 2a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM6 7h4v1.5H8.5V13h-1V8.5H6V7z"/></svg></span> <span class="nav-text">Pentest Findings</span></a>
     <a onclick="showSection('threats',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L1 15h14L8 1zm0 4l3 8H5l3-8z"/></svg></span> <span class="nav-text">Threats &amp; Exposures</span></a>
     <a onclick="showSection('diagrams',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="8" cy="8" r="2"/></svg></span> <span class="nav-text">Diagrams</span></a>
     <a onclick="showSection('code',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M5 4L1 8l4 4v-2L3 8l2-2V4zm6 0v2l2 2-2 2v2l4-4-4-4z"/></svg></span> <span class="nav-text">Code &amp; Annotations</span></a>
@@ -108,7 +130,8 @@ ${CSS_CONTENT}
 
 ${renderSummaryPage(stats, severity, riskScore, unmitigated, exposures, model, mitigatedCount, mitigationCoveragePercent)}
 ${renderAIAnalysisPage(analyses || [])}
-${renderThreatsPage(exposures, model)}
+${renderPentestPage(pentest)}
+${renderThreatsPage(exposures, confirmedRows, model)}
 ${renderDiagramsPage(threatGraph, dataFlow, attackSurface)}
 ${renderCodePage(fileAnnotations, model)}
 ${renderDataPage(model)}
@@ -132,7 +155,9 @@ ${renderAssetsPage(heatmap)}
 const fileAnnotations = ${JSON.stringify(fileAnnotations).replace(/<\//g, '<\\/')};
 const analysisData = ${JSON.stringify(analysisData).replace(/<\//g, '<\\/')};
 const exposuresData = ${JSON.stringify(exposures).replace(/<\//g, '<\\/')};
+const confirmedData = ${JSON.stringify(confirmedRows).replace(/<\//g, '<\\/')};
 const savedAnalyses = ${JSON.stringify(analyses || []).replace(/<\//g, '<\\/')};
+const pentestData = ${JSON.stringify(pentest).replace(/<\//g, '<\\/')};
 const heatmapData = ${JSON.stringify(heatmap).replace(/<\//g, '<\\/')};
 const threatModel = ${JSON.stringify(model).replace(/<\//g, '<\\/')};
 /* ===== SECTION NAV ===== */
@@ -194,6 +219,17 @@ function openDrawer(type, idx) {
     h += sec('Asset', '<code>' + esc(e.asset) + '</code>');
     if (e.description) h += sec('Description', esc(e.description));
     h += sec('Location', '<span style="font-family:var(--font-mono);font-size:.78rem;color:var(--muted)">' + esc(e.file) + ':' + e.line + '</span>');
+  } else if (type === 'confirmed') {
+    const c = confirmedData[idx];
+    title.textContent = c.threat + ' (Confirmed)';
+    h += '<div style="background:var(--badge-red-bg);border:1px solid var(--sev-crit);border-radius:6px;padding:.6rem;margin-bottom:1rem"><div style="font-size:.82rem;font-weight:700;color:var(--sev-crit)">🔴 CONFIRMED EXPLOITABLE</div><div style="font-size:.75rem;margin-top:.2rem;color:var(--muted)">Verified through testing — not a false positive</div></div>';
+    h += sec('Severity', '<span class="fc-sev ' + sevCls(c.severity) + '">' + esc(c.severity) + '</span>');
+    h += sec('Asset', '<code>' + esc(c.asset) + '</code>');
+    h += sec('Threat', '<code>' + esc(c.threat) + '</code>');
+    if (c.description) h += sec('Evidence', esc(c.description));
+    if (c.external_refs && c.external_refs.length) h += sec('References', c.external_refs.map(r => '<code>' + esc(r) + '</code>').join(', '));
+    h += sec('Location', '<span style="font-family:var(--font-mono);font-size:.78rem;color:var(--muted)">' + esc(c.file) + ':' + c.line + '</span>');
+    h += '<div class="d-section" style="margin-top:1rem;padding:.6rem;background:var(--badge-red-bg);border:1px solid var(--sev-crit);border-radius:6px;opacity:.85"><div style="font-size:.78rem;color:var(--sev-crit);font-weight:600">Immediate Action Required</div><div style="font-size:.78rem;margin-top:.3rem">This threat has been verified exploitable. Apply a <code>@mitigates</code> control urgently, or <code>@accepts</code> with explicit risk sign-off from security.</div></div>';
   } else if (type === 'exposure') {
     const e = exposuresData[idx];
     title.textContent = e.threat;
@@ -418,6 +454,93 @@ function openAnnotationDrawer(fileIdx, annIdx) {
   document.getElementById('drawer-overlay').classList.add('open');
 }
 
+function openPentestDrawer(scanIdx, findingIdx) {
+  var title = document.getElementById('drawer-title');
+  var body = document.getElementById('drawer-body');
+  var scan = pentestData.scans[scanIdx];
+  if (!scan) return;
+  var f = scan.findings[findingIdx];
+  if (!f) return;
+  title.textContent = f.title;
+  var h = '';
+  var sevColor = f.severity === 'critical' ? 'var(--sev-crit)' : f.severity === 'high' ? 'var(--sev-high)' : f.severity === 'medium' ? 'var(--sev-med)' : 'var(--sev-low)';
+  h += sec('Severity', '<span style="color:' + sevColor + ';font-weight:600;text-transform:uppercase">' + esc(f.severity) + '</span>');
+  h += sec('Confidence', '<span style="font-weight:600">' + f.confidence + '%</span>');
+  h += sec('Template', '<code>' + esc(f.template_id) + '</code>');
+  if (f.cwe_ids && f.cwe_ids.length) h += sec('CWE', f.cwe_ids.map(function(c){return '<code>' + esc(c) + '</code>'}).join(', '));
+  h += sec('Description', '<div style="line-height:1.5">' + esc(f.description) + '</div>');
+
+  // Evidence section
+  if (f.evidence) {
+    h += '<div class="sub-h" style="margin-top:1rem">Evidence</div>';
+    if (f.evidence.request) {
+      h += sec('Request / Payload', '<div class="code-block" style="max-height:200px;overflow:auto;white-space:pre-wrap">' + esc(String(f.evidence.request).slice(0, 2000)) + '</div>');
+    }
+    if (f.evidence.response) {
+      h += sec('Response / Output', '<div class="code-block" style="max-height:200px;overflow:auto;white-space:pre-wrap">' + esc(String(f.evidence.response).slice(0, 2000)) + '</div>');
+    }
+    if (f.evidence.matched_patterns && f.evidence.matched_patterns.length) {
+      h += sec('Matched Patterns', f.evidence.matched_patterns.map(function(p){return '<span class="ann-badge ann-threat" style="margin-right:4px;margin-bottom:2px">' + esc(String(p)) + '</span>'}).join(''));
+    }
+    if (f.evidence.data && Object.keys(f.evidence.data).length > 0) {
+      var dataHtml = '<table style="font-size:.75rem"><tbody>';
+      Object.keys(f.evidence.data).forEach(function(k) {
+        var val = f.evidence.data[k];
+        var vs = typeof val === 'string' ? val : JSON.stringify(val);
+        if (vs && vs.length > 500) vs = vs.slice(0, 500) + '...';
+        dataHtml += '<tr><td style="font-weight:600;white-space:nowrap;vertical-align:top;padding-right:.5rem">' + esc(k) + '</td><td style="word-break:break-all">' + esc(vs) + '</td></tr>';
+      });
+      dataHtml += '</tbody></table>';
+      h += sec('Evidence Data', dataHtml);
+    }
+  }
+
+  if (f.remediation) h += sec('Remediation', '<div style="line-height:1.5;white-space:pre-line">' + esc(f.remediation) + '</div>');
+  h += sec('Scan ID', '<code style="font-size:.72rem">' + esc(scan.scan_id) + '</code>');
+  h += sec('Timestamp', esc(f.timestamp || scan.completed_at || ''));
+
+  body.innerHTML = h;
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
+}
+
+function openTemplateDrawer(idx) {
+  var title = document.getElementById('drawer-title');
+  var body = document.getElementById('drawer-body');
+  var t = pentestData.templates[idx];
+  if (!t) return;
+  title.textContent = t.id;
+  var h = '';
+  h += sec('File', '<code>' + esc(t.filename) + '</code>');
+  h += sec('Language', '<span class="ann-badge ann-control">' + esc(t.language) + '</span>');
+  h += sec('Severity', '<span class="fc-sev ' + (t.severity === 'critical' ? 'crit' : t.severity === 'high' ? 'high' : t.severity === 'medium' ? 'med' : 'low') + '">' + esc(t.severity) + '</span>');
+  if (t.tags && t.tags.length) h += sec('Tags', t.tags.map(function(tag){return '<span class="ann-badge ann-asset" style="margin-right:4px">' + esc(tag) + '</span>'}).join(''));
+
+  // Find related findings
+  var relatedFindings = [];
+  pentestData.scans.forEach(function(scan) {
+    scan.findings.forEach(function(f) {
+      if (f.template_id === t.id) relatedFindings.push(f);
+    });
+  });
+  if (relatedFindings.length > 0) {
+    h += '<div class="sub-h" style="margin-top:1rem;color:var(--red)">Findings from this Template (' + relatedFindings.length + ')</div>';
+    relatedFindings.forEach(function(f) {
+      var sc = f.severity === 'critical' ? 'var(--sev-crit)' : f.severity === 'high' ? 'var(--sev-high)' : f.severity === 'medium' ? 'var(--sev-med)' : 'var(--sev-low)';
+      h += '<div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid ' + sc + ';padding:0.5rem 0.8rem;border-radius:4px;margin-bottom:0.5rem">';
+      h += '<strong>' + esc(f.title) + '</strong>';
+      h += '<div style="font-size:.75rem;color:var(--muted);margin-top:.2rem">' + esc(f.description.slice(0, 200)) + '</div>';
+      h += '</div>';
+    });
+  } else {
+    h += sec('Findings', '<span class="empty-state">No findings from this template yet — run CXG scan to test</span>');
+  }
+
+  body.innerHTML = h;
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
+}
+
 function closeDrawer() {
   document.getElementById('drawer').classList.remove('open');
   document.getElementById('drawer-overlay').classList.remove('open');
@@ -432,6 +555,289 @@ function sevCls(s) {
   if (l === 'medium' || l === 'p2') return 'med';
   if (l === 'low' || l === 'p3') return 'low';
   return 'unset';
+}
+
+/* ===== FEATURE FILTER ===== */
+var _activeFeature = '';
+
+function _featureFilesFor(featureName) {
+  var files = new Set();
+  if (!featureName) return files;
+  if (threatModel.features) {
+    threatModel.features.forEach(function(f) {
+      if (f.feature.toLowerCase() === featureName.toLowerCase()) {
+        files.add(f.location.file);
+      }
+    });
+  }
+  return files;
+}
+
+function applyFeatureFilter(featureName) {
+  _activeFeature = featureName;
+  var banner = document.getElementById('feature-banner');
+
+  if (!featureName) {
+    // ── Clear filter ──────────────────────────────────────────────
+    if (banner) banner.style.display = 'none';
+    document.querySelectorAll('[data-ff]').forEach(function(el) { el.style.display = ''; });
+    document.querySelectorAll('[data-ff-asset]').forEach(function(el) { el.style.display = ''; });
+    _restoreFullStats();
+    return;
+  }
+
+  // ── Compute matching file set ─────────────────────────────────
+  var featureFiles = _featureFilesFor(featureName);
+
+  // ── Show banner ───────────────────────────────────────────────
+  if (banner) {
+    banner.style.display = 'flex';
+    document.getElementById('feature-banner-name').textContent = featureName;
+    document.getElementById('feature-banner-files').textContent = featureFiles.size + ' file(s)';
+  }
+
+  // ── Filter rows/cards by file ─────────────────────────────────
+  document.querySelectorAll('[data-ff]').forEach(function(el) {
+    var file = el.getAttribute('data-ff');
+    // Empty data-ff means the annotation had no location — keep visible
+    el.style.display = (!file || featureFiles.has(file)) ? '' : 'none';
+  });
+
+  // ── Filter asset heatmap cells by asset name ──────────────────
+  // An asset belongs to the feature if any of the feature files contains
+  // an annotation that references that asset.
+  var featureAssets = new Set();
+  exposuresData.forEach(function(e) { if (featureFiles.has(e.file)) { featureAssets.add(e.asset); } });
+  threatModel.flows.forEach(function(f) {
+    if (f.location && featureFiles.has(f.location.file)) {
+      featureAssets.add(f.source); featureAssets.add(f.target);
+    }
+  });
+  threatModel.exposures.forEach(function(e) {
+    if (e.location && featureFiles.has(e.location.file)) featureAssets.add(e.asset);
+  });
+  threatModel.mitigations.forEach(function(m) {
+    if (m.location && featureFiles.has(m.location.file)) featureAssets.add(m.asset);
+  });
+
+  document.querySelectorAll('[data-ff-asset]').forEach(function(el) {
+    var asset = el.getAttribute('data-ff-asset');
+    el.style.display = featureAssets.has(asset) ? '' : 'none';
+  });
+
+  // ── Recompute & update all live stats ─────────────────────────
+  _updateStatsForFilter(featureFiles);
+}
+
+function _updateStatsForFilter(featureFiles) {
+  // Compute filtered exposure subsets from the raw data arrays
+  var visExp = exposuresData.filter(function(e) { return !featureFiles.size || featureFiles.has(e.file); });
+  var visOpen = visExp.filter(function(e) { return !e.mitigated && !e.accepted; });
+  var visMit  = visExp.filter(function(e) { return e.mitigated; });
+
+  var sev = { critical: 0, high: 0, medium: 0, low: 0, unset: 0 };
+  visExp.forEach(function(e) {
+    var s = (e.severity || '').toLowerCase();
+    if (s === 'critical' || s === 'p0') sev.critical++;
+    else if (s === 'high' || s === 'p1') sev.high++;
+    else if (s === 'medium' || s === 'p2') sev.medium++;
+    else if (s === 'low' || s === 'p3') sev.low++;
+    else sev.unset++;
+  });
+
+  var totalExp = visExp.length;
+  var mitPct = totalExp > 0 ? Math.round(visMit.length / totalExp * 100) : 0;
+
+  // ── Top nav ───────────────────────────────────────────────────
+  var tnStats = document.querySelectorAll('.tn-stat');
+  tnStats.forEach(function(s) {
+    var label = s.querySelector('span:first-child');
+    var val   = s.querySelector('.tn-v');
+    if (!label || !val) return;
+    var lbl = label.textContent.trim();
+    if (lbl === 'Open') val.textContent = visOpen.length;
+    if (lbl === 'Coverage') {
+      val.textContent = mitPct + '%';
+      val.className = 'tn-v ' + (mitPct >= 70 ? 'green' : mitPct >= 40 ? 'yellow' : 'red');
+    }
+  });
+
+  // ── Summary page stats grid ───────────────────────────────────
+  _setStat('Open Threats',  visOpen.length);
+  _setStat('Mitigated',     visMit.length);
+
+  // ── Coverage bar ──────────────────────────────────────────────
+  var covPct = document.querySelector('.coverage-pct');
+  if (covPct) {
+    covPct.textContent = mitPct + '%';
+    covPct.className = 'coverage-pct ' + (mitPct >= 70 ? 'good' : mitPct >= 40 ? 'warn' : 'bad');
+  }
+  var covLabel = document.querySelector('.posture-fill')?.parentElement?.nextElementSibling;
+  var covFill = document.querySelector('.posture-fill');
+  if (covFill) {
+    covFill.style.width = Math.min(mitPct, 100) + '%';
+    covFill.className = 'posture-fill ' + (mitPct >= 70 ? 'good' : mitPct >= 40 ? 'warn' : 'bad');
+  }
+  // Update "X of Y exposures mitigated" label
+  document.querySelectorAll('#sec-summary span').forEach(function(sp) {
+    if (sp.textContent.includes('exposures mitigated')) {
+      sp.textContent = visMit.length + ' of ' + totalExp + ' exposures mitigated';
+    }
+  });
+
+  // ── Severity bars ─────────────────────────────────────────────
+  _updateSevBar('Critical', sev.critical, totalExp);
+  _updateSevBar('High',     sev.high,     totalExp);
+  _updateSevBar('Medium',   sev.medium,   totalExp);
+  _updateSevBar('Low',      sev.low,      totalExp);
+  _updateSevBar('Unset',    sev.unset,    totalExp);
+
+  // ── Section headings with counts ─────────────────────────────
+  _updateHeading('sec-threats', 'Open Threats',     visOpen.length);
+  _updateHeading('sec-threats', 'Mitigated Threats', visMit.length);
+  _updateHeading('sec-threats', 'All Exposures',     totalExp);
+
+  // ── Risk banner (recompute grade) ─────────────────────────────
+  var visConf = confirmedData.filter(function(c) { return !featureFiles.size || featureFiles.has(c.file); });
+  _updateRiskBanner(sev, visOpen.length, totalExp, visConf.length);
+}
+
+function _restoreFullStats() {
+  // Restore all counts from the original full data sets
+  var allOpen = exposuresData.filter(function(e) { return !e.mitigated && !e.accepted; });
+  var allMit  = exposuresData.filter(function(e) { return e.mitigated; });
+  var totalExp = exposuresData.length;
+  var mitPct = totalExp > 0 ? Math.round(allMit.length / totalExp * 100) : 0;
+
+  var sev = { critical: 0, high: 0, medium: 0, low: 0, unset: 0 };
+  exposuresData.forEach(function(e) {
+    var s = (e.severity || '').toLowerCase();
+    if (s === 'critical' || s === 'p0') sev.critical++;
+    else if (s === 'high' || s === 'p1') sev.high++;
+    else if (s === 'medium' || s === 'p2') sev.medium++;
+    else if (s === 'low' || s === 'p3') sev.low++;
+    else sev.unset++;
+  });
+
+  // Top nav
+  var tnStats = document.querySelectorAll('.tn-stat');
+  tnStats.forEach(function(s) {
+    var label = s.querySelector('span:first-child');
+    var val   = s.querySelector('.tn-v');
+    if (!label || !val) return;
+    var lbl = label.textContent.trim();
+    if (lbl === 'Open') val.textContent = allOpen.length;
+    if (lbl === 'Coverage') {
+      val.textContent = mitPct + '%';
+      val.className = 'tn-v ' + (mitPct >= 70 ? 'green' : mitPct >= 40 ? 'yellow' : 'red');
+    }
+  });
+
+  _setStat('Open Threats', allOpen.length);
+  _setStat('Mitigated',    allMit.length);
+
+  var covPct = document.querySelector('.coverage-pct');
+  if (covPct) {
+    covPct.textContent = mitPct + '%';
+    covPct.className = 'coverage-pct ' + (mitPct >= 70 ? 'good' : mitPct >= 40 ? 'warn' : 'bad');
+  }
+  var covFill = document.querySelector('.posture-fill');
+  if (covFill) {
+    covFill.style.width = Math.min(mitPct, 100) + '%';
+    covFill.className = 'posture-fill ' + (mitPct >= 70 ? 'good' : mitPct >= 40 ? 'warn' : 'bad');
+  }
+  document.querySelectorAll('#sec-summary span').forEach(function(sp) {
+    if (sp.textContent.includes('exposures mitigated')) {
+      sp.textContent = allMit.length + ' of ' + totalExp + ' exposures mitigated';
+    }
+  });
+
+  _updateSevBar('Critical', sev.critical, totalExp);
+  _updateSevBar('High',     sev.high,     totalExp);
+  _updateSevBar('Medium',   sev.medium,   totalExp);
+  _updateSevBar('Low',      sev.low,      totalExp);
+  _updateSevBar('Unset',    sev.unset,    totalExp);
+
+  _updateHeading('sec-threats', 'Open Threats',      allOpen.length);
+  _updateHeading('sec-threats', 'Mitigated Threats', allMit.length);
+  _updateHeading('sec-threats', 'All Exposures',     totalExp);
+
+  _updateRiskBanner(sev, allOpen.length, totalExp, confirmedData.length);
+}
+
+/* ── Helpers ──────────────────────────────────────────────────────── */
+
+function _setStat(label, value) {
+  document.querySelectorAll('.stat-card').forEach(function(card) {
+    var lbl = card.querySelector('.label');
+    var val = card.querySelector('.value');
+    if (lbl && val && lbl.textContent.trim() === label) {
+      val.textContent = value;
+    }
+  });
+}
+
+function _updateSevBar(label, count, total) {
+  var pct = total > 0 ? Math.round(count / total * 100) : 0;
+  document.querySelectorAll('.sev-row').forEach(function(row) {
+    var lbl = row.querySelector('.sev-label');
+    if (!lbl || lbl.textContent.trim() !== label) return;
+    var fill = row.querySelector('.sev-fill');
+    var cnt  = row.querySelector('.sev-count');
+    if (fill) fill.style.width = pct + '%';
+    if (cnt)  cnt.textContent = count;
+  });
+}
+
+function _updateHeading(sectionId, prefix, count) {
+  var sec = document.getElementById(sectionId);
+  if (!sec) return;
+  sec.querySelectorAll('.sub-h').forEach(function(h) {
+    if (h.textContent.trim().startsWith(prefix)) {
+      // Replace trailing (N) count
+      h.textContent = h.textContent.replace(/\(\d+\)$/, '(' + count + ')').replace(/\s+\d+$/, ' ' + count);
+    }
+  });
+}
+
+function _updateRiskBanner(sev, openCount, totalExp, confirmedCount) {
+  var grade, label, summary;
+  if (confirmedCount > 0) {
+    grade = 'F'; label = 'Critical Risk';
+    summary = confirmedCount + ' confirmed exploitable finding(s) — immediate remediation required';
+  } else if (sev.critical > 0) {
+    grade = 'F'; label = 'Critical Risk';
+    summary = sev.critical + ' critical exposure(s) require immediate attention';
+  } else if (sev.high >= 3 || openCount >= 5) {
+    grade = 'D'; label = 'High Risk';
+    summary = openCount + ' unmitigated exposure(s), ' + sev.high + ' high severity';
+  } else if (sev.high >= 1 || openCount >= 3) {
+    grade = 'C'; label = 'Moderate Risk';
+    summary = openCount + ' unmitigated exposure(s) need remediation';
+  } else if (openCount >= 1) {
+    grade = 'B'; label = 'Low Risk';
+    summary = openCount + ' minor unmitigated exposure(s)';
+  } else if (totalExp === 0) {
+    grade = 'A'; label = 'Excellent';
+    summary = 'No exposures detected — consider adding more annotations';
+  } else {
+    grade = 'A'; label = 'Excellent';
+    summary = 'All exposures mitigated or accepted';
+  }
+
+  var banner = document.querySelector('.risk-banner');
+  if (!banner) return;
+  // Update grade class
+  banner.className = banner.className.replace(/risk-[a-z]/g, 'risk-' + grade.toLowerCase());
+  var gradeEl = banner.querySelector('.risk-grade');
+  if (gradeEl) gradeEl.textContent = grade;
+  var detail = banner.querySelector('.risk-detail');
+  if (detail) {
+    var strong = detail.querySelector('strong');
+    var span   = detail.querySelector('span');
+    if (strong) strong.textContent = label;
+    if (span)   span.textContent   = summary;
+  }
 }
 
 /* ===== THEME ===== */
@@ -663,6 +1069,7 @@ function renderSummaryPage(
   <div class="stats-grid">
     ${statCard(stats.assets, 'Assets')}
     ${statCard(unmitigated.length, 'Open Threats', 'danger')}
+    ${stats.confirmed > 0 ? statCard(stats.confirmed, 'Confirmed', 'danger') : ''}
     ${statCard(mitigatedCount, 'Mitigated', 'success')}
     ${statCard(stats.controls, 'Controls', 'success')}
     ${statCard(stats.flows, 'Data Flows')}
@@ -698,7 +1105,7 @@ function renderSummaryPage(
   <!-- Open Threats -->
   <div class="sub-h" style="color:var(--red)">⚠ Open Threats (No Mitigation)</div>
   ${unmitigated.map((e, i) => `
-  <div class="finding-card" onclick="openDrawer('open_exposure', ${i})">
+  <div class="finding-card" data-ff="${esc(e.file)}" onclick="openDrawer('open_exposure', ${i})">
     <div class="fc-top">
       <span class="fc-risk">${esc(e.threat)}</span>
       <span class="fc-sev ${sevClass(e.severity)}">${esc(e.severity)}</span>
@@ -714,7 +1121,7 @@ function renderSummaryPage(
     <thead><tr><th>Source</th><th></th><th>Target</th><th>Mechanism</th><th>Location</th></tr></thead>
     <tbody>
     ${model.flows.map(f => `
-    <tr>
+    <tr data-ff="${f.location ? esc(f.location.file) : ''}">
       <td><code>${esc(f.source)}</code></td>
       <td style="color:var(--muted)">→</td>
       <td><code>${esc(f.target)}</code></td>
@@ -738,7 +1145,110 @@ function renderAIAnalysisPage(analyses: ThreatReportWithContent[]): string {
 </div>`;
 }
 
-function renderThreatsPage(exposures: ExposureRow[], model: ThreatModel): string {
+function renderPentestPage(pentest: PentestData): string {
+  const hasScanData = pentest.scans.length > 0;
+  const hasTemplates = pentest.templates.length > 0;
+  const latestScan = pentest.scans[0];
+
+  let findingsHtml = '';
+  if (hasScanData) {
+    pentest.scans.forEach((scan, si) => {
+      const scanDate = scan.completed_at ? scan.completed_at.slice(0, 19).replace('T', ' ') : 'unknown';
+      const duration = scan.statistics?.duration
+        ? `${scan.statistics.duration.secs}s`
+        : '?';
+      findingsHtml += `
+      <div style="margin-bottom:1.5rem">
+        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem">
+          <span style="font-weight:600;font-size:.9rem">Scan ${esc(scan.scan_id.slice(0, 8))}</span>
+          <span style="font-size:.72rem;color:var(--muted)">${esc(scanDate)} &middot; ${esc(duration)} &middot; ${scan.findings.length} finding(s)</span>
+          <span style="font-size:.68rem;color:var(--muted);background:var(--surface2);padding:1px 6px;border-radius:4px">${esc(scan.source_file)}</span>
+        </div>`;
+
+      if (scan.findings.length > 0) {
+        findingsHtml += `
+        <table>
+          <thead><tr><th>Severity</th><th>Title</th><th>Template</th><th>CWE</th><th>Confidence</th></tr></thead>
+          <tbody>
+          ${scan.findings.map((f, fi) => `
+          <tr class="clickable" onclick="openPentestDrawer(${si}, ${fi})">
+            <td><span class="fc-sev ${f.severity === 'critical' ? 'crit' : f.severity === 'high' ? 'high' : f.severity === 'medium' ? 'med' : 'low'}">${esc(f.severity)}</span></td>
+            <td>${esc(f.title)}</td>
+            <td><code style="font-size:.72rem">${esc(f.template_id)}</code></td>
+            <td>${f.cwe_ids?.length ? f.cwe_ids.map(c => `<code style="font-size:.7rem">${esc(c)}</code>`).join(' ') : '—'}</td>
+            <td>${f.confidence}%</td>
+          </tr>`).join('')}
+          </tbody>
+        </table>`;
+      } else {
+        findingsHtml += '<p class="empty-state">No findings in this scan — all checks passed.</p>';
+      }
+      findingsHtml += '</div>';
+    });
+  }
+
+  let templatesHtml = '';
+  if (hasTemplates) {
+    templatesHtml = `
+    <div class="sub-h">Templates (${pentest.templates.length})</div>
+    <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">CXG templates in <code>.guardlink/cxg-templates/</code> — click for details.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px">
+      ${pentest.templates.map((t, i) => `
+      <div class="finding-card" onclick="openTemplateDrawer(${i})">
+        <div class="fc-top">
+          <span class="fc-risk">${esc(t.id)}</span>
+          <span class="fc-sev ${t.severity === 'critical' ? 'crit' : t.severity === 'high' ? 'high' : t.severity === 'medium' ? 'med' : 'low'}">${esc(t.severity)}</span>
+        </div>
+        <div class="fc-assets">${esc(t.filename)} &middot; ${esc(t.language)}</div>
+        ${t.tags.length > 0 ? `<div style="margin-top:.3rem">${t.tags.slice(0, 4).map(tag => `<span class="data-badge">${esc(tag)}</span>`).join(' ')}</div>` : ''}
+      </div>`).join('')}
+    </div>`;
+  }
+
+  const sevBreakdown = pentest.findingsBySeverity;
+  const maxSevCount = Math.max(1, ...Object.values(sevBreakdown));
+
+  return `
+<div id="sec-pentest" class="section-content">
+  <div class="sec-h"><span class="sec-icon">🔬</span> Pentest Findings</div>
+
+  ${hasScanData || hasTemplates ? `
+  <!-- Stats bar -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:1.2rem">
+    <div class="stat-card stat-red"><span class="value">${pentest.totalFindings}</span><span class="label">Total Findings</span></div>
+    <div class="stat-card"><span class="value">${sevBreakdown['critical'] || 0}</span><span class="label" style="color:var(--sev-crit)">Critical</span></div>
+    <div class="stat-card"><span class="value">${sevBreakdown['high'] || 0}</span><span class="label" style="color:var(--sev-high)">High</span></div>
+    <div class="stat-card"><span class="value">${sevBreakdown['medium'] || 0}</span><span class="label" style="color:var(--sev-med)">Medium</span></div>
+    <div class="stat-card"><span class="value">${sevBreakdown['low'] || 0}</span><span class="label" style="color:var(--sev-low)">Low</span></div>
+    <div class="stat-card stat-muted"><span class="value">${pentest.templates.length}</span><span class="label">Templates</span></div>
+    <div class="stat-card stat-muted"><span class="value">${pentest.scans.length}</span><span class="label">Scans</span></div>
+  </div>
+
+  ${hasScanData ? `
+  <div class="sub-h" style="color:var(--red)">Findings (${pentest.totalFindings})</div>
+  <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">Results from CXG security scans — click a finding for full evidence details.</p>
+  ${findingsHtml}
+  ` : ''}
+
+  ${templatesHtml}
+  ` : `
+  <div class="empty-state" style="text-align:center;padding:3rem 1rem">
+    <div style="font-size:3rem;margin-bottom:1rem;opacity:0.5">🔬</div>
+    <div style="font-size:1.1rem;font-weight:600;margin-bottom:0.5rem">No Pentest Data Yet</div>
+    <div style="color:var(--muted);margin-bottom:1.5rem">Generate CXG templates and run scans to see findings here</div>
+    <div style="display:flex;flex-direction:column;gap:0.5rem;max-width:550px;margin:0 auto;text-align:left">
+      <div style="font-size:0.88rem;color:var(--muted)"><strong>Step 1 — Generate templates:</strong></div>
+      <code style="display:block;padding:0.5rem;background:var(--surface2);border-radius:4px;font-size:0.82rem">guardlink translate "Create templates for critical threats" --claude-code</code>
+      <div style="font-size:0.88rem;color:var(--muted);margin-top:0.5rem"><strong>Step 2 — Run CXG scan:</strong></div>
+      <code style="display:block;padding:0.5rem;background:var(--surface2);border-radius:4px;font-size:0.82rem">cxg scan --scope local://. --template-dir .guardlink/cxg-templates/ --output .guardlink/pentest-findings/guardlink-pentest --output-format json,sarif</code>
+      <div style="font-size:0.88rem;color:var(--muted);margin-top:0.5rem"><strong>Step 3 — View results:</strong></div>
+      <code style="display:block;padding:0.5rem;background:var(--surface2);border-radius:4px;font-size:0.82rem">guardlink dashboard</code>
+    </div>
+  </div>`}
+</div>`;
+}
+
+function renderThreatsPage(exposures: ExposureRow[], confirmed: ConfirmedRow[], model: ThreatModel): string {
   const open = exposures.filter(e => !e.mitigated && !e.accepted);
   const mitigated = exposures.filter(e => e.mitigated);
   const accepted = exposures.filter(e => e.accepted);
@@ -747,6 +1257,23 @@ function renderThreatsPage(exposures: ExposureRow[], model: ThreatModel): string
 <div id="sec-threats" class="section-content">
   <div class="sec-h"><span class="sec-icon">⚠</span> Threats &amp; Exposures</div>
 
+  ${confirmed.length > 0 ? `
+  <div class="sub-h" style="color:var(--sev-crit, #e74c3c)">🔴 Confirmed Exploitable (${confirmed.length})</div>
+  <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">Verified through pentest, scanning, or manual reproduction — <strong>not false positives</strong>.</p>
+  <table>
+    <thead><tr><th>Asset</th><th>Threat</th><th>Severity</th><th>Description</th><th>Location</th></tr></thead>
+    <tbody>
+    ${confirmed.map((c, i) => `
+    <tr class="clickable row-open" data-ff="${esc(c.file)}" onclick="openDrawer('confirmed', ${i})" style="border-left:3px solid var(--sev-crit, #e74c3c)">
+      <td><code>${esc(c.asset)}</code></td>
+      <td><code>${esc(c.threat)}</code></td>
+      <td><span class="fc-sev ${sevClass(c.severity)}">${esc(c.severity)}</span></td>
+      <td>${esc(c.description || '—')}</td>
+      <td class="loc">${esc(c.file)}:${c.line}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
   <div class="sub-h" style="color:var(--red)">Open Threats (${open.length})</div>
   <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">Exposed in code but <strong>not mitigated</strong> by any control.</p>
   ${open.length > 0 ? `
@@ -754,7 +1281,7 @@ function renderThreatsPage(exposures: ExposureRow[], model: ThreatModel): string
     <thead><tr><th>Asset</th><th>Threat</th><th>Severity</th><th>Description</th><th>Location</th></tr></thead>
     <tbody>
     ${open.map((e, i) => `
-    <tr class="clickable" onclick="openDrawer('open_exposure', ${i})">
+    <tr class="clickable" data-ff="${esc(e.file)}" onclick="openDrawer('open_exposure', ${i})">
       <td><code>${esc(e.asset)}</code></td>
       <td><code>${esc(e.threat)}</code></td>
       <td><span class="fc-sev ${sevClass(e.severity)}">${esc(e.severity)}</span></td>
@@ -770,7 +1297,7 @@ function renderThreatsPage(exposures: ExposureRow[], model: ThreatModel): string
     <thead><tr><th>Asset</th><th>Threat</th><th>Severity</th><th>Description</th><th>Location</th></tr></thead>
     <tbody>
     ${mitigated.map((e, i) => `
-    <tr class="clickable" onclick="openDrawer('mitigated_exposure', ${i})">
+    <tr class="clickable" data-ff="${esc(e.file)}" onclick="openDrawer('mitigated_exposure', ${i})">
       <td><code>${esc(e.asset)}</code></td>
       <td><code>${esc(e.threat)}</code></td>
       <td><span class="fc-sev ${sevClass(e.severity)}">${esc(e.severity)}</span></td>
@@ -786,7 +1313,7 @@ function renderThreatsPage(exposures: ExposureRow[], model: ThreatModel): string
     <thead><tr><th>Asset</th><th>Threat</th><th>Severity</th><th>Description</th><th>Location</th></tr></thead>
     <tbody>
     ${accepted.map(e => `
-    <tr>
+    <tr data-ff="${esc(e.file)}">
       <td><code>${esc(e.asset)}</code></td>
       <td><code>${esc(e.threat)}</code></td>
       <td><span class="fc-sev ${sevClass(e.severity)}">${esc(e.severity)}</span></td>
@@ -802,7 +1329,7 @@ function renderThreatsPage(exposures: ExposureRow[], model: ThreatModel): string
     <thead><tr><th>Source</th><th>Threat</th><th>Target</th><th>Description</th><th>Location</th></tr></thead>
     <tbody>
     ${model.transfers.map(t => `
-    <tr>
+    <tr data-ff="${t.location ? esc(t.location.file) : ''}">
       <td><code>${esc(t.source)}</code></td>
       <td><code>${esc(t.threat)}</code></td>
       <td><code>${esc(t.target)}</code></td>
@@ -818,7 +1345,7 @@ function renderThreatsPage(exposures: ExposureRow[], model: ThreatModel): string
     <thead><tr><th>Status</th><th>Asset</th><th>Threat</th><th>Severity</th><th>Description</th><th>Location</th></tr></thead>
     <tbody>
     ${exposures.map((e, i) => `
-    <tr class="clickable ${!e.mitigated && !e.accepted ? 'row-open' : ''}" onclick="openDrawer('exposure', ${i})">
+    <tr class="clickable ${!e.mitigated && !e.accepted ? 'row-open' : ''}" data-ff="${esc(e.file)}" onclick="openDrawer('exposure', ${i})">
       <td>${e.mitigated ? '<span class="badge badge-green">Mitigated</span>' : e.accepted ? '<span class="badge badge-blue">Accepted</span>' : '<span class="badge badge-red">Open</span>'}</td>
       <td><code>${esc(e.asset)}</code></td>
       <td><code>${esc(e.threat)}</code></td>
@@ -877,7 +1404,7 @@ function renderCodePage(fileAnnotations: FileAnnotationGroup[], model: ThreatMod
     Every file with GuardLink annotations. Click any annotation to see details.
   </p>
   ${fileAnnotations.length > 0 ? fileAnnotations.map((f, fi) => `
-  <div class="file-card">
+  <div class="file-card" data-ff="${esc(f.file)}">
     <div class="file-card-header" onclick="toggleFile(this)">
       <span class="file-path">${esc(f.file)}</span>
       <span style="display:flex;align-items:center;gap:.4rem">
@@ -931,7 +1458,7 @@ function renderDataPage(model: ThreatModel): string {
     <thead><tr><th>Side A</th><th></th><th>Side B</th><th>Description</th><th>Location</th></tr></thead>
     <tbody>
     ${model.boundaries.map(b => `
-    <tr>
+    <tr data-ff="${b.location ? esc(b.location.file) : ''}">
       <td><code>${esc(b.asset_a)}</code></td>
       <td style="color:var(--purple)">↔</td>
       <td><code>${esc(b.asset_b)}</code></td>
@@ -947,7 +1474,7 @@ function renderDataPage(model: ThreatModel): string {
     <thead><tr><th>Classification</th><th>Asset</th><th>Description</th><th>Location</th></tr></thead>
     <tbody>
     ${model.data_handling.map(d => `
-    <tr>
+    <tr data-ff="${d.location ? esc(d.location.file) : ''}">
       <td><span class="ann-badge ann-data">${esc(d.classification)}</span></td>
       <td><code>${esc(d.asset || '—')}</code></td>
       <td>${esc(d.description || '—')}</td>
@@ -962,7 +1489,7 @@ function renderDataPage(model: ThreatModel): string {
     <thead><tr><th>Control</th><th>Asset</th><th>Description</th><th>Location</th></tr></thead>
     <tbody>
     ${model.validations.map(v => `
-    <tr>
+    <tr data-ff="${v.location ? esc(v.location.file) : ''}">
       <td><code>${esc(v.control)}</code></td>
       <td><code>${esc(v.asset)}</code></td>
       <td>${esc(v.description || '—')}</td>
@@ -977,7 +1504,7 @@ function renderDataPage(model: ThreatModel): string {
     <thead><tr><th>Asset</th><th>Owner</th><th>Description</th><th>Location</th></tr></thead>
     <tbody>
     ${model.ownership.map(o => `
-    <tr>
+    <tr data-ff="${o.location ? esc(o.location.file) : ''}">
       <td><code>${esc(o.asset)}</code></td>
       <td><strong>${esc(o.owner)}</strong></td>
       <td>${esc(o.description || '—')}</td>
@@ -992,7 +1519,7 @@ function renderDataPage(model: ThreatModel): string {
     <thead><tr><th>Asset</th><th>Description</th><th>Location</th></tr></thead>
     <tbody>
     ${model.audits.map(a => `
-    <tr>
+    <tr data-ff="${a.location ? esc(a.location.file) : ''}">
       <td><code>${esc(a.asset)}</code></td>
       <td>${esc(a.description || 'Needs review')}</td>
       <td class="loc">${a.location ? `${esc(a.location.file)}:${a.location.line}` : ''}</td>
@@ -1007,7 +1534,7 @@ function renderDataPage(model: ThreatModel): string {
     <thead><tr><th>Asset</th><th>Assumption</th><th>Location</th></tr></thead>
     <tbody>
     ${model.assumptions.map(a => `
-    <tr>
+    <tr data-ff="${a.location ? esc(a.location.file) : ''}">
       <td><code>${esc(a.asset)}</code></td>
       <td>${esc(a.description || 'Unverified assumption')}</td>
       <td class="loc">${a.location ? `${esc(a.location.file)}:${a.location.line}` : ''}</td>
@@ -1022,7 +1549,7 @@ function renderDataPage(model: ThreatModel): string {
     <thead><tr><th>Reason</th><th>Location</th></tr></thead>
     <tbody>
     ${model.shields.map(s => `
-    <tr>
+    <tr data-ff="${s.location ? esc(s.location.file) : ''}">
       <td>${esc(s.reason || 'No reason provided')}</td>
       <td class="loc">${s.location ? `${esc(s.location.file)}:${s.location.line}` : ''}</td>
     </tr>`).join('')}
@@ -1035,7 +1562,7 @@ function renderDataPage(model: ThreatModel): string {
     <thead><tr><th>Comment</th><th>Location</th></tr></thead>
     <tbody>
     ${model.comments.map(c => `
-    <tr>
+    <tr data-ff="${c.location ? esc(c.location.file) : ''}">
       <td>${esc(c.description || '(no description)')}</td>
       <td class="loc">${c.location ? `${esc(c.location.file)}:${c.location.line}` : ''}</td>
     </tr>`).join('')}
@@ -1057,7 +1584,7 @@ function renderAssetsPage(heatmap: AssetHeatmapEntry[]): string {
   ${heatmap.length > 0 ? `
   <div class="heatmap">
     ${heatmap.map((a, i) => `
-    <div class="heatmap-cell risk-cell-${a.riskLevel} clickable" onclick="openDrawer('asset', ${i})">
+    <div class="heatmap-cell risk-cell-${a.riskLevel} clickable" data-ff-asset="${esc(a.name)}" onclick="openDrawer('asset', ${i})">
       <div class="heatmap-name">${esc(a.name)}</div>
       <div class="heatmap-stats">
         <span title="Exposures">⚠ ${a.exposures}</span>
@@ -1128,6 +1655,7 @@ function buildFileAnnotations(model: ThreatModel, root?: string): FileAnnotation
   for (const t of model.threats) addEntry('threat', t as any, t.name);
   for (const c of model.controls) addEntry('control', c as any, c.name);
   for (const e of model.exposures) addEntry('exposes', e as any, `${e.asset} → ${e.threat}`);
+  for (const cf of (model.confirmed || [])) addEntry('confirmed', cf as any, `${cf.asset} confirmed ${cf.threat}`);
   for (const m of model.mitigations) addEntry('mitigates', m as any, `${m.control} mitigates ${m.threat}`);
   for (const a of model.acceptances) addEntry('accepts', a as any, `${a.asset} accepts ${a.threat}`);
   for (const t of model.transfers) addEntry('transfers', t as any, `${t.source} → ${t.target}`);
@@ -1184,7 +1712,8 @@ function sevClass(s: string): string {
   return 'unset';
 }
 
-function computeRiskGrade(sev: SeverityBreakdown, unmitigatedCount: number, totalExposures: number) {
+function computeRiskGrade(sev: SeverityBreakdown, unmitigatedCount: number, totalExposures: number, confirmedCount: number = 0) {
+  if (confirmedCount > 0) return { grade: 'F', label: 'Critical Risk', summary: `${confirmedCount} confirmed exploitable finding(s) — immediate remediation required` };
   if (sev.critical > 0) return { grade: 'F', label: 'Critical Risk', summary: `${sev.critical} critical exposure(s) require immediate attention` };
   if (sev.high >= 3 || unmitigatedCount >= 5) return { grade: 'D', label: 'High Risk', summary: `${unmitigatedCount} unmitigated exposure(s), ${sev.high} high severity` };
   if (sev.high >= 1 || unmitigatedCount >= 3) return { grade: 'C', label: 'Moderate Risk', summary: `${unmitigatedCount} unmitigated exposure(s) need remediation` };

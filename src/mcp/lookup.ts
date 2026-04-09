@@ -10,6 +10,7 @@
  *   - "flows into #engine" → data flows with target = engine
  *   - "flows from #config" → data flows with source = config
  *   - "unmitigated" → all unmitigated exposures
+ *   - "confirmed" → @confirmed verified exploitable findings
  *   - "boundary #config" → boundaries involving asset
  *   - Free text → fuzzy match across assets, threats, controls
  *
@@ -70,6 +71,27 @@ export function lookup(model: ThreatModel, query: string): LookupResult {
     return lookupUnmitigated(model, query);
   }
 
+  // ── "confirmed" (verified exploitable @confirmed annotations) ──
+  if (/^confirmed(\s|$)/.test(q)) {
+    return lookupConfirmed(model, query);
+  }
+
+  // ── "features" ──
+  if (/^features?(\s|$)/.test(q)) {
+    const byName = new Map<string, { name: string; files: Set<string>; description?: string }>();
+    for (const f of (model.features || [])) {
+      const key = f.feature.toLowerCase();
+      if (!byName.has(key)) {
+        byName.set(key, { name: f.feature, files: new Set(), description: f.description });
+      }
+      byName.get(key)!.files.add(f.location.file);
+    }
+    const results = [...byName.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(v => ({ feature: v.name, files: [...v.files], description: v.description }));
+    return { query, type: 'features', count: results.length, results };
+  }
+
   // ── "threats for <asset>" ──
   const threatsFor = q.match(/^threats?\s+(?:for|targeting|on)\s+(.+)/);
   if (threatsFor) return lookupThreatsFor(model, query, threatsFor[1].trim(), resolve);
@@ -127,6 +149,19 @@ function lookupUnmitigated(model: ThreatModel, query: string): LookupResult {
       description: e.description, file: e.location.file, line: e.location.line,
     }));
   return { query, type: 'unmitigated_exposures', count: results.length, results };
+}
+
+function lookupConfirmed(model: ThreatModel, query: string): LookupResult {
+  const results = (model.confirmed || []).map(c => ({
+    asset: c.asset,
+    threat: c.threat,
+    severity: c.severity,
+    description: c.description,
+    external_refs: c.external_refs,
+    file: c.location.file,
+    line: c.location.line,
+  }));
+  return { query, type: 'confirmed_exploitable', count: results.length, results };
 }
 
 type Resolver = (ref: string) => string[];

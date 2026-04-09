@@ -360,6 +360,12 @@ export function serializeModel(model: ThreatModel): string {
     description: e.description,
     file: e.location.file, line: e.location.line,
   }));
+  if (model.confirmed.length) compact.confirmed = model.confirmed.map(c => ({
+    threat: c.threat, asset: c.asset, severity: c.severity,
+    refs: c.external_refs.length ? c.external_refs : undefined,
+    description: c.description,
+    file: c.location.file, line: c.location.line,
+  }));
   if (model.acceptances.length) compact.acceptances = model.acceptances.map(a => ({
     asset: a.asset, threat: a.threat, description: a.description,
     file: a.location.file, line: a.location.line,
@@ -453,7 +459,7 @@ export function serializeModelCompact(model: ThreatModel): string {
 
   const compact: Record<string, any> = {
     project: model.project,
-    summary: `${model.annotations_parsed} annotations, ${model.assets.length} assets, ${model.threats.length} threats, ${model.controls.length} controls, ${model.exposures.length} exposures (${unmitigated.length} unmitigated), ${model.mitigations.length} mitigations`,
+    summary: `${model.annotations_parsed} annotations, ${model.assets.length} assets, ${model.threats.length} threats, ${model.controls.length} controls, ${model.exposures.length} exposures (${unmitigated.length} unmitigated), ${model.confirmed.length} confirmed, ${model.mitigations.length} mitigations`,
     severity_breakdown: sevCounts,
   };
 
@@ -523,8 +529,10 @@ export async function generateThreatReport(opts: ThreatReportOptions): Promise<T
   const modelJson = serializeModel(model);
   const projectContext = buildProjectContext(root);
   const codeSnippets = extractCodeSnippets(root, model, snippetContext, snippetBudget);
+  const pentestData = loadPentestData(root);
+  const pentestContext = serializePentestFindings(pentestData);
   const systemPrompt = FRAMEWORK_PROMPTS[framework];
-  const userMessage = buildUserMessage(modelJson, framework, customPrompt, projectContext || undefined, codeSnippets || undefined);
+  const userMessage = buildUserMessage(modelJson, framework, customPrompt, projectContext || undefined, codeSnippets || undefined, pentestContext || undefined);
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 
@@ -670,4 +678,202 @@ export function loadThreatReportsForDashboard(root: string): ThreatReportWithCon
   }
 
   return result;
+}
+
+// ─── Pentest findings loader ─────────────────────────────────────────
+
+/**
+ * @flows PentestFindings -> #llm-client via readFileSync -- "Reads CXG scan results for dashboard and report context"
+ * @handles internal on #llm-client -- "Processes pentest scan output (JSON/SARIF)"
+ */
+
+export interface PentestFinding {
+  id: string;
+  target: string;
+  template_id: string;
+  severity: string;
+  confidence: number;
+  title: string;
+  description: string;
+  evidence: {
+    request: string | null;
+    response: string | null;
+    matched_patterns: string[];
+    data: Record<string, unknown>;
+    timestamp?: string;
+  };
+  cve_ids: string[];
+  cwe_ids: string[];
+  cvss_score: number | null;
+  remediation: string;
+  references: string[];
+  tags: string[];
+  timestamp: string;
+}
+
+export interface PentestScanResult {
+  scan_id: string;
+  started_at: string;
+  completed_at: string;
+  findings: PentestFinding[];
+  statistics: {
+    targets_scanned: number;
+    templates_executed: number;
+    findings_by_severity: Record<string, number>;
+    success_rate: number;
+    duration?: { secs: number; nanos: number };
+  };
+  source_file: string;
+}
+
+export interface PentestTemplate {
+  filename: string;
+  id: string;
+  tags: string[];
+  severity: string;
+  language: string;
+}
+
+export interface PentestData {
+  scans: PentestScanResult[];
+  templates: PentestTemplate[];
+  totalFindings: number;
+  findingsBySeverity: Record<string, number>;
+}
+
+const PENTEST_FINDINGS_DIR = 'pentest-findings';
+const CXG_TEMPLATES_DIR = 'cxg-templates';
+
+/**
+ * Load pentest findings from .guardlink/pentest-findings/ and template
+ * metadata from .guardlink/cxg-templates/.
+ *
+ * @mitigates #llm-client against #path-traversal using #path-validation -- "join() constrains reads to .guardlink/"
+ */
+export function loadPentestData(root: string): PentestData {
+  const data: PentestData = { scans: [], templates: [], totalFindings: 0, findingsBySeverity: {} };
+
+  // Load scan results (JSON files)
+  const findingsDir = join(root, '.guardlink', PENTEST_FINDINGS_DIR);
+  if (existsSync(findingsDir)) {
+    try {
+      const files = readdirSync(findingsDir).filter(f => f.endsWith('.json'));
+      for (const file of files) {
+        try {
+          const raw = readFileSync(join(findingsDir, file), 'utf-8');
+          const parsed = JSON.parse(raw);
+          if (parsed.findings && Array.isArray(parsed.findings)) {
+            data.scans.push({ ...parsed, source_file: file });
+            data.totalFindings += parsed.findings.length;
+            for (const f of parsed.findings) {
+              const sev = (f.severity || 'unknown').toLowerCase();
+              data.findingsBySeverity[sev] = (data.findingsBySeverity[sev] || 0) + 1;
+            }
+          }
+        } catch { /* skip malformed JSON */ }
+      }
+    } catch { /* dir not readable */ }
+  }
+
+  // Also check repo root for legacy guardlink-pentest.json
+  for (const name of ['guardlink-pentest.json']) {
+    const rootFile = join(root, name);
+    if (existsSync(rootFile)) {
+      try {
+        const raw = readFileSync(rootFile, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (parsed.findings && Array.isArray(parsed.findings)) {
+          const alreadyLoaded = data.scans.some(s => s.scan_id === parsed.scan_id);
+          if (!alreadyLoaded) {
+            data.scans.push({ ...parsed, source_file: name });
+            data.totalFindings += parsed.findings.length;
+            for (const f of parsed.findings) {
+              const sev = (f.severity || 'unknown').toLowerCase();
+              data.findingsBySeverity[sev] = (data.findingsBySeverity[sev] || 0) + 1;
+            }
+          }
+        }
+      } catch { /* skip */ }
+    }
+  }
+
+  // Sort scans newest first
+  data.scans.sort((a, b) => (b.completed_at || '').localeCompare(a.completed_at || ''));
+
+  // Load template metadata from .guardlink/cxg-templates/
+  const templatesDir = join(root, '.guardlink', CXG_TEMPLATES_DIR);
+  if (existsSync(templatesDir)) {
+    try {
+      const files = readdirSync(templatesDir).filter(f =>
+        f.endsWith('.py') || f.endsWith('.yaml') || f.endsWith('.yml') ||
+        f.endsWith('.go') || f.endsWith('.rs') || f.endsWith('.js') || f.endsWith('.sh')
+      );
+      for (const file of files) {
+        try {
+          const raw = readFileSync(join(templatesDir, file), 'utf-8');
+          const ext = file.split('.').pop() || '';
+          const idMatch = raw.match(/id[:\s]*["']?([a-z0-9_-]+)["']?/i);
+          const sevMatch = raw.match(/severity[:\s]*["']?(critical|high|medium|low|info)["']?/i);
+          const tagsMatch = raw.match(/tags[:\s]*\[([^\]]*)\]/);
+          data.templates.push({
+            filename: file,
+            id: idMatch?.[1] || file.replace(/\.[^.]+$/, ''),
+            severity: sevMatch?.[1] || 'medium',
+            language: ext === 'py' ? 'python' : ext === 'yml' || ext === 'yaml' ? 'yaml' : ext,
+            tags: tagsMatch?.[1]
+              ? tagsMatch[1].split(',').map(t => t.trim().replace(/["']/g, '')).filter(Boolean)
+              : [],
+          });
+        } catch { /* skip unreadable */ }
+      }
+    } catch { /* dir not readable */ }
+  }
+
+  return data;
+}
+
+/**
+ * Serialize pentest findings into a compact text summary for LLM context.
+ */
+export function serializePentestFindings(data: PentestData): string {
+  if (data.scans.length === 0 && data.templates.length === 0) return '';
+
+  const lines: string[] = ['## Pentest Findings (CXG Scan Results)', ''];
+
+  if (data.templates.length > 0) {
+    lines.push(`### Templates (${data.templates.length})`);
+    for (const t of data.templates) {
+      lines.push(`- ${t.id} [${t.severity}] (${t.language}) — ${t.tags.slice(0, 5).join(', ')}`);
+    }
+    lines.push('');
+  }
+
+  if (data.scans.length > 0) {
+    lines.push(`### Scan Results (${data.totalFindings} findings across ${data.scans.length} scan(s))`);
+    const sevSummary = Object.entries(data.findingsBySeverity)
+      .sort(([, a], [, b]) => b - a)
+      .map(([sev, count]) => `${sev}: ${count}`)
+      .join(', ');
+    if (sevSummary) lines.push(`Severity breakdown: ${sevSummary}`);
+    lines.push('');
+
+    for (const scan of data.scans) {
+      lines.push(`#### Scan ${scan.scan_id.slice(0, 8)} (${scan.completed_at?.slice(0, 19) || 'unknown'}) — ${scan.source_file}`);
+      lines.push(`Templates executed: ${scan.statistics?.templates_executed || '?'} | Success rate: ${((scan.statistics?.success_rate || 0) * 100).toFixed(0)}%`);
+      lines.push('');
+
+      for (const f of scan.findings) {
+        lines.push(`**[${f.severity.toUpperCase()}] ${f.title}** (${f.template_id})`);
+        lines.push(`  CWE: ${f.cwe_ids.join(', ') || 'none'} | Confidence: ${f.confidence}%`);
+        lines.push(`  ${f.description}`);
+        if (f.evidence?.request) lines.push(`  Request: ${String(f.evidence.request).slice(0, 300)}`);
+        if (f.evidence?.response) lines.push(`  Response: ${String(f.evidence.response).slice(0, 300)}`);
+        if (f.evidence?.matched_patterns?.length) lines.push(`  Patterns: ${f.evidence.matched_patterns.join(', ')}`);
+        lines.push(`  Remediation: ${f.remediation}`);
+        lines.push('');
+      }
+    }
+  }
+
+  return lines.join('\n');
 }

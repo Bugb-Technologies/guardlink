@@ -13,6 +13,8 @@
  *   guardlink sarif [dir]             Export SARIF 2.1.0 for GitHub / VS Code
  *   guardlink threat-report <prompt>  AI-powered threat analysis (STRIDE, DREAD, PASTA, etc.)
  *   guardlink threat-reports          List saved AI threat reports
+ *   guardlink translate [prompt]      Generate CERT-X-GEN pentest templates from threats
+ *   guardlink ask <query>             Ask questions about threats and codebase context
  *   guardlink annotate <prompt>       Launch coding agent to add annotations
  *   guardlink config <action>         Manage LLM provider configuration
  *   guardlink dashboard [dir]         Generate interactive HTML dashboard
@@ -39,15 +41,15 @@
 import { Command } from 'commander';
 import { resolve, basename } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, clearAnnotations } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getCurrentRef } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { startStdioServer } from '../mcp/index.js';
-import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, serializeModel, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
+import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, loadPentestData, serializePentestFindings, buildConfig, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, serializeModel, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
-import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt } from '../agents/index.js';
+import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt, buildTranslatePrompt, buildAskPrompt } from '../agents/index.js';
 import { resolveConfig, saveProjectConfig, saveGlobalConfig, loadProjectConfig, loadGlobalConfig, maskKey, describeConfigSource } from '../agents/config.js';
 import { getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview, type ReviewResult } from '../review/index.js';
 import { populateMetadata, mergeReports, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace } from '../workspace/index.js';
@@ -211,9 +213,17 @@ program
   .argument('[dir]', 'Project directory to scan', '.')
   .option('-p, --project <n>', 'Project name', 'unknown')
   .option('--not-annotated', 'List source files with no GuardLink annotations')
-  .action(async (dir: string, opts: { project: string; notAnnotated?: boolean }) => {
+  .option('--feature <names>', 'Filter status to specific feature(s) (comma-separated)')
+  .action(async (dir: string, opts: { project: string; notAnnotated?: boolean; feature?: string }) => {
     const root = resolve(dir);
-    const { model, diagnostics } = await parseProject({ root, project: opts.project });
+    let { model, diagnostics } = await parseProject({ root, project: opts.project });
+
+    // Apply feature filter if specified
+    if (opts.feature) {
+      const featureNames = opts.feature.split(',').map(s => s.trim());
+      model = filterByFeature(model, featureNames);
+      console.log(`Filtered to feature(s): ${featureNames.map(f => `"${f}"`).join(', ')}\n`);
+    }
 
     printDiagnostics(diagnostics);
     printStatus(model);
@@ -273,6 +283,13 @@ program
       }
     }
 
+    if ((model.confirmed || []).length > 0) {
+      console.error(`\n🔴 ${model.confirmed.length} confirmed exploitable finding(s) — verified, not false positives:`);
+      for (const c of model.confirmed) {
+        console.error(`   ${c.asset} ← ${c.threat} [${c.severity || 'unset'}] (${c.location.file}:${c.location.line})`);
+      }
+    }
+
     const errorCount = allDiags.filter(d => d.level === 'error').length;
     const hasUnmitigated = unmitigated.length > 0;
 
@@ -307,9 +324,17 @@ program
   .option('-f, --format <fmt>', 'Output format: md, json, or both (default: md)', 'md')
   .option('--diagram-only', 'Output only the Mermaid diagram, no report wrapper')
   .option('--json', 'Also output threat-model.json alongside the report (legacy; prefer --format)')
-  .action(async (dir: string, opts: { project: string; output?: string; format: string; diagramOnly?: boolean; json?: boolean }) => {
+  .option('--feature <names>', 'Filter report to specific feature(s) (comma-separated)')
+  .action(async (dir: string, opts: { project: string; output?: string; format: string; diagramOnly?: boolean; json?: boolean; feature?: string }) => {
     const root = resolve(dir);
-    const { model, diagnostics } = await parseProject({ root, project: opts.project });
+    let { model, diagnostics } = await parseProject({ root, project: opts.project });
+
+    // Apply feature filter if specified
+    if (opts.feature) {
+      const featureNames = opts.feature.split(',').map(s => s.trim());
+      model = filterByFeature(model, featureNames);
+      console.error(`Filtered to feature(s): ${featureNames.map(f => `"${f}"`).join(', ')}`);
+    }
 
     // Show errors if any
     const errors = diagnostics.filter(d => d.level === 'error');
@@ -320,6 +345,18 @@ program
 
     // Enrich with provenance metadata (git SHA, branch, workspace, schema version)
     const enrichedModel = populateMetadata(model, root);
+
+    // Load project description from .guardlink/prompt.md if it exists
+    try {
+      const { readFile } = await import('node:fs/promises');
+      const promptPath = resolve(root, '.guardlink', 'prompt.md');
+      const promptContent = await readFile(promptPath, 'utf-8');
+      if (promptContent.trim()) {
+        enrichedModel.prompt = promptContent.trim();
+      }
+    } catch {
+      // No prompt file — that's fine, report will use annotation-derived overview
+    }
 
     if (opts.diagramOnly) {
       // Just output Mermaid
@@ -501,8 +538,11 @@ program
     const { buildProjectContext, extractCodeSnippets } = await import('../analyze/index.js');
     const projectContext = buildProjectContext(root);
     const codeSnippets = extractCodeSnippets(root, model);
+    const pentestData = loadPentestData(root);
+    const pentestContext = serializePentestFindings(pentestData);
     const systemPrompt = FRAMEWORK_PROMPTS[fw];
-    const userMessage = buildUserMessage(serialized, fw, customPrompt, projectContext || undefined, codeSnippets || undefined);
+    const userMessage = buildUserMessage(serialized, fw, customPrompt, projectContext || undefined, codeSnippets || undefined, pentestContext || undefined);
+    const hasPentest = pentestData.totalFindings > 0;
     const analysisPrompt = `You are analyzing a codebase with GuardLink security annotations.
 You have access to the full source code in the current directory.
 
@@ -520,7 +560,8 @@ ${userMessage}
 3. Produce the full report as markdown
 4. Be specific — reference actual files, functions, and line numbers from the codebase
 5. Output ONLY the markdown report content — do NOT add any metadata comments, save confirmations, or file path messages
-6. Do NOT include lines like "Generated by...", "Agent:", "Project:", or "The report file write was blocked..."`;
+6. Do NOT include lines like "Generated by...", "Agent:", "Project:", or "The report file write was blocked..."${hasPentest ? `
+7. The <pentest_findings> section contains CONFIRMED vulnerabilities from automated CXG security scans with real evidence. Cross-reference these against the threat model — mark confirmed findings as exploitable, identify which @exposes are now validated, and include a dedicated "Pentest Results" section summarizing all confirmed findings with their evidence and remediation guidance` : ''}`;
 
     // Resolve agent: explicit flag > project config CLI agent
     let agent = agentFromOpts(opts);
@@ -740,6 +781,192 @@ program
     } else if (agent.id === 'clipboard') {
       console.log('\nPaste the prompt into your preferred AI tool.');
       console.log('When done, run: guardlink parse');
+    }
+  });
+
+// ─── translate ───────────────────────────────────────────────────────
+
+program
+  .command('translate')
+  .description('Translate GuardLink threats into CERT-X-GEN pentest templates (generation only, no execution)')
+  .argument('[prompt...]', 'Optional translation instructions')
+  .option('-d, --dir <dir>', 'Project directory', '.')
+  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('--claude-code', 'Launch Claude Code in foreground')
+  .option('--codex', 'Launch Codex CLI in foreground')
+  .option('--gemini', 'Launch Gemini CLI in foreground')
+  .option('--cursor', 'Open Cursor IDE with prompt on clipboard')
+  .option('--windsurf', 'Open Windsurf IDE with prompt on clipboard')
+  .option('--clipboard', 'Copy translation prompt to clipboard only')
+  .option('--feature <names>', 'Filter to specific feature(s) (comma-separated)')
+  .action(async (promptParts: string[], opts: {
+    dir: string; project: string;
+    claudeCode?: boolean; codex?: boolean; gemini?: boolean;
+    cursor?: boolean; windsurf?: boolean; clipboard?: boolean;
+    feature?: string;
+  }) => {
+    const root = resolve(opts.dir);
+    const project = detectProjectName(root, opts.project);
+    const userPrompt = promptParts.join(' ').trim();
+
+    let { model, diagnostics } = await parseProject({ root, project });
+
+    // Apply feature filter if specified
+    if (opts.feature) {
+      const featureNames = opts.feature.split(',').map(s => s.trim());
+      model = filterByFeature(model, featureNames);
+      console.error(`Filtered to feature(s): ${featureNames.map(f => `"${f}"`).join(', ')}`);
+    }
+    const errors = diagnostics.filter(d => d.level === 'error');
+    if (errors.length > 0) printDiagnostics(errors);
+
+    if (model.annotations_parsed === 0) {
+      console.error('No annotations found. Run: guardlink init . && add annotations first.');
+      process.exit(1);
+    }
+
+    // Build translate prompt
+    const fullPrompt = buildTranslatePrompt(userPrompt, root, model);
+
+    // Resolve agent: explicit flag > project config > default (Claude Code)
+    let agent = agentFromOpts(opts);
+    if (!agent) {
+      const projCfg = loadProjectConfig(root);
+      if (projCfg?.aiMode === 'cli-agent' && projCfg?.cliAgent) {
+        agent = AGENTS.find(a => a.id === projCfg.cliAgent) || null;
+      }
+      if (!agent) {
+        agent = AGENTS.find(a => a.id === 'claude-code') || null;
+      }
+    }
+
+    if (!agent) {
+      console.error('No agent available. Use one of:');
+      for (const a of AGENTS) {
+        console.error(`  ${a.flag.padEnd(16)} ${a.name}`);
+      }
+      process.exit(1);
+    }
+
+    console.log(`Launching ${agent.name} for CXG template translation...`);
+    console.log(`Threat model: ${model.annotations_parsed} annotations, ${model.exposures.length} exposures`);
+    if (agent.cmd) {
+      console.log(`${agent.name} will take over this terminal. Exit the agent to return.\n`);
+    }
+
+    const result = launchAgent(agent, fullPrompt, root);
+
+    if (result.clipboardCopied) {
+      console.log(`✓ Prompt copied to clipboard (${fullPrompt.length.toLocaleString()} chars)`);
+    }
+
+    if (result.error) {
+      console.error(`✗ ${result.error}`);
+      if (result.clipboardCopied) {
+        console.log('Prompt is on your clipboard — paste it manually.');
+      }
+      process.exit(1);
+    }
+
+    if (agent.cmd && result.launched) {
+      console.log(`\n✓ ${agent.name} session ended.`);
+      console.log('  Expected output location: .guardlink/cxg-templates/');
+      console.log('  Note: Templates are generated only, not executed.');
+    } else if (agent.app && result.launched) {
+      console.log(`✓ ${agent.name} launched with project: ${project}`);
+      console.log('\nPaste (Cmd+V) the prompt in the AI chat panel.');
+      console.log('When done, review .guardlink/cxg-templates/');
+    } else if (agent.id === 'clipboard') {
+      console.log('\nPaste the prompt into your preferred AI tool.');
+      console.log('When done, review .guardlink/cxg-templates/');
+    }
+  });
+
+// ─── ask ─────────────────────────────────────────────────────────────
+
+program
+  .command('ask')
+  .description('Ask questions about this project, its threat model, and security posture')
+  .argument('[query...]', 'Question to answer')
+  .option('-d, --dir <dir>', 'Project directory', '.')
+  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('--claude-code', 'Launch Claude Code in foreground')
+  .option('--codex', 'Launch Codex CLI in foreground')
+  .option('--gemini', 'Launch Gemini CLI in foreground')
+  .option('--cursor', 'Open Cursor IDE with prompt on clipboard')
+  .option('--windsurf', 'Open Windsurf IDE with prompt on clipboard')
+  .option('--clipboard', 'Copy ask prompt to clipboard only')
+  .action(async (queryParts: string[], opts: {
+    dir: string; project: string;
+    claudeCode?: boolean; codex?: boolean; gemini?: boolean;
+    cursor?: boolean; windsurf?: boolean; clipboard?: boolean;
+  }) => {
+    const root = resolve(opts.dir);
+    const project = detectProjectName(root, opts.project);
+    const query = queryParts.join(' ').trim();
+
+    if (!query) {
+      console.error('Usage: guardlink ask "<question>" [--claude-code|--codex|--gemini|--cursor|--windsurf|--clipboard]');
+      process.exit(1);
+    }
+
+    // Parse model if available; allow questions even for lightly-annotated projects
+    let model: ThreatModel | null = null;
+    try {
+      const parsed = await parseProject({ root, project });
+      model = parsed.model;
+    } catch {
+      model = null;
+    }
+
+    const fullPrompt = buildAskPrompt(query, root, model);
+
+    // Resolve agent: explicit flag > project config > default (Claude Code)
+    let agent = agentFromOpts(opts);
+    if (!agent) {
+      const projCfg = loadProjectConfig(root);
+      if (projCfg?.aiMode === 'cli-agent' && projCfg?.cliAgent) {
+        agent = AGENTS.find(a => a.id === projCfg.cliAgent) || null;
+      }
+      if (!agent) {
+        agent = AGENTS.find(a => a.id === 'claude-code') || null;
+      }
+    }
+
+    if (!agent) {
+      console.error('No agent available. Use one of:');
+      for (const a of AGENTS) {
+        console.error(`  ${a.flag.padEnd(16)} ${a.name}`);
+      }
+      process.exit(1);
+    }
+
+    console.log(`Launching ${agent.name} for question answering...`);
+    if (agent.cmd) {
+      console.log(`${agent.name} will take over this terminal. Exit the agent to return.\n`);
+    }
+
+    const result = launchAgent(agent, fullPrompt, root);
+
+    if (result.clipboardCopied) {
+      console.log(`✓ Prompt copied to clipboard (${fullPrompt.length.toLocaleString()} chars)`);
+    }
+
+    if (result.error) {
+      console.error(`✗ ${result.error}`);
+      if (result.clipboardCopied) {
+        console.log('Prompt is on your clipboard — paste it manually.');
+      }
+      process.exit(1);
+    }
+
+    if (agent.cmd && result.launched) {
+      console.log(`\n✓ ${agent.name} session ended.`);
+    } else if (agent.app && result.launched) {
+      console.log(`✓ ${agent.name} launched with project: ${project}`);
+      console.log('\nPaste (Cmd+V) the prompt in the AI chat panel.');
+    } else if (agent.id === 'clipboard') {
+      console.log('\nPaste the prompt into your preferred AI tool.');
     }
   });
 
@@ -1094,21 +1321,30 @@ program
   .option('-p, --project <n>', 'Project name', 'unknown')
   .option('-o, --output <file>', 'Output file (default: threat-dashboard.html)')
   .option('--light', 'Default to light theme instead of dark')
-  .action(async (dir: string, opts: { project: string; output?: string; light?: boolean }) => {
+  .option('--feature <names>', 'Filter dashboard to specific feature(s) (comma-separated)')
+  .action(async (dir: string, opts: { project: string; output?: string; light?: boolean; feature?: string }) => {
     const root = resolve(dir);
     const project = detectProjectName(root, opts.project);
-    const { model, diagnostics } = await parseProject({ root, project });
+    let { model, diagnostics } = await parseProject({ root, project });
+
+    // Apply feature filter if specified
+    if (opts.feature) {
+      const featureNames = opts.feature.split(',').map(s => s.trim());
+      model = filterByFeature(model, featureNames);
+      console.error(`Filtered to feature(s): ${featureNames.map(f => `"${f}"`).join(', ')}`);
+    }
 
     const errors = diagnostics.filter(d => d.level === 'error');
     if (errors.length > 0) printDiagnostics(errors);
 
-    if (model.annotations_parsed === 0) {
+    if (model.annotations_parsed === 0 && !opts.feature) {
       console.error('No annotations found. Add GuardLink annotations first.');
       process.exit(1);
     }
 
     const analyses = loadThreatReportsForDashboard(root);
-    let html = generateDashboardHTML(model, root, analyses);
+    const pentestData = loadPentestData(root);
+    let html = generateDashboardHTML(model, root, analyses, pentestData);
 
     // Switch default theme if requested
     if (opts.light) {
@@ -1363,6 +1599,106 @@ program
     console.log(formatMergeSummary(merged));
   });
 
+// ─── feature ──────────────────────────────────────────────────────────
+
+const featureCmd = program
+  .command('feature')
+  .description('Manage and inspect feature tags across the threat model');
+
+featureCmd
+  .command('list')
+  .description('List all features found in annotations')
+  .argument('[dir]', 'Project directory to scan', '.')
+  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('--json', 'Output as JSON')
+  .action(async (dir: string, opts: { project: string; json?: boolean }) => {
+    const root = resolve(dir);
+    const project = detectProjectName(root, opts.project);
+    const { model } = await parseProject({ root, project });
+
+    const features = listFeatures(model);
+    if (features.length === 0) {
+      console.log('No @feature annotations found.');
+      console.log('Tag code with: // @feature "Feature Name" -- "description"');
+      return;
+    }
+
+    if (opts.json) {
+      const summaries = getFeatureSummaries(model);
+      console.log(JSON.stringify(summaries, null, 2));
+      return;
+    }
+
+    const summaries = getFeatureSummaries(model);
+    console.log(`Features in ${project}:\n`);
+    for (const s of summaries) {
+      const files = s.files.length === 1 ? '1 file' : `${s.files.length} files`;
+      const exposureInfo = s.exposures > 0 ? ` | ${s.exposures} exposure(s)` : '';
+      const confirmedInfo = s.confirmed > 0 ? ` | ${s.confirmed} confirmed` : '';
+      console.log(`  "${s.name}"  (${files}, ${s.annotations} annotations${exposureInfo}${confirmedInfo})`);
+      for (const f of s.files) {
+        console.log(`    → ${f}`);
+      }
+    }
+    console.log(`\n${features.length} feature(s) total`);
+  });
+
+featureCmd
+  .command('show')
+  .description('Show detailed threat model for a specific feature')
+  .argument('<name>', 'Feature name (case-insensitive)')
+  .option('-d, --dir <dir>', 'Project directory', '.')
+  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('--json', 'Output as JSON')
+  .action(async (name: string, opts: { dir: string; project: string; json?: boolean }) => {
+    const root = resolve(opts.dir);
+    const project = detectProjectName(root, opts.project);
+    const { model } = await parseProject({ root, project });
+
+    const filtered = filterByFeature(model, [name]);
+    const totalAnnotations = filtered.assets.length + filtered.threats.length +
+      filtered.controls.length + filtered.mitigations.length + filtered.exposures.length +
+      filtered.confirmed.length + filtered.flows.length + filtered.boundaries.length;
+
+    if (totalAnnotations === 0) {
+      console.error(`No annotations found for feature "${name}".`);
+      const available = listFeatures(model);
+      if (available.length > 0) {
+        console.error(`Available features: ${available.map(f => `"${f}"`).join(', ')}`);
+      }
+      process.exit(1);
+    }
+
+    if (opts.json) {
+      console.log(JSON.stringify(filtered, null, 2));
+      return;
+    }
+
+    console.log(`Feature: "${name}"\n`);
+    console.log(`  Assets:       ${filtered.assets.length}`);
+    console.log(`  Threats:      ${filtered.threats.length}`);
+    console.log(`  Controls:     ${filtered.controls.length}`);
+    console.log(`  Mitigations:  ${filtered.mitigations.length}`);
+    console.log(`  Exposures:    ${filtered.exposures.length}`);
+    if (filtered.confirmed.length > 0) console.log(`  Confirmed:    ${filtered.confirmed.length} 🔴`);
+    console.log(`  Flows:        ${filtered.flows.length}`);
+    console.log(`  Boundaries:   ${filtered.boundaries.length}`);
+
+    if (filtered.exposures.length > 0) {
+      console.log(`\n  Exposures:`);
+      for (const e of filtered.exposures) {
+        console.log(`    ${e.asset} → ${e.threat} [${e.severity || 'unset'}] (${e.location.file}:${e.location.line})`);
+      }
+    }
+
+    if (filtered.mitigations.length > 0) {
+      console.log(`\n  Mitigations:`);
+      for (const m of filtered.mitigations) {
+        console.log(`    ${m.asset} against ${m.threat}${m.control ? ` using ${m.control}` : ''} (${m.location.file}:${m.location.line})`);
+      }
+    }
+  });
+
 // ─── mcp ─────────────────────────────────────────────────────────────
 
 program
@@ -1452,6 +1788,13 @@ program
       console.log(EX('    // @mitigates  db.users  against  Token Theft  -- "Rotation implemented in v2"'));
       console.log('');
 
+      console.log(`  ${V('@confirmed')}  ${K('<threat>')}  ${D('on')}  ${K('<asset>')}  ${D('[severity]')}  ${D('[ext-refs]')}  ${D('[-- "evidence"]')}`);
+      console.log(D('    Mark a threat as verified exploitable (pentest, scan, or manual repro).'));
+      console.log(D('    Not a false positive — use observed severity. Distinct from @exposes (hypothesis).'));
+      console.log(EX('    // @confirmed  SQL Injection  on  api.auth  [critical]  cwe:CWE-89  -- "Pen test: blind SQLi on /login"'));
+      console.log(EX('    // @confirmed  #secret-exposure  on  App.Config  [critical]  -- "Live key in repo; verified with provider"'));
+      console.log('');
+
       console.log(`  ${V('@accepts')}  ${K('<threat>')}  ${D('on')}  ${K('<asset>')}  ${D('[-- "reason"]')}`);
       console.log(D('    Explicitly accept a risk. Removes it from open findings.'));
       console.log(D('    Use when the risk is known and intentionally not mitigated.'));
@@ -1513,6 +1856,23 @@ program
       console.log(EX('    // @assumes  api.gateway  -- "Upstream WAF filters malformed requests"'));
       console.log('');
 
+      // ── FEATURE TAGGING ──
+      console.log(H('  ── Feature Tagging ─────────────────────────────────────────'));
+      console.log('');
+
+      console.log(`  ${V('@feature')}  ${K('"Feature Name"')}  ${D('[-- "description"]')}`);
+      console.log(D('    Tag code with a feature name for filtering reports and dashboards.'));
+      console.log(D('    A file can have multiple @feature tags. All annotations in that file'));
+      console.log(D('    are associated with the tagged features.'));
+      console.log(EX('    // @feature "SSO Login" -- "Single sign-on authentication flow"'));
+      console.log(EX('    // @feature "Payment Processing"'));
+      console.log(D(''));
+      console.log(D('    Filter commands by feature:'));
+      console.log(EX('    guardlink feature list'));
+      console.log(EX('    guardlink report . --feature "SSO Login"'));
+      console.log(EX('    guardlink dashboard . --feature "SSO Login,Payment Processing"'));
+      console.log('');
+
       console.log(`  ${V('@comment')}  ${D('[-- "description"]')}`);
       console.log(D('    Free-form developer security note (no structural effect).'));
       console.log(EX('    // @comment  -- "TODO — add rate limiting before v2 launch"'));
@@ -1536,7 +1896,7 @@ program
       // ── EXTERNAL REFERENCES ──
       console.log(H('  ── External References ─────────────────────────────────────'));
       console.log('');
-      console.log(D('  Append space-separated refs after severity on @threat and @exposes:'));
+      console.log(D('  Append space-separated refs after severity on @threat, @exposes, and @confirmed:'));
       console.log(EX('    cwe:CWE-89  owasp:A03:2021  capec:CAPEC-66  attack:T1190'));
       console.log('');
       console.log(D('  Example:'));
@@ -1597,6 +1957,7 @@ function printStatus(model: ThreatModel) {
   console.log(`Controls:         ${model.controls.length}`);
   console.log(`Mitigations:      ${model.mitigations.length}`);
   console.log(`Exposures:        ${model.exposures.length}`);
+  if ((model.confirmed || []).length > 0) console.log(`Confirmed:        ${model.confirmed.length} 🔴`);
   console.log(`Acceptances:      ${model.acceptances.length}`);
   console.log(`Transfers:        ${model.transfers.length}`);
   console.log(`Flows:            ${model.flows.length}`);
@@ -1606,6 +1967,10 @@ function printStatus(model: ThreatModel) {
   console.log(`Ownership:        ${model.ownership.length}`);
   console.log(`Data handling:    ${model.data_handling.length}`);
   console.log(`Assumptions:      ${model.assumptions.length}`);
+  if (model.features.length > 0) {
+    const uniqueFeatures = new Set(model.features.map(f => f.feature));
+    console.log(`Features:         ${uniqueFeatures.size} (${model.features.length} tag${model.features.length > 1 ? 's' : ''})`);
+  }
   console.log(`Comments:         ${model.comments.length}`);
   console.log(`Shields:          ${model.shields.length}`);
 }

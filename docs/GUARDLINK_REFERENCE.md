@@ -12,6 +12,7 @@ DEFINE   @asset <Component.Path> (#id) -- "description"
 
 RELATE   @mitigates <Asset> against <#threat> using <#control> -- "how"
          @exposes <Asset> to <#threat> [severity] cwe:CWE-NNN -- "what's wrong"
+         @confirmed <#threat> on <Asset> [severity] cwe:CWE-NNN -- "verified evidence"
          @accepts <#threat> on <Asset> -- "HUMAN-ONLY — AI agents must use @audit instead"
          @transfers <#threat> from <Source> to <Target> -- "who handles it"
 
@@ -25,6 +26,8 @@ LIFECYCLE
          @owns <team-id> for <Asset> -- "responsible team"
          @handles <pii|phi|financial|secrets|internal|public> on <Asset>
          @assumes <Asset> -- "unverified assumption"
+
+METADATA @feature "Feature Name" -- "tag code with a feature for filtering"
 
 COMMENT  @comment -- "security-relevant developer note"
 
@@ -55,10 +58,12 @@ Append after severity: `cwe:CWE-89`, `owasp:A03:2021`, `capec:CAPEC-66`, `attack
 | Writing new endpoint/handler | `@exposes` + `@mitigates` (or `@audit`) + `@flows` + `@comment` — tell the complete story |
 | New service/component | `@asset` in definitions, then reference in source |
 | Security gap exists | `@exposes Asset to #threat` + `@audit Asset` |
+| Threat verified exploitable | `@confirmed #threat on Asset [severity] -- "pentest/scan evidence"` |
 | Risk with no fix yet | `@audit Asset` + `@comment` explaining potential controls. NEVER `@accepts`. |
 | Implementing a fix | `@mitigates Asset against #threat using #control` |
 | Processing sensitive data | `@handles pii on Asset` |
 | Proprietary algorithm | `@shield:begin` ... `@shield:end` (only if human requests it) |
+| Tagging code to a feature | `@feature "SSO Login" -- "Single sign-on flow"` |
 | Unsure which annotation | `@comment -- "describe what you see"` |
 
 ## CLI Commands
@@ -80,6 +85,8 @@ guardlink diff [ref]                    # Compare threat model against a git ref
 guardlink threat-report <fw|prompt>     # AI threat report (see frameworks below)
 guardlink threat-reports                # List saved threat reports
 guardlink annotate <prompt>             # Launch coding agent to add annotations
+guardlink translate [prompt]            # Generate CERT-X-GEN pentest templates from threat findings
+guardlink ask <query>                   # Ask questions about the threat model and codebase
 guardlink config <show|set|clear>       # Manage LLM provider / CLI agent configuration
 
 # Governance & Maintenance
@@ -88,11 +95,18 @@ guardlink review --list [--severity X]  # List reviewable exposures without prom
 guardlink clear [dir] [--dry-run]       # Remove all annotations from source files
 guardlink sync [dir]                    # Sync agent instruction files with current threat model
 guardlink unannotated [dir]             # List source files with no annotations
+guardlink feature list [dir]            # List all @feature tags with stats
+guardlink feature show <name>           # Show threat model for a specific feature
 
 # Interactive
 guardlink tui [dir]                     # Interactive TUI: slash commands + AI chat
 guardlink mcp                           # Start MCP server (stdio) for Claude Code, Cursor, etc.
 guardlink gal                           # Display GAL annotation language quick reference
+
+# Feature filtering (--feature flag on report, dashboard, status, translate)
+guardlink report . --feature "SSO Login"          # Report filtered to feature
+guardlink dashboard . --feature "SSO,Payments"    # Dashboard filtered to features
+guardlink status . --feature "SSO Login"           # Status filtered to feature
 ```
 
 ## Threat Report Frameworks
@@ -153,6 +167,7 @@ Run `guardlink tui` for the interactive terminal interface:
 /diff [ref]              Compare model vs git ref (default: HEAD~1)
 /sarif [-o file]         Export SARIF 2.1.0
 /gal                     GAL annotation language guide
+/feature                 List all @feature tags
 (freeform text)          Chat about your threat model with AI
 ```
 
@@ -160,12 +175,12 @@ Run `guardlink tui` for the interactive terminal interface:
 
 1. **@boundary requires TWO assets**: `@boundary between #A and #B` or `@boundary #A | #B`.
 2. **@flows is ONE source → ONE target per line**: `@flows <source> -> <target> via <mechanism>`.
-3. **@exposes / @mitigates require defined #id refs**: Every `#id` must have a definition in `.guardlink/definitions.*`.
-4. **Severity in square brackets**: `[P0]` `[P1]` `[P2]` `[P3]` or `[critical]` `[high]` `[medium]` `[low]`. Goes AFTER the threat ref.
+3. **@exposes / @mitigates / @confirmed require defined #id refs**: Every `#id` must have a definition in `.guardlink/definitions.*`.
+4. **Severity in square brackets**: `[P0]` `[P1]` `[P2]` `[P3]` or `[critical]` `[high]` `[medium]` `[low]`. Goes AFTER the threat ref on `@exposes`; on `@confirmed` it reflects **verified** impact (optional but recommended).
 5. **Descriptions in double quotes after --**: `-- "description text here"`.
 6. **IDs use parentheses in definitions, hash in references**: Define `(#sqli)`, reference `#sqli`.
 7. **Asset references**: Use `#id` or `Dotted.Path` — no spaces or special chars.
-8. **External refs space-separated after severity**: `cwe:CWE-89 owasp:A03:2021 capec:CAPEC-66`.
+8. **External refs space-separated after severity**: `cwe:CWE-89 owasp:A03:2021 capec:CAPEC-66` (on `@threat`, `@exposes`, `@confirmed`).
 9. **@comment always needs -- and quotes**: `@comment -- "your note here"`.
 10. **One annotation per comment line.** Do NOT put two @verbs on the same line.
 
@@ -173,7 +188,7 @@ Run `guardlink tui` for the interactive terminal interface:
 
 When connected via `.mcp.json`, use:
 - `guardlink_parse` — parse annotations, return threat model
-- `guardlink_lookup` — query threats, controls, exposures by ID
+- `guardlink_lookup` — query threats, controls, exposures by ID (try `unmitigated`, `confirmed`)
 - `guardlink_suggest` — get annotation suggestions for a file
 - `guardlink_validate` — check for syntax errors
 - `guardlink_status` — coverage stats

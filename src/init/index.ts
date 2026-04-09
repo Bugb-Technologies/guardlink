@@ -31,6 +31,7 @@ import {
   configContent,
   mcpConfig,
   referenceDocContent,
+  promptMdContent,
   GITIGNORE_ENTRY,
 } from './templates.js';
 import type { ThreatModel } from '../types/index.js';
@@ -109,7 +110,17 @@ export function initProject(options: InitOptions): InitResult {
     skipped.push(`.guardlink/${defsFile} (exists)`);
   }
 
-  // ── 4. Create docs/GUARDLINK_REFERENCE.md ──
+  // ── 4. Create .guardlink/prompt.md (skeleton for report) ──
+
+  const promptPath = join(tsDir, 'prompt.md');
+  if (!existsSync(promptPath) || force) {
+    if (!dryRun) writeFileSync(promptPath, promptMdContent(project));
+    created.push('.guardlink/prompt.md');
+  } else {
+    skipped.push('.guardlink/prompt.md (exists)');
+  }
+
+  // ── 5. Create docs/GUARDLINK_REFERENCE.md ──
 
   const docsDir = join(root, 'docs');
   const refDocPath = join(docsDir, 'GUARDLINK_REFERENCE.md');
@@ -123,7 +134,7 @@ export function initProject(options: InitOptions): InitResult {
     skipped.push('docs/GUARDLINK_REFERENCE.md (exists)');
   }
 
-  // ── 5. Update .gitignore ──
+  // ── 6. Update .gitignore ──
 
   const gitignorePath = join(root, '.gitignore');
   if (existsSync(gitignorePath)) {
@@ -134,7 +145,7 @@ export function initProject(options: InitOptions): InitResult {
     }
   }
 
-  // ── 6. Update/create agent instruction files ──
+  // ── 7. Update/create agent instruction files ──
 
   if (!skipAgentFiles) {
     const agentResults = updateAgentFiles(root, project, force, dryRun, options.agentIds);
@@ -143,7 +154,7 @@ export function initProject(options: InitOptions): InitResult {
     skipped.push(...agentResults.skipped);
   }
 
-  // ── 7. Create .mcp.json for Claude Code MCP integration ──
+  // ── 8. Create .mcp.json for Claude Code MCP integration ──
 
   const mcpPath = join(root, '.mcp.json');
   if (!existsSync(mcpPath) || force) {
@@ -333,6 +344,16 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
   const project = detectProject(root);
   const updated: string[] = [];
   const skipped: string[] = [];
+
+  // Ensure .guardlink/prompt.md exists (fallback if init wasn't run)
+  const promptPath = join(root, '.guardlink', 'prompt.md');
+  if (!existsSync(promptPath)) {
+    if (!dryRun) {
+      ensureDir(join(root, '.guardlink'));
+      writeFileSync(promptPath, promptMdContent(project));
+    }
+    updated.push('.guardlink/prompt.md');
+  }
 
   for (const choice of AGENT_CHOICES) {
     const filePath = join(root, choice.file);

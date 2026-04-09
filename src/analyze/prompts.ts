@@ -29,12 +29,17 @@ You will receive:
 1. **Project context** — language/framework, dependencies, deployment signals (Dockerfile, CI config, etc.)
 2. **Annotation graph** — structured security metadata extracted from source code comments (GuardLink annotations)
 3. **Code snippets** — the actual source lines surrounding each annotation, so you can validate what developers claimed
+4. **Pentest findings** (if available) — actual CXG (CERT-X-GEN) scan results from automated security testing, including confirmed vulnerabilities with evidence, severity, CWE mappings, and remediation guidance
 
 ## How to use these inputs
 
 - Treat annotations as **developer hypotheses**, not ground truth. Validate them against the code snippets.
 - Use the project context to reason about the **real attack surface** — what frameworks introduce, what dependencies are known-vulnerable, what the deployment model exposes.
 - **Identify gaps**: what is NOT annotated but should be? Look at unannotated symbols, data flows with no security coverage, and dependency-level risks.
+- If **pentest findings** are provided, treat them as **empirical evidence** — these are confirmed or high-confidence vulnerabilities found by automated security templates. Cross-reference findings against annotations: which @exposes are now validated? Recommend adding @confirmed in code where verification is definitive. Which threats have actual evidence? Are there findings for threats that were NOT annotated?
+- Pentest findings with high confidence (>70%) and evidence (request + response) should be treated as **confirmed exploitable** unless the evidence clearly shows a false positive.
+- If the annotation graph includes **@confirmed** rows, treat them as **already verified** — prioritize them in executive summary and remediation ordering alongside pentest JSON evidence.
+- Include a dedicated **Pentest Results** section in your report that summarizes confirmed findings, correlates them with the threat model, and highlights any new attack vectors discovered by scanning.
 - Produce a threat model a **security team could hand to an auditor** — specific, evidence-based, and actionable.
 
 ## Annotation semantics
@@ -44,6 +49,7 @@ You will receive:
 - **@control** — a security mechanism in place
 - **@mitigates** — a real control exists in code defending an asset against a threat. This is a genuine defense.
 - **@exposes** — a known vulnerability: this asset is exposed to this threat
+- **@confirmed** — the threat was **verified** exploitable (pentest, scan with evidence, or manual reproduction). Treat as ground truth for that finding, not a hypothesis. Distinct from @exposes (theoretical) and @accepts (governance).
 - **@accepts** — risk acknowledged but **NO control in code**. This is a governance decision, not a technical fix.
 - **@flows** — data movement between components
 - **@boundary** — a trust boundary between security zones
@@ -57,6 +63,7 @@ You will receive:
 - Treat accepted-but-unmitigated exposures as **OPEN RISKS**, not resolved findings.
 - If a code snippet contradicts its annotation (e.g., a @mitigates annotation but the code shows no actual check), flag the annotation as **potentially inaccurate**.
 - Challenge accepted risks: "You accepted this — is that reasonable given the severity and blast radius?"
+- Distinguish **pentest-confirmable threats** from **governance/design-only gaps**. Pentest-confirmable issues should include concrete validation ideas; governance/design-only risks should be called out explicitly as **audit-required** items with suggested @audit/@comment annotations instead of fake exploit claims.
 - Always reference **specific files, assets, and threat IDs** from the model. Never give generic advice.
 
 ## Output structure
@@ -308,7 +315,8 @@ Top 5–10 items the team should act on, ordered by risk. For each: one-line des
 
 /**
  * Build the user message containing the serialized threat model,
- * optional project context, and optional code snippets.
+ * optional project context, optional code snippets, and optional
+ * pentest findings from CXG scans.
  */
 export function buildUserMessage(
   modelJson: string,
@@ -316,6 +324,7 @@ export function buildUserMessage(
   customPrompt?: string,
   projectContext?: string,
   codeSnippets?: string,
+  pentestFindings?: string,
 ): string {
   const header = customPrompt
     ? `Use these annotations as input to produce a threat model. Additional focus: ${customPrompt}`
@@ -339,6 +348,13 @@ export function buildUserMessage(
     parts.push('<code_snippets>');
     parts.push(codeSnippets);
     parts.push('</code_snippets>');
+  }
+
+  if (pentestFindings) {
+    parts.push('');
+    parts.push('<pentest_findings>');
+    parts.push(pentestFindings);
+    parts.push('</pentest_findings>');
   }
 
   return parts.join('\n');

@@ -5,6 +5,56 @@ All notable changes to GuardLink CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] — 2026-04-09
+
+### Added
+
+- **`@confirmed` annotation** — New verb for verified exploitable findings. Distinct from `@exposes` (theoretical) and `@accepts` (governance). Syntax: `@confirmed #threat on Asset [severity] cwe:CWE-NNN -- "evidence"`. A `@confirmed` annotation means the threat has been proven exploitable through pentest, automated CXG scan with reproducible evidence, or manual reproduction — not a false positive. Full pipeline: parser, model assembly, dangling-ref validation, SARIF `error`-level export, CLI `status` output, dashboard emphasis, LLM report inclusion, MCP `guardlink_lookup "confirmed"`.
+
+- **`@feature` annotation** — New metadata verb to tag files/code with a named product feature. Syntax: `@feature "Feature Name" -- "description"`. Association is file-level: all annotations in a file with `@feature "X"` are considered part of that feature. Enables feature-scoped filtering across all output modes.
+
+- **Feature filtering (`--feature` flag)** — `guardlink status`, `guardlink report`, and `guardlink dashboard` all gain `--feature <names>` (comma-separated). Filters all output — assets, threats, exposures, flows — to files tagged with the named feature(s). Dashboard gets a live feature filter dropdown in the header with a dismissible banner. TUI gains `/feature [name]` command to list features or drill into one.
+
+- **`guardlink translate [prompt]`** — New command that translates GuardLink threat model findings into CERT-X-GEN (CXG) pentest templates (generation only, no execution). Supports all agent backends: `--claude-code`, `--codex`, `--gemini`, `--cursor`, `--windsurf`, `--clipboard`. Reads CXG reference docs and skeleton templates from `GUARDLINK_CXG_ROOT` env or configured default path.
+
+- **`guardlink ask <query>`** — New command that answers natural-language questions about the threat model and codebase context, launching an AI agent with full model serialization as context.
+
+- **Pentest integration** — GuardLink now loads CXG scan results from `.guardlink/pentest-findings/` (JSON) and template metadata from `.guardlink/cxg-templates/`. New interfaces: `PentestFinding`, `PentestScanResult`, `PentestTemplate`, `PentestData`. Findings are injected as a `<pentest_findings>` block into AI threat reports, `guardlink threat-report`, and the dashboard. Dashboard gains a dedicated **Pentest Findings** sidebar section with scan summary tables and per-finding detail drawers.
+
+- **Expanded threat model report** (`guardlink report`) — `generateReport()` now produces 10 structured sections (was: Executive Summary + tables):
+  1. Application Overview (auto-populated from `.guardlink/prompt.md` if present)
+  2. Scope of This Threat Model
+  3. Architecture (Mermaid DFD)
+  4. Key Flows & Sequence (new Mermaid sequence diagram from `@flows`)
+  5. Data Inventory
+  6. Roles & Access
+  7. Dependencies
+  8. Secrets, Keys & Credential Management
+  9. Logging, Monitoring & Audit
+  10. AI/ML System Details (conditional — emitted only when AI-related threats are detected)
+  
+  Report header now includes GuardLink version and git commit/branch from metadata. Confirmed exploitable findings appear as a row in the Executive Summary table.
+
+- **Sequence diagram** (`src/report/sequence.ts`) — New Mermaid `sequenceDiagram` generator built from `@flows` annotations, showing step-by-step participant interactions. Used in the Key Flows & Sequence report section.
+
+- **`.guardlink/prompt.md`** — `guardlink init` and `guardlink sync` now create this skeleton file. AI annotation agents fill it in with a security-focused project overview (what the app does, components, trust boundaries, data sensitivity, deployment). `guardlink report` reads it and injects the content as the Application Overview section.
+
+- **SARIF: confirmed exploitable rule** — New `guardlink/confirmed-exploitable` SARIF rule emitting `error`-level results for `@confirmed` annotations. These appear alongside unmitigated exposures in GitHub Advanced Security.
+
+- **MCP `guardlink_lookup` queries** — Two new query types: `"confirmed"` returns all `@confirmed` verified findings; `"features"` returns all `@feature`-tagged feature names with their associated files.
+
+- **LLM prompt improvements** — `buildUserMessage()` accepts pentest findings context. AI prompts now distinguish pentest-confirmable threats from governance/design gaps, and teach agents when to use `@confirmed` vs `@exposes` vs `@audit`.
+
+### Changed
+
+- **`guardlink status`** — Now prints `@confirmed` findings with a red badge below the exposure list. Accepts `--feature` for filtered output.
+- **`guardlink report`** — Accepts `--feature` for scoped reports. Reads `.guardlink/prompt.md` for Application Overview.
+- **`guardlink dashboard`** — Accepts `--feature`. Risk score formula now accounts for confirmed finding count. Feature filter dropdown in header.
+- **`guardlink threat-report`** — Pentest findings from `.guardlink/pentest-findings/` are automatically included in AI analysis context. AI prompted to emit a dedicated "Pentest Results" section when findings are present.
+- **`/gal` TUI command** — Documents `@feature` tagging with examples.
+- **SARIF export** — `@confirmed` findings now appear as `error`-level entries under the new rule; `@exposes` severity mapping unchanged.
+- **MCP server** — Status tool description updated to reflect confirmed count. `guardlink_lookup` extended with `confirmed` and `features` queries.
+
 ## [1.4.1] — 2026-03-12
 
 ### Fixed
