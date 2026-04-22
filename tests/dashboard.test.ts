@@ -1,15 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface } from '../src/dashboard/diagrams.js';
+import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface, generateTopologyData } from '../src/dashboard/diagrams.js';
 import { computeExposures } from '../src/dashboard/data.js';
 import type { ThreatModel } from '../src/types/index.js';
 
 function emptyModel(overrides: Partial<ThreatModel> = {}): ThreatModel {
   return {
     version: '1.0.0', project: 'test', generated_at: '', source_files: 0,
+    annotated_files: [], unannotated_files: [],
     annotations_parsed: 0, assets: [], threats: [], controls: [],
     mitigations: [], exposures: [], acceptances: [], transfers: [],
     flows: [], boundaries: [], validations: [], audits: [], ownership: [],
-    data_handling: [], assumptions: [], shields: [], comments: [],
+    data_handling: [], assumptions: [], shields: [], features: [], comments: [],
     coverage: { total_symbols: 0, annotated_symbols: 0, coverage_percent: 0, unannotated_critical: [] },
     ...overrides,
   };
@@ -58,8 +59,55 @@ describe('generateThreatGraph', () => {
       exposures: [{ asset: 'App.API', threat: '#sqli', severity: 'high', external_refs: [], location: loc }],
     });
     const mermaid = generateThreatGraph(model);
+    // The displayed label should be the human-readable name, not the raw id.
     expect(mermaid).toContain('SQL_Injection');
-    expect(mermaid).not.toContain(' sqli');
+    expect(mermaid).not.toMatch(/\["[^"]*sqli"\]/);
+  });
+
+  it('collapses mixed #id and bare-name exposures onto a single node', () => {
+    const model = emptyModel({
+      assets: [{ path: ['App', 'API'], id: 'api', location: loc }],
+      threats: [{ name: 'XSS', canonical_name: 'xss', id: 'xss', severity: 'high', external_refs: [], location: loc }],
+      exposures: [
+        { asset: '#api', threat: '#xss', severity: 'high', external_refs: [], location: loc },
+        { asset: 'App.API', threat: 'XSS', severity: 'high', external_refs: [], location: loc },
+      ],
+    });
+    const mermaid = generateThreatGraph(model);
+    // Both exposures refer to the same asset/threat — the graph should contain exactly
+    // one threat node and one asset node, not duplicates per ref form.
+    expect((mermaid.match(/:::threat/g) || []).length).toBe(1);
+    const assetLines = mermaid.split('\n').filter(l => l.includes('🔷'));
+    expect(assetLines.length).toBe(1);
+  });
+
+  it('adds a protects link from control to asset distinct from mitigates', () => {
+    const model = emptyModel({
+      assets: [{ path: ['App', 'API'], id: 'api', location: loc }],
+      threats: [{ name: 'XSS', canonical_name: 'xss', id: 'xss', severity: 'high', external_refs: [], location: loc }],
+      controls: [{ name: 'Output Encoding', canonical_name: 'output_encoding', id: 'output-encoding', location: loc }],
+      exposures: [{ asset: '#api', threat: '#xss', severity: 'high', external_refs: [], location: loc }],
+      mitigations: [{ asset: '#api', threat: '#xss', control: '#output-encoding', location: loc }],
+    });
+    const topology = generateTopologyData(model);
+    expect(topology.links.some(l => l.kind === 'mitigates')).toBe(true);
+    expect(topology.links.some(l => l.kind === 'protects')).toBe(true);
+    // Protects links are control → asset (not control → threat)
+    const protectsLink = topology.links.find(l => l.kind === 'protects');
+    expect(protectsLink?.source).toBe('control:output-encoding');
+    expect(protectsLink?.target).toBe('asset:api');
+  });
+
+  it('marks confirmed exploits distinctly in Attack Surface', () => {
+    const model = emptyModel({
+      assets: [{ path: ['App'], id: 'app', location: loc }],
+      threats: [{ name: 'SQL_Injection', canonical_name: 'sqli', id: 'sqli', severity: 'critical', external_refs: [], location: loc }],
+      exposures: [{ asset: '#app', threat: '#sqli', severity: 'high', external_refs: [], location: loc }],
+      confirmed: [{ asset: '#app', threat: '#sqli', severity: 'critical', external_refs: [], location: loc }],
+    });
+    const mermaid = generateAttackSurface(model);
+    expect(mermaid).toContain('💥');
+    expect(mermaid).toContain('confirmed');
   });
 
   it('renders mitigation edge even when mitigation has no control', () => {
@@ -158,6 +206,43 @@ describe('generateAttackSurface', () => {
   it('returns empty string when no exposures', () => {
     const model = emptyModel();
     expect(generateAttackSurface(model)).toBe('');
+  });
+});
+
+// ─── Topology Data: dashboard-native graph ───────────────────────────
+
+describe('generateTopologyData', () => {
+  it('uses definition labels when relationships reference #ids', () => {
+    const model = emptyModel({
+      assets: [{ path: ['App', 'API'], id: 'api', location: loc }],
+      threats: [{ name: 'Cross_Site_Scripting', canonical_name: 'xss', id: 'xss', severity: 'high', external_refs: [], location: loc }],
+      exposures: [{ asset: '#api', threat: '#xss', severity: 'high', external_refs: [], location: loc }],
+    });
+    const topology = generateTopologyData(model);
+    expect(topology.nodes.find(n => n.id === 'asset:api')?.label).toBe('App.API');
+    expect(topology.nodes.find(n => n.id === 'threat:xss')?.label).toBe('Cross_Site_Scripting');
+  });
+
+  it('marks exposure links as mitigated when normalized refs match controls', () => {
+    const model = emptyModel({
+      exposures: [{ asset: '#app', threat: '#xss', severity: 'high', external_refs: [], location: loc }],
+      mitigations: [{ asset: 'app', threat: 'xss', control: '#output-encoding', location: loc }],
+    });
+    const topology = generateTopologyData(model);
+    expect(topology.summary.open).toBe(0);
+    expect(topology.summary.mitigated).toBe(1);
+    expect(topology.links.find(l => l.kind === 'exposes')?.status).toBe('mitigated');
+    expect(topology.nodes.find(n => n.id === 'control:output-encoding')).toBeTruthy();
+  });
+
+  it('includes flows and boundaries as asset relationships', () => {
+    const model = emptyModel({
+      flows: [{ source: 'Browser', target: 'API', mechanism: 'HTTPS', location: loc }],
+      boundaries: [{ asset_a: 'Browser', asset_b: 'API', description: 'Internet edge', location: loc }],
+    });
+    const topology = generateTopologyData(model);
+    expect(topology.links.some(l => l.kind === 'flows' && l.label === 'HTTPS')).toBe(true);
+    expect(topology.links.some(l => l.kind === 'boundary' && l.label === 'Internet edge')).toBe(true);
   });
 });
 

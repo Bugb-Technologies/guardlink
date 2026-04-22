@@ -55,7 +55,7 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 ### Current Definitions (REUSE these IDs — do NOT redefine)
 
 **Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest), #workspace-link (Workspace,Link), #merge-engine (Workspace,Merge), #report-metadata (Workspace,Metadata), #workspace-config (Workspace,Config)
-**Threats:** #path-traversal (Path_Traversal) [high], #cmd-injection (Command_Injection) [critical], #xss (Cross_Site_Scripting) [high], #api-key-exposure (API_Key_Exposure) [high], #ssrf (Server_Side_Request_Forgery) [medium], #redos (ReDoS) [medium], #arbitrary-write (Arbitrary_File_Write) [high], #prompt-injection (Prompt_Injection) [medium], #dos (Denial_of_Service) [medium], #data-exposure (Sensitive_Data_Exposure) [medium], #insecure-deser (Insecure_Deserialization) [medium], #child-proc-injection (Child_Process_Injection) [high], #info-disclosure (Information_Disclosure) [low], #secret-exposure (Secret_Exposure) [critical], #tag-collision (Tag_Collision) [medium], #config-tamper (Config_Tampering) [medium]
+**Threats:** #path-traversal (Path_Traversal) [high], #cmd-injection (Command_Injection) [critical], #xss (Cross_Site_Scripting) [high], #api-key-exposure (API_Key_Exposure) [high], #ssrf (Server_Side_Request_Forgery) [medium], #redos (ReDoS) [medium], #arbitrary-write (Arbitrary_File_Write) [high], #prompt-injection (Prompt_Injection) [medium], #dos (Denial_of_Service) [medium], #data-exposure (Sensitive_Data_Exposure) [medium], #insecure-deser (Insecure_Deserialization) [medium], #child-proc-injection (Child_Process_Injection) [high], #info-disclosure (Information_Disclosure) [low], #tag-collision (Tag_Collision) [medium], #config-tamper (Config_Tampering) [medium]
 **Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring), #prefix-ownership (Prefix_Ownership), #yaml-validation (YAML_Validation)
 
 ### Open Exposures (need @mitigates or @audit)
@@ -69,11 +69,11 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 - #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:16)
 - #cli exposed to #cmd-injection [critical] (src/cli/index.ts:33)
 - #init exposed to #data-exposure [low] (src/init/index.ts:12)
-- #parser exposed to #arbitrary-write [high] (src/parser/clear.ts:7)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
 - #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:30)
 - #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:34)
 - #suggest exposed to #dos [low] (src/mcp/suggest.ts:16)
+- #parser exposed to #arbitrary-write [high] (src/parser/clear.ts:7)
 - #tui exposed to #cmd-injection [high] (src/tui/commands.ts:11)
 - #tui exposed to #prompt-injection [medium] (src/tui/commands.ts:15)
 
@@ -99,7 +99,7 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
 - #llm-client -> NVD via fetch
-- ... and 52 more
+- ... and 55 more
 
 ### Features (filter with `--feature`)
 
@@ -108,13 +108,31 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 
 ### Model Stats
 
-305 annotations, 16 assets, 16 threats, 12 controls, 61 exposures, 0 confirmed, 46 mitigations, 72 flows, 2 features
+310 annotations, 16 assets, 15 threats, 12 controls, 61 exposures, 0 confirmed, 48 mitigations, 75 flows, 2 features
 
 > **Note:** This section is auto-generated. Run `guardlink sync` to update after code changes.
 > Any coding agent (Cursor, Claude, Copilot, Windsurf, etc.) should reference these IDs
 > and continue annotating new code using the same threat model vocabulary.
 
 <!-- guardlink:end -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

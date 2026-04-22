@@ -1,20 +1,35 @@
 /**
- * GuardLink Dashboard — Mermaid diagram generators.
+ * GuardLink Dashboard — diagram generators.
  *
- * Three diagram types:
- * 1. Threat Model Graph — assets, threats, controls, relationships
- * 2. Data Flow Diagram — @flows with trust boundaries
- * 3. Attack Surface — exposures grouped by severity
+ * Three Mermaid diagrams and one structured topology dataset.
+ *   - generateThreatGraph      — LR flowchart of assets, threats, controls, mitigations
+ *   - generateDataFlowDiagram  — LR flow graph with trust boundary groupings
+ *   - generateAttackSurface    — TB grouping of exposures per asset, severity-coloured
+ *   - generateTopologyData     — structured graph data powering the interactive D3 view
+ *
+ * All four generators share a single alias map so that #id, bare id, name, and
+ * path.join() forms of an asset/threat/control collapse onto the same node.
+ * This removes the long-standing duplicate-node bug that made the Mermaid
+ * diagrams render the same asset twice whenever sources mixed ref forms.
+ *
+ * @flows ThreatModel -> #dashboard via generateThreatGraph -- "Threat model relationships rendered as Mermaid source"
+ * @flows ThreatModel -> #dashboard via generateTopologyData -- "Threat model relationships rendered as structured D3 graph data"
+ * @mitigates #dashboard against #xss using #output-encoding -- "Diagram labels are sanitized for Mermaid and emitted to D3 as text data"
+ * @comment -- "Alias map collapses #id / name / path-joined ref forms so Mermaid and D3 views agree on identity"
  */
 
 import type { ThreatModel } from '../types/index.js';
 
-/** Sanitize IDs for Mermaid (no dots, spaces, hashes) */
+/* ══════════════════════════════════════════════════════════════════════════
+ * Shared sanitizers and ranking utilities
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/** Sanitize IDs for Mermaid (no dots, spaces, hashes). */
 function mid(s: string): string {
   return s.replace(/[^a-zA-Z0-9_]/g, '_');
 }
 
-/** Truncate long labels and sanitize for Mermaid (strip syntax-breaking characters) */
+/** Truncate long labels and sanitize for Mermaid (strip syntax-breaking characters). */
 function label(s: string, max = 40): string {
   const clean = s.replace(/"/g, "'").replace(/[\[\]{}()|`;]/g, '');
   return clean.length > max ? clean.slice(0, max - 1) + '…' : clean;
@@ -29,6 +44,411 @@ function labelFull(s: string): string {
 function normalizeRef(ref: string): string {
   return ref.startsWith('#') ? ref.slice(1) : ref;
 }
+
+function refKey(ref: string): string {
+  return normalizeRef(ref).trim().toLowerCase();
+}
+
+const severityRank: Record<string, number> = { critical: 0, p0: 0, high: 1, p1: 1, medium: 2, p2: 2, low: 3, p3: 3, unset: 4 };
+const statusRank: Record<string, number> = { confirmed: 0, open: 1, accepted: 2, mitigated: 3, none: 4 };
+
+function normalizeSeverity(severity?: string): string {
+  const s = (severity || '').toLowerCase();
+  return s && severityRank[s] !== undefined ? s : 'unset';
+}
+
+function strongerSeverity(a: string, b: string): string {
+  return (severityRank[b] ?? 4) < (severityRank[a] ?? 4) ? b : a;
+}
+
+function strongerStatus(a: string, b: string): string {
+  return (statusRank[b] ?? 4) < (statusRank[a] ?? 4) ? b : a;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Alias map — single source of truth for ref → canonical node resolution.
+ * Every diagram generator routes asset/threat/control references through this
+ * map so that `#api`, `api`, and `App.API` all collapse onto the same node.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+type NodeKind = 'asset' | 'threat' | 'control';
+
+interface AliasNode {
+  key: string;       // canonical node key (stable across ref forms)
+  label: string;     // best display label
+  id?: string;       // raw id if defined
+  kind: NodeKind;
+  severity: string;
+  externalRefs: string[];
+}
+
+interface ModelAliases {
+  resolve(kind: NodeKind, ref: string): AliasNode;
+  getExisting(kind: NodeKind, ref: string): AliasNode | undefined;
+  getAll(kind: NodeKind): AliasNode[];
+}
+
+function buildAliases(model: ThreatModel): ModelAliases {
+  const byKey: Record<NodeKind, Map<string, AliasNode>> = { asset: new Map(), threat: new Map(), control: new Map() };
+  const byRef: Record<NodeKind, Map<string, AliasNode>> = { asset: new Map(), threat: new Map(), control: new Map() };
+
+  const register = (kind: NodeKind, node: AliasNode, refs: Array<string | undefined>): void => {
+    byKey[kind].set(node.key, node);
+    for (const r of refs) {
+      if (!r) continue;
+      const k = refKey(r);
+      if (!k) continue;
+      const existing = byRef[kind].get(k);
+      if (!existing) byRef[kind].set(k, node);
+    }
+  };
+
+  const upsert = (kind: NodeKind, key: string, displayLabel: string, refs: Array<string | undefined>, opts?: { id?: string; severity?: string; externalRefs?: string[] }): AliasNode => {
+    let node = byKey[kind].get(key);
+    if (!node) {
+      node = {
+        key,
+        label: displayLabel || key,
+        id: opts?.id,
+        kind,
+        severity: normalizeSeverity(opts?.severity),
+        externalRefs: opts?.externalRefs ? [...opts.externalRefs] : [],
+      };
+    } else {
+      if (displayLabel && displayLabel.length > node.label.length) node.label = displayLabel;
+      if (opts?.id && !node.id) node.id = opts.id;
+      if (opts?.severity) node.severity = strongerSeverity(node.severity, normalizeSeverity(opts.severity));
+      if (opts?.externalRefs) for (const r of opts.externalRefs) if (!node.externalRefs.includes(r)) node.externalRefs.push(r);
+    }
+    register(kind, node, refs);
+    return node;
+  };
+
+  // Pre-register defined entities. #id takes priority over display label as the canonical key
+  // so that any later ref using the id resolves to the same node.
+  for (const a of model.assets) {
+    const display = a.path.join('.');
+    const key = a.id ? refKey(a.id) : refKey(display);
+    upsert('asset', key, display, [a.id, a.id ? `#${a.id}` : undefined, display, ...a.path], { id: a.id });
+  }
+  for (const t of model.threats) {
+    const key = t.id ? refKey(t.id) : refKey(t.name);
+    upsert('threat', key, t.name, [t.id, t.id ? `#${t.id}` : undefined, t.name, t.canonical_name], {
+      id: t.id,
+      severity: t.severity,
+      externalRefs: t.external_refs,
+    });
+  }
+  for (const c of model.controls) {
+    const key = c.id ? refKey(c.id) : refKey(c.name);
+    upsert('control', key, c.name, [c.id, c.id ? `#${c.id}` : undefined, c.name, c.canonical_name], { id: c.id });
+  }
+
+  // Sweep exposures/mitigations to pick up severities for undefined threats and external refs.
+  for (const e of model.exposures) {
+    const threat = byRef.threat.get(refKey(e.threat));
+    if (threat) {
+      if (e.severity) threat.severity = strongerSeverity(threat.severity, normalizeSeverity(e.severity));
+      for (const r of e.external_refs) if (!threat.externalRefs.includes(r)) threat.externalRefs.push(r);
+    }
+  }
+
+  const resolve = (kind: NodeKind, ref: string): AliasNode => {
+    const k = refKey(ref);
+    const existing = byRef[kind].get(k);
+    if (existing) return existing;
+    const display = normalizeRef(ref) || 'unknown';
+    return upsert(kind, k || display.toLowerCase(), display, [ref, display]);
+  };
+
+  return {
+    resolve,
+    getExisting: (kind, ref) => byRef[kind].get(refKey(ref)),
+    getAll: (kind) => [...byKey[kind].values()],
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Topology data (interactive D3 view)
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+export interface DiagramTopologyNode {
+  id: string;
+  label: string;
+  kind: 'asset' | 'threat' | 'control';
+  severity: string;
+  status: string;
+  exposures: number;
+  openExposures: number;
+  mitigations: number;
+  flows: number;
+  confirmed: number;
+  riskScore: number;
+  classifications: string[];
+  owner?: string;
+  refs: string[];
+}
+
+export interface DiagramTopologyLink {
+  source: string;
+  target: string;
+  kind: 'exposes' | 'confirmed' | 'mitigates' | 'protects' | 'accepts' | 'transfers' | 'flows' | 'boundary' | 'validates';
+  label: string;
+  severity: string;
+  status: string;
+  count: number;
+}
+
+export interface DiagramTopology {
+  nodes: DiagramTopologyNode[];
+  links: DiagramTopologyLink[];
+  summary: {
+    assets: number;
+    threats: number;
+    controls: number;
+    links: number;
+    open: number;
+    mitigated: number;
+    accepted: number;
+    confirmed: number;
+    criticalAssets: number;
+  };
+}
+
+const topoId = (kind: NodeKind, key: string): string => `${kind}:${key || 'unknown'}`;
+
+/**
+ * Build the structured graph consumed by the dashboard's native D3 topology.
+ * Shares an alias map with the Mermaid generators so #id/name/path forms agree.
+ */
+export function generateTopologyData(model: ThreatModel): DiagramTopology {
+  const aliases = buildAliases(model);
+
+  const nodes = new Map<string, DiagramTopologyNode>();
+  const links = new Map<string, DiagramTopologyLink>();
+
+  const materialize = (alias: AliasNode): DiagramTopologyNode => {
+    const id = topoId(alias.kind, alias.key);
+    let node = nodes.get(id);
+    if (!node) {
+      node = {
+        id,
+        label: alias.label,
+        kind: alias.kind,
+        severity: alias.severity,
+        status: 'none',
+        exposures: 0,
+        openExposures: 0,
+        mitigations: 0,
+        flows: 0,
+        confirmed: 0,
+        riskScore: 0,
+        classifications: [],
+        refs: [alias.label, alias.id, alias.id ? `#${alias.id}` : undefined].filter(Boolean) as string[],
+      };
+      nodes.set(id, node);
+    } else {
+      node.severity = strongerSeverity(node.severity, alias.severity);
+      if (alias.label.length > node.label.length) node.label = alias.label;
+    }
+    return node;
+  };
+
+  const resolve = (kind: NodeKind, ref: string): DiagramTopologyNode => materialize(aliases.resolve(kind, ref));
+
+  const addLink = (
+    source: string,
+    target: string,
+    kind: DiagramTopologyLink['kind'],
+    labelText: string,
+    severity: string = 'unset',
+    status: string = 'none',
+  ): void => {
+    if (!source || !target || source === target) return;
+    const key = `${source}|${target}|${kind}|${labelText}`;
+    const sev = normalizeSeverity(severity);
+    let link = links.get(key);
+    if (!link) {
+      link = { source, target, kind, label: labelText, severity: sev, status, count: 0 };
+      links.set(key, link);
+    }
+    link.count++;
+    link.severity = strongerSeverity(link.severity, sev);
+    link.status = strongerStatus(link.status, status);
+  };
+
+  const markNode = (node: DiagramTopologyNode, severity: string, status: string): void => {
+    node.severity = strongerSeverity(node.severity, normalizeSeverity(severity));
+    node.status = strongerStatus(node.status, status);
+  };
+
+  // Pre-seed nodes for every defined entity so the graph reflects the full model,
+  // not just what relationships happen to reference.
+  for (const a of aliases.getAll('asset')) materialize(a);
+  for (const t of aliases.getAll('threat')) materialize(t);
+  for (const c of aliases.getAll('control')) materialize(c);
+
+  // Classifications + ownership
+  for (const h of model.data_handling) {
+    const asset = resolve('asset', h.asset);
+    const classification = h.classification.toUpperCase();
+    if (!asset.classifications.includes(classification)) asset.classifications.push(classification);
+  }
+  for (const o of model.ownership) {
+    resolve('asset', o.asset).owner = o.owner;
+  }
+
+  // Compute per-pair resolution status for exposure links
+  const mitigatedPairs = new Set<string>();
+  const acceptedPairs = new Set<string>();
+  for (const m of model.mitigations) {
+    const asset = resolve('asset', m.asset);
+    const threat = resolve('threat', m.threat);
+    mitigatedPairs.add(`${asset.id}::${threat.id}`);
+  }
+  for (const a of model.acceptances) {
+    const asset = resolve('asset', a.asset);
+    const threat = resolve('threat', a.threat);
+    acceptedPairs.add(`${asset.id}::${threat.id}`);
+  }
+
+  for (const e of model.exposures) {
+    const asset = resolve('asset', e.asset);
+    const threat = resolve('threat', e.threat);
+    const pair = `${asset.id}::${threat.id}`;
+    const status = acceptedPairs.has(pair) ? 'accepted' : mitigatedPairs.has(pair) ? 'mitigated' : 'open';
+    const severity = normalizeSeverity(e.severity);
+    asset.exposures++;
+    threat.exposures++;
+    if (status === 'open') {
+      asset.openExposures++;
+      threat.openExposures++;
+    }
+    markNode(asset, severity, status);
+    markNode(threat, severity, status);
+    addLink(asset.id, threat.id, 'exposes', 'exposes', severity, status);
+  }
+
+  for (const c of model.confirmed || []) {
+    const asset = resolve('asset', c.asset);
+    const threat = resolve('threat', c.threat);
+    const severity = normalizeSeverity(c.severity);
+    asset.confirmed++;
+    threat.confirmed++;
+    markNode(asset, severity, 'confirmed');
+    markNode(threat, severity, 'confirmed');
+    addLink(asset.id, threat.id, 'confirmed', 'confirmed', severity, 'confirmed');
+  }
+
+  for (const m of model.mitigations) {
+    const asset = resolve('asset', m.asset);
+    const threat = resolve('threat', m.threat);
+    asset.mitigations++;
+    threat.mitigations++;
+    markNode(asset, 'unset', 'mitigated');
+    markNode(threat, 'unset', 'mitigated');
+    if (m.control) {
+      const control = resolve('control', m.control);
+      control.mitigations++;
+      addLink(control.id, threat.id, 'mitigates', 'mitigates', threat.severity, 'mitigated');
+      addLink(control.id, asset.id, 'protects', 'protects', 'unset', 'mitigated');
+    } else {
+      addLink(asset.id, threat.id, 'mitigates', 'mitigates', threat.severity, 'mitigated');
+    }
+  }
+
+  for (const a of model.acceptances) {
+    const asset = resolve('asset', a.asset);
+    const threat = resolve('threat', a.threat);
+    markNode(asset, threat.severity, 'accepted');
+    markNode(threat, threat.severity, 'accepted');
+    addLink(asset.id, threat.id, 'accepts', 'accepts', threat.severity, 'accepted');
+  }
+
+  for (const t of model.transfers) {
+    const source = resolve('asset', t.source);
+    const target = resolve('asset', t.target);
+    const threat = resolve('threat', t.threat);
+    addLink(source.id, target.id, 'transfers', `transfers ${threat.label}`, threat.severity, 'none');
+  }
+
+  for (const f of model.flows) {
+    const source = resolve('asset', f.source);
+    const target = resolve('asset', f.target);
+    source.flows++;
+    target.flows++;
+    addLink(source.id, target.id, 'flows', f.mechanism || 'flows', 'unset', 'none');
+  }
+
+  for (const b of model.boundaries) {
+    const a = resolve('asset', b.asset_a);
+    const z = resolve('asset', b.asset_b);
+    addLink(a.id, z.id, 'boundary', b.description || b.id || 'trust boundary', 'unset', 'none');
+  }
+
+  for (const v of model.validations) {
+    const control = resolve('control', v.control);
+    const asset = resolve('asset', v.asset);
+    addLink(control.id, asset.id, 'validates', 'validates', 'unset', 'mitigated');
+  }
+
+  // Risk score: exposures weighted by severity, amplified by confirmed hits.
+  const sevWeight: Record<string, number> = { critical: 10, p0: 10, high: 6, p1: 6, medium: 3, p2: 3, low: 1, p3: 1, unset: 1 };
+  for (const n of nodes.values()) {
+    n.riskScore = n.openExposures * (sevWeight[n.severity] ?? 1) + n.confirmed * 12;
+  }
+
+  const nodeList = [...nodes.values()]
+    .map(n => ({ ...n, classifications: [...n.classifications].sort(), refs: [...n.refs].sort() }))
+    .sort((a, b) => {
+      const kindOrder = { asset: 0, threat: 1, control: 2 };
+      const byKind = kindOrder[a.kind] - kindOrder[b.kind];
+      if (byKind !== 0) return byKind;
+      const byRisk = b.riskScore - a.riskScore;
+      if (byRisk !== 0) return byRisk;
+      const bySeverity = (severityRank[a.severity] ?? 4) - (severityRank[b.severity] ?? 4);
+      if (bySeverity !== 0) return bySeverity;
+      return a.label.localeCompare(b.label);
+    });
+  const linkList = [...links.values()].sort((a, b) => a.kind.localeCompare(b.kind) || b.count - a.count || a.label.localeCompare(b.label));
+
+  const openCount = model.exposures.filter(e => {
+    const assetId = topoId('asset', aliases.resolve('asset', e.asset).key);
+    const threatId = topoId('threat', aliases.resolve('threat', e.threat).key);
+    const pair = `${assetId}::${threatId}`;
+    return !mitigatedPairs.has(pair) && !acceptedPairs.has(pair);
+  }).length;
+  const mitigatedCount = model.exposures.filter(e => {
+    const assetId = topoId('asset', aliases.resolve('asset', e.asset).key);
+    const threatId = topoId('threat', aliases.resolve('threat', e.threat).key);
+    return mitigatedPairs.has(`${assetId}::${threatId}`);
+  }).length;
+  const acceptedCount = model.exposures.filter(e => {
+    const assetId = topoId('asset', aliases.resolve('asset', e.asset).key);
+    const threatId = topoId('threat', aliases.resolve('threat', e.threat).key);
+    return acceptedPairs.has(`${assetId}::${threatId}`);
+  }).length;
+
+  return {
+    nodes: nodeList,
+    links: linkList,
+    summary: {
+      assets: nodeList.filter(n => n.kind === 'asset').length,
+      threats: nodeList.filter(n => n.kind === 'threat').length,
+      controls: nodeList.filter(n => n.kind === 'control').length,
+      links: linkList.length,
+      open: openCount,
+      mitigated: mitigatedCount,
+      accepted: acceptedCount,
+      confirmed: (model.confirmed || []).length,
+      criticalAssets: nodeList.filter(n => n.kind === 'asset' && (n.severity === 'critical' || n.severity === 'p0') && n.status !== 'mitigated').length,
+    },
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Mermaid helpers
+ * ══════════════════════════════════════════════════════════════════════════ */
 
 /** Heuristic icon for data-flow assets to make diagrams easier to scan. */
 function assetIcon(name: string): string {
@@ -51,436 +471,507 @@ function flowIcon(mechanism: string): string {
   return '📡';
 }
 
-/**
+function severityIcon(sev: string): string {
+  if (sev === 'critical' || sev === 'p0') return '🔴';
+  if (sev === 'high' || sev === 'p1') return '🟠';
+  if (sev === 'medium' || sev === 'p2') return '🟡';
+  if (sev === 'low' || sev === 'p3') return '🔵';
+  return '⚪';
+}
+
+function severityClass(sev: string): string {
+  if (sev === 'critical' || sev === 'p0') return 'sev_crit';
+  if (sev === 'high' || sev === 'p1') return 'sev_high';
+  if (sev === 'medium' || sev === 'p2') return 'sev_med';
+  if (sev === 'low' || sev === 'p3') return 'sev_low';
+  return 'sev_unset';
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
  * Diagram 1: Threat Model Graph
- * Shows assets (boxes), threats (red), controls (green), and relationships.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+interface ThreatGraphOptions {
+  /** Show all threats regardless of severity. Defaults to auto-filter when >12 distinct threats are exposed. */
+  showAll?: boolean;
+}
+
+/**
+ * LR flowchart: assets (boxes), threats (red), controls (green), and relationships.
+ * All refs are canonicalized through buildAliases so mixed #id/name usage collapses.
  */
-export function generateThreatGraph(model: ThreatModel): string {
-  // Filter to critical+high severity threats to keep diagram readable
-  const highSevThreats = new Set<string>();
-  const sevMap = new Map<string, string>();
-  const threatLabelMap = new Map<string, string>();
-  const sevRank: Record<string, number> = { critical: 0, p0: 0, high: 1, p1: 1, medium: 2, p2: 2, low: 3, p3: 3, unset: 4 };
+export function generateThreatGraph(model: ThreatModel, opts: ThreatGraphOptions = {}): string {
+  const aliases = buildAliases(model);
+  const resolve = (kind: NodeKind, ref: string) => aliases.resolve(kind, ref);
 
-  const setThreatSeverity = (ref: string, severity: string): void => {
-    if (!ref || !severity) return;
-    const norm = normalizeRef(ref);
-    const current = sevMap.get(ref) || sevMap.get(norm);
-    if (!current || (sevRank[severity] ?? 4) < (sevRank[current] ?? 4)) {
-      sevMap.set(ref, severity);
-      sevMap.set(norm, severity);
-    }
+  // Auto-filter to high/critical if the diagram would otherwise be overwhelming.
+  const distinctThreats = new Set<string>();
+  for (const e of model.exposures) distinctThreats.add(resolve('threat', e.threat).key);
+  const filterHigh = opts.showAll ? false : distinctThreats.size > 12;
+
+  const isHighSev = (sev: string): boolean => sev === 'critical' || sev === 'p0' || sev === 'high' || sev === 'p1';
+
+  const usedAssetKeys = new Set<string>();   // key → seen
+  const usedThreatKeys = new Set<string>();
+  const usedControlKeys = new Set<string>();
+
+  const registerAsset = (ref: string): AliasNode => {
+    const n = resolve('asset', ref);
+    usedAssetKeys.add(n.key);
+    return n;
+  };
+  const registerThreat = (ref: string): AliasNode => {
+    const n = resolve('threat', ref);
+    usedThreatKeys.add(n.key);
+    return n;
+  };
+  const registerControl = (ref: string): AliasNode => {
+    const n = resolve('control', ref);
+    usedControlKeys.add(n.key);
+    return n;
   };
 
-  const setThreatLabel = (ref: string, display: string): void => {
-    if (!ref || !display) return;
-    const norm = normalizeRef(ref);
-    const existing = threatLabelMap.get(ref) || threatLabelMap.get(norm);
-    // Prefer richer labels (e.g., canonical threat name) over terse id-like refs.
-    if (!existing || display.length > existing.length) {
-      threatLabelMap.set(ref, display);
-      threatLabelMap.set(norm, display);
-    }
-  };
-
-  for (const t of model.threats) {
-    const s = (t.severity || '').toLowerCase();
-    if (t.id) {
-      setThreatSeverity(`#${t.id}`, s);
-      setThreatSeverity(t.id, s);
-      setThreatLabel(`#${t.id}`, t.name);
-      setThreatLabel(t.id, t.name);
-    }
-    setThreatSeverity(t.name, s);
-    setThreatLabel(t.name, t.name);
-    if (s === 'critical' || s === 'p0' || s === 'high' || s === 'p1') {
-      if (t.id) { highSevThreats.add(`#${t.id}`); highSevThreats.add(t.id); }
-      highSevThreats.add(t.name);
-      highSevThreats.add(normalizeRef(t.name));
-    }
-  }
-
-  // Exposure-level severity can exist even when a threat definition doesn't.
+  // Walk relationships and canonicalize usage
   for (const e of model.exposures) {
-    const s = (e.severity || '').toLowerCase();
-    setThreatSeverity(e.threat, s);
-    setThreatLabel(e.threat, e.threat.replace('#', ''));
-    if (s === 'critical' || s === 'p0' || s === 'high' || s === 'p1') {
-      highSevThreats.add(e.threat);
-      highSevThreats.add(normalizeRef(e.threat));
-    }
-  }
-
-  const isHighThreat = (ref: string): boolean => highSevThreats.has(ref) || highSevThreats.has(normalizeRef(ref));
-
-  // If very many threats, filter to critical+high only
-  const totalThreats = new Set<string>();
-  for (const e of model.exposures) totalThreats.add(e.threat);
-  const filterHigh = totalThreats.size > 12;
-
-  const lines: string[] = ['graph LR'];
-  const usedAssets = new Set<string>();
-  const usedThreats = new Set<string>();
-  const usedControls = new Set<string>();
-  const edges = new Set<string>();
-
-  for (const e of model.exposures) {
-    if (filterHigh && !isHighThreat(e.threat)) continue;
-    usedAssets.add(e.asset);
-    usedThreats.add(e.threat);
+    const threat = resolve('threat', e.threat);
+    const effectiveSev = e.severity ? normalizeSeverity(e.severity) : threat.severity;
+    if (filterHigh && !isHighSev(effectiveSev)) continue;
+    registerAsset(e.asset);
+    registerThreat(e.threat);
   }
   for (const m of model.mitigations) {
-    if (filterHigh && !isHighThreat(m.threat)) continue;
-    usedAssets.add(m.asset); usedThreats.add(m.threat);
-    if (m.control) usedControls.add(m.control);
+    const threat = resolve('threat', m.threat);
+    if (filterHigh && !isHighSev(threat.severity)) continue;
+    registerAsset(m.asset);
+    registerThreat(m.threat);
+    if (m.control) registerControl(m.control);
   }
   for (const a of model.acceptances) {
-    if (filterHigh && !isHighThreat(a.threat)) continue;
-    usedAssets.add(a.asset); usedThreats.add(a.threat);
+    const threat = resolve('threat', a.threat);
+    if (filterHigh && !isHighSev(threat.severity)) continue;
+    registerAsset(a.asset);
+    registerThreat(a.threat);
   }
   for (const t of model.transfers) {
-    if (filterHigh && !isHighThreat(t.threat)) continue;
-    usedAssets.add(t.source); usedAssets.add(t.target); usedThreats.add(t.threat);
+    const threat = resolve('threat', t.threat);
+    if (filterHigh && !isHighSev(threat.severity)) continue;
+    registerAsset(t.source);
+    registerAsset(t.target);
+    registerThreat(t.threat);
   }
   for (const v of model.validations) {
-    usedAssets.add(v.asset);
-    usedControls.add(v.control);
+    registerAsset(v.asset);
+    registerControl(v.control);
+  }
+  for (const c of model.confirmed || []) {
+    registerAsset(c.asset);
+    registerThreat(c.threat);
   }
 
-  // ── Build data-classification map (asset → classification badges) ──
-  const dataClassMap = new Map<string, string[]>();
+  // Classifications + ownership lookup (keyed on asset key)
+  const dataClassByKey = new Map<string, string[]>();
   for (const h of model.data_handling) {
-    const norm = normalizeRef(h.asset);
-    if (!dataClassMap.has(h.asset)) dataClassMap.set(h.asset, []);
-    dataClassMap.get(h.asset)!.push(h.classification.toUpperCase());
-    if (norm !== h.asset) {
-      if (!dataClassMap.has(norm)) dataClassMap.set(norm, []);
-      dataClassMap.get(norm)!.push(h.classification.toUpperCase());
-    }
+    const node = resolve('asset', h.asset);
+    const list = dataClassByKey.get(node.key) ?? [];
+    const cls = h.classification.toUpperCase();
+    if (!list.includes(cls)) list.push(cls);
+    dataClassByKey.set(node.key, list);
   }
+  const ownerByKey = new Map<string, string>();
+  for (const o of model.ownership) ownerByKey.set(resolve('asset', o.asset).key, o.owner);
 
-  // ── Build ownership map (asset → owner) ──
-  const ownerMap = new Map<string, string>();
-  for (const o of model.ownership) {
-    ownerMap.set(o.asset, o.owner);
-    ownerMap.set(normalizeRef(o.asset), o.owner);
-  }
-
-  // ── Build external-refs map (threat → CWE/refs) ──
-  const extRefMap = new Map<string, string[]>();
-  const addExtRefs = (ref: string, refs: string[]) => {
-    if (!refs || refs.length === 0) return;
-    const norm = normalizeRef(ref);
-    for (const r of [ref, norm]) {
-      if (!extRefMap.has(r)) extRefMap.set(r, []);
-      for (const er of refs) {
-        if (!extRefMap.get(r)!.includes(er)) extRefMap.get(r)!.push(er);
-      }
-    }
-  };
-  for (const t of model.threats) {
-    if (t.external_refs.length > 0) {
-      addExtRefs(t.name, t.external_refs);
-      if (t.id) { addExtRefs(`#${t.id}`, t.external_refs); addExtRefs(t.id, t.external_refs); }
-    }
-  }
-  for (const e of model.exposures) {
-    if (e.external_refs.length > 0) addExtRefs(e.threat, e.external_refs);
-  }
-
-  // ── Determine trust-boundary groupings for used assets ──
-  const assetZone = new Map<string, string>();  // asset → zone id
-  const zoneAssets = new Map<string, Set<string>>(); // zone id → assets
-  const zoneLabel = new Map<string, string>(); // zone id → label
+  // Trust-zone grouping: pair up each boundary's two sides into a shared subgraph
+  // titled by the boundary description. An asset may appear in multiple zones, but
+  // we dedupe by putting it into its first-seen zone to keep Mermaid valid.
+  const zoneById = new Map<string, { label: string; members: Set<string> }>();
+  const assetZoneByKey = new Map<string, string>();
   let zIdx = 0;
   for (const b of model.boundaries) {
-    // Only include boundaries where at least one side is a used asset
-    const aUsed = usedAssets.has(b.asset_a) || usedAssets.has(normalizeRef(b.asset_a));
-    const bUsed = usedAssets.has(b.asset_b) || usedAssets.has(normalizeRef(b.asset_b));
-    if (!aUsed && !bUsed) continue;
-
-    // Assign each side to a zone if not already assigned
-    for (const side of [b.asset_a, b.asset_b]) {
-      if (!assetZone.has(side) && !assetZone.has(normalizeRef(side))) {
-        const zId = `TZ${zIdx++}`;
-        assetZone.set(side, zId);
-        assetZone.set(normalizeRef(side), zId);
-        zoneAssets.set(zId, new Set([side]));
-        zoneLabel.set(zId, side);
-      }
-    }
+    const aKey = resolve('asset', b.asset_a).key;
+    const bKey = resolve('asset', b.asset_b).key;
+    if (!usedAssetKeys.has(aKey) && !usedAssetKeys.has(bKey)) continue;
+    const zoneId = `TZ${zIdx++}`;
+    const desc = b.description || b.id || 'trust boundary';
+    const zone = { label: desc, members: new Set<string>() };
+    if (usedAssetKeys.has(aKey) && !assetZoneByKey.has(aKey)) { zone.members.add(aKey); assetZoneByKey.set(aKey, zoneId); }
+    if (usedAssetKeys.has(bKey) && !assetZoneByKey.has(bKey)) { zone.members.add(bKey); assetZoneByKey.set(bKey, zoneId); }
+    if (zone.members.size > 0) zoneById.set(zoneId, zone);
   }
 
-  // ── Emit trust-boundary subgraphs ──
-  const inSubgraph = new Set<string>();
-  for (const [zId, members] of zoneAssets) {
-    const rep = zoneLabel.get(zId) || [...members][0];
-    lines.push(`  subgraph ${zId}["🧱 ${label(rep)}"]`);
-    for (const m of members) {
-      if (!usedAssets.has(m) && !usedAssets.has(normalizeRef(m))) continue;
-      const badges = dataClassMap.get(m) || dataClassMap.get(normalizeRef(m));
-      const owner = ownerMap.get(m) || ownerMap.get(normalizeRef(m));
-      let suffix = '';
-      if (badges && badges.length > 0) suffix += ` [${badges.join(', ')}]`;
-      if (owner) suffix += ` (${label(owner, 15)})`;
-      lines.push(`    ${mid(m)}["🔷 ${label(m)}${suffix}"]`);
-      inSubgraph.add(m);
-      inSubgraph.add(normalizeRef(m));
+  const lines: string[] = [
+    // rankSpacing controls horizontal distance between columns in LR graphs — bump it
+    // to keep the diagram wide instead of cramming everything into a narrow strip.
+    '%%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%',
+    'graph LR',
+  ];
+
+  const assetLabelFor = (node: AliasNode): string => {
+    const classes = dataClassByKey.get(node.key);
+    const owner = ownerByKey.get(node.key);
+    let suffix = '';
+    if (classes && classes.length > 0) suffix += ` [${classes.join(', ')}]`;
+    if (owner) suffix += ` (${label(owner, 15)})`;
+    return `🔷 ${label(node.label)}${suffix}`;
+  };
+
+  // Emit subgraphs first
+  const emittedAssets = new Set<string>();
+  for (const [zoneId, zone] of zoneById) {
+    lines.push(`  subgraph ${zoneId}["🧱 ${label(zone.label, 40)}"]`);
+    for (const key of zone.members) {
+      const node = [...aliases.getAll('asset')].find(n => n.key === key);
+      if (!node) continue;
+      lines.push(`    ${mid(node.key)}["${assetLabelFor(node)}"]`);
+      emittedAssets.add(key);
     }
     lines.push('  end');
   }
 
-  // ── Asset nodes (not already in a subgraph) ──
-  for (const a of usedAssets) {
-    if (inSubgraph.has(a) || inSubgraph.has(normalizeRef(a))) continue;
-    const badges = dataClassMap.get(a) || dataClassMap.get(normalizeRef(a));
-    const owner = ownerMap.get(a) || ownerMap.get(normalizeRef(a));
-    let suffix = '';
-    if (badges && badges.length > 0) suffix += ` [${badges.join(', ')}]`;
-    if (owner) suffix += ` (${label(owner, 15)})`;
-    lines.push(`  ${mid(a)}["🔷 ${label(a)}${suffix}"]`);
+  // Standalone assets
+  for (const key of usedAssetKeys) {
+    if (emittedAssets.has(key)) continue;
+    const node = [...aliases.getAll('asset')].find(n => n.key === key);
+    if (!node) continue;
+    lines.push(`  ${mid(node.key)}["${assetLabelFor(node)}"]`);
   }
-  // Threat nodes (with CWE/external-ref badges)
-  for (const t of usedThreats) {
-    const sev = sevMap.get(t) || sevMap.get(normalizeRef(t)) || '';
-    const display = threatLabelMap.get(t) || threatLabelMap.get(normalizeRef(t)) || t.replace('#', '');
-    const icon = sev === 'critical' || sev === 'p0' ? '🔴' : sev === 'high' || sev === 'p1' ? '🟠' : '🟡';
-    const refs = extRefMap.get(t) || extRefMap.get(normalizeRef(t));
-    const refSuffix = refs && refs.length > 0 ? ` (${refs.slice(0, 2).join(', ')})` : '';
-    lines.push(`  ${mid(t)}["${icon} ${label(display, 35)}${refSuffix}"]:::threat`);
+
+  // Threat nodes
+  for (const key of usedThreatKeys) {
+    const node = [...aliases.getAll('threat')].find(n => n.key === key);
+    if (!node) continue;
+    const icon = severityIcon(node.severity);
+    const refSuffix = node.externalRefs.length > 0 ? ` (${node.externalRefs.slice(0, 2).join(', ')})` : '';
+    lines.push(`  ${mid(node.key)}["${icon} ${label(node.label, 35)}${refSuffix}"]:::threat`);
   }
+
   // Control nodes
-  for (const c of usedControls) {
-    lines.push(`  ${mid(c)}["🛡️ ${label(c.replace('#', ''))}"]:::control`);
+  for (const key of usedControlKeys) {
+    const node = [...aliases.getAll('control')].find(n => n.key === key);
+    if (!node) continue;
+    lines.push(`  ${mid(node.key)}["🛡️ ${label(node.label)}"]:::control`);
   }
 
-  // Exposure edges (deduplicated)
+  // Edge emission (deduped)
+  const edgeKeys = new Set<string>();
+  const edge = (sourceKey: string, targetKey: string, kind: string, syntax: string) => {
+    const k = `${sourceKey}|${targetKey}|${kind}`;
+    if (edgeKeys.has(k)) return;
+    edgeKeys.add(k);
+    lines.push(`  ${syntax}`);
+  };
+
   for (const e of model.exposures) {
-    if (filterHigh && !isHighThreat(e.threat)) continue;
-    const key = `${mid(e.asset)}->exp->${mid(e.threat)}`;
-    if (!edges.has(key)) {
-      edges.add(key);
-      lines.push(`  ${mid(e.asset)} -. exposed .-> ${mid(e.threat)}`);
-    }
+    const threat = resolve('threat', e.threat);
+    const asset = resolve('asset', e.asset);
+    const effectiveSev = e.severity ? normalizeSeverity(e.severity) : threat.severity;
+    if (filterHigh && !isHighSev(effectiveSev)) continue;
+    edge(asset.key, threat.key, 'exp', `${mid(asset.key)} -. exposes .-> ${mid(threat.key)}`);
   }
-  // Mitigation edges
+  for (const c of model.confirmed || []) {
+    const asset = resolve('asset', c.asset);
+    const threat = resolve('threat', c.threat);
+    edge(asset.key, threat.key, 'conf', `${mid(asset.key)} == "💥 confirmed" ==> ${mid(threat.key)}`);
+  }
   for (const m of model.mitigations) {
-    if (filterHigh && !isHighThreat(m.threat)) continue;
+    const threat = resolve('threat', m.threat);
+    const asset = resolve('asset', m.asset);
+    if (filterHigh && !isHighSev(threat.severity)) continue;
     if (m.control) {
-      const k1 = `${mid(m.control)}->mit->${mid(m.threat)}`;
-      if (!edges.has(k1)) { edges.add(k1); lines.push(`  ${mid(m.control)} -- mitigates --> ${mid(m.threat)}`); }
-      const k2 = `${mid(m.control)}->on->${mid(m.asset)}`;
-      if (!edges.has(k2)) { edges.add(k2); lines.push(`  ${mid(m.control)} -.- ${mid(m.asset)}`); }
+      const control = resolve('control', m.control);
+      edge(control.key, threat.key, 'mit', `${mid(control.key)} -- mitigates --> ${mid(threat.key)}`);
+      edge(control.key, asset.key, 'prot', `${mid(control.key)} -. protects .-> ${mid(asset.key)}`);
     } else {
-      const key = `${mid(m.asset)}->mit->${mid(m.threat)}`;
-      if (!edges.has(key)) { edges.add(key); lines.push(`  ${mid(m.asset)} -. mitigates .-> ${mid(m.threat)}`); }
+      edge(asset.key, threat.key, 'mit', `${mid(asset.key)} -. mitigates .-> ${mid(threat.key)}`);
     }
   }
-  // Acceptance edges
   for (const a of model.acceptances) {
-    if (filterHigh && !isHighThreat(a.threat)) continue;
-    const key = `${mid(a.asset)}->acc->${mid(a.threat)}`;
-    if (!edges.has(key)) { edges.add(key); lines.push(`  ${mid(a.asset)} -- accepts --> ${mid(a.threat)}`); }
+    const threat = resolve('threat', a.threat);
+    const asset = resolve('asset', a.asset);
+    if (filterHigh && !isHighSev(threat.severity)) continue;
+    edge(asset.key, threat.key, 'acc', `${mid(asset.key)} -- accepts --> ${mid(threat.key)}`);
   }
-  // Transfer edges (risk moved between parties for a specific threat)
   for (const t of model.transfers) {
-    if (filterHigh && !isHighThreat(t.threat)) continue;
-    const threatDisplay = threatLabelMap.get(t.threat) || threatLabelMap.get(normalizeRef(t.threat)) || t.threat.replace('#', '');
-    const key = `${mid(t.source)}->xfer->${mid(t.target)}::${mid(t.threat)}`;
-    if (!edges.has(key)) {
-      edges.add(key);
-      lines.push(`  ${mid(t.source)} -- "transfers risk: ${label(threatDisplay, 26)}" --> ${mid(t.target)}`);
-    }
+    const threat = resolve('threat', t.threat);
+    const source = resolve('asset', t.source);
+    const target = resolve('asset', t.target);
+    if (filterHigh && !isHighSev(threat.severity)) continue;
+    edge(source.key, target.key, `xfer:${threat.key}`, `${mid(source.key)} -- "transfers risk: ${label(threat.label, 26)}" --> ${mid(target.key)}`);
   }
-  // Validation edges (controls validating assets)
   for (const v of model.validations) {
-    const key = `${mid(v.control)}->val->${mid(v.asset)}`;
-    if (!edges.has(key)) { edges.add(key); lines.push(`  ${mid(v.control)} -. validates .-> ${mid(v.asset)}`); }
+    const control = resolve('control', v.control);
+    const asset = resolve('asset', v.asset);
+    edge(control.key, asset.key, 'val', `${mid(control.key)} -. validates .-> ${mid(asset.key)}`);
   }
-  // Data-flow edges (only between assets already in the graph)
   for (const f of model.flows) {
-    const srcIn = usedAssets.has(f.source) || usedAssets.has(normalizeRef(f.source));
-    const tgtIn = usedAssets.has(f.target) || usedAssets.has(normalizeRef(f.target));
-    if (!srcIn || !tgtIn) continue;
-    const key = `${mid(f.source)}->flow->${mid(f.target)}`;
-    if (!edges.has(key)) {
-      edges.add(key);
-      if (f.mechanism) {
-        lines.push(`  ${mid(f.source)} -- "${flowIcon(f.mechanism)} ${label(f.mechanism, 22)}" --> ${mid(f.target)}`);
-      } else {
-        lines.push(`  ${mid(f.source)} --> ${mid(f.target)}`);
-      }
+    const source = resolve('asset', f.source);
+    const target = resolve('asset', f.target);
+    if (!usedAssetKeys.has(source.key) || !usedAssetKeys.has(target.key)) continue;
+    if (f.mechanism) {
+      edge(source.key, target.key, `flow:${f.mechanism}`, `${mid(source.key)} -- "${flowIcon(f.mechanism)} ${label(f.mechanism, 22)}" --> ${mid(target.key)}`);
+    } else {
+      edge(source.key, target.key, 'flow', `${mid(source.key)} --> ${mid(target.key)}`);
     }
   }
-  // Trust-boundary crossing edges (dashed purple line between zones)
   for (const b of model.boundaries) {
-    const aIn = usedAssets.has(b.asset_a) || usedAssets.has(normalizeRef(b.asset_a));
-    const bIn = usedAssets.has(b.asset_b) || usedAssets.has(normalizeRef(b.asset_b));
-    if (!aIn || !bIn) continue;
-    const key = `${mid(b.asset_a)}->boundary->${mid(b.asset_b)}`;
-    if (!edges.has(key)) {
-      edges.add(key);
-      const desc = b.description ? label(b.description, 26) : 'trust boundary';
-      lines.push(`  ${mid(b.asset_a)} -.-|🧱 ${desc}| ${mid(b.asset_b)}`);
-    }
+    const a = resolve('asset', b.asset_a);
+    const z = resolve('asset', b.asset_b);
+    if (!usedAssetKeys.has(a.key) || !usedAssetKeys.has(z.key)) continue;
+    const desc = b.description ? label(b.description, 26) : 'trust boundary';
+    edge(a.key, z.key, 'bnd', `${mid(a.key)} -.-|🧱 ${desc}| ${mid(z.key)}`);
   }
 
-  lines.push('  classDef threat fill:#991b1b,stroke:#ef4444,color:#fecaca');
-  lines.push('  classDef control fill:#065f46,stroke:#10b981,color:#a7f3d0');
+  lines.push('  classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px');
+  lines.push('  classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px');
 
   return lines.join('\n');
 }
 
-/**
+/* ══════════════════════════════════════════════════════════════════════════
  * Diagram 2: Data Flow Diagram
- * Shows @flows between components with @boundary as subgraphs.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * LR flow graph. Each @boundary produces a paired subgraph (both sides appear
+ * inside a single zone) labelled by the boundary description; the boundary
+ * itself is drawn as a purple dashed edge between the two sides. Assets that
+ * are not touched by any boundary render as standalone nodes.
  */
 export function generateDataFlowDiagram(model: ThreatModel): string {
   if (model.flows.length === 0) return '';
 
-  const maxMechanismLen = model.flows.reduce((max, f) => {
-    const len = (f.mechanism || '').length;
-    return len > max ? len : max;
-  }, 0);
+  const aliases = buildAliases(model);
+  const resolve = (ref: string) => aliases.resolve('asset', ref);
+
+  // Dynamic spacing based on longest mechanism label so mermaid doesn't crush long edges.
+  const maxMechanismLen = model.flows.reduce((max, f) => Math.max(max, (f.mechanism || '').length), 0);
   const spacingBoost = Math.max(0, Math.min(140, (maxMechanismLen - 24) * 3));
-  const nodeSpacing = 40 + Math.floor(spacingBoost * 0.4);
-  const rankSpacing = 50 + spacingBoost;
+  const nodeSpacing = 44 + Math.floor(spacingBoost * 0.4);
+  const rankSpacing = 58 + spacingBoost;
 
   const lines: string[] = [
-    `%%{init: {"flowchart": {"nodeSpacing": ${nodeSpacing}, "rankSpacing": ${rankSpacing}, "curve": "basis"}}}%%`,
+    `%%{init: {"flowchart": {"nodeSpacing": ${nodeSpacing}, "rankSpacing": ${rankSpacing}, "curve": "basis", "htmlLabels": false}}}%%`,
     'graph LR',
   ];
 
-  // Collect boundary zones: each side of a boundary is a separate zone
-  // An asset may appear in multiple boundaries, so track zone membership
-  const assetZone = new Map<string, string>(); // asset -> zone label
-  const zones = new Map<string, Set<string>>(); // zone label -> members
-  const boundaryEdges: { a: string; b: string; desc: string }[] = [];
-  let zIdx = 0;
-
-  for (const b of model.boundaries) {
-    const desc = b.description || b.id || `${b.asset_a}/${b.asset_b}`;
-    // Assign each side to its own zone if not already in one
-    if (!assetZone.has(b.asset_a)) {
-      const zoneLabel = `Z${zIdx++}`;
-      assetZone.set(b.asset_a, zoneLabel);
-      zones.set(zoneLabel, new Set([b.asset_a]));
-    }
-    if (!assetZone.has(b.asset_b)) {
-      const zoneLabel = `Z${zIdx++}`;
-      assetZone.set(b.asset_b, zoneLabel);
-      zones.set(zoneLabel, new Set([b.asset_b]));
-    }
-    boundaryEdges.push({ a: b.asset_a, b: b.asset_b, desc });
-  }
-
-  // Emit zone subgraphs
-  const inBoundary = new Set<string>();
-  for (const [zoneId, members] of zones) {
-    const representative = [...members][0];
-    lines.push(`  subgraph ${zoneId}["🧱 Trust Zone · ${labelFull(representative)}"]`);
-    for (const m of members) {
-      lines.push(`    ${mid(m)}["${assetIcon(m)} ${labelFull(m)}"]`);
-      inBoundary.add(m);
-    }
-    lines.push('  end');
-  }
-
-  // Emit boundary edges between zones (thick dashed line)
-  for (const be of boundaryEdges) {
-    lines.push(`  ${mid(be.a)} -.-|🧱 ${labelFull(be.desc)}| ${mid(be.b)}`);
-  }
-
-  // Data handling badges
-  const handling = new Map<string, string[]>();
+  // Data handling badges keyed on canonical asset key
+  const handlingByKey = new Map<string, string[]>();
   for (const h of model.data_handling) {
-    if (!handling.has(h.asset)) handling.set(h.asset, []);
-    handling.get(h.asset)!.push(h.classification);
+    const node = resolve(h.asset);
+    const list = handlingByKey.get(node.key) ?? [];
+    if (!list.includes(h.classification)) list.push(h.classification);
+    handlingByKey.set(node.key, list);
   }
 
-  // Standalone nodes (not in any boundary)
-  const allNodes = new Set<string>();
-  for (const f of model.flows) { allNodes.add(f.source); allNodes.add(f.target); }
-  for (const n of allNodes) {
-    if (!inBoundary.has(n)) {
-      const badges = handling.get(n);
-      const suffix = badges ? ` · ${badges.join(', ')}` : '';
-      lines.push(`  ${mid(n)}["${assetIcon(n)} ${labelFull(n)}${suffix}"]`);
-    }
+  const nodeLabel = (n: AliasNode): string => {
+    const badges = handlingByKey.get(n.key);
+    const suffix = badges && badges.length > 0 ? ` · ${badges.join(', ')}` : '';
+    return `${assetIcon(n.label)} ${labelFull(n.label)}${suffix}`;
+  };
+
+  // Collect the set of assets actually used by flows (or boundaries)
+  const usedAssets = new Map<string, AliasNode>();
+  for (const f of model.flows) {
+    const s = resolve(f.source);
+    const t = resolve(f.target);
+    usedAssets.set(s.key, s);
+    usedAssets.set(t.key, t);
+  }
+
+  // Emit one subgraph PER SIDE of each boundary (A and B live in different trust zones).
+  // Label combines the boundary description with the side's asset so the visual
+  // cleanly conveys "this zone is on one side of <boundary>".
+  const placedAssets = new Set<string>();
+  let zIdx = 0;
+  const emitSide = (node: AliasNode, desc: string): void => {
+    if (placedAssets.has(node.key)) return;
+    const zoneId = `Z${zIdx++}`;
+    const zoneLabel = desc === node.label ? node.label : `${node.label} · ${desc}`;
+    lines.push(`  subgraph ${zoneId}["🧱 ${labelFull(zoneLabel)}"]`);
+    lines.push(`    ${mid(node.key)}["${nodeLabel(node)}"]`);
+    lines.push('  end');
+    placedAssets.add(node.key);
+    usedAssets.set(node.key, node);
+  };
+  for (const b of model.boundaries) {
+    const a = resolve(b.asset_a);
+    const z = resolve(b.asset_b);
+    if (!usedAssets.has(a.key) && !usedAssets.has(z.key)) continue;
+    const desc = b.description || b.id || 'trust boundary';
+    emitSide(a, desc);
+    emitSide(z, desc);
+  }
+
+  // Standalone nodes (flow endpoints not inside any boundary zone)
+  for (const node of usedAssets.values()) {
+    if (placedAssets.has(node.key)) continue;
+    lines.push(`  ${mid(node.key)}["${nodeLabel(node)}"]`);
+    placedAssets.add(node.key);
+  }
+
+  // Boundary edges: a visual connector between the two sides
+  const emittedBoundaries = new Set<string>();
+  for (const b of model.boundaries) {
+    const a = resolve(b.asset_a);
+    const z = resolve(b.asset_b);
+    const k = `${a.key}|${z.key}`;
+    if (emittedBoundaries.has(k)) continue;
+    emittedBoundaries.add(k);
+    const desc = b.description ? labelFull(b.description) : 'trust boundary';
+    lines.push(`  ${mid(a.key)} -.-|🧱 ${desc}| ${mid(z.key)}`);
   }
 
   // Flow edges
+  const emittedFlows = new Set<string>();
   for (const f of model.flows) {
+    const s = resolve(f.source);
+    const t = resolve(f.target);
+    const k = `${s.key}|${t.key}|${f.mechanism || ''}`;
+    if (emittedFlows.has(k)) continue;
+    emittedFlows.add(k);
     if (f.mechanism) {
-      lines.push(`  ${mid(f.source)} -- "${flowIcon(f.mechanism)} ${labelFull(f.mechanism)}" --> ${mid(f.target)}`);
+      lines.push(`  ${mid(s.key)} -- "${flowIcon(f.mechanism)} ${labelFull(f.mechanism)}" --> ${mid(t.key)}`);
     } else {
-      lines.push(`  ${mid(f.source)} --> ${mid(f.target)}`);
+      lines.push(`  ${mid(s.key)} --> ${mid(t.key)}`);
     }
   }
 
   return lines.join('\n');
 }
 
-/**
+/* ══════════════════════════════════════════════════════════════════════════
  * Diagram 3: Attack Surface Map
- * Groups exposures by asset, colored by severity.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+interface AttackSurfaceEntry {
+  threatLabel: string;
+  severity: string;
+  count: number;
+  status: 'open' | 'mitigated' | 'accepted' | 'confirmed';
+}
+
+/**
+ * TB grouping: exposures per asset, coloured by severity and marked by status.
+ *   - ⚠️  open
+ *   - ✅  mitigated
+ *   - 🟦  accepted
+ *   - 💥  confirmed (raises severity to critical)
  */
 export function generateAttackSurface(model: ThreatModel): string {
-  if (model.exposures.length === 0) return '';
+  if (model.exposures.length === 0 && (!model.confirmed || model.confirmed.length === 0)) return '';
 
-  const lines: string[] = ['graph LR'];
+  const aliases = buildAliases(model);
+  const resolveAsset = (ref: string) => aliases.resolve('asset', ref);
+  const resolveThreat = (ref: string) => aliases.resolve('threat', ref);
 
-  // Build set of mitigated/accepted (normalize refs for consistent matching)
-  const resolved = new Set<string>();
-  for (const m of model.mitigations) resolved.add(`${normalizeRef(m.asset)}::${normalizeRef(m.threat)}`);
-  for (const a of model.acceptances) resolved.add(`${normalizeRef(a.asset)}::${normalizeRef(a.threat)}`);
+  // Compute per-pair resolution using canonical keys
+  const mitigatedPairs = new Set<string>();
+  const acceptedPairs = new Set<string>();
+  for (const m of model.mitigations) mitigatedPairs.add(`${resolveAsset(m.asset).key}::${resolveThreat(m.threat).key}`);
+  for (const a of model.acceptances) acceptedPairs.add(`${resolveAsset(a.asset).key}::${resolveThreat(a.threat).key}`);
+  const confirmedPairs = new Set<string>();
+  for (const c of model.confirmed || []) confirmedPairs.add(`${resolveAsset(c.asset).key}::${resolveThreat(c.threat).key}`);
 
-  // Group exposures by asset, deduplicate by threat, keep highest severity
-  const sevOrder: Record<string, number> = { critical: 0, p0: 0, high: 1, p1: 1, medium: 2, p2: 2, low: 3, p3: 3, unset: 4 };
-  const byAsset = new Map<string, Map<string, { threat: string; severity: string; count: number; resolved: boolean }>>();
+  // Group by canonical asset key → canonical threat key → entry
+  type AssetGroup = { label: string; threats: Map<string, AttackSurfaceEntry>; openCount: number; mitigatedCount: number; confirmedCount: number };
+  const byAsset = new Map<string, AssetGroup>();
+
+  const getGroup = (assetRef: string): AssetGroup => {
+    const node = resolveAsset(assetRef);
+    let g = byAsset.get(node.key);
+    if (!g) {
+      g = { label: node.label, threats: new Map(), openCount: 0, mitigatedCount: 0, confirmedCount: 0 };
+      byAsset.set(node.key, g);
+    }
+    return g;
+  };
 
   for (const e of model.exposures) {
-    if (!byAsset.has(e.asset)) byAsset.set(e.asset, new Map());
-    const assetMap = byAsset.get(e.asset)!;
-    const existing = assetMap.get(e.threat);
-    const sev = (e.severity || 'unset').toLowerCase();
-    const isResolved = resolved.has(`${normalizeRef(e.asset)}::${normalizeRef(e.threat)}`);
-    if (!existing || (sevOrder[sev] ?? 4) < (sevOrder[existing.severity] ?? 4)) {
-      assetMap.set(e.threat, { threat: e.threat, severity: sev, count: (existing?.count || 0) + 1, resolved: isResolved });
+    const group = getGroup(e.asset);
+    const threatNode = resolveThreat(e.threat);
+    const pair = `${resolveAsset(e.asset).key}::${threatNode.key}`;
+    const sev = normalizeSeverity(e.severity || threatNode.severity);
+    const existing = group.threats.get(threatNode.key);
+    const isConfirmed = confirmedPairs.has(pair);
+    const status: AttackSurfaceEntry['status'] = isConfirmed ? 'confirmed' : acceptedPairs.has(pair) ? 'accepted' : mitigatedPairs.has(pair) ? 'mitigated' : 'open';
+    const escalated = isConfirmed ? 'critical' : sev;
+    if (!existing) {
+      group.threats.set(threatNode.key, { threatLabel: threatNode.label, severity: escalated, count: 1, status });
     } else {
       existing.count++;
+      existing.severity = strongerSeverity(existing.severity, escalated);
+      existing.status = status === 'confirmed' ? 'confirmed' : status === 'open' && existing.status === 'mitigated' ? 'open' : existing.status;
     }
   }
 
+  // Make sure confirmed-only rows (no matching exposure) still appear
+  for (const c of model.confirmed || []) {
+    const group = getGroup(c.asset);
+    const threatNode = resolveThreat(c.threat);
+    const existing = group.threats.get(threatNode.key);
+    const sev = normalizeSeverity(c.severity || 'critical');
+    if (!existing) {
+      group.threats.set(threatNode.key, { threatLabel: threatNode.label, severity: sev, count: 1, status: 'confirmed' });
+    } else {
+      existing.status = 'confirmed';
+      existing.severity = strongerSeverity(existing.severity, sev);
+    }
+  }
+
+  // Roll up counts per group
+  for (const g of byAsset.values()) {
+    for (const t of g.threats.values()) {
+      if (t.status === 'open') g.openCount++;
+      else if (t.status === 'mitigated' || t.status === 'accepted') g.mitigatedCount++;
+      if (t.status === 'confirmed') g.confirmedCount++;
+    }
+  }
+
+  // Sort assets: confirmed first, then by open count desc, then by label
+  const assetsSorted = [...byAsset.entries()].sort(([, a], [, b]) => {
+    if (a.confirmedCount !== b.confirmedCount) return b.confirmedCount - a.confirmedCount;
+    if (a.openCount !== b.openCount) return b.openCount - a.openCount;
+    return a.label.localeCompare(b.label);
+  });
+
+  const lines: string[] = [
+    '%%{init: {"flowchart": {"nodeSpacing": 38, "rankSpacing": 48, "curve": "linear", "htmlLabels": false}}}%%',
+    'graph TB',
+  ];
+
   let eIdx = 0;
-  for (const [asset, threatMap] of byAsset) {
-    // Sort threats by severity (critical first)
-    const sorted = [...threatMap.values()].sort((a, b) => (sevOrder[a.severity] ?? 4) - (sevOrder[b.severity] ?? 4));
+  for (const [assetKey, group] of assetsSorted) {
+    const totalThreats = group.threats.size;
+    const coverage = totalThreats === 0 ? 0 : Math.round((group.mitigatedCount / totalThreats) * 100);
+    const statusSuffix = group.confirmedCount > 0
+      ? ` · 💥 ${group.confirmedCount} confirmed`
+      : group.openCount > 0
+        ? ` · ⚠ ${group.openCount} open`
+        : ` · ✅ ${coverage}% covered`;
 
-    lines.push(`  subgraph A_${mid(asset)}["${label(asset)}"]`);
+    lines.push(`  subgraph A_${mid(assetKey)}["${label(group.label)}${statusSuffix}"]`);
     lines.push(`    direction TB`);
-    for (const entry of sorted) {
-      let cls = 'sev_unset';
-      if (entry.severity === 'critical' || entry.severity === 'p0') cls = 'sev_crit';
-      else if (entry.severity === 'high' || entry.severity === 'p1') cls = 'sev_high';
-      else if (entry.severity === 'medium' || entry.severity === 'p2') cls = 'sev_med';
-      else if (entry.severity === 'low' || entry.severity === 'p3') cls = 'sev_low';
 
-      const icon = entry.resolved ? '✅' : '⚠️';
-      const threatLabel = label(entry.threat.replace('#', ''), 30);
-      const countSuffix = entry.count > 1 ? ` x${entry.count}` : '';
+    const sorted = [...group.threats.values()].sort((a, b) => (severityRank[a.severity] ?? 4) - (severityRank[b.severity] ?? 4));
+
+    for (const entry of sorted) {
+      const cls = severityClass(entry.severity);
+      const icon = entry.status === 'confirmed' ? '💥'
+        : entry.status === 'mitigated' ? '✅'
+          : entry.status === 'accepted' ? '🟦'
+            : '⚠️';
+      const threatLabel = label(entry.threatLabel, 30);
+      const countSuffix = entry.count > 1 ? ` ×${entry.count}` : '';
       lines.push(`    E${eIdx}["${icon} ${threatLabel}${countSuffix}"]:::${cls}`);
       eIdx++;
     }
     lines.push('  end');
   }
 
-  lines.push('  classDef sev_crit fill:#7f1d1d,stroke:#ef4444,color:#fecaca');
-  lines.push('  classDef sev_high fill:#7c2d12,stroke:#f97316,color:#fed7aa');
-  lines.push('  classDef sev_med fill:#78350f,stroke:#f59e0b,color:#fef3c7');
-  lines.push('  classDef sev_low fill:#1e3a5f,stroke:#3b82f6,color:#bfdbfe');
-  lines.push('  classDef sev_unset fill:#374151,stroke:#9ca3af,color:#e5e7eb');
+  lines.push('  classDef sev_crit fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.4px');
+  lines.push('  classDef sev_high fill:#402019,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.2px');
+  lines.push('  classDef sev_med fill:#1f3943,stroke:#55899e,color:#f0f0f0');
+  lines.push('  classDef sev_low fill:#10263b,stroke:#0360a2,color:#f0f0f0');
+  lines.push('  classDef sev_unset fill:#223942,stroke:#3b6779,color:#f0f0f0');
 
   return lines.join('\n');
 }
-

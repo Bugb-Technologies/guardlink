@@ -9,9 +9,10 @@ Every time you write or modify code that touches security-relevant behavior, you
 ## Key Rules
 - ANNOTATE NEW CODE. When you add a function or endpoint that handles user input, accesses data, or crosses a trust boundary — add @exposes, @mitigates, @flows, @handles, or at minimum @comment. This is not optional.
 - NEVER write @accepts — that is a human-only governance decision. For risks with no mitigation: write @exposes + @audit + @comment suggesting potential controls.
+- Use @confirmed for verified exploits. When pentest/scanning/manual reproduction proves a threat is exploitable: @confirmed #threat on Asset [severity] -- "evidence". Distinct from @exposes (theoretical) — @confirmed means real, verified, no false positives.
 - Preserve existing annotations — do not delete or mangle them.
 - Definitions (@asset, @threat, @control with (#id)) live in .guardlink/definitions.ts. Reuse IDs — never redefine. Add new definitions there first, then reference in source files.
-- Source files use relationship verbs: @mitigates, @exposes, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers.
+- Source files use relationship verbs: @mitigates, @exposes, @confirmed, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers, @feature.
 - Write coupled annotation blocks: risk + control (or audit) + data flow + context note.
 - Avoid @shield unless a human explicitly asks to hide code from AI.
 
@@ -30,6 +31,8 @@ Every time you write or modify code that touches security-relevant behavior, you
 - @handles pii on App.API -- "Processes email, token"
 - @validates #prepared-stmts for App.API -- "CI test ensures placeholders"
 - @audit App.API -- "Token rotation review"
+- @confirmed #sqli on App.API [critical] cwe:CWE-89 -- "Pentest verified: raw SQL injection via email param"
+- @feature "SSO Login" -- "Single sign-on authentication flow"
 - @owns security-team for App.API -- "Team responsible"
 - @comment -- "Rate limit: 100 req/15min"
 
@@ -46,10 +49,11 @@ Every time you write or modify code that touches security-relevant behavior, you
 - #agent-launcher exposed to #prompt-injection [medium] (src/agents/launcher.ts:13)
 - #agent-launcher exposed to #dos [low] (src/agents/launcher.ts:15)
 - #agent-launcher exposed to #prompt-injection [high] (src/agents/prompts.ts:6)
+- #agent-launcher exposed to #config-tamper [medium] (src/agents/prompts.ts:10)
 - #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
 - #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
-- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:15)
-- #cli exposed to #cmd-injection [critical] (src/cli/index.ts:31)
+- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:16)
+- #cli exposed to #cmd-injection [critical] (src/cli/index.ts:33)
 - #init exposed to #data-exposure [low] (src/init/index.ts:12)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
 - #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:30)
@@ -68,26 +72,49 @@ Every time you write or modify code that touches security-relevant behavior, you
 - #agent-launcher -> AgentProcess via spawn
 - AgentProcess -> #agent-launcher via stdout
 - UserPrompt -> #agent-launcher via buildAnnotatePrompt
+- UserPrompt -> #agent-launcher via buildTranslatePrompt
+- UserPrompt -> #agent-launcher via buildAskPrompt
 - ThreatModel -> #agent-launcher via model
 - #agent-launcher -> AgentPrompt via return
 - ThreatModel -> #llm-client via serializeModel
 - ProjectFiles -> #llm-client via readFileSync
 - #llm-client -> ReportFile via writeFileSync
+- PentestFindings -> #llm-client via readFileSync
 - LLMConfig -> #llm-client via chatCompletion
 - #llm-client -> LLMProvider via fetch
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
 - #llm-client -> NVD via fetch
-- ProjectFiles -> #llm-client via readFileSync
-- ThreatModel -> #sarif via generateSarif
-- #sarif -> SarifLog via return
-- ... and 48 more
+- ... and 55 more
+
+### Features (filter with `--feature`)
+
+- "Dashboard"
+- "MCP Integration"
 
 ### Model Stats
 
-290 annotations, 16 assets, 15 threats, 12 controls, 60 exposures, 44 mitigations, 68 flows
+310 annotations, 16 assets, 15 threats, 12 controls, 61 exposures, 0 confirmed, 48 mitigations, 75 flows, 2 features
 
 <!-- guardlink:end -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
