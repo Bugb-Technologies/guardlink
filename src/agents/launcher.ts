@@ -302,6 +302,12 @@ export interface LaunchResult {
  * For clipboard: copy only.
  */
 export function launchAgent(agent: AgentEntry, prompt: string, cwd: string): LaunchResult {
+  // stdout-only mode: write raw prompt to stdout, skip clipboard (keeps output pipeable)
+  if (agent.id === 'stdout') {
+    process.stdout.write(prompt);
+    return { launched: true, clipboardCopied: false };
+  }
+
   // Step 1: Always copy to clipboard
   const clipboardCopied = copyToClipboard(prompt);
 

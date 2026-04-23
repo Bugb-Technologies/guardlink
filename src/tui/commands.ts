@@ -34,7 +34,7 @@ import { generateSarif } from '../analyzer/index.js';
 import type { ThreatModel, ParseDiagnostic, ThreatModelExposure } from '../types/index.js';
 import { C, severityBadge, severityText, severityTextPad, severityOrder, computeGrade, gradeColored, formatTable, readCodeContext, trunc, bar, fileLink, fileLinkTrunc, cleanCliArtifacts } from './format.js';
 import { resolveLLMConfig, saveTuiConfig, loadTuiConfig } from './config.js';
-import { AGENTS, parseAgentFlag, launchAgent, launchAgentInline, copyToClipboard, buildAnnotatePrompt, type AgentEntry } from '../agents/index.js';
+import { AGENTS, parseAgentFlag, parseAnnotationModeFlag, launchAgent, launchAgentInline, copyToClipboard, buildAnnotatePrompt, type AgentEntry } from '../agents/index.js';
 import { describeConfigSource } from '../agents/config.js';
 import { getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview, type ReviewResult } from '../review/index.js';
 import { loadWorkspaceConfig, linkProject, addToWorkspace, removeFromWorkspace, mergeReports, formatMergeSummary, diffMergedReports, formatDiffSummary, populateMetadata } from '../workspace/index.js';
@@ -159,10 +159,12 @@ export function cmdGal(): void {
   console.log(H('  GAL — GuardLink Annotation Language'));
   console.log(H('  ══════════════════════════════════════════════════════════'));
   console.log('');
-  console.log(D('  Annotations live in source code comments. GuardLink parses'));
-  console.log(D('  them to build a live threat model from your codebase.'));
+  console.log(D('  Annotations live in source comments or standalone .gal files.'));
+  console.log(D('  GuardLink parses them into a live threat model for your codebase.'));
   console.log('');
   console.log(D('  Syntax:  @verb  subject  [preposition  object]  [-- "description"]'));
+  console.log(D('  Inline examples below use comment prefixes; raw .gal files use the same lines without // or #.'));
+  console.log(D('  In .gal files, use @source file:<path> line:<n> [symbol:<name>] to anchor following annotations.'));
   console.log('');
 
   // ── DEFINITIONS ──────────────────────────────────────────────────
@@ -1472,11 +1474,16 @@ export function cmdThreatReports(ctx: TuiContext): void {
 // ─── /annotate ───────────────────────────────────────────────────────
 
 export async function cmdAnnotate(args: string, ctx: TuiContext): Promise<void> {
-  const { agent: flagAgent, cleanArgs } = parseAgentFlag(args);
+  const { mode: annotationMode, cleanArgs: argsWithoutMode, error: modeError } = parseAnnotationModeFlag(args);
+  if (modeError) {
+    console.log(C.warn(`  ${modeError}`));
+    return;
+  }
+  const { agent: flagAgent, cleanArgs } = parseAgentFlag(argsWithoutMode);
 
   if (!cleanArgs.trim()) {
-    console.log(C.warn('  Usage: /annotate <prompt> [--claude-code|--codex|--gemini|--cursor|--windsurf|--clipboard]'));
-    console.log(C.dim('  Example: /annotate "annotate auth endpoints for OWASP Top 10" --claude-code'));
+    console.log(C.warn('  Usage: /annotate <prompt> [--mode inline|external] [--claude-code|--codex|--gemini|--cursor|--windsurf|--clipboard]'));
+    console.log(C.dim('  Example: /annotate "annotate auth endpoints for OWASP Top 10" --mode external --claude-code'));
     return;
   }
 
@@ -1487,7 +1494,7 @@ export async function cmdAnnotate(args: string, ctx: TuiContext): Promise<void> 
   if (!agent) return;
 
   // Build context prompt using shared builder
-  const prompt = buildAnnotatePrompt(cleanArgs.trim(), ctx.root, ctx.model);
+  const prompt = buildAnnotatePrompt(cleanArgs.trim(), ctx.root, ctx.model, annotationMode);
 
   // For terminal agents: foreground spawn (agent takes over terminal)
   if (agent.cmd) {
@@ -1791,7 +1798,7 @@ export async function cmdReview(args: string, ctx: TuiContext): Promise<void> {
       results.push(result);
       console.log(`    ${C.success('✓')} Marked for remediation — ${result.linesInserted} line(s) written\n`);
     } else {
-      results.push({ exposure: reviewable, action: { decision: 'skip', justification: '' }, linesInserted: 0 });
+      results.push({ exposure: reviewable, action: { decision: 'skip', justification: '' }, linesInserted: 0, targetFile: reviewable.exposure.location.file });
       console.log(`    ${C.dim('— Skipped')}\n`);
     }
   }

@@ -1,6 +1,7 @@
 /**
  * GuardLink — Annotation clearing utility.
- * Scans project source files and removes all GuardLink annotation comment lines.
+ * Scans project source files and removes all GuardLink annotation lines.
+ * Standalone .gal files are treated as raw annotation text.
  *
  * Used by `guardlink clear` and `/clear` to let users start fresh with annotations.
  *
@@ -16,8 +17,7 @@
 import fg from 'fast-glob';
 import { readFile, writeFile } from 'node:fs/promises';
 import { relative } from 'node:path';
-import { stripCommentPrefix } from './comment-strip.js';
-import { parseLine } from './parse-line.js';
+import { isStandaloneAnnotationFile, stripCommentPrefix } from './comment-strip.js';
 
 // ─── Known GuardLink verbs ──────────────────────────────────────────
 
@@ -25,7 +25,7 @@ const GUARDLINK_VERBS = new Set([
   'asset', 'threat', 'control',
   'mitigates', 'exposes', 'accepts', 'transfers', 'flows', 'boundary',
   'validates', 'audit', 'owns', 'handles', 'assumes',
-  'comment', 'shield', 'shield:begin', 'shield:end',
+  'comment', 'source', 'shield', 'shield:begin', 'shield:end',
   // v1 compat
   'review', 'connects',
 ]);
@@ -43,6 +43,7 @@ const DEFAULT_INCLUDE = [
   '**/*.html', '**/*.xml', '**/*.svg',
   '**/*.css',
   '**/*.ex', '**/*.exs',
+  '**/*.[gG][aA][lL]',
 ];
 
 const DEFAULT_EXCLUDE = [
@@ -74,11 +75,7 @@ export interface ClearAnnotationsResult {
 
 // ─── Core logic ─────────────────────────────────────────────────────
 
-/**
- * Check if a source line contains a GuardLink annotation.
- */
-function isGuardLinkAnnotationLine(line: string): boolean {
-  const inner = stripCommentPrefix(line);
+function isGuardLinkAnnotationText(inner: string | null): boolean {
   if (inner === null) return false;
 
   const trimmed = inner.trim();
@@ -93,16 +90,6 @@ function isGuardLinkAnnotationLine(line: string): boolean {
 }
 
 /**
- * Check if a line is a continuation description line (-- "...") that follows
- * a GuardLink annotation.
- */
-function isContinuationLine(line: string): boolean {
-  const inner = stripCommentPrefix(line);
-  if (inner === null) return false;
-  return /^--\s*"/.test(inner.trim());
-}
-
-/**
  * Remove all GuardLink annotation lines from a file's content.
  * Returns the cleaned content and count of lines removed.
  *
@@ -110,7 +97,7 @@ function isContinuationLine(line: string): boolean {
  * - Continuation lines (-- "...") that follow an annotation
  * - Empty comment lines that are left between annotations (cleanup)
  */
-function removeAnnotationsFromContent(content: string): { cleaned: string; removed: number } {
+function removeAnnotationsFromContent(content: string, allowRawAnnotationLines: boolean): { cleaned: string; removed: number } {
   const lines = content.split('\n');
   const result: string[] = [];
   let removed = 0;
@@ -118,15 +105,16 @@ function removeAnnotationsFromContent(content: string): { cleaned: string; remov
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const inner = allowRawAnnotationLines ? line : stripCommentPrefix(line);
 
-    if (isGuardLinkAnnotationLine(line)) {
+    if (isGuardLinkAnnotationText(inner)) {
       removed++;
       lastWasAnnotation = true;
       continue;
     }
 
     // Remove continuation lines that follow an annotation
-    if (lastWasAnnotation && isContinuationLine(line)) {
+    if (lastWasAnnotation && inner !== null && /^--\s*"/.test(inner.trim())) {
       removed++;
       continue;
     }
@@ -160,17 +148,15 @@ export async function clearAnnotations(options: ClearAnnotationsOptions): Promis
     includeDefinitions = false,
   } = options;
 
-  // Build exclude list — skip .guardlink/ definitions unless explicitly included
-  const effectiveExclude = includeDefinitions
-    ? exclude
-    : [...exclude, '**/.guardlink/**'];
-
-  const files = await fg(include, {
+  const candidateFiles = await fg(include, {
     cwd: root,
-    ignore: effectiveExclude,
+    ignore: exclude,
     absolute: true,
     dot: true,
   });
+  const files = candidateFiles.filter(filePath =>
+    includeDefinitions || !isDefinitionsFile(relative(root, filePath)),
+  );
 
   const modifiedFiles: string[] = [];
   const perFile = new Map<string, number>();
@@ -178,7 +164,7 @@ export async function clearAnnotations(options: ClearAnnotationsOptions): Promis
 
   for (const filePath of files) {
     const content = await readFile(filePath, 'utf-8');
-    const { cleaned, removed } = removeAnnotationsFromContent(content);
+    const { cleaned, removed } = removeAnnotationsFromContent(content, isStandaloneAnnotationFile(filePath));
 
     if (removed > 0) {
       const relPath = relative(root, filePath);
@@ -193,4 +179,9 @@ export async function clearAnnotations(options: ClearAnnotationsOptions): Promis
   }
 
   return { modifiedFiles, totalRemoved, perFile };
+}
+
+function isDefinitionsFile(relPath: string): boolean {
+  const normalized = relPath.replaceAll('\\', '/');
+  return normalized.startsWith('.guardlink/definitions.');
 }

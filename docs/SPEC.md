@@ -20,7 +20,7 @@ GuardLink extends the original ThreatSpec specification (dormant since 2020) wit
 
 **1.1. Annotations are English verbs.** Every annotation reads as a natural-language statement. A developer encountering `@mitigates AuthService against SQL_Injection` understands it without documentation. Branded prefixes, product names, and abbreviations are avoided in the core syntax.
 
-**1.2. Annotations live in comments.** GuardLink annotations are embedded in source code comments using the host language's comment syntax. They travel with the code through version control, appear in pull request diffs, and are reviewed alongside the code they describe.
+**1.2. Annotations live with the codebase.** GuardLink annotations are usually embedded in source code comments using the host language's comment syntax, but they may also be stored in standalone `.gal` files when inline comments are impractical. In both cases they travel with the code through version control, appear in pull request diffs, and are reviewed alongside the code they describe.
 
 **1.3. Annotations are structured data.** While readable as English, every annotation has a deterministic grammar that can be parsed by regex into typed data structures. Ambiguous or free-form syntax is avoided.
 
@@ -39,16 +39,26 @@ GuardLink extends the original ThreatSpec specification (dormant since 2020) wit
 All GuardLink annotations follow this pattern:
 
 ```
-<comment-prefix> @<verb> <arguments> [<qualifiers>] [<external-refs>] [-- "<description>"]
+[<comment-prefix>] @<verb> <arguments> [<qualifiers>] [<external-refs>] [-- "<description>"]
 ```
 
 Where:
-- `<comment-prefix>` is the host language's comment syntax (`//`, `#`, `--`, `/*`, etc.)
+- `<comment-prefix>` is the host language's comment syntax (`//`, `#`, `--`, `/*`, etc.) and is required for inline source annotations
 - `@<verb>` is one of the defined annotation verbs (§3)
 - `<arguments>` are verb-specific, positional (§3)
 - `<qualifiers>` are optional metadata in brackets: severity (§2.5) or classification (§2.6)
 - `<external-refs>` are optional references to external taxonomies (§2.8)
 - `-- "<description>"` is an optional human-readable explanation (§2.7)
+
+Standalone `.gal` files omit the comment prefix and store raw annotation lines directly. Definition annotations still live in `.guardlink/definitions.*`; `.gal` files are for externalized relationship annotations:
+
+```text
+@source file:src/auth/login.ts line:42 symbol:authenticate
+@exposes #api to #xss [high] cwe:CWE-79 -- "User bio rendered without escaping"
+@audit #api -- "Review sanitization before release"
+```
+
+In standalone `.gal` files, `@source file:<path> line:<n> [symbol:<name>]` updates the logical source location for the following annotations until another `@source` appears.
 
 ### 2.2. Component Paths
 
@@ -652,7 +662,9 @@ Every annotation carries a source location:
   "file": "src/auth/login.ts",
   "line": 15,
   "end_line": null,
-  "parent_symbol": "authenticate"
+  "parent_symbol": "authenticate",
+  "origin_file": ".guardlink/annotations/auth.gal",
+  "origin_line": 8
 }
 ```
 
@@ -660,6 +672,8 @@ Every annotation carries a source location:
 - `line`: 1-indexed line number of the annotation comment
 - `end_line`: For block annotations (`@shield:begin/end`), the closing line
 - `parent_symbol`: Best-effort detection of the enclosing function, method, or class name. `null` when detection fails. Tools must not rely on this field for correctness — it is metadata for human readability.
+- `origin_file`: For externalized `.gal` annotations, the physical annotation file where the GAL line lives
+- `origin_line`: For externalized `.gal` annotations, the 1-indexed line in the `.gal` file where the annotation was declared
 
 ### 5.3. Graph Interpretation
 

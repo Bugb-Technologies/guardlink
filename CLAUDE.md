@@ -3,7 +3,7 @@
 <!-- guardlink:begin -->
 ## GuardLink — Security Annotations (Required)
 
-This project uses [GuardLink](https://guardlink.bugb.io) annotations in source code comments.
+This project uses [GuardLink](https://guardlink.bugb.io) annotations in source code comments or standalone `.gal` files.
 **Full reference: `docs/GUARDLINK_REFERENCE.md`**
 
 ### Core Requirement
@@ -16,7 +16,7 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 2. **NEVER write `@accepts`.** That is a human-only governance decision. When you find a risk with no mitigation in code, write `@exposes` to document the risk + `@audit` to flag it for human review + `@comment` to suggest potential controls.
 3. Do not delete or mangle existing annotations. Treat them as part of the code. Edit only when intentionally changing the threat model.
 4. Definitions (`@asset`, `@threat`, `@control` with `(#id)`) live in `.guardlink/definitions.ts`. Reuse existing `#id`s — never redefine. If you need a new asset or threat, add the definition there first, then reference it in source files.
-5. Source files use relationship verbs only: `@mitigates`, `@exposes`, `@flows`, `@handles`, `@boundary`, `@comment`, `@validates`, `@audit`, `@owns`, `@assumes`, `@transfers`.
+5. Relationship annotations use verbs like: `@mitigates`, `@exposes`, `@flows`, `@handles`, `@boundary`, `@comment`, `@validates`, `@audit`, `@owns`, `@assumes`, `@transfers`.
 6. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note. Never write a lone `@exposes` without follow-up.
 7. Avoid `@shield` unless a human explicitly asks to hide code from AI — it creates blind spots.
 
@@ -62,14 +62,14 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 - #agent-launcher exposed to #prompt-injection [high] (src/agents/prompts.ts:6)
 - #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
 - #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
-- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:15)
 - #cli exposed to #cmd-injection [critical] (src/cli/index.ts:31)
+- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:15)
 - #init exposed to #data-exposure [low] (src/init/index.ts:12)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
 - #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:30)
 - #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:34)
 - #suggest exposed to #dos [low] (src/mcp/suggest.ts:16)
-- #parser exposed to #arbitrary-write [high] (src/parser/clear.ts:7)
+- #parser exposed to #arbitrary-write [high] (src/parser/clear.ts:8)
 - #tui exposed to #cmd-injection [high] (src/tui/commands.ts:11)
 - #tui exposed to #prompt-injection [medium] (src/tui/commands.ts:15)
 
@@ -93,19 +93,25 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 - LLMToolCall -> #llm-client via createToolExecutor
 - #llm-client -> NVD via fetch
 - ProjectFiles -> #llm-client via readFileSync
-- ThreatModel -> #sarif via generateSarif
-- #sarif -> SarifLog via return
+- UserArgs -> #cli via process.argv
+- #cli -> FileSystem via writeFile
 - ... and 48 more
 
 ### Model Stats
 
-290 annotations, 16 assets, 15 threats, 12 controls, 60 exposures, 44 mitigations, 68 flows
+291 annotations, 16 assets, 15 threats, 12 controls, 60 exposures, 44 mitigations, 68 flows
 
 > **Note:** This section is auto-generated. Run `guardlink sync` to update after code changes.
 > Any coding agent (Cursor, Claude, Copilot, Windsurf, etc.) should reference these IDs
 > and continue annotating new code using the same threat model vocabulary.
 
 <!-- guardlink:end -->
+
+
+
+
+
+
 
 
 

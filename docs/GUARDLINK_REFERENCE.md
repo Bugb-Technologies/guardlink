@@ -43,10 +43,22 @@ Append after severity: `cwe:CWE-89`, `owasp:A03:2021`, `capec:CAPEC-66`, `attack
 ## Rules
 
 1. **Annotate as you code.** When you write or modify security-relevant code (endpoints, auth, data access, validation, I/O, crypto, process spawning), add annotations in the same change. This is required, not optional.
-2. **Define once, reference everywhere.** `@asset`, `@threat`, `@control` with `(#id)` go in `.guardlink/definitions.ts`. Source files use relationship verbs only (`@mitigates`, `@exposes`, etc.).
+2. **Define once, reference everywhere.** `@asset`, `@threat`, `@control` with `(#id)` go in `.guardlink/definitions.ts`. Relationship annotations can live inline in source comments or in standalone `.gal` files.
 3. **Read definitions before adding.** Check for existing IDs first — avoid duplicates.
 4. **Every `@exposes` needs a response.** Match with `@mitigates` (fix exists) or `@audit` (flag for human review). AI agents must NEVER write `@accepts` — that is a human-only governance decision. Use `@audit` instead.
 5. **Use the full verb set.** `@flows` for data movement, `@handles` for data classification, `@boundary` for trust boundaries.
+
+### Standalone `.gal` Files
+
+Use the same GAL syntax without language comment prefixes. Definitions still belong in `.guardlink/definitions.*`; `.gal` files are for externalized relationship annotations:
+
+```text
+@source file:src/auth/login.ts line:42 symbol:authenticate
+@exposes #api to #xss [P1] cwe:CWE-79 -- "User bio rendered without escaping"
+@audit #api -- "Review sanitization before release"
+```
+
+`@source` sets the logical code location for the following annotations until the next `@source`. `symbol:` is optional.
 
 ## When Writing Code
 
@@ -79,7 +91,7 @@ guardlink diff [ref]                    # Compare threat model against a git ref
 # AI-Powered Analysis
 guardlink threat-report <fw|prompt>     # AI threat report (see frameworks below)
 guardlink threat-reports                # List saved threat reports
-guardlink annotate <prompt>             # Launch coding agent to add annotations
+guardlink annotate <prompt> [--mode inline|gal]  # Launch coding agent to add annotations
 guardlink config <show|set|clear>       # Manage LLM provider / CLI agent configuration
 
 # Governance & Maintenance
@@ -118,6 +130,7 @@ All AI commands (`threat-report`, `annotate`) support:
 --cursor          # Open Cursor IDE with prompt on clipboard
 --windsurf        # Open Windsurf IDE with prompt on clipboard
 --clipboard       # Copy prompt to clipboard only
+--mode <m>        # Annotation placement mode: inline or gal
 ```
 
 Additional `threat-report` flags:
@@ -146,7 +159,7 @@ Run `guardlink tui` for the interactive terminal interface:
 /view <file>             Show all annotations in a file with code context
 /threat-report <fw>      AI threat report (frameworks above or custom text)
 /threat-reports          List saved reports
-/annotate <prompt>       Launch coding agent to annotate codebase
+/annotate <prompt>       Launch coding agent to annotate codebase (use --mode gal for .gal files)
 /model                   Set AI provider (API or CLI agent)
 /report                  Generate markdown + JSON report
 /dashboard               Generate HTML dashboard + open browser

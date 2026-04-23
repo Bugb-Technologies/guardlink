@@ -17,6 +17,35 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { ThreatModel } from '../types/index.js';
 
+export type AnnotationMode = 'inline' | 'external';
+
+function annotationModeLabel(mode: AnnotationMode): string {
+  return mode === 'external' ? 'externalized .gal files' : 'inline source comments';
+}
+
+function annotationModeInstructions(mode: AnnotationMode): string {
+  if (mode === 'external') {
+    return `## Annotation Placement Mode
+You MUST write annotations into associated standalone \`.gal\` files, not inline in the source code.
+
+- Keep definitions in \`.guardlink/definitions.*\`
+- For each annotated source file, create or update an associated file under \`.guardlink/annotations/\`
+- Mirror the source path in the annotation file path (example: \`src/auth/login.ts\` -> \`.guardlink/annotations/src/auth/login.ts.gal\`)
+- Group annotations under \`@source file:<path> line:<n> [symbol:<name>]\` so each block points at the real code location
+- In \`.gal\` files, write raw GAL lines without \`//\` or \`#\` prefixes
+- Do NOT modify source files just to add comments when this mode is selected
+`;
+  }
+
+  return `## Annotation Placement Mode
+You MUST write annotations inline in the source code comments.
+
+- Place annotations in the file doc-block or directly above the security-relevant code
+- Use the host language comment syntax (\`//\`, \`#\`, \`--\`, etc.)
+- Do NOT externalize annotations into \`.gal\` files when this mode is selected
+`;
+}
+
 /**
  * Build a prompt for annotation agents.
  *
@@ -27,6 +56,7 @@ export function buildAnnotatePrompt(
   userPrompt: string,
   root: string,
   model: ThreatModel | null,
+  annotationMode: AnnotationMode = 'inline',
 ): string {
   // Read the reference doc if available
   let refDoc = '';
@@ -96,6 +126,7 @@ export function buildAnnotatePrompt(
 
   return `You are an expert security engineer performing threat modeling as code.
 Your job is to read this codebase deeply, understand how code flows between components, and annotate it with GuardLink (GAL) security annotations that accurately represent the security posture.
+This run MUST produce annotations as ${annotationModeLabel(annotationMode)}.
 
 This is NOT a vulnerability scanner. You are building a living threat model embedded in the code itself.
 Annotations capture what COULD go wrong, what controls exist, and how data moves — not just confirmed bugs.
@@ -105,6 +136,8 @@ ${modelSummary}${existingIds}${existingFlows}${existingExposures}
 
 ## Your Task
 ${userPrompt}
+
+${annotationModeInstructions(annotationMode)}
 
 ## HOW TO THINK — Flow-First Threat Modeling
 
@@ -208,19 +241,33 @@ Place @boundary annotations where trust level changes between two components:
 \`\`\`
 
 ### Where to Place Annotations
-Annotations go in the file's top doc-block comment OR directly above the security-relevant code:
+${annotationMode === 'external'
+    ? 'Annotations go in associated `.gal` files, grouped by `@source` blocks that point at the real code location:'
+    : "Annotations go in the file's top doc-block comment OR directly above the security-relevant code:"}
 
 \`\`\`
-// @shield:begin -- "Placement examples, excluded from parsing"
-//
-// FILE-LEVEL (top doc-block) — for module-wide security properties:
-// Place @exposes, @mitigates, @flows, @handles, @boundary that describe the module as a whole
-//
-// INLINE (above specific functions/methods) — for function-specific concerns:
-// Place @exposes, @mitigates above the exact function where the risk or control lives
-// Place @comment above tricky security-relevant code to explain intent
-//
-// @shield:end
+${annotationMode === 'external'
+    ? [
+        '@source file:src/auth/login.ts line:42 symbol:authenticate',
+        '@exposes #auth-api to #sqli [P1] cwe:CWE-89 -- "User-supplied email reaches query builder"',
+        '@mitigates #auth-api against #sqli using #input-validation -- "Zod schema validates email before query"',
+        '@comment -- "Externalized annotations for src/auth/login.ts"',
+        '',
+        '@source file:src/auth/session.ts line:88 symbol:issueToken',
+        '@handles secrets on #auth-api -- "Issues session token"',
+      ].join('\n')
+    : [
+        '// @shield:begin -- "Placement examples, excluded from parsing"',
+        '//',
+        '// FILE-LEVEL (top doc-block) — for module-wide security properties:',
+        '// Place @exposes, @mitigates, @flows, @handles, @boundary that describe the module as a whole',
+        '//',
+        '// INLINE (above specific functions/methods) — for function-specific concerns:',
+        '// Place @exposes, @mitigates above the exact function where the risk or control lives',
+        '// Place @comment above tricky security-relevant code to explain intent',
+        '//',
+        '// @shield:end',
+      ].join('\n')}
 \`\`\`
 
 ### Severity — Be Honest, Not Alarmist
@@ -270,7 +317,7 @@ Adding @shield on your own initiative would actively harm the threat model by cr
 
 ## PRECISE GAL Syntax
 
-Definitions go in .guardlink/definitions.{ts,js,py,rs}. Source files use only relationship verbs.
+Definitions go in .guardlink/definitions.{ts,js,py,rs}. Relationship annotations can live in source comments or standalone .gal files.
 
 ### Definitions (in .guardlink/definitions file)
 \`\`\`
@@ -297,6 +344,14 @@ Definitions go in .guardlink/definitions.{ts,js,py,rs}. Source files use only re
 // @owns security-team for #auth -- "Security team reviews all auth PRs"
 // @comment -- "Password hashing uses bcrypt with cost factor 12, migration from SHA256 completed in v2.1"
 // @shield:end
+\`\`\`
+
+### Relationships (in standalone .gal files)
+\`\`\`
+@source file:src/auth/login.ts line:42 symbol:authenticate
+@exposes #auth to #sqli [P0] cwe:CWE-89 owasp:A03:2021 -- "User input concatenated into query"
+@mitigates #auth against #sqli using #prepared-stmts -- "Uses parameterized queries via sqlx"
+@audit #auth -- "Timing attack risk — needs human review"
 \`\`\`
 
 ## CRITICAL SYNTAX RULES (violations cause parse errors)
@@ -333,6 +388,7 @@ Definitions go in .guardlink/definitions.{ts,js,py,rs}. Source files use only re
    A bare \`@comment\` without description is valid but useless. Always include context.
 
 10. **One annotation per comment line.** Do NOT put two @verbs on the same line.
+11. **In external mode, use \`@source\` before each block** so the annotations point at the intended file and line.
 
 ## Workflow
 
@@ -350,7 +406,7 @@ Definitions go in .guardlink/definitions.{ts,js,py,rs}. Source files use only re
    Think: "what's the risk, what's the defense, how does data flow here, and what should the next developer know?"
    NEVER write @accepts — that is a human-only governance decision. Use @audit to flag unmitigated risks for review.
 
-5. **Use the project's comment style** (// for JS/TS/Go/Rust, # for Python/Ruby/Shell, etc.)
+5. **Use the selected annotation mode consistently.** Inline mode writes source comments; external mode writes associated \`.gal\` files with \`@source\` blocks.
 
 6. **Run validation** via guardlink_validate (MCP) or \`guardlink validate\` to check for errors.
 

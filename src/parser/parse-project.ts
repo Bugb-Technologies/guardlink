@@ -8,11 +8,12 @@
  * @mitigates #parser against #dos using #resource-limits -- "DEFAULT_EXCLUDE skips build artifacts, tests; limits effective file count"
  * @flows ProjectRoot -> #parser via fast-glob -- "Directory traversal path"
  * @flows #parser -> ThreatModel via assembleModel -- "Aggregated threat model output"
+ * @comment -- "Scans standalone .gal files in addition to comment-based source annotations"
  * @boundary #parser and FileSystem (#fs-boundary) -- "Trust boundary between parser and disk I/O"
  */
 
 import fg from 'fast-glob';
-import { relative } from 'node:path';
+import { isAbsolute, relative } from 'node:path';
 import type {
   Annotation, ThreatModel, ParseResult, ParseDiagnostic,
   AssetAnnotation, ThreatAnnotation, ControlAnnotation,
@@ -51,6 +52,7 @@ const DEFAULT_INCLUDE = [
   '**/*.html', '**/*.xml', '**/*.svg',
   '**/*.css',
   '**/*.ex', '**/*.exs',
+  '**/*.[gG][aA][lL]',
 ];
 
 const DEFAULT_EXCLUDE = [
@@ -91,13 +93,19 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     const relPath = relative(root, file);
     // Normalize file paths to relative
     for (const ann of result.annotations) {
-      ann.location.file = relPath;
+      ann.location.file = normalizeLocationPath(ann.location.file, file, root);
+      if (ann.location.origin_file) {
+        ann.location.origin_file = normalizeLocationPath(ann.location.origin_file, file, root);
+      }
     }
     for (const diag of result.diagnostics) {
       diag.file = relPath;
     }
     if (result.annotations.length > 0) {
       filesWithAnnotations.add(relPath);
+      for (const ann of result.annotations) {
+        filesWithAnnotations.add(ann.location.file);
+      }
     }
     allAnnotations.push(...result.annotations);
     allDiagnostics.push(...result.diagnostics);
@@ -136,6 +144,12 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   model.external_refs = detectExternalRefs(model, root);
 
   return { model, diagnostics: allDiagnostics };
+}
+
+function normalizeLocationPath(locationFile: string, physicalFile: string, root: string): string {
+  if (locationFile === physicalFile) return relative(root, physicalFile);
+  if (isAbsolute(locationFile)) return relative(root, locationFile);
+  return locationFile.replaceAll('\\', '/');
 }
 
 function getAnnotationId(ann: Annotation): string | undefined {

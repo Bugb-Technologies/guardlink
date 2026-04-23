@@ -57,7 +57,7 @@ Append after severity: \`cwe:CWE-89\`, \`owasp:A03:2021\`, \`capec:CAPEC-66\`, \
 ## Rules
 
 1. **Annotate as you code.** When you write or modify security-relevant code (endpoints, auth, data access, validation, I/O, crypto, process spawning), add annotations in the same change. This is required, not optional.
-2. **Define once, reference everywhere.** \`@asset\`, \`@threat\`, \`@control\` with \`(#id)\` go in \`.guardlink/definitions${project.definitionsExt}\`. Source files use relationship verbs only (\`@mitigates\`, \`@exposes\`, etc.).
+2. **Define once, reference everywhere.** \`@asset\`, \`@threat\`, \`@control\` with \`(#id)\` go in \`.guardlink/definitions${project.definitionsExt}\`. Relationship annotations can live inline in source comments or in standalone \`.gal\` files.
 3. **Read definitions before adding.** Check for existing IDs first — avoid duplicates.
 4. **Every \`@exposes\` needs a response.** Match with \`@mitigates\` (fix exists) or \`@audit\` (flag for human review). AI agents must NEVER write \`@accepts\` — that is a human-only governance decision. Use \`@audit\` instead.
 5. **Use the full verb set.** \`@flows\` for data movement, \`@handles\` for data classification, \`@boundary\` for trust boundaries.
@@ -105,7 +105,7 @@ export function agentInstructions(project: ProjectInfo): string {
   return `
 ## GuardLink — Security Annotations (Required)
 
-This project uses [GuardLink](https://guardlink.bugb.io) annotations in source code comments.
+This project uses [GuardLink](https://guardlink.bugb.io) annotations in source code comments or standalone \`.gal\` files.
 **Full reference: \`docs/GUARDLINK_REFERENCE.md\`**
 
 ### Core Requirement
@@ -118,7 +118,7 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 2. **NEVER write \`@accepts\`.** That is a human-only governance decision. When you find a risk with no mitigation in code, write \`@exposes\` to document the risk + \`@audit\` to flag it for human review + \`@comment\` to suggest potential controls.
 3. Do not delete or mangle existing annotations. Treat them as part of the code. Edit only when intentionally changing the threat model.
 4. Definitions (\`@asset\`, \`@threat\`, \`@control\` with \`(#id)\`) live in \`.guardlink/definitions${project.definitionsExt}\`. Reuse existing \`#id\`s — never redefine. If you need a new asset or threat, add the definition there first, then reference it in source files.
-5. Source files use relationship verbs only: \`@mitigates\`, \`@exposes\`, \`@flows\`, \`@handles\`, \`@boundary\`, \`@comment\`, \`@validates\`, \`@audit\`, \`@owns\`, \`@assumes\`, \`@transfers\`.
+5. Relationship annotations use verbs like: \`@mitigates\`, \`@exposes\`, \`@flows\`, \`@handles\`, \`@boundary\`, \`@comment\`, \`@validates\`, \`@audit\`, \`@owns\`, \`@assumes\`, \`@transfers\`.
 6. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note. Never write a lone \`@exposes\` without follow-up.
 7. Avoid \`@shield\` unless a human explicitly asks to hide code from AI — it creates blind spots.
 
@@ -272,7 +272,7 @@ export function cursorRulesContent(project: ProjectInfo): string {
   return `
 # GuardLink Security Annotations
 
-This project uses GuardLink annotations in source code comments.
+This project uses GuardLink annotations in source code comments or standalone .gal files.
 
 ## Core Requirement
 Every time you write or modify code that touches security-relevant behavior, you MUST add GuardLink annotations in the same change. This includes: new endpoints, auth logic, data validation, database queries, file I/O, external API calls, crypto, process spawning, user input handling, config parsing. Do NOT annotate pure business logic, formatting utilities, UI components, or helpers that never touch security boundaries.
@@ -282,7 +282,7 @@ Every time you write or modify code that touches security-relevant behavior, you
 - NEVER write @accepts — that is a human-only governance decision. For risks with no mitigation: write @exposes + @audit + @comment suggesting potential controls.
 - Preserve existing annotations — do not delete or mangle them.
 - Definitions (@asset, @threat, @control with (#id)) live in .guardlink/definitions${project.definitionsExt}. Reuse IDs — never redefine. Add new definitions there first, then reference in source files.
-- Source files use relationship verbs: @mitigates, @exposes, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers.
+- Relationship annotations use verbs: @mitigates, @exposes, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers.
 - Write coupled annotation blocks: risk + control (or audit) + data flow + context note.
 - Avoid @shield unless a human explicitly asks to hide code from AI.
 
