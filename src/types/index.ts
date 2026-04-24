@@ -28,6 +28,8 @@ export interface SourceLocation {
   line: number;
   end_line?: number | null;
   parent_symbol?: string | null;
+  origin_file?: string | null;
+  origin_line?: number | null;
 }
 
 // ─── Parsed Annotations ──────────────────────────────────────────────

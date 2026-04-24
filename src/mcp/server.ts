@@ -85,7 +85,7 @@ function invalidateCache() {
 export function createServer(): McpServer {
   const server = new McpServer({
     name: 'guardlink',
-    version: '1.4.0',
+    version: '1.4.1-gal',
   });
 
   // ── Tool: guardlink_parse ──
@@ -286,8 +286,9 @@ export function createServer(): McpServer {
     {
       root: z.string().describe('Project root directory').default('.'),
       prompt: z.string().describe('Annotation instructions (e.g., "annotate auth endpoints for OWASP Top 10")'),
+      mode: z.enum(['inline', 'external']).describe('Annotation placement mode — inline (default) or external (externalized .gal files)').default('inline'),
     },
-    async ({ root, prompt }) => {
+    async ({ root, prompt, mode }) => {
       let model: ThreatModel | null = null;
       try {
         const result = await getModel(root);
@@ -296,16 +297,20 @@ export function createServer(): McpServer {
         }
       } catch { /* no model yet — fine */ }
 
-      const annotatePrompt = buildAnnotatePrompt(prompt, root, model);
+      const annotatePrompt = buildAnnotatePrompt(prompt, root, model, mode);
 
       return {
         content: [{ type: 'text', text: JSON.stringify({
           mode: 'agent',
-          message: 'Annotation prompt built with project context. Read the source files in the project directory, then add GuardLink annotations as code comments following the guidelines in the prompt. After annotating, call guardlink_parse to verify the annotations were parsed correctly.',
+          message: `Annotation prompt built with project context. Read the source files in the project directory, then add GuardLink annotations using ${mode === 'external' ? 'associated .gal files' : 'inline source comments'} following the guidelines in the prompt. After annotating, call guardlink_parse to verify the annotations were parsed correctly.`,
           prompt: annotatePrompt,
           guidelines: [
-            'Add annotations as comments directly above security-relevant code',
-            'Use the project\'s comment style (// for TS/JS/Rust/Go, # for Python/Ruby/Shell)',
+            mode === 'external'
+              ? 'Write externalized annotations into associated .gal files using @source blocks'
+              : 'Add annotations as comments directly above security-relevant code',
+            mode === 'external'
+              ? 'Keep definitions in .guardlink/definitions.* and use raw GAL lines without comment prefixes'
+              : 'Use the project\'s comment style (// for TS/JS/Rust/Go, # for Python/Ruby/Shell)',
             'After annotating, call guardlink_parse to verify results',
           ],
         }, null, 2) }],
@@ -555,7 +560,7 @@ export function createServer(): McpServer {
     'Record a governance decision for an unmitigated exposure. Writes @accepts + @audit (for accept) or @audit (for remediate) directly into the source file. IMPORTANT: This modifies source files. Only call after explicit human confirmation of the decision and justification.',
     {
       root: z.string().describe('Project root directory').default('.'),
-      exposure_id: z.string().describe('Exposure ID from guardlink_review_list (format: "file:line")'),
+      exposure_id: z.string().describe('Exposure ID from guardlink_review_list'),
       decision: z.enum(['accept', 'remediate', 'skip']).describe('accept = risk acknowledged; remediate = planned fix; skip = no action'),
       justification: z.string().describe('Required explanation for accept/remediate decisions'),
     },
@@ -588,7 +593,7 @@ export function createServer(): McpServer {
 
       const verb = decision === 'accept' ? 'Accepted' : 'Marked for remediation';
       return {
-        content: [{ type: 'text', text: `${verb}: ${target.exposure.asset} → ${target.exposure.threat} [${target.exposure.severity}]\nJustification: ${justification}\n${result.linesInserted} annotation line(s) written to ${target.exposure.location.file}` }],
+        content: [{ type: 'text', text: `${verb}: ${target.exposure.asset} → ${target.exposure.threat} [${target.exposure.severity}]\nJustification: ${justification}\n${result.linesInserted} annotation line(s) written to ${result.targetFile}` }],
       };
     },
   );

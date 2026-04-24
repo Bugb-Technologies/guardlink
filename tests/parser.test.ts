@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { parseString } from '../src/parser/parse-file.js';
+import { parseProject } from '../src/parser/parse-project.js';
+import { clearAnnotations } from '../src/parser/clear.js';
 import { normalizeName, resolveSeverity, unescapeDescription } from '../src/parser/normalize.js';
 import { stripCommentPrefix } from '../src/parser/comment-strip.js';
 import { findDanglingRefs, findUnmitigatedExposures } from '../src/parser/validate.js';
@@ -260,6 +265,53 @@ describe('parseString', () => {
     expect(annotations[0].verb).toBe('asset');
   });
 
+  it('parses raw standalone .gal files without comment prefixes', () => {
+    const { annotations } = parseString([
+      '@asset App.Auth.Login (#login) -- "Externalized auth asset"',
+      '@threat Session_Hijacking (#session-hijack) [P1]',
+      '-- "Token theft through externalized annotations"',
+      '@exposes #login to #session-hijack -- "Session cookie lacks binding"',
+    ].join('\n'), 'annotations.gal');
+
+    expect(annotations).toHaveLength(3);
+    expect((annotations[0] as any).verb).toBe('asset');
+    expect((annotations[1] as any).description).toBe('Token theft through externalized annotations');
+    expect((annotations[2] as any).asset).toBe('#login');
+  });
+
+  it('applies @source metadata to subsequent standalone .gal annotations', () => {
+    const { annotations } = parseString([
+      '@source file:src/auth/login.ts line:42 symbol:authenticate',
+      '@exposes #login to #session-hijack -- "Session cookie lacks binding"',
+      '@audit #login -- "Review session issuance"',
+      '@source file:src/auth/session.ts line:88',
+      '@handles secrets on #login -- "Issues session token"',
+    ].join('\n'), 'annotations.gal');
+
+    expect(annotations).toHaveLength(3);
+    expect(annotations[0].location).toEqual({
+      file: 'src/auth/login.ts',
+      line: 42,
+      parent_symbol: 'authenticate',
+      origin_file: 'annotations.gal',
+      origin_line: 2,
+    });
+    expect(annotations[1].location).toEqual({
+      file: 'src/auth/login.ts',
+      line: 42,
+      parent_symbol: 'authenticate',
+      origin_file: 'annotations.gal',
+      origin_line: 3,
+    });
+    expect(annotations[2].location).toEqual({
+      file: 'src/auth/session.ts',
+      line: 88,
+      parent_symbol: null,
+      origin_file: 'annotations.gal',
+      origin_line: 5,
+    });
+  });
+
   // ── Error diagnostics ──
 
   it('reports malformed annotations', () => {
@@ -325,6 +377,85 @@ describe('parseString', () => {
     const { annotations } = parseString('// @shield -- "Proprietary"');
     expect(annotations).toHaveLength(1);
     expect(annotations[0].verb).toBe('shield');
+  });
+
+  it('scans standalone .gal files during project parsing', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-gal-'));
+
+    try {
+      await mkdir(join(root, '.guardlink'), { recursive: true });
+      await writeFile(
+        join(root, '.guardlink', 'definitions.ts'),
+        [
+          '// @asset App.API (#api) -- "Standalone API asset"',
+          '// @threat XSS (#xss) [high] cwe:CWE-79 -- "Unescaped output"',
+        ].join('\n'),
+      );
+      await mkdir(join(root, '.guardlink', 'annotations'), { recursive: true });
+      await writeFile(
+        join(root, '.guardlink', 'annotations', 'annotations.GAL'),
+        [
+          '@source file:src/api.ts line:12 symbol:renderProfile',
+          '@exposes #api to #xss -- "Rendered HTML lacks output encoding"',
+        ].join('\n'),
+      );
+      await mkdir(join(root, 'src'), { recursive: true });
+      await writeFile(join(root, 'src', 'api.ts'), 'export const ok = true;\n');
+
+      const { model, diagnostics } = await parseProject({ root, project: 'tmp' });
+
+      expect(diagnostics).toHaveLength(0);
+      expect(model.annotations_parsed).toBe(3);
+      expect(model.assets.map(a => a.id)).toContain('api');
+      expect(model.exposures).toHaveLength(1);
+      expect(model.exposures[0].location).toEqual({
+        file: 'src/api.ts',
+        line: 12,
+        parent_symbol: 'renderProfile',
+        origin_file: '.guardlink/annotations/annotations.GAL',
+        origin_line: 2,
+      });
+      expect(model.annotated_files).toContain('.guardlink/definitions.ts');
+      expect(model.annotated_files).toContain('.guardlink/annotations/annotations.GAL');
+      expect(model.annotated_files).toContain('src/api.ts');
+      expect(model.unannotated_files).not.toContain('src/api.ts');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('clears raw standalone .gal annotations while preserving definitions by default', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-clear-gal-'));
+
+    try {
+      await mkdir(join(root, '.guardlink'), { recursive: true });
+      await writeFile(
+        join(root, '.guardlink', 'definitions.ts'),
+        [
+          '// @asset App.API (#api) -- "Standalone API asset"',
+          '// @threat XSS (#xss) [high] cwe:CWE-79 -- "Unescaped output"',
+        ].join('\n'),
+      );
+      await mkdir(join(root, '.guardlink', 'annotations'), { recursive: true });
+      await writeFile(
+        join(root, '.guardlink', 'annotations', 'annotations.gal'),
+        [
+          '@source file:src/api.ts line:12 symbol:renderProfile',
+          '@exposes #api to #xss [high] -- "Rendered HTML lacks output encoding"',
+          '-- "Needs manual review"',
+          '@audit #api -- "Review before public release"',
+        ].join('\n'),
+      );
+
+      const result = await clearAnnotations({ root });
+
+      expect(result.modifiedFiles).toContain('.guardlink/annotations/annotations.gal');
+      expect(result.modifiedFiles).not.toContain('.guardlink/definitions.ts');
+      expect(await readFile(join(root, '.guardlink', 'annotations', 'annotations.gal'), 'utf-8')).toBe('');
+      expect(await readFile(join(root, '.guardlink', 'definitions.ts'), 'utf-8')).toContain('@asset App.API');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 

@@ -1,7 +1,7 @@
 <!-- guardlink:begin -->
 # GuardLink Security Annotations
 
-This project uses GuardLink annotations in source code comments.
+This project uses GuardLink annotations in source code comments or standalone .gal files.
 
 ## Core Requirement
 Every time you write or modify code that touches security-relevant behavior, you MUST add GuardLink annotations in the same change. This includes: new endpoints, auth logic, data validation, database queries, file I/O, external API calls, crypto, process spawning, user input handling, config parsing. Do NOT annotate pure business logic, formatting utilities, UI components, or helpers that never touch security boundaries.
@@ -11,7 +11,7 @@ Every time you write or modify code that touches security-relevant behavior, you
 - NEVER write @accepts — that is a human-only governance decision. For risks with no mitigation: write @exposes + @audit + @comment suggesting potential controls.
 - Preserve existing annotations — do not delete or mangle them.
 - Definitions (@asset, @threat, @control with (#id)) live in .guardlink/definitions.ts. Reuse IDs — never redefine. Add new definitions there first, then reference in source files.
-- Source files use relationship verbs: @mitigates, @exposes, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers.
+- Relationship annotations use verbs: @mitigates, @exposes, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers.
 - Write coupled annotation blocks: risk + control (or audit) + data flow + context note.
 - Avoid @shield unless a human explicitly asks to hide code from AI.
 
@@ -48,14 +48,14 @@ Every time you write or modify code that touches security-relevant behavior, you
 - #agent-launcher exposed to #prompt-injection [high] (src/agents/prompts.ts:6)
 - #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
 - #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
-- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:15)
 - #cli exposed to #cmd-injection [critical] (src/cli/index.ts:31)
+- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:15)
 - #init exposed to #data-exposure [low] (src/init/index.ts:12)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
 - #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:30)
 - #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:34)
 - #suggest exposed to #dos [low] (src/mcp/suggest.ts:16)
-- #parser exposed to #arbitrary-write [high] (src/parser/clear.ts:7)
+- #parser exposed to #arbitrary-write [high] (src/parser/clear.ts:8)
 - #tui exposed to #cmd-injection [high] (src/tui/commands.ts:11)
 - #tui exposed to #prompt-injection [medium] (src/tui/commands.ts:15)
 
@@ -79,15 +79,21 @@ Every time you write or modify code that touches security-relevant behavior, you
 - LLMToolCall -> #llm-client via createToolExecutor
 - #llm-client -> NVD via fetch
 - ProjectFiles -> #llm-client via readFileSync
-- ThreatModel -> #sarif via generateSarif
-- #sarif -> SarifLog via return
+- UserArgs -> #cli via process.argv
+- #cli -> FileSystem via writeFile
 - ... and 48 more
 
 ### Model Stats
 
-290 annotations, 16 assets, 15 threats, 12 controls, 60 exposures, 44 mitigations, 68 flows
+291 annotations, 16 assets, 15 threats, 12 controls, 60 exposures, 44 mitigations, 68 flows
 
 <!-- guardlink:end -->
+
+
+
+
+
+
 
 
 

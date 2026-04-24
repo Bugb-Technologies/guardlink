@@ -1,6 +1,7 @@
 /**
  * GuardLink — File-level parser.
  * Reads source files and extracts all GuardLink annotations.
+ * Standalone .gal files are treated as raw annotation text.
  *
  * @exposes #parser to #path-traversal [high] cwe:CWE-22 -- "File path from caller read via readFile; no validation here"
  * @exposes #parser to #dos [medium] cwe:CWE-400 -- "Large files loaded entirely into memory"
@@ -10,9 +11,8 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { basename, extname } from 'node:path';
-import type { Annotation, ParseDiagnostic, ParseResult } from '../types/index.js';
-import { stripCommentPrefix } from './comment-strip.js';
+import type { Annotation, ParseDiagnostic, ParseResult, SourceLocation } from '../types/index.js';
+import { isStandaloneAnnotationFile, stripCommentPrefix } from './comment-strip.js';
 import { parseLine } from './parse-line.js';
 import { unescapeDescription } from './normalize.js';
 
@@ -34,23 +34,27 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
   const diagnostics: ParseDiagnostic[] = [];
   let lastAnnotation: Annotation | null = null;
   let inShield = false;
+  const allowRawAnnotationLines = isStandaloneAnnotationFile(filePath);
+  let currentSource: SourceLocation | null = null;
 
   for (let i = 0; i < lines.length; i++) {
     const lineNum = i + 1;  // 1-indexed
     const rawLine = lines[i];
 
-    // Strip comment prefix
-    const inner = stripCommentPrefix(rawLine);
+    // Strip comment prefix unless this is a standalone .gal file, where
+    // annotations are stored as raw lines instead of host-language comments.
+    const inner = allowRawAnnotationLines ? rawLine : stripCommentPrefix(rawLine);
     if (inner === null) {
       lastAnnotation = null;
       continue;
     }
+    const text = inner.trimStart();
 
     // Check for shield block boundaries — always parse these even inside shields
-    const trimmed = inner.trim();
+    const trimmed = text.trim();
     if (trimmed.startsWith('@shield:end')) {
       const location = { file: filePath, line: lineNum };
-      const result = parseLine(inner, location);
+      const result = parseLine(text, location);
       if (result.annotation) annotations.push(result.annotation);
       inShield = false;
       lastAnnotation = null;
@@ -58,7 +62,7 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
     }
     if (trimmed.startsWith('@shield:begin')) {
       const location = { file: filePath, line: lineNum };
-      const result = parseLine(inner, location);
+      const result = parseLine(text, location);
       if (result.annotation) annotations.push(result.annotation);
       inShield = true;
       lastAnnotation = null;
@@ -69,7 +73,7 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
     if (inShield) continue;
 
     // Check for continuation line: -- "..."
-    const contMatch = inner.match(/^--\s*"((?:[^"\\]|\\.)*)"/);
+    const contMatch = text.match(/^--\s*"((?:[^"\\]|\\.)*)"/);
     if (contMatch && lastAnnotation) {
       // Append to last annotation's description
       const contDesc = unescapeDescription(contMatch[1]);
@@ -83,9 +87,28 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
 
     // Try to parse as annotation
     const location = { file: filePath, line: lineNum };
-    const result = parseLine(inner, location);
+    const result = parseLine(text, location);
+
+    if (result.sourceDirective) {
+      currentSource = {
+        file: result.sourceDirective.file,
+        line: result.sourceDirective.line,
+        parent_symbol: result.sourceDirective.symbol ?? null,
+      };
+      lastAnnotation = null;
+      continue;
+    }
 
     if (result.annotation) {
+      if (allowRawAnnotationLines && currentSource) {
+        result.annotation.location = {
+          file: currentSource.file,
+          line: currentSource.line,
+          parent_symbol: currentSource.parent_symbol ?? null,
+          origin_file: filePath,
+          origin_line: lineNum,
+        };
+      }
       annotations.push(result.annotation);
       lastAnnotation = result.annotation;
     } else {

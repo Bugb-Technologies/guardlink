@@ -27,7 +27,7 @@ Your job is to **produce a complete, standalone threat model** for a real codeba
 
 You will receive:
 1. **Project context** — language/framework, dependencies, deployment signals (Dockerfile, CI config, etc.)
-2. **Annotation graph** — structured security metadata extracted from source code comments (GuardLink annotations)
+2. **Annotation graph** — structured security metadata extracted from GuardLink annotations in source comments or standalone \`.gal\` files
 3. **Code snippets** — the actual source lines surrounding each annotation, so you can validate what developers claimed
 
 ## How to use these inputs

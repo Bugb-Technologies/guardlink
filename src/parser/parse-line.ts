@@ -24,6 +24,9 @@ const THREAT_REF = String.raw`(?:#[a-zA-Z0-9_-]+|[A-Za-z]\w*(?:[_\- ][A-Za-z]\w*
 const SEVERITY  = String.raw`\[(P[0-3]|critical|high|medium|low)\]`;
 const EXT_REF   = String.raw`([a-zA-Z]+:[A-Za-z0-9_:.\-]+)`;
 const DESC      = String.raw`--\s*"((?:[^"\\]|\\.)*)"`;
+const SOURCE_FILE = String.raw`\S+`;
+const SOURCE_LINE = String.raw`[1-9]\d*`;
+const SOURCE_SYMBOL = String.raw`\S+`;
 
 // Capture external refs (0 or more, space-separated)
 const EXT_REFS_OPT = String.raw`((?:\s+[a-zA-Z]+:[A-Za-z0-9_:.\-]+)*)`;
@@ -59,6 +62,9 @@ const PATTERNS: Record<string, RegExp> = {
   // Comment — developer note, description only
   comment: new RegExp(String.raw`^@comment(?:\s+${DESC})?$`),
 
+  // Standalone .gal directive — sets logical source location for following annotations
+  source: new RegExp(String.raw`^@source\s+file:(${SOURCE_FILE})\s+line:(${SOURCE_LINE})(?:\s+symbol:(${SOURCE_SYMBOL}))?$`),
+
   // Special
   shield: new RegExp(String.raw`^@shield(?!:)(?:\s+${DESC})?$`),
   shield_begin: new RegExp(String.raw`^@shield:begin(?:\s+${DESC})?$`),
@@ -80,10 +86,17 @@ function resolveRef(ref: string): string {
 
 // ─── Main parser ─────────────────────────────────────────────────────
 
+export interface SourceDirective {
+  file: string;
+  line: number;
+  symbol?: string;
+}
+
 export interface ParseLineResult {
   annotation: Annotation | null;
   diagnostic: ParseDiagnostic | null;
   isContinuation: boolean;
+  sourceDirective?: SourceDirective | null;
 }
 
 /**
@@ -102,9 +115,9 @@ export function parseLine(
     // Check for continuation line (-- "...")
     const contMatch = trimmed.match(new RegExp(String.raw`^${DESC}$`));
     if (contMatch) {
-      return { annotation: null, diagnostic: null, isContinuation: true };
-    }
-    return { annotation: null, diagnostic: null, isContinuation: false };
+        return { annotation: null, diagnostic: null, isContinuation: true, sourceDirective: null };
+      }
+    return { annotation: null, diagnostic: null, isContinuation: false, sourceDirective: null };
   }
 
   const base = { location, raw: trimmed };
@@ -230,6 +243,20 @@ export function parseLine(
     return ok({ ...base, verb: 'comment', description: desc(m[1]) });
   }
 
+  // ── @source ──
+  if ((m = trimmed.match(PATTERNS.source))) {
+    return {
+      annotation: null,
+      diagnostic: null,
+      isContinuation: false,
+      sourceDirective: {
+        file: m[1],
+        line: Number(m[2]),
+        symbol: m[3] || undefined,
+      },
+    };
+  }
+
   // ── @shield ──
   if ((m = trimmed.match(PATTERNS.shield_begin))) {
     return ok({ ...base, verb: 'shield:begin', description: desc(m[1]) });
@@ -247,7 +274,7 @@ export function parseLine(
     const knownVerbs: Set<string> = new Set([
       'asset', 'threat', 'control', 'mitigates', 'exposes', 'accepts',
       'transfers', 'flows', 'boundary', 'validates', 'audit', 'owns',
-      'handles', 'assumes', 'comment', 'shield', 'shield:begin', 'shield:end',
+      'handles', 'assumes', 'comment', 'source', 'shield', 'shield:begin', 'shield:end',
       // v1 compat
       'review', 'connects',
     ]);
@@ -267,13 +294,13 @@ export function parseLine(
   }
 
   // Not a GuardLink annotation (could be @param, @returns, etc.)
-  return { annotation: null, diagnostic: null, isContinuation: false };
+  return { annotation: null, diagnostic: null, isContinuation: false, sourceDirective: null };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function ok(annotation: Annotation): ParseLineResult {
-  return { annotation, diagnostic: null, isContinuation: false };
+  return { annotation, diagnostic: null, isContinuation: false, sourceDirective: null };
 }
 
 function desc(raw: string | undefined): string | undefined {

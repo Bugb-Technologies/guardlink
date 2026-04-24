@@ -47,7 +47,7 @@ import { generateSarif } from '../analyzer/index.js';
 import { startStdioServer } from '../mcp/index.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, serializeModel, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
-import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt } from '../agents/index.js';
+import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt, resolveAnnotationMode } from '../agents/index.js';
 import { resolveConfig, saveProjectConfig, saveGlobalConfig, loadProjectConfig, loadGlobalConfig, maskKey, describeConfigSource } from '../agents/config.js';
 import { getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview, type ReviewResult } from '../review/index.js';
 import { populateMetadata, mergeReports, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace } from '../workspace/index.js';
@@ -97,7 +97,7 @@ function detectProjectName(root: string, explicit?: string): string {
 program
   .name('guardlink')
   .description('GuardLink — Security annotations for code. Threat modeling that lives in your codebase.')
-  .version('1.4.1')
+  .version('1.4.1-gal')
   .addHelpText('before', gradient(['#00ff41', '#00d4ff'])(ASCII_LOGO));
 
 // ─── init ────────────────────────────────────────────────────────────
@@ -108,10 +108,11 @@ program
   .argument('[dir]', 'Project directory', '.')
   .option('-p, --project <n>', 'Override project name')
   .option('-a, --agent <agents>', 'Agent(s) to create files for: claude,cursor,codex,copilot,windsurf,cline,none (comma-separated)')
+  .option('--mode <mode>', 'Annotation mode: inline (default) or external. external restricts all writes to .guardlink/ — no agent files, no .mcp.json at root', 'inline')
   .option('--skip-agent-files', 'Only create .guardlink/, skip agent file updates')
   .option('--force', 'Overwrite existing GuardLink config and instructions')
   .option('--dry-run', 'Show what would be created without writing files')
-  .action(async (dir: string, opts: { project?: string; agent?: string; skipAgentFiles?: boolean; force?: boolean; dryRun?: boolean }) => {
+  .action(async (dir: string, opts: { project?: string; agent?: string; mode?: string; skipAgentFiles?: boolean; force?: boolean; dryRun?: boolean }) => {
     const root = resolve(dir);
 
     // Show detection results first
@@ -148,6 +149,7 @@ program
     const result = initProject({
       root,
       project: opts.project,
+      mode: resolveAnnotationMode(opts.mode),
       skipAgentFiles: opts.skipAgentFiles,
       force: opts.force,
       dryRun: opts.dryRun,
@@ -673,19 +675,29 @@ program
   .argument('<prompt>', 'Annotation instructions (e.g., "annotate auth endpoints for OWASP Top 10")')
   .argument('[dir]', 'Project directory', '.')
   .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('--mode <mode>', 'Annotation placement mode: inline (default) or external (externalized .gal files)', 'inline')
   .option('--claude-code', 'Launch Claude Code in foreground')
   .option('--codex', 'Launch Codex CLI in foreground')
   .option('--gemini', 'Launch Gemini CLI in foreground')
   .option('--cursor', 'Open Cursor IDE with prompt on clipboard')
   .option('--windsurf', 'Open Windsurf IDE with prompt on clipboard')
   .option('--clipboard', 'Copy annotation prompt to clipboard only')
+  .option('--stdout', 'Print annotation prompt to stdout and exit (for piping)')
   .action(async (prompt: string, dir: string, opts: {
     project: string;
+    mode?: string;
     claudeCode?: boolean; codex?: boolean; gemini?: boolean;
-    cursor?: boolean; windsurf?: boolean; clipboard?: boolean;
+    cursor?: boolean; windsurf?: boolean; clipboard?: boolean; stdout?: boolean;
   }) => {
     const root = resolve(dir);
     const project = detectProjectName(root, opts.project);
+    let annotationMode;
+    try {
+      annotationMode = resolveAnnotationMode(opts.mode);
+    } catch (err: any) {
+      console.error(err.message);
+      process.exit(1);
+    }
 
     // Resolve agent
     const agent = agentFromOpts(opts);
@@ -707,15 +719,20 @@ program
     } catch { /* no model yet — that's fine */ }
 
     // Build prompt
-    const fullPrompt = buildAnnotatePrompt(prompt, root, model);
+    const fullPrompt = buildAnnotatePrompt(prompt, root, model, annotationMode);
 
     // Launch agent
-    console.log(`Launching ${agent.name} for annotation...`);
-    if (agent.cmd) {
-      console.log(`${agent.name} will take over this terminal. Exit the agent to return.\n`);
+    if (agent.id !== 'stdout') {
+      console.log(`Launching ${agent.name} for annotation...`);
+      if (agent.cmd) {
+        console.log(`${agent.name} will take over this terminal. Exit the agent to return.\n`);
+      }
     }
 
     const result = launchAgent(agent, fullPrompt, root);
+
+    // stdout mode: prompt already written to stdout — nothing else to do
+    if (agent.id === 'stdout') return;
 
     if (result.clipboardCopied) {
       console.log(`✓ Prompt copied to clipboard (${fullPrompt.length.toLocaleString()} chars)`);
@@ -931,7 +948,7 @@ program
         }
         const result = await applyReviewAction(root, reviewable, { decision: 'accept', justification });
         results.push(result);
-        console.error(`  ✓ Accepted — ${result.linesInserted} line(s) written to ${reviewable.exposure.location.file}\n`);
+        console.error(`  ✓ Accepted — ${result.linesInserted} line(s) written to ${result.targetFile}\n`);
       } else if (choice === 'r') {
         let note = '';
         while (!note) {
@@ -940,9 +957,9 @@ program
         }
         const result = await applyReviewAction(root, reviewable, { decision: 'remediate', justification: note });
         results.push(result);
-        console.error(`  ✓ Marked for remediation — ${result.linesInserted} line(s) written to ${reviewable.exposure.location.file}\n`);
+        console.error(`  ✓ Marked for remediation — ${result.linesInserted} line(s) written to ${result.targetFile}\n`);
       } else {
-        results.push({ exposure: reviewable, action: { decision: 'skip', justification: '' }, linesInserted: 0 });
+        results.push({ exposure: reviewable, action: { decision: 'skip', justification: '' }, linesInserted: 0, targetFile: reviewable.exposure.location.file });
         console.error('  — Skipped\n');
       }
     }
@@ -1404,10 +1421,12 @@ program
       console.log(H('  GAL — GuardLink Annotation Language'));
       console.log(H('  ══════════════════════════════════════════════════════════'));
       console.log('');
-      console.log(D('  Annotations live in source code comments. GuardLink parses'));
-      console.log(D('  them to build a live threat model from your codebase.'));
+      console.log(D('  Annotations live in source comments or standalone .gal files.'));
+      console.log(D('  GuardLink parses them into a live threat model for your codebase.'));
       console.log('');
       console.log(D('  Syntax:  @verb  subject  [preposition  object]  [-- "description"]'));
+      console.log(D('  Inline examples below use comment prefixes; raw .gal files use the same lines without // or #.'));
+      console.log(D('  In .gal files, use @source file:<path> line:<n> [symbol:<name>] to anchor following annotations.'));
       console.log('');
 
       // ── DEFINITIONS ──

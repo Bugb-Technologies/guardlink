@@ -16,8 +16,9 @@
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { stripCommentPrefix } from '../parser/comment-strip.js';
+import { extname, resolve } from 'node:path';
+import { commentStyleForExt, stripCommentPrefix } from '../parser/comment-strip.js';
+import { parseLine } from '../parser/parse-line.js';
 import { findUnmitigatedExposures } from '../parser/validate.js';
 import type { ThreatModel, ThreatModelExposure, Severity } from '../types/index.js';
 
@@ -29,7 +30,7 @@ export interface ReviewableExposure {
   /** 1-based index in the review list */
   index: number;
   exposure: ThreatModelExposure;
-  /** Stable ID for MCP: "file:line" */
+  /** Stable ID for MCP */
   id: string;
 }
 
@@ -43,6 +44,8 @@ export interface ReviewResult {
   action: ReviewAction;
   /** Lines inserted into the file (empty for skip) */
   linesInserted: number;
+  /** Physical file modified (or logical file for skip) */
+  targetFile: string;
 }
 
 // ─── Severity ordering ──────────────────────────────────────────────
@@ -78,7 +81,7 @@ export function getReviewableExposures(model: ThreatModel): ReviewableExposure[]
   return filtered.map((exposure, i) => ({
     index: i + 1,
     exposure,
-    id: `${exposure.location.file}:${exposure.location.line}`,
+    id: reviewExposureId(exposure),
   }));
 }
 
@@ -95,6 +98,8 @@ export function severityLabel(s?: Severity): string {
 interface CommentStyle {
   /** The prefix to use for new annotation lines */
   prefix: string;
+  /** Optional suffix for single-line wrapper styles like <!-- --> */
+  suffix: string;
   /** Indentation (leading whitespace) to match */
   indent: string;
 }
@@ -103,38 +108,60 @@ interface CommentStyle {
  * Detect the comment style and indentation from the @exposes source line.
  * Supports JSDoc ( * @...), single-line (// @...), and hash (# @...) styles.
  */
-function detectCommentStyle(rawLine: string): CommentStyle {
+function detectCommentStyle(rawLine: string, filePath: string): CommentStyle {
   const indent = rawLine.match(/^(\s*)/)?.[1] || '';
   const trimmed = rawLine.trimStart();
 
+  if (trimmed.startsWith('@')) {
+    return { prefix: '', suffix: '', indent };
+  }
   if (trimmed.startsWith('* @') || trimmed.startsWith('*  @')) {
-    return { prefix: '* ', indent };
+    return { prefix: '* ', suffix: '', indent };
   }
   if (trimmed.startsWith('// @')) {
-    return { prefix: '// ', indent };
+    return { prefix: '// ', suffix: '', indent };
   }
   if (trimmed.startsWith('# @')) {
-    return { prefix: '# ', indent };
+    return { prefix: '# ', suffix: '', indent };
   }
   if (trimmed.startsWith('-- @')) {
-    return { prefix: '-- ', indent };
+    return { prefix: '-- ', suffix: '', indent };
   }
-  // Fallback: single-line JS style
-  return { prefix: '// ', indent };
+  if (trimmed.startsWith('<!--')) {
+    return { prefix: '<!-- ', suffix: ' -->', indent };
+  }
+  if (trimmed.startsWith('/*')) {
+    return { prefix: '/* ', suffix: ' */', indent };
+  }
+
+  return fallbackCommentStyle(filePath, indent);
+}
+
+function fallbackCommentStyle(filePath: string, indent: string): CommentStyle {
+  switch (commentStyleForExt(extname(filePath))) {
+    case '#': return { prefix: '# ', suffix: '', indent };
+    case '--': return { prefix: '-- ', suffix: '', indent };
+    case '<!--': return { prefix: '<!-- ', suffix: ' -->', indent };
+    case '/*': return { prefix: '/* ', suffix: ' */', indent };
+    case '%': return { prefix: '% ', suffix: '', indent };
+    case ';': return { prefix: '; ', suffix: '', indent };
+    case 'REM': return { prefix: 'REM ', suffix: '', indent };
+    case "'": return { prefix: "' ", suffix: '', indent };
+    case '//':
+    default:
+      return { prefix: '// ', suffix: '', indent };
+  }
 }
 
 /**
  * Check if a source line is a GuardLink annotation (used to walk past coupled blocks).
  */
 function isAnnotationLine(line: string): boolean {
-  const inner = stripCommentPrefix(line);
-  if (inner === null) return false;
-  const trimmed = inner.trim();
-  // Annotation line: starts with @verb
-  if (trimmed.startsWith('@')) return true;
-  // Continuation line: -- "..."
-  if (/^--\s*"/.test(trimmed)) return true;
-  return false;
+  const rawTrimmed = line.trimStart();
+  if (/^--\s*"/.test(rawTrimmed)) return true;
+  const inner = stripCommentPrefix(line) ?? rawTrimmed;
+  const parsed = parseLine(inner, { file: '<review>', line: 1 });
+  return Boolean(parsed.annotation || parsed.sourceDirective || parsed.isContinuation);
 }
 
 /**
@@ -144,12 +171,15 @@ function isAnnotationLine(line: string): boolean {
  * Walks forward from the exposure line past consecutive annotation lines
  * to find the end of the block, then returns the 0-indexed line to insert after.
  */
-function findInsertionIndex(lines: string[], exposureLine: number): number {
+function findInsertionIndex(lines: string[], exposureLine: number, stopAtSourceBoundary: boolean = false): number {
   // exposureLine is 1-indexed, convert to 0-indexed
   let idx = exposureLine - 1;
 
   // Walk forward past consecutive annotation lines
   while (idx + 1 < lines.length && isAnnotationLine(lines[idx + 1])) {
+    if (stopAtSourceBoundary && lines[idx + 1].trimStart().startsWith('@source')) {
+      break;
+    }
     idx++;
   }
 
@@ -168,11 +198,11 @@ function todayISO(): string {
  * Returns lines WITHOUT trailing newline.
  */
 function buildAcceptLines(style: CommentStyle, exposure: ThreatModelExposure, justification: string): string[] {
-  const { prefix, indent } = style;
+  const { prefix, suffix, indent } = style;
   const date = todayISO();
   return [
-    `${indent}${prefix}@accepts ${exposure.threat} on ${exposure.asset} -- "${escapeDesc(justification)}"`,
-    `${indent}${prefix}@audit ${exposure.asset} -- "Accepted via guardlink review on ${date}"`,
+    `${indent}${prefix}@accepts ${exposure.threat} on ${exposure.asset} -- "${escapeDesc(justification)}"${suffix}`,
+    `${indent}${prefix}@audit ${exposure.asset} -- "Accepted via guardlink review on ${date}"${suffix}`,
   ];
 }
 
@@ -180,10 +210,10 @@ function buildAcceptLines(style: CommentStyle, exposure: ThreatModelExposure, ju
  * Build the annotation line to insert for a "remediate" decision.
  */
 function buildRemediateLines(style: CommentStyle, exposure: ThreatModelExposure, note: string): string[] {
-  const { prefix, indent } = style;
+  const { prefix, suffix, indent } = style;
   const date = todayISO();
   return [
-    `${indent}${prefix}@audit ${exposure.asset} -- "Planned remediation: ${escapeDesc(note)} — flagged via guardlink review on ${date}"`,
+    `${indent}${prefix}@audit ${exposure.asset} -- "Planned remediation: ${escapeDesc(note)} — flagged via guardlink review on ${date}"${suffix}`,
   ];
 }
 
@@ -205,17 +235,19 @@ async function insertAnnotations(
   exposure: ThreatModelExposure,
   newLines: string[],
 ): Promise<number> {
-  const filePath = resolve(root, exposure.location.file);
+  const filePath = resolve(root, getWriteLocation(exposure).file);
   const content = await readFile(filePath, 'utf-8');
   const lines = content.split('\n');
 
   // Validate that the exposure line exists and looks right
-  const exposureIdx = exposure.location.line - 1; // 0-indexed
+  const targetLocation = getWriteLocation(exposure);
+  const exposureIdx = targetLocation.line - 1; // 0-indexed
   if (exposureIdx < 0 || exposureIdx >= lines.length) {
-    throw new Error(`Line ${exposure.location.line} out of range in ${exposure.location.file}`);
+    throw new Error(`Line ${targetLocation.line} out of range in ${targetLocation.file}`);
   }
 
-  const insertIdx = findInsertionIndex(lines, exposure.location.line);
+  const style = detectCommentStyle(lines[exposureIdx], targetLocation.file);
+  const insertIdx = findInsertionIndex(lines, targetLocation.line, style.prefix === '');
 
   // Splice in the new lines
   lines.splice(insertIdx, 0, ...newLines);
@@ -240,17 +272,18 @@ export async function applyReviewAction(
   action: ReviewAction,
 ): Promise<ReviewResult> {
   if (action.decision === 'skip') {
-    return { exposure: reviewable, action, linesInserted: 0 };
+    return { exposure: reviewable, action, linesInserted: 0, targetFile: getWriteLocation(reviewable.exposure).file };
   }
 
   const { exposure } = reviewable;
-  const filePath = resolve(root, exposure.location.file);
+  const targetLocation = getWriteLocation(exposure);
+  const filePath = resolve(root, targetLocation.file);
   const content = await readFile(filePath, 'utf-8');
   const lines = content.split('\n');
 
   // Detect comment style from the @exposes line
-  const exposureIdx = exposure.location.line - 1;
-  const style = detectCommentStyle(lines[exposureIdx]);
+  const exposureIdx = targetLocation.line - 1;
+  const style = detectCommentStyle(lines[exposureIdx], targetLocation.file);
 
   let newLines: string[];
   if (action.decision === 'accept') {
@@ -260,7 +293,26 @@ export async function applyReviewAction(
   }
 
   const linesInserted = await insertAnnotations(root, exposure, newLines);
-  return { exposure: reviewable, action, linesInserted };
+  return { exposure: reviewable, action, linesInserted, targetFile: targetLocation.file };
+}
+
+function getWriteLocation(exposure: ThreatModelExposure): { file: string; line: number } {
+  return {
+    file: exposure.location.origin_file || exposure.location.file,
+    line: exposure.location.origin_line || exposure.location.line,
+  };
+}
+
+function reviewExposureId(exposure: ThreatModelExposure): string {
+  const writeLocation = getWriteLocation(exposure);
+  return [
+    writeLocation.file,
+    String(writeLocation.line),
+    exposure.location.file,
+    String(exposure.location.line),
+    exposure.asset,
+    exposure.threat,
+  ].join(':');
 }
 
 /**
