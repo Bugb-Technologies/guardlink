@@ -60,7 +60,7 @@ To uninstall: `npm unlink -g guardlink`
 guardlink init
 
 # Let AI annotate your project - Launch a coding agent to add annotations
-guardlink annotate [prompt] [--mode inline|gal]
+guardlink annotate [prompt] [--mode inline|external]
 
 # Let your AI coding agent annotate, or write annotations manually
 # Then validate
@@ -165,7 +165,7 @@ GuardLink ships an MCP server and behavioral directives for AI coding agents. Af
 | Command | Description |
 |---------|-------------|
 | `guardlink init [dir]` | Initialize project with definitions, config, and agent integration |
-| `guardlink annotate [prompt] [--mode inline\|gal]` | Launch a coding agent to add inline annotations or associated `.gal` files |
+| `guardlink annotate [prompt] [--mode inline\|external]` | Launch a coding agent to add inline annotations or associated `.gal` files |
 | `guardlink parse [dir]` | Parse all annotations, output ThreatModel JSON |
 | `guardlink status [dir]` | Coverage summary: assets, threats, mitigations, exposures |
 | `guardlink validate [dir]` | Check for syntax errors, dangling refs, duplicate IDs |
