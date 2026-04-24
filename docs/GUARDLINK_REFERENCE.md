@@ -60,6 +60,8 @@ Use the same GAL syntax without language comment prefixes. Definitions still bel
 
 `@source` sets the logical code location for the following annotations until the next `@source`. `symbol:` is optional.
 
+**Convention:** always place a `@source` directive before any annotations in a `.gal` file. Annotations that appear before the first `@source` are anchored to the `.gal` file's own physical location rather than to a source-code location, which is usually not what you want and makes dashboards / reports display the `.gal` path instead of the underlying source file.
+
 ## When Writing Code
 
 | Situation | Annotation |
@@ -91,7 +93,7 @@ guardlink diff [ref]                    # Compare threat model against a git ref
 # AI-Powered Analysis
 guardlink threat-report <fw|prompt>     # AI threat report (see frameworks below)
 guardlink threat-reports                # List saved threat reports
-guardlink annotate <prompt> [--mode inline|gal]  # Launch coding agent to add annotations
+guardlink annotate <prompt> [--mode inline|external]  # Launch coding agent to add annotations
 guardlink config <show|set|clear>       # Manage LLM provider / CLI agent configuration
 
 # Governance & Maintenance
@@ -130,7 +132,8 @@ All AI commands (`threat-report`, `annotate`) support:
 --cursor          # Open Cursor IDE with prompt on clipboard
 --windsurf        # Open Windsurf IDE with prompt on clipboard
 --clipboard       # Copy prompt to clipboard only
---mode <m>        # Annotation placement mode: inline or gal
+--stdout          # Print prompt to stdout — useful for piping into other tools or CI
+--mode <m>        # Annotation placement mode: inline (default) or external
 ```
 
 Additional `threat-report` flags:
@@ -159,7 +162,7 @@ Run `guardlink tui` for the interactive terminal interface:
 /view <file>             Show all annotations in a file with code context
 /threat-report <fw>      AI threat report (frameworks above or custom text)
 /threat-reports          List saved reports
-/annotate <prompt>       Launch coding agent to annotate codebase (use --mode gal for .gal files)
+/annotate <prompt>       Launch coding agent to annotate codebase (use --mode external for .gal files)
 /model                   Set AI provider (API or CLI agent)
 /report                  Generate markdown + JSON report
 /dashboard               Generate HTML dashboard + open browser
