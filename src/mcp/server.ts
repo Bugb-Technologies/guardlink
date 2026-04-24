@@ -85,7 +85,7 @@ function invalidateCache() {
 export function createServer(): McpServer {
   const server = new McpServer({
     name: 'guardlink',
-    version: '1.4.1-gal',
+    version: '1.4.2',
   });
 
   // ── Tool: guardlink_parse ──

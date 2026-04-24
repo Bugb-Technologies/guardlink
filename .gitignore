@@ -3,6 +3,11 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Alternate package managers — we standardize on npm (package-lock.json is canonical)
+bun.lock
+yarn.lock
+pnpm-lock.yaml
+
 # OS
 .DS_Store
 

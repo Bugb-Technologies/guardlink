@@ -248,6 +248,7 @@ ${annotationMode === 'external'
 \`\`\`
 ${annotationMode === 'external'
     ? [
+        '@shield:begin -- "Externalized annotation examples, excluded from parsing"',
         '@source file:src/auth/login.ts line:42 symbol:authenticate',
         '@exposes #auth-api to #sqli [P1] cwe:CWE-89 -- "User-supplied email reaches query builder"',
         '@mitigates #auth-api against #sqli using #input-validation -- "Zod schema validates email before query"',
@@ -255,6 +256,7 @@ ${annotationMode === 'external'
         '',
         '@source file:src/auth/session.ts line:88 symbol:issueToken',
         '@handles secrets on #auth-api -- "Issues session token"',
+        '@shield:end',
       ].join('\n')
     : [
         '// @shield:begin -- "Placement examples, excluded from parsing"',
