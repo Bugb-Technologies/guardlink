@@ -1946,8 +1946,8 @@ function printStatus(model: ThreatModel) {
   console.log(`GuardLink Status: ${model.project}`);
   console.log(`${'─'.repeat(40)}`);
   console.log(`Files scanned:    ${model.source_files}`);
-  console.log(`  Annotated:      ${model.annotated_files.length}`);
-  console.log(`  Not annotated:  ${model.unannotated_files.length}`);
+  console.log(`  Files annotated:    ${model.annotated_files.length}`);
+  console.log(`  Files unannotated:  ${model.unannotated_files.length}`);
   console.log(`Annotations:      ${model.annotations_parsed}`);
   console.log(`${'─'.repeat(40)}`);
   console.log(`Assets:           ${model.assets.length}`);
