@@ -403,6 +403,119 @@ describe('parseString', () => {
     });
   });
 
+  // ── Quoted refs in relationships (bug 5) ──────────────────────────
+
+  it('@flows accepts URL-style refs in quotes', () => {
+    const { annotations, diagnostics } = parseString(
+      '// @flows User -> "/rest/user/login" -> "/rest/user/profile"'
+    );
+    expect(diagnostics).toHaveLength(0);
+    expect(annotations).toHaveLength(2);
+    expect(annotations[0]).toMatchObject({ source: 'User', target: '/rest/user/login' });
+    expect(annotations[1]).toMatchObject({ source: '/rest/user/login', target: '/rest/user/profile' });
+  });
+
+  it('@flows accepts whitespace-containing refs in quotes', () => {
+    const { annotations, diagnostics } = parseString(
+      '// @flows User -> "Auth Service" -> "SQLite db"'
+    );
+    expect(diagnostics).toHaveLength(0);
+    expect(annotations).toHaveLength(2);
+    expect((annotations[0] as any).target).toBe('Auth Service');
+    expect((annotations[1] as any).target).toBe('SQLite db');
+  });
+
+  it('@flows handles the user\'s actual Juice Shop annotation', () => {
+    const { annotations, diagnostics } = parseString(
+      '// @flows User -> "/rest/user/login" -> "SQLite db"'
+    );
+    expect(diagnostics).toHaveLength(0);
+    expect(annotations).toHaveLength(2);
+    expect(annotations[0]).toMatchObject({ source: 'User', target: '/rest/user/login' });
+    expect(annotations[1]).toMatchObject({ source: '/rest/user/login', target: 'SQLite db' });
+  });
+
+  it('@flows mixed quoted and unquoted refs in the same chain', () => {
+    const { annotations } = parseString(
+      '// @flows User -> "/login" -> #db -> App.Audit'
+    );
+    expect(annotations).toHaveLength(3);
+    expect(annotations.map((a: any) => `${a.source}->${a.target}`)).toEqual([
+      'User->/login', '/login->#db', '#db->App.Audit',
+    ]);
+  });
+
+  it('@flows quoted ref containing -> is not split by the chain extractor', () => {
+    // Edge case the naive split would shred: a quoted ref happens to
+    // contain a literal "->". The matchAll-based extractor must treat the
+    // quoted string as a single token.
+    const { annotations } = parseString(
+      '// @flows User -> "step1 -> step2" -> #db'
+    );
+    expect(annotations).toHaveLength(2);
+    expect((annotations[0] as any).target).toBe('step1 -> step2');
+    expect((annotations[1] as any).source).toBe('step1 -> step2');
+  });
+
+  it('@flows quoted ref unescapes \\" sequences', () => {
+    const { annotations } = parseString(
+      '// @flows User -> "He said \\"hi\\""'
+    );
+    expect(annotations).toHaveLength(1);
+    expect((annotations[0] as any).target).toBe('He said "hi"');
+  });
+
+  it('@exposes accepts quoted asset and threat refs', () => {
+    const { annotations, diagnostics } = parseString(
+      '// @exposes "/api/v1/users" to "Cross Site Scripting" [high]'
+    );
+    expect(diagnostics).toHaveLength(0);
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0]).toMatchObject({
+      verb: 'exposes', asset: '/api/v1/users', threat: 'Cross Site Scripting', severity: 'high',
+    });
+  });
+
+  it('@confirmed accepts quoted threat and asset refs', () => {
+    const { annotations } = parseString(
+      '// @confirmed "SQL Injection" on "/login" [critical]'
+    );
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0]).toMatchObject({
+      verb: 'confirmed', threat: 'SQL Injection', asset: '/login', severity: 'critical',
+    });
+  });
+
+  it('@boundary accepts quoted asset refs', () => {
+    const { annotations } = parseString(
+      '// @boundary "User Browser" and "Backend API"'
+    );
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0]).toMatchObject({
+      verb: 'boundary', asset_a: 'User Browser', asset_b: 'Backend API',
+    });
+  });
+
+  it('@audit accepts quoted asset ref', () => {
+    const { annotations } = parseString(
+      '// @audit "/admin/dashboard" -- "review on each release"'
+    );
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0]).toMatchObject({ verb: 'audit', asset: '/admin/dashboard' });
+  });
+
+  it('quoted refs do not affect unquoted regression cases', () => {
+    // All existing forms still work after the quote alternative was added.
+    const { annotations, diagnostics } = parseString(
+      '// @flows App.A -> #api -> App.Backend.DB\n' +
+      '// @exposes #login to #sqli [P0]\n' +
+      '// @confirmed XSS on App.Frontend [high]\n' +
+      '// @audit #admin-panel'
+    );
+    expect(diagnostics).toHaveLength(0);
+    expect(annotations).toHaveLength(5); // 2 flows + 1 exposes + 1 confirmed + 1 audit
+  });
+
   // ── Regression: @shield regex safety ──
 
   it('@shield does not match @shield:begin', () => {

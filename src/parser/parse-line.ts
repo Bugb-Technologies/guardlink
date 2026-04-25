@@ -16,11 +16,14 @@ import { normalizeName, resolveSeverity, unescapeDescription } from './normalize
 // ─── Shared regex fragments ──────────────────────────────────────────
 
 const COMPONENT = String.raw`[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*`;
-const ASSET_REF = String.raw`(?:#[a-zA-Z0-9_-]+|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)`;  // #id or Dotted.Path
+// Quoted ref: any non-newline content between double quotes, with `\"` and
+// `\\` escape support. Mirrors the DESC fragment's character class.
+const QUOTED_REF = String.raw`"(?:[^"\\\n]|\\.)*"`;
+const ASSET_REF = String.raw`(?:#[a-zA-Z0-9_-]+|${QUOTED_REF}|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)`;  // #id, "quoted", or Dotted.Path
 const NAME      = String.raw`[A-Za-z]\w*(?:[_\- ][A-Za-z]\w*)*`;
 const ID_DEF    = String.raw`\(#([a-zA-Z0-9_-]+)\)`;
 const ID_REF    = String.raw`#([a-zA-Z0-9_-]+)`;
-const THREAT_REF = String.raw`(?:#[a-zA-Z0-9_-]+|[A-Za-z]\w*(?:[_\- ][A-Za-z]\w*)*)`;
+const THREAT_REF = String.raw`(?:#[a-zA-Z0-9_-]+|${QUOTED_REF}|[A-Za-z]\w*(?:[_\- ][A-Za-z]\w*)*)`;
 const SEVERITY  = String.raw`\[(P[0-3]|critical|high|medium|low)\]`;
 const EXT_REF   = String.raw`([a-zA-Z]+:[A-Za-z0-9_:.\-]+)`;
 const DESC      = String.raw`--\s*"((?:[^"\\]|\\.)*)"`;
@@ -76,9 +79,16 @@ function extractExternalRefs(raw: string | undefined): string[] {
   return raw.trim().split(/\s+/).filter(r => /^[a-zA-Z]+:[A-Za-z0-9_:.\-]+$/.test(r));
 }
 
-// ─── Ref resolver: #id or Name → string ──────────────────────────────
+// ─── Ref resolver: #id, "quoted", or Dotted.Path → canonical string ───
 
+/** Normalize a captured ASSET_REF or THREAT_REF for storage in the model.
+ *  Strips surrounding double quotes and processes escape sequences (\", \\)
+ *  when the user wrote a quoted ref like `"User Browser"` or `"/api/login"`.
+ *  Pass-through for `#id` and `Dotted.Path` forms. */
 function resolveRef(ref: string): string {
+  if (ref.length >= 2 && ref.charCodeAt(0) === 0x22 /* " */ && ref.charCodeAt(ref.length - 1) === 0x22) {
+    return unescapeDescription(ref.slice(1, -1));
+  }
   return ref;
 }
 
@@ -144,7 +154,7 @@ export function parseLine(
   // ── @mitigates ──
   if ((m = trimmed.match(PATTERNS.mitigates)) || (m = trimmed.match(PATTERNS.mitigates_v1))) {
     return ok({
-      ...base, verb: 'mitigates', asset: m[1],
+      ...base, verb: 'mitigates', asset: resolveRef(m[1]),
       threat: resolveRef(m[2]), control: m[3] ? resolveRef(m[3]) : undefined,
       description: desc(m[4]),
     });
@@ -153,7 +163,7 @@ export function parseLine(
   // ── @exposes ──
   if ((m = trimmed.match(PATTERNS.exposes))) {
     return ok({
-      ...base, verb: 'exposes', asset: m[1], threat: resolveRef(m[2]),
+      ...base, verb: 'exposes', asset: resolveRef(m[1]), threat: resolveRef(m[2]),
       severity: m[3] ? resolveSeverity(m[3]) : undefined,
       external_refs: extractExternalRefs(m[4]), description: desc(m[5]),
     });
@@ -162,7 +172,7 @@ export function parseLine(
   // ── @confirmed ──
   if ((m = trimmed.match(PATTERNS.confirmed))) {
     return ok({
-      ...base, verb: 'confirmed', threat: resolveRef(m[1]), asset: m[2],
+      ...base, verb: 'confirmed', threat: resolveRef(m[1]), asset: resolveRef(m[2]),
       severity: m[3] ? resolveSeverity(m[3]) : undefined,
       external_refs: extractExternalRefs(m[4]), description: desc(m[5]),
     });
@@ -170,14 +180,14 @@ export function parseLine(
 
   // ── @accepts ──
   if ((m = trimmed.match(PATTERNS.accepts)) || (m = trimmed.match(PATTERNS.accepts_v1))) {
-    return ok({ ...base, verb: 'accepts', threat: resolveRef(m[1]), asset: m[2], description: desc(m[3]) });
+    return ok({ ...base, verb: 'accepts', threat: resolveRef(m[1]), asset: resolveRef(m[2]), description: desc(m[3]) });
   }
 
   // ── @transfers ──
   if ((m = trimmed.match(PATTERNS.transfers))) {
     return ok({
       ...base, verb: 'transfers', threat: resolveRef(m[1]),
-      source: m[2], target: m[3], description: desc(m[4]),
+      source: resolveRef(m[2]), target: resolveRef(m[3]), description: desc(m[4]),
     });
   }
 
@@ -187,7 +197,11 @@ export function parseLine(
   // pairwise flows — each emitted flow shares the mechanism, description,
   // and source location with every other hop in the chain.
   if ((m = trimmed.match(PATTERNS.flows))) {
-    const participants = m[1].split(/\s+->\s+/);
+    // Use matchAll instead of split so quoted refs containing literal
+    // `->` sequences (e.g. `"step1 -> step2"`) aren't shredded by the
+    // arrow separator. The outer regex has already validated chain shape.
+    const participants = [...m[1].matchAll(new RegExp(ASSET_REF, 'g'))]
+      .map(mm => resolveRef(mm[0]));
     const mechanism = m[2]?.trim();
     const description = desc(m[3]);
     const flows = [];
@@ -204,7 +218,7 @@ export function parseLine(
   // ── @boundary ──
   if ((m = trimmed.match(PATTERNS.boundary))) {
     return ok({
-      ...base, verb: 'boundary', asset_a: m[1], asset_b: m[2],
+      ...base, verb: 'boundary', asset_a: resolveRef(m[1]), asset_b: resolveRef(m[2]),
       id: m[3], description: desc(m[4]),
     });
   }
@@ -212,7 +226,7 @@ export function parseLine(
   // ── @boundary pipe shorthand: @boundary A | B ──
   if ((m = trimmed.match(PATTERNS.boundary_pipe))) {
     return ok({
-      ...base, verb: 'boundary', asset_a: m[1], asset_b: m[2],
+      ...base, verb: 'boundary', asset_a: resolveRef(m[1]), asset_b: resolveRef(m[2]),
       id: m[3], description: desc(m[4]),
     });
   }
@@ -220,23 +234,23 @@ export function parseLine(
   // ── @connects (v1 → flows) ──
   if ((m = trimmed.match(PATTERNS.connects_v1))) {
     return ok({
-      ...base, verb: 'flows', source: m[1], target: m[2], description: desc(m[3]),
+      ...base, verb: 'flows', source: resolveRef(m[1]), target: resolveRef(m[2]), description: desc(m[3]),
     });
   }
 
   // ── @validates ──
   if ((m = trimmed.match(PATTERNS.validates))) {
-    return ok({ ...base, verb: 'validates', control: resolveRef(m[1]), asset: m[2], description: desc(m[3]) });
+    return ok({ ...base, verb: 'validates', control: resolveRef(m[1]), asset: resolveRef(m[2]), description: desc(m[3]) });
   }
 
   // ── @audit / @review (v1) ──
   if ((m = trimmed.match(PATTERNS.audit)) || (m = trimmed.match(PATTERNS.review_v1))) {
-    return ok({ ...base, verb: 'audit', asset: m[1], description: desc(m[2]) });
+    return ok({ ...base, verb: 'audit', asset: resolveRef(m[1]), description: desc(m[2]) });
   }
 
   // ── @owns ──
   if ((m = trimmed.match(PATTERNS.owns))) {
-    return ok({ ...base, verb: 'owns', owner: m[1], asset: m[2], description: desc(m[3]) });
+    return ok({ ...base, verb: 'owns', owner: m[1], asset: resolveRef(m[2]), description: desc(m[3]) });
   }
 
   // ── @handles ──
@@ -244,13 +258,13 @@ export function parseLine(
     return ok({
       ...base, verb: 'handles',
       classification: m[1].toLowerCase() as DataClassification,
-      asset: m[2], description: desc(m[3]),
+      asset: resolveRef(m[2]), description: desc(m[3]),
     });
   }
 
   // ── @assumes ──
   if ((m = trimmed.match(PATTERNS.assumes))) {
-    return ok({ ...base, verb: 'assumes', asset: m[1], description: desc(m[2]) });
+    return ok({ ...base, verb: 'assumes', asset: resolveRef(m[1]), description: desc(m[2]) });
   }
 
   // ── @feature ──
