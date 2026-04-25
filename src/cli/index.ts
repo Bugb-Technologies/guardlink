@@ -336,12 +336,10 @@ program
       console.error(`Filtered to feature(s): ${featureNames.map(f => `"${f}"`).join(', ')}`);
     }
 
-    // Show errors if any
+    // Show errors if any. Per-annotation errors don't block the report —
+    // affected annotations are skipped, the rest of the model still renders.
     const errors = diagnostics.filter(d => d.level === 'error');
-    if (errors.length > 0) {
-      printDiagnostics(errors);
-      console.error(`Fix errors above before generating report.\n`);
-    }
+    if (errors.length > 0) printDiagnostics(errors);
 
     // Enrich with provenance metadata (git SHA, branch, workspace, schema version)
     const enrichedModel = populateMetadata(model, root);
