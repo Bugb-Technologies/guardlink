@@ -321,6 +321,88 @@ describe('parseString', () => {
     expect(f.description).toBe('Direct connection');
   });
 
+  // ── @flows multi-hop chains (bug 4) ──────────────────────────────
+
+  it('@flows two-hop A -> B -> C emits two pairwise flows', () => {
+    const { annotations, diagnostics } = parseString(
+      '// @flows App.A -> App.B -> App.C'
+    );
+    expect(diagnostics).toHaveLength(0);
+    expect(annotations).toHaveLength(2);
+    expect(annotations[0]).toMatchObject({ verb: 'flows', source: 'App.A', target: 'App.B' });
+    expect(annotations[1]).toMatchObject({ verb: 'flows', source: 'App.B', target: 'App.C' });
+  });
+
+  it('@flows three-hop emits three pairwise flows', () => {
+    const { annotations } = parseString(
+      '// @flows App.A -> App.B -> App.C -> App.D'
+    );
+    expect(annotations).toHaveLength(3);
+    expect(annotations.map((a: any) => `${a.source}->${a.target}`)).toEqual([
+      'App.A->App.B', 'App.B->App.C', 'App.C->App.D',
+    ]);
+  });
+
+  it('@flows multi-hop with via propagates mechanism to every hop', () => {
+    const { annotations } = parseString(
+      '// @flows App.A -> App.B -> App.C via HTTPS/443'
+    );
+    expect(annotations).toHaveLength(2);
+    expect((annotations[0] as any).mechanism).toBe('HTTPS/443');
+    expect((annotations[1] as any).mechanism).toBe('HTTPS/443');
+  });
+
+  it('@flows multi-hop with description propagates to every hop', () => {
+    const { annotations } = parseString(
+      '// @flows App.A -> App.B -> App.C -- "shared auth path"'
+    );
+    expect(annotations).toHaveLength(2);
+    expect((annotations[0] as any).description).toBe('shared auth path');
+    expect((annotations[1] as any).description).toBe('shared auth path');
+  });
+
+  it('@flows multi-hop with via + description propagates both to every hop', () => {
+    const { annotations } = parseString(
+      '// @flows App.A -> App.B -> App.C via gRPC over TLS -- "auth"'
+    );
+    expect(annotations).toHaveLength(2);
+    annotations.forEach((a: any) => {
+      expect(a.mechanism).toBe('gRPC over TLS');
+      expect(a.description).toBe('auth');
+    });
+  });
+
+  it('@flows multi-hop with #id refs', () => {
+    const { annotations } = parseString(
+      '// @flows User -> #api -> #db'
+    );
+    expect(annotations).toHaveLength(2);
+    expect(annotations[0]).toMatchObject({ source: 'User', target: '#api' });
+    expect(annotations[1]).toMatchObject({ source: '#api', target: '#db' });
+  });
+
+  it('@flows multi-hop preserves source location across all emitted hops', () => {
+    const { annotations } = parseString(
+      '// @flows App.A -> App.B -> App.C via HTTP'
+    );
+    expect(annotations).toHaveLength(2);
+    expect(annotations[0].location.line).toBe(1);
+    expect(annotations[1].location.line).toBe(1);
+    expect(annotations[0].location.file).toBe(annotations[1].location.file);
+  });
+
+  it('@flows single-hop A -> B unchanged after multi-hop support added (regression)', () => {
+    const { annotations, diagnostics } = parseString(
+      '// @flows App.A -> App.B via HTTP -- "single"'
+    );
+    expect(diagnostics).toHaveLength(0);
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0]).toMatchObject({
+      verb: 'flows', source: 'App.A', target: 'App.B',
+      mechanism: 'HTTP', description: 'single',
+    });
+  });
+
   // ── Regression: @shield regex safety ──
 
   it('@shield does not match @shield:begin', () => {

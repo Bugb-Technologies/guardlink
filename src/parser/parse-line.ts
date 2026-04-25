@@ -44,7 +44,7 @@ const PATTERNS: Record<string, RegExp> = {
   accepts: new RegExp(String.raw`^@accepts\s+(${THREAT_REF})\s+on\s+(${ASSET_REF})(?:\s+${DESC})?$`),
   accepts_v1: new RegExp(String.raw`^@accepts\s+(${THREAT_REF})\s+to\s+(${ASSET_REF})(?:\s+${DESC})?$`),
   transfers: new RegExp(String.raw`^@transfers\s+(${THREAT_REF})\s+from\s+(${ASSET_REF})\s+to\s+(${ASSET_REF})(?:\s+${DESC})?$`),
-  flows: new RegExp(String.raw`^@flows\s+(${ASSET_REF})\s+->\s+(${ASSET_REF})(?:\s+via\s+((?:(?!\s+--\s*").)+?))?(?:\s+${DESC})?$`),
+  flows: new RegExp(String.raw`^@flows\s+(${ASSET_REF}(?:\s+->\s+${ASSET_REF})+)(?:\s+via\s+((?:(?!\s+--\s*").)+?))?(?:\s+${DESC})?$`),
   boundary: new RegExp(String.raw`^@boundary\s+(?:between\s+)?(${ASSET_REF})\s+and\s+(${ASSET_REF})(?:\s+${ID_DEF})?(?:\s+${DESC})?$`),
   boundary_pipe: new RegExp(String.raw`^@boundary\s+(${ASSET_REF})\s*\|\s*(${ASSET_REF})(?:\s+${ID_DEF})?(?:\s+${DESC})?$`),
   connects_v1: new RegExp(String.raw`^@connects\s+(${ASSET_REF})\s+to\s+(${ASSET_REF})(?:\s+${DESC})?$`),
@@ -86,6 +86,9 @@ function resolveRef(ref: string): string {
 
 export interface ParseLineResult {
   annotation: Annotation | null;
+  /** Additional annotations from the same line. Used by multi-hop @flows
+   *  chains (`A -> B -> C`) to emit one pairwise flow per arrow. */
+  extraAnnotations?: Annotation[];
   diagnostic: ParseDiagnostic | null;
   isContinuation: boolean;
 }
@@ -179,11 +182,23 @@ export function parseLine(
   }
 
   // ── @flows ──
+  // Single-hop `A -> B` is a chain of length 2 producing one flow.
+  // Multi-hop `A -> B -> C -> D` is treated as syntactic sugar for N-1
+  // pairwise flows — each emitted flow shares the mechanism, description,
+  // and source location with every other hop in the chain.
   if ((m = trimmed.match(PATTERNS.flows))) {
-    return ok({
-      ...base, verb: 'flows', source: m[1], target: m[2],
-      mechanism: m[3]?.trim(), description: desc(m[4]),
-    });
+    const participants = m[1].split(/\s+->\s+/);
+    const mechanism = m[2]?.trim();
+    const description = desc(m[3]);
+    const flows = [];
+    for (let i = 0; i < participants.length - 1; i++) {
+      flows.push({
+        ...base, verb: 'flows' as const,
+        source: participants[i], target: participants[i + 1],
+        mechanism, description,
+      });
+    }
+    return okMulti(flows);
   }
 
   // ── @boundary ──
@@ -292,6 +307,22 @@ export function parseLine(
 
 function ok(annotation: Annotation): ParseLineResult {
   return { annotation, diagnostic: null, isContinuation: false };
+}
+
+/** Like ok(), but for parser branches that emit multiple annotations from
+ *  one line (currently only multi-hop @flows chains). The first annotation
+ *  becomes the primary `annotation`; the remainder go in `extraAnnotations`
+ *  so the call site can push them all and update lastAnnotation correctly. */
+function okMulti(annotations: Annotation[]): ParseLineResult {
+  if (annotations.length === 0) {
+    return { annotation: null, diagnostic: null, isContinuation: false };
+  }
+  return {
+    annotation: annotations[0],
+    extraAnnotations: annotations.length > 1 ? annotations.slice(1) : undefined,
+    diagnostic: null,
+    isContinuation: false,
+  };
 }
 
 function desc(raw: string | undefined): string | undefined {
