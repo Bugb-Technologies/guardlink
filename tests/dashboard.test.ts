@@ -244,6 +244,70 @@ describe('generateTopologyData', () => {
     expect(topology.links.some(l => l.kind === 'flows' && l.label === 'HTTPS')).toBe(true);
     expect(topology.links.some(l => l.kind === 'boundary' && l.label === 'Internet edge')).toBe(true);
   });
+
+  // ── Bug 9: cross-kind dedup for undeclared refs ────────────────────
+
+  it('dedupes a single undeclared ref referenced as both asset and threat', () => {
+    // The bug: `#login-sqli` was synthesized as an asset (from @exposes) AND
+    // a separate threat node (from @confirmed where the same id appears in
+    // the threat slot), producing two visually-identical nodes in different
+    // clusters. After the fix: one node, marked declared: false.
+    const model = emptyModel({
+      exposures: [
+        { asset: '#login-sqli', threat: '#sqli', severity: 'critical', external_refs: [], location: loc },
+      ],
+      confirmed: [
+        { threat: '#login-sqli', asset: '#login', severity: 'critical', external_refs: [], location: loc },
+      ],
+    });
+    const topology = generateTopologyData(model);
+    const matching = topology.nodes.filter(n => n.label === '#login-sqli' || n.id.endsWith(':login-sqli'));
+    expect(matching).toHaveLength(1);
+    expect(matching[0].declared).toBe(false);
+  });
+
+  it('marks declared assets/threats/controls with declared: true', () => {
+    const model = emptyModel({
+      assets:   [{ path: ['App', 'API'], id: 'api', location: loc }],
+      threats:  [{ name: 'XSS', canonical_name: 'xss', id: 'xss', severity: 'high', external_refs: [], location: loc }],
+      controls: [{ name: 'CSRF_Token', canonical_name: 'csrf_token', id: 'csrf', location: loc }],
+    });
+    const topology = generateTopologyData(model);
+    expect(topology.nodes.find(n => n.id === 'asset:api')?.declared).toBe(true);
+    expect(topology.nodes.find(n => n.id === 'threat:xss')?.declared).toBe(true);
+    expect(topology.nodes.find(n => n.id === 'control:csrf')?.declared).toBe(true);
+  });
+
+  it('marks synthesized nodes for undeclared refs with declared: false', () => {
+    const model = emptyModel({
+      exposures: [
+        { asset: '#undefined-asset', threat: '#undefined-threat', severity: 'high', external_refs: [], location: loc },
+      ],
+    });
+    const topology = generateTopologyData(model);
+    const a = topology.nodes.find(n => n.id === 'asset:undefined-asset');
+    const t = topology.nodes.find(n => n.id === 'threat:undefined-threat');
+    expect(a?.declared).toBe(false);
+    expect(t?.declared).toBe(false);
+  });
+
+  it('declared kind wins when an undeclared ref later appears in another slot', () => {
+    // #login is declared as an asset. A later @confirmed annotation
+    // references #login on the threat side (technically a user error, but
+    // the topology should defer to the declaration rather than synthesize a
+    // duplicate threat node).
+    const model = emptyModel({
+      assets: [{ path: ['App', 'Login'], id: 'login', location: loc }],
+      confirmed: [
+        { threat: '#login', asset: '#some-asset', severity: 'critical', external_refs: [], location: loc },
+      ],
+    });
+    const topology = generateTopologyData(model);
+    const matching = topology.nodes.filter(n => n.label === '#login' || n.id.endsWith(':login'));
+    expect(matching).toHaveLength(1);
+    expect(matching[0].kind).toBe('asset');
+    expect(matching[0].declared).toBe(true);
+  });
 });
 
 // ─── computeExposures: ref normalization ─────────────────────────────

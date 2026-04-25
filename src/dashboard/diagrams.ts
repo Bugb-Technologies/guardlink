@@ -80,6 +80,11 @@ interface AliasNode {
   kind: NodeKind;
   severity: string;
   externalRefs: string[];
+  /** True when the entity was registered from model.assets/threats/controls
+   *  (i.e. declared in .guardlink/definitions.ts). False when the node was
+   *  synthesized by resolve() because a relationship referenced an
+   *  identifier that was never declared. */
+  declared: boolean;
 }
 
 interface ModelAliases {
@@ -103,7 +108,7 @@ function buildAliases(model: ThreatModel): ModelAliases {
     }
   };
 
-  const upsert = (kind: NodeKind, key: string, displayLabel: string, refs: Array<string | undefined>, opts?: { id?: string; severity?: string; externalRefs?: string[] }): AliasNode => {
+  const upsert = (kind: NodeKind, key: string, displayLabel: string, refs: Array<string | undefined>, opts?: { id?: string; severity?: string; externalRefs?: string[]; declared?: boolean }): AliasNode => {
     let node = byKey[kind].get(key);
     if (!node) {
       node = {
@@ -113,12 +118,15 @@ function buildAliases(model: ThreatModel): ModelAliases {
         kind,
         severity: normalizeSeverity(opts?.severity),
         externalRefs: opts?.externalRefs ? [...opts.externalRefs] : [],
+        declared: opts?.declared ?? false,
       };
     } else {
       if (displayLabel && displayLabel.length > node.label.length) node.label = displayLabel;
       if (opts?.id && !node.id) node.id = opts.id;
       if (opts?.severity) node.severity = strongerSeverity(node.severity, normalizeSeverity(opts.severity));
       if (opts?.externalRefs) for (const r of opts.externalRefs) if (!node.externalRefs.includes(r)) node.externalRefs.push(r);
+      // Once declared, always declared — a later synthesis pass shouldn't downgrade.
+      if (opts?.declared) node.declared = true;
     }
     register(kind, node, refs);
     return node;
@@ -129,7 +137,7 @@ function buildAliases(model: ThreatModel): ModelAliases {
   for (const a of model.assets) {
     const display = a.path.join('.');
     const key = a.id ? refKey(a.id) : refKey(display);
-    upsert('asset', key, display, [a.id, a.id ? `#${a.id}` : undefined, display, ...a.path], { id: a.id });
+    upsert('asset', key, display, [a.id, a.id ? `#${a.id}` : undefined, display, ...a.path], { id: a.id, declared: true });
   }
   for (const t of model.threats) {
     const key = t.id ? refKey(t.id) : refKey(t.name);
@@ -137,11 +145,12 @@ function buildAliases(model: ThreatModel): ModelAliases {
       id: t.id,
       severity: t.severity,
       externalRefs: t.external_refs,
+      declared: true,
     });
   }
   for (const c of model.controls) {
     const key = c.id ? refKey(c.id) : refKey(c.name);
-    upsert('control', key, c.name, [c.id, c.id ? `#${c.id}` : undefined, c.name, c.canonical_name], { id: c.id });
+    upsert('control', key, c.name, [c.id, c.id ? `#${c.id}` : undefined, c.name, c.canonical_name], { id: c.id, declared: true });
   }
 
   // Sweep exposures/mitigations to pick up severities for undefined threats and external refs.
@@ -157,8 +166,21 @@ function buildAliases(model: ThreatModel): ModelAliases {
     const k = refKey(ref);
     const existing = byRef[kind].get(k);
     if (existing) return existing;
+    // Cross-kind fallback: an undeclared ref like `#login-sqli` may be referenced
+    // as an asset by @exposes AND as a threat by @confirmed. Without this check,
+    // we'd synthesize two separate nodes with the same identifier in different
+    // clusters of the topology graph. If the ref already exists under a different
+    // kind, return that node — a single canonical identity is more useful than
+    // two duplicates the user can't tell apart visually.
+    if (k) {
+      for (const otherKind of ['asset', 'threat', 'control'] as const) {
+        if (otherKind === kind) continue;
+        const cross = byRef[otherKind].get(k);
+        if (cross) return cross;
+      }
+    }
     const display = normalizeRef(ref) || 'unknown';
-    return upsert(kind, k || display.toLowerCase(), display, [ref, display]);
+    return upsert(kind, k || display.toLowerCase(), display, [ref, display], { declared: false });
   };
 
   return {
@@ -187,6 +209,9 @@ export interface DiagramTopologyNode {
   classifications: string[];
   owner?: string;
   refs: string[];
+  /** True when the underlying entity was declared in .guardlink/definitions.ts.
+   *  False for nodes synthesized from references in relationship annotations. */
+  declared: boolean;
 }
 
 export interface DiagramTopologyLink {
@@ -245,11 +270,15 @@ export function generateTopologyData(model: ThreatModel): DiagramTopology {
         riskScore: 0,
         classifications: [],
         refs: [alias.label, alias.id, alias.id ? `#${alias.id}` : undefined].filter(Boolean) as string[],
+        declared: alias.declared,
       };
       nodes.set(id, node);
     } else {
       node.severity = strongerSeverity(node.severity, alias.severity);
       if (alias.label.length > node.label.length) node.label = alias.label;
+      // Once declared (alias was upgraded by a later upsert), reflect that
+      // on the topology node too — never downgrade.
+      if (alias.declared) node.declared = true;
     }
     return node;
   };
