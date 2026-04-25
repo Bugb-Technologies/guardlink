@@ -225,20 +225,62 @@ function lookupBoundaries(model: ThreatModel, query: string, assetRef: string, r
 function lookupAsset(model: ThreatModel, query: string, ref: string, resolve: Resolver): LookupResult {
   const aliases = resolve(ref);
   const asset = model.assets.find(a => matchRef(a.id || '', ref, aliases) || matchRef(a.path.join('.'), ref, aliases));
-  if (!asset) return { query, type: 'asset', count: 0, results: [] };
 
   const exposures = model.exposures.filter(e => matchRef(e.asset, ref, aliases));
   const mitigations = model.mitigations.filter(m => matchRef(m.asset, ref, aliases));
   const inFlows = model.flows.filter(f => matchRef(f.target, ref, aliases));
   const outFlows = model.flows.filter(f => matchRef(f.source, ref, aliases));
+  const confirmed = (model.confirmed || []).filter(c => matchRef(c.asset, ref, aliases));
+  const acceptances = model.acceptances.filter(a => matchRef(a.asset, ref, aliases));
+  const audits = model.audits.filter(a => matchRef(a.asset, ref, aliases));
+  const boundaries = model.boundaries.filter(b => matchRef(b.asset_a, ref, aliases) || matchRef(b.asset_b, ref, aliases));
 
+  // Asset is declared in definitions.ts — return the full record.
+  if (asset) {
+    return {
+      query, type: 'asset', count: 1,
+      results: [{
+        ...asset,
+        declared: true,
+        relationships: {
+          exposures: exposures.map(e => ({ threat: e.threat, severity: e.severity })),
+          mitigations: mitigations.map(m => ({ threat: m.threat, control: m.control })),
+          confirmed: confirmed.map(c => ({ threat: c.threat, severity: c.severity })),
+          inbound_flows: inFlows.map(f => ({ from: f.source, mechanism: f.mechanism })),
+          outbound_flows: outFlows.map(f => ({ to: f.target, mechanism: f.mechanism })),
+        },
+      }],
+    };
+  }
+
+  // Asset is undeclared but referenced by one or more annotations — synthesize
+  // a stub record so the query agrees with `threats for #id`, `unmitigated`,
+  // `confirmed`, etc., which all join through the referencing annotations.
+  const referencedIn: string[] = [];
+  if (exposures.length)   referencedIn.push('exposures');
+  if (mitigations.length) referencedIn.push('mitigations');
+  if (confirmed.length)   referencedIn.push('confirmed');
+  if (acceptances.length) referencedIn.push('acceptances');
+  if (audits.length)      referencedIn.push('audits');
+  if (inFlows.length || outFlows.length) referencedIn.push('flows');
+  if (boundaries.length)  referencedIn.push('boundaries');
+
+  if (referencedIn.length === 0) {
+    return { query, type: 'asset', count: 0, results: [] };
+  }
+
+  const id = ref.replace(/^#/, '');
   return {
     query, type: 'asset', count: 1,
     results: [{
-      ...asset,
+      id,
+      path: [id],
+      declared: false,
+      referenced_in: referencedIn,
       relationships: {
         exposures: exposures.map(e => ({ threat: e.threat, severity: e.severity })),
         mitigations: mitigations.map(m => ({ threat: m.threat, control: m.control })),
+        confirmed: confirmed.map(c => ({ threat: c.threat, severity: c.severity })),
         inbound_flows: inFlows.map(f => ({ from: f.source, mechanism: f.mechanism })),
         outbound_flows: outFlows.map(f => ({ to: f.target, mechanism: f.mechanism })),
       },
@@ -305,27 +347,77 @@ function lookupFuzzy(model: ThreatModel, query: string, q: string): LookupResult
   const ref = q.replace(/^#/, '');
   const results: any[] = [];
 
-  // Try assets
+  // Try declared assets
   for (const a of model.assets) {
     if (matchRef(a.id || '', ref) || matchRef(a.path.join('.'), ref)) {
-      results.push({ type: 'asset', id: a.id, path: a.path.join('.'), description: a.description });
+      results.push({ type: 'asset', id: a.id, path: a.path.join('.'), description: a.description, declared: true });
     }
   }
-  // Try threats
+  // Try declared threats
   for (const t of model.threats) {
     if (matchRef(t.id || '', ref) || matchRef(t.canonical_name, ref)) {
-      results.push({ type: 'threat', id: t.id, name: t.canonical_name, severity: t.severity });
+      results.push({ type: 'threat', id: t.id, name: t.canonical_name, severity: t.severity, declared: true });
     }
   }
-  // Try controls
+  // Try declared controls
   for (const c of model.controls) {
     if (matchRef(c.id || '', ref) || matchRef(c.canonical_name, ref)) {
-      results.push({ type: 'control', id: c.id, name: c.canonical_name });
+      results.push({ type: 'control', id: c.id, name: c.canonical_name, declared: true });
+    }
+  }
+
+  // Fall back to referenced-but-undeclared identifiers across the annotation
+  // graph. Without this, `unmitigated` returns #login-sqli but bare #login-sqli
+  // says no_match — two queries disagreeing about the same identifier.
+  if (results.length === 0) {
+    const seen = new Set<string>();
+    const addRef = (kind: string, id: string, source: string, extra: Record<string, unknown> = {}) => {
+      const key = `${kind}::${id}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      results.push({ type: kind, id, path: id, declared: false, referenced_in: [source], ...extra });
+    };
+    const matchAndAdd = (kind: string, value: string, source: string, extra: Record<string, unknown> = {}) => {
+      if (!value) return;
+      const v = value.replace(/^#/, '');
+      if (matchRef(value, ref)) addRef(kind, v, source, extra);
+    };
+
+    for (const e of model.exposures) {
+      matchAndAdd('asset',  e.asset,  'exposures', { severity: e.severity });
+      matchAndAdd('threat', e.threat, 'exposures', { severity: e.severity });
+    }
+    for (const c of (model.confirmed || [])) {
+      matchAndAdd('asset',  c.asset,  'confirmed', { severity: c.severity });
+      matchAndAdd('threat', c.threat, 'confirmed', { severity: c.severity });
+    }
+    for (const m of model.mitigations) {
+      matchAndAdd('asset',   m.asset,        'mitigations');
+      matchAndAdd('threat',  m.threat,       'mitigations');
+      matchAndAdd('control', m.control || '', 'mitigations');
+    }
+    for (const a of model.acceptances) {
+      matchAndAdd('asset',  a.asset,  'acceptances');
+      matchAndAdd('threat', a.threat, 'acceptances');
+    }
+    for (const f of model.flows) {
+      matchAndAdd('asset', f.source, 'flows');
+      matchAndAdd('asset', f.target, 'flows');
+    }
+    for (const b of model.boundaries) {
+      matchAndAdd('asset', b.asset_a, 'boundaries');
+      matchAndAdd('asset', b.asset_b, 'boundaries');
     }
   }
 
   if (results.length === 0) {
-    return { query, type: 'no_match', count: 0, results: [{ hint: `No match for "${query}". Try: "asset <name>", "threats for <asset>", "unmitigated", "flows into <asset>"` }] };
+    // Hint travels through two JSON.stringify passes (MCP content wrap +
+    // JSON-RPC envelope). Embedded double quotes get escaped to \\\" and
+    // render as literal backslashes in clients that print the raw text —
+    // use backticks around examples instead.
+    return { query, type: 'no_match', count: 0, results: [{
+      hint: `No match for ${query}. Try: \`asset <name>\`, \`threats for <asset>\`, \`unmitigated\`, \`flows into <asset>\``,
+    }] };
   }
 
   return { query, type: 'mixed', count: results.length, results };
