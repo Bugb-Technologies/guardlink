@@ -43,6 +43,7 @@ import { resolve, basename } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
+import { ensurePromptMd } from '../init/migrate.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getCurrentRef } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
@@ -343,6 +344,15 @@ program
 
     // Enrich with provenance metadata (git SHA, branch, workspace, schema version)
     const enrichedModel = populateMetadata(model, root);
+
+    // Auto-create .guardlink/prompt.md if a v1.4.x project doesn't have it
+    // (`init` short-circuits when .guardlink/ exists, so upgrades skip the
+    // template). One-line hint on first creation so the user knows it's a
+    // feature; silent thereafter.
+    const migrationResult = ensurePromptMd(root);
+    if (migrationResult === 'created') {
+      console.error('• Created .guardlink/prompt.md — fill it in to customize the report\'s Application Overview.');
+    }
 
     // Load project description from .guardlink/prompt.md if it exists
     try {
