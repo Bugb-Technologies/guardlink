@@ -23,6 +23,7 @@ import type { ThreatModel } from '../types/index.js';
 import { type AnalysisFramework, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage } from './prompts.js';
 import { type LLMConfig, buildConfig, chatCompletion } from './llm.js';
 import { GUARDLINK_TOOLS, createToolExecutor } from './tools.js';
+import { formatConfidence } from './format.js';
 
 export { type AnalysisFramework, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage } from './prompts.js';
 export { type LLMConfig, type LLMProvider, buildConfig, autoDetectConfig } from './llm.js';
@@ -692,7 +693,10 @@ export interface PentestFinding {
   target: string;
   template_id: string;
   severity: string;
-  confidence: number;
+  /** CXG emits this in different shapes across versions: integer percentage,
+   *  severity-style string ("high"), or missing entirely. Render via
+   *  formatConfidence() rather than assuming a specific type. */
+  confidence: number | string | null;
   title: string;
   description: string;
   evidence: {
@@ -868,7 +872,7 @@ export function serializePentestFindings(data: PentestData): string {
 
       for (const f of scan.findings) {
         lines.push(`**[${f.severity.toUpperCase()}] ${f.title}** (${f.template_id})`);
-        lines.push(`  CWE: ${f.cwe_ids.join(', ') || 'none'} | Confidence: ${f.confidence}%`);
+        lines.push(`  CWE: ${f.cwe_ids.join(', ') || 'none'} | Confidence: ${formatConfidence(f.confidence)}`);
         lines.push(`  ${f.description}`);
         if (f.evidence?.request) lines.push(`  Request: ${String(f.evidence.request).slice(0, 300)}`);
         if (f.evidence?.response) lines.push(`  Response: ${String(f.evidence.response).slice(0, 300)}`);

@@ -25,6 +25,7 @@ import type { DashboardStats, SeverityBreakdown, ExposureRow, ConfirmedRow, Asse
 import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface, generateTopologyData } from './diagrams.js';
 import type { DiagramTopology } from './diagrams.js';
 import type { ThreatReportWithContent, PentestData } from '../analyze/index.js';
+import { formatConfidence } from '../analyze/format.js';
 import { readFileSync } from 'fs';
 import { resolve, isAbsolute } from 'path';
 
@@ -463,6 +464,23 @@ function openAnnotationDrawer(fileIdx, annIdx) {
 }
 
 function openPentestDrawer(scanIdx, findingIdx) {
+  // Mirror of server-side formatConfidence — keep these two in sync.
+  // CXG emits confidence as integer (most versions), severity-style string
+  // ("high"), or missing entirely. Render whatever it is, never crash.
+  function formatConf(v) {
+    if (v == null || v === '') return '\u2014';
+    if (typeof v === 'number' && isFinite(v)) {
+      return Math.max(0, Math.min(100, Math.round(v))) + '%';
+    }
+    if (typeof v === 'string') {
+      var t = v.trim();
+      if (!t) return '\u2014';
+      var m = t.match(/^(-?\d+(?:\.\d+)?)\s*%?$/);
+      if (m) return Math.max(0, Math.min(100, Math.round(parseFloat(m[1])))) + '%';
+      return t.toUpperCase();
+    }
+    return '\u2014';
+  }
   var title = document.getElementById('drawer-title');
   var body = document.getElementById('drawer-body');
   var scan = pentestData.scans[scanIdx];
@@ -473,7 +491,7 @@ function openPentestDrawer(scanIdx, findingIdx) {
   var h = '';
   var sevColor = f.severity === 'critical' ? 'var(--sev-crit)' : f.severity === 'high' ? 'var(--sev-high)' : f.severity === 'medium' ? 'var(--sev-med)' : 'var(--sev-low)';
   h += sec('Severity', '<span style="color:' + sevColor + ';font-weight:600;text-transform:uppercase">' + esc(f.severity) + '</span>');
-  h += sec('Confidence', '<span style="font-weight:600">' + f.confidence + '%</span>');
+  h += sec('Confidence', '<span style="font-weight:600">' + formatConf(f.confidence) + '</span>');
   h += sec('Template', '<code>' + esc(f.template_id) + '</code>');
   if (f.cwe_ids && f.cwe_ids.length) h += sec('CWE', f.cwe_ids.map(function(c){return '<code>' + esc(c) + '</code>'}).join(', '));
   h += sec('Description', '<div style="line-height:1.5">' + esc(f.description) + '</div>');
@@ -1739,7 +1757,7 @@ function renderPentestPage(pentest: PentestData): string {
             <td>${esc(f.title)}</td>
             <td><code style="font-size:.72rem">${esc(f.template_id)}</code></td>
             <td>${f.cwe_ids?.length ? f.cwe_ids.map(c => `<code style="font-size:.7rem">${esc(c)}</code>`).join(' ') : '—'}</td>
-            <td>${f.confidence}%</td>
+            <td>${formatConfidence(f.confidence)}</td>
           </tr>`).join('')}
           </tbody>
         </table>`;
