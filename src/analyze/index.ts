@@ -812,8 +812,12 @@ export function loadPentestData(root: string): PentestData {
         try {
           const raw = readFileSync(join(templatesDir, file), 'utf-8');
           const ext = file.split('.').pop() || '';
-          const idMatch = raw.match(/id[:\s]*["']?([a-z0-9_-]+)["']?/i);
-          const sevMatch = raw.match(/severity[:\s]*["']?(critical|high|medium|low|info)["']?/i);
+          // Anchor on complete field names: `id: "x"`, `"id": "x"`, `template_id = "x"`.
+          // The previous loose regex matched "id" inside words like `bridge`
+          // (captured "ge") and `guide` (captured "e"); the severity regex
+          // missed Python `severity = "critical"` because it required a colon.
+          const idMatch = raw.match(/["']?(?:template_)?id["']?\s*[:=]\s*["']([a-z0-9_-]+)["']/i);
+          const sevMatch = raw.match(/["']?severity["']?\s*[:=]\s*["']?(critical|high|medium|low|info)["']?/i);
           const tagsMatch = raw.match(/tags[:\s]*\[([^\]]*)\]/);
           data.templates.push({
             filename: file,
