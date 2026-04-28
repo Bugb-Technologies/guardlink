@@ -92,6 +92,13 @@ guardlink
 
 ---
 
+## DEMO video
+
+[![Watch the video](https://img.youtube.com/vi/a8wq7dAYtto/0.jpg)](https://www.youtube.com/watch?v=a8wq7dAYtto)
+
+
+---
+
 ## Why GuardLink
 
 Threat models rot. Teams do a session at the start of a project, someone creates a Confluence page, and it's stale by the next sprint. SAST scanners find 200 things with no context about what matters. Pen test reports sit in shared drives. The root cause is always the same: **security knowledge lives outside the code**.
