@@ -406,8 +406,34 @@ export interface UnannotatedSymbol {
 
 // ─── Parse Diagnostics ───────────────────────────────────────────────
 
+/**
+ * A parse-time issue surfaced by the annotation pipeline. Severity tiers:
+ *
+ * - `'warning'`: informational only; never blocks. Use for stylistic
+ *   concerns, deprecation notices, or non-actionable observations.
+ * - `'error'`: a specific annotation could not be parsed or resolved.
+ *   The affected annotation is skipped; the rest of the model still
+ *   renders. This is the default tier for malformed `@<verb>` lines,
+ *   dangling refs, and similar localized failures.
+ * - `'fatal'`: the model as a whole is unsafe to consume — e.g. an
+ *   entirely unparseable `definitions.ts`, an unrecoverable schema
+ *   version mismatch on a saved report, or any condition where
+ *   continuing would produce a structurally invalid threat model.
+ *   Consumers seeing a fatal MUST abort rather than render partial
+ *   results.
+ *
+ * TODO(fatal-tier): the `'fatal'` value is reserved vocabulary as of
+ * v1.5.1. No code path currently emits a fatal diagnostic. Before the
+ * first emission lands (likely v1.6), audit every `d.level === 'error'`
+ * filter in the codebase — most of them should become
+ * `d.level === 'error' || d.level === 'fatal'` so fatals don't
+ * silently bypass the existing exit-1 / abort logic. Known sites at
+ * the time of writing: src/cli/index.ts (8 occurrences),
+ * src/tui/commands.ts (2), src/mcp/server.ts (1). See bug #6 in the
+ * v1.5.1 punch list.
+ */
 export interface ParseDiagnostic {
-  level: 'error' | 'warning';
+  level: 'error' | 'warning' | 'fatal';
   message: string;
   file: string;
   line: number;

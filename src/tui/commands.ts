@@ -31,6 +31,7 @@ import { computeStats, computeSeverity, computeExposures } from '../dashboard/da
 import { generateThreatReport, serializeModel, listThreatReports, loadThreatReportsForDashboard, loadPentestData, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, buildProjectContext, extractCodeSnippets, type AnalysisFramework } from '../analyze/index.js';
 import { diffModels, formatDiff, parseAtRef } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
+import { diagnosticIcon } from '../parser/format.js';
 import type { ThreatModel, ParseDiagnostic, ThreatModelExposure } from '../types/index.js';
 import { C, severityBadge, severityText, severityTextPad, severityOrder, computeGrade, gradeColored, formatTable, readCodeContext, trunc, bar, fileLink, fileLinkTrunc, cleanCliArtifacts } from './format.js';
 import { resolveLLMConfig, saveTuiConfig, loadTuiConfig } from './config.js';
@@ -883,7 +884,9 @@ export async function cmdValidate(ctx: TuiContext): Promise<void> {
     if (allDiags.length > 0) {
       console.log('');
       for (const d of allDiags) {
-        const prefix = d.level === 'error' ? C.error('  ✗') : C.warn('  ⚠');
+        const icon = diagnosticIcon(d.level);
+        const color = d.level === 'fatal' || d.level === 'error' ? C.error : C.warn;
+        const prefix = color(`  ${icon}`);
         const loc = d.file ? `${fileLink(d.file, d.line, ctx.root)}` : '';
         console.log(`${prefix} ${d.message}${loc ? `  ${C.dim(loc)}` : ''}`);
       }

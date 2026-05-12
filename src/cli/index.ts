@@ -42,6 +42,7 @@ import { Command } from 'commander';
 import { resolve, basename } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
+import { diagnosticIcon } from '../parser/format.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { ensurePromptMd } from '../init/migrate.js';
 import { generateReport, generateMermaid } from '../report/index.js';
@@ -1941,14 +1942,17 @@ if (process.argv.length <= 2) {
 
 function printDiagnostics(diagnostics: ParseDiagnostic[]) {
   for (const d of diagnostics) {
-    const prefix = d.level === 'error' ? '✗' : '⚠';
-    console.error(`${prefix} ${d.file}:${d.line}: ${d.message}`);
+    console.error(`${diagnosticIcon(d.level)} ${d.file}:${d.line}: ${d.message}`);
     if (d.raw) console.error(`  → ${d.raw}`);
   }
   if (diagnostics.length > 0) {
+    const fatals = diagnostics.filter(d => d.level === 'fatal').length;
     const errors = diagnostics.filter(d => d.level === 'error').length;
     const warnings = diagnostics.filter(d => d.level === 'warning').length;
-    console.error(`\n${errors} error(s), ${warnings} warning(s)\n`);
+    const parts: string[] = [];
+    if (fatals > 0) parts.push(`${fatals} fatal(s)`);
+    parts.push(`${errors} error(s)`, `${warnings} warning(s)`);
+    console.error(`\n${parts.join(', ')}\n`);
   }
 }
 
