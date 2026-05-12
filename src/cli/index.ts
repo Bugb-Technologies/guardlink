@@ -1206,7 +1206,7 @@ program
   .command('config')
   .description('Manage LLM provider configuration')
   .argument('<action>', 'Action: set, show, clear')
-  .argument('[key]', 'Config key: provider, api-key, model, ai-mode, cli-agent')
+  .argument('[key]', 'Config key: provider, api-key, model, ai-mode, cli-agent, redact-evidence')
   .argument('[value]', 'Value to set')
   .option('--global', 'Use global config (~/.config/guardlink/) instead of project')
   .action(async (action: string, key?: string, value?: string, opts?: { global?: boolean }) => {
@@ -1220,13 +1220,14 @@ program
         const projCfg = isGlobal ? loadGlobalConfig() : loadProjectConfig(root);
         const aiMode = projCfg?.aiMode || 'api';
         const cliAgent = projCfg?.cliAgent;
+        const redactEvidence = projCfg?.redactEvidence === true;
 
-        console.log(`AI Mode:   ${aiMode}${cliAgent ? ` (${cliAgent})` : ''}`);
+        console.log(`AI Mode:           ${aiMode}${cliAgent ? ` (${cliAgent})` : ''}`);
         if (config) {
-          console.log(`Provider:  ${config.provider}`);
-          console.log(`Model:     ${config.model}`);
-          console.log(`API Key:   ${maskKey(config.apiKey)}`);
-          console.log(`Source:    ${source}`);
+          console.log(`Provider:          ${config.provider}`);
+          console.log(`Model:             ${config.model}`);
+          console.log(`API Key:           ${maskKey(config.apiKey)}`);
+          console.log(`Source:            ${source}`);
         } else if (aiMode !== 'cli-agent') {
           console.log('No LLM configuration found.');
           console.log('\nSet one with:');
@@ -1239,6 +1240,7 @@ program
           console.log('  export GUARDLINK_LLM_KEY=sk-ant-...');
           console.log('  export GUARDLINK_LLM_PROVIDER=anthropic');
         }
+        console.log(`Redact evidence:   ${redactEvidence ? 'on  (pentest evidence is surgically redacted at load)' : 'off (full evidence; see docs/handling-evidence.md)'}`);
         break;
       }
 
@@ -1288,8 +1290,24 @@ program
             (existing as any).cliAgent = value;
             (existing as any).aiMode = 'cli-agent';
             break;
+          case 'redact-evidence': {
+            // Accept truthy/falsy spellings — `true`, `false`, `on`, `off`,
+            // `1`, `0`. Reject anything else so a typo doesn't silently
+            // enable redaction the user didn't want.
+            const v = value.toLowerCase();
+            if (['true', 'on', '1', 'yes'].includes(v)) {
+              (existing as any).redactEvidence = true;
+            } else if (['false', 'off', '0', 'no'].includes(v)) {
+              (existing as any).redactEvidence = false;
+            } else {
+              console.error(`Invalid value for redact-evidence: ${value}`);
+              console.error('Use: true | false (also accepted: on/off, 1/0, yes/no)');
+              process.exit(1);
+            }
+            break;
+          }
           default:
-            console.error(`Unknown config key: ${key}. Use: provider, api-key, model, ai-mode, cli-agent`);
+            console.error(`Unknown config key: ${key}. Use: provider, api-key, model, ai-mode, cli-agent, redact-evidence`);
             process.exit(1);
         }
 

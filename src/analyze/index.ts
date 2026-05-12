@@ -23,7 +23,8 @@ import type { ThreatModel } from '../types/index.js';
 import { type AnalysisFramework, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage } from './prompts.js';
 import { type LLMConfig, buildConfig, chatCompletion } from './llm.js';
 import { GUARDLINK_TOOLS, createToolExecutor } from './tools.js';
-import { formatConfidence } from './format.js';
+import { formatConfidence, redactEvidence } from './format.js';
+import { loadProjectConfig } from '../agents/config.js';
 
 export { type AnalysisFramework, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage } from './prompts.js';
 export { type LLMConfig, type LLMProvider, buildConfig, autoDetectConfig } from './llm.js';
@@ -743,6 +744,11 @@ export interface PentestData {
   templates: PentestTemplate[];
   totalFindings: number;
   findingsBySeverity: Record<string, number>;
+  /** True when surgical evidence redaction was applied during load (because
+   *  the project config has `redactEvidence: true`). Consumers can use this
+   *  to render a visual indicator so users of the dashboard / report know
+   *  whether they're seeing full or redacted evidence. See bug #11. */
+  redactionApplied?: boolean;
 }
 
 const PENTEST_FINDINGS_DIR = 'pentest-findings';
@@ -803,6 +809,24 @@ export function loadPentestData(root: string): PentestData {
 
   // Sort scans newest first
   data.scans.sort((a, b) => (b.completed_at || '').localeCompare(a.completed_at || ''));
+
+  // Bug #11: surgical evidence redaction. When the project config has
+  // `redactEvidence: true`, walk every finding and replace evidence
+  // request/response strings + the recursive `data` blob with redacted
+  // forms. Default is OFF — OSS users running against test targets
+  // (Juice Shop, their own staging) see full evidence. Enterprise
+  // customers with audit policies enable the flag once via
+  // `guardlink config set redact-evidence true`.
+  const projectConfig = loadProjectConfig(root);
+  if (projectConfig?.redactEvidence) {
+    for (const scan of data.scans) {
+      scan.findings = scan.findings.map((f) => ({
+        ...f,
+        evidence: f.evidence ? redactEvidence(f.evidence) : f.evidence,
+      }));
+    }
+    data.redactionApplied = true;
+  }
 
   // Load template metadata from .guardlink/cxg-templates/
   const templatesDir = join(root, '.guardlink', CXG_TEMPLATES_DIR);

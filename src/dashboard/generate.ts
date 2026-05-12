@@ -1793,6 +1793,13 @@ function renderPentestPage(pentest: PentestData): string {
 <div id="sec-pentest" class="section-content">
   <div class="sec-h"><span class="sec-icon">🔬</span> Pentest Findings</div>
 
+  ${pentest.redactionApplied ? `
+  <div style="background:linear-gradient(135deg,rgba(56,178,172,0.08),rgba(56,178,172,0.03));border:1px solid rgba(56,178,172,0.35);border-radius:6px;padding:.55rem .8rem;margin-bottom:1rem;display:flex;align-items:center;gap:.55rem;font-size:.8rem">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="rgb(56,178,172)" aria-hidden="true"><path d="M8 1a3 3 0 00-3 3v3H4a1 1 0 00-1 1v6a1 1 0 001 1h8a1 1 0 001-1V8a1 1 0 00-1-1h-1V4a3 3 0 00-3-3zM6 4a2 2 0 014 0v3H6V4z"/></svg>
+    <span><strong style="color:rgb(56,178,172)">Evidence redaction: enabled</strong> — JWT signatures stripped, credential values masked. Claims and exploit payloads preserved. See <code>docs/handling-evidence.md</code>.</span>
+  </div>
+  ` : ''}
+
   ${hasScanData || hasTemplates ? `
   <!-- Stats bar -->
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:1.2rem">

@@ -333,6 +333,8 @@ guardlink translate "focus on injection paths" --clipboard
 
 `@confirmed` is distinct from `@exposes` (hypothesis) — it means real, verified, not a false positive.
 
+**Handling evidence safely** — Pentest finding JSON files in `.guardlink/pentest-findings/` and generated templates in `.guardlink/cxg-templates/` often contain live tokens, JWTs, credential payloads, and other replay-enabling material captured from successful exploits. Before running scans against any system you care about, add these directories to your repository's ignore file. GuardLink also supports opt-in surgical redaction (`guardlink config set redact-evidence true`) for enterprise users whose compliance posture requires no cleartext credentials at rest. See [docs/handling-evidence.md](docs/handling-evidence.md) for the full operational guide.
+
 ---
 
 ## Multi-Repo Workspaces
