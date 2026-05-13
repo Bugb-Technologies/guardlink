@@ -19,10 +19,16 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { homedir } from 'node:os';
 import type { ThreatModel } from '../types/index.js';
 
-const DEFAULT_CXG_ROOT = '/Users/shahidhakim/Downloads/cert-x-gen-fix-template-update-url-migration-and-cli';
-const DEFAULT_CXG_SKELETON_DIR = '/Users/shahidhakim/Downloads/cert-x-gen-fix-template-update-url-migration-and-cli/cert-x-gen-templates-main/templates/skeleton';
+// CXG canonical install layout — matches what 'cargo install cert-x-gen'
+// produces and what 'cxg template fetch' writes. The 'official' subdirectory
+// is CXG's name for the Bugb-Technologies/cert-x-gen-templates remote;
+// see PathResolver::user_template_dir() in cert-x-gen/src/template/paths.rs.
+// Override with GUARDLINK_CXG_ROOT for forks or non-standard layouts.
+const DEFAULT_CXG_ROOT = resolve(homedir(), '.cert-x-gen', 'templates', 'official');
+const DEFAULT_CXG_SKELETON_DIR = resolve(DEFAULT_CXG_ROOT, 'templates', 'skeleton');
 
 function readIfExists(path: string, maxChars = 5000): string {
   if (!existsSync(path)) return '';
@@ -469,7 +475,12 @@ export function buildTranslatePrompt(
   const cxgRoot = process.env.GUARDLINK_CXG_ROOT || DEFAULT_CXG_ROOT;
   const skeletonDir = process.env.GUARDLINK_CXG_SKELETON_DIR || DEFAULT_CXG_SKELETON_DIR;
 
-  const templateGuide = readIfExists(resolve(cxgRoot, 'cert-x-gen-templates-main', 'docs', 'TEMPLATE_GUIDE.md'), 4000);
+  const templateGuide = readIfExists(resolve(cxgRoot, 'docs', 'TEMPLATE_GUIDE.md'), 4000);
+  // prompt.rs only exists when GUARDLINK_CXG_ROOT points at the CXG source
+  // repo (developer use). For end users on the installed layout the path
+  // resolves under ~/.cert-x-gen/templates/official/src/ai/prompt.rs which
+  // does not exist; readIfExists() returns '' gracefully and the prompt
+  // still works — they just get a slightly leaner template-authoring guide.
   const promptEngine = readIfExists(resolve(cxgRoot, 'src', 'ai', 'prompt.rs'), 4000);
   const yamlSkeleton = readIfExists(resolve(skeletonDir, 'yaml-template-skeleton.yaml'), 5000);
   const pythonSkeleton = readIfExists(resolve(skeletonDir, 'python-template-skeleton.py'), 3000);
@@ -514,9 +525,9 @@ Before generating final user guidance, discover the actual CLI usage on this mac
 2. Try: \`cxg scan --help\`
 3. Try: \`cxg template --help\`
 4. If \`cxg\` is not in PATH, try local binary from source checkout (if present):
-   - \`${cxgRoot}/target/release/cxg --help\`
-   - \`${cxgRoot}/target/release/cxg scan --help\`
-   - \`${cxgRoot}/target/release/cxg template --help\`
+   - \`cxg --help\`
+   - \`cxg scan --help\`
+   - \`cxg template --help\`
 5. Base user instructions on the commands that actually work. If none work, clearly state the blocker and provide install/build steps first.
 
 ## Required Decision Rule (Critical)
