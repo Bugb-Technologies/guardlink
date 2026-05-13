@@ -45,14 +45,14 @@ export async function parseAtRef(root: string, ref: string, project: string): Pr
   const filesRaw = execSync(`git ls-tree -r --name-only ${ref}`, { cwd: root, encoding: 'utf-8' });
   const allFiles = filesRaw.trim().split('\n').filter(Boolean);
 
-  // Filter to likely annotated files (source code + definitions)
+  // Filter to likely annotated files (source code + standalone GAL annotations)
   const extensions = new Set([
     '.ts', '.tsx', '.js', '.jsx', '.py', '.rs', '.go', '.java', '.rb',
     '.c', '.cpp', '.h', '.cs', '.php', '.swift', '.kt', '.scala',
-    '.yaml', '.yml', '.toml', '.json',
+    '.yaml', '.yml', '.toml', '.json', '.gal',
   ]);
   const relevantFiles = allFiles.filter(f => {
-    const ext = f.substring(f.lastIndexOf('.'));
+    const ext = f.substring(f.lastIndexOf('.')).toLowerCase();
     return extensions.has(ext) || f.includes('.guardlink/');
   });
 

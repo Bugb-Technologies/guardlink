@@ -80,6 +80,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **`fatal` diagnostic tier reserved** — `ParseDiagnostic.level` extended from `'error' | 'warning'` to `'error' | 'warning' | 'fatal'` with detailed JSDoc explaining tier semantics. No code path currently emits a fatal; this is a non-breaking type widening so v1.6 can introduce the first emission site (for unrecoverable conditions like schema version mismatch or unparseable definitions) without a coordinated cross-file change. New `diagnosticIcon()` helper in `src/parser/format.ts` centralizes the level → icon mapping (`✗✗` / `✗` / `⚠`); CLI and TUI printers use it consistently. A `TODO(fatal-tier)` note in `src/types/index.ts` enumerates the 11 audit sites that need updating before the first emission lands.
 - **Test coverage** — new test files: `tests/lookup.test.ts` (14 tests across the MCP query DSL with regression guards for the resolver bugs), `tests/pentest-loader.test.ts` (10 tests covering JSON/Python/YAML conventions for template metadata extraction), `tests/format.test.ts` (9 tests for confidence rendering across number/string/missing inputs), `tests/migrate.test.ts` (5 tests for prompt.md migration outcomes including idempotence), `tests/diagnostics.test.ts` (7 tests covering the fatal-tier vocabulary and icon mapping), `tests/redact.test.ts` (27 tests for surgical evidence redaction including JWT split-redact, Authorization header variants, JSON / query-string / cookie credential patterns, object-key inspection, and safety properties), plus extensions to `tests/parser.test.ts` (+19 tests for multi-hop chains and quoted refs) and `tests/dashboard.test.ts` (+4 tests for cross-kind topology dedup). Suite total: 72 → 167.
 
+## \[1.4.2\] — 2026-04-24
+
+### Added
+
+- **CLI**: `guardlink annotate --mode external` — generate annotations as standalone `.gal` files under `.guardlink/annotations/` that mirror the source tree, instead of as inline comments in source files. Source files remain unchanged. Useful for vendored code, audit-controlled repositories, and projects where modifying source files is politically expensive. Contributed by [@jordi-murgo](https://github.com/jordi-murgo) in [#6](https://github.com/Bugb-Technologies/guardlink/pull/6).
+- **CLI**: `guardlink annotate --stdout` — print the annotation prompt to stdout instead of launching an agent or copying to the clipboard. Useful for piping into custom harnesses and CI pipelines. Contributed by [@jordi-murgo](https://github.com/jordi-murgo) in [#6](https://github.com/Bugb-Technologies/guardlink/pull/6).
+- **Parser**: `@source file:<path> line:<n> [symbol:<name>]` directive — anchors annotations in a `.gal` file to a logical source-code location. The directive produces no annotation itself; it sets the location for subsequent annotations until the next `@source` or end of file.
+- **Types**: `SourceLocation.origin_file` and `SourceLocation.origin_line` — physical location of an annotation (the `.gal` file path), preserved alongside the logical location (`file` / `line`) for dashboards, reports, and SARIF to surface provenance where useful while defaulting to the logical source location for developer-facing output.
+
+### Changed
+
+- **`guardlink init --mode external`**: contains GuardLink's entire footprint inside `.guardlink/` — no `CLAUDE.md` / `AGENTS.md` / `.cursor/rules/` files at the project root, no `.mcp.json` at the root, no `docs/GUARDLINK_REFERENCE.md`. The reference doc and MCP config template are placed inside `.guardlink/` instead.
+- **Review writeback**: `@accepts` and `@audit` annotations generated via `guardlink review` are written to the annotation's physical location (the `.gal` file in external mode) rather than the logical source location, preserving external mode's "source files untouched" property through governance workflows.
+- **Review writeback**: comment-style detection now correctly handles HTML (`<!-- ... -->`) and CSS (`/* ... */`) files. Previously these fell back to JavaScript-style `//` comments, producing invalid markup. Contributed by [@jordi-murgo](https://github.com/jordi-murgo) in [#6](https://github.com/Bugb-Technologies/guardlink/pull/6).
+- **Review exposure IDs**: composite `writeFile:writeLine:logicalFile:logicalLine:asset:threat` scheme replaces the previous `file:line` scheme. Prevents two `@exposes` annotations at the same source location from colliding on the MCP review identifier. Contributed by [@jordi-murgo](https://github.com/jordi-murgo) in [#6](https://github.com/Bugb-Technologies/guardlink/pull/6).
+- **Review insertion**: TypeScript and Python decorators starting with `@` are no longer mistaken for GuardLink annotations when walking the "coupled block" during writeback. Contributed by [@jordi-murgo](https://github.com/jordi-murgo) in [#6](https://github.com/Bugb-Technologies/guardlink/pull/6).
+- **Parser `**/*.gal`** discovery is now case-insensitive. Contributed by [@jordi-murgo](https://github.com/jordi-murgo) in [#6](https://github.com/Bugb-Technologies/guardlink/pull/6).
+
+### Fixed
+
+- **Agent prompts**: wrap the external-mode example annotation block in `@shield:begin` / `@shield:end` to prevent `guardlink validate` from parsing the JavaScript string literals inside `src/agents/prompts.ts` as real annotations (resolved four parse errors in the CI dogfood step after #6 merged).
+- **Documentation**: correct `--mode inline|gal` references to `--mode inline|external` in `README.md` (two occurrences), `docs/GUARDLINK_REFERENCE.md` (three occurrences including the TUI `/annotate` slash-command help text). The flag value shipped as `external`; the docs referenced the prototype name `gal`.
+- **Documentation**: document `--stdout` flag on the AI-agent flags cheat-sheet in `docs/GUARDLINK_REFERENCE.md`.
+- **Documentation**: add `@source` convention note to the standalone `.gal` files section in `docs/GUARDLINK_REFERENCE.md` — annotations placed before the first `@source` directive fall back to the `.gal` file's own physical location, which is rarely what users want.
+
+### Chore
+
+- **Version**: bump from `1.4.1-gal` development tag (landed via #6) to `1.4.2` across `package.json`, `package-lock.json`, `src/cli/index.ts`, and `src/mcp/server.ts`.
+- **Lockfiles**: remove committed `bun.lock` (landed via #6). This project standardizes on npm; `package-lock.json` is canonical. Added `bun.lock`, `yarn.lock`, and `pnpm-lock.yaml` to `.gitignore` so contributors using alternate package managers locally do not accidentally commit a second lockfile.
+
 ## \[1.4.1\] — 2026-03-12
 
 ### Fixed

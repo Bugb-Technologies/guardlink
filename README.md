@@ -60,7 +60,7 @@ To uninstall: `npm unlink -g guardlink`
 guardlink init
 
 # Let AI annotate your project - Launch a coding agent to add annotations
-guardlink annotate [prompt]
+guardlink annotate [prompt] [--mode inline|external]
 
 # Let your AI coding agent annotate, or write annotations manually
 # Then validate
@@ -89,6 +89,13 @@ guardlink threat-report stride --claude-code
 # Interactive TUI with slash commands
 guardlink
 ```
+
+---
+
+## DEMO video
+
+[![Watch the video](https://img.youtube.com/vi/a8wq7dAYtto/0.jpg)](https://www.youtube.com/watch?v=a8wq7dAYtto)
+
 
 ---
 
@@ -149,7 +156,7 @@ GuardLink ships an MCP server and behavioral directives for AI coding agents. Af
 | `guardlink_suggest` | Suggest annotations for a code snippet |
 | `guardlink_lookup` | Query threats, controls, flows by keyword |
 | `guardlink_threat_report` | AI threat report (STRIDE, DREAD, etc.) |
-| `guardlink_annotate` | Build annotation prompt for the agent |
+| `guardlink_annotate` | Build annotation prompt for the agent, with inline or `.gal` mode |
 | `guardlink_report` | Generate markdown report |
 | `guardlink_dashboard` | Generate HTML dashboard |
 | `guardlink_sarif` | Export SARIF 2.1.0 |
@@ -165,7 +172,7 @@ GuardLink ships an MCP server and behavioral directives for AI coding agents. Af
 | Command | Description |
 |---------|-------------|
 | `guardlink init [dir]` | Initialize project with definitions, config, and agent integration |
-| `guardlink annotate [prompt]` | Launch a coding agent to add annotations |
+| `guardlink annotate [prompt] [--mode inline\|external]` | Launch a coding agent to add inline annotations or associated `.gal` files |
 | `guardlink parse [dir]` | Parse all annotations, output ThreatModel JSON |
 | `guardlink status [dir]` | Coverage summary: assets, threats, mitigations, exposures |
 | `guardlink validate [dir]` | Check for syntax errors, dangling refs, duplicate IDs |
@@ -197,7 +204,9 @@ GuardLink ships an MCP server and behavioral directives for AI coding agents. Af
 
 ## Annotation Reference
 
-GuardLink annotations go in comments in any language. The parser supports `//`, `#`, `--`, `/* */`, `""" """`, and 25+ comment styles.
+GuardLink annotations can live in source comments in any language or in standalone `.gal` files. The parser supports `//`, `#`, `--`, `/* */`, `""" """`, and 25+ comment styles for inline annotations, plus raw GAL lines for externalized files.
+
+> In standalone `.gal` files, drop the host-language comment prefix. `// @exposes ...` becomes `@exposes ...`. Keep definitions in `.guardlink/definitions.*`; use `.gal` files for externalized relationship annotations. Use `@source file:<path> line:<n> [symbol:<name>]` to point the following annotations at the real code location.
 
 ### Definitions (shared, in `.guardlink/definitions.js`)
 
@@ -214,6 +223,15 @@ GuardLink annotations go in comments in any language. The parser supports `//`, 
 # @exposes #api to #xss [P1] cwe:CWE-79 -- "User bio rendered without escaping"
 # @accepts #info-disclosure on #api -- "Health endpoint is intentionally public"
 # @transfers #sqli from #api to #database -- "DB handles untrusted input"
+```
+
+### Externalized relationships (in `.gal` files)
+
+```text
+@source file:src/auth/login.ts line:42 symbol:authenticate
+@exposes #api to #xss [P1] cwe:CWE-79 -- "User bio rendered without escaping"
+@audit #api -- "Review sanitization before release"
+@comment -- "Same GAL syntax as inline comments, but without // or # prefixes"
 ```
 
 ### Data Flow & Architecture

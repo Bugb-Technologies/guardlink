@@ -1,3 +1,5 @@
+import { extname } from 'node:path';
+
 /**
  * Comment prefix stripping per §2.9.
  * Strips the host language's comment prefix to expose the annotation text.
@@ -54,6 +56,14 @@ export function stripCommentPrefix(line: string): string | null {
   if (ocamlBlock) return ocamlBlock[1];
 
   return null;
+}
+
+/**
+ * Standalone GAL files store raw annotation lines without host-language
+ * comment prefixes, unlike annotations embedded in source files.
+ */
+export function isStandaloneAnnotationFile(filePath: string): boolean {
+  return extname(filePath).toLowerCase() === '.gal';
 }
 
 /**

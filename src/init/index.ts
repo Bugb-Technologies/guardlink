@@ -35,6 +35,7 @@ import {
   GITIGNORE_ENTRY,
 } from './templates.js';
 import type { ThreatModel } from '../types/index.js';
+import type { AnnotationMode } from '../agents/index.js';
 import { AGENT_CHOICES } from './picker.js';
 
 export { detectProject, type ProjectInfo, type AgentFile } from './detect.js';
@@ -55,6 +56,12 @@ export interface InitOptions {
   dryRun?: boolean;
   /** Explicit agent IDs to create files for (when no existing agent files found) */
   agentIds?: string[];
+  /**
+   * Annotation placement mode.
+   * external: restrict all writes to .guardlink/ — no agent files, no .mcp.json at root, no docs/.
+   * inline: default behavior, writes all files including agent instruction files.
+   */
+  mode?: AnnotationMode;
 }
 
 export interface InitResult {
@@ -73,6 +80,7 @@ const GUARDLINK_MARKER_END = '<!-- guardlink:end -->';
 
 export function initProject(options: InitOptions): InitResult {
   const { root, force = false, dryRun = false, skipAgentFiles = false } = options;
+  const isExternal = options.mode === 'external';
 
   const project = detectProject(root);
   if (options.project) project.name = options.project;
@@ -120,34 +128,50 @@ export function initProject(options: InitOptions): InitResult {
     skipped.push('.guardlink/prompt.md (exists)');
   }
 
-  // ── 5. Create docs/GUARDLINK_REFERENCE.md ──
+  // ── 5. Create reference doc ──
+  // external mode: inside .guardlink/ (zero footprint outside it)
+  // inline mode: docs/GUARDLINK_REFERENCE.md (visible to humans browsing the project)
 
-  const docsDir = join(root, 'docs');
-  const refDocPath = join(docsDir, 'GUARDLINK_REFERENCE.md');
-  if (!existsSync(refDocPath) || force) {
-    if (!dryRun) {
-      ensureDir(docsDir);
-      writeFileSync(refDocPath, referenceDocContent(project));
+  if (isExternal) {
+    const refDocPath = join(tsDir, 'GUARDLINK_REFERENCE.md');
+    if (!existsSync(refDocPath) || force) {
+      if (!dryRun) writeFileSync(refDocPath, referenceDocContent(project));
+      created.push('.guardlink/GUARDLINK_REFERENCE.md');
+    } else {
+      skipped.push('.guardlink/GUARDLINK_REFERENCE.md (exists)');
     }
-    created.push('docs/GUARDLINK_REFERENCE.md');
   } else {
-    skipped.push('docs/GUARDLINK_REFERENCE.md (exists)');
+    const docsDir = join(root, 'docs');
+    const refDocPath = join(docsDir, 'GUARDLINK_REFERENCE.md');
+    if (!existsSync(refDocPath) || force) {
+      if (!dryRun) {
+        ensureDir(docsDir);
+        writeFileSync(refDocPath, referenceDocContent(project));
+      }
+      created.push('docs/GUARDLINK_REFERENCE.md');
+    } else {
+      skipped.push('docs/GUARDLINK_REFERENCE.md (exists)');
+    }
   }
 
   // ── 6. Update .gitignore ──
+  // Skipped in external mode: .guardlink/ is intentionally committed as a whole.
 
-  const gitignorePath = join(root, '.gitignore');
-  if (existsSync(gitignorePath)) {
-    const content = readFileSync(gitignorePath, 'utf-8');
-    if (!content.includes('GuardLink') && !content.includes('.guardlink')) {
-      if (!dryRun) appendFileSync(gitignorePath, GITIGNORE_ENTRY);
-      updated.push('.gitignore');
+  if (!isExternal) {
+    const gitignorePath = join(root, '.gitignore');
+    if (existsSync(gitignorePath)) {
+      const content = readFileSync(gitignorePath, 'utf-8');
+      if (!content.includes('GuardLink') && !content.includes('.guardlink')) {
+        if (!dryRun) appendFileSync(gitignorePath, GITIGNORE_ENTRY);
+        updated.push('.gitignore');
+      }
     }
   }
 
   // ── 7. Update/create agent instruction files ──
+  // Skipped in external mode: all writes are contained in .guardlink/.
 
-  if (!skipAgentFiles) {
+  if (!skipAgentFiles && !isExternal) {
     const agentResults = updateAgentFiles(root, project, force, dryRun, options.agentIds);
     created.push(...agentResults.created);
     updated.push(...agentResults.updated);
@@ -155,13 +179,26 @@ export function initProject(options: InitOptions): InitResult {
   }
 
   // ── 8. Create .mcp.json for Claude Code MCP integration ──
+  // external mode: placed inside .guardlink/ as a reference template (won't be auto-discovered
+  //   by MCP clients, but documents the config for devs who want to enable it locally).
+  // inline mode: .mcp.json at project root for auto-discovery by Claude Code and other MCP clients.
 
-  const mcpPath = join(root, '.mcp.json');
-  if (!existsSync(mcpPath) || force) {
-    if (!dryRun) writeFileSync(mcpPath, mcpConfig());
-    created.push('.mcp.json');
+  if (isExternal) {
+    const mcpPath = join(tsDir, '.mcp.json');
+    if (!existsSync(mcpPath) || force) {
+      if (!dryRun) writeFileSync(mcpPath, mcpConfig());
+      created.push('.guardlink/.mcp.json');
+    } else {
+      skipped.push('.guardlink/.mcp.json (exists)');
+    }
   } else {
-    skipped.push('.mcp.json (exists)');
+    const mcpPath = join(root, '.mcp.json');
+    if (!existsSync(mcpPath) || force) {
+      if (!dryRun) writeFileSync(mcpPath, mcpConfig());
+      created.push('.mcp.json');
+    } else {
+      skipped.push('.mcp.json (exists)');
+    }
   }
 
   return { project, created, updated, skipped };
