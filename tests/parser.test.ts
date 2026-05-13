@@ -115,6 +115,20 @@ describe('parseString', () => {
     expect(e.external_refs).toEqual(['cwe:CWE-639']);
   });
 
+  it('parses @confirmed with severity and external refs', () => {
+    const { annotations } = parseString(
+      '// @confirmed #idor on App.API [critical] cwe:CWE-639 -- "Pen test reproduced IDOR"'
+    );
+    expect(annotations).toHaveLength(1);
+    const c = annotations[0] as any;
+    expect(c.verb).toBe('confirmed');
+    expect(c.threat).toBe('#idor');
+    expect(c.asset).toBe('App.API');
+    expect(c.severity).toBe('critical');
+    expect(c.external_refs).toEqual(['cwe:CWE-639']);
+    expect(c.description).toBe('Pen test reproduced IDOR');
+  });
+
   it('parses @accepts', () => {
     const { annotations } = parseString(
       '// @accepts #info-disclosure on App.Health -- "Public endpoint"'
@@ -359,6 +373,201 @@ describe('parseString', () => {
     expect(f.description).toBe('Direct connection');
   });
 
+  // ── @flows multi-hop chains (bug 4) ──────────────────────────────
+
+  it('@flows two-hop A -> B -> C emits two pairwise flows', () => {
+    const { annotations, diagnostics } = parseString(
+      '// @flows App.A -> App.B -> App.C'
+    );
+    expect(diagnostics).toHaveLength(0);
+    expect(annotations).toHaveLength(2);
+    expect(annotations[0]).toMatchObject({ verb: 'flows', source: 'App.A', target: 'App.B' });
+    expect(annotations[1]).toMatchObject({ verb: 'flows', source: 'App.B', target: 'App.C' });
+  });
+
+  it('@flows three-hop emits three pairwise flows', () => {
+    const { annotations } = parseString(
+      '// @flows App.A -> App.B -> App.C -> App.D'
+    );
+    expect(annotations).toHaveLength(3);
+    expect(annotations.map((a: any) => `${a.source}->${a.target}`)).toEqual([
+      'App.A->App.B', 'App.B->App.C', 'App.C->App.D',
+    ]);
+  });
+
+  it('@flows multi-hop with via propagates mechanism to every hop', () => {
+    const { annotations } = parseString(
+      '// @flows App.A -> App.B -> App.C via HTTPS/443'
+    );
+    expect(annotations).toHaveLength(2);
+    expect((annotations[0] as any).mechanism).toBe('HTTPS/443');
+    expect((annotations[1] as any).mechanism).toBe('HTTPS/443');
+  });
+
+  it('@flows multi-hop with description propagates to every hop', () => {
+    const { annotations } = parseString(
+      '// @flows App.A -> App.B -> App.C -- "shared auth path"'
+    );
+    expect(annotations).toHaveLength(2);
+    expect((annotations[0] as any).description).toBe('shared auth path');
+    expect((annotations[1] as any).description).toBe('shared auth path');
+  });
+
+  it('@flows multi-hop with via + description propagates both to every hop', () => {
+    const { annotations } = parseString(
+      '// @flows App.A -> App.B -> App.C via gRPC over TLS -- "auth"'
+    );
+    expect(annotations).toHaveLength(2);
+    annotations.forEach((a: any) => {
+      expect(a.mechanism).toBe('gRPC over TLS');
+      expect(a.description).toBe('auth');
+    });
+  });
+
+  it('@flows multi-hop with #id refs', () => {
+    const { annotations } = parseString(
+      '// @flows User -> #api -> #db'
+    );
+    expect(annotations).toHaveLength(2);
+    expect(annotations[0]).toMatchObject({ source: 'User', target: '#api' });
+    expect(annotations[1]).toMatchObject({ source: '#api', target: '#db' });
+  });
+
+  it('@flows multi-hop preserves source location across all emitted hops', () => {
+    const { annotations } = parseString(
+      '// @flows App.A -> App.B -> App.C via HTTP'
+    );
+    expect(annotations).toHaveLength(2);
+    expect(annotations[0].location.line).toBe(1);
+    expect(annotations[1].location.line).toBe(1);
+    expect(annotations[0].location.file).toBe(annotations[1].location.file);
+  });
+
+  it('@flows single-hop A -> B unchanged after multi-hop support added (regression)', () => {
+    const { annotations, diagnostics } = parseString(
+      '// @flows App.A -> App.B via HTTP -- "single"'
+    );
+    expect(diagnostics).toHaveLength(0);
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0]).toMatchObject({
+      verb: 'flows', source: 'App.A', target: 'App.B',
+      mechanism: 'HTTP', description: 'single',
+    });
+  });
+
+  // ── Quoted refs in relationships (bug 5) ──────────────────────────
+
+  it('@flows accepts URL-style refs in quotes', () => {
+    const { annotations, diagnostics } = parseString(
+      '// @flows User -> "/rest/user/login" -> "/rest/user/profile"'
+    );
+    expect(diagnostics).toHaveLength(0);
+    expect(annotations).toHaveLength(2);
+    expect(annotations[0]).toMatchObject({ source: 'User', target: '/rest/user/login' });
+    expect(annotations[1]).toMatchObject({ source: '/rest/user/login', target: '/rest/user/profile' });
+  });
+
+  it('@flows accepts whitespace-containing refs in quotes', () => {
+    const { annotations, diagnostics } = parseString(
+      '// @flows User -> "Auth Service" -> "SQLite db"'
+    );
+    expect(diagnostics).toHaveLength(0);
+    expect(annotations).toHaveLength(2);
+    expect((annotations[0] as any).target).toBe('Auth Service');
+    expect((annotations[1] as any).target).toBe('SQLite db');
+  });
+
+  it('@flows handles the user\'s actual Juice Shop annotation', () => {
+    const { annotations, diagnostics } = parseString(
+      '// @flows User -> "/rest/user/login" -> "SQLite db"'
+    );
+    expect(diagnostics).toHaveLength(0);
+    expect(annotations).toHaveLength(2);
+    expect(annotations[0]).toMatchObject({ source: 'User', target: '/rest/user/login' });
+    expect(annotations[1]).toMatchObject({ source: '/rest/user/login', target: 'SQLite db' });
+  });
+
+  it('@flows mixed quoted and unquoted refs in the same chain', () => {
+    const { annotations } = parseString(
+      '// @flows User -> "/login" -> #db -> App.Audit'
+    );
+    expect(annotations).toHaveLength(3);
+    expect(annotations.map((a: any) => `${a.source}->${a.target}`)).toEqual([
+      'User->/login', '/login->#db', '#db->App.Audit',
+    ]);
+  });
+
+  it('@flows quoted ref containing -> is not split by the chain extractor', () => {
+    // Edge case the naive split would shred: a quoted ref happens to
+    // contain a literal "->". The matchAll-based extractor must treat the
+    // quoted string as a single token.
+    const { annotations } = parseString(
+      '// @flows User -> "step1 -> step2" -> #db'
+    );
+    expect(annotations).toHaveLength(2);
+    expect((annotations[0] as any).target).toBe('step1 -> step2');
+    expect((annotations[1] as any).source).toBe('step1 -> step2');
+  });
+
+  it('@flows quoted ref unescapes \\" sequences', () => {
+    const { annotations } = parseString(
+      '// @flows User -> "He said \\"hi\\""'
+    );
+    expect(annotations).toHaveLength(1);
+    expect((annotations[0] as any).target).toBe('He said "hi"');
+  });
+
+  it('@exposes accepts quoted asset and threat refs', () => {
+    const { annotations, diagnostics } = parseString(
+      '// @exposes "/api/v1/users" to "Cross Site Scripting" [high]'
+    );
+    expect(diagnostics).toHaveLength(0);
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0]).toMatchObject({
+      verb: 'exposes', asset: '/api/v1/users', threat: 'Cross Site Scripting', severity: 'high',
+    });
+  });
+
+  it('@confirmed accepts quoted threat and asset refs', () => {
+    const { annotations } = parseString(
+      '// @confirmed "SQL Injection" on "/login" [critical]'
+    );
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0]).toMatchObject({
+      verb: 'confirmed', threat: 'SQL Injection', asset: '/login', severity: 'critical',
+    });
+  });
+
+  it('@boundary accepts quoted asset refs', () => {
+    const { annotations } = parseString(
+      '// @boundary "User Browser" and "Backend API"'
+    );
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0]).toMatchObject({
+      verb: 'boundary', asset_a: 'User Browser', asset_b: 'Backend API',
+    });
+  });
+
+  it('@audit accepts quoted asset ref', () => {
+    const { annotations } = parseString(
+      '// @audit "/admin/dashboard" -- "review on each release"'
+    );
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0]).toMatchObject({ verb: 'audit', asset: '/admin/dashboard' });
+  });
+
+  it('quoted refs do not affect unquoted regression cases', () => {
+    // All existing forms still work after the quote alternative was added.
+    const { annotations, diagnostics } = parseString(
+      '// @flows App.A -> #api -> App.Backend.DB\n' +
+      '// @exposes #login to #sqli [P0]\n' +
+      '// @confirmed XSS on App.Frontend [high]\n' +
+      '// @audit #admin-panel'
+    );
+    expect(diagnostics).toHaveLength(0);
+    expect(annotations).toHaveLength(5); // 2 flows + 1 exposes + 1 confirmed + 1 audit
+  });
+
   // ── Regression: @shield regex safety ──
 
   it('@shield does not match @shield:begin', () => {
@@ -493,6 +702,16 @@ describe('findDanglingRefs', () => {
     const diags = findDanglingRefs(model);
     expect(diags).toHaveLength(1);
     expect(diags[0].message).toContain('#missing-asset');
+  });
+
+  it('detects dangling threat ref in @confirmed', () => {
+    const model = emptyModel({
+      assets: [{ path: ['App'], id: 'app', location: loc }],
+      confirmed: [{ asset: '#app', threat: '#ghost-threat', severity: 'high', external_refs: [], location: loc }],
+    });
+    const diags = findDanglingRefs(model);
+    expect(diags).toHaveLength(1);
+    expect(diags[0].message).toContain('#ghost-threat');
   });
 
   it('detects dangling refs in @flows source/target', () => {

@@ -23,7 +23,7 @@ import { isStandaloneAnnotationFile, stripCommentPrefix } from './comment-strip.
 
 const GUARDLINK_VERBS = new Set([
   'asset', 'threat', 'control',
-  'mitigates', 'exposes', 'accepts', 'transfers', 'flows', 'boundary',
+  'mitigates', 'exposes', 'confirmed', 'accepts', 'transfers', 'flows', 'boundary',
   'validates', 'audit', 'owns', 'handles', 'assumes',
   'comment', 'source', 'shield', 'shield:begin', 'shield:end',
   // v1 compat

@@ -7,3 +7,4 @@
 
 export { generateMermaid } from './mermaid.js';
 export { generateReport } from './report.js';
+export { generateSequenceDiagram } from './sequence.js';

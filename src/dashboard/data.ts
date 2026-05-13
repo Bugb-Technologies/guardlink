@@ -18,6 +18,7 @@ export interface DashboardStats {
   controls: number;
   mitigations: number;
   exposures: number;
+  confirmed: number;
   acceptances: number;
   transfers: number;
   flows: number;
@@ -52,6 +53,16 @@ export interface ExposureRow {
   accepted: boolean;
 }
 
+export interface ConfirmedRow {
+  threat: string;
+  asset: string;
+  severity: string;
+  description: string;
+  file: string;
+  line: number;
+  external_refs: string[];
+}
+
 export interface AssetHeatmapEntry {
   name: string;
   exposures: number;
@@ -70,6 +81,7 @@ export function computeStats(model: ThreatModel): DashboardStats {
     controls: model.controls.length,
     mitigations: model.mitigations.length,
     exposures: model.exposures.length,
+    confirmed: model.confirmed.length,
     acceptances: model.acceptances.length,
     transfers: model.transfers.length,
     flows: model.flows.length,
@@ -146,4 +158,16 @@ export function computeAssetHeatmap(model: ThreatModel): AssetHeatmapEntry[] {
     const order = { critical: 0, high: 1, medium: 2, low: 3, none: 4 };
     return order[a.riskLevel] - order[b.riskLevel];
   });
+}
+
+export function computeConfirmed(model: ThreatModel): ConfirmedRow[] {
+  return (model.confirmed || []).map(c => ({
+    threat: c.threat,
+    asset: c.asset,
+    severity: c.severity || 'unset',
+    description: c.description || '',
+    file: c.location.file,
+    line: c.location.line,
+    external_refs: c.external_refs || [],
+  }));
 }

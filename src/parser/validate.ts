@@ -3,6 +3,9 @@
  *
  * Extracted from cli/index.ts and tui/commands.ts to eliminate duplication
  * and ensure consistent validation logic across all entry points.
+ *
+ * @mitigates #parser against #tag-collision using #prefix-ownership -- "findDanglingRefs ensures #id refs resolve to definitions"
+ * @comment -- "@confirmed refs validated same as @exposes for asset and threat"
  */
 
 import type { ThreatModel, ThreatModelExposure, ParseDiagnostic } from '../types/index.js';
@@ -45,6 +48,10 @@ export function findDanglingRefs(model: ThreatModel): ParseDiagnostic[] {
   for (const e of model.exposures) {
     checkRef(e.asset, e.location);
     checkRef(e.threat, e.location);
+  }
+  for (const c of model.confirmed || []) {
+    checkRef(c.asset, c.location);
+    checkRef(c.threat, c.location);
   }
   for (const a of model.acceptances) {
     checkRef(a.asset, a.location);

@@ -9,8 +9,9 @@
  *
  * We emit results for:
  *   1. Unmitigated exposures (the primary security findings)
- *   2. Parse errors (annotation syntax problems)
- *   3. Dangling references (broken #id refs)
+ *   2. @confirmed verified exploitable annotations (always error-level)
+ *   3. Parse errors (annotation syntax problems)
+ *   4. Dangling references (broken #id refs)
  *
  * @exposes #sarif to #data-exposure [low] cwe:CWE-200 -- "Exposes threat model findings to SARIF consumers"
  * @audit #sarif -- "SARIF output intentionally reveals security findings for CI/CD integration"
@@ -91,6 +92,14 @@ const RULES: SarifRule[] = [
     defaultConfiguration: { level: 'error' },
   },
   {
+    id: 'guardlink/confirmed-exploitable',
+    name: 'ConfirmedExploitable',
+    shortDescription: { text: 'Threat verified exploitable through testing' },
+    fullDescription: { text: 'A @confirmed annotation marks this threat as verified through pentest, scanning, or manual reproduction. This is not a false positive and requires immediate remediation.' },
+    helpUri: 'https://guardlink.bugb.io/docs/confirmed',
+    defaultConfiguration: { level: 'error' },
+  },
+  {
     id: 'guardlink/parse-error',
     name: 'AnnotationParseError',
     shortDescription: { text: 'Malformed GuardLink annotation' },
@@ -163,6 +172,25 @@ export function generateSarif(
     });
   }
 
+  // ── Confirmed exploitable ──
+  for (const c of (model.confirmed || [])) {
+    const threat = c.threat.startsWith('#') ? c.threat.slice(1) : c.threat;
+    const desc = c.description ? `: ${c.description}` : '';
+
+    results.push({
+      ruleId: 'guardlink/confirmed-exploitable',
+      level: 'error',
+      message: { text: `CONFIRMED: ${c.asset} exploitable via ${threat}${desc}` },
+      locations: [locationFrom(c.location.file, c.location.line)],
+      properties: {
+        severity: c.severity || 'unset',
+        asset: c.asset,
+        threat: c.threat,
+        ...(c.external_refs.length > 0 ? { externalRefs: c.external_refs } : {}),
+      },
+    });
+  }
+
   // ── Parse errors ──
   if (includeDiagnostics) {
     for (const d of diagnostics) {
@@ -195,7 +223,7 @@ export function generateSarif(
       tool: {
         driver: {
           name: 'GuardLink',
-          version: '1.1.0',
+          version: '1.4.3',
           informationUri: 'https://guardlink.bugb.io',
           rules: RULES,
         },

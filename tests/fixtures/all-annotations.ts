@@ -12,6 +12,7 @@
 
 // @mitigates App.Auth.Login against #sqli using #prepared-stmts -- "Login uses parameterized query"
 // @exposes App.Auth.Login to #bac [P1] cwe:CWE-639 -- "No ownership check on profile access"
+// @confirmed #bac on App.Auth.Login [high] cwe:CWE-639 -- "Pen test: IDOR on GET /users/{id} reproduced"
 // @accepts #cred-stuff on App.Auth.Login -- "Rate limiting is sufficient"
 
 // @transfers #sqli from App.Auth.Login to External.PaymentGateway -- "Payment provider handles their own SQL"

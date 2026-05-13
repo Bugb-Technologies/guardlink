@@ -16,8 +16,12 @@ export type AnnotationVerb =
   | 'asset' | 'threat' | 'control'
   // Relationship
   | 'mitigates' | 'exposes' | 'accepts' | 'transfers' | 'flows' | 'boundary'
+  // Evidence
+  | 'confirmed'
   // Lifecycle
   | 'validates' | 'audit' | 'owns' | 'handles' | 'assumes'
+  // Metadata
+  | 'feature'
   // Special
   | 'comment' | 'shield' | 'shield:begin' | 'shield:end';
 
@@ -74,6 +78,14 @@ export interface ExposesAnnotation extends BaseAnnotation {
   verb: 'exposes';
   asset: string;
   threat: string;
+  severity?: Severity;
+  external_refs: string[];
+}
+
+export interface ConfirmedAnnotation extends BaseAnnotation {
+  verb: 'confirmed';
+  threat: string;
+  asset: string;
   severity?: Severity;
   external_refs: string[];
 }
@@ -137,6 +149,11 @@ export interface ShieldAnnotation extends BaseAnnotation {
   verb: 'shield' | 'shield:begin' | 'shield:end';
 }
 
+export interface FeatureAnnotation extends BaseAnnotation {
+  verb: 'feature';
+  feature: string;
+}
+
 export interface CommentAnnotation extends BaseAnnotation {
   verb: 'comment';
 }
@@ -147,6 +164,7 @@ export type Annotation =
   | ControlAnnotation
   | MitigatesAnnotation
   | ExposesAnnotation
+  | ConfirmedAnnotation
   | AcceptsAnnotation
   | TransfersAnnotation
   | FlowsAnnotation
@@ -156,6 +174,7 @@ export type Annotation =
   | OwnsAnnotation
   | HandlesAnnotation
   | AssumesAnnotation
+  | FeatureAnnotation
   | CommentAnnotation
   | ShieldAnnotation;
 
@@ -217,11 +236,15 @@ export interface ThreatModel {
   /** Cross-repo tag references detected during parsing */
   external_refs?: ExternalRef[];
 
+  /** User-provided project description / threat model prompt (from .guardlink/prompt.md) */
+  prompt?: string;
+
   assets: ThreatModelAsset[];
   threats: ThreatModelThreat[];
   controls: ThreatModelControl[];
   mitigations: ThreatModelMitigation[];
   exposures: ThreatModelExposure[];
+  confirmed: ThreatModelConfirmed[];
   acceptances: ThreatModelAcceptance[];
   transfers: ThreatModelTransfer[];
   flows: ThreatModelFlow[];
@@ -232,6 +255,7 @@ export interface ThreatModel {
   data_handling: ThreatModelDataHandling[];
   assumptions: ThreatModelAssumption[];
   shields: ThreatModelShield[];
+  features: ThreatModelFeature[];
   comments: ThreatModelComment[];
 
   coverage: CoverageStats;
@@ -273,6 +297,15 @@ export interface ThreatModelMitigation {
 export interface ThreatModelExposure {
   asset: string;
   threat: string;
+  severity?: Severity;
+  external_refs: string[];
+  description?: string;
+  location: SourceLocation;
+}
+
+export interface ThreatModelConfirmed {
+  threat: string;
+  asset: string;
   severity?: Severity;
   external_refs: string[];
   description?: string;
@@ -348,6 +381,12 @@ export interface ThreatModelShield {
   location: SourceLocation;
 }
 
+export interface ThreatModelFeature {
+  feature: string;
+  description?: string;
+  location: SourceLocation;
+}
+
 export interface ThreatModelComment {
   description?: string;
   location: SourceLocation;
@@ -369,8 +408,34 @@ export interface UnannotatedSymbol {
 
 // ─── Parse Diagnostics ───────────────────────────────────────────────
 
+/**
+ * A parse-time issue surfaced by the annotation pipeline. Severity tiers:
+ *
+ * - `'warning'`: informational only; never blocks. Use for stylistic
+ *   concerns, deprecation notices, or non-actionable observations.
+ * - `'error'`: a specific annotation could not be parsed or resolved.
+ *   The affected annotation is skipped; the rest of the model still
+ *   renders. This is the default tier for malformed `@<verb>` lines,
+ *   dangling refs, and similar localized failures.
+ * - `'fatal'`: the model as a whole is unsafe to consume — e.g. an
+ *   entirely unparseable `definitions.ts`, an unrecoverable schema
+ *   version mismatch on a saved report, or any condition where
+ *   continuing would produce a structurally invalid threat model.
+ *   Consumers seeing a fatal MUST abort rather than render partial
+ *   results.
+ *
+ * TODO(fatal-tier): the `'fatal'` value is reserved vocabulary as of
+ * v1.5.1. No code path currently emits a fatal diagnostic. Before the
+ * first emission lands (likely v1.6), audit every `d.level === 'error'`
+ * filter in the codebase — most of them should become
+ * `d.level === 'error' || d.level === 'fatal'` so fatals don't
+ * silently bypass the existing exit-1 / abort logic. Known sites at
+ * the time of writing: src/cli/index.ts (8 occurrences),
+ * src/tui/commands.ts (2), src/mcp/server.ts (1). See bug #6 in the
+ * v1.5.1 punch list.
+ */
 export interface ParseDiagnostic {
-  level: 'error' | 'warning';
+  level: 'error' | 'warning' | 'fatal';
   message: string;
   file: string;
   line: number;

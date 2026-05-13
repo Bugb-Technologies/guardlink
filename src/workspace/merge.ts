@@ -413,6 +413,7 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     controls: [],
     mitigations: [],
     exposures: [],
+    confirmed: [],
     acceptances: [],
     transfers: [],
     flows: [],
@@ -423,6 +424,7 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     data_handling: [],
     assumptions: [],
     shields: [],
+    features: [],
     comments: [],
     coverage: { total_symbols: 0, annotated_symbols: 0, coverage_percent: 0, unannotated_critical: [] },
   };
@@ -453,6 +455,7 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     // Relationships: keep all (no dedup — cross-repo relationships are valuable)
     combined.mitigations.push(...prefixAll(m.mitigations, repo));
     combined.exposures.push(...prefixAll(m.exposures, repo));
+    combined.confirmed.push(...prefixAll(m.confirmed || [], repo));
     combined.acceptances.push(...prefixAll(m.acceptances, repo));
     combined.transfers.push(...prefixAll(m.transfers, repo));
     combined.flows.push(...prefixAll(m.flows, repo));
@@ -463,6 +466,7 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     combined.data_handling.push(...prefixAll(m.data_handling, repo));
     combined.assumptions.push(...prefixAll(m.assumptions, repo));
     combined.shields.push(...prefixAll(m.shields, repo));
+    combined.features.push(...prefixAll(m.features || [], repo));
     combined.comments.push(...prefixAll(m.comments, repo));
 
     // Aggregate coverage
@@ -673,9 +677,9 @@ function emptyMergedReport(workspace: string, statuses: RepoStatus[]): MergedRep
       generated_at: new Date().toISOString(), source_files: 0,
       annotations_parsed: 0, annotated_files: [], unannotated_files: [],
       assets: [], threats: [], controls: [], mitigations: [], exposures: [],
-      acceptances: [], transfers: [], flows: [], boundaries: [],
+      confirmed: [], acceptances: [], transfers: [], flows: [], boundaries: [],
       validations: [], audits: [], ownership: [], data_handling: [],
-      assumptions: [], shields: [], comments: [],
+      assumptions: [], shields: [], features: [], comments: [],
       coverage: { total_symbols: 0, annotated_symbols: 0, coverage_percent: 0, unannotated_critical: [] },
     },
   };

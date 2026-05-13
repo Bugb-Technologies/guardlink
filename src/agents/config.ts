@@ -41,6 +41,13 @@ interface SavedConfig {
   webSearch?: boolean;
   /** Response format: 'text' or 'json' */
   responseFormat?: 'text' | 'json';
+  /** Bug #11: when true, the pentest-finding loader applies surgical
+   *  redaction (JWT signatures stripped, credential field values replaced,
+   *  cookie values masked) before any downstream consumer — dashboard,
+   *  report, SARIF, MCP — sees the data. Default false; OSS users running
+   *  against test targets see full evidence. Enterprise customers with
+   *  audit policies that forbid cleartext credentials at rest enable this. */
+  redactEvidence?: boolean;
 }
 
 const DEFAULT_MODELS: Record<LLMProvider, string> = {

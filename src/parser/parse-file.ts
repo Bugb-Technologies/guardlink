@@ -110,7 +110,8 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
         };
       }
       annotations.push(result.annotation);
-      lastAnnotation = result.annotation;
+      if (result.extraAnnotations) annotations.push(...result.extraAnnotations);
+      lastAnnotation = annotations[annotations.length - 1];
     } else {
       if (result.diagnostic) {
         diagnostics.push(result.diagnostic);

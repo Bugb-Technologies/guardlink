@@ -56,6 +56,7 @@ import {
   cmdWorkspace,
   cmdLink,
   cmdMerge,
+  cmdFeature,
 } from './commands.js';
 
 // ─── Command registry ────────────────────────────────────────────────
@@ -67,7 +68,7 @@ const COMMANDS = [
   '/assets', '/files', '/view',
   '/threat-report', '/threat-reports', '/annotate', '/model',
   '/clear', '/sync', '/unannotated', '/review',
-  '/report', '/dashboard',
+  '/report', '/dashboard', '/feature',
   '/workspace', '/link', '/merge',
   '/quit',
 ];
@@ -109,6 +110,7 @@ const PALETTE_COMMANDS: CommandEntry[] = [
   { command: '/workspace',  label: 'Show workspace config and linked repos' },
   { command: '/link',       label: 'Link repos into workspace (--add / --remove)' },
   { command: '/merge',      label: 'Merge report JSONs into unified dashboard' },
+  { command: '/feature',    label: 'List features or show detail for one' },
   { command: '/gal',        label: 'GAL annotation language guide' },
   { command: '/help',       label: 'Show all commands' },
   { command: '/quit',       label: 'Exit GuardLink CLI',   aliases: ['/exit', '/q'] },
@@ -323,6 +325,7 @@ function printCommandList(): void {
     ['/workspace',  'Workspace config + linked repos'],
     ['/link',       'Link repos (--add / --remove)'],
     ['/merge',      'Merge report JSONs'],
+    ['/feature',    'List features / show detail'],
     ['/gal',        'GAL annotation guide'],
     ['/help',       'Full help'],
     ['/quit',       'Exit GuardLink CLI'],
@@ -387,6 +390,7 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
         case '/workspace': cmdWorkspace(ctx); break;
         case '/link':     await cmdLink(args, ctx); break;
         case '/merge':    await cmdMerge(args, ctx); break;
+        case '/feature':  cmdFeature(args, ctx); break;
         default:
           // Fuzzy match
           const matches = COMMANDS.filter(c => c.startsWith(cmd));

@@ -17,5 +17,15 @@ pnpm-lock.yaml
 # GuardLink runtime config (API keys - do not commit)
 .guardlink/config.json
 
+# Generated outputs at repo root (canonical samples live in docs/examples/).
+# Running `guardlink dashboard .` or `guardlink report .` from the repo root
+# writes here by default — those local copies should never be committed.
+/threat-dashboard.html
+/threat-model.md
+/threat-model.json
+/guardlink-pentest.html
+/guardlink-pentest.json
+/guardlink-pentest.sarif
+
 # Debug / internal
 _debug.ts

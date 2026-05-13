@@ -11,3 +11,5 @@ export { stripCommentPrefix, commentStyleForExt } from './comment-strip.js';
 export { findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures } from './validate.js';
 export { clearAnnotations } from './clear.js';
 export type { ClearAnnotationsOptions, ClearAnnotationsResult } from './clear.js';
+export { listFeatures, filterByFeature, getFeatureSummaries } from './feature-filter.js';
+export type { FeatureSummary } from './feature-filter.js';

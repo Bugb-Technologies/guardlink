@@ -16,7 +16,7 @@
 import type {
   ThreatModel,
   ThreatModelAsset, ThreatModelThreat, ThreatModelControl,
-  ThreatModelMitigation, ThreatModelExposure, ThreatModelAcceptance,
+  ThreatModelMitigation, ThreatModelExposure, ThreatModelConfirmed, ThreatModelAcceptance,
   ThreatModelFlow, ThreatModelBoundary, ThreatModelTransfer,
   Severity, SourceLocation,
 } from '../types/index.js';
@@ -42,6 +42,7 @@ export interface ThreatModelDiff {
   controls: Change<ThreatModelControl>[];
   mitigations: Change<ThreatModelMitigation>[];
   exposures: Change<ThreatModelExposure>[];
+  confirmed: Change<ThreatModelConfirmed>[];
   acceptances: Change<ThreatModelAcceptance>[];
   flows: Change<ThreatModelFlow>[];
   boundaries: Change<ThreatModelBoundary>[];
@@ -72,6 +73,7 @@ export function diffModels(before: ThreatModel, after: ThreatModel): ThreatModel
   const controls = diffByKey(before.controls, after.controls, controlKey, controlChanged);
   const mitigations = diffByKey(before.mitigations, after.mitigations, mitigationKey);
   const exposures = diffByKey(before.exposures, after.exposures, exposureKey, exposureChanged);
+  const confirmed = diffByKey(before.confirmed || [], after.confirmed || [], (c: ThreatModelConfirmed) => `${c.asset}::${c.threat}`, (a: ThreatModelConfirmed, b: ThreatModelConfirmed) => a.severity !== b.severity || a.description !== b.description ? `severity/description changed` : null);
   const acceptances = diffByKey(before.acceptances, after.acceptances, acceptanceKey);
   const flows = diffByKey(before.flows, after.flows, flowKey, flowChanged);
   const boundaries = diffByKey(before.boundaries, after.boundaries, boundaryKey);
@@ -87,7 +89,7 @@ export function diffModels(before: ThreatModel, after: ThreatModel): ThreatModel
   const newUnmitigatedExposures = afterUnmitigated.filter(e => !beforeKeys.has(exposureKey(e)));
   const resolvedExposures = beforeUnmitigated.filter(e => !afterKeys.has(exposureKey(e)));
 
-  const allChanges = [assets, threats, controls, mitigations, exposures, acceptances, flows, boundaries, transfers];
+  const allChanges = [assets, threats, controls, mitigations, exposures, confirmed, acceptances, flows, boundaries, transfers];
   const totalChanges = allChanges.reduce((sum, c) => sum + c.length, 0);
   const added = allChanges.reduce((sum, c) => sum + c.filter(x => x.kind === 'added').length, 0);
   const removed = allChanges.reduce((sum, c) => sum + c.filter(x => x.kind === 'removed').length, 0);
@@ -99,7 +101,7 @@ export function diffModels(before: ThreatModel, after: ThreatModel): ThreatModel
 
   return {
     summary: { totalChanges, added, removed, modified, newUnmitigated: newUnmitigatedExposures.length, resolvedUnmitigated: resolvedExposures.length, riskDelta },
-    assets, threats, controls, mitigations, exposures, acceptances, flows, boundaries, transfers,
+    assets, threats, controls, mitigations, exposures, confirmed, acceptances, flows, boundaries, transfers,
     newUnmitigatedExposures,
     resolvedExposures,
   };
