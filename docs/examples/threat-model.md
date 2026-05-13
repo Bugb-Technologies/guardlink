@@ -1,9 +1,9 @@
 # Threat Model Report — unknown
 
-> Generated: 2026-04-22T21:58:42.332Z  
-> Files scanned: 64 | Annotations: 310
-> GuardLink version: 1.4.1
-> Commit: 7d3fe7bb72448d96e829273e29fcf7e5bfde7406 (feat/v1.5.0)
+> Generated: 2026-05-13T04:24:08.903Z  
+> Files scanned: 67 | Annotations: 310
+> GuardLink version: 1.4.3
+> Commit: 966a5fb3ac0717e30f463118a58026bf428f805c (release/v1.4.3)
 
 ## Application Overview
 
@@ -44,7 +44,7 @@
 
 ## Scope of This Threat Model
 
-This threat model covers **16 assets** and **15 threat categories** derived from **310 annotations** across **42** of **64** source files.
+This threat model covers **16 assets** and **15 threat categories** derived from **310 annotations** across **43** of **67** source files.
 
 ### Assets in Scope
 
@@ -85,8 +85,8 @@ This threat model covers **16 assets** and **15 threat categories** derived from
 
 ### Coverage
 
-- **42** of **64** files have security annotations (66%)
-- **22** files have no annotations
+- **43** of **67** files have security annotations (64%)
+- **24** files have no annotations
 
 ## Architecture
 
@@ -117,14 +117,14 @@ Assets receiving external input:
 
 - **#agent-launcher**: EnvVars via process.env, ConfigFile via readFileSync, UserPrompt via launchAgent, AgentProcess via stdout, UserPrompt via buildAnnotatePrompt, UserPrompt via buildTranslatePrompt, UserPrompt via buildAskPrompt, ThreatModel via model
 - **#llm-client**: ThreatModel via serializeModel, ProjectFiles via readFileSync, PentestFindings via readFileSync, LLMConfig via chatCompletion, LLMProvider via response, LLMToolCall via createToolExecutor, ProjectFiles via readFileSync
+- **#sarif**: ThreatModel via generateSarif
 - **#cli**: UserArgs via process.argv, ThreatModel via getReviewableExposures
 - **#dashboard**: ThreatModel via generateThreatGraph, ThreatModel via generateTopologyData, ThreatModel via computeStats, ThreatModel via topologyData, SourceFiles via readFileSync, ThreatModel via generateDashboardHTML
+- **#diff**: GitRef via execSync, GitRef via parseAtRef
 - **#init**: ProjectRoot via detectProject, ProjectRoot via options.root
 - **#mcp**: MCPClient via stdio, QueryString via lookup, MCPClient via tool_call
 - **#suggest**: FilePath via readFileSync
 - **#parser**: ProjectRoot via fast-glob, FilePath via readFile, ProjectRoot via fast-glob
-- **#sarif**: ThreatModel via generateSarif
-- **#diff**: GitRef via execSync, GitRef via parseAtRef
 - **#report**: ThreatModel via generateReport, ThreatModel via generateSequenceDiagram
 - **#tui**: UserArgs via args, ConfigFile via loadProjectConfig, UserInput via readline, RawStdin via process.stdin
 - **#workspace-link**: UserArgs via linkProject
@@ -137,7 +137,7 @@ Assets receiving external input:
 - **ConfigFile** → #agent-launcher, #tui
 - **UserPrompt** → #agent-launcher
 - **AgentProcess** → #agent-launcher
-- **ThreatModel** → #agent-launcher, #llm-client, #dashboard, #sarif, #report, #cli
+- **ThreatModel** → #agent-launcher, #llm-client, #sarif, #dashboard, #report, #cli
 - **ProjectFiles** → #llm-client
 - **PentestFindings** → #llm-client
 - **LLMConfig** → #llm-client
@@ -145,11 +145,11 @@ Assets receiving external input:
 - **LLMToolCall** → #llm-client
 - **UserArgs** → #cli, #tui, #workspace-link
 - **SourceFiles** → #dashboard
+- **GitRef** → #diff
 - **ProjectRoot** → #init, #parser
 - **MCPClient** → #mcp
 - **QueryString** → #mcp
 - **FilePath** → #suggest, #parser
-- **GitRef** → #diff
 - **UserInput** → #tui
 - **RawStdin** → #tui
 - **ReportJSON** → #merge-engine
@@ -183,6 +183,12 @@ graph TD
   UserInput(("UserInput"))
   end
   style Trust_boundary_at_CLI_argument_parsing fill:none,stroke:#666,stroke-width:2px,stroke-dasharray:5 5
+  subgraph Trust_boundary_at_git_command_execution["Trust boundary at git command execution"]
+    direction LR
+  _diff["diff"]
+  GitRepo["GitRepo"]
+  end
+  style Trust_boundary_at_git_command_execution fill:none,stroke:#666,stroke-width:2px,stroke-dasharray:5 5
   subgraph Trust_boundary_at_MCP_protocol["Trust boundary at MCP protocol"]
     direction LR
   _mcp["mcp (internal) | 1 high, 2 med"]
@@ -201,12 +207,6 @@ graph TD
   FileSystem[("FileSystem")]
   end
   style Trust_boundary_between_parser_and_disk_I_O fill:none,stroke:#666,stroke-width:2px,stroke-dasharray:5 5
-  subgraph Trust_boundary_at_git_command_execution["Trust boundary at git command execution"]
-    direction LR
-  _diff["diff"]
-  GitRepo["GitRepo"]
-  end
-  style Trust_boundary_at_git_command_execution fill:none,stroke:#666,stroke-width:2px,stroke-dasharray:5 5
   subgraph Trust_boundary_at_interactive_input["Trust boundary at interactive input"]
     direction LR
   _tui["tui (secrets) | 1 high, 1 med"]
@@ -223,10 +223,14 @@ graph TD
   PentestFindings["PentestFindings"]
   LLMConfig[("LLMConfig")]
   LLMToolCall["LLMToolCall"]
+  _sarif["sarif | 1 low"]
+  SarifLog["SarifLog"]
   UserArgs(("UserArgs"))
   _dashboard["dashboard (internal)"]
   SourceFiles[("SourceFiles")]
   HTML["HTML"]
+  GitRef["GitRef"]
+  TempDir["TempDir"]
   ProjectRoot["ProjectRoot"]
   _init["init (internal) | 1 low"]
   AgentFiles[("AgentFiles")]
@@ -235,10 +239,6 @@ graph TD
   _suggest["suggest | 1 low"]
   Suggestions["Suggestions"]
   Annotations["Annotations"]
-  _sarif["sarif | 1 low"]
-  SarifLog["SarifLog"]
-  GitRef["GitRef"]
-  TempDir["TempDir"]
   _report["report"]
   Markdown["Markdown"]
   Commands["Commands"]
@@ -271,6 +271,8 @@ graph TD
   LLMToolCall -->|"createToolExecutor"| _llm_client
   _llm_client -->|"fetch"| NVD
   ProjectFiles -->|"readFileSync"| _llm_client
+  ThreatModel -->|"generateSarif"| _sarif
+  _sarif -->|"return"| SarifLog
   UserArgs -->|"process.argv"| _cli
   _cli -->|"writeFile"| FileSystem
   ThreatModel -->|"generateThreatGraph"| _dashboard
@@ -280,6 +282,10 @@ graph TD
   SourceFiles -->|"readFileSync"| _dashboard
   _dashboard -->|"return"| HTML
   ThreatModel -->|"generateDashboardHTML"| _dashboard
+  GitRef -->|"execSync"| _diff
+  _diff -->|"writeFileSync"| TempDir
+  _diff -->|"parseProject"| ThreatModel
+  GitRef -->|"parseAtRef"| _diff
   ProjectRoot -->|"detectProject"| _init
   ProjectRoot -->|"options.root"| _init
   _init -->|"writeFileSync"| AgentFiles
@@ -298,12 +304,6 @@ graph TD
   _parser -->|"parseString"| Annotations
   ProjectRoot -->|"fast-glob"| _parser
   _parser -->|"assembleModel"| ThreatModel
-  ThreatModel -->|"generateSarif"| _sarif
-  _sarif -->|"return"| SarifLog
-  GitRef -->|"execSync"| _diff
-  _diff -->|"writeFileSync"| TempDir
-  _diff -->|"parseProject"| ThreatModel
-  GitRef -->|"parseAtRef"| _diff
   ThreatModel -->|"generateReport"| _report
   _report -->|"return"| Markdown
   ThreatModel -->|"generateSequenceDiagram"| _report
@@ -334,12 +334,12 @@ graph TD
 
   style _agent_launcher stroke:#e74c3c,stroke-width:3px
   style _llm_client stroke:#e74c3c,stroke-width:3px
+  style _sarif stroke:#e74c3c,stroke-width:3px
   style _cli stroke:#e74c3c,stroke-width:3px
   style _init stroke:#e74c3c,stroke-width:3px
   style _mcp stroke:#e74c3c,stroke-width:3px
   style _suggest stroke:#e74c3c,stroke-width:3px
   style _parser stroke:#e74c3c,stroke-width:3px
-  style _sarif stroke:#e74c3c,stroke-width:3px
   style _tui stroke:#e74c3c,stroke-width:3px
   style _threat_summary fill:#fce4e4,stroke:#e74c3c,color:#c0392b
 ```
@@ -350,10 +350,10 @@ graph TD
 - **Trust boundary at external API call**: llm-client ↔ LLMProvider
 - **Trust boundary at external API**: llm-client ↔ NVD
 - **Trust boundary at CLI argument parsing**: cli ↔ UserInput
+- **Trust boundary at git command execution**: diff ↔ GitRepo
 - **Trust boundary at MCP protocol**: mcp ↔ MCPClient
 - **Trust boundary at tool argument parsing**: mcp ↔ MCPClient
 - **Trust boundary between parser and disk I/O**: parser ↔ FileSystem
-- **Trust boundary at git command execution**: diff ↔ GitRepo
 - **Trust boundary at interactive input**: tui ↔ UserInput
 
 ### Multi-tenancy
@@ -385,12 +385,17 @@ sequenceDiagram
   participant LLMProvider as LLMProvider
   participant LLMToolCall as LLMToolCall
   participant NVD as NVD
+  participant _sarif as sarif
+  participant SarifLog as SarifLog
   actor UserArgs as UserArgs
   participant _cli as cli
   participant FileSystem as FileSystem [DB]
   participant _dashboard as dashboard
   participant SourceFiles as SourceFiles [DB]
   participant HTML as HTML
+  participant GitRef as GitRef
+  participant _diff as diff
+  participant TempDir as TempDir
   participant ProjectRoot as ProjectRoot
   participant _init as init
   participant AgentFiles as AgentFiles [DB]
@@ -402,11 +407,6 @@ sequenceDiagram
   participant Suggestions as Suggestions
   participant _parser as parser
   participant Annotations as Annotations
-  participant _sarif as sarif
-  participant SarifLog as SarifLog
-  participant GitRef as GitRef
-  participant _diff as diff
-  participant TempDir as TempDir
   participant _report as report
   participant Markdown as Markdown
   participant _tui as tui
@@ -464,6 +464,8 @@ sequenceDiagram
   deactivate _agent_launcher
   ThreatModel->>+_llm_client: serializeModel
   deactivate _llm_client
+  ThreatModel->>+_sarif: generateSarif
+  deactivate _sarif
   ThreatModel->>+_dashboard: generateThreatGraph
   deactivate _dashboard
   ThreatModel->>+_dashboard: generateTopologyData
@@ -474,8 +476,6 @@ sequenceDiagram
   deactivate _dashboard
   ThreatModel->>+_dashboard: generateDashboardHTML
   deactivate _dashboard
-  ThreatModel->>+_sarif: generateSarif
-  deactivate _sarif
   ThreatModel->>+_report: generateReport
   deactivate _report
   ThreatModel->>+_report: generateSequenceDiagram
@@ -520,6 +520,11 @@ sequenceDiagram
   deactivate _llm_client
   end
   rect rgb(240, 248, 255)
+  Note right of _sarif: sarif
+  _sarif->>+SarifLog: return
+  deactivate SarifLog
+  end
+  rect rgb(240, 248, 255)
   Note right of UserArgs: UserArgs
   UserArgs->>+_cli: process.argv
   deactivate _cli
@@ -544,6 +549,20 @@ sequenceDiagram
   Note right of _dashboard: dashboard
   _dashboard->>+HTML: return
   deactivate HTML
+  end
+  rect rgb(240, 248, 255)
+  Note right of GitRef: GitRef
+  GitRef->>+_diff: execSync
+  deactivate _diff
+  GitRef->>+_diff: parseAtRef
+  deactivate _diff
+  end
+  rect rgb(240, 248, 255)
+  Note right of _diff: diff
+  _diff->>+TempDir: writeFileSync
+  deactivate TempDir
+  _diff->>+ThreatModel: parseProject
+  deactivate ThreatModel
   end
   rect rgb(240, 248, 255)
   Note right of ProjectRoot: ProjectRoot
@@ -603,25 +622,6 @@ sequenceDiagram
   _parser->>+Annotations: parseString
   deactivate Annotations
   _parser->>+ThreatModel: assembleModel
-  deactivate ThreatModel
-  end
-  rect rgb(240, 248, 255)
-  Note right of _sarif: sarif
-  _sarif->>+SarifLog: return
-  deactivate SarifLog
-  end
-  rect rgb(240, 248, 255)
-  Note right of GitRef: GitRef
-  GitRef->>+_diff: execSync
-  deactivate _diff
-  GitRef->>+_diff: parseAtRef
-  deactivate _diff
-  end
-  rect rgb(240, 248, 255)
-  Note right of _diff: diff
-  _diff->>+TempDir: writeFileSync
-  deactivate TempDir
-  _diff->>+ThreatModel: parseProject
   deactivate ThreatModel
   end
   rect rgb(240, 248, 255)
@@ -720,25 +720,25 @@ sequenceDiagram
 1. **UserArgs** → **#cli** via **process.argv** — CLI argument input path
 2. **#cli** → **FileSystem** via **writeFile** — Report/config output path
 
-**Flow 8:** ProjectRoot → AgentFiles
+**Flow 8:** GitRef → TempDir
+
+1. **GitRef** → **#diff** via **execSync** — Git command execution
+2. **#diff** → **TempDir** via **writeFileSync** — Extracted file writes
+
+**Flow 9:** ProjectRoot → AgentFiles
 
 1. **ProjectRoot** → **#init** via **detectProject** — Project detection input
 2. **#init** → **AgentFiles** via **writeFileSync** — Agent instruction file writes
 
-**Flow 9:** QueryString → FileSystem
+**Flow 10:** QueryString → FileSystem
 
 1. **QueryString** → **#mcp** via **lookup** — Query input path
 2. **#mcp** → **FileSystem** via **writeFile** — Report/dashboard output
 
-**Flow 10:** FilePath → Suggestions
+**Flow 11:** FilePath → Suggestions
 
 1. **FilePath** → **#suggest** via **readFileSync** — File read path
 2. **#suggest** → **Suggestions** via **suggestAnnotations** — Suggestion output
-
-**Flow 11:** GitRef → TempDir
-
-1. **GitRef** → **#diff** via **execSync** — Git command execution
-2. **#diff** → **TempDir** via **writeFileSync** — Extracted file writes
 
 **Flow 12:** UserInput → FileSystem
 
@@ -791,89 +791,89 @@ sequenceDiagram
 
 1. **#llm-client** → **NVD** via **fetch** — CVE lookup API call
 
-**Flow 23:** ThreatModel → #dashboard
-
-1. **ThreatModel** → **#dashboard** via **generateThreatGraph** — Threat model relationships rendered as Mermaid source
-
-**Flow 24:** ThreatModel → #dashboard
-
-1. **ThreatModel** → **#dashboard** via **generateTopologyData** — Threat model relationships rendered as structured D3 graph data
-
-**Flow 25:** ThreatModel → #dashboard
-
-1. **ThreatModel** → **#dashboard** via **computeStats** — Model statistics input
-
-**Flow 26:** ThreatModel → #dashboard
-
-1. **ThreatModel** → **#dashboard** via **topologyData** — Serialized diagram graph consumed by client-side D3 renderer
-
-**Flow 27:** SourceFiles → #dashboard
-
-1. **SourceFiles** → **#dashboard** via **readFileSync** — Code snippet reads
-
-**Flow 28:** #dashboard → HTML
-
-1. **#dashboard** → **HTML** via **return** — Generated HTML output
-
-**Flow 29:** ThreatModel → #dashboard
-
-1. **ThreatModel** → **#dashboard** via **generateDashboardHTML** — Model to HTML transformation
-
-**Flow 30:** #init → ConfigFile
-
-1. **#init** → **ConfigFile** via **writeFileSync** — Config file write
-
-**Flow 31:** MCPClient → #mcp
-
-1. **MCPClient** → **#mcp** via **stdio** — MCP protocol transport
-
-**Flow 32:** MCPClient → #mcp
-
-1. **MCPClient** → **#mcp** via **tool_call** — Tool invocation input
-
-**Flow 33:** #mcp → #llm-client
-
-1. **#mcp** → **#llm-client** via **generateThreatReport** — LLM API call path
-
-**Flow 34:** #mcp → MCPClient
-
-1. **#mcp** → **MCPClient** via **resource** — Threat model data output
-
-**Flow 35:** ProjectRoot → #parser
-
-1. **ProjectRoot** → **#parser** via **fast-glob** — File discovery path
-
-**Flow 36:** #parser → SourceFiles
-
-1. **#parser** → **SourceFiles** via **writeFile** — Modified file write path
-
-**Flow 37:** FilePath → #parser
-
-1. **FilePath** → **#parser** via **readFile** — Disk read path
-
-**Flow 38:** #parser → Annotations
-
-1. **#parser** → **Annotations** via **parseString** — Parsed annotation output
-
-**Flow 39:** ProjectRoot → #parser
-
-1. **ProjectRoot** → **#parser** via **fast-glob** — Directory traversal path
-
-**Flow 40:** #parser → ThreatModel
-
-1. **#parser** → **ThreatModel** via **assembleModel** — Aggregated threat model output
-
-**Flow 41:** ThreatModel → #sarif
+**Flow 23:** ThreatModel → #sarif
 
 1. **ThreatModel** → **#sarif** via **generateSarif** — Model input
 
-**Flow 42:** #sarif → SarifLog
+**Flow 24:** #sarif → SarifLog
 
 1. **#sarif** → **SarifLog** via **return** — SARIF output
 
-**Flow 43:** #diff → ThreatModel
+**Flow 25:** ThreatModel → #dashboard
+
+1. **ThreatModel** → **#dashboard** via **generateThreatGraph** — Threat model relationships rendered as Mermaid source
+
+**Flow 26:** ThreatModel → #dashboard
+
+1. **ThreatModel** → **#dashboard** via **generateTopologyData** — Threat model relationships rendered as structured D3 graph data
+
+**Flow 27:** ThreatModel → #dashboard
+
+1. **ThreatModel** → **#dashboard** via **computeStats** — Model statistics input
+
+**Flow 28:** ThreatModel → #dashboard
+
+1. **ThreatModel** → **#dashboard** via **topologyData** — Serialized diagram graph consumed by client-side D3 renderer
+
+**Flow 29:** SourceFiles → #dashboard
+
+1. **SourceFiles** → **#dashboard** via **readFileSync** — Code snippet reads
+
+**Flow 30:** #dashboard → HTML
+
+1. **#dashboard** → **HTML** via **return** — Generated HTML output
+
+**Flow 31:** ThreatModel → #dashboard
+
+1. **ThreatModel** → **#dashboard** via **generateDashboardHTML** — Model to HTML transformation
+
+**Flow 32:** #diff → ThreatModel
 
 1. **#diff** → **ThreatModel** via **parseProject** — Parsed model output
+
+**Flow 33:** #init → ConfigFile
+
+1. **#init** → **ConfigFile** via **writeFileSync** — Config file write
+
+**Flow 34:** MCPClient → #mcp
+
+1. **MCPClient** → **#mcp** via **stdio** — MCP protocol transport
+
+**Flow 35:** MCPClient → #mcp
+
+1. **MCPClient** → **#mcp** via **tool_call** — Tool invocation input
+
+**Flow 36:** #mcp → #llm-client
+
+1. **#mcp** → **#llm-client** via **generateThreatReport** — LLM API call path
+
+**Flow 37:** #mcp → MCPClient
+
+1. **#mcp** → **MCPClient** via **resource** — Threat model data output
+
+**Flow 38:** ProjectRoot → #parser
+
+1. **ProjectRoot** → **#parser** via **fast-glob** — File discovery path
+
+**Flow 39:** #parser → SourceFiles
+
+1. **#parser** → **SourceFiles** via **writeFile** — Modified file write path
+
+**Flow 40:** FilePath → #parser
+
+1. **FilePath** → **#parser** via **readFile** — Disk read path
+
+**Flow 41:** #parser → Annotations
+
+1. **#parser** → **Annotations** via **parseString** — Parsed annotation output
+
+**Flow 42:** ProjectRoot → #parser
+
+1. **ProjectRoot** → **#parser** via **fast-glob** — Directory traversal path
+
+**Flow 43:** #parser → ThreatModel
+
+1. **#parser** → **ThreatModel** via **assembleModel** — Aggregated threat model output
 
 **Flow 44:** ThreatModel → #report
 
@@ -997,10 +997,10 @@ Assets by data flow volume:
 
 - Prompt templates are static; no user input interpolation in system prompts (src/analyze/prompts.ts:7)
 - customPrompt is appended to user message, not system prompt — bounded injection risk (src/analyze/prompts.ts:8)
+- Pure function: transforms ThreatModel to SARIF JSON; no I/O (src/analyzer/sarif.ts:18)
 - Alias map collapses #id / name / path-joined ref forms so Mermaid and D3 views agree on identity (src/dashboard/diagrams.ts:18)
 - Self-contained HTML; no external data injection after generation (src/dashboard/index.ts:7)
 - Pure function; no I/O; operates on in-memory ThreatModel (src/mcp/lookup.ts:20)
-- Pure function: transforms ThreatModel to SARIF JSON; no I/O (src/analyzer/sarif.ts:18)
 - Pure function: transforms ThreatModel to markdown string (src/report/report.ts:6)
 - Pure function: transforms ThreatModel flows to Mermaid sequence diagram (src/report/sequence.ts:6)
 
@@ -1053,10 +1053,13 @@ Assets by data flow volume:
 - LLMProvider
 - LLMToolCall
 - NVD
+- SarifLog
 - UserArgs
 - FileSystem
 - SourceFiles
 - HTML
+- GitRef
+- TempDir
 - ProjectRoot
 - AgentFiles
 - MCPClient
@@ -1064,9 +1067,6 @@ Assets by data flow volume:
 - FilePath
 - Suggestions
 - Annotations
-- SarifLog
-- GitRef
-- TempDir
 - Markdown
 - UserInput
 - Commands
@@ -1132,10 +1132,10 @@ _No logging-related annotations found. Consider documenting what security events
 - **#agent-launcher**: Environment override paths are optional convenience; verify trusted local paths in CI (src/agents/prompts.ts:11)
 - **#llm-client**: Threat model data intentionally sent to LLM for analysis (src/analyze/index.ts:13)
 - **#llm-client**: Prompt injection mitigated by LLM provider safety; local code is read-only (src/analyze/llm.ts:18)
+- **#sarif**: SARIF output intentionally reveals security findings for CI/CD integration (src/analyzer/sarif.ts:17)
 - **#cli**: Child process spawning delegated to agents/launcher.ts with explicit args (src/cli/index.ts:34)
+- **#diff**: Git commands use execSync; ref is validated with rev-parse before use (src/diff/index.ts:5)
 - **#init**: Config file may contain API keys; .gitignore entry added automatically (src/init/index.ts:13)
-- **#mcp**: All tool calls validated by server.ts before execution (src/mcp/index.ts:5)
-- **#mcp**: User prompts passed to LLM; model context is read-only (src/mcp/server.ts:31)
 - ... and 10 more (see Audit Items section)
 
 ### Alerting
@@ -1174,10 +1174,10 @@ _No alerting annotations found. Consider documenting alerting strategies via `@c
 
 - Prompt templates are static; no user input interpolation in system prompts (src/analyze/prompts.ts:7)
 - customPrompt is appended to user message, not system prompt — bounded injection risk (src/analyze/prompts.ts:8)
+- Pure function: transforms ThreatModel to SARIF JSON; no I/O (src/analyzer/sarif.ts:18)
 - Alias map collapses #id / name / path-joined ref forms so Mermaid and D3 views agree on identity (src/dashboard/diagrams.ts:18)
 - Self-contained HTML; no external data injection after generation (src/dashboard/index.ts:7)
 - Pure function; no I/O; operates on in-memory ThreatModel (src/mcp/lookup.ts:20)
-- Pure function: transforms ThreatModel to SARIF JSON; no I/O (src/analyzer/sarif.ts:18)
 - Pure function: transforms ThreatModel to markdown string (src/report/report.ts:6)
 - Pure function: transforms ThreatModel flows to Mermaid sequence diagram (src/report/sequence.ts:6)
 
@@ -1200,7 +1200,7 @@ _No alerting annotations found. Consider documenting alerting strategies via `@c
 | Risk transfers | 0 |
 | Validations | 0 |
 | Ownership records | 0 |
-| Shielded regions | 16 |
+| Shielded regions | 14 |
 
 ## Threat Model Diagram
 
@@ -1230,6 +1230,12 @@ graph TD
   UserInput(("UserInput"))
   end
   style Trust_boundary_at_CLI_argument_parsing fill:none,stroke:#666,stroke-width:2px,stroke-dasharray:5 5
+  subgraph Trust_boundary_at_git_command_execution["Trust boundary at git command execution"]
+    direction LR
+  _diff["diff"]
+  GitRepo["GitRepo"]
+  end
+  style Trust_boundary_at_git_command_execution fill:none,stroke:#666,stroke-width:2px,stroke-dasharray:5 5
   subgraph Trust_boundary_at_MCP_protocol["Trust boundary at MCP protocol"]
     direction LR
   _mcp["mcp (internal) | 1 high, 2 med"]
@@ -1248,12 +1254,6 @@ graph TD
   FileSystem[("FileSystem")]
   end
   style Trust_boundary_between_parser_and_disk_I_O fill:none,stroke:#666,stroke-width:2px,stroke-dasharray:5 5
-  subgraph Trust_boundary_at_git_command_execution["Trust boundary at git command execution"]
-    direction LR
-  _diff["diff"]
-  GitRepo["GitRepo"]
-  end
-  style Trust_boundary_at_git_command_execution fill:none,stroke:#666,stroke-width:2px,stroke-dasharray:5 5
   subgraph Trust_boundary_at_interactive_input["Trust boundary at interactive input"]
     direction LR
   _tui["tui (secrets) | 1 high, 1 med"]
@@ -1270,10 +1270,14 @@ graph TD
   PentestFindings["PentestFindings"]
   LLMConfig[("LLMConfig")]
   LLMToolCall["LLMToolCall"]
+  _sarif["sarif | 1 low"]
+  SarifLog["SarifLog"]
   UserArgs(("UserArgs"))
   _dashboard["dashboard (internal)"]
   SourceFiles[("SourceFiles")]
   HTML["HTML"]
+  GitRef["GitRef"]
+  TempDir["TempDir"]
   ProjectRoot["ProjectRoot"]
   _init["init (internal) | 1 low"]
   AgentFiles[("AgentFiles")]
@@ -1282,10 +1286,6 @@ graph TD
   _suggest["suggest | 1 low"]
   Suggestions["Suggestions"]
   Annotations["Annotations"]
-  _sarif["sarif | 1 low"]
-  SarifLog["SarifLog"]
-  GitRef["GitRef"]
-  TempDir["TempDir"]
   _report["report"]
   Markdown["Markdown"]
   Commands["Commands"]
@@ -1318,6 +1318,8 @@ graph TD
   LLMToolCall -->|"createToolExecutor"| _llm_client
   _llm_client -->|"fetch"| NVD
   ProjectFiles -->|"readFileSync"| _llm_client
+  ThreatModel -->|"generateSarif"| _sarif
+  _sarif -->|"return"| SarifLog
   UserArgs -->|"process.argv"| _cli
   _cli -->|"writeFile"| FileSystem
   ThreatModel -->|"generateThreatGraph"| _dashboard
@@ -1327,6 +1329,10 @@ graph TD
   SourceFiles -->|"readFileSync"| _dashboard
   _dashboard -->|"return"| HTML
   ThreatModel -->|"generateDashboardHTML"| _dashboard
+  GitRef -->|"execSync"| _diff
+  _diff -->|"writeFileSync"| TempDir
+  _diff -->|"parseProject"| ThreatModel
+  GitRef -->|"parseAtRef"| _diff
   ProjectRoot -->|"detectProject"| _init
   ProjectRoot -->|"options.root"| _init
   _init -->|"writeFileSync"| AgentFiles
@@ -1345,12 +1351,6 @@ graph TD
   _parser -->|"parseString"| Annotations
   ProjectRoot -->|"fast-glob"| _parser
   _parser -->|"assembleModel"| ThreatModel
-  ThreatModel -->|"generateSarif"| _sarif
-  _sarif -->|"return"| SarifLog
-  GitRef -->|"execSync"| _diff
-  _diff -->|"writeFileSync"| TempDir
-  _diff -->|"parseProject"| ThreatModel
-  GitRef -->|"parseAtRef"| _diff
   ThreatModel -->|"generateReport"| _report
   _report -->|"return"| Markdown
   ThreatModel -->|"generateSequenceDiagram"| _report
@@ -1381,12 +1381,12 @@ graph TD
 
   style _agent_launcher stroke:#e74c3c,stroke-width:3px
   style _llm_client stroke:#e74c3c,stroke-width:3px
+  style _sarif stroke:#e74c3c,stroke-width:3px
   style _cli stroke:#e74c3c,stroke-width:3px
   style _init stroke:#e74c3c,stroke-width:3px
   style _mcp stroke:#e74c3c,stroke-width:3px
   style _suggest stroke:#e74c3c,stroke-width:3px
   style _parser stroke:#e74c3c,stroke-width:3px
-  style _sarif stroke:#e74c3c,stroke-width:3px
   style _tui stroke:#e74c3c,stroke-width:3px
   style _threat_summary fill:#fce4e4,stroke:#e74c3c,color:#c0392b
 ```
@@ -1400,7 +1400,7 @@ These exposures have no matching `@mitigates` or `@accepts` and require attentio
 | 🔴 Critical | #cli | #cmd-injection | Agent launcher spawns child processes | src/cli/index.ts:33 |
 | 🟠 High | #agent-launcher | #prompt-injection | User prompt concatenated into agent instruction text | src/agents/prompts.ts:6 |
 | 🟠 High | #mcp | #cmd-injection | Accepts tool calls from external MCP clients | src/mcp/index.ts:4 |
-| 🟠 High | #parser | #arbitrary-write | Writes modified content back to discovered files | src/parser/clear.ts:7 |
+| 🟠 High | #parser | #arbitrary-write | Writes modified content back to discovered files | src/parser/clear.ts:8 |
 | 🟠 High | #tui | #cmd-injection | /annotate and /threat-report spawn child processes | src/tui/commands.ts:11 |
 | 🟡 Medium | #agent-launcher | #prompt-injection | User prompt passed to agent CLI as argument | src/agents/launcher.ts:13 |
 | 🟡 Medium | #agent-launcher | #config-tamper | Translate prompt may read CXG reference paths from environm… | src/agents/prompts.ts:10 |
@@ -1410,9 +1410,9 @@ These exposures have no matching `@mitigates` or `@accepts` and require attentio
 | 🟡 Medium | #tui | #prompt-injection | Freeform chat sends user text to LLM | src/tui/commands.ts:15 |
 | 🔵 Low | #agent-launcher | #dos | No timeout on foreground spawn; agent controls duration | src/agents/launcher.ts:15 |
 | 🔵 Low | #llm-client | #data-exposure | Serializes full threat model and code snippets for LLM | src/analyze/index.ts:12 |
+| 🔵 Low | #sarif | #data-exposure | Exposes threat model findings to SARIF consumers | src/analyzer/sarif.ts:16 |
 | 🔵 Low | #init | #data-exposure | Writes API key config to .guardlink/config.json | src/init/index.ts:12 |
 | 🔵 Low | #suggest | #dos | Large files loaded into memory for pattern scanning | src/mcp/suggest.ts:16 |
-| 🔵 Low | #sarif | #data-exposure | Exposes threat model findings to SARIF consumers | src/analyzer/sarif.ts:16 |
 
 ## Active Mitigations
 
@@ -1426,7 +1426,7 @@ These exposures have no matching `@mitigates` or `@accepts` and require attentio
 | #agent-launcher | #path-traversal | #path-validation | resolve() with root constrains file access | src/agents/prompts.ts:9 |
 | #llm-client | #path-traversal | #path-validation | join() with root constrains file access | src/analyze/index.ts:9 |
 | #llm-client | #arbitrary-write | #path-validation | Output path is fixed to .guardlink/threat-reports/ | src/analyze/index.ts:11 |
-| #llm-client | #path-traversal | #path-validation | join() constrains reads to .guardlink/ | src/analyze/index.ts:751 |
+| #llm-client | #path-traversal | #path-validation | join() constrains reads to .guardlink/ | src/analyze/index.ts:761 |
 | #llm-client | #ssrf | #config-validation | BASE_URLS are hardcoded; baseUrl override is opti… | src/analyze/llm.ts:14 |
 | #llm-client | #api-key-exposure | #key-redaction | Keys never logged; passed directly to API | src/analyze/llm.ts:16 |
 | #llm-client | #ssrf | #input-sanitize | CVE ID validated with strict regex; URL hardcoded… | src/analyze/tools.ts:10 |
@@ -1440,6 +1440,9 @@ These exposures have no matching `@mitigates` or `@accepts` and require attentio
 | #dashboard | #path-traversal | #path-validation | resolve() with root constrains file access | src/dashboard/generate.ts:11 |
 | #dashboard | #xss | #output-encoding | Serialized diagram data escapes closing script ta… | src/dashboard/generate.ts:16 |
 | #dashboard | #xss | #output-encoding | esc() function encodes all interpolated values | src/dashboard/index.ts:5 |
+| #diff | #cmd-injection | #input-sanitize | rev-parse validates ref exists before use in othe… | src/diff/git.ts:7 |
+| #diff | #arbitrary-write | #path-validation | mkdtempSync creates isolated temp dir; rmSync cle… | src/diff/git.ts:9 |
+| #diff | #path-traversal | #glob-filtering | Files constrained to relevantFiles from git ls-tr… | src/diff/git.ts:11 |
 | #init | #path-traversal | #path-validation | join() with root constrains; reads well-known fil… | src/init/detect.ts:6 |
 | #init | #arbitrary-write | #path-validation | All paths are relative to root; join() constrains | src/init/index.ts:9 |
 | #init | #path-traversal | #path-validation | join() with explicit root constrains file access | src/init/index.ts:11 |
@@ -1449,14 +1452,11 @@ These exposures have no matching `@mitigates` or `@accepts` and require attentio
 | #mcp | #api-key-exposure | #key-redaction | Keys from env only; never logged or returned | src/mcp/server.ts:33 |
 | #suggest | #path-traversal | #path-validation | join() with validated root constrains access | src/mcp/suggest.ts:13 |
 | #suggest | #redos | #regex-anchoring | Patterns designed with bounded quantifiers | src/mcp/suggest.ts:15 |
-| #parser | #path-traversal | #glob-filtering | DEFAULT_EXCLUDE blocks sensitive dirs; cwd constr… | src/parser/clear.ts:9 |
+| #parser | #path-traversal | #glob-filtering | DEFAULT_EXCLUDE blocks sensitive dirs; cwd constr… | src/parser/clear.ts:10 |
 | #parser | #redos | #regex-anchoring | All patterns are anchored (^...$) to prevent back… | src/parser/parse-line.ts:6 |
 | #parser | #path-traversal | #glob-filtering | DEFAULT_EXCLUDE blocks node_modules, .git; fast-g… | src/parser/parse-project.ts:6 |
 | #parser | #dos | #resource-limits | DEFAULT_EXCLUDE skips build artifacts, tests; lim… | src/parser/parse-project.ts:8 |
 | #parser | #tag-collision | #prefix-ownership | findDanglingRefs ensures #id refs resolve to defi… | src/parser/validate.ts:7 |
-| #diff | #cmd-injection | #input-sanitize | rev-parse validates ref exists before use in othe… | src/diff/git.ts:7 |
-| #diff | #arbitrary-write | #path-validation | mkdtempSync creates isolated temp dir; rmSync cle… | src/diff/git.ts:9 |
-| #diff | #path-traversal | #glob-filtering | Files constrained to relevantFiles from git ls-tr… | src/diff/git.ts:11 |
 | #cli | #arbitrary-write | #path-validation | Only modifies files already in the parsed project | src/review/index.ts:11 |
 | #tui | #path-traversal | #path-validation | resolve() with ctx.root constrains file access | src/tui/commands.ts:8 |
 | #tui | #arbitrary-write | #path-validation | Output paths resolved relative to project root | src/tui/commands.ts:10 |
@@ -1475,10 +1475,10 @@ These exposures have no matching `@mitigates` or `@accepts` and require attentio
 | #llm-client | LLMProvider | llm-api-boundary | Trust boundary at external API call | src/analyze/llm.ts:22 |
 | #llm-client | NVD | nvd-api-boundary | Trust boundary at external API | src/analyze/tools.ts:18 |
 | #cli | UserInput | cli-input-boundary | Trust boundary at CLI argument parsing | src/cli/index.ts:37 |
+| #diff | GitRepo | git-boundary | Trust boundary at git command execution | src/diff/git.ts:15 |
 | #mcp | MCPClient | mcp-boundary | Trust boundary at MCP protocol | src/mcp/index.ts:7 |
 | #mcp | MCPClient | mcp-tool-boundary | Trust boundary at tool argument parsing | src/mcp/server.ts:40 |
-| #parser | FileSystem | fs-boundary | Trust boundary between parser and disk I/O | src/parser/parse-project.ts:11 |
-| #diff | GitRepo | git-boundary | Trust boundary at git command execution | src/diff/git.ts:15 |
+| #parser | FileSystem | fs-boundary | Trust boundary between parser and disk I/O | src/parser/parse-project.ts:12 |
 | #tui | UserInput | tui-input-boundary | Trust boundary at interactive input | src/tui/index.ts:15 |
 
 ## Data Flows
@@ -1506,6 +1506,8 @@ These exposures have no matching `@mitigates` or `@accepts` and require attentio
 | LLMToolCall | #llm-client | createToolExecutor | Tool invocation input |
 | #llm-client | NVD | fetch | CVE lookup API call |
 | ProjectFiles | #llm-client | readFileSync | Codebase search reads |
+| ThreatModel | #sarif | generateSarif | Model input |
+| #sarif | SarifLog | return | SARIF output |
 | UserArgs | #cli | process.argv | CLI argument input path |
 | #cli | FileSystem | writeFile | Report/config output path |
 | ThreatModel | #dashboard | generateThreatGraph | Threat model relationships rendered as Mermaid so… |
@@ -1515,6 +1517,10 @@ These exposures have no matching `@mitigates` or `@accepts` and require attentio
 | SourceFiles | #dashboard | readFileSync | Code snippet reads |
 | #dashboard | HTML | return | Generated HTML output |
 | ThreatModel | #dashboard | generateDashboardHTML | Model to HTML transformation |
+| GitRef | #diff | execSync | Git command execution |
+| #diff | TempDir | writeFileSync | Extracted file writes |
+| #diff | ThreatModel | parseProject | Parsed model output |
+| GitRef | #diff | parseAtRef | Git reference input |
 | ProjectRoot | #init | detectProject | Project detection input |
 | ProjectRoot | #init | options.root | Project root input |
 | #init | AgentFiles | writeFileSync | Agent instruction file writes |
@@ -1533,12 +1539,6 @@ These exposures have no matching `@mitigates` or `@accepts` and require attentio
 | #parser | Annotations | parseString | Parsed annotation output |
 | ProjectRoot | #parser | fast-glob | Directory traversal path |
 | #parser | ThreatModel | assembleModel | Aggregated threat model output |
-| ThreatModel | #sarif | generateSarif | Model input |
-| #sarif | SarifLog | return | SARIF output |
-| GitRef | #diff | execSync | Git command execution |
-| #diff | TempDir | writeFileSync | Extracted file writes |
-| #diff | ThreatModel | parseProject | Parsed model output |
-| GitRef | #diff | parseAtRef | Git reference input |
 | ThreatModel | #report | generateReport | Model input |
 | #report | Markdown | return | Report output |
 | ThreatModel | #report | generateSequenceDiagram | Sequence diagram generation |
@@ -1588,16 +1588,16 @@ These exposures have no matching `@mitigates` or `@accepts` and require attentio
 - **#agent-launcher** — Environment override paths are optional convenience; verify trusted local paths in CI (src/agents/prompts.ts:11)
 - **#llm-client** — Threat model data intentionally sent to LLM for analysis (src/analyze/index.ts:13)
 - **#llm-client** — Prompt injection mitigated by LLM provider safety; local code is read-only (src/analyze/llm.ts:18)
+- **#sarif** — SARIF output intentionally reveals security findings for CI/CD integration (src/analyzer/sarif.ts:17)
 - **#cli** — Child process spawning delegated to agents/launcher.ts with explicit args (src/cli/index.ts:34)
+- **#diff** — Git commands use execSync; ref is validated with rev-parse before use (src/diff/index.ts:5)
 - **#init** — Config file may contain API keys; .gitignore entry added automatically (src/init/index.ts:13)
 - **#mcp** — All tool calls validated by server.ts before execution (src/mcp/index.ts:5)
 - **#mcp** — User prompts passed to LLM; model context is read-only (src/mcp/server.ts:31)
 - **#mcp** — Threat model data intentionally exposed to connected agents (src/mcp/server.ts:35)
 - **#suggest** — File size is bounded by project scope; production use involves reasonable file sizes (src/mcp/suggest.ts:17)
-- **#parser** — Destructive operation requires explicit user confirmation via dryRun flag (src/parser/clear.ts:10)
-- **#parser** — Path validation delegated to callers (CLI/MCP validate root) (src/parser/parse-file.ts:7)
-- **#sarif** — SARIF output intentionally reveals security findings for CI/CD integration (src/analyzer/sarif.ts:17)
-- **#diff** — Git commands use execSync; ref is validated with rev-parse before use (src/diff/index.ts:5)
+- **#parser** — Destructive operation requires explicit user confirmation via dryRun flag (src/parser/clear.ts:11)
+- **#parser** — Path validation delegated to callers (CLI/MCP validate root) (src/parser/parse-file.ts:8)
 - **#cli** — Review decisions require human justification; no empty accepts allowed (src/review/index.ts:12)
 - **#tui** — Child process spawning delegated to agents/launcher.ts (src/tui/commands.ts:12)
 - **#tui** — User freeform text passed to LLM via cmdChat; model context is read-only (src/tui/commands.ts:16)
@@ -1607,22 +1607,20 @@ These exposures have no matching `@mitigates` or `@accepts` and require attentio
 
 Code regions where annotations are intentionally suppressed via `@shield`.
 
-- Example annotation block for reference, excluded from parsing (src/agents/prompts.ts:165)
-- No reason provided (src/agents/prompts.ts:178)
-- Description examples, excluded from parsing (src/agents/prompts.ts:185)
-- No reason provided (src/agents/prompts.ts:195)
-- Flow examples, excluded from parsing (src/agents/prompts.ts:202)
-- No reason provided (src/agents/prompts.ts:211)
-- Boundary examples, excluded from parsing (src/agents/prompts.ts:218)
-- No reason provided (src/agents/prompts.ts:224)
-- Placement examples, excluded from parsing (src/agents/prompts.ts:231)
-- No reason provided (src/agents/prompts.ts:240)
-- @accepts alternative examples, excluded from parsing (src/agents/prompts.ts:267)
-- No reason provided (src/agents/prompts.ts:277)
-- Definition syntax examples, excluded from parsing (src/agents/prompts.ts:304)
-- No reason provided (src/agents/prompts.ts:308)
-- Relationship syntax examples, excluded from parsing (src/agents/prompts.ts:313)
-- No reason provided (src/agents/prompts.ts:328)
+- Example annotation block for reference, excluded from parsing (src/agents/prompts.ts:204)
+- No reason provided (src/agents/prompts.ts:217)
+- Description examples, excluded from parsing (src/agents/prompts.ts:224)
+- No reason provided (src/agents/prompts.ts:234)
+- Flow examples, excluded from parsing (src/agents/prompts.ts:241)
+- No reason provided (src/agents/prompts.ts:250)
+- Boundary examples, excluded from parsing (src/agents/prompts.ts:257)
+- No reason provided (src/agents/prompts.ts:263)
+- @accepts alternative examples, excluded from parsing (src/agents/prompts.ts:322)
+- No reason provided (src/agents/prompts.ts:332)
+- Definition syntax examples, excluded from parsing (src/agents/prompts.ts:359)
+- No reason provided (src/agents/prompts.ts:363)
+- Relationship syntax examples, excluded from parsing (src/agents/prompts.ts:368)
+- No reason provided (src/agents/prompts.ts:383)
 
 ## Feature Tags
 
@@ -1641,17 +1639,19 @@ Security-relevant notes left by developers via `@comment`.
 - parseAgentFlag extracts flags from args; no injection risk (src/agents/index.ts:8)
 - Prompt templates are static; no user input interpolation in system prompts (src/analyze/prompts.ts:7)
 - customPrompt is appended to user message, not system prompt — bounded injection risk (src/analyze/prompts.ts:8)
+- SARIF generation is pure transformation; no I/O in this module (src/analyzer/index.ts:4)
+- File writes handled by CLI/MCP callers (src/analyzer/index.ts:5)
+- Pure function: transforms ThreatModel to SARIF JSON; no I/O (src/analyzer/sarif.ts:18)
 - Alias map collapses #id / name / path-joined ref forms so Mermaid and D3 views agree on identity (src/dashboard/diagrams.ts:18)
 - Self-contained HTML; no external data injection after generation (src/dashboard/index.ts:7)
 - Detection is read-only; no file writes (src/init/detect.ts:8)
+- Migrations should never modify existing user files. Only create missing ones. (src/init/migrate.ts:9)
 - Pure function; no I/O; operates on in-memory ThreatModel (src/mcp/lookup.ts:20)
 - Skips node_modules and .guardlink directories (src/mcp/suggest.ts:20)
 - Pure filtering utility; no I/O (src/parser/feature-filter.ts:9)
 - Regex patterns designed with bounded quantifiers and explicit structure (src/parser/parse-line.ts:7)
+- Scans standalone .gal files in addition to comment-based source annotations (src/parser/parse-project.ts:11)
 - @confirmed refs validated same as @exposes for asset and threat (src/parser/validate.ts:8)
-- SARIF generation is pure transformation; no I/O in this module (src/analyzer/index.ts:4)
-- File writes handled by CLI/MCP callers (src/analyzer/index.ts:5)
-- Pure function: transforms ThreatModel to SARIF JSON; no I/O (src/analyzer/sarif.ts:18)
 - Report generation is pure transformation; no I/O in this module (src/report/index.ts:4)
 - File writes handled by CLI/MCP callers (src/report/index.ts:5)
 - Pure function: transforms ThreatModel to markdown string (src/report/report.ts:6)
@@ -1661,4 +1661,4 @@ Security-relevant notes left by developers via `@comment`.
 - Workspace module: config loading, merge engine, link-project setup (src/workspace/index.ts:4)
 
 ---
-*Generated from security annotations on 2026-04-22T21:58:42.332Z.*
+*Generated from security annotations on 2026-05-13T04:24:08.903Z.*
