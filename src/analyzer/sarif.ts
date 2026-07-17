@@ -16,6 +16,7 @@
  * @exposes #sarif to #data-exposure [low] cwe:CWE-200 -- "Exposes threat model findings to SARIF consumers"
  * @audit #sarif -- "SARIF output intentionally reveals security findings for CI/CD integration"
  * @comment -- "Pure function: transforms ThreatModel to SARIF JSON; no I/O"
+ * @comment -- "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} derived from the asset's inbound @flows route so downstream HTTP consumers (e.g. cert-x-gen) can target the endpoint; emitted verbatim from the annotation, no base path assumed"
  * @flows ThreatModel -> #sarif via generateSarif -- "Model input"
  * @flows #sarif -> SarifLog via return -- "SARIF output"
  */
@@ -144,6 +145,24 @@ export function generateSarif(
   for (const m of model.mitigations) mitigated.add(`${m.asset}::${m.threat}`);
   for (const a of model.acceptances) accepted.add(`${a.asset}::${a.threat}`);
 
+  // Route lookup so each finding can carry the HTTP endpoint it is reachable
+  // through. Routes live on @flows (mechanism "METHOD./path"); index them by the
+  // flow's source file and by its target asset, then match each finding below.
+  const routeByFile = new Map<string, HttpRoute>();
+  const routeByAsset = new Map<string, HttpRoute>();
+  for (const f of model.flows) {
+    const route = extractRoute(f.mechanism);
+    if (!route) continue;
+    if (f.location?.file && !routeByFile.has(f.location.file)) routeByFile.set(f.location.file, route);
+    if (f.target && !routeByAsset.has(f.target)) routeByAsset.set(f.target, route);
+  }
+  const reachabilityFor = (asset: string, file: string) => {
+    // Prefer the route from the same handler file (an asset often fronts several
+    // routes); fall back to the asset's inbound route.
+    const route = routeByFile.get(file) ?? routeByAsset.get(asset);
+    return route ? { codegraph_reachability: { http_method: route.method, http_path: route.path } } : {};
+  };
+
   for (const e of model.exposures) {
     const key = `${e.asset}::${e.threat}`;
     if (mitigated.has(key) || accepted.has(key)) continue;
@@ -168,6 +187,7 @@ export function generateSarif(
         asset: e.asset,
         threat: e.threat,
         ...(e.external_refs.length > 0 ? { externalRefs: e.external_refs } : {}),
+        ...reachabilityFor(e.asset, e.location.file),
       },
     });
   }
@@ -187,6 +207,7 @@ export function generateSarif(
         asset: c.asset,
         threat: c.threat,
         ...(c.external_refs.length > 0 ? { externalRefs: c.external_refs } : {}),
+        ...reachabilityFor(c.asset, c.location.file),
       },
     });
   }
@@ -234,6 +255,28 @@ export function generateSarif(
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
+
+interface HttpRoute {
+  method: string;
+  path: string;
+}
+
+const ROUTE_MECHANISM_RE = /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\.(\/\S*)/i;
+
+/**
+ * Parse a @flows mechanism such as "GET./websocket/attach?endpointId&id" or
+ * "POST./restore (multipart)" into { method, path }. Returns undefined when the
+ * mechanism is not an HTTP route (e.g. "tar.NewReader"). The path is emitted
+ * verbatim from the annotation — no base path (e.g. /api) is assumed.
+ */
+function extractRoute(mechanism?: string): HttpRoute | undefined {
+  if (!mechanism) return undefined;
+  const m = ROUTE_MECHANISM_RE.exec(mechanism.trim());
+  if (!m) return undefined;
+  const path = m[2].split('?')[0].replace(/\s*\(.*?\)\s*/g, '').trim();
+  if (!path) return undefined;
+  return { method: m[1].toUpperCase(), path };
+}
 
 function locationFrom(file: string, line: number): SarifLocation {
   // SARIF uses forward-slash URIs
