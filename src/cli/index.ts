@@ -39,7 +39,8 @@
  */
 
 import { Command } from 'commander';
-import { resolve, basename } from 'node:path';
+import { resolve, basename, join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
@@ -98,10 +99,29 @@ function detectProjectName(root: string, explicit?: string): string {
   return basename(root) || 'unknown';
 }
 
+/**
+ * Read the CLI version from the package's own package.json at runtime, so `--version`
+ * can never drift from the published version (previously a hardcoded literal that had to
+ * be bumped by hand and silently fell out of sync).
+ *
+ * @flows PackageJson -> #cli via readFileSync -- "Version string read from package.json"
+ */
+function getVersion(): string {
+  try {
+    // Compiled file lives at dist/cli/index.js; package.json is two levels up.
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkgPath = join(here, '..', '..', 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+    return typeof pkg.version === 'string' ? pkg.version : '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
 program
   .name('guardlink')
   .description('GuardLink — Security annotations for code. Threat modeling that lives in your codebase.')
-  .version('1.4.3')
+  .version(getVersion())
   .addHelpText('before', gradient(['#00ff41', '#00d4ff'])(ASCII_LOGO));
 
 // ─── init ────────────────────────────────────────────────────────────

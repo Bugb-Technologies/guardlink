@@ -3,6 +3,12 @@ All notable changes to GuardLink CLI will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## \[1.4.5\] — 2026-07-21
+
+### Fixed
+
+- **`guardlink --version` now reports the correct version.** The CLI hardcoded its version string (`.version('1.4.3')`) independently of `package.json`, so bumping and publishing did not update what `--version` printed — the published 1.4.4 still reported 1.4.3. The version is now read from `package.json` at runtime, so it can never drift again. Added a regression test that fails if a hardcoded version literal is reintroduced. (The 1.4.4 crash fix itself was unaffected — only the reported version string was wrong.)
+
 ## \[1.4.4\] — 2026-07-21
 
 ### Fixed
