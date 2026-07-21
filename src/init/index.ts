@@ -17,7 +17,7 @@
  * @handles internal on #init -- "Generates definitions and agent instruction content"
  */
 
-import { existsSync, readFileSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync, appendFileSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { detectProject, type ProjectInfo, type AgentFile } from './detect.js';
 import {
@@ -237,27 +237,24 @@ function updateAgentFiles(
       const result = injectIntoAgentFile(root, choice.file, project, force, dryRun);
       if (result === 'updated') updated.push(choice.file);
       else if (result === 'skipped') skipped.push(choice.file);
+      else skipped.push(result.skippedReason);
     } else {
-      // File doesn't exist — create fresh
+      // File doesn't exist — create fresh. Route through safeWriteAgentFile so a
+      // pre-existing path-type conflict (e.g. a `.cursor/rules` FILE where we need a
+      // directory) skips just this agent file with a warning instead of crashing init.
+      let content: string;
       if (choice.file.endsWith('.mdc')) {
-        if (!dryRun) {
-          ensureDir(dirname(filePath));
-          writeFileSync(filePath, cursorMdcContent(project));
-        }
-        created.push(choice.file);
+        content = cursorMdcContent(project);
       } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
-        if (!dryRun) {
-          writeFileSync(filePath, wrapMarkers(cursorRulesContent(project)));
-        }
-        created.push(choice.file);
+        content = wrapMarkers(cursorRulesContent(project));
       } else {
         // Markdown-based (CLAUDE.md, AGENTS.md, copilot-instructions.md, .gemini/GEMINI.md)
-        if (!dryRun) {
-          ensureDir(dirname(filePath));
-          writeFileSync(filePath, buildClaudeMdFromScratch(project));
-        }
-        created.push(choice.file);
+        content = buildClaudeMdFromScratch(project);
       }
+      const res = safeWriteAgentFile(filePath, content, dryRun, project);
+      if (!res.ok) skipped.push(res.skipReason);
+      else if (res.action === 'merged') updated.push(`${choice.file} → merged into existing .cursor/rules`);
+      else created.push(choice.file);
     }
   }
 
@@ -270,15 +267,19 @@ function injectIntoAgentFile(
   project: ProjectInfo,
   force: boolean,
   dryRun: boolean,
-): 'updated' | 'skipped' {
+): 'updated' | 'skipped' | { skippedReason: string } {
   const fullPath = join(root, relPath);
+
+  // Guard: if the target path exists as a DIRECTORY, every branch below that does
+  // readFileSync/writeFileSync would throw EISDIR. Skip this agent file with a reason.
+  if (existsSync(fullPath) && statSync(fullPath).isDirectory()) {
+    return { skippedReason: `${relPath} (exists as a directory; expected a file — skipped)` };
+  }
 
   // Special handling for Cursor .mdc files
   if (relPath.endsWith('.mdc')) {
-    if (!dryRun) {
-      ensureDir(dirname(fullPath));
-      writeFileSync(fullPath, cursorMdcContent(project));
-    }
+    const res = safeWriteAgentFile(fullPath, cursorMdcContent(project), dryRun, project);
+    if (!res.ok) return { skippedReason: res.skipReason };
     return 'updated';
   }
 
@@ -340,8 +341,112 @@ function replaceOrAppend(existing: string, block: string): string {
   return existing + separator + block;
 }
 
+/**
+ * Ensure a directory exists, creating it if needed.
+ *
+ * @exposes #init to #arbitrary-write [high] cwe:CWE-73 -- "Creates directories for agent-file writes"
+ * @mitigates #init against #arbitrary-write using #path-validation -- "callers pass join(root, ...) constrained paths"
+ *
+ * Throws GuardLinkPathConflictError if the path already exists but is a FILE, not a
+ * directory. This happens when a project ships an older single-file agent config (e.g.
+ * a `.cursor/rules` file) where GuardLink expects the newer directory layout
+ * (`.cursor/rules/`). Without this guard, mkdirSync no-ops on the existing file and the
+ * subsequent writeFileSync throws a raw ENOTDIR with no actionable message.
+ */
 function ensureDir(dir: string): void {
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  if (existsSync(dir)) {
+    if (!statSync(dir).isDirectory()) {
+      throw new GuardLinkPathConflictError(dir, 'directory');
+    }
+    return; // exists and is a directory — good
+  }
+  mkdirSync(dir, { recursive: true });
+}
+
+/**
+ * Error raised when a path GuardLink needs to write already exists as the WRONG type
+ * (a file where a directory is required, or vice versa). Carries the path and expected
+ * type so callers can present a clear, actionable message and skip that one file.
+ */
+class GuardLinkPathConflictError extends Error {
+  constructor(
+    public readonly conflictPath: string,
+    public readonly expected: 'directory' | 'file',
+  ) {
+    const other = expected === 'directory' ? 'file' : 'directory';
+    super(
+      `Path conflict: expected '${conflictPath}' to be a ${expected}, but it already exists as a ${other}. ` +
+      `This usually means an existing agent-tool config uses a different layout than GuardLink expects ` +
+      `(e.g. an older single-file '.cursor/rules' vs the newer '.cursor/rules/' directory). ` +
+      `Rename or remove '${conflictPath}' and re-run, or use 'guardlink init --mode external' to keep all writes inside .guardlink/.`,
+    );
+    this.name = 'GuardLinkPathConflictError';
+  }
+}
+
+/**
+ * Write an agent file, resolving path-type conflicts intelligently.
+ *
+ * Returns one of:
+ *   { ok: true, action: 'created' | 'merged' }  — write (or legacy-merge) succeeded
+ *   { ok: false, skipReason: string }            — unmergeable conflict; skip with reason
+ *
+ * Two conflict cases are handled:
+ *
+ *  CASE A (mergeable) — the target is a Cursor `.mdc` whose parent (`.cursor/rules`) already
+ *  exists as a FILE. This is a legacy single-file Cursor rules layout. Rather than failing,
+ *  we merge GuardLink's block INTO that existing rules file using the same marker-based
+ *  inject used for `.cursorrules`/`.clinerules` — preserving the user's content and staying
+ *  idempotent. The user keeps a working Cursor setup that now includes GuardLink.
+ *
+ *  CASE B (unmergeable) — the target path itself already exists as a DIRECTORY (e.g. someone
+ *  has a directory named `CLAUDE.md`). There is no safe way to write file content "into" a
+ *  directory without destroying it, so we skip with a clear reason.
+ */
+function safeWriteAgentFile(
+  filePath: string,
+  content: string,
+  dryRun: boolean,
+  project: ProjectInfo,
+): { ok: true; action: 'created' | 'merged' } | { ok: false; skipReason: string } {
+  // CASE B: target path is itself a directory — cannot write a file there.
+  if (existsSync(filePath) && statSync(filePath).isDirectory()) {
+    return { ok: false, skipReason: `${filePath} (exists as a directory; expected a file — skipped)` };
+  }
+
+  const parent = dirname(filePath);
+
+  // CASE A: parent is an existing FILE (legacy single-file `.cursor/rules`). Merge into it.
+  if (existsSync(parent) && !statSync(parent).isDirectory()) {
+    // Normalize separators so this works cross-platform.
+    const normParent = parent.split('\\').join('/');
+    const isCursorLegacy = normParent.endsWith('.cursor/rules');
+    if (isCursorLegacy) {
+      if (!dryRun) {
+        const existing = readFileSync(parent, 'utf-8');
+        const block = wrapMarkers(cursorRulesContent(project));
+        writeFileSync(parent, replaceOrAppend(existing, block));
+      }
+      return { ok: true, action: 'merged' };
+    }
+    // Some other parent-is-a-file collision we don't know how to merge — skip.
+    return { ok: false, skipReason: `${parent} (exists as a file; expected a directory — skipped)` };
+  }
+
+  // Normal path: parent is a dir (or absent). Ensure it, then write.
+  try {
+    if (!dryRun) {
+      ensureDir(parent);
+      writeFileSync(filePath, content);
+    }
+    return { ok: true, action: 'created' };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (err instanceof GuardLinkPathConflictError || code === 'ENOTDIR' || code === 'EISDIR') {
+      return { ok: false, skipReason: `${filePath} (path-type conflict; skipped)` };
+    }
+    throw err;
+  }
 }
 
 function toPascalCase(s: string): string {
@@ -397,30 +502,31 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
     const exists = existsSync(filePath);
 
     if (!exists) {
-      // Create fresh with model context
-      if (choice.file.endsWith('.mdc')) {
-        if (!dryRun) {
-          ensureDir(dirname(filePath));
-          writeFileSync(filePath, cursorMdcContentWithModel(project, model));
-        }
-        updated.push(choice.file);
-      } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
-        if (!dryRun) {
-          ensureDir(dirname(filePath));
-          writeFileSync(filePath, wrapMarkers(cursorRulesContentWithModel(project, model)));
-        }
-        updated.push(choice.file);
-      } else if (choice.file.endsWith('settings.json')) {
+      // Create fresh with model context. Route through safeWriteAgentFile so a
+      // pre-existing path-type conflict skips just this file instead of crashing sync.
+      if (choice.file.endsWith('settings.json')) {
         skipped.push(`${choice.file} (json format — not supported)`);
+        continue;
+      }
+      let content: string;
+      if (choice.file.endsWith('.mdc')) {
+        content = cursorMdcContentWithModel(project, model);
+      } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
+        content = wrapMarkers(cursorRulesContentWithModel(project, model));
       } else {
         // Markdown-based: CLAUDE.md, AGENTS.md, copilot-instructions.md, etc.
-        if (!dryRun) {
-          ensureDir(dirname(filePath));
-          writeFileSync(filePath, buildMdFromScratch(project, model));
-        }
-        updated.push(choice.file);
+        content = buildMdFromScratch(project, model);
       }
+      const res = safeWriteAgentFile(filePath, content, dryRun, project);
+      if (!res.ok) skipped.push(res.skipReason);
+      else updated.push(res.action === 'merged' ? `${choice.file} → merged into existing .cursor/rules` : choice.file);
     } else {
+      // Guard: an existing path that is a DIRECTORY would make readFileSync/writeFileSync
+      // below throw EISDIR. Skip it with a reason instead of crashing sync.
+      if (statSync(filePath).isDirectory()) {
+        skipped.push(`${choice.file} (exists as a directory; expected a file — skipped)`);
+        continue;
+      }
       // File exists — update the GuardLink block (marker-based replacement)
       if (choice.file.endsWith('.mdc')) {
         if (!dryRun) {

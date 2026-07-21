@@ -3,6 +3,16 @@ All notable changes to GuardLink CLI will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## \[1.4.4\] — 2026-07-21
+
+### Fixed
+
+- **`init` / `sync` no longer crash on agent-file path-type conflicts.** When a project already contained an agent-tool config whose type differed from what GuardLink expected — most commonly an older single-file `.cursor/rules` (a file) where GuardLink writes the newer `.cursor/rules/` directory layout — `guardlink init` threw a raw `ENOTDIR` and aborted before creating anything. The mirror case (an agent path such as `CLAUDE.md` existing as a directory) threw `EISDIR`. Both are now detected: initialization completes normally — `.guardlink/` and all non-conflicting agent files are created, and the conflicting path is left untouched rather than clobbered. Applies to both `init` and `sync`. Added regression tests covering both conflict directions, idempotency, and the clean-repo path.
+
+### Internal
+
+- Groundwork for merging GuardLink into a legacy single-file `.cursor/rules` (rather than skipping it) is present but not yet wired into agent detection/selection; it will be enabled in a follow-up once the picker recognizes the legacy layout.
+
 ## \[1.4.3\] — 2026-05-13
 
 ### Added
