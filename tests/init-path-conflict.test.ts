@@ -1,16 +1,19 @@
 /**
  * Regression tests for agent-file path-type conflicts during init/sync.
  *
- * Repro: a project ships an OLDER single-file `.cursor/rules` (a FILE) while GuardLink
- * expects the NEWER `.cursor/rules/` directory layout and tries to write
- * `.cursor/rules/guardlink.mdc`. Pre-fix this threw a raw `ENOTDIR` and aborted the whole
- * init. Post-fix: init skips just that agent file (with a reason) and completes.
+ * Context: Cursor supports multiple rules layouts — legacy single-file `.cursorrules`,
+ * legacy single-file `.cursor/rules`, and the newer `.cursor/rules/` directory of `.mdc`.
+ * GuardLink writes `.cursor/rules/guardlink.mdc`. When `.cursor/rules` already exists as a
+ * FILE (legacy layout), pre-fix init threw a raw ENOTDIR and aborted.
  *
- * Also covers the mirror case (a directory where a file is expected -> EISDIR) and
- * confirms `.guardlink/` and non-conflicting agent files are still created.
+ * Fixed behavior:
+ *   CASE A (mergeable): `.cursor/rules` is a FILE -> merge GuardLink's block INTO that file
+ *     (marker-based, preserves user content, idempotent). init completes.
+ *   CASE B (unmergeable): an agent path like `CLAUDE.md` exists as a DIRECTORY -> skip with
+ *     a clear reason (no safe merge). init completes.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { initProject } from '../src/init/index.js';
@@ -20,7 +23,6 @@ describe('init — agent-file path-type conflicts', () => {
 
   beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), 'guardlink-pathconflict-'));
-    // Minimal project marker so detectProject has something to work with.
     writeFileSync(join(tmp, 'package.json'), JSON.stringify({ name: 'demo', version: '1.0.0' }));
   });
 
@@ -28,49 +30,64 @@ describe('init — agent-file path-type conflicts', () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it('does NOT throw when .cursor/rules exists as a FILE (the reported ENOTDIR repro)', () => {
-    // Recreate the exact juice-shop-copy situation: .cursor/ is a dir, .cursor/rules is a FILE.
-    mkdirSync(join(tmp, '.cursor'));
-    writeFileSync(join(tmp, '.cursor', 'rules'), 'old single-file cursor rules\n');
+  // ── CASE A: legacy single-file .cursor/rules → merge, don't crash, don't skip ──
 
-    // Pre-fix this threw ENOTDIR. Post-fix it must complete without throwing.
+  const LEGACY = 'my custom cursor rules\nalways use tabs\n';
+
+  it('does NOT throw when .cursor/rules exists as a FILE (the reported ENOTDIR repro)', () => {
+    mkdirSync(join(tmp, '.cursor'));
+    writeFileSync(join(tmp, '.cursor', 'rules'), LEGACY);
     expect(() => initProject({ root: tmp })).not.toThrow();
   });
 
-  it('still creates .guardlink/ and skips only the conflicting agent file', () => {
+  it('MERGES GuardLink into the existing .cursor/rules file, preserving user content', () => {
     mkdirSync(join(tmp, '.cursor'));
-    writeFileSync(join(tmp, '.cursor', 'rules'), 'old single-file cursor rules\n');
+    writeFileSync(join(tmp, '.cursor', 'rules'), LEGACY);
+
+    initProject({ root: tmp });
+
+    const rulesPath = join(tmp, '.cursor', 'rules');
+    // Still a file (not clobbered into a directory).
+    expect(statSync(rulesPath).isFile()).toBe(true);
+    const after = readFileSync(rulesPath, 'utf-8');
+    // User's original content survives.
+    expect(after).toContain('my custom cursor rules');
+    expect(after).toContain('always use tabs');
+    // GuardLink block was injected.
+    expect(after).toContain('GuardLink');
+  });
+
+  it('merge is idempotent — running init twice does not duplicate the GuardLink block', () => {
+    mkdirSync(join(tmp, '.cursor'));
+    writeFileSync(join(tmp, '.cursor', 'rules'), LEGACY);
+
+    initProject({ root: tmp });
+    initProject({ root: tmp, force: true });
+
+    const after = readFileSync(join(tmp, '.cursor', 'rules'), 'utf-8');
+    // Marker appears exactly once.
+    const occurrences = after.split('guardlink:begin').length - 1;
+    expect(occurrences).toBe(1);
+    // User content still intact.
+    expect(after).toContain('my custom cursor rules');
+  });
+
+  it('still creates .guardlink/ and other agent files alongside the merge', () => {
+    mkdirSync(join(tmp, '.cursor'));
+    writeFileSync(join(tmp, '.cursor', 'rules'), LEGACY);
 
     const result = initProject({ root: tmp });
-
-    // Core scaffold still created.
-    expect(existsSync(join(tmp, '.guardlink'))).toBe(true);
     expect(existsSync(join(tmp, '.guardlink', 'config.json'))).toBe(true);
-
-    // The conflicting .mdc write was skipped with a reason mentioning the path.
-    const skippedText = result.skipped.join('\n');
-    expect(skippedText).toMatch(/rules/);
-
-    // The pre-existing single-file .cursor/rules is left untouched (not clobbered into a dir).
-    expect(statSync(join(tmp, '.cursor', 'rules')).isFile()).toBe(true);
+    const madeAgentFile = existsSync(join(tmp, 'CLAUDE.md')) || existsSync(join(tmp, 'AGENTS.md'));
+    expect(madeAgentFile).toBe(true);
+    // The merge is reported as an update, not a skip.
+    const merged = result.updated.some(u => /merged into existing \.cursor\/rules/.test(u));
+    expect(merged).toBe(true);
   });
 
-  it('creates other, non-conflicting agent files normally', () => {
-    mkdirSync(join(tmp, '.cursor'));
-    writeFileSync(join(tmp, '.cursor', 'rules'), 'old single-file cursor rules\n');
+  // ── CASE B: unmergeable directory-where-file-expected → skip, don't crash ──
 
-    const result = initProject({ root: tmp });
-
-    // A markdown agent file with no path conflict should still be created.
-    const madeSomething =
-      result.created.some(f => f.endsWith('.md')) ||
-      existsSync(join(tmp, 'CLAUDE.md')) ||
-      existsSync(join(tmp, 'AGENTS.md'));
-    expect(madeSomething).toBe(true);
-  });
-
-  it('handles the MIRROR case: a target agent FILE path that exists as a DIRECTORY', () => {
-    // CLAUDE.md exists as a directory -> writeFileSync would throw EISDIR pre-fix.
+  it('handles the MIRROR case: an agent FILE path that exists as a DIRECTORY (skip, no crash)', () => {
     mkdirSync(join(tmp, 'CLAUDE.md'));
 
     expect(() => initProject({ root: tmp })).not.toThrow();
@@ -78,13 +95,16 @@ describe('init — agent-file path-type conflicts', () => {
     const result = initProject({ root: tmp, force: true });
     const skippedText = result.skipped.join('\n');
     expect(skippedText).toMatch(/CLAUDE\.md/);
-    // The directory is left as-is, not clobbered.
+    // Directory left as-is, not clobbered.
     expect(statSync(join(tmp, 'CLAUDE.md')).isDirectory()).toBe(true);
   });
 
-  it('is idempotent — running init twice on a conflicted repo still does not throw', () => {
+  // ── General robustness ──
+
+  it('is idempotent across mixed conflicts — repeated init never throws', () => {
     mkdirSync(join(tmp, '.cursor'));
-    writeFileSync(join(tmp, '.cursor', 'rules'), 'old single-file cursor rules\n');
+    writeFileSync(join(tmp, '.cursor', 'rules'), LEGACY);
+    mkdirSync(join(tmp, 'CLAUDE.md'));
 
     expect(() => {
       initProject({ root: tmp });
@@ -93,11 +113,10 @@ describe('init — agent-file path-type conflicts', () => {
     }).not.toThrow();
   });
 
-  it('a clean repo (no conflicts) still initializes with zero path-conflict skips', () => {
+  it('a clean repo (no conflicts) initializes with zero path-conflict skips', () => {
     const result = initProject({ root: tmp });
     expect(existsSync(join(tmp, '.guardlink', 'config.json'))).toBe(true);
-    // No skip reason should mention a path-type conflict on a clean repo.
-    const conflictSkips = result.skipped.filter(s => /conflict|exists as a (file|directory)/.test(s));
+    const conflictSkips = result.skipped.filter(s => /exists as a (file|directory)/.test(s));
     expect(conflictSkips).toEqual([]);
   });
 });
