@@ -394,6 +394,7 @@ export function configContent(project: ProjectInfo): string {
     exclude: [
       'node_modules', 'dist', 'build', '.git',
       '__pycache__', 'target', 'vendor', '.next',
+      '.bravos', '.bugb',
     ],
   }, null, 2) + '\n';
 }

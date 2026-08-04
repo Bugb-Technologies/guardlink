@@ -59,6 +59,10 @@ const DEFAULT_EXCLUDE = [
   '**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**',
   '**/__pycache__/**', '**/target/**', '**/vendor/**', '**/.next/**',
   '**/tests/**', '**/test/**', '**/__tests__/**',
+  // Bugb's own artifact dirs inside a scanned repo. `dot: true` (for .guardlink/) would
+  // otherwise walk these: .bravos holds agent rollback backups of annotated source, so
+  // re-parsing them double-counts every exposure in the original; .bugb is siete's session store.
+  '**/.bravos/**', '**/.bugb/**',
 ];
 
 /**
