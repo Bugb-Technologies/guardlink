@@ -21,6 +21,8 @@
  * @flows #sarif -> SarifLog via return -- "SARIF output"
  */
 
+import { createHash } from 'node:crypto';
+
 import type { ThreatModel, ThreatModelExposure, ParseDiagnostic, Severity } from '../types/index.js';
 
 // ─── SARIF 2.1.0 types (subset) ─────────────────────────────────────
@@ -60,6 +62,12 @@ interface SarifResult {
   level: 'error' | 'warning' | 'note';
   message: { text: string };
   locations: SarifLocation[];
+  /**
+   * SARIF-native stable-identity mechanism, understood by other SARIF tooling. We put the
+   * guardlink threat id here so a result can be tracked across exports independently of its
+   * line/order. Mirrored into `properties.threatId` for consumers without a SARIF library.
+   */
+  partialFingerprints?: Record<string, string>;
   properties?: Record<string, unknown>;
 }
 
@@ -177,12 +185,17 @@ export function generateSarif(
     const threat = e.threat.startsWith('#') ? e.threat.slice(1) : e.threat;
     const desc = e.description ? `: ${e.description}` : '';
 
+    const messageText = `${e.asset} is exposed to ${threat}${desc}`;
+    const id = threatId(e.asset, e.threat, e.location.file);
+
     results.push({
       ruleId,
       level,
-      message: { text: `${e.asset} is exposed to ${threat}${desc}` },
+      message: { text: messageText },
       locations: [locationFrom(e.location.file, e.location.line)],
+      partialFingerprints: { 'guardlink/threatId': id },
       properties: {
+        threatId: id,
         severity: e.severity || 'unset',
         asset: e.asset,
         threat: e.threat,
@@ -197,12 +210,17 @@ export function generateSarif(
     const threat = c.threat.startsWith('#') ? c.threat.slice(1) : c.threat;
     const desc = c.description ? `: ${c.description}` : '';
 
+    const messageText = `CONFIRMED: ${c.asset} exploitable via ${threat}${desc}`;
+    const id = threatId(c.asset, c.threat, c.location.file);
+
     results.push({
       ruleId: 'guardlink/confirmed-exploitable',
       level: 'error',
-      message: { text: `CONFIRMED: ${c.asset} exploitable via ${threat}${desc}` },
+      message: { text: messageText },
       locations: [locationFrom(c.location.file, c.location.line)],
+      partialFingerprints: { 'guardlink/threatId': id },
       properties: {
+        threatId: id,
         severity: c.severity || 'unset',
         asset: c.asset,
         threat: c.threat,
@@ -252,6 +270,40 @@ export function generateSarif(
       results,
     }],
   };
+}
+
+// ─── Threat ID ───────────────────────────────────────────────────────
+
+/** Strip a leading `#`, lowercase and trim — the same shape the SARIF results already de-`#` to. */
+function normalizeThreatRef(ref: string): string {
+  const value = (ref ?? '').trim();
+  return (value.startsWith('#') ? value.slice(1) : value).toLowerCase();
+}
+
+/**
+ * Mint the stable, opaque threat id for one exposure — `gl-` + the first 12 hex of a sha256 over
+ * `normalize(asset)|normalize(threat)|file`.
+ *
+ * The id keys the *threat*, not a particular annotation of it: an `@exposes` (theoretical) and the
+ * `@confirmed` that later proves it are the same threat at the same place, so both mint the same id.
+ * That shared identity is the whole point — the write-back round-trip, `record_verification`, and
+ * cross-run / Slack / Jira linkage all depend on a threat keeping one id across its lifecycle. So the
+ * message text is deliberately NOT in the hash: it differs between the "exposed to" and "CONFIRMED …
+ * exploitable via" wordings and would split one threat into two ids.
+ *
+ * Accepted limitation: two genuinely distinct weaknesses at the IDENTICAL (asset, threat, file) now
+ * collapse to one id. This is intended — the threat id is the coarse, stable identity; siete keeps
+ * its text-based ExposureKey as the fine-grained fallback to disambiguate when one threat_id maps to
+ * more than one exposure (see docs/prd/threat-id-design.md §3).
+ *
+ * guardlink is the sole authority for this algorithm: cxg and siete carry and compare the string but
+ * never recompute it. It is stable across re-runs and line drift (line is not part of the identity),
+ * and changes when the asset, threat, or file changes — those are, by definition, a different threat.
+ */
+export function threatId(asset: string, threat: string, file: string): string {
+  const basis = `${normalizeThreatRef(asset)}|${normalizeThreatRef(threat)}|${file}`;
+  const hash = createHash('sha256').update(basis).digest('hex').slice(0, 12);
+  return `gl-${hash}`;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
