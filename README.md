@@ -340,7 +340,6 @@ guardlink translate "focus on injection paths" --clipboard
 
 **From pentest results back to the threat model** — Drop CXG scan result JSON files into `.guardlink/pentest-findings/`. GuardLink reads them automatically and:
 - Injects findings as empirical evidence in `guardlink threat-report` and AI analyses
-- Displays a **Pentest Findings** section in `guardlink dashboard`
 - Teaches agents to cross-reference scan results against `@exposes` annotations
 
 **Marking verified findings** — When a pentest or scan proves a threat is exploitable, add `@confirmed` to close the loop:

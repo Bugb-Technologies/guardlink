@@ -28,7 +28,7 @@ import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from
 import { generateReport, generateMermaid } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
 import { computeStats, computeSeverity, computeExposures } from '../dashboard/data.js';
-import { generateThreatReport, serializeModel, listThreatReports, loadThreatReportsForDashboard, loadPentestData, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, buildProjectContext, extractCodeSnippets, type AnalysisFramework } from '../analyze/index.js';
+import { generateThreatReport, serializeModel, listThreatReports, loadThreatReportsForDashboard, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, buildProjectContext, extractCodeSnippets, type AnalysisFramework } from '../analyze/index.js';
 import { diffModels, formatDiff, parseAtRef } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { diagnosticIcon } from '../parser/format.js';
@@ -1864,8 +1864,7 @@ export async function cmdDashboard(ctx: TuiContext): Promise<void> {
   }
 
   const analyses = loadThreatReportsForDashboard(ctx.root);
-  const pentestData = loadPentestData(ctx.root);
-  const html = generateDashboardHTML(ctx.model, ctx.root, analyses, pentestData);
+  const html = generateDashboardHTML(ctx.model, ctx.root, analyses);
   const outFile = resolve(ctx.root, 'threat-dashboard.html');
   const { writeFile } = await import('node:fs/promises');
   await writeFile(outFile, html);

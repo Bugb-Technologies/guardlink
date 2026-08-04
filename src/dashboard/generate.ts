@@ -10,10 +10,9 @@
  * @exposes #dashboard to #path-traversal [medium] cwe:CWE-22 -- "readFileSync reads code files for annotation context"
  * @mitigates #dashboard against #path-traversal using #path-validation -- "resolve() with root constrains file access"
  * @flows ThreatModel -> #dashboard via computeStats -- "Model statistics input"
- * @flows ThreatModel -> #dashboard via topologyData -- "Serialized diagram graph consumed by client-side D3 renderer"
  * @flows SourceFiles -> #dashboard via readFileSync -- "Code snippet reads"
  * @flows #dashboard -> HTML via return -- "Generated HTML output"
- * @mitigates #dashboard against #xss using #output-encoding -- "Serialized diagram data escapes closing script tags; D3 writes labels as text"
+ * @mitigates #dashboard against #xss using #output-encoding -- "Serialized model data escapes closing script tags before embedding in <script>"
  * @handles internal on #dashboard -- "Processes and displays threat model data"
  * @feature "Dashboard" -- "Interactive HTML threat model dashboard"
  */
@@ -22,14 +21,12 @@ import type { ThreatModel } from '../types/index.js';
 import { listFeatures } from '../parser/feature-filter.js';
 import { computeStats, computeSeverity, computeExposures, computeConfirmed, computeAssetHeatmap } from './data.js';
 import type { DashboardStats, SeverityBreakdown, ExposureRow, ConfirmedRow, AssetHeatmapEntry } from './data.js';
-import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface, generateTopologyData } from './diagrams.js';
-import type { DiagramTopology } from './diagrams.js';
-import type { ThreatReportWithContent, PentestData } from '../analyze/index.js';
-import { formatConfidence } from '../analyze/format.js';
+import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface } from './diagrams.js';
+import type { ThreatReportWithContent } from '../analyze/index.js';
 import { readFileSync } from 'fs';
 import { resolve, isAbsolute } from 'path';
 
-export function generateDashboardHTML(model: ThreatModel, root?: string, analyses?: ThreatReportWithContent[], pentestData?: PentestData): string {
+export function generateDashboardHTML(model: ThreatModel, root?: string, analyses?: ThreatReportWithContent[]): string {
   const stats = computeStats(model);
   const severity = computeSeverity(model);
   const exposures = computeExposures(model);
@@ -39,7 +36,6 @@ export function generateDashboardHTML(model: ThreatModel, root?: string, analyse
   const threatGraphFull = generateThreatGraph(model, { showAll: true });
   const dataFlow = generateDataFlowDiagram(model);
   const attackSurface = generateAttackSurface(model);
-  const topology = generateTopologyData(model);
   const featureNames = listFeatures(model);
   const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
   const unmitigated = exposures.filter(e => !e.mitigated && !e.accepted);
@@ -54,9 +50,6 @@ export function generateDashboardHTML(model: ThreatModel, root?: string, analyse
 
   // Build analysis data for drawer
   const analysisData = buildAnalysisData(model, exposures);
-
-  // Pentest data (may be null/empty)
-  const pentest = pentestData || { scans: [], templates: [], totalFindings: 0, findingsBySeverity: {} };
 
   // Check for saved AI analyses
   // (we embed the latest one if model has it, otherwise empty)
@@ -119,7 +112,6 @@ ${featureNames.map(f => `        <option value="${esc(f)}">${esc(f)}</option>`).
   <div class="sidebar-nav">
     <a class="active" onclick="showSection('summary',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l6 4v6l-6 4-6-4V6l6-4z"/></svg></span> <span class="nav-text">Executive Summary</span></a>
     <a onclick="showSection('ai-analysis',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l2 5h5l-4 3 2 5-5-3-5 3 2-5-4-3h5l2-5z"/></svg></span> <span class="nav-text">Threat Reports</span></a>
-    <a onclick="showSection('pentest',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 2a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM6 7h4v1.5H8.5V13h-1V8.5H6V7z"/></svg></span> <span class="nav-text">Pentest Findings</span></a>
     <a onclick="showSection('threats',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L1 15h14L8 1zm0 4l3 8H5l3-8z"/></svg></span> <span class="nav-text">Threats &amp; Exposures</span></a>
     <a onclick="showSection('diagrams',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="8" cy="8" r="2"/></svg></span> <span class="nav-text">Diagrams</span></a>
     <a onclick="showSection('code',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M5 4L1 8l4 4v-2L3 8l2-2V4zm6 0v2l2 2-2 2v2l4-4-4-4z"/></svg></span> <span class="nav-text">Code &amp; Annotations</span></a>
@@ -138,9 +130,8 @@ ${featureNames.map(f => `        <option value="${esc(f)}">${esc(f)}</option>`).
 
 ${renderSummaryPage(stats, severity, riskScore, unmitigated, exposures, model, mitigatedCount, mitigationCoveragePercent)}
 ${renderAIAnalysisPage(analyses || [])}
-${renderPentestPage(pentest)}
 ${renderThreatsPage(exposures, confirmedRows, model)}
-${renderDiagramsPage(threatGraph, threatGraphFull, dataFlow, attackSurface, topology)}
+${renderDiagramsPage(threatGraph, threatGraphFull, dataFlow, attackSurface)}
 ${renderCodePage(fileAnnotations, model)}
 ${renderDataPage(model)}
 ${renderAssetsPage(heatmap)}
@@ -165,10 +156,8 @@ const analysisData = ${JSON.stringify(analysisData).replace(/<\//g, '<\\/')};
 const exposuresData = ${JSON.stringify(exposures).replace(/<\//g, '<\\/')};
 const confirmedData = ${JSON.stringify(confirmedRows).replace(/<\//g, '<\\/')};
 const savedAnalyses = ${JSON.stringify(analyses || []).replace(/<\//g, '<\\/')};
-const pentestData = ${JSON.stringify(pentest).replace(/<\//g, '<\\/')};
 const heatmapData = ${JSON.stringify(heatmap).replace(/<\//g, '<\\/')};
 const threatModel = ${JSON.stringify(model).replace(/<\//g, '<\\/')};
-const topologyData = ${JSON.stringify(topology).replace(/<\//g, '<\\/')};
 /* ===== SECTION NAV ===== */
 function showSection(id, el) {
   document.querySelectorAll('.section-content').forEach(s => s.classList.remove('active'));
@@ -458,110 +447,6 @@ function openAnnotationDrawer(fileIdx, annIdx) {
   h += sec('Location', '<span style="font-family:var(--font-mono);font-size:.78rem;color:var(--muted)">' + esc(fentry.file) + ':' + ann.line + '</span>');
   if (ann.description) h += sec('Description', esc(ann.description));
   if (ann.raw) h += sec('Raw Annotation', '<div class="d-code">' + esc(ann.raw) + '</div>');
-  body.innerHTML = h;
-  document.getElementById('drawer').classList.add('open');
-  document.getElementById('drawer-overlay').classList.add('open');
-}
-
-function openPentestDrawer(scanIdx, findingIdx) {
-  // Mirror of server-side formatConfidence — keep these two in sync.
-  // CXG emits confidence as integer (most versions), severity-style string
-  // ("high"), or missing entirely. Render whatever it is, never crash.
-  function formatConf(v) {
-    if (v == null || v === '') return '\u2014';
-    if (typeof v === 'number' && isFinite(v)) {
-      return Math.max(0, Math.min(100, Math.round(v))) + '%';
-    }
-    if (typeof v === 'string') {
-      var t = v.trim();
-      if (!t) return '\u2014';
-      var m = t.match(/^(-?\d+(?:\.\d+)?)\s*%?$/);
-      if (m) return Math.max(0, Math.min(100, Math.round(parseFloat(m[1])))) + '%';
-      return t.toUpperCase();
-    }
-    return '\u2014';
-  }
-  var title = document.getElementById('drawer-title');
-  var body = document.getElementById('drawer-body');
-  var scan = pentestData.scans[scanIdx];
-  if (!scan) return;
-  var f = scan.findings[findingIdx];
-  if (!f) return;
-  title.textContent = f.title;
-  var h = '';
-  var sevColor = f.severity === 'critical' ? 'var(--sev-crit)' : f.severity === 'high' ? 'var(--sev-high)' : f.severity === 'medium' ? 'var(--sev-med)' : 'var(--sev-low)';
-  h += sec('Severity', '<span style="color:' + sevColor + ';font-weight:600;text-transform:uppercase">' + esc(f.severity) + '</span>');
-  h += sec('Confidence', '<span style="font-weight:600">' + formatConf(f.confidence) + '</span>');
-  h += sec('Template', '<code>' + esc(f.template_id) + '</code>');
-  if (f.cwe_ids && f.cwe_ids.length) h += sec('CWE', f.cwe_ids.map(function(c){return '<code>' + esc(c) + '</code>'}).join(', '));
-  h += sec('Description', '<div style="line-height:1.5">' + esc(f.description) + '</div>');
-
-  // Evidence section
-  if (f.evidence) {
-    h += '<div class="sub-h" style="margin-top:1rem">Evidence</div>';
-    if (f.evidence.request) {
-      h += sec('Request / Payload', '<div class="code-block" style="max-height:200px;overflow:auto;white-space:pre-wrap">' + esc(String(f.evidence.request).slice(0, 2000)) + '</div>');
-    }
-    if (f.evidence.response) {
-      h += sec('Response / Output', '<div class="code-block" style="max-height:200px;overflow:auto;white-space:pre-wrap">' + esc(String(f.evidence.response).slice(0, 2000)) + '</div>');
-    }
-    if (f.evidence.matched_patterns && f.evidence.matched_patterns.length) {
-      h += sec('Matched Patterns', f.evidence.matched_patterns.map(function(p){return '<span class="ann-badge ann-threat" style="margin-right:4px;margin-bottom:2px">' + esc(String(p)) + '</span>'}).join(''));
-    }
-    if (f.evidence.data && Object.keys(f.evidence.data).length > 0) {
-      var dataHtml = '<table style="font-size:.75rem"><tbody>';
-      Object.keys(f.evidence.data).forEach(function(k) {
-        var val = f.evidence.data[k];
-        var vs = typeof val === 'string' ? val : JSON.stringify(val);
-        if (vs && vs.length > 500) vs = vs.slice(0, 500) + '...';
-        dataHtml += '<tr><td style="font-weight:600;white-space:nowrap;vertical-align:top;padding-right:.5rem">' + esc(k) + '</td><td style="word-break:break-all">' + esc(vs) + '</td></tr>';
-      });
-      dataHtml += '</tbody></table>';
-      h += sec('Evidence Data', dataHtml);
-    }
-  }
-
-  if (f.remediation) h += sec('Remediation', '<div style="line-height:1.5;white-space:pre-line">' + esc(f.remediation) + '</div>');
-  h += sec('Scan ID', '<code style="font-size:.72rem">' + esc(scan.scan_id) + '</code>');
-  h += sec('Timestamp', esc(f.timestamp || scan.completed_at || ''));
-
-  body.innerHTML = h;
-  document.getElementById('drawer').classList.add('open');
-  document.getElementById('drawer-overlay').classList.add('open');
-}
-
-function openTemplateDrawer(idx) {
-  var title = document.getElementById('drawer-title');
-  var body = document.getElementById('drawer-body');
-  var t = pentestData.templates[idx];
-  if (!t) return;
-  title.textContent = t.id;
-  var h = '';
-  h += sec('File', '<code>' + esc(t.filename) + '</code>');
-  h += sec('Language', '<span class="ann-badge ann-control">' + esc(t.language) + '</span>');
-  h += sec('Severity', '<span class="fc-sev ' + (t.severity === 'critical' ? 'crit' : t.severity === 'high' ? 'high' : t.severity === 'medium' ? 'med' : 'low') + '">' + esc(t.severity) + '</span>');
-  if (t.tags && t.tags.length) h += sec('Tags', t.tags.map(function(tag){return '<span class="ann-badge ann-asset" style="margin-right:4px">' + esc(tag) + '</span>'}).join(''));
-
-  // Find related findings
-  var relatedFindings = [];
-  pentestData.scans.forEach(function(scan) {
-    scan.findings.forEach(function(f) {
-      if (f.template_id === t.id) relatedFindings.push(f);
-    });
-  });
-  if (relatedFindings.length > 0) {
-    h += '<div class="sub-h" style="margin-top:1rem;color:var(--red)">Findings from this Template (' + relatedFindings.length + ')</div>';
-    relatedFindings.forEach(function(f) {
-      var sc = f.severity === 'critical' ? 'var(--sev-crit)' : f.severity === 'high' ? 'var(--sev-high)' : f.severity === 'medium' ? 'var(--sev-med)' : 'var(--sev-low)';
-      h += '<div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid ' + sc + ';padding:0.5rem 0.8rem;border-radius:4px;margin-bottom:0.5rem">';
-      h += '<strong>' + esc(f.title) + '</strong>';
-      h += '<div style="font-size:.75rem;color:var(--muted);margin-top:.2rem">' + esc(f.description.slice(0, 200)) + '</div>';
-      h += '</div>';
-    });
-  } else {
-    h += sec('Findings', '<span class="empty-state">No findings from this template yet — run CXG scan to test</span>');
-  }
-
   body.innerHTML = h;
   document.getElementById('drawer').classList.add('open');
   document.getElementById('drawer-overlay').classList.add('open');
@@ -908,16 +793,6 @@ function toggleThreatGraphAll(btn) {
 
 function diagramZoom(action) {
   const panel = document.querySelector('.diagram-panel.active');
-  if (panel && panel.id === 'dtab-risk-topology' && window._topologyZoom) {
-    const state = window._topologyZoom;
-    if (action === 'fit') {
-      state.svg.transition().duration(420).call(state.zoom.transform, d3.zoomIdentity);
-      return;
-    }
-    const topologyFactor = action === 'in' ? 1.18 : 1 / 1.18;
-    state.svg.transition().duration(220).call(state.zoom.scaleBy, topologyFactor);
-    return;
-  }
   if (!panel || !panel._diagramZoom) return;
   const state = panel._diagramZoom;
   const svg = state.svg;
@@ -930,484 +805,6 @@ function diagramZoom(action) {
   }
   const factor = action === 'in' ? 1.2 : 1 / 1.2;
   svg.transition().duration(220).call(zoom.scaleBy, factor);
-}
-
-/* ===== TOPOLOGY DIAGRAM ===== */
-function topologyColor(name, fallback) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-}
-
-function topologyEnabledKinds() {
-  const boxes = document.querySelectorAll('[data-topology-kind]');
-  const enabled = new Set();
-  boxes.forEach(box => { if (box.checked) enabled.add(box.getAttribute('data-topology-kind')); });
-  return enabled;
-}
-
-function topologyEnabledLinkKinds() {
-  const boxes = document.querySelectorAll('[data-topology-link]');
-  if (boxes.length === 0) return null; // null = "all enabled"
-  const enabled = new Set();
-  boxes.forEach(box => { if (box.checked) enabled.add(box.getAttribute('data-topology-link')); });
-  return enabled;
-}
-
-function topologyShort(s, max) {
-  s = String(s || '');
-  return s.length > max ? s.slice(0, max - 1) + '…' : s;
-}
-
-// Severity- and risk-scaled radius. Bigger = more risk, so the eye goes to it first.
-function topologyRadius(node) {
-  const base = node.kind === 'asset' ? 20 : node.kind === 'threat' ? 18 : 15;
-  const sevBoost = (node.severity === 'critical' || node.severity === 'p0') ? 6
-    : (node.severity === 'high' || node.severity === 'p1') ? 4
-    : (node.severity === 'medium' || node.severity === 'p2') ? 2 : 0;
-  const riskLoad = Math.min(10, Math.sqrt((node.openExposures || 0) * 2 + (node.confirmed || 0) * 5) * 2.8);
-  return base + sevBoost + riskLoad;
-}
-
-function topologyNodeClass(node) {
-  const classes = [
-    'topology-node',
-    'topology-' + node.kind,
-    'topology-status-' + (node.status || 'none'),
-    'topology-sev-' + (node.severity || 'unset'),
-  ];
-  if (node.confirmed > 0) classes.push('topology-has-confirmed');
-  if (node.openExposures > 0) classes.push('topology-has-open');
-  if (node.mitigations > 0 && node.openExposures === 0 && node.confirmed === 0) classes.push('topology-fully-covered');
-  return classes.join(' ');
-}
-
-function topologyLinkClass(link) {
-  return 'topology-link topology-link-' + link.kind + ' topology-link-status-' + (link.status || 'none');
-}
-
-function topologyLabelFor(id) {
-  const n = topologyData.nodes.find(node => node.id === id);
-  return n ? n.label : id;
-}
-
-function topologyFiltered() {
-  const enabled = topologyEnabledKinds();
-  const enabledLinks = topologyEnabledLinkKinds();
-  const queryEl = document.getElementById('topologySearch');
-  const openOnlyEl = document.getElementById('topologyOpenOnly');
-  const query = queryEl ? queryEl.value.trim().toLowerCase() : '';
-  const openOnly = openOnlyEl ? openOnlyEl.checked : false;
-
-  let nodes = topologyData.nodes.filter(node => enabled.has(node.kind));
-  if (openOnly) {
-    nodes = nodes.filter(node => node.status === 'open' || node.status === 'confirmed' || node.openExposures > 0 || node.confirmed > 0);
-  }
-  if (query) {
-    const direct = new Set(nodes.filter(node => {
-      const refs = (node.refs || []).join(' ').toLowerCase();
-      return node.label.toLowerCase().includes(query) || refs.includes(query) || node.kind.includes(query);
-    }).map(node => node.id));
-    const expanded = new Set(direct);
-    topologyData.links.forEach(link => {
-      if (direct.has(link.source) || direct.has(link.target)) {
-        expanded.add(link.source);
-        expanded.add(link.target);
-      }
-    });
-    nodes = nodes.filter(node => expanded.has(node.id));
-  }
-
-  const ids = new Set(nodes.map(node => node.id));
-  const links = topologyData.links.filter(link => {
-    if (!ids.has(link.source) || !ids.has(link.target)) return false;
-    if (enabledLinks && !enabledLinks.has(link.kind)) return false;
-    return true;
-  });
-  return { nodes, links };
-}
-
-// Lane-based x target: assets left, threats middle, controls right.
-function topologyLaneX(node, width) {
-  if (node.kind === 'asset') return width * 0.22;
-  if (node.kind === 'threat') return width * 0.5;
-  return width * 0.78;
-}
-
-// Vertical lane pull: critical/high float up, low/unset sink down.
-function topologyLaneY(node, height) {
-  const rank = (node.severity === 'critical' || node.severity === 'p0') ? 0.2
-    : (node.severity === 'high' || node.severity === 'p1') ? 0.35
-    : (node.severity === 'medium' || node.severity === 'p2') ? 0.55
-    : (node.severity === 'low' || node.severity === 'p3') ? 0.7 : 0.55;
-  return height * rank;
-}
-
-function topologyNeighborhood(nodeId) {
-  const neighbors = new Set([nodeId]);
-  const linkSet = new Set();
-  topologyData.links.forEach(l => {
-    const s = l.source.id || l.source;
-    const t = l.target.id || l.target;
-    if (s === nodeId || t === nodeId) {
-      neighbors.add(s);
-      neighbors.add(t);
-      linkSet.add(l);
-    }
-  });
-  return { neighbors, linkSet };
-}
-
-function showTopologyOverview(nodeCount, linkCount) {
-  const inspector = document.getElementById('topologyInspector');
-  if (!inspector) return;
-  const s = topologyData.summary;
-  const totalExposures = s.open + s.mitigated + s.accepted;
-  const coveragePct = totalExposures === 0 ? 100 : Math.round(((s.mitigated + s.accepted) / totalExposures) * 100);
-  const barCls = coveragePct >= 75 ? 'good' : coveragePct >= 40 ? 'warn' : 'bad';
-  let h = '';
-  h += '<div class="topology-inspector-k">Topology</div>';
-  h += '<h3>Threat Model Map</h3>';
-  h += '<div class="topology-bar-wrap"><div class="topology-bar-label"><span>Coverage</span><strong>' + coveragePct + '%</strong></div>';
-  h += '<div class="topology-bar"><div class="topology-bar-fill ' + barCls + '" style="width:' + coveragePct + '%"></div></div></div>';
-  h += '<div class="topology-detail-grid">';
-  h += '<span>Assets</span><strong>' + s.assets + '</strong>';
-  h += '<span>Threats</span><strong>' + s.threats + '</strong>';
-  h += '<span>Controls</span><strong>' + s.controls + '</strong>';
-  h += '<span>Open</span><strong class="danger">' + s.open + '</strong>';
-  if (s.confirmed) h += '<span>Confirmed</span><strong class="danger">' + s.confirmed + '</strong>';
-  h += '<span>Mitigated</span><strong class="good">' + s.mitigated + '</strong>';
-  if (s.accepted) h += '<span>Accepted</span><strong>' + s.accepted + '</strong>';
-  if (s.criticalAssets) h += '<span>Critical</span><strong class="danger">' + s.criticalAssets + ' asset' + (s.criticalAssets > 1 ? 's' : '') + '</strong>';
-  h += '<span>Visible</span><strong>' + nodeCount + ' / ' + linkCount + '</strong>';
-  h += '</div>';
-  h += '<div class="topology-inspector-note">Hover a node to highlight its neighborhood. Click to pin. Drag to reposition.</div>';
-  inspector.innerHTML = h;
-}
-
-function showTopologyDetails(node) {
-  const inspector = document.getElementById('topologyInspector');
-  if (!inspector) return;
-  const related = topologyData.links.filter(link => link.source === node.id || link.target === node.id);
-  const shown = related.slice(0, 12);
-  const mitCoverage = node.exposures > 0 ? Math.round(Math.min(1, node.mitigations / node.exposures) * 100) : (node.mitigations > 0 ? 100 : 0);
-  const barCls = mitCoverage >= 75 ? 'good' : mitCoverage >= 40 ? 'warn' : 'bad';
-
-  let h = '';
-  h += '<div class="topology-inspector-head"><span class="topology-inspector-k">' + esc(node.kind) + '</span>';
-  if (node.confirmed > 0) h += '<span class="topology-badge topology-badge-confirmed">💥 Confirmed</span>';
-  else if (node.openExposures > 0) h += '<span class="topology-badge topology-badge-open">⚠ Open</span>';
-  else if (node.mitigations > 0) h += '<span class="topology-badge topology-badge-covered">✓ Covered</span>';
-  h += '</div>';
-  h += '<h3>' + esc(node.label) + '</h3>';
-
-  if (node.kind === 'asset' && (node.exposures > 0 || node.mitigations > 0)) {
-    h += '<div class="topology-bar-wrap"><div class="topology-bar-label"><span>Mitigation</span><strong>' + mitCoverage + '%</strong></div>';
-    h += '<div class="topology-bar"><div class="topology-bar-fill ' + barCls + '" style="width:' + mitCoverage + '%"></div></div></div>';
-  }
-
-  h += '<div class="topology-detail-grid">';
-  h += '<span>Status</span><strong class="status-' + esc(node.status || 'none') + '">' + esc(node.status || 'none') + '</strong>';
-  h += '<span>Severity</span><strong class="sev-' + esc(node.severity || 'unset') + '">' + esc(node.severity || 'unset') + '</strong>';
-  if (node.exposures) h += '<span>Exposures</span><strong>' + node.exposures + '</strong>';
-  if (node.openExposures) h += '<span>Open</span><strong class="danger">' + node.openExposures + '</strong>';
-  if (node.mitigations) h += '<span>Mitigations</span><strong class="good">' + node.mitigations + '</strong>';
-  if (node.confirmed) h += '<span>Confirmed</span><strong class="danger">' + node.confirmed + '</strong>';
-  if (node.flows) h += '<span>Flows</span><strong>' + node.flows + '</strong>';
-  if (node.riskScore) h += '<span>Risk score</span><strong>' + node.riskScore + '</strong>';
-  if (node.owner) h += '<span>Owner</span><strong>' + esc(node.owner) + '</strong>';
-  h += '</div>';
-  if (node.classifications && node.classifications.length) {
-    h += '<div class="topology-chip-row">' + node.classifications.map(c => '<span>' + esc(c) + '</span>').join('') + '</div>';
-  }
-  if (shown.length) {
-    h += '<div class="topology-related-title">Relationships <em style="color:var(--muted);font-family:var(--font-mono);font-size:.66rem">(' + related.length + ')</em></div>';
-    h += '<div class="topology-related">';
-    shown.forEach(link => {
-      const other = link.source === node.id ? link.target : link.source;
-      const isOut = link.source === node.id;
-      h += '<div class="topology-related-row topology-related-' + esc(link.kind) + '">';
-      h += '<span class="topology-related-kind">' + (isOut ? '→' : '←') + ' ' + esc(link.kind) + '</span>';
-      h += '<span>' + esc(topologyLabelFor(other)) + '</span>';
-      if (link.count > 1) h += '<em>×' + link.count + '</em>';
-      else h += '<em></em>';
-      h += '</div>';
-    });
-    h += '</div>';
-  }
-  inspector.innerHTML = h;
-}
-
-function renderTopologyDiagram() {
-  const host = document.getElementById('topologyGraph');
-  if (!host) return;
-  if (typeof d3 === 'undefined') {
-    host.innerHTML = '<div class="empty-state">Topology renderer unavailable.</div>';
-    return;
-  }
-
-  const filtered = topologyFiltered();
-  const nodes = filtered.nodes.map(node => Object.assign({}, node));
-  const links = filtered.links.map(link => Object.assign({}, link));
-  const counter = document.getElementById('topologyVisibleCount');
-  if (counter) counter.textContent = nodes.length + ' nodes · ' + links.length + ' links';
-
-  if (window._topologySimulation) window._topologySimulation.stop();
-  host.innerHTML = '';
-  if (nodes.length === 0) {
-    host.innerHTML = '<div class="empty-state">No matching topology data.</div>';
-    showTopologyOverview(0, 0);
-    return;
-  }
-
-  const bounds = host.getBoundingClientRect();
-  const width = Math.max(760, Math.floor(bounds.width || 960));
-  const height = Math.max(560, Math.min(820, Math.floor(window.innerHeight * 0.66)));
-  const nodeById = new Map(nodes.map(node => [node.id, node]));
-  const linksByNodeId = new Map();
-  nodes.forEach(n => linksByNodeId.set(n.id, new Set()));
-  links.forEach(l => {
-    const s = typeof l.source === 'string' ? l.source : l.source.id;
-    const t = typeof l.target === 'string' ? l.target : l.target.id;
-    if (linksByNodeId.has(s)) linksByNodeId.get(s).add(t);
-    if (linksByNodeId.has(t)) linksByNodeId.get(t).add(s);
-  });
-
-  const svg = d3.select(host).append('svg')
-    .attr('viewBox', '0 0 ' + width + ' ' + height)
-    .attr('width', width)
-    .attr('height', height)
-    .attr('role', 'img')
-    .attr('aria-label', 'Threat model topology');
-  const stage = svg.append('g');
-  const zoom = d3.zoom().scaleExtent([0.25, 3.8]).on('zoom', event => {
-    stage.attr('transform', event.transform);
-  });
-  svg.call(zoom);
-  window._topologyZoom = { svg, zoom };
-
-  const defs = svg.append('defs');
-  // Arrow markers — one per link kind so colour matches the edge.
-  const arrowKinds = [
-    { id: 'exposes', color: topologyColor('--sev-crit', '#ea1d1d') },
-    { id: 'confirmed', color: topologyColor('--sev-crit', '#ea1d1d') },
-    { id: 'mitigates', color: topologyColor('--green', '#33d49d') },
-    { id: 'protects', color: topologyColor('--green', '#33d49d') },
-    { id: 'validates', color: topologyColor('--green', '#33d49d') },
-    { id: 'flows', color: topologyColor('--blue', '#0360a2') },
-    { id: 'boundary', color: topologyColor('--purple', '#7d5cff') },
-    { id: 'accepts', color: topologyColor('--sev-med', '#55899e') },
-    { id: 'transfers', color: topologyColor('--sev-med', '#55899e') },
-  ];
-  arrowKinds.forEach(a => {
-    defs.append('marker')
-      .attr('id', 'topology-arrow-' + a.id)
-      .attr('viewBox', '0 -5 10 10')
-      .attr('refX', 20)
-      .attr('refY', 0)
-      .attr('markerWidth', 6)
-      .attr('markerHeight', 6)
-      .attr('orient', 'auto')
-      .append('path')
-      .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', a.color);
-  });
-  // Halo drop-shadow for confirmed/critical nodes
-  const glow = defs.append('filter').attr('id', 'topology-glow').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
-  glow.append('feGaussianBlur').attr('stdDeviation', '3.5').attr('result', 'blur');
-  const feMerge = glow.append('feMerge');
-  feMerge.append('feMergeNode').attr('in', 'blur');
-  feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
-
-  // Link distances bias flows/boundaries to stretch out; exposures stay tight.
-  const linkDistance = l => {
-    if (l.kind === 'flows' || l.kind === 'boundary') return 160;
-    if (l.kind === 'mitigates' || l.kind === 'protects' || l.kind === 'validates') return 120;
-    if (l.kind === 'transfers') return 140;
-    return 95;
-  };
-
-  const simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(links).id(node => node.id).distance(linkDistance).strength(0.72))
-    .force('charge', d3.forceManyBody().strength(node => node.kind === 'control' ? -320 : node.kind === 'threat' ? -520 : -460))
-    .force('x', d3.forceX(n => topologyLaneX(n, width)).strength(0.22))
-    .force('y', d3.forceY(n => topologyLaneY(n, height)).strength(0.10))
-    .force('collide', d3.forceCollide().radius(node => topologyRadius(node) + 22).iterations(2));
-  window._topologySimulation = simulation;
-
-  // Lane labels — subtle background text showing the three kind lanes.
-  const laneLabels = stage.append('g').attr('class', 'topology-lane-labels');
-  const lanes = [
-    { label: 'ASSETS', x: width * 0.22 },
-    { label: 'THREATS', x: width * 0.5 },
-    { label: 'CONTROLS', x: width * 0.78 },
-  ];
-  laneLabels.selectAll('text')
-    .data(lanes)
-    .join('text')
-    .attr('class', 'topology-lane-label')
-    .attr('x', d => d.x)
-    .attr('y', 22)
-    .attr('text-anchor', 'middle')
-    .text(d => d.label);
-
-  const link = stage.append('g')
-    .attr('class', 'topology-links')
-    .selectAll('line')
-    .data(links)
-    .join('line')
-    .attr('class', topologyLinkClass)
-    .attr('marker-end', d => 'url(#topology-arrow-' + d.kind + ')');
-  link.append('title').text(d => topologyLabelFor(d.source.id || d.source) + ' → ' + topologyLabelFor(d.target.id || d.target) + ' · ' + d.label);
-
-  const node = stage.append('g')
-    .attr('class', 'topology-nodes')
-    .selectAll('g')
-    .data(nodes)
-    .join('g')
-    .attr('class', topologyNodeClass)
-    .call(d3.drag()
-      .on('start', (event, d) => {
-        if (!event.active) simulation.alphaTarget(0.25).restart();
-        d.fx = d.x;
-        d.fy = d.y;
-      })
-      .on('drag', (event, d) => {
-        d.fx = event.x;
-        d.fy = event.y;
-      })
-      .on('end', (event, d) => {
-        if (!event.active) simulation.alphaTarget(0);
-        d.fx = null;
-        d.fy = null;
-      }));
-
-  // Pulsing halo for confirmed / critical-open nodes
-  node.filter(d => d.confirmed > 0 || ((d.severity === 'critical' || d.severity === 'p0') && d.openExposures > 0))
-    .insert('circle', ':first-child')
-    .attr('class', 'topology-node-halo')
-    .attr('r', d => topologyRadius(d) + 8);
-
-  node.append('circle')
-    .attr('class', 'topology-node-body')
-    .attr('r', topologyRadius);
-
-  // Mitigation coverage ring (arc) — only for assets with both exposures and mitigations
-  node.filter(d => d.kind === 'asset' && d.exposures > 0)
-    .append('path')
-    .attr('class', 'topology-coverage-arc')
-    .attr('d', d => {
-      const mit = d.exposures > 0 ? Math.min(1, d.mitigations / d.exposures) : 0;
-      if (mit <= 0) return '';
-      const r = topologyRadius(d) + 4;
-      const angle = mit * 2 * Math.PI;
-      const x1 = r * Math.sin(0);
-      const y1 = -r * Math.cos(0);
-      const x2 = r * Math.sin(angle);
-      const y2 = -r * Math.cos(angle);
-      const largeArc = mit > 0.5 ? 1 : 0;
-      return 'M 0 ' + (-r) + ' A ' + r + ' ' + r + ' 0 ' + largeArc + ' 1 ' + x2.toFixed(2) + ' ' + y2.toFixed(2);
-    });
-
-  node.append('text')
-    .attr('class', 'topology-node-icon')
-    .attr('text-anchor', 'middle')
-    .attr('dy', '0.35em')
-    .text(d => d.kind === 'asset' ? 'A' : d.kind === 'threat' ? 'T' : 'C');
-  node.append('text')
-    .attr('class', 'topology-node-label')
-    .attr('text-anchor', 'middle')
-    .attr('dy', d => topologyRadius(d) + 16)
-    .text(d => topologyShort(d.label, 24));
-  node.append('title').text(d => d.label + ' · ' + d.kind + ' · ' + d.status + (d.openExposures ? ' · ' + d.openExposures + ' open' : '') + (d.confirmed ? ' · ' + d.confirmed + ' confirmed' : ''));
-
-  // Connected-subgraph dim on hover
-  const applyDim = (activeId) => {
-    if (!activeId) {
-      node.classed('dim', false).classed('emphasis', false);
-      link.classed('dim', false).classed('emphasis', false);
-      return;
-    }
-    const neighbors = new Set([activeId]);
-    links.forEach(l => {
-      const s = l.source.id || l.source;
-      const t = l.target.id || l.target;
-      if (s === activeId || t === activeId) {
-        neighbors.add(s);
-        neighbors.add(t);
-      }
-    });
-    node.classed('dim', n => !neighbors.has(n.id)).classed('emphasis', n => neighbors.has(n.id));
-    link.classed('dim', l => {
-      const s = l.source.id || l.source;
-      const t = l.target.id || l.target;
-      return s !== activeId && t !== activeId;
-    }).classed('emphasis', l => {
-      const s = l.source.id || l.source;
-      const t = l.target.id || l.target;
-      return s === activeId || t === activeId;
-    });
-  };
-
-  node.on('mouseover', (event, d) => {
-    if (window._topologyPinnedId) return;
-    applyDim(d.id);
-  }).on('mouseout', () => {
-    if (window._topologyPinnedId) return;
-    applyDim(null);
-  });
-
-  node.on('click', (event, d) => {
-    event.stopPropagation();
-    window._topologyActiveNodeId = d.id;
-    window._topologyPinnedId = d.id;
-    node.classed('active', n => n.id === d.id);
-    applyDim(d.id);
-    showTopologyDetails(d);
-  });
-  svg.on('click', () => {
-    window._topologyActiveNodeId = null;
-    window._topologyPinnedId = null;
-    node.classed('active', false);
-    applyDim(null);
-    showTopologyOverview(nodes.length, links.length);
-  });
-
-  simulation.on('tick', () => {
-    link
-      .attr('x1', d => d.source.x)
-      .attr('y1', d => d.source.y)
-      .attr('x2', d => d.target.x)
-      .attr('y2', d => d.target.y);
-    node.attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
-  });
-
-  const active = window._topologyActiveNodeId && nodeById.get(window._topologyActiveNodeId);
-  if (active) {
-    node.classed('active', n => n.id === active.id);
-    applyDim(active.id);
-    showTopologyDetails(active);
-  } else {
-    showTopologyOverview(nodes.length, links.length);
-  }
-}
-
-function exportTopologySVG() {
-  const host = document.getElementById('topologyGraph');
-  if (!host) return;
-  const svg = host.querySelector('svg');
-  if (!svg) return;
-  const clone = svg.cloneNode(true);
-  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-  const xmlHeader = '<?xml version="1.0" standalone="no"?>';
-  const source = xmlHeader + '\\n' + new XMLSerializer().serializeToString(clone);
-  const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'guardlink-topology.svg';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /* ===== MERMAID ===== */
@@ -1515,10 +912,6 @@ async function renderMermaid() {
 function renderActiveDiagram() {
   const active = document.querySelector('.diagram-panel.active');
   if (!active) return;
-  if (active.id === 'dtab-risk-topology') {
-    renderTopologyDiagram();
-    return;
-  }
   renderMermaidPanel(active).then(() => { window._mermaidRendered = true; });
 }
 
@@ -1726,116 +1119,6 @@ function renderAIAnalysisPage(analyses: ThreatReportWithContent[]): string {
 </div>`;
 }
 
-function renderPentestPage(pentest: PentestData): string {
-  const hasScanData = pentest.scans.length > 0;
-  const hasTemplates = pentest.templates.length > 0;
-  const latestScan = pentest.scans[0];
-
-  let findingsHtml = '';
-  if (hasScanData) {
-    pentest.scans.forEach((scan, si) => {
-      const scanDate = scan.completed_at ? scan.completed_at.slice(0, 19).replace('T', ' ') : 'unknown';
-      const duration = scan.statistics?.duration
-        ? `${scan.statistics.duration.secs}s`
-        : '?';
-      findingsHtml += `
-      <div style="margin-bottom:1.5rem">
-        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem">
-          <span style="font-weight:600;font-size:.9rem">Scan ${esc(scan.scan_id.slice(0, 8))}</span>
-          <span style="font-size:.72rem;color:var(--muted)">${esc(scanDate)} &middot; ${esc(duration)} &middot; ${scan.findings.length} finding(s)</span>
-          <span style="font-size:.68rem;color:var(--muted);background:var(--surface2);padding:1px 6px;border-radius:4px">${esc(scan.source_file)}</span>
-        </div>`;
-
-      if (scan.findings.length > 0) {
-        findingsHtml += `
-        <table>
-          <thead><tr><th>Severity</th><th>Title</th><th>Template</th><th>CWE</th><th>Confidence</th></tr></thead>
-          <tbody>
-          ${scan.findings.map((f, fi) => `
-          <tr class="clickable" onclick="openPentestDrawer(${si}, ${fi})">
-            <td><span class="fc-sev ${f.severity === 'critical' ? 'crit' : f.severity === 'high' ? 'high' : f.severity === 'medium' ? 'med' : 'low'}">${esc(f.severity)}</span></td>
-            <td>${esc(f.title)}</td>
-            <td><code style="font-size:.72rem">${esc(f.template_id)}</code></td>
-            <td>${f.cwe_ids?.length ? f.cwe_ids.map(c => `<code style="font-size:.7rem">${esc(c)}</code>`).join(' ') : '—'}</td>
-            <td>${formatConfidence(f.confidence)}</td>
-          </tr>`).join('')}
-          </tbody>
-        </table>`;
-      } else {
-        findingsHtml += '<p class="empty-state">No findings in this scan — all checks passed.</p>';
-      }
-      findingsHtml += '</div>';
-    });
-  }
-
-  let templatesHtml = '';
-  if (hasTemplates) {
-    templatesHtml = `
-    <div class="sub-h">Templates (${pentest.templates.length})</div>
-    <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">CXG templates in <code>.guardlink/cxg-templates/</code> — click for details.</p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px">
-      ${pentest.templates.map((t, i) => `
-      <div class="finding-card" onclick="openTemplateDrawer(${i})">
-        <div class="fc-top">
-          <span class="fc-risk">${esc(t.id)}</span>
-          <span class="fc-sev ${t.severity === 'critical' ? 'crit' : t.severity === 'high' ? 'high' : t.severity === 'medium' ? 'med' : 'low'}">${esc(t.severity)}</span>
-        </div>
-        <div class="fc-assets">${esc(t.filename)} &middot; ${esc(t.language)}</div>
-        ${t.tags.length > 0 ? `<div style="margin-top:.3rem">${t.tags.slice(0, 4).map(tag => `<span class="data-badge">${esc(tag)}</span>`).join(' ')}</div>` : ''}
-      </div>`).join('')}
-    </div>`;
-  }
-
-  const sevBreakdown = pentest.findingsBySeverity;
-  const maxSevCount = Math.max(1, ...Object.values(sevBreakdown));
-
-  return `
-<div id="sec-pentest" class="section-content">
-  <div class="sec-h"><span class="sec-icon">🔬</span> Pentest Findings</div>
-
-  ${pentest.redactionApplied ? `
-  <div style="background:linear-gradient(135deg,rgba(56,178,172,0.08),rgba(56,178,172,0.03));border:1px solid rgba(56,178,172,0.35);border-radius:6px;padding:.55rem .8rem;margin-bottom:1rem;display:flex;align-items:center;gap:.55rem;font-size:.8rem">
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="rgb(56,178,172)" aria-hidden="true"><path d="M8 1a3 3 0 00-3 3v3H4a1 1 0 00-1 1v6a1 1 0 001 1h8a1 1 0 001-1V8a1 1 0 00-1-1h-1V4a3 3 0 00-3-3zM6 4a2 2 0 014 0v3H6V4z"/></svg>
-    <span><strong style="color:rgb(56,178,172)">Evidence redaction: enabled</strong> — JWT signatures stripped, credential values masked. Claims and exploit payloads preserved. See <code>docs/handling-evidence.md</code>.</span>
-  </div>
-  ` : ''}
-
-  ${hasScanData || hasTemplates ? `
-  <!-- Stats bar -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:1.2rem">
-    <div class="stat-card stat-red"><span class="value">${pentest.totalFindings}</span><span class="label">Total Findings</span></div>
-    <div class="stat-card"><span class="value">${sevBreakdown['critical'] || 0}</span><span class="label" style="color:var(--sev-crit)">Critical</span></div>
-    <div class="stat-card"><span class="value">${sevBreakdown['high'] || 0}</span><span class="label" style="color:var(--sev-high)">High</span></div>
-    <div class="stat-card"><span class="value">${sevBreakdown['medium'] || 0}</span><span class="label" style="color:var(--sev-med)">Medium</span></div>
-    <div class="stat-card"><span class="value">${sevBreakdown['low'] || 0}</span><span class="label" style="color:var(--sev-low)">Low</span></div>
-    <div class="stat-card stat-muted"><span class="value">${pentest.templates.length}</span><span class="label">Templates</span></div>
-    <div class="stat-card stat-muted"><span class="value">${pentest.scans.length}</span><span class="label">Scans</span></div>
-  </div>
-
-  ${hasScanData ? `
-  <div class="sub-h" style="color:var(--red)">Findings (${pentest.totalFindings})</div>
-  <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">Results from CXG security scans — click a finding for full evidence details.</p>
-  ${findingsHtml}
-  ` : ''}
-
-  ${templatesHtml}
-  ` : `
-  <div class="empty-state" style="text-align:center;padding:3rem 1rem">
-    <div style="font-size:3rem;margin-bottom:1rem;opacity:0.5">🔬</div>
-    <div style="font-size:1.1rem;font-weight:600;margin-bottom:0.5rem">No Pentest Data Yet</div>
-    <div style="color:var(--muted);margin-bottom:1.5rem">Generate CXG templates and run scans to see findings here</div>
-    <div style="display:flex;flex-direction:column;gap:0.5rem;max-width:550px;margin:0 auto;text-align:left">
-      <div style="font-size:0.88rem;color:var(--muted)"><strong>Step 1 — Generate templates:</strong></div>
-      <code style="display:block;padding:0.5rem;background:var(--surface2);border-radius:4px;font-size:0.82rem">guardlink translate "Create templates for critical threats" --claude-code</code>
-      <div style="font-size:0.88rem;color:var(--muted);margin-top:0.5rem"><strong>Step 2 — Run CXG scan:</strong></div>
-      <code style="display:block;padding:0.5rem;background:var(--surface2);border-radius:4px;font-size:0.82rem">cxg scan --scope local://. --template-dir .guardlink/cxg-templates/ --output .guardlink/pentest-findings/guardlink-pentest --output-format json,sarif</code>
-      <div style="font-size:0.88rem;color:var(--muted);margin-top:0.5rem"><strong>Step 3 — View results:</strong></div>
-      <code style="display:block;padding:0.5rem;background:var(--surface2);border-radius:4px;font-size:0.82rem">guardlink dashboard</code>
-    </div>
-  </div>`}
-</div>`;
-}
-
 function renderThreatsPage(exposures: ExposureRow[], confirmed: ConfirmedRow[], model: ThreatModel): string {
   const open = exposures.filter(e => !e.mitigated && !e.accepted);
   const mitigated = exposures.filter(e => e.mitigated);
@@ -1946,7 +1229,7 @@ function renderThreatsPage(exposures: ExposureRow[], confirmed: ConfirmedRow[], 
 </div>`;
 }
 
-function renderDiagramsPage(threatGraph: string, threatGraphFull: string, dataFlow: string, attackSurface: string, topology: DiagramTopology): string {
+function renderDiagramsPage(threatGraph: string, threatGraphFull: string, dataFlow: string, attackSurface: string): string {
   const tabs = [];
   const panels = [];
   const diagramActions = `
@@ -1955,68 +1238,6 @@ function renderDiagramsPage(threatGraph: string, threatGraphFull: string, dataFl
             <button class="diagram-btn" onclick="diagramZoom('in')" title="Zoom in">+</button>
             <button class="diagram-btn" onclick="diagramZoom('fit')" title="Reset view">Reset</button>
           </div>`;
-
-  if (topology.nodes.length > 0) {
-    tabs.push({ id: 'risk-topology', label: 'Risk Topology', icon: '◎' });
-    // Which link kinds are actually present? Only show filters that apply.
-    const availableLinkKinds: Set<string> = new Set(topology.links.map(l => l.kind));
-    const linkKindCatalog: Array<[string, string]> = [
-      ['exposes', 'Exposures'],
-      ['confirmed', 'Confirmed'],
-      ['mitigates', 'Mitigations'],
-      ['protects', 'Protects'],
-      ['validates', 'Validates'],
-      ['flows', 'Flows'],
-      ['boundary', 'Boundaries'],
-      ['transfers', 'Transfers'],
-      ['accepts', 'Accepts'],
-    ];
-    const linkFilters = linkKindCatalog
-      .filter(([k]) => availableLinkKinds.has(k))
-      .map(([k, label]) => `<label class="topology-link-pill topology-link-pill-${k}"><input type="checkbox" data-topology-link="${k}" checked onchange="renderTopologyDiagram()"> ${label}</label>`)
-      .join('\n          ');
-    panels.push(`<div id="dtab-risk-topology" class="diagram-panel active">
-      <div class="diagram-shell topology-shell">
-        <div class="diagram-toolbar topology-toolbar">
-          <span class="diagram-title">Risk Topology</span>
-          <div class="diagram-actions">
-            <button class="diagram-btn" onclick="exportTopologySVG()" title="Download SVG">⤓ SVG</button>
-            <button class="diagram-btn" onclick="diagramZoom('out')" title="Zoom out">−</button>
-            <button class="diagram-btn" onclick="diagramZoom('in')" title="Zoom in">+</button>
-            <button class="diagram-btn" onclick="diagramZoom('fit')" title="Reset view">Reset</button>
-          </div>
-        </div>
-        <div class="topology-controls">
-          <input id="topologySearch" class="diagram-search" type="search" placeholder="Search assets, threats, controls…" oninput="renderTopologyDiagram()">
-          <div class="topology-kind-toggles">
-            <label class="topology-kind-pill topology-kind-asset"><input type="checkbox" data-topology-kind="asset" checked onchange="renderTopologyDiagram()"> Assets</label>
-            <label class="topology-kind-pill topology-kind-threat"><input type="checkbox" data-topology-kind="threat" checked onchange="renderTopologyDiagram()"> Threats</label>
-            <label class="topology-kind-pill topology-kind-control"><input type="checkbox" data-topology-kind="control" checked onchange="renderTopologyDiagram()"> Controls</label>
-            <label class="topology-kind-pill topology-kind-openonly"><input id="topologyOpenOnly" type="checkbox" onchange="renderTopologyDiagram()"> Open only</label>
-          </div>
-          <span id="topologyVisibleCount" class="topology-count">${topology.nodes.length} nodes · ${topology.links.length} links</span>
-        </div>
-        <div class="topology-link-filters">
-          <span class="topology-link-filters-k">Edges</span>
-          ${linkFilters}
-        </div>
-        <div class="topology-layout">
-          <div id="topologyGraph" class="topology-graph"></div>
-          <aside id="topologyInspector" class="topology-inspector"></aside>
-        </div>
-        <div class="diagram-meta topology-legend">
-          <span><i class="legend-dot asset"></i>Asset</span>
-          <span><i class="legend-dot threat"></i>Threat</span>
-          <span><i class="legend-dot control"></i>Control</span>
-          <span><i class="legend-dot confirmed"></i>Confirmed</span>
-          <span><i class="legend-line exposes"></i>Exposure</span>
-          <span><i class="legend-line mitigates"></i>Mitigates</span>
-          <span><i class="legend-line flow"></i>Flow</span>
-          <span><i class="legend-line boundary"></i>Boundary</span>
-        </div>
-      </div>
-    </div>`);
-  }
 
   if (threatGraph) {
     tabs.push({ id: 'threat-graph', label: 'Threat Graph', icon: '🔷' });
@@ -2080,7 +1301,7 @@ ${diagramActions}
   return `
 <div id="sec-diagrams" class="section-content">
   <div class="sec-h"><span class="sec-icon">◉</span> Diagrams</div>
-  <p class="diagram-hint">Interactive diagrams generated from annotations. The topology view supports search, filtering, drag, pan, and node inspection.</p>
+  <p class="diagram-hint">Interactive diagrams generated from annotations. Scroll to zoom, drag to pan, double-click to reset the view.</p>
   <div class="diagram-tabs">
     ${tabs.map((t, i) => `<button class="diagram-tab${i === 0 ? ' active' : ''}" onclick="switchDiagramTab('${t.id}', this)">${t.icon} ${t.label}</button>`).join('')}
   </div>
@@ -3176,411 +2397,6 @@ tr.clickable:hover { background: var(--table-hover); }
 .mermaid svg path.flowchart-link {
   stroke-linecap: round;
 }
-.topology-shell { min-height: 720px; }
-.topology-toolbar { border-bottom-color: var(--border-subtle); }
-.topology-controls {
-  display: flex;
-  align-items: center;
-  gap: .7rem;
-  flex-wrap: wrap;
-  padding: .7rem .85rem;
-  border-bottom: 1px solid var(--border-subtle);
-  background: color-mix(in oklab, var(--surface) 96%, transparent);
-}
-.diagram-search {
-  min-width: 240px;
-  flex: 1;
-  max-width: 380px;
-  height: 34px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text);
-  padding: 0 .85rem;
-  font-family: var(--font-ui);
-  font-size: .82rem;
-  outline: none;
-  transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
-}
-.diagram-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.topology-kind-toggles { display: inline-flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
-.topology-kind-pill {
-  display: inline-flex; align-items: center; gap: .4rem;
-  padding: .3rem .65rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--muted);
-  font-size: .72rem;
-  font-weight: 600;
-  cursor: pointer;
-  user-select: none;
-  transition: all .15s var(--ease);
-}
-.topology-kind-pill:hover { border-color: var(--border-strong); color: var(--text); }
-.topology-kind-pill:has(input:checked) { background: var(--accent-soft); border-color: var(--accent-dim); color: var(--text); }
-.topology-kind-pill.topology-kind-asset:has(input:checked) { border-color: color-mix(in oklab, var(--blue) 50%, transparent); }
-.topology-kind-pill.topology-kind-threat:has(input:checked) { border-color: color-mix(in oklab, var(--sev-crit) 50%, transparent); }
-.topology-kind-pill.topology-kind-control:has(input:checked) { border-color: color-mix(in oklab, var(--green) 50%, transparent); }
-.topology-kind-pill input { position: absolute; opacity: 0; pointer-events: none; }
-.topology-kind-pill::before {
-  content: '';
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--muted);
-  transition: background .15s var(--ease);
-}
-.topology-kind-pill.topology-kind-asset::before { background: var(--blue); }
-.topology-kind-pill.topology-kind-threat::before { background: var(--sev-crit); }
-.topology-kind-pill.topology-kind-control::before { background: var(--green); }
-.topology-kind-pill:not(:has(input:checked))::before { background: var(--text-dim); opacity: .5; }
-
-.topology-link-filters {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  flex-wrap: wrap;
-  padding: .55rem .85rem;
-  border-bottom: 1px solid var(--border-subtle);
-  background: color-mix(in oklab, var(--surface2) 55%, var(--surface));
-}
-.topology-link-filters-k {
-  color: var(--muted);
-  font-size: .65rem;
-  text-transform: uppercase;
-  letter-spacing: .8px;
-  font-weight: 700;
-  margin-right: .2rem;
-}
-.topology-link-pill {
-  display: inline-flex; align-items: center; gap: .35rem;
-  padding: .22rem .55rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--muted);
-  font-size: .68rem;
-  font-weight: 600;
-  cursor: pointer;
-  user-select: none;
-  transition: all .12s var(--ease);
-}
-.topology-link-pill input { position: absolute; opacity: 0; pointer-events: none; }
-.topology-link-pill::before {
-  content: '';
-  display: inline-block;
-  width: 14px; height: 0;
-  border-top: 2px solid currentColor;
-}
-.topology-link-pill:has(input:checked) { color: var(--text); border-color: var(--border-strong); }
-.topology-link-pill:not(:has(input:checked)) { opacity: .45; }
-.topology-link-pill-exposes::before,
-.topology-link-pill-confirmed::before { border-color: var(--sev-crit); border-top-style: solid; }
-.topology-link-pill-mitigates::before,
-.topology-link-pill-protects::before,
-.topology-link-pill-validates::before { border-color: var(--green); border-top-style: solid; }
-.topology-link-pill-flows::before { border-color: var(--blue); border-top-style: dashed; }
-.topology-link-pill-boundary::before { border-color: var(--purple); border-top-style: dashed; }
-.topology-link-pill-transfers::before,
-.topology-link-pill-accepts::before { border-color: var(--sev-med); border-top-style: dashed; }
-
-.topology-count {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: .7rem;
-  font-family: var(--font-mono);
-  white-space: nowrap;
-  letter-spacing: .4px;
-}
-.topology-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  min-height: 600px;
-  background: var(--surface);
-}
-.topology-graph {
-  min-height: 600px;
-  overflow: hidden;
-  border-right: 1px solid var(--border-subtle);
-  background:
-    radial-gradient(ellipse 600px 320px at 30% 40%, color-mix(in oklab, var(--accent) 4%, transparent), transparent 70%),
-    radial-gradient(ellipse 500px 280px at 75% 70%, color-mix(in oklab, var(--sev-crit) 5%, transparent), transparent 70%),
-    linear-gradient(color-mix(in oklab, var(--border-subtle) 55%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in oklab, var(--border-subtle) 55%, transparent) 1px, transparent 1px),
-    var(--surface);
-  background-size: auto, auto, 36px 36px, 36px 36px, auto;
-  background-position: 0 0, 0 0, -1px -1px, -1px -1px, 0 0;
-}
-.topology-graph svg { width: 100%; height: 100%; display: block; cursor: grab; }
-.topology-graph svg:active { cursor: grabbing; }
-
-.topology-lane-label {
-  fill: color-mix(in oklab, var(--muted) 55%, transparent);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 3.5px;
-  text-transform: uppercase;
-  pointer-events: none;
-  user-select: none;
-}
-
-.topology-link {
-  stroke: var(--muted);
-  stroke-width: 1.4;
-  stroke-opacity: .42;
-  transition: stroke-opacity .2s var(--ease), stroke-width .2s var(--ease);
-}
-.topology-link-exposes { stroke: var(--sev-crit); stroke-opacity: .58; stroke-width: 1.6; }
-.topology-link-confirmed { stroke: var(--sev-crit); stroke-opacity: .9; stroke-width: 2.6; }
-.topology-link-mitigates,
-.topology-link-validates { stroke: var(--green); stroke-opacity: .62; stroke-width: 1.6; }
-.topology-link-protects { stroke: var(--green); stroke-opacity: .48; stroke-dasharray: 4 3; }
-.topology-link-flows { stroke: var(--blue); stroke-dasharray: 6 4; stroke-opacity: .6; stroke-width: 1.5; }
-.topology-link-boundary { stroke: var(--purple); stroke-dasharray: 2 5; stroke-width: 1.9; stroke-opacity: .75; }
-.topology-link-accepts { stroke: var(--sev-med); stroke-dasharray: 6 4; stroke-opacity: .7; }
-.topology-link-transfers { stroke: var(--sev-med); stroke-dasharray: 8 3; stroke-opacity: .7; }
-.topology-link-status-mitigated { stroke-opacity: .32; }
-.topology-link.emphasis { stroke-opacity: 1 !important; stroke-width: 2.4 !important; }
-.topology-link.dim { stroke-opacity: .08 !important; }
-
-.topology-node { cursor: pointer; transition: opacity .2s var(--ease); }
-.topology-node circle.topology-node-body {
-  stroke: var(--border-strong);
-  stroke-width: 1.4;
-  filter: drop-shadow(0 4px 10px rgba(0,0,0,.28));
-  transition: stroke-width .15s var(--ease), filter .15s var(--ease), r .25s var(--ease);
-}
-.topology-node:hover circle.topology-node-body,
-.topology-node.active circle.topology-node-body,
-.topology-node.emphasis circle.topology-node-body {
-  stroke-width: 2.6;
-  filter: drop-shadow(0 0 14px color-mix(in oklab, var(--accent) 48%, transparent));
-}
-.topology-node.active circle.topology-node-body { stroke: var(--accent); }
-.topology-node.dim { opacity: .18; }
-
-.topology-node-halo {
-  fill: transparent;
-  stroke: var(--sev-crit);
-  stroke-width: 2;
-  stroke-opacity: .55;
-  pointer-events: none;
-  filter: url(#topology-glow);
-  animation: topology-pulse 1.9s ease-in-out infinite;
-}
-.topology-fully-covered .topology-node-halo { display: none; }
-
-@keyframes topology-pulse {
-  0%, 100% { stroke-opacity: .3; transform: scale(1); }
-  50% { stroke-opacity: .75; transform: scale(1.08); }
-}
-
-.topology-coverage-arc {
-  fill: none;
-  stroke: var(--green);
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  opacity: .85;
-  pointer-events: none;
-}
-
-.topology-asset circle.topology-node-body { fill: color-mix(in oklab, var(--blue) 60%, var(--surface)); }
-.topology-threat circle.topology-node-body { fill: color-mix(in oklab, var(--sev-med) 60%, var(--surface)); }
-.topology-control circle.topology-node-body { fill: color-mix(in oklab, var(--green) 58%, var(--surface)); }
-.topology-has-open circle.topology-node-body { stroke: var(--sev-crit); }
-.topology-has-confirmed circle.topology-node-body { stroke: var(--sev-crit); stroke-width: 2; }
-.topology-fully-covered circle.topology-node-body { stroke: var(--green); }
-
-.topology-sev-critical circle.topology-node-body,
-.topology-sev-p0 circle.topology-node-body { fill: color-mix(in oklab, var(--sev-crit) 72%, var(--surface)); }
-.topology-sev-high circle.topology-node-body,
-.topology-sev-p1 circle.topology-node-body { fill: color-mix(in oklab, var(--red) 60%, var(--surface)); }
-
-.topology-node-icon {
-  fill: #fff;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .4px;
-  pointer-events: none;
-}
-.topology-node-label {
-  fill: var(--text);
-  paint-order: stroke;
-  stroke: var(--surface);
-  stroke-width: 4px;
-  stroke-linejoin: round;
-  font-size: 11px;
-  font-weight: 650;
-  pointer-events: none;
-}
-.topology-node.emphasis .topology-node-label { font-weight: 750; }
-
-.topology-inspector {
-  padding: 1rem .95rem;
-  overflow-y: auto;
-  background: color-mix(in oklab, var(--surface2) 78%, var(--surface));
-  border-left: 1px solid var(--border-subtle);
-}
-.topology-inspector-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .6rem;
-  margin-bottom: .35rem;
-}
-.topology-inspector-k {
-  color: var(--muted);
-  font-size: .66rem;
-  text-transform: uppercase;
-  letter-spacing: .8px;
-  font-weight: 700;
-}
-.topology-badge {
-  font-size: .62rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: .5px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-}
-.topology-badge-open { background: var(--sev-crit-bg); color: var(--sev-crit); border-color: color-mix(in oklab, var(--sev-crit) 35%, transparent); }
-.topology-badge-confirmed { background: var(--sev-crit-bg); color: var(--sev-crit); border-color: var(--sev-crit); animation: topology-pulse 2s ease-in-out infinite; }
-.topology-badge-covered { background: color-mix(in oklab, var(--green) 15%, transparent); color: var(--green); border-color: color-mix(in oklab, var(--green) 40%, transparent); }
-
-.topology-inspector h3 {
-  font-size: 1rem;
-  line-height: 1.25;
-  margin-bottom: .75rem;
-  word-break: break-word;
-}
-.topology-bar-wrap { margin: 0 0 .9rem 0; }
-.topology-bar-label {
-  display: flex; justify-content: space-between; align-items: baseline;
-  font-size: .68rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: .8px;
-  font-weight: 700;
-  margin-bottom: .3rem;
-}
-.topology-bar-label strong { color: var(--text); font-family: var(--font-mono); }
-.topology-bar {
-  height: 7px;
-  border-radius: 999px;
-  background: var(--surface3);
-  overflow: hidden;
-}
-.topology-bar-fill { height: 100%; border-radius: 999px; transition: width .5s var(--ease); }
-.topology-bar-fill.good { background: linear-gradient(90deg, color-mix(in oklab, var(--green) 70%, transparent), var(--green)); }
-.topology-bar-fill.warn { background: linear-gradient(90deg, color-mix(in oklab, var(--sev-med) 65%, transparent), var(--sev-med)); }
-.topology-bar-fill.bad { background: linear-gradient(90deg, color-mix(in oklab, var(--sev-crit) 65%, transparent), var(--sev-crit)); }
-
-.topology-detail-grid {
-  display: grid;
-  grid-template-columns: 88px 1fr;
-  gap: .4rem .7rem;
-  align-items: baseline;
-  font-size: .78rem;
-}
-.topology-detail-grid span { color: var(--muted); }
-.topology-detail-grid strong { color: var(--text); font-weight: 700; word-break: break-word; }
-.topology-detail-grid .danger,
-.topology-detail-grid .status-open,
-.topology-detail-grid .status-confirmed,
-.topology-detail-grid .sev-critical,
-.topology-detail-grid .sev-p0,
-.topology-detail-grid .sev-high,
-.topology-detail-grid .sev-p1 { color: var(--sev-crit); }
-.topology-detail-grid .good,
-.topology-detail-grid .status-mitigated { color: var(--green); }
-.topology-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .35rem;
-  margin-top: .9rem;
-}
-.topology-chip-row span {
-  border: 1px solid var(--accent-dim);
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-radius: 999px;
-  padding: 2px 8px;
-  font-size: .65rem;
-  font-weight: 700;
-}
-.topology-related-title {
-  margin: 1rem 0 .45rem;
-  color: var(--muted);
-  font-size: .68rem;
-  text-transform: uppercase;
-  letter-spacing: .7px;
-  font-weight: 700;
-}
-.topology-related { display: flex; flex-direction: column; gap: .35rem; }
-.topology-related-row {
-  display: grid;
-  grid-template-columns: 88px 1fr auto;
-  gap: .45rem;
-  align-items: center;
-  padding: .42rem .55rem;
-  border: 1px solid var(--border-subtle);
-  border-radius: 7px;
-  background: var(--surface);
-  font-size: .72rem;
-  transition: border-color .12s var(--ease);
-}
-.topology-related-row:hover { border-color: var(--border-strong); }
-.topology-related-exposes,
-.topology-related-confirmed { border-left: 2px solid var(--sev-crit); }
-.topology-related-mitigates,
-.topology-related-protects,
-.topology-related-validates { border-left: 2px solid var(--green); }
-.topology-related-flows { border-left: 2px solid var(--blue); }
-.topology-related-boundary { border-left: 2px solid var(--purple); }
-.topology-related-transfers,
-.topology-related-accepts { border-left: 2px solid var(--sev-med); }
-.topology-related-kind {
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: .64rem;
-  font-weight: 600;
-}
-.topology-related-row em { color: var(--muted); font-style: normal; font-family: var(--font-mono); }
-.topology-inspector-note {
-  margin-top: .9rem;
-  color: var(--muted);
-  font-size: .74rem;
-  line-height: 1.5;
-}
-.topology-legend {
-  display: flex;
-  align-items: center;
-  gap: .9rem;
-  flex-wrap: wrap;
-}
-.topology-legend span { display: inline-flex; align-items: center; gap: .35rem; }
-.legend-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-  border: 1px solid color-mix(in oklab, currentColor 30%, transparent);
-}
-.legend-dot.asset { background: var(--blue); }
-.legend-dot.threat { background: var(--sev-med); }
-.legend-dot.control { background: var(--green); }
-.legend-dot.confirmed { background: var(--sev-crit); box-shadow: 0 0 8px color-mix(in oklab, var(--sev-crit) 60%, transparent); }
-.legend-line {
-  display: inline-block;
-  width: 20px;
-  height: 0;
-  border-top: 2px solid var(--muted);
-}
-.legend-line.exposes { border-color: var(--sev-crit); }
-.legend-line.open { border-color: var(--sev-crit); }
-.legend-line.mitigates { border-color: var(--green); }
-.legend-line.flow { border-color: var(--blue); border-top-style: dashed; }
-.legend-line.boundary { border-color: var(--purple); border-top-style: dashed; }
 
 /* ── Heatmap ── */
 .heatmap { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
@@ -3701,17 +2517,12 @@ tr.clickable:hover { background: var(--table-hover); }
 @media (max-width: 900px) {
   .section-content { padding: 1.2rem 1rem 2rem; }
   .summary-panels { grid-template-columns: 1fr; }
-  .topology-layout { grid-template-columns: 1fr; }
-  .topology-graph { border-right: none; border-bottom: 1px solid var(--border); }
-  .topology-inspector { min-height: 220px; }
 }
 @media (max-width: 768px) {
   .sidebar { width: 52px; min-width: 52px; } .sidebar .nav-text { display: none; }
   .topnav .topnav-metrics { display: none; }
   .feature-filter-select { max-width: 130px; }
   .risk-banner { flex-direction: column; align-items: flex-start; gap: 12px; }
-  .diagram-search { min-width: 100%; max-width: none; }
-  .topology-count { margin-left: 0; width: 100%; }
   :root { --drawer-w: 100vw; }
 }
 @media print {

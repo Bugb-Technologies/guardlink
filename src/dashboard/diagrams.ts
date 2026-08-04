@@ -1,21 +1,19 @@
 /**
  * GuardLink Dashboard — diagram generators.
  *
- * Three Mermaid diagrams and one structured topology dataset.
+ * Three Mermaid diagrams.
  *   - generateThreatGraph      — LR flowchart of assets, threats, controls, mitigations
  *   - generateDataFlowDiagram  — LR flow graph with trust boundary groupings
  *   - generateAttackSurface    — TB grouping of exposures per asset, severity-coloured
- *   - generateTopologyData     — structured graph data powering the interactive D3 view
  *
- * All four generators share a single alias map so that #id, bare id, name, and
+ * All three generators share a single alias map so that #id, bare id, name, and
  * path.join() forms of an asset/threat/control collapse onto the same node.
  * This removes the long-standing duplicate-node bug that made the Mermaid
  * diagrams render the same asset twice whenever sources mixed ref forms.
  *
  * @flows ThreatModel -> #dashboard via generateThreatGraph -- "Threat model relationships rendered as Mermaid source"
- * @flows ThreatModel -> #dashboard via generateTopologyData -- "Threat model relationships rendered as structured D3 graph data"
- * @mitigates #dashboard against #xss using #output-encoding -- "Diagram labels are sanitized for Mermaid and emitted to D3 as text data"
- * @comment -- "Alias map collapses #id / name / path-joined ref forms so Mermaid and D3 views agree on identity"
+ * @mitigates #dashboard against #xss using #output-encoding -- "Diagram labels are sanitized before emission as Mermaid source"
+ * @comment -- "Alias map collapses #id / name / path-joined ref forms so all three diagrams agree on identity"
  */
 
 import type { ThreatModel } from '../types/index.js';
@@ -50,7 +48,6 @@ function refKey(ref: string): string {
 }
 
 const severityRank: Record<string, number> = { critical: 0, p0: 0, high: 1, p1: 1, medium: 2, p2: 2, low: 3, p3: 3, unset: 4 };
-const statusRank: Record<string, number> = { confirmed: 0, open: 1, accepted: 2, mitigated: 3, none: 4 };
 
 function normalizeSeverity(severity?: string): string {
   const s = (severity || '').toLowerCase();
@@ -59,10 +56,6 @@ function normalizeSeverity(severity?: string): string {
 
 function strongerSeverity(a: string, b: string): string {
   return (severityRank[b] ?? 4) < (severityRank[a] ?? 4) ? b : a;
-}
-
-function strongerStatus(a: string, b: string): string {
-  return (statusRank[b] ?? 4) < (statusRank[a] ?? 4) ? b : a;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -80,11 +73,6 @@ interface AliasNode {
   kind: NodeKind;
   severity: string;
   externalRefs: string[];
-  /** True when the entity was registered from model.assets/threats/controls
-   *  (i.e. declared in .guardlink/definitions.ts). False when the node was
-   *  synthesized by resolve() because a relationship referenced an
-   *  identifier that was never declared. */
-  declared: boolean;
 }
 
 interface ModelAliases {
@@ -108,7 +96,7 @@ function buildAliases(model: ThreatModel): ModelAliases {
     }
   };
 
-  const upsert = (kind: NodeKind, key: string, displayLabel: string, refs: Array<string | undefined>, opts?: { id?: string; severity?: string; externalRefs?: string[]; declared?: boolean }): AliasNode => {
+  const upsert = (kind: NodeKind, key: string, displayLabel: string, refs: Array<string | undefined>, opts?: { id?: string; severity?: string; externalRefs?: string[] }): AliasNode => {
     let node = byKey[kind].get(key);
     if (!node) {
       node = {
@@ -118,15 +106,12 @@ function buildAliases(model: ThreatModel): ModelAliases {
         kind,
         severity: normalizeSeverity(opts?.severity),
         externalRefs: opts?.externalRefs ? [...opts.externalRefs] : [],
-        declared: opts?.declared ?? false,
       };
     } else {
       if (displayLabel && displayLabel.length > node.label.length) node.label = displayLabel;
       if (opts?.id && !node.id) node.id = opts.id;
       if (opts?.severity) node.severity = strongerSeverity(node.severity, normalizeSeverity(opts.severity));
       if (opts?.externalRefs) for (const r of opts.externalRefs) if (!node.externalRefs.includes(r)) node.externalRefs.push(r);
-      // Once declared, always declared — a later synthesis pass shouldn't downgrade.
-      if (opts?.declared) node.declared = true;
     }
     register(kind, node, refs);
     return node;
@@ -137,7 +122,7 @@ function buildAliases(model: ThreatModel): ModelAliases {
   for (const a of model.assets) {
     const display = a.path.join('.');
     const key = a.id ? refKey(a.id) : refKey(display);
-    upsert('asset', key, display, [a.id, a.id ? `#${a.id}` : undefined, display, ...a.path], { id: a.id, declared: true });
+    upsert('asset', key, display, [a.id, a.id ? `#${a.id}` : undefined, display, ...a.path], { id: a.id });
   }
   for (const t of model.threats) {
     const key = t.id ? refKey(t.id) : refKey(t.name);
@@ -145,12 +130,11 @@ function buildAliases(model: ThreatModel): ModelAliases {
       id: t.id,
       severity: t.severity,
       externalRefs: t.external_refs,
-      declared: true,
     });
   }
   for (const c of model.controls) {
     const key = c.id ? refKey(c.id) : refKey(c.name);
-    upsert('control', key, c.name, [c.id, c.id ? `#${c.id}` : undefined, c.name, c.canonical_name], { id: c.id, declared: true });
+    upsert('control', key, c.name, [c.id, c.id ? `#${c.id}` : undefined, c.name, c.canonical_name], { id: c.id });
   }
 
   // Sweep exposures/mitigations to pick up severities for undefined threats and external refs.
@@ -169,7 +153,7 @@ function buildAliases(model: ThreatModel): ModelAliases {
     // Cross-kind fallback: an undeclared ref like `#login-sqli` may be referenced
     // as an asset by @exposes AND as a threat by @confirmed. Without this check,
     // we'd synthesize two separate nodes with the same identifier in different
-    // clusters of the topology graph. If the ref already exists under a different
+    // clusters of the diagram. If the ref already exists under a different
     // kind, return that node — a single canonical identity is more useful than
     // two duplicates the user can't tell apart visually.
     if (k) {
@@ -180,298 +164,13 @@ function buildAliases(model: ThreatModel): ModelAliases {
       }
     }
     const display = normalizeRef(ref) || 'unknown';
-    return upsert(kind, k || display.toLowerCase(), display, [ref, display], { declared: false });
+    return upsert(kind, k || display.toLowerCase(), display, [ref, display]);
   };
 
   return {
     resolve,
     getExisting: (kind, ref) => byRef[kind].get(refKey(ref)),
     getAll: (kind) => [...byKey[kind].values()],
-  };
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
- * Topology data (interactive D3 view)
- * ══════════════════════════════════════════════════════════════════════════ */
-
-export interface DiagramTopologyNode {
-  id: string;
-  label: string;
-  kind: 'asset' | 'threat' | 'control';
-  severity: string;
-  status: string;
-  exposures: number;
-  openExposures: number;
-  mitigations: number;
-  flows: number;
-  confirmed: number;
-  riskScore: number;
-  classifications: string[];
-  owner?: string;
-  refs: string[];
-  /** True when the underlying entity was declared in .guardlink/definitions.ts.
-   *  False for nodes synthesized from references in relationship annotations. */
-  declared: boolean;
-}
-
-export interface DiagramTopologyLink {
-  source: string;
-  target: string;
-  kind: 'exposes' | 'confirmed' | 'mitigates' | 'protects' | 'accepts' | 'transfers' | 'flows' | 'boundary' | 'validates';
-  label: string;
-  severity: string;
-  status: string;
-  count: number;
-}
-
-export interface DiagramTopology {
-  nodes: DiagramTopologyNode[];
-  links: DiagramTopologyLink[];
-  summary: {
-    assets: number;
-    threats: number;
-    controls: number;
-    links: number;
-    open: number;
-    mitigated: number;
-    accepted: number;
-    confirmed: number;
-    criticalAssets: number;
-  };
-}
-
-const topoId = (kind: NodeKind, key: string): string => `${kind}:${key || 'unknown'}`;
-
-/**
- * Build the structured graph consumed by the dashboard's native D3 topology.
- * Shares an alias map with the Mermaid generators so #id/name/path forms agree.
- */
-export function generateTopologyData(model: ThreatModel): DiagramTopology {
-  const aliases = buildAliases(model);
-
-  const nodes = new Map<string, DiagramTopologyNode>();
-  const links = new Map<string, DiagramTopologyLink>();
-
-  const materialize = (alias: AliasNode): DiagramTopologyNode => {
-    const id = topoId(alias.kind, alias.key);
-    let node = nodes.get(id);
-    if (!node) {
-      node = {
-        id,
-        label: alias.label,
-        kind: alias.kind,
-        severity: alias.severity,
-        status: 'none',
-        exposures: 0,
-        openExposures: 0,
-        mitigations: 0,
-        flows: 0,
-        confirmed: 0,
-        riskScore: 0,
-        classifications: [],
-        refs: [alias.label, alias.id, alias.id ? `#${alias.id}` : undefined].filter(Boolean) as string[],
-        declared: alias.declared,
-      };
-      nodes.set(id, node);
-    } else {
-      node.severity = strongerSeverity(node.severity, alias.severity);
-      if (alias.label.length > node.label.length) node.label = alias.label;
-      // Once declared (alias was upgraded by a later upsert), reflect that
-      // on the topology node too — never downgrade.
-      if (alias.declared) node.declared = true;
-    }
-    return node;
-  };
-
-  const resolve = (kind: NodeKind, ref: string): DiagramTopologyNode => materialize(aliases.resolve(kind, ref));
-
-  const addLink = (
-    source: string,
-    target: string,
-    kind: DiagramTopologyLink['kind'],
-    labelText: string,
-    severity: string = 'unset',
-    status: string = 'none',
-  ): void => {
-    if (!source || !target || source === target) return;
-    const key = `${source}|${target}|${kind}|${labelText}`;
-    const sev = normalizeSeverity(severity);
-    let link = links.get(key);
-    if (!link) {
-      link = { source, target, kind, label: labelText, severity: sev, status, count: 0 };
-      links.set(key, link);
-    }
-    link.count++;
-    link.severity = strongerSeverity(link.severity, sev);
-    link.status = strongerStatus(link.status, status);
-  };
-
-  const markNode = (node: DiagramTopologyNode, severity: string, status: string): void => {
-    node.severity = strongerSeverity(node.severity, normalizeSeverity(severity));
-    node.status = strongerStatus(node.status, status);
-  };
-
-  // Pre-seed nodes for every defined entity so the graph reflects the full model,
-  // not just what relationships happen to reference.
-  for (const a of aliases.getAll('asset')) materialize(a);
-  for (const t of aliases.getAll('threat')) materialize(t);
-  for (const c of aliases.getAll('control')) materialize(c);
-
-  // Classifications + ownership
-  for (const h of model.data_handling) {
-    const asset = resolve('asset', h.asset);
-    const classification = h.classification.toUpperCase();
-    if (!asset.classifications.includes(classification)) asset.classifications.push(classification);
-  }
-  for (const o of model.ownership) {
-    resolve('asset', o.asset).owner = o.owner;
-  }
-
-  // Compute per-pair resolution status for exposure links
-  const mitigatedPairs = new Set<string>();
-  const acceptedPairs = new Set<string>();
-  for (const m of model.mitigations) {
-    const asset = resolve('asset', m.asset);
-    const threat = resolve('threat', m.threat);
-    mitigatedPairs.add(`${asset.id}::${threat.id}`);
-  }
-  for (const a of model.acceptances) {
-    const asset = resolve('asset', a.asset);
-    const threat = resolve('threat', a.threat);
-    acceptedPairs.add(`${asset.id}::${threat.id}`);
-  }
-
-  for (const e of model.exposures) {
-    const asset = resolve('asset', e.asset);
-    const threat = resolve('threat', e.threat);
-    const pair = `${asset.id}::${threat.id}`;
-    const status = acceptedPairs.has(pair) ? 'accepted' : mitigatedPairs.has(pair) ? 'mitigated' : 'open';
-    const severity = normalizeSeverity(e.severity);
-    asset.exposures++;
-    threat.exposures++;
-    if (status === 'open') {
-      asset.openExposures++;
-      threat.openExposures++;
-    }
-    markNode(asset, severity, status);
-    markNode(threat, severity, status);
-    addLink(asset.id, threat.id, 'exposes', 'exposes', severity, status);
-  }
-
-  for (const c of model.confirmed || []) {
-    const asset = resolve('asset', c.asset);
-    const threat = resolve('threat', c.threat);
-    const severity = normalizeSeverity(c.severity);
-    asset.confirmed++;
-    threat.confirmed++;
-    markNode(asset, severity, 'confirmed');
-    markNode(threat, severity, 'confirmed');
-    addLink(asset.id, threat.id, 'confirmed', 'confirmed', severity, 'confirmed');
-  }
-
-  for (const m of model.mitigations) {
-    const asset = resolve('asset', m.asset);
-    const threat = resolve('threat', m.threat);
-    asset.mitigations++;
-    threat.mitigations++;
-    markNode(asset, 'unset', 'mitigated');
-    markNode(threat, 'unset', 'mitigated');
-    if (m.control) {
-      const control = resolve('control', m.control);
-      control.mitigations++;
-      addLink(control.id, threat.id, 'mitigates', 'mitigates', threat.severity, 'mitigated');
-      addLink(control.id, asset.id, 'protects', 'protects', 'unset', 'mitigated');
-    } else {
-      addLink(asset.id, threat.id, 'mitigates', 'mitigates', threat.severity, 'mitigated');
-    }
-  }
-
-  for (const a of model.acceptances) {
-    const asset = resolve('asset', a.asset);
-    const threat = resolve('threat', a.threat);
-    markNode(asset, threat.severity, 'accepted');
-    markNode(threat, threat.severity, 'accepted');
-    addLink(asset.id, threat.id, 'accepts', 'accepts', threat.severity, 'accepted');
-  }
-
-  for (const t of model.transfers) {
-    const source = resolve('asset', t.source);
-    const target = resolve('asset', t.target);
-    const threat = resolve('threat', t.threat);
-    addLink(source.id, target.id, 'transfers', `transfers ${threat.label}`, threat.severity, 'none');
-  }
-
-  for (const f of model.flows) {
-    const source = resolve('asset', f.source);
-    const target = resolve('asset', f.target);
-    source.flows++;
-    target.flows++;
-    addLink(source.id, target.id, 'flows', f.mechanism || 'flows', 'unset', 'none');
-  }
-
-  for (const b of model.boundaries) {
-    const a = resolve('asset', b.asset_a);
-    const z = resolve('asset', b.asset_b);
-    addLink(a.id, z.id, 'boundary', b.description || b.id || 'trust boundary', 'unset', 'none');
-  }
-
-  for (const v of model.validations) {
-    const control = resolve('control', v.control);
-    const asset = resolve('asset', v.asset);
-    addLink(control.id, asset.id, 'validates', 'validates', 'unset', 'mitigated');
-  }
-
-  // Risk score: exposures weighted by severity, amplified by confirmed hits.
-  const sevWeight: Record<string, number> = { critical: 10, p0: 10, high: 6, p1: 6, medium: 3, p2: 3, low: 1, p3: 1, unset: 1 };
-  for (const n of nodes.values()) {
-    n.riskScore = n.openExposures * (sevWeight[n.severity] ?? 1) + n.confirmed * 12;
-  }
-
-  const nodeList = [...nodes.values()]
-    .map(n => ({ ...n, classifications: [...n.classifications].sort(), refs: [...n.refs].sort() }))
-    .sort((a, b) => {
-      const kindOrder = { asset: 0, threat: 1, control: 2 };
-      const byKind = kindOrder[a.kind] - kindOrder[b.kind];
-      if (byKind !== 0) return byKind;
-      const byRisk = b.riskScore - a.riskScore;
-      if (byRisk !== 0) return byRisk;
-      const bySeverity = (severityRank[a.severity] ?? 4) - (severityRank[b.severity] ?? 4);
-      if (bySeverity !== 0) return bySeverity;
-      return a.label.localeCompare(b.label);
-    });
-  const linkList = [...links.values()].sort((a, b) => a.kind.localeCompare(b.kind) || b.count - a.count || a.label.localeCompare(b.label));
-
-  const openCount = model.exposures.filter(e => {
-    const assetId = topoId('asset', aliases.resolve('asset', e.asset).key);
-    const threatId = topoId('threat', aliases.resolve('threat', e.threat).key);
-    const pair = `${assetId}::${threatId}`;
-    return !mitigatedPairs.has(pair) && !acceptedPairs.has(pair);
-  }).length;
-  const mitigatedCount = model.exposures.filter(e => {
-    const assetId = topoId('asset', aliases.resolve('asset', e.asset).key);
-    const threatId = topoId('threat', aliases.resolve('threat', e.threat).key);
-    return mitigatedPairs.has(`${assetId}::${threatId}`);
-  }).length;
-  const acceptedCount = model.exposures.filter(e => {
-    const assetId = topoId('asset', aliases.resolve('asset', e.asset).key);
-    const threatId = topoId('threat', aliases.resolve('threat', e.threat).key);
-    return acceptedPairs.has(`${assetId}::${threatId}`);
-  }).length;
-
-  return {
-    nodes: nodeList,
-    links: linkList,
-    summary: {
-      assets: nodeList.filter(n => n.kind === 'asset').length,
-      threats: nodeList.filter(n => n.kind === 'threat').length,
-      controls: nodeList.filter(n => n.kind === 'control').length,
-      links: linkList.length,
-      open: openCount,
-      mitigated: mitigatedCount,
-      accepted: acceptedCount,
-      confirmed: (model.confirmed || []).length,
-      criticalAssets: nodeList.filter(n => n.kind === 'asset' && (n.severity === 'critical' || n.severity === 'p0') && n.status !== 'mitigated').length,
-    },
   };
 }
 

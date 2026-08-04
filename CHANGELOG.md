@@ -3,6 +3,13 @@ All notable changes to GuardLink CLI will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## \[Unreleased\]
+
+### Removed
+
+- **Risk Topology graph removed from the dashboard Diagrams page.** The force-directed D3 view (`generateTopologyData`, the `Risk Topology` tab, and its client-side renderer/inspector) grew unreadably dense on large codebases — a hairball that obscured more than it showed. The three Mermaid views (Threat Graph, Data Flow, Attack Surface) remain, and the Threat Graph still auto-filters to high/critical with an *All severities* toggle. `generateTopologyData` and the `DiagramTopology*` types are gone from `src/dashboard/diagrams.js`.
+- **Pentest Findings page removed from the dashboard.** The sidebar entry, the findings/templates page, and the finding + template detail drawers are gone; `generateDashboardHTML` no longer takes a `pentestData` argument and the dashboard no longer embeds raw scan JSON. Pentest ingestion itself is unchanged — CXG scan results in `.guardlink/pentest-findings/` still flow into `guardlink threat-report` / AI analyses as `<pentest_findings>` context, and evidence redaction still applies at load time.
+
 ## \[1.4.5\] — 2026-07-21
 
 ### Fixed
