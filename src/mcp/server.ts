@@ -53,7 +53,7 @@ import { generateDashboardHTML } from '../dashboard/index.js';
 import { diffModels, parseAtRef, formatDiffMarkdown } from '../diff/index.js';
 import { lookup, type LookupQuery } from './lookup.js';
 import { suggestAnnotations } from './suggest.js';
-import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, loadPentestData, buildConfig, serializeModel, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
+import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModel, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
 import { loadWorkspaceConfig } from '../workspace/index.js';
@@ -376,8 +376,7 @@ export function createServer(): McpServer {
       const { writeFile } = await import('node:fs/promises');
       const { resolve } = await import('node:path');
       const analyses = loadThreatReportsForDashboard(root);
-      const pentestData = loadPentestData(root);
-      const html = generateDashboardHTML(model, root, analyses, pentestData);
+      const html = generateDashboardHTML(model, root, analyses);
       await writeFile(resolve(root, output), html);
       return {
         content: [{ type: 'text', text: JSON.stringify({

@@ -68,11 +68,11 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 - #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
 - #cli exposed to #cmd-injection [critical] (src/cli/index.ts:33)
 - #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:16)
+- #init exposed to #data-exposure [low] (src/init/index.ts:12)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
 - #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:30)
 - #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:34)
 - #suggest exposed to #dos [low] (src/mcp/suggest.ts:16)
-- #init exposed to #data-exposure [low] (src/init/index.ts:12)
 - #parser exposed to #arbitrary-write [high] (src/parser/clear.ts:8)
 - #tui exposed to #cmd-injection [high] (src/tui/commands.ts:11)
 - #tui exposed to #prompt-injection [medium] (src/tui/commands.ts:15)
@@ -99,7 +99,7 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
 - #llm-client -> NVD via fetch
-- ... and 55 more
+- ... and 54 more
 
 ### Features (filter with `--feature`)
 
@@ -108,13 +108,14 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 
 ### Model Stats
 
-310 annotations, 16 assets, 15 threats, 12 controls, 61 exposures, 0 confirmed, 48 mitigations, 75 flows, 2 features
+312 annotations, 16 assets, 15 threats, 12 controls, 62 exposures, 0 confirmed, 49 mitigations, 74 flows, 2 features
 
 > **Note:** This section is auto-generated. Run `guardlink sync` to update after code changes.
 > Any coding agent (Cursor, Claude, Copilot, Windsurf, etc.) should reference these IDs
 > and continue annotating new code using the same threat model vocabulary.
 
 <!-- guardlink:end -->
+
 
 
 

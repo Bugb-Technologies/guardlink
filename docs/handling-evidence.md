@@ -70,10 +70,10 @@ If your team uses a different VCS or ignore mechanism (Perforce p4ignore, Saplin
 
 The ignore-file step handles **version-controlled** leakage. The other class of risk is **dynamic** — screenshots, exported HTML, demo screencasts, files emailed to vendors. The data still lives on disk and in memory. A few patterns to keep in mind:
 
-- **Dashboard HTML output.** `guardlink dashboard . -o report.html` produces a standalone HTML file that embeds the full pentest data. If that file is shared, the embedded tokens go with it. Review before sharing.
-- **Screenshots of the Pentest Findings tab.** Before screenshotting confirmed-finding evidence panels for a deck or blog post, check what's in the request/response strings. If the test target is a real production or staging system, assume live credentials are visible.
+- **Threat reports.** `guardlink threat-report` sends findings to an LLM as `<pentest_findings>` context, and the generated markdown can quote evidence back verbatim. Read the report before sharing it.
+- **Dashboard HTML output.** `guardlink dashboard . -o report.html` produces a standalone HTML file that embeds every saved threat report. It does not embed raw scan JSON, but any evidence a report quoted travels with the file. Review before sharing.
 - **Markdown reports.** `guardlink report` does not currently embed full evidence into markdown output — it references the JSON files. Safe for sharing as long as the JSON files don't travel with it.
-- **Recordings and demos.** A screencast capturing dashboard navigation may visually expose tokens for a fraction of a second. If you're recording for a public launch or pitch, run the scan against a test fixture (e.g. OWASP Juice Shop) where the credentials are well-known test values, not real secrets.
+- **Recordings and demos.** A screencast scrolling through a threat report may visually expose tokens for a fraction of a second. If you're recording for a public launch or pitch, run the scan against a test fixture (e.g. OWASP Juice Shop) where the credentials are well-known test values, not real secrets.
 
 ## Opt-in surgical redaction
 
@@ -85,7 +85,7 @@ For teams whose compliance posture requires that **no credential material exists
 guardlink config set redact-evidence true
 ```
 
-This writes `redactEvidence: true` to `.guardlink/config.json`. From the next dashboard / report / SARIF generation onward, all evidence is redacted as it loads — before any downstream consumer sees the data.
+This writes `redactEvidence: true` to `.guardlink/config.json`. From the next threat-report / report / SARIF generation onward, all evidence is redacted as it loads — before any downstream consumer sees the data.
 
 To disable:
 
@@ -126,20 +126,16 @@ The redaction is **surgical**, not blanket. The principle is: redact what enable
 
 ### When redaction runs
 
-- **Load-time only.** GuardLink reads the JSON file from disk, applies redaction once, and the redacted form is what every downstream consumer (dashboard, markdown report, SARIF, MCP queries from coding agents) sees.
-- **The JSON files on disk are not modified.** Redaction is a read-time transform. Disabling the flag and re-running restores full evidence to the dashboard.
+- **Load-time only.** GuardLink reads the JSON file from disk, applies redaction once, and the redacted form is what every downstream consumer (threat reports, markdown report, SARIF, MCP queries from coding agents) sees.
+- **The JSON files on disk are not modified.** Redaction is a read-time transform. Disabling the flag and re-running restores full evidence to downstream output.
 - **Idempotent.** Running redaction on already-redacted content is a no-op — the redaction markers themselves don't match any of the input patterns.
-
-### Visual indicator
-
-When redaction is active, the Pentest Findings tab in the dashboard displays a teal banner: *Evidence redaction: enabled — JWT signatures stripped, credential values masked. Claims and exploit payloads preserved.* This is so a reader of the dashboard can't be confused about whether they're seeing full or redacted data.
 
 ### Caveats
 
 - **JWT payloads can still contain PII** — `{"email":"alice@example.com","name":"Alice"}` would survive redaction since email/name aren't credential field names. If your test data includes PII you need to scrub, that's a separate concern from credential redaction. Use test accounts with synthetic data, or post-process the JSON before sharing.
 - **Novel token formats** — the redaction patterns target well-known shapes (JWT, common credential field names). A custom token format your application uses (`MyOrg-Token: xyz123`) won't be caught. If you need broader coverage, file an issue with the pattern and we'll add it.
 - **Performance** — for typical scan results (handfuls of findings), the redaction pass is sub-millisecond. Large scans with hundreds of findings each containing many KB of response body may take meaningfully longer to load; measure if it becomes a concern.
-- **Toggling at runtime** — if you enable redaction, view the dashboard, then disable, the dashboard does not auto-refresh. Re-run `guardlink dashboard` to regenerate.
+- **Toggling at runtime** — already-generated output is a snapshot. If you enable redaction after generating a threat report or SARIF file, re-run the command to regenerate it.
 
 ## Quick reference
 

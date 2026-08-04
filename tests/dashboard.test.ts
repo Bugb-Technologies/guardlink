@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface, generateTopologyData } from '../src/dashboard/diagrams.js';
+import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface } from '../src/dashboard/diagrams.js';
 import { computeExposures } from '../src/dashboard/data.js';
 import type { ThreatModel } from '../src/types/index.js';
 
@@ -81,7 +81,7 @@ describe('generateThreatGraph', () => {
     expect(assetLines.length).toBe(1);
   });
 
-  it('adds a protects link from control to asset distinct from mitigates', () => {
+  it('adds a protects edge from control to asset distinct from mitigates', () => {
     const model = emptyModel({
       assets: [{ path: ['App', 'API'], id: 'api', location: loc }],
       threats: [{ name: 'XSS', canonical_name: 'xss', id: 'xss', severity: 'high', external_refs: [], location: loc }],
@@ -89,13 +89,10 @@ describe('generateThreatGraph', () => {
       exposures: [{ asset: '#api', threat: '#xss', severity: 'high', external_refs: [], location: loc }],
       mitigations: [{ asset: '#api', threat: '#xss', control: '#output-encoding', location: loc }],
     });
-    const topology = generateTopologyData(model);
-    expect(topology.links.some(l => l.kind === 'mitigates')).toBe(true);
-    expect(topology.links.some(l => l.kind === 'protects')).toBe(true);
-    // Protects links are control → asset (not control → threat)
-    const protectsLink = topology.links.find(l => l.kind === 'protects');
-    expect(protectsLink?.source).toBe('control:output-encoding');
-    expect(protectsLink?.target).toBe('asset:api');
+    const mermaid = generateThreatGraph(model);
+    // Mitigates goes control → threat; protects goes control → asset.
+    expect(mermaid).toContain('output_encoding -- mitigates --> xss');
+    expect(mermaid).toContain('output_encoding -. protects .-> api');
   });
 
   it('marks confirmed exploits distinctly in Attack Surface', () => {
@@ -209,49 +206,14 @@ describe('generateAttackSurface', () => {
   });
 });
 
-// ─── Topology Data: dashboard-native graph ───────────────────────────
+// ─── Alias canonicalization: shared by all three diagrams ────────────
 
-describe('generateTopologyData', () => {
-  it('uses definition labels when relationships reference #ids', () => {
-    const model = emptyModel({
-      assets: [{ path: ['App', 'API'], id: 'api', location: loc }],
-      threats: [{ name: 'Cross_Site_Scripting', canonical_name: 'xss', id: 'xss', severity: 'high', external_refs: [], location: loc }],
-      exposures: [{ asset: '#api', threat: '#xss', severity: 'high', external_refs: [], location: loc }],
-    });
-    const topology = generateTopologyData(model);
-    expect(topology.nodes.find(n => n.id === 'asset:api')?.label).toBe('App.API');
-    expect(topology.nodes.find(n => n.id === 'threat:xss')?.label).toBe('Cross_Site_Scripting');
-  });
-
-  it('marks exposure links as mitigated when normalized refs match controls', () => {
-    const model = emptyModel({
-      exposures: [{ asset: '#app', threat: '#xss', severity: 'high', external_refs: [], location: loc }],
-      mitigations: [{ asset: 'app', threat: 'xss', control: '#output-encoding', location: loc }],
-    });
-    const topology = generateTopologyData(model);
-    expect(topology.summary.open).toBe(0);
-    expect(topology.summary.mitigated).toBe(1);
-    expect(topology.links.find(l => l.kind === 'exposes')?.status).toBe('mitigated');
-    expect(topology.nodes.find(n => n.id === 'control:output-encoding')).toBeTruthy();
-  });
-
-  it('includes flows and boundaries as asset relationships', () => {
-    const model = emptyModel({
-      flows: [{ source: 'Browser', target: 'API', mechanism: 'HTTPS', location: loc }],
-      boundaries: [{ asset_a: 'Browser', asset_b: 'API', description: 'Internet edge', location: loc }],
-    });
-    const topology = generateTopologyData(model);
-    expect(topology.links.some(l => l.kind === 'flows' && l.label === 'HTTPS')).toBe(true);
-    expect(topology.links.some(l => l.kind === 'boundary' && l.label === 'Internet edge')).toBe(true);
-  });
-
-  // ── Bug 9: cross-kind dedup for undeclared refs ────────────────────
-
+describe('ref canonicalization', () => {
   it('dedupes a single undeclared ref referenced as both asset and threat', () => {
     // The bug: `#login-sqli` was synthesized as an asset (from @exposes) AND
     // a separate threat node (from @confirmed where the same id appears in
-    // the threat slot), producing two visually-identical nodes in different
-    // clusters. After the fix: one node, marked declared: false.
+    // the threat slot), producing two visually-identical nodes. After the
+    // fix the alias map resolves both references to one node.
     const model = emptyModel({
       exposures: [
         { asset: '#login-sqli', threat: '#sqli', severity: 'critical', external_refs: [], location: loc },
@@ -260,41 +222,15 @@ describe('generateTopologyData', () => {
         { threat: '#login-sqli', asset: '#login', severity: 'critical', external_refs: [], location: loc },
       ],
     });
-    const topology = generateTopologyData(model);
-    const matching = topology.nodes.filter(n => n.label === '#login-sqli' || n.id.endsWith(':login-sqli'));
-    expect(matching).toHaveLength(1);
-    expect(matching[0].declared).toBe(false);
-  });
-
-  it('marks declared assets/threats/controls with declared: true', () => {
-    const model = emptyModel({
-      assets:   [{ path: ['App', 'API'], id: 'api', location: loc }],
-      threats:  [{ name: 'XSS', canonical_name: 'xss', id: 'xss', severity: 'high', external_refs: [], location: loc }],
-      controls: [{ name: 'CSRF_Token', canonical_name: 'csrf_token', id: 'csrf', location: loc }],
-    });
-    const topology = generateTopologyData(model);
-    expect(topology.nodes.find(n => n.id === 'asset:api')?.declared).toBe(true);
-    expect(topology.nodes.find(n => n.id === 'threat:xss')?.declared).toBe(true);
-    expect(topology.nodes.find(n => n.id === 'control:csrf')?.declared).toBe(true);
-  });
-
-  it('marks synthesized nodes for undeclared refs with declared: false', () => {
-    const model = emptyModel({
-      exposures: [
-        { asset: '#undefined-asset', threat: '#undefined-threat', severity: 'high', external_refs: [], location: loc },
-      ],
-    });
-    const topology = generateTopologyData(model);
-    const a = topology.nodes.find(n => n.id === 'asset:undefined-asset');
-    const t = topology.nodes.find(n => n.id === 'threat:undefined-threat');
-    expect(a?.declared).toBe(false);
-    expect(t?.declared).toBe(false);
+    const mermaid = generateThreatGraph(model);
+    const declarations = mermaid.split('\n').filter(l => /^\s*login_sqli\[/.test(l));
+    expect(declarations).toHaveLength(1);
   });
 
   it('declared kind wins when an undeclared ref later appears in another slot', () => {
     // #login is declared as an asset. A later @confirmed annotation
     // references #login on the threat side (technically a user error, but
-    // the topology should defer to the declaration rather than synthesize a
+    // the diagram should defer to the declaration rather than synthesize a
     // duplicate threat node).
     const model = emptyModel({
       assets: [{ path: ['App', 'Login'], id: 'login', location: loc }],
@@ -302,11 +238,11 @@ describe('generateTopologyData', () => {
         { threat: '#login', asset: '#some-asset', severity: 'critical', external_refs: [], location: loc },
       ],
     });
-    const topology = generateTopologyData(model);
-    const matching = topology.nodes.filter(n => n.label === '#login' || n.id.endsWith(':login'));
-    expect(matching).toHaveLength(1);
-    expect(matching[0].kind).toBe('asset');
-    expect(matching[0].declared).toBe(true);
+    const mermaid = generateThreatGraph(model);
+    // #login resolves to the declared asset — it must not also be synthesized
+    // as a threat node.
+    expect(mermaid).not.toMatch(/login\[[^\]]*\]:::threat/);
+    expect(mermaid).toContain('== "💥 confirmed" ==> login');
   });
 });
 

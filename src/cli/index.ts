@@ -1407,8 +1407,7 @@ program
     }
 
     const analyses = loadThreatReportsForDashboard(root);
-    const pentestData = loadPentestData(root);
-    let html = generateDashboardHTML(model, root, analyses, pentestData);
+    let html = generateDashboardHTML(model, root, analyses);
 
     // Switch default theme if requested
     if (opts.light) {
