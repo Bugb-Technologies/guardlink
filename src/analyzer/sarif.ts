@@ -21,6 +21,8 @@
  * @flows #sarif -> SarifLog via return -- "SARIF output"
  */
 
+import { createHash } from 'node:crypto';
+
 import type { ThreatModel, ThreatModelExposure, ParseDiagnostic, Severity } from '../types/index.js';
 
 // ─── SARIF 2.1.0 types (subset) ─────────────────────────────────────
@@ -60,6 +62,12 @@ interface SarifResult {
   level: 'error' | 'warning' | 'note';
   message: { text: string };
   locations: SarifLocation[];
+  /**
+   * SARIF-native stable-identity mechanism, understood by other SARIF tooling. We put the
+   * guardlink threat id here so a result can be tracked across exports independently of its
+   * line/order. Mirrored into `properties.threatId` for consumers without a SARIF library.
+   */
+  partialFingerprints?: Record<string, string>;
   properties?: Record<string, unknown>;
 }
 
@@ -177,12 +185,17 @@ export function generateSarif(
     const threat = e.threat.startsWith('#') ? e.threat.slice(1) : e.threat;
     const desc = e.description ? `: ${e.description}` : '';
 
+    const messageText = `${e.asset} is exposed to ${threat}${desc}`;
+    const id = threatId(e.asset, e.threat, e.location.file, messageText);
+
     results.push({
       ruleId,
       level,
-      message: { text: `${e.asset} is exposed to ${threat}${desc}` },
+      message: { text: messageText },
       locations: [locationFrom(e.location.file, e.location.line)],
+      partialFingerprints: { 'guardlink/threatId': id },
       properties: {
+        threatId: id,
         severity: e.severity || 'unset',
         asset: e.asset,
         threat: e.threat,
@@ -197,12 +210,17 @@ export function generateSarif(
     const threat = c.threat.startsWith('#') ? c.threat.slice(1) : c.threat;
     const desc = c.description ? `: ${c.description}` : '';
 
+    const messageText = `CONFIRMED: ${c.asset} exploitable via ${threat}${desc}`;
+    const id = threatId(c.asset, c.threat, c.location.file, messageText);
+
     results.push({
       ruleId: 'guardlink/confirmed-exploitable',
       level: 'error',
-      message: { text: `CONFIRMED: ${c.asset} exploitable via ${threat}${desc}` },
+      message: { text: messageText },
       locations: [locationFrom(c.location.file, c.location.line)],
+      partialFingerprints: { 'guardlink/threatId': id },
       properties: {
+        threatId: id,
         severity: c.severity || 'unset',
         asset: c.asset,
         threat: c.threat,
@@ -252,6 +270,42 @@ export function generateSarif(
       results,
     }],
   };
+}
+
+// ─── Threat ID ───────────────────────────────────────────────────────
+
+// Bare integer runs — line numbers embedded in a message — are collapsed to a placeholder so a
+// finding that only drifts down the file keeps its identity. Matches siete's own message hashing.
+const THREAT_ID_LINE_RE = /\b\d+\b/g;
+const THREAT_ID_WS_RE = /\s+/g;
+
+/** Strip a leading `#`, lowercase and trim — the same shape the SARIF results already de-`#` to. */
+function normalizeThreatRef(ref: string): string {
+  const value = (ref ?? '').trim();
+  return (value.startsWith('#') ? value.slice(1) : value).toLowerCase();
+}
+
+/** Collapse whitespace and strip embedded line numbers, so rewording and line drift don't move the id. */
+function normalizeThreatMsg(message: string): string {
+  return (message ?? '')
+    .replace(THREAT_ID_LINE_RE, '#')
+    .replace(THREAT_ID_WS_RE, ' ')
+    .trim();
+}
+
+/**
+ * Mint the stable, opaque threat id for one exposure — `gl-` + the first 12 hex of a sha256 over
+ * `normalize(asset)|normalize(threat)|file|normalizeMsg(message)`.
+ *
+ * guardlink is the sole authority for this algorithm: cxg and siete carry and compare the string
+ * but never recompute it. It is stable across line drift and incidental rewording, and changes when
+ * the asset, threat, file, or substantive message changes — those are, by definition, a different
+ * threat (see docs/prd/threat-id-design.md §3).
+ */
+export function threatId(asset: string, threat: string, file: string, message: string): string {
+  const basis = `${normalizeThreatRef(asset)}|${normalizeThreatRef(threat)}|${file}|${normalizeThreatMsg(message)}`;
+  const hash = createHash('sha256').update(basis).digest('hex').slice(0, 12);
+  return `gl-${hash}`;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
