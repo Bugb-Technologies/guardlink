@@ -87,7 +87,7 @@ describe('generateSarif — threat id (partialFingerprints + properties.threatId
     (findingProps(sarif, asset)?.threatId as string | undefined);
 
   it('mints a gl- + 12-hex-char id', () => {
-    const id = threatId('#ws-proxy', '#bac', 'api/ws/attach.go', 'anything');
+    const id = threatId('#ws-proxy', '#bac', 'api/ws/attach.go');
     expect(id).toMatch(/^gl-[0-9a-f]{12}$/);
   });
 
@@ -116,14 +116,14 @@ describe('generateSarif — threat id (partialFingerprints + properties.threatId
     expect(idOf(a, '#ws-proxy')).toBe(idOf(b, '#ws-proxy'));
   });
 
-  it('is stable across a line-number-only change (location line and an embedded line ref)', () => {
+  it('is stable across a line-number-only change (the line is not part of the identity)', () => {
+    // Regression guard: the code moved down the file. Line is not in the hash — nor is the message
+    // now — so the id must not move.
     const early = generateSarif(model({
-      exposures: [exposure({ description: 'see handler at line 42', location: loc('api/ws/attach.go', 42) })],
+      exposures: [exposure({ location: loc('api/ws/attach.go', 42) })],
     }));
     const drifted = generateSarif(model({
-      // Same threat, but the code moved down the file: both the SARIF line and the description's
-      // embedded "line NNN" changed. Neither is part of the identity.
-      exposures: [exposure({ description: 'see handler at line 87', location: loc('api/ws/attach.go', 87) })],
+      exposures: [exposure({ location: loc('api/ws/attach.go', 87) })],
     }));
     expect(idOf(early, '#ws-proxy')).toBe(idOf(drifted, '#ws-proxy'));
   });
@@ -146,8 +146,15 @@ describe('generateSarif — threat id (partialFingerprints + properties.threatId
     expect(idOf(other, '#ws-proxy')).not.toBe(idOf(base, '#ws-proxy'));
   });
 
-  it('gives two distinct exposures sharing an asset::threat pair different ids', () => {
-    // The collision the whole design exists to solve: same (asset, threat), different file/message.
+  it('ignores the message: same (asset, threat, file), different wording -> SAME id', () => {
+    // The message is no longer in the hash, so incidental rewording cannot split one threat.
+    const a = generateSarif(model({ exposures: [exposure({ description: 'attach bypass in handler' })] }));
+    const b = generateSarif(model({ exposures: [exposure({ description: 'totally different words' })] }));
+    expect(idOf(a, '#ws-proxy')).toBe(idOf(b, '#ws-proxy'));
+  });
+
+  it('distinguishes by file: same (asset, threat), different file -> different ids', () => {
+    // Distinctness now comes from the file, not the message.
     const sarif = generateSarif(model({
       exposures: [
         exposure({ description: 'attach bypass in handler', location: loc('api/ws/attach.go', 42) }),
@@ -157,5 +164,21 @@ describe('generateSarif — threat id (partialFingerprints + properties.threatId
     const ids = sarif.runs[0].results.map((r) => (r.properties as Record<string, unknown>).threatId);
     expect(ids[0]).not.toBe(ids[1]);
     expect(new Set(ids).size).toBe(2);
+  });
+
+  it('shares one id across the lifecycle: @exposes and its @confirmed at the same place match', () => {
+    // The point of dropping the message from the hash: the theoretical exposure and the proof that
+    // it is exploitable are the SAME threat, and must carry the SAME id for the write-back
+    // round-trip and downstream linkage to work.
+    const sarif = generateSarif(model({
+      exposures: [exposure({ location: loc('api/ws/attach.go', 42) })],
+      confirmed: [exposure({ location: loc('api/ws/attach.go', 42) })],
+    }));
+    const exposed = sarif.runs[0].results.find((r) => r.ruleId !== 'guardlink/confirmed-exploitable');
+    const confirmed = sarif.runs[0].results.find((r) => r.ruleId === 'guardlink/confirmed-exploitable');
+    const exposedId = (exposed?.properties as Record<string, unknown>).threatId;
+    const confirmedId = (confirmed?.properties as Record<string, unknown>).threatId;
+    expect(exposedId).toMatch(/^gl-[0-9a-f]{12}$/);
+    expect(confirmedId).toBe(exposedId);
   });
 });

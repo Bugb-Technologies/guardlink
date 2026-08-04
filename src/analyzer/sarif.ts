@@ -186,7 +186,7 @@ export function generateSarif(
     const desc = e.description ? `: ${e.description}` : '';
 
     const messageText = `${e.asset} is exposed to ${threat}${desc}`;
-    const id = threatId(e.asset, e.threat, e.location.file, messageText);
+    const id = threatId(e.asset, e.threat, e.location.file);
 
     results.push({
       ruleId,
@@ -211,7 +211,7 @@ export function generateSarif(
     const desc = c.description ? `: ${c.description}` : '';
 
     const messageText = `CONFIRMED: ${c.asset} exploitable via ${threat}${desc}`;
-    const id = threatId(c.asset, c.threat, c.location.file, messageText);
+    const id = threatId(c.asset, c.threat, c.location.file);
 
     results.push({
       ruleId: 'guardlink/confirmed-exploitable',
@@ -274,36 +274,34 @@ export function generateSarif(
 
 // ─── Threat ID ───────────────────────────────────────────────────────
 
-// Bare integer runs — line numbers embedded in a message — are collapsed to a placeholder so a
-// finding that only drifts down the file keeps its identity. Matches siete's own message hashing.
-const THREAT_ID_LINE_RE = /\b\d+\b/g;
-const THREAT_ID_WS_RE = /\s+/g;
-
 /** Strip a leading `#`, lowercase and trim — the same shape the SARIF results already de-`#` to. */
 function normalizeThreatRef(ref: string): string {
   const value = (ref ?? '').trim();
   return (value.startsWith('#') ? value.slice(1) : value).toLowerCase();
 }
 
-/** Collapse whitespace and strip embedded line numbers, so rewording and line drift don't move the id. */
-function normalizeThreatMsg(message: string): string {
-  return (message ?? '')
-    .replace(THREAT_ID_LINE_RE, '#')
-    .replace(THREAT_ID_WS_RE, ' ')
-    .trim();
-}
-
 /**
  * Mint the stable, opaque threat id for one exposure — `gl-` + the first 12 hex of a sha256 over
- * `normalize(asset)|normalize(threat)|file|normalizeMsg(message)`.
+ * `normalize(asset)|normalize(threat)|file`.
  *
- * guardlink is the sole authority for this algorithm: cxg and siete carry and compare the string
- * but never recompute it. It is stable across line drift and incidental rewording, and changes when
- * the asset, threat, file, or substantive message changes — those are, by definition, a different
- * threat (see docs/prd/threat-id-design.md §3).
+ * The id keys the *threat*, not a particular annotation of it: an `@exposes` (theoretical) and the
+ * `@confirmed` that later proves it are the same threat at the same place, so both mint the same id.
+ * That shared identity is the whole point — the write-back round-trip, `record_verification`, and
+ * cross-run / Slack / Jira linkage all depend on a threat keeping one id across its lifecycle. So the
+ * message text is deliberately NOT in the hash: it differs between the "exposed to" and "CONFIRMED …
+ * exploitable via" wordings and would split one threat into two ids.
+ *
+ * Accepted limitation: two genuinely distinct weaknesses at the IDENTICAL (asset, threat, file) now
+ * collapse to one id. This is intended — the threat id is the coarse, stable identity; siete keeps
+ * its text-based ExposureKey as the fine-grained fallback to disambiguate when one threat_id maps to
+ * more than one exposure (see docs/prd/threat-id-design.md §3).
+ *
+ * guardlink is the sole authority for this algorithm: cxg and siete carry and compare the string but
+ * never recompute it. It is stable across re-runs and line drift (line is not part of the identity),
+ * and changes when the asset, threat, or file changes — those are, by definition, a different threat.
  */
-export function threatId(asset: string, threat: string, file: string, message: string): string {
-  const basis = `${normalizeThreatRef(asset)}|${normalizeThreatRef(threat)}|${file}|${normalizeThreatMsg(message)}`;
+export function threatId(asset: string, threat: string, file: string): string {
+  const basis = `${normalizeThreatRef(asset)}|${normalizeThreatRef(threat)}|${file}`;
   const hash = createHash('sha256').update(basis).digest('hex').slice(0, 12);
   return `gl-${hash}`;
 }
