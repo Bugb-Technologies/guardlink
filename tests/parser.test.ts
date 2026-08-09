@@ -633,6 +633,46 @@ describe('parseString', () => {
     }
   });
 
+  it('excludes .bravos/ backups so a rollback copy is never re-parsed as source', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-bravos-'));
+
+    try {
+      await mkdir(join(root, '.guardlink'), { recursive: true });
+      await writeFile(
+        join(root, '.guardlink', 'definitions.ts'),
+        [
+          '// @asset App.Git (#git) -- "Git integration"',
+          '// @threat SSRF (#ssrf) [high] cwe:CWE-918 -- "Server-side request forgery"',
+        ].join('\n'),
+      );
+
+      // A live, annotated source file — exactly one exposure.
+      const annotated = '// @exposes #git to #ssrf -- "Unvalidated URL is fetched"\n';
+      await mkdir(join(root, 'api', 'git'), { recursive: true });
+      await writeFile(join(root, 'api', 'git', 'git.ts'), annotated);
+
+      // An agent rollback backup of that same file, name/extension preserved (the real artifact
+      // is a .go copy under .bravos/backups/). If .bravos were walked, this second copy carries
+      // the same @exposes and would double-count the exposure. The exclusion is by path, so a .ts
+      // stand-in proves it just as a .go would.
+      await mkdir(join(root, '.bravos', 'backups'), { recursive: true });
+      await writeFile(
+        join(root, '.bravos', 'backups', 'rollback-fix-agent-0-abc123-api_git_git.ts'),
+        annotated,
+      );
+
+      const { model } = await parseProject({ root, project: 'tmp' });
+
+      // Counted once, from the live file only — no inflation.
+      expect(model.exposures).toHaveLength(1);
+      expect(model.exposures[0].location.file).toBe('api/git/git.ts');
+      // The backup is never treated as source.
+      expect(model.annotated_files.some(f => f.includes('.bravos'))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('clears raw standalone .gal annotations while preserving definitions by default', async () => {
     const root = await mkdtemp(join(tmpdir(), 'guardlink-clear-gal-'));
 

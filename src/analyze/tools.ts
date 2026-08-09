@@ -207,7 +207,7 @@ function searchCodebase(
   const ext = fileGlob ? fileGlob.toLowerCase() : null;
 
   // Walk source files (skip node_modules, .git, dist, etc.)
-  const skipDirs = new Set(['node_modules', '.git', 'dist', 'build', '.guardlink', '__pycache__', '.next', 'vendor', 'target']);
+  const skipDirs = new Set(['node_modules', '.git', 'dist', 'build', '.guardlink', '__pycache__', '.next', 'vendor', 'target', '.bravos', '.bugb']);
 
   function walk(dir: string) {
     if (results.length >= maxResults) return;

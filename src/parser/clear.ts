@@ -50,6 +50,9 @@ const DEFAULT_EXCLUDE = [
   '**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**',
   '**/__pycache__/**', '**/target/**', '**/vendor/**', '**/.next/**',
   '**/tests/**', '**/test/**', '**/__tests__/**',
+  // Bugb's own artifact dirs — never clear annotations inside a rollback backup (.bravos) or
+  // siete's session store (.bugb); they are not live source.
+  '**/.bravos/**', '**/.bugb/**',
 ];
 
 // ─── Types ──────────────────────────────────────────────────────────
