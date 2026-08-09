@@ -504,3 +504,219 @@ export function mcpConfig(): string {
     },
   }, null, 2) + '\n';
 }
+
+// ─── .guardlink/README.md — agent cold-start (GL-402) ────────────────
+
+export interface ReadmeContext {
+  mode: AnnotationMode | null;
+  /** How `mode` was established, so the reader can weigh it. */
+  modeSource: 'config' | 'observed' | 'default';
+  model: ThreatModel | null;
+  annotationHash: string | null;
+  mcpAtRoot: boolean;
+}
+
+/**
+ * The file that explains `.guardlink/` to something that has never seen
+ * GuardLink.
+ *
+ * Written for an agent with no MCP connection and no instruction file — under
+ * external-mode default this is the only surviving discovery path, so it assumes
+ * nothing and leads with a worked example rather than a feature list.
+ *
+ * Deliberately carries no wall-clock timestamp. It is regenerated on every
+ * `guardlink sync`, and a timestamp would make a tracked file churn on every
+ * run while telling the reader nothing they cannot get from `annotation_hash`,
+ * which changes only when the annotations do.
+ */
+// @shield:begin -- "README example annotations, excluded from parsing — they would otherwise register as real records"
+export function guardlinkReadmeContent(project: ProjectInfo, ctx: ReadmeContext): string {
+  const defs = `definitions${project.definitionsExt}`;
+  const m = ctx.model;
+  const external = ctx.mode === 'external';
+
+  const modeLine = ctx.mode === null
+    ? 'Not recorded. Check the `mode` field on any MCP response, which is observed from the annotations themselves.'
+    : ctx.mode === 'external'
+      ? `**external** — annotations live in \`.guardlink/annotations/\`, not in source files.${ctx.modeSource === 'observed' ? ' (Observed from the annotations; not recorded in config.json.)' : ''}`
+      : `**inline** — annotations live in source-file comments.${ctx.modeSource === 'observed' ? ' (Observed from the annotations; not recorded in config.json.)' : ''}`;
+
+  const stats = m && m.annotations_parsed > 0
+    ? `${m.annotations_parsed} annotations · ${m.assets.length} assets · ${m.threats.length} threats · ${m.controls.length} controls · ${m.exposures.length} exposures · ${m.flows.length} flows`
+    : 'No annotations parsed yet.';
+
+  const exampleAsset = m?.assets.find(a => a.id)?.id;
+  const exampleThreat = m?.threats.find(t => t.id)?.id;
+  const exampleCwe = m?.threats.find(t => (t.external_refs || []).some(r => /cwe/i.test(r)))
+    ?.external_refs.find(r => /cwe/i.test(r));
+
+  const writeSection = external
+    ? `Annotations for \`src/auth/login.ts\` go in \`.guardlink/annotations/src/auth/login.ts.gal\` —
+the source path mirrored under \`annotations/\`, with \`.gal\` appended. Inside, group them
+under a \`@source\` block naming the real code location:
+
+\`\`\`
+@source file:src/auth/login.ts line:42 symbol:login
+@exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
+@mitigates #api against #sqli using #prepared-stmts -- "parameterized via pg"
+\`\`\`
+
+Write raw GAL lines in \`.gal\` files — no \`//\` or \`#\` prefix. Do not edit source files
+to add annotations in this mode.
+
+> **Known gap, read before you write.** A \`.gal\` placed under \`test/\`, \`tests/\`,
+> \`__tests__/\`, \`vendor/\`, \`build/\`, \`dist/\` or \`target/\` — including at the mirrored
+> path above — is **silently dropped**. The parser excludes those directories and gives
+> no warning: the annotation count simply does not change. Do not annotate code in those
+> directories yet. Tracked as GL-503.`
+    : `Put annotations in the comment syntax of the file you are editing — the doc-block of
+the function or module they describe:
+
+\`\`\`ts
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
+ * @mitigates #api against #sqli using #prepared-stmts -- "parameterized via pg"
+ */
+export function login(email: string) { … }
+\`\`\``;
+
+  return `# .guardlink/ — what this is
+
+You are looking at a **GuardLink** threat model. It is a set of security facts that
+developers recorded next to the code they describe — what each component is exposed to,
+what mitigates it, how data flows between components — parsed into a queryable model.
+
+**If you are an AI coding agent: read this file before inferring security context from
+the source.** The model already answers most of what you would otherwise guess at, and it
+records decisions that are not visible in the code, such as which risks a human has
+accepted.
+
+This file is generated. Run \`guardlink sync\` to refresh it; do not edit it by hand.
+
+Current model: ${stats}
+${ctx.annotationHash ? `Content hash: \`${ctx.annotationHash}\` — identical hash means identical model.` : ''}
+
+---
+
+## Start here: one real question, answered end to end
+
+**"I am about to edit \`src/auth/login.ts\`. What do I need to know?"**
+
+With the MCP server connected:
+
+\`\`\`
+guardlink_context(file: "src/auth/login.ts")
+\`\`\`
+
+Without it, from a shell:
+
+\`\`\`sh
+guardlink parse . --format json    # or: guardlink status .
+\`\`\`
+
+The answer tells you the annotations declared in that file with line numbers, the assets
+they name, what those assets are exposed to, and which controls the file is expected to
+uphold.
+
+**Read the empty answer carefully.** \`guardlink_context\` reports *which kind* of empty it
+found, and they mean opposite things:
+
+| \`status\` | Meaning |
+|---|---|
+| \`annotated\` | It has annotations. |
+| \`scanned_without_annotations\` | Parsed, genuinely clean. Nothing to know. |
+| \`not_scanned\` | The parser never read this file. Its annotations, if any, were **not** considered. |
+| \`not_found\` | Nothing at that path. |
+
+Treating \`not_scanned\` as "clean" is the single easiest way to draw a wrong conclusion
+from this model.
+
+---
+
+## What is in this directory
+
+| Path | What it is |
+|---|---|
+| \`${defs}\` | **Definitions.** Every \`@asset\`, \`@threat\` and \`@control\`, each with a \`#id\`. Read this first — it is the vocabulary everything else references. |
+| \`config.json\` | Project name, language, which files are scanned, and the annotation mode. |
+| \`prompt.md\` | Project description used when generating threat reports. |${external ? '\n| `annotations/` | The annotations themselves, as `.gal` sidecars mirroring source paths. |' : ''}${external ? '\n| `.mcp.json` | MCP server config. Not auto-discovered here — see "Enabling the MCP tools" below. |' : ''}
+| \`threat-reports/\` | Saved AI threat analyses, if any have been generated. |
+
+## Annotation mode in effect
+
+${modeLine}
+
+${writeSection}
+
+**Definitions go in \`${defs}\`, always — in both modes.** Reuse existing \`#id\`s; never
+redefine one. If you need a new asset or threat, add it there first, then reference it.
+
+**Never write \`@accepts\`.** Accepting a risk is a human governance decision. If you find a
+risk with no control, write \`@exposes\` to record it and \`@audit\` to flag it for review.
+
+---
+
+## Asking questions without MCP
+
+\`\`\`sh
+guardlink status .                       # coverage, counts, unmitigated exposures
+guardlink parse . --format json          # the whole model as JSON
+guardlink validate .                     # syntax errors and dangling #id references
+guardlink report . --format md           # human-readable threat model report
+guardlink diff HEAD~1                    # what your change did to the model
+guardlink dashboard .                    # interactive HTML view
+\`\`\`
+
+## Asking questions with MCP
+
+The MCP server exposes the model as tools. The ones worth knowing by name:
+
+| Tool | Use it when |
+|---|---|
+| \`guardlink_context(file)\` | You opened or are about to edit a file. |
+| \`guardlink_graph(from, depth, direction)\` | You are about to change a shared component and need blast radius. |
+| \`guardlink_lookup(query)\` | You have a specific question. See the query forms below. |
+| \`guardlink_validate\` | Before you finish. |
+| \`guardlink_diff(ref)\` | After a change — did I make this worse? |
+| \`guardlink_status\` | Cold start on an unfamiliar repo. |
+
+\`guardlink_lookup\` understands a fixed set of named forms and **refuses anything else
+rather than guessing**. Send it a deliberately bad query and it returns the full list.
+Representative forms:
+
+\`\`\`
+unmitigated                     confirmed                  features
+asset <id>                      threat <id>                control <id>
+threats for <asset>             exposures for <asset>      mitigations for <asset>
+flows into <asset>              flows from <asset>         boundary for <asset>
+owner of <asset>                handles pii                assumptions for <asset>
+audits [for <asset>]            validations for <asset>    comments [for <file>]
+cwe:CWE-89                      owasp:A03                  CWE-89
+\`\`\`
+
+${exampleAsset ? `Concretely, in this project: \`asset #${exampleAsset}\`${exampleThreat ? `, \`threat #${exampleThreat}\`` : ''}${exampleCwe ? `, \`${exampleCwe}\`` : ''}.\n` : ''}
+### Enabling the MCP tools
+
+${ctx.mcpAtRoot
+    ? 'A `.mcp.json` at the project root configures this automatically for clients that\nauto-discover it, such as Claude Code. If your client does not, point it at\n`guardlink mcp` over stdio.'
+    : 'The config lives at `.guardlink/.mcp.json`. MCP clients do **not** auto-discover it\nthere — copy it to the project root, or point your client at `guardlink mcp` over stdio.'}
+
+---
+
+## Reading the answers
+
+Every MCP response carries a \`guardlink\` envelope alongside the payload:
+\`annotation_hash\`, \`git_sha\`, \`mode\`, \`root\`. Identical hash means identical model, so
+you can tell a fresh answer from a cached one without asking twice.
+
+Anything that resolves a reference reports \`matched_via\`: \`exact\`, \`alias\` or
+\`substring\`. **A substring match is a suggestion, not an identification.** When
+\`ambiguous\` is set, several records tied and one was chosen arbitrarily —
+\`candidates\` names them all, and you should re-ask precisely.
+
+For CWE queries, check \`external_id.declared\` before reading \`count: 0\` as coverage:
+\`false\` means this model has never heard of that weakness class, which is not the same
+as declaring it and finding nothing exposed.
+`;
+}
+// @shield:end

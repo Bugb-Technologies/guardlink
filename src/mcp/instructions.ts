@@ -26,10 +26,10 @@
  * @comment -- "Pure string builder; the only I/O is one optional config read by the caller"
  */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { SUPPORTED_QUERY_FORMS } from './lookup.js';
-import type { AnnotationMode } from '../parser/annotation-mode.js';
+import { readConfiguredMode, type AnnotationMode } from '../parser/annotation-mode.js';
+
+export { readConfiguredMode };
 
 export interface InstructionsContext {
   /** Mode declared in `.guardlink/config.json`, or null when not recorded. */
@@ -38,22 +38,6 @@ export interface InstructionsContext {
   definitionsPath: string;
 }
 
-/**
- * Read the annotation mode a project declared at init.
- *
- * Returns null rather than guessing when the field is absent — a repo
- * initialised before the field existed genuinely has not declared one, and
- * saying "inline" on its behalf would be a guess presented as configuration.
- */
-export function readConfiguredMode(root: string): AnnotationMode | null {
-  try {
-    const config = JSON.parse(readFileSync(join(root, '.guardlink', 'config.json'), 'utf-8'));
-    const mode = config.annotation_mode;
-    return mode === 'inline' || mode === 'external' ? mode : null;
-  } catch {
-    return null;
-  }
-}
 
 function modeParagraph(mode: AnnotationMode | null, definitionsPath: string): string {
   if (mode === 'external') {

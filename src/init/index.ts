@@ -32,8 +32,11 @@ import {
   mcpConfig,
   referenceDocContent,
   promptMdContent,
+  guardlinkReadmeContent,
   GITIGNORE_ENTRY,
 } from './templates.js';
+import { computeAnnotationHash } from '../parser/annotation-hash.js';
+import { detectAnnotationMode, readConfiguredMode } from '../parser/annotation-mode.js';
 import type { ThreatModel } from '../types/index.js';
 import type { AnnotationMode } from '../agents/index.js';
 import { AGENT_CHOICES } from './picker.js';
@@ -116,6 +119,26 @@ export function initProject(options: InitOptions): InitResult {
     created.push(`.guardlink/${defsFile}`);
   } else {
     skipped.push(`.guardlink/${defsFile} (exists)`);
+  }
+
+  // ── 3b. Create .guardlink/README.md (agent cold-start, GL-402) ──
+  // Written in BOTH modes. Under external-mode default this is the only
+  // discovery path an agent has left, so it is never the thing that gets skipped.
+
+  const readmePath = join(tsDir, 'README.md');
+  if (!existsSync(readmePath) || force) {
+    if (!dryRun) {
+      writeFileSync(readmePath, guardlinkReadmeContent(project, {
+        mode: isExternal ? 'external' : 'inline',
+        modeSource: 'config',
+        model: null,
+        annotationHash: null,
+        mcpAtRoot: !isExternal,
+      }));
+    }
+    created.push('.guardlink/README.md');
+  } else {
+    skipped.push('.guardlink/README.md (exists)');
   }
 
   // ── 4. Create .guardlink/prompt.md (skeleton for report) ──
@@ -486,6 +509,30 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
   const project = detectProject(root);
   const updated: string[] = [];
   const skipped: string[] = [];
+
+  // Regenerate .guardlink/README.md so it cannot drift from what the tooling
+  // actually does. Mode comes from config where recorded, and is otherwise
+  // observed from the annotations rather than assumed.
+  const configuredMode = readConfiguredMode(root);
+  const observed = model ? detectAnnotationMode(model) : null;
+  const readmeMode = configuredMode
+    ?? (observed && observed.inline + observed.external > 0 ? observed.mode : null);
+  const readmeModeSource = configuredMode ? 'config' as const
+    : readmeMode ? 'observed' as const : 'default' as const;
+
+  const readmePath = join(root, '.guardlink', 'README.md');
+  const readme = guardlinkReadmeContent(project, {
+    mode: readmeMode,
+    modeSource: readmeModeSource,
+    model,
+    annotationHash: model && model.annotations_parsed > 0 ? computeAnnotationHash(model) : null,
+    mcpAtRoot: existsSync(join(root, '.mcp.json')),
+  });
+  if (!dryRun) {
+    ensureDir(join(root, '.guardlink'));
+    writeFileSync(readmePath, readme);
+  }
+  updated.push('.guardlink/README.md');
 
   // Ensure .guardlink/prompt.md exists (fallback if init wasn't run)
   const promptPath = join(root, '.guardlink', 'prompt.md');

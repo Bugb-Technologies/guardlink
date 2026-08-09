@@ -11,6 +11,8 @@
  * @comment -- "Pure function; mixed is a real answer, not an error — a repo mid-migration is genuinely both"
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ThreatModel, SourceLocation } from '../types/index.js';
 
 export type AnnotationMode = 'inline' | 'external' | 'mixed';
@@ -54,4 +56,24 @@ export function detectAnnotationMode(model: ThreatModel): AnnotationModeReport {
       : external > 0 ? 'external'
         : 'inline';
   return { mode, inline, external };
+}
+
+/**
+ * The mode a project *declared* at init, as opposed to the one observed from its
+ * annotations.
+ *
+ * Returns null when the field is absent rather than defaulting to inline: a repo
+ * initialised before the field existed has genuinely not declared one, and
+ * answering on its behalf would be a guess presented as configuration. A project
+ * with no annotations yet has nothing to observe either, which is exactly when
+ * the declared value is the only thing worth reporting.
+ */
+export function readConfiguredMode(root: string): AnnotationMode | null {
+  try {
+    const config = JSON.parse(readFileSync(join(root, '.guardlink', 'config.json'), 'utf-8'));
+    const mode = config.annotation_mode;
+    return mode === 'inline' || mode === 'external' ? mode : null;
+  } catch {
+    return null;
+  }
 }
