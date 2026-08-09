@@ -1004,6 +1004,65 @@ A conforming implementation that adds traversal or path queries **must decide ex
 
 The second is an inference about proximity, not a declared relationship, and must be labelled as such — GuardLink marks every such row `join: "co-located"`. Returning a proximity join as though it were declared is the same class of error as returning a substring match as though it were exact.
 
+#### 8.2.4. External Identifier Queries — the scanner integration point
+
+A conforming query surface resolves external identifiers (`cwe:`, `owasp:`, `cve:`, `capec:`) declared on threats, exposures and confirmed findings. This is the supported integration point for a deterministic scanner: *"I found CWE-89 at this site — does the threat model already declare it, and is anything done about it?"*
+
+**Accepted forms.** `cwe:CWE-89`, bare `CWE-89`, and any case variation resolve identically. Bare identifiers are recognised for `CWE-`, `CVE-` and `CAPEC-` patterns only. A bare OWASP category code such as `A03` is **not** recognised — three alphanumeric characters could equally be an asset id, and reinterpreting it would be a guess; write `owasp:A03`.
+
+**The distinction the integration depends on.** Two situations both yield `count: 0` and demand opposite responses:
+
+| | `external_id.declared` | `count` | What a scanner should do |
+|---|---|---|---|
+| Model has never heard of this weakness class | `false` | 0 | The finding is new information. Report it. |
+| Model declares it; nothing is currently exposed | `true` | 0 | The class is known and the model says no site is affected. Investigate the discrepancy. |
+
+A conforming implementation **must** make these distinguishable. Returning a bare empty result for both tells a scanner its finding is unknown when in fact the model has considered and dismissed the class.
+
+**Site partitioning.** Sites come from `@exposes` and `@confirmed` — the places a weakness is declared to exist. `@mitigates` and `@accepts` are *status*, not sites. Each site carries independent booleans plus a `status` applying the precedence **confirmed > accepted > mitigated > open**. Confirmed ranks first because verified exploitability is the strongest evidence in the model and must not be masked by a control that may be incomplete; the booleans are returned alongside so a consumer may apply its own ordering.
+
+**Worked example.** A scanner reports CWE-22 in `src/cli/index.ts`:
+
+```jsonc
+// query: "cwe:CWE-22"   (or "CWE-22")
+{
+  "type": "external_id",
+  "count": 10,
+  "external_id": {
+    "scheme": "cwe", "id": "CWE-22", "normalized": "cwe-22",
+    "declared": true,
+    "threats": [ { "id": "path-traversal", "name": "path_traversal",
+                   "severity": "high", "external_refs": ["cwe:CWE-22"] } ],
+    "totals": { "confirmed": 0, "accepted": 0, "mitigated": 10, "open": 0 }
+  },
+  "results": [
+    { "status": "mitigated", "asset": "#cli", "threat": "#path-traversal",
+      "severity": "medium", "confirmed": false, "accepted": false, "mitigated": true,
+      "controls": ["#path-validation"], "file": "src/cli/index.ts", "line": 32 }
+  ]
+}
+```
+
+The integration logic a scanner implements against this:
+
+1. `external_id.declared === false` → the model has no knowledge of the class. Report the finding as new.
+2. `declared === true` and no site matches the scanner's file → the class is known but not declared at that location. Report it as an undeclared site of a known class.
+3. A site matches and `status === "mitigated"` → a control is declared. Either the finding is a false positive or the control is insufficient; surface both possibilities rather than suppressing.
+4. `status === "confirmed"` → previously verified as exploitable. The scanner corroborates a known-real issue.
+5. `status === "accepted"` → a human recorded a governance decision. Do not re-raise without referencing it.
+6. `status === "open"` → declared, nothing done. The scanner corroborates a known gap.
+
+##### Two unrelated things named `external_refs`
+
+A conforming implementation must keep these apart, and should name them so a caller cannot confuse them:
+
+| | Contents | Built from |
+|---|---|---|
+| `ThreatModel.external_refs` | Cross-repo tags pointing at sibling repositories | Workspace configuration; empty without one |
+| `threat.external_refs`, `exposure.external_refs`, `confirmed.external_refs` | `cwe:` / `owasp:` identifiers | The annotation itself |
+
+They share a name and nothing else. GuardLink exposes the first as `cross-repo refs` and the second through identifier queries, and each form's documentation names the other — a caller who picks the wrong one otherwise receives a confidently empty answer.
+
 ### 8.3. AI-Powered Threat Analysis
 
 A conforming Level 4 implementation may provide AI-driven threat analysis that takes the parsed ThreatModel as input and produces structured reports using established threat modeling frameworks:

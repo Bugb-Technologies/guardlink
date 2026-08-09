@@ -48,6 +48,12 @@ export interface LookupResult {
   ambiguous?: boolean;
   /** Identifiers of every record tied with the one returned. Present only when `ambiguous`. */
   candidates?: string[];
+  /**
+   * GL-204 — present when the query was an external identifier (cwe:, owasp:).
+   * Read `external_id.declared` before treating `count: 0` as "nothing exposed":
+   * it also distinguishes "this model has never heard of that weakness class".
+   */
+  external_id?: ExternalIdSummary;
 }
 
 export interface LookupQuery {
@@ -83,7 +89,8 @@ export const SUPPORTED_QUERY_FORMS = [
   'transfers [for <threat-or-asset>]',
   'comments [for <file-or-asset>]',
   'shields [for <file-or-asset>]',
-  'external refs [for <repo-or-tag>]',
+  'cross-repo refs [for <repo-or-tag>]  (sibling-repo tags from workspace.yaml — NOT cwe:/owasp: — accepts `external refs` as an alias)',
+  'cwe:CWE-89 | owasp:A03 | CWE-89  (external identifiers declared on threats — the scanner bridge)',
   '<id>            (bare identifier, fuzzy match across all categories)',
 ] as const;
 
@@ -147,6 +154,13 @@ export function lookup(model: ThreatModel, query: string): LookupResult {
   const q = query.trim().toLowerCase().replace(/\?+$/, '').trim();
 
   const resolve = buildResolver(model);
+
+  // ── "cwe:CWE-89" / "owasp:A03" / bare "CWE-89" — the CXG bridge ──
+  //
+  // Checked before everything else: an identifier is unambiguous, and letting it
+  // reach lookupFuzzy would answer a scanner's question with a substring guess.
+  const externalId = parseExternalId(query.trim());
+  if (externalId) return lookupExternalId(model, query, externalId);
 
   // ── "unmitigated" ──
   if (/^unmitigated/.test(q)) {
@@ -324,8 +338,12 @@ export function lookup(model: ThreatModel, query: string): LookupResult {
       s => ({ reason: s.reason }));
   }
 
-  // "external refs" / "external_refs" / "refs [for <repo-or-tag>]"
-  const refsQ = q.match(/^(?:external[\s_-]?refs?|refs?)(?:\s+(?:for|from|in)\s+(.+))?$/);
+  // "cross-repo refs [for <repo-or-tag>]" — sibling-repo tags, NOT cwe:/owasp:
+  //
+  // The bare "refs" alias is gone: a caller typing it while thinking of CWE
+  // identifiers would have been handed cross-repo tags and an empty list, which
+  // is the D20 confusion made reachable by one word.
+  const refsQ = q.match(/^(?:cross[\s_-]?repo[\s_-]?refs?|external[\s_-]?refs?)(?:\s+(?:for|from|in)\s+(.+))?$/);
   if (refsQ) return lookupExternalRefs(model, query, refsQ[1]?.trim());
 
   // ── Unrecognised multi-word form → say so; never guess ──
@@ -616,6 +634,162 @@ function lookupCoLocated<R extends { location: SourceLocation; description?: str
     ...ambiguity(assetScope.tied, a => a.id || a.path.join('.')),
   };
 }
+
+// ─── GL-204: external identifiers (the CXG bridge) ───────────────────
+//
+// D20: two unrelated things are called "external refs".
+//
+//   model.external_refs   cross-repo sibling tags, built by detectExternalRefs
+//                         from workspace.yaml. Queried by `cross-repo refs`.
+//   threat.external_refs  cwe:/owasp: identifiers declared on threats,
+//                         exposures and confirmed findings. Queried here.
+//
+// They share a name and nothing else. A caller who picks the wrong one gets a
+// confidently empty answer — the D12 shape — so the two query forms are named
+// so that neither can be reached by accident, and each says what the other is.
+
+/** A parsed external identifier. `scheme` is null when the query omitted it. */
+export interface ParsedExternalId {
+  scheme: string | null;
+  id: string;
+  normalized: string;
+}
+
+/** Identifier schemes recognised without a prefix, so bare `CWE-89` resolves. */
+const BARE_ID = /^(?:cwe|cve|capec)-[0-9]+(?:-[0-9]+)?$/i;
+
+/**
+ * Parse `cwe:CWE-89`, `CWE-89` or `owasp:A03` into a comparable form.
+ *
+ * OWASP category codes are deliberately NOT recognised bare: `A03` is three
+ * characters of alphanumeric that could as easily be an asset id, and silently
+ * reinterpreting it as an OWASP category would be a guess. `owasp:A03` works.
+ */
+export function parseExternalId(raw: string): ParsedExternalId | null {
+  const text = raw.trim();
+  const withScheme = text.match(/^([a-z][a-z0-9_-]*)\s*:\s*(\S+)$/i);
+  if (withScheme) {
+    const scheme = withScheme[1].toLowerCase();
+    if (!['cwe', 'owasp', 'cve', 'capec', 'nist', 'asvs'].includes(scheme)) return null;
+    return { scheme, id: withScheme[2], normalized: withScheme[2].toLowerCase() };
+  }
+  if (BARE_ID.test(text)) return { scheme: null, id: text, normalized: text.toLowerCase() };
+  return null;
+}
+
+/** Does a declared `cwe:CWE-89` satisfy the query? Scheme is ignored when unstated. */
+function externalIdMatches(declared: string, want: ParsedExternalId): boolean {
+  const parsed = parseExternalId(declared) ?? { scheme: null, id: declared, normalized: declared.toLowerCase() };
+  if (parsed.normalized !== want.normalized) return false;
+  return want.scheme === null || parsed.scheme === null || parsed.scheme === want.scheme;
+}
+
+export interface ExternalIdSummary {
+  scheme: string | null;
+  id: string;
+  normalized: string;
+  /**
+   * Whether ANY annotation in this model declares the identifier.
+   *
+   * The single most important field for a scanner integration. `false` means
+   * GuardLink has no declared knowledge of this weakness class at all; it does
+   * NOT mean "we know about it and nothing is exposed". Those two answers demand
+   * opposite responses from a caller, and collapsing them into an empty result
+   * is exactly the confidently-empty failure D12 was.
+   */
+  declared: boolean;
+  threats: { id?: string; name: string; severity?: string; external_refs: string[] }[];
+  totals: { confirmed: number; accepted: number; mitigated: number; open: number };
+}
+
+/**
+ * Where a weakness class appears, and what has been done about it.
+ *
+ * Sites come from `@exposes` and `@confirmed` — the places a weakness is
+ * declared to exist. Mitigations and acceptances are status, not sites.
+ *
+ * `status` applies a fixed precedence: confirmed > accepted > mitigated > open.
+ * Confirmed wins because verified exploitability is the strongest evidence
+ * present and a caller must not have it hidden by a control that may be
+ * incomplete. The individual booleans are returned alongside so a consumer that
+ * disagrees can apply its own ordering rather than being stuck with ours.
+ */
+function lookupExternalId(model: ThreatModel, query: string, want: ParsedExternalId): LookupResult {
+  const threats = model.threats.filter(t => (t.external_refs || []).some(r => externalIdMatches(r, want)));
+  const threatKeys = new Set<string>();
+  for (const t of threats) {
+    if (t.id) threatKeys.add(bareRef(t.id));
+    threatKeys.add(bareRef(t.canonical_name));
+  }
+
+  const namesThisId = (ownRefs: string[] | undefined, threatRef: string) =>
+    (ownRefs || []).some(r => externalIdMatches(r, want)) || threatKeys.has(bareRef(threatRef));
+
+  const mitigated = new Set<string>();
+  for (const m of model.mitigations) mitigated.add(`${bareRef(m.asset)}::${bareRef(m.threat)}`);
+  const accepted = new Set<string>();
+  for (const a of model.acceptances) accepted.add(`${bareRef(a.asset)}::${bareRef(a.threat)}`);
+  const confirmedPairs = new Set<string>();
+  for (const c of model.confirmed || []) confirmedPairs.add(`${bareRef(c.asset)}::${bareRef(c.threat)}`);
+
+  const seen = new Set<string>();
+  const results: any[] = [];
+  const totals = { confirmed: 0, accepted: 0, mitigated: 0, open: 0 };
+
+  const addSite = (asset: string, threat: string, severity: string | undefined,
+                   description: string | undefined, location: SourceLocation, origin: 'exposes' | 'confirmed') => {
+    const dedupe = `${bareRef(asset)}::${bareRef(threat)}::${location.file}:${location.line}`;
+    if (seen.has(dedupe)) return;
+    seen.add(dedupe);
+
+    const pair = `${bareRef(asset)}::${bareRef(threat)}`;
+    const isConfirmed = origin === 'confirmed' || confirmedPairs.has(pair);
+    const isAccepted = accepted.has(pair);
+    const isMitigated = mitigated.has(pair);
+    const status = isConfirmed ? 'confirmed' : isAccepted ? 'accepted' : isMitigated ? 'mitigated' : 'open';
+    totals[status]++;
+
+    results.push({
+      status, asset, threat, severity, description,
+      confirmed: isConfirmed, accepted: isAccepted, mitigated: isMitigated,
+      controls: model.mitigations
+        .filter(m => bareRef(m.asset) === bareRef(asset) && bareRef(m.threat) === bareRef(threat) && m.control)
+        .map(m => m.control),
+      ...loc(location),
+    });
+  };
+
+  for (const e of model.exposures) {
+    if (namesThisId(e.external_refs, e.threat)) {
+      addSite(e.asset, e.threat, e.severity, e.description, e.location, 'exposes');
+    }
+  }
+  for (const c of model.confirmed || []) {
+    if (namesThisId(c.external_refs, c.threat)) {
+      addSite(c.asset, c.threat, c.severity, c.description, c.location, 'confirmed');
+    }
+  }
+
+  const declaredAnywhere = threats.length > 0 || results.length > 0;
+  const summary: ExternalIdSummary = {
+    scheme: want.scheme, id: want.id, normalized: want.normalized,
+    declared: declaredAnywhere,
+    threats: threats.map(t => ({
+      id: t.id, name: t.canonical_name, severity: t.severity, external_refs: t.external_refs || [],
+    })),
+    totals,
+  };
+
+  return {
+    query, type: 'external_id', count: results.length, results,
+    external_id: summary,
+    ...(declaredAnywhere ? {} : {
+      hint: `No threat, exposure or confirmed finding in this model declares \`${want.id}\`. GuardLink has no declared knowledge of it. This is NOT the same as a declared threat with nothing exposed — check external_id.declared before reading count: 0 as coverage.`,
+    } as any),
+  };
+}
+
+const bareRef = (s: string) => (s ?? '').replace(/^#/, '').toLowerCase();
 
 /** Cross-repo tag references detected during parsing. */
 function lookupExternalRefs(model: ThreatModel, query: string, scope?: string): LookupResult {

@@ -348,7 +348,7 @@ describe('lookup — exact-match precedence (D13)', () => {
     // A form that works but is not listed makes the rejection message a lie.
     const listed = SUPPORTED_QUERY_FORMS.join('\n');
     for (const stem of ['owner of', 'handles', 'assumptions for', 'audits',
-      'validations for', 'acceptances', 'transfers', 'comments', 'shields', 'external refs']) {
+      'validations for', 'acceptances', 'transfers', 'comments', 'shields', 'cross-repo refs', 'cwe:']) {
       expect(listed, stem).toContain(stem);
     }
   });
