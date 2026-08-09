@@ -11,11 +11,14 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { initProject, syncAgentFiles } from '../src/init/index.js';
 import { parseProject } from '../src/parser/parse-project.js';
 import { guardlinkReadmeContent } from '../src/init/templates.js';
 import { detectProject } from '../src/init/detect.js';
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 async function scratch(prefix: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), `guardlink-${prefix}-`));
@@ -198,5 +201,76 @@ describe('GL-402 — content an agent needs', () => {
     // cold agent looking for files that are not there.
     expect(inline()).not.toMatch(/graph\//);
     expect(inline()).not.toMatch(/MANIFEST\.json/);
+  });
+});
+
+// ─── F2: the README as a writing reference ──────────────────────────
+
+describe('GL-402/F2 — an agent can EXTEND the model from this file alone', () => {
+  const project = { name: 'demo', language: 'typescript', definitionsExt: '.ts' } as ReturnType<typeof detectProject>;
+  const base = { model: null, annotationHash: null, modeSource: 'config' as const };
+  const inline = () => guardlinkReadmeContent(project, { ...base, mode: 'inline', mcpAtRoot: true });
+  const external = () => guardlinkReadmeContent(project, { ...base, mode: 'external', mcpAtRoot: false });
+
+  it('answers where [severity] goes and that it is optional', () => {
+    const text = inline();
+    expect(text).toMatch(/`\[severity\]` is optional/);
+    expect(text).toMatch(/critical.*high.*medium.*low/s);
+    expect(text).toMatch(/P0.*P3/);
+    expect(text).toMatch(/inherits the threat's\s+declared severity/);
+  });
+
+  it('answers whether cwe: is required', () => {
+    const text = inline();
+    expect(text).toMatch(/External refs like `cwe:CWE-89` are \*\*optional\*\*/);
+    expect(text).toMatch(/scheme:value/);
+    expect(text).toMatch(/owasp:A03/);
+  });
+
+  it('gives the @flows shape including chains', () => {
+    expect(inline()).toMatch(/@flows <A> -> <B> via <mechanism>/);
+    expect(inline()).toMatch(/chains allowed/);
+  });
+
+  it('carries a verb table covering every relationship verb', () => {
+    const text = inline();
+    for (const verb of ['@exposes', '@mitigates', '@confirmed', '@flows', '@boundary',
+      '@transfers', '@validates', '@audit', '@owns', '@handles', '@assumes',
+      '@feature', '@comment', '@accepts']) {
+      expect(text, verb).toContain(verb);
+    }
+  });
+
+  it('separates definition verbs from relationship verbs', () => {
+    const text = inline();
+    expect(text).toMatch(/\*\*Definitions\*\* — only in/);
+    expect(text).toMatch(/\*\*Relationships\*\* — in source/);
+    expect(text).toMatch(/@asset\s+<Dotted\.Path> \(#id\)/);
+  });
+
+  it('warns about the two things that actually catch people out', () => {
+    const text = inline();
+    // Argument order differs between @exposes and @confirmed.
+    expect(text).toMatch(/opposite orders/);
+    // D19: an unquoted #id cannot contain a dot, so cross-repo tags must be quoted.
+    expect(text).toMatch(/must be \*\*quoted\*\*/);
+    expect(text).toMatch(/may not contain\s+a dot/);
+  });
+
+  it('names GUARDLINK_REFERENCE.md, at the right path for the mode', () => {
+    expect(inline()).toContain('docs/GUARDLINK_REFERENCE.md');
+    expect(external()).toContain('.guardlink/GUARDLINK_REFERENCE.md');
+  });
+
+  it('D22: the grammar examples do not register as real annotations', async () => {
+    // Everything in this template parses as GAL once the comment prefix is
+    // stripped. The whole builder sits inside @shield:begin/@shield:end for
+    // exactly that reason; this asserts the shield still covers it.
+    const { model } = await parseProject({ root: repoRoot, project: 'guardlink' });
+    const fromTemplates = [
+      ...model.exposures, ...model.mitigations, ...model.flows, ...model.audits,
+    ].filter(r => r.location.file.includes('init/templates.ts'));
+    expect(fromTemplates).toEqual([]);
+    expect(model.threats.some(t => (t.external_refs || []).includes('cwe:CWE-89'))).toBe(false);
   });
 });

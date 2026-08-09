@@ -78,6 +78,56 @@ export function login(email: string) { … }
 **Definitions go in `definitions.ts`, always — in both modes.** Reuse existing `#id`s; never
 redefine one. If you need a new asset or threat, add it there first, then reference it.
 
+### The grammar
+
+One annotation per line. Everything after `--` is a quoted description and is optional but
+almost always worth writing. `[severity]` is optional and is one of `critical`, `high`,
+`medium`, `low` (or `P0`–`P3`); when omitted on an `@exposes`, it inherits the threat's
+declared severity. External refs like `cwe:CWE-89` are **optional**, may be repeated, and go
+after the severity — the `scheme:value` shape is all that is required, so `owasp:A03` and
+`cve:CVE-2021-44228` work too.
+
+Assets are referenced as `#id` or as a `Dotted.Path`; both resolve to the same node.
+
+**Definitions** — only in `definitions.ts`:
+
+```
+@asset   <Dotted.Path> (#id) -- "what it is"
+@threat  <Name> (#id) [severity] cwe:CWE-89 -- "what can go wrong"
+@control <Name> (#id) -- "what defends against it"
+```
+
+**Relationships** — in source (or in `.gal` blocks), never in the definitions file:
+
+| Verb | Shape |
+|---|---|
+| `@exposes` | `@exposes <asset> to <threat> [severity] cwe:CWE-89 -- "why"` |
+| `@mitigates` | `@mitigates <asset> against <threat> using <control> -- "how"` |
+| `@confirmed` | `@confirmed <threat> on <asset> [severity] cwe:CWE-89 -- "evidence"` |
+| `@flows` | `@flows <A> -> <B> via <mechanism> -- "what moves"` — chains allowed: `A -> B -> C` |
+| `@boundary` | `@boundary between <A> and <B> (#id) -- "what changes across it"` |
+| `@transfers` | `@transfers <threat> from <A> to <B> -- "who owns it now"` |
+| `@validates` | `@validates <control> for <asset> -- "the test that proves it"` |
+| `@audit` | `@audit <asset> -- "what a human needs to look at"` |
+| `@owns` | `@owns <team> for <asset> -- "who reviews changes here"` |
+| `@handles` | `@handles <pii\|phi\|financial\|secrets\|internal\|public> on <asset> -- "what data"` |
+| `@assumes` | `@assumes <asset> -- "what must hold for this to be safe"` |
+| `@feature` | `@feature "Name" -- "what it groups"` |
+| `@comment` | `@comment -- "context that fits no other verb"` |
+| `@accepts` | `@accepts <threat> on <asset> -- "why"` — **human only, never write this** |
+
+Two notes that catch people out. `@confirmed` and `@exposes` take their arguments in
+**opposite orders** — exposes is asset-then-threat, confirmed is threat-then-asset. And a
+cross-repo tag such as `#other-repo.component` must be **quoted** —
+`@flows "#other-repo.tokens" -> #api via header` — because an unquoted `#id` may not contain
+a dot.
+
+Write coupled blocks, not lone facts: a risk plus the control or audit that answers it, plus
+the flow that gives it context.
+
+**The complete reference is `docs/GUARDLINK_REFERENCE.md`** — every verb, every alias, the conformance
+levels, and worked examples per language. Read it before inventing syntax.
+
 **Never write `@accepts`.** Accepting a risk is a human governance decision. If you find a
 risk with no control, write `@exposes` to record it and `@audit` to flag it for review.
 
