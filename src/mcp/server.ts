@@ -57,6 +57,7 @@ import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard,
 import { buildAnnotatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
 import { loadWorkspaceConfig } from '../workspace/index.js';
+import { getPackageVersion } from '../version.js';
 import type { ThreatModel } from '../types/index.js';
 
 // ─── Cached model ────────────────────────────────────────────────────
@@ -86,7 +87,7 @@ function invalidateCache() {
 export function createServer(): McpServer {
   const server = new McpServer({
     name: 'guardlink',
-    version: '1.4.3',
+    version: getPackageVersion(),
   });
 
   // ── Tool: guardlink_parse ──
