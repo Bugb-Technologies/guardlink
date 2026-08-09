@@ -199,6 +199,14 @@ export interface ReportMetadata {
   generated_at: string;
   /** Workspace name if this repo is part of a workspace */
   workspace?: string;
+  /**
+   * Content hash of the annotation set (GL-101), as `sha256-v<n>:<hex>`.
+   *
+   * Stable across annotation modes, file order and cosmetic code edits — it moves
+   * only when an annotation is added, edited or deleted. Use it to tell whether a
+   * derived artifact still describes the current model.
+   */
+  annotation_hash?: string;
 }
 
 // ─── External References ─────────────────────────────────────────────

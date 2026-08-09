@@ -12,6 +12,7 @@
 import { execSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { computeAnnotationHash } from '../parser/annotation-hash.js';
 import type { ThreatModel, ReportMetadata } from '../types/index.js';
 import type { WorkspaceConfig } from './types.js';
 
@@ -175,6 +176,7 @@ export function populateMetadata(model: ThreatModel, root: string): ThreatModel 
     commit_sha: getCommitSha(root),
     branch: getBranch(root),
     generated_at: model.generated_at,
+    annotation_hash: computeAnnotationHash(model),
     ...(workspace?.workspace && { workspace: workspace.workspace }),
   };
 

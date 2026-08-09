@@ -13,3 +13,4 @@ export { clearAnnotations } from './clear.js';
 export type { ClearAnnotationsOptions, ClearAnnotationsResult } from './clear.js';
 export { listFeatures, filterByFeature, getFeatureSummaries } from './feature-filter.js';
 export type { FeatureSummary } from './feature-filter.js';
+export { computeAnnotationHash, canonicalAnnotationRecords, ANNOTATION_HASH_VERSION } from './annotation-hash.js';
