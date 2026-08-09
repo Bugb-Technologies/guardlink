@@ -34,6 +34,7 @@ import {
   promptMdContent,
   guardlinkReadmeContent,
   GITIGNORE_ENTRY,
+  GITATTRIBUTES_ENTRY,
   type ModelContextFreshness,
 } from './templates.js';
 import { computeAnnotationHash } from '../parser/annotation-hash.js';
@@ -190,6 +191,18 @@ export function initProject(options: InitOptions): InitResult {
         updated.push('.gitignore');
       }
     }
+  }
+
+  // ── 6b. Mark derived artifacts as generated (GL-302/GL-304) ──
+
+  const gitattributesPath = join(root, '.gitattributes');
+  const existingAttrs = existsSync(gitattributesPath) ? readFileSync(gitattributesPath, 'utf-8') : '';
+  if (!existingAttrs.includes('.guardlink/graph')) {
+    if (!dryRun) {
+      if (existingAttrs) appendFileSync(gitattributesPath, GITATTRIBUTES_ENTRY);
+      else writeFileSync(gitattributesPath, GITATTRIBUTES_ENTRY.trimStart());
+    }
+    (existingAttrs ? updated : created).push('.gitattributes');
   }
 
   // ── 7. Update/create agent instruction files ──

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "annotation_hash": "sha256-v1:0a695cb5d589161a45a198f34419459a9a5f683558356a89035ea5bcc1a41a87",
+  "git_sha": "427814705d6b6dca4e5a1cde10d19e1ab2fe218c",
+  "generated_at": "2026-08-09T15:56:41.617Z",
+  "generator": "guardlink@1.4.5",
+  "artifacts": [
+    {
+      "path": ".guardlink/graph/threat-graph.mmd",
+      "bytes": 7426,
+      "annotation_hash": "sha256-v1:0a695cb5d589161a45a198f34419459a9a5f683558356a89035ea5bcc1a41a87"
+    },
+    {
+      "path": ".guardlink/graph/dataflow.mmd",
+      "bytes": 8196,
+      "annotation_hash": "sha256-v1:0a695cb5d589161a45a198f34419459a9a5f683558356a89035ea5bcc1a41a87"
+    },
+    {
+      "path": ".guardlink/graph/attack-surface.mmd",
+      "bytes": 4153,
+      "annotation_hash": "sha256-v1:0a695cb5d589161a45a198f34419459a9a5f683558356a89035ea5bcc1a41a87"
+    },
+    {
+      "path": ".guardlink/graph/by-feature/dashboard.mmd",
+      "bytes": 1361,
+      "annotation_hash": "sha256-v1:0a695cb5d589161a45a198f34419459a9a5f683558356a89035ea5bcc1a41a87"
+    },
+    {
+      "path": ".guardlink/graph/by-feature/mcp-integration.mmd",
+      "bytes": 1761,
+      "annotation_hash": "sha256-v1:0a695cb5d589161a45a198f34419459a9a5f683558356a89035ea5bcc1a41a87"
+    },
+    {
+      "path": ".guardlink/model.json",
+      "bytes": 94046,
+      "annotation_hash": "sha256-v1:0a695cb5d589161a45a198f34419459a9a5f683558356a89035ea5bcc1a41a87"
+    }
+  ]
+}

@@ -49,6 +49,7 @@ import { ensurePromptMd } from '../init/migrate.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getCurrentRef } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
+import { emitArtifacts, checkArtifactDrift } from '../artifacts/emit.js';
 import { startStdioServer } from '../mcp/index.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, loadPentestData, serializePentestFindings, buildConfig, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, serializeModel, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
@@ -273,7 +274,8 @@ program
   .argument('[dir]', 'Project directory to scan', '.')
   .option('-p, --project <n>', 'Project name', 'unknown')
   .option('--strict', 'Also fail on unmitigated exposures (for CI gates)')
-  .action(async (dir: string, opts: { project: string; strict?: boolean }) => {
+  .option('--artifacts', 'Also check .guardlink/graph/ artifacts against the current model; exits non-zero on drift')
+  .action(async (dir: string, opts: { project: string; strict?: boolean; artifacts?: boolean }) => {
     const root = resolve(dir);
     const { model, diagnostics } = await parseProject({ root, project: opts.project });
 
@@ -333,8 +335,35 @@ program
       }
     }
 
-    // Exit 1 on errors always; also on unmitigated if --strict
-    process.exit(errorCount > 0 || (opts.strict && hasUnmitigated) ? 1 : 0);
+    // ── Artifact drift (GL-302) ──
+    // A generated .mmd in a repo looks like source, so a stale one is trusted
+    // rather than questioned. This is the check that makes emission safe.
+    let artifactDrift = false;
+    if (opts.artifacts) {
+      const findings = checkArtifactDrift(root, model);
+      if (findings.length === 0) {
+        console.error('\n✓ Artifacts are current.');
+      } else {
+        artifactDrift = true;
+        console.error(`\n⚠  ${findings.length} artifact issue(s):`);
+        for (const f of findings) {
+          if (f.kind === 'missing') {
+            console.error(`   ${f.path} — not emitted. Run: guardlink artifacts .`);
+          } else if (f.kind === 'unheadered') {
+            console.error(`   ${f.path} — no provenance header; cannot tell whether it is current. Regenerate.`);
+          } else {
+            console.error(`   ${f.path} — STALE`);
+            console.error(`      built from: ${f.found}`);
+            console.error(`      model is:   ${f.expected}`);
+          }
+        }
+        console.error('\n   Regenerate with: guardlink artifacts .');
+        console.error('   Never hand-edit an artifact to silence this — the hash describes the annotations.');
+      }
+    }
+
+    // Exit 1 on errors always; also on unmitigated if --strict, or on artifact drift
+    process.exit(errorCount > 0 || artifactDrift || (opts.strict && hasUnmitigated) ? 1 : 0);
   });
 
 // ─── report ──────────────────────────────────────────────────────────
@@ -423,6 +452,31 @@ program
       );
       console.error(`✓ Wrote threat model JSON to ${jsonFile} (schema v${enrichedModel.metadata?.schema_version})`);
     }
+  });
+
+// ─── artifacts ───────────────────────────────────────────────────────
+
+program
+  .command('artifacts')
+  .description('Emit .guardlink/model.json and .guardlink/graph/ — diagrams and the model as plain files')
+  .argument('[dir]', 'Project directory to scan', '.')
+  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('--dry-run', 'Show what would be written without writing')
+  .action(async (dir: string, opts: { project: string; dryRun?: boolean }) => {
+    const root = resolve(dir);
+    const { model } = await parseProject({ root, project: opts.project });
+
+    if (model.annotations_parsed === 0) {
+      console.error('No annotations found — nothing to emit.');
+      process.exit(1);
+    }
+
+    const result = emitArtifacts({ root, model, dryRun: opts.dryRun });
+    const verb = opts.dryRun ? 'Would write' : 'Wrote';
+    console.error(`${verb} ${result.written.length} artifact(s):`);
+    for (const path of result.written) console.error(`   ${path}`);
+    console.error(`\nannotation_hash: ${result.provenance.annotation_hash}`);
+    console.error('Every .mmd carries that hash in a %% header. Check with: guardlink validate . --artifacts');
   });
 
 // ─── diff ────────────────────────────────────────────────────────────

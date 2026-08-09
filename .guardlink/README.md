@@ -11,8 +11,8 @@ accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 344 annotations · 16 assets · 15 threats · 12 controls · 66 exposures · 85 flows
-Content hash: `sha256-v1:11f506dc6a6b5bce056163bd0b08d5a27f4f4ef076f3ac78730f0a6192b304ec` — identical hash means identical model.
+Current model: 351 annotations · 16 assets · 15 threats · 12 controls · 67 exposures · 87 flows
+Content hash: `sha256-v1:0a695cb5d589161a45a198f34419459a9a5f683558356a89035ea5bcc1a41a87` — identical hash means identical model.
 
 ---
 
@@ -59,6 +59,8 @@ from this model.
 | `config.json` | Project name, language, which files are scanned, and the annotation mode. |
 | `prompt.md` | Project description used when generating threat reports. |
 | `threat-reports/` | Saved AI threat analyses, if any have been generated. |
+| `model.json` | The whole parsed model as JSON, canonically ordered. Generated. |
+| `graph/` | Mermaid diagrams of the model, plus a MANIFEST. Generated — see below. |
 
 ## Annotation mode in effect
 
@@ -180,6 +182,35 @@ auto-discover it, such as Claude Code. If your client does not, point it at
 `guardlink mcp` over stdio.
 
 ---
+
+## The generated graph
+
+```sh
+guardlink artifacts .            # (re)write model.json and graph/
+guardlink validate . --artifacts # fail if any of them is stale
+```
+
+| File | Shows |
+|---|---|
+| `graph/threat-graph.mmd` | Assets, the threats they are exposed to, the controls that mitigate them. |
+| `graph/dataflow.mmd` | `@flows` between components, with trust boundaries. |
+| `graph/attack-surface.mmd` | Entry points and what is reachable from them. |
+| `graph/by-feature/<name>.mmd` | The threat graph narrowed to one `@feature`. |
+| `graph/MANIFEST.json` | Size and source hash of each artifact. |
+
+These are Mermaid, and readable as plain text without rendering. Each opens with a
+`%%` header naming the `annotation_hash` it was built from; Mermaid treats `%%` as a
+comment so it does not affect the diagram.
+
+**Check the hash before trusting one.** A generated diagram in a repository looks
+like source, and a reader who does not know a file is derived will not think to ask
+whether it is current. If the header's hash differs from the one above, the diagram
+is stale — regenerate it. Never hand-edit an artifact to make the check pass: the
+hash describes the annotations, so editing the file only makes it lie.
+
+They are committed on purpose, so a fresh clone has the model without running
+anything and a reviewer sees model changes in the diff. Resolve merge conflicts by
+regenerating, never by hand-merging.
 
 ## Reading the answers
 

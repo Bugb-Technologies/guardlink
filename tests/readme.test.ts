@@ -196,11 +196,22 @@ describe('GL-402 — content an agent needs', () => {
     expect(inline()).toMatch(/generated.*guardlink sync.*do not edit/is);
   });
 
-  it('does not advertise the graph\\/ artifacts, which do not exist yet', () => {
-    // SG-3 is unbuilt. Documenting a directory init never creates would send a
-    // cold agent looking for files that are not there.
-    expect(inline()).not.toMatch(/graph\//);
-    expect(inline()).not.toMatch(/MANIFEST\.json/);
+  it('documents the graph/ artifacts now that they exist', () => {
+    // Deliberately omitted in Phase 3 and pinned so it could not be forgotten
+    // when SG-3 landed. It has landed.
+    const text = inline();
+    expect(text).toMatch(/## The generated graph/);
+    expect(text).toContain('guardlink artifacts .');
+    expect(text).toContain('guardlink validate . --artifacts');
+    expect(text).toContain('graph/threat-graph.mmd');
+    expect(text).toContain('graph/by-feature/');
+    expect(text).toContain('MANIFEST.json');
+  });
+
+  it('warns that a generated diagram looks like source', () => {
+    const text = inline();
+    expect(text).toMatch(/looks\s+like source/);
+    expect(text).toMatch(/Never hand-edit an artifact/);
   });
 });
 

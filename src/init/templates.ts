@@ -484,10 +484,46 @@ export function configContent(project: ProjectInfo, mode: AnnotationMode = 'inli
 
 // ─── .gitignore addition ─────────────────────────────────────────────
 
+/**
+ * .gitignore lines added by `init`.
+ *
+ * GL-304 decision: derived artifacts are COMMITTED. A fresh clone gets the
+ * threat model without running anything, and a model change shows up in review —
+ * "this PR added an exposure" becomes visible in the diff instead of depending on
+ * a reviewer knowing to look. The cost is churn, and that cost is paid down by
+ * canonical ordering (D23): regenerating unchanged annotations produces identical
+ * bytes, so a diff means something moved.
+ *
+ * What stays ignored is the machine-generated exports that are large, rebuilt on
+ * demand and of no review value: threat-model.json, guardlink.sarif.json,
+ * threat-dashboard.html. The previous rule caught those only by accident —
+ * `.guardlink/*.json` does not cross a `/`, so graph/MANIFEST.json survived while
+ * model.json was ignored, which was glob depth deciding policy.
+ */
 export const GITIGNORE_ENTRY = `
-# GuardLink
-.guardlink/*.json
-!.guardlink/config.json
+# GuardLink — generated exports, rebuilt on demand
+threat-model.json
+threat-model.md
+guardlink.sarif.json
+threat-dashboard.html
+
+# Committed deliberately (see .guardlink/graph/README.md):
+#   .guardlink/model.json   — the parsed model, canonically ordered
+#   .guardlink/graph/       — diagrams, MANIFEST, and their provenance headers
+`;
+
+/**
+ * `.gitattributes` lines marking artifacts as generated.
+ *
+ * `linguist-generated` collapses them in pull-request diffs and excludes them
+ * from language statistics — they are committed to be *read*, not reviewed line
+ * by line.
+ */
+export const GITATTRIBUTES_ENTRY = `
+# GuardLink derived artifacts — regenerate, never hand-merge.
+# On conflict: git checkout --ours .guardlink/graph/ && guardlink artifacts .
+.guardlink/model.json linguist-generated=true
+.guardlink/graph/**  linguist-generated=true
 `;
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -720,6 +756,8 @@ from this model.
 | \`config.json\` | Project name, language, which files are scanned, and the annotation mode. |
 | \`prompt.md\` | Project description used when generating threat reports. |${external ? '\n| `annotations/` | The annotations themselves, as `.gal` sidecars mirroring source paths. |' : ''}${external ? '\n| `.mcp.json` | MCP server config. Not auto-discovered here — see "Enabling the MCP tools" below. |' : ''}
 | \`threat-reports/\` | Saved AI threat analyses, if any have been generated. |
+| \`model.json\` | The whole parsed model as JSON, canonically ordered. Generated. |
+| \`graph/\` | Mermaid diagrams of the model, plus a MANIFEST. Generated — see below. |
 
 ## Annotation mode in effect
 
@@ -831,6 +869,35 @@ ${ctx.mcpAtRoot
     : 'The config lives at `.guardlink/.mcp.json`. MCP clients do **not** auto-discover it\nthere — copy it to the project root, or point your client at `guardlink mcp` over stdio.'}
 
 ---
+
+## The generated graph
+
+\`\`\`sh
+guardlink artifacts .            # (re)write model.json and graph/
+guardlink validate . --artifacts # fail if any of them is stale
+\`\`\`
+
+| File | Shows |
+|---|---|
+| \`graph/threat-graph.mmd\` | Assets, the threats they are exposed to, the controls that mitigate them. |
+| \`graph/dataflow.mmd\` | \`@flows\` between components, with trust boundaries. |
+| \`graph/attack-surface.mmd\` | Entry points and what is reachable from them. |
+| \`graph/by-feature/<name>.mmd\` | The threat graph narrowed to one \`@feature\`. |
+| \`graph/MANIFEST.json\` | Size and source hash of each artifact. |
+
+These are Mermaid, and readable as plain text without rendering. Each opens with a
+\`%%\` header naming the \`annotation_hash\` it was built from; Mermaid treats \`%%\` as a
+comment so it does not affect the diagram.
+
+**Check the hash before trusting one.** A generated diagram in a repository looks
+like source, and a reader who does not know a file is derived will not think to ask
+whether it is current. If the header's hash differs from the one above, the diagram
+is stale — regenerate it. Never hand-edit an artifact to make the check pass: the
+hash describes the annotations, so editing the file only makes it lie.
+
+They are committed on purpose, so a fresh clone has the model without running
+anything and a reviewer sees model changes in the diff. Resolve merge conflicts by
+regenerating, never by hand-merging.
 
 ## Reading the answers
 

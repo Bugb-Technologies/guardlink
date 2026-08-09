@@ -1,0 +1,165 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        threat-graph.mmd
+%% annotation_hash: sha256-v1:0a695cb5d589161a45a198f34419459a9a5f683558356a89035ea5bcc1a41a87
+%% git_sha:         427814705d6b6dca4e5a1cde10d19e1ab2fe218c
+%% generated_at:    2026-08-09T15:56:41.617Z
+%% generator:       guardlink@1.4.5
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
+graph LR
+  subgraph TZ0["🧱 Trust boundary at process spawn"]
+    agent_launcher["🔷 GuardLink.Agent_Launcher [SECRETS, INTERNAL]"]
+  end
+  subgraph TZ1["🧱 Trust boundary at external API call"]
+    llm_client["🔷 GuardLink.LLM_Client [INTERNAL, SECRETS]"]
+  end
+  subgraph TZ3["🧱 Trust boundary at CLI argument parsing"]
+    cli["🔷 GuardLink.CLI [SECRETS, INTERNAL]"]
+  end
+  subgraph TZ4["🧱 Trust boundary at git command execution"]
+    diff["🔷 GuardLink.Diff"]
+  end
+  subgraph TZ5["🧱 Trust boundary at MCP protocol"]
+    mcp["🔷 GuardLink.MCP [INTERNAL]"]
+  end
+  subgraph TZ7["🧱 Trust boundary between parser and disk …"]
+    parser["🔷 GuardLink.Parser [INTERNAL]"]
+  end
+  subgraph TZ8["🧱 Trust boundary at interactive input"]
+    tui["🔷 GuardLink.TUI [SECRETS]"]
+  end
+  sarif["🔷 GuardLink.SARIF"]
+  dashboard["🔷 GuardLink.Dashboard [INTERNAL]"]
+  init["🔷 GuardLink.Init [INTERNAL]"]
+  suggest["🔷 GuardLink.Suggest"]
+  merge_engine["🔷 Workspace.Merge"]
+  workspace_config["🔷 Workspace.Config"]
+  api_key_exposure["🟠 API_Key_Exposure (cwe:CWE-798)"]:::threat
+  path_traversal["🟠 Path_Traversal (cwe:CWE-22)"]:::threat
+  arbitrary_write["🟠 Arbitrary_File_Write (cwe:CWE-73)"]:::threat
+  child_proc_injection["🔴 Child_Process_Injection (cwe:CWE-78)"]:::threat
+  prompt_injection["🟠 Prompt_Injection (cwe:CWE-77)"]:::threat
+  dos["🟡 Denial_of_Service (cwe:CWE-400)"]:::threat
+  config_tamper["🟡 Config_Tampering (cwe:CWE-15)"]:::threat
+  data_exposure["🟡 Sensitive_Data_Exposure (cwe:CWE-200)"]:::threat
+  ssrf["🟡 Server_Side_Request_Forgery (cwe:CWE-918)"]:::threat
+  cmd_injection["🔴 Command_Injection (cwe:CWE-78)"]:::threat
+  xss["🟠 Cross_Site_Scripting (cwe:CWE-79)"]:::threat
+  info_disclosure["🔵 Information_Disclosure (cwe:CWE-200)"]:::threat
+  redos["🟡 ReDoS (cwe:CWE-1333)"]:::threat
+  tag_collision["🟡 Tag_Collision"]:::threat
+  key_redaction["🛡️ Key_Redaction"]:::control
+  path_validation["🛡️ Path_Validation"]:::control
+  param_commands["🛡️ Parameterized_Commands"]:::control
+  config_validation["🛡️ Config_Validation"]:::control
+  input_sanitize["🛡️ Input_Sanitization"]:::control
+  glob_filtering["🛡️ Glob_Pattern_Filtering"]:::control
+  resource_limits["🛡️ Resource_Limits"]:::control
+  output_encoding["🛡️ Output_Encoding"]:::control
+  regex_anchoring["🛡️ Regex_Anchoring"]:::control
+  prefix_ownership["🛡️ Prefix_Ownership"]:::control
+  yaml_validation["🛡️ YAML_Validation"]:::control
+  agent_launcher -. exposes .-> api_key_exposure
+  agent_launcher -. exposes .-> path_traversal
+  agent_launcher -. exposes .-> arbitrary_write
+  agent_launcher -. exposes .-> child_proc_injection
+  agent_launcher -. exposes .-> prompt_injection
+  agent_launcher -. exposes .-> dos
+  agent_launcher -. exposes .-> config_tamper
+  llm_client -. exposes .-> path_traversal
+  llm_client -. exposes .-> arbitrary_write
+  llm_client -. exposes .-> data_exposure
+  llm_client -. exposes .-> ssrf
+  llm_client -. exposes .-> api_key_exposure
+  llm_client -. exposes .-> prompt_injection
+  llm_client -. exposes .-> dos
+  sarif -. exposes .-> data_exposure
+  dashboard -. exposes .-> arbitrary_write
+  cli -. exposes .-> path_traversal
+  cli -. exposes .-> arbitrary_write
+  cli -. exposes .-> api_key_exposure
+  cli -. exposes .-> cmd_injection
+  dashboard -. exposes .-> xss
+  dashboard -. exposes .-> path_traversal
+  diff -. exposes .-> cmd_injection
+  diff -. exposes .-> arbitrary_write
+  diff -. exposes .-> path_traversal
+  init -. exposes .-> path_traversal
+  init -. exposes .-> arbitrary_write
+  init -. exposes .-> data_exposure
+  mcp -. exposes .-> path_traversal
+  mcp -. exposes .-> info_disclosure
+  mcp -. exposes .-> cmd_injection
+  mcp -. exposes .-> redos
+  mcp -. exposes .-> arbitrary_write
+  mcp -. exposes .-> prompt_injection
+  mcp -. exposes .-> api_key_exposure
+  mcp -. exposes .-> data_exposure
+  mcp -. exposes .-> dos
+  suggest -. exposes .-> path_traversal
+  suggest -. exposes .-> redos
+  suggest -. exposes .-> dos
+  parser -. exposes .-> arbitrary_write
+  parser -. exposes .-> path_traversal
+  parser -. exposes .-> dos
+  parser -. exposes .-> redos
+  tui -. exposes .-> path_traversal
+  tui -. exposes .-> arbitrary_write
+  tui -. exposes .-> cmd_injection
+  tui -. exposes .-> api_key_exposure
+  tui -. exposes .-> prompt_injection
+  tui -. exposes .-> dos
+  key_redaction -- mitigates --> api_key_exposure
+  key_redaction -. protects .-> agent_launcher
+  path_validation -- mitigates --> path_traversal
+  path_validation -. protects .-> agent_launcher
+  path_validation -- mitigates --> arbitrary_write
+  param_commands -- mitigates --> child_proc_injection
+  param_commands -. protects .-> agent_launcher
+  param_commands -- mitigates --> cmd_injection
+  path_validation -. protects .-> llm_client
+  config_validation -- mitigates --> ssrf
+  config_validation -. protects .-> llm_client
+  key_redaction -. protects .-> llm_client
+  input_sanitize -- mitigates --> ssrf
+  input_sanitize -. protects .-> llm_client
+  glob_filtering -- mitigates --> path_traversal
+  glob_filtering -. protects .-> llm_client
+  resource_limits -- mitigates --> dos
+  resource_limits -. protects .-> llm_client
+  path_validation -. protects .-> dashboard
+  path_validation -. protects .-> cli
+  key_redaction -. protects .-> cli
+  output_encoding -- mitigates --> xss
+  output_encoding -. protects .-> dashboard
+  input_sanitize -- mitigates --> cmd_injection
+  input_sanitize -. protects .-> diff
+  path_validation -. protects .-> diff
+  glob_filtering -. protects .-> diff
+  path_validation -. protects .-> init
+  path_validation -. protects .-> mcp
+  regex_anchoring -- mitigates --> redos
+  regex_anchoring -. protects .-> mcp
+  key_redaction -. protects .-> mcp
+  resource_limits -. protects .-> mcp
+  path_validation -. protects .-> suggest
+  regex_anchoring -. protects .-> suggest
+  glob_filtering -. protects .-> parser
+  resource_limits -. protects .-> parser
+  regex_anchoring -. protects .-> parser
+  prefix_ownership -- mitigates --> tag_collision
+  prefix_ownership -. protects .-> parser
+  path_validation -. protects .-> tui
+  key_redaction -. protects .-> tui
+  resource_limits -. protects .-> tui
+  prefix_ownership -. protects .-> merge_engine
+  yaml_validation -- mitigates --> config_tamper
+  yaml_validation -. protects .-> workspace_config
+  mcp -- "📡 generateThreatReport" --> llm_client
+  tui -- "📡 launchAgent" --> agent_launcher
+  tui -- "📡 chatCompletion" --> llm_client
+  classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
+  classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px

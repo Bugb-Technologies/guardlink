@@ -1,0 +1,3694 @@
+{
+  "version": "1.1.0",
+  "project": "unknown",
+  "generated_at": "2026-08-09T15:56:41.616Z",
+  "source_files": 77,
+  "annotations_parsed": 351,
+  "annotated_files": [
+    ".guardlink/definitions.ts",
+    "src/agents/config.ts",
+    "src/agents/index.ts",
+    "src/agents/launcher.ts",
+    "src/agents/prompts.ts",
+    "src/analyze/index.ts",
+    "src/analyze/llm.ts",
+    "src/analyze/prompts.ts",
+    "src/analyze/tools.ts",
+    "src/analyzer/index.ts",
+    "src/analyzer/sarif.ts",
+    "src/artifacts/emit.ts",
+    "src/cli/index.ts",
+    "src/dashboard/diagrams.ts",
+    "src/dashboard/generate.ts",
+    "src/dashboard/index.ts",
+    "src/diff/git.ts",
+    "src/diff/index.ts",
+    "src/init/detect.ts",
+    "src/init/index.ts",
+    "src/init/migrate.ts",
+    "src/init/templates.ts",
+    "src/mcp/context.ts",
+    "src/mcp/freshness.ts",
+    "src/mcp/index.ts",
+    "src/mcp/instructions.ts",
+    "src/mcp/lookup.ts",
+    "src/mcp/server.ts",
+    "src/mcp/subgraph.ts",
+    "src/mcp/suggest.ts",
+    "src/parser/annotation-hash.ts",
+    "src/parser/annotation-mode.ts",
+    "src/parser/canonical-order.ts",
+    "src/parser/clear.ts",
+    "src/parser/feature-filter.ts",
+    "src/parser/fingerprint.ts",
+    "src/parser/parse-file.ts",
+    "src/parser/parse-line.ts",
+    "src/parser/parse-project.ts",
+    "src/parser/validate.ts",
+    "src/report/index.ts",
+    "src/report/report.ts",
+    "src/report/sequence.ts",
+    "src/review/index.ts",
+    "src/tui/commands.ts",
+    "src/tui/config.ts",
+    "src/tui/index.ts",
+    "src/tui/input.ts",
+    "src/version.ts",
+    "src/workspace/index.ts",
+    "src/workspace/link.ts",
+    "src/workspace/merge.ts",
+    "src/workspace/metadata.ts",
+    "src/workspace/types.ts"
+  ],
+  "unannotated_files": [
+    ".github/ISSUE_TEMPLATE/bug_report.yml",
+    ".github/ISSUE_TEMPLATE/config.yml",
+    ".github/ISSUE_TEMPLATE/feature_request.yml",
+    ".github/workflows/ci.yml",
+    ".github/workflows/release.yml",
+    "docs/examples/guardlink-pentest.html",
+    "docs/examples/threat-dashboard.html",
+    "examples/ci/per-repo-report.yml",
+    "examples/ci/workspace-merge.yml",
+    "examples/github-action.yml",
+    "src/analyze/format.ts",
+    "src/dashboard/data.ts",
+    "src/diff/engine.ts",
+    "src/diff/format.ts",
+    "src/index.ts",
+    "src/init/picker.ts",
+    "src/parser/comment-strip.ts",
+    "src/parser/format.ts",
+    "src/parser/index.ts",
+    "src/parser/normalize.ts",
+    "src/report/mermaid.ts",
+    "src/tui/format.ts",
+    "src/types/index.ts"
+  ],
+  "assets": [
+    {
+      "path": [
+        "GuardLink",
+        "Parser"
+      ],
+      "id": "parser",
+      "description": "Reads source files from disk, extracts security annotations using regex patterns",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 15
+      }
+    },
+    {
+      "path": [
+        "GuardLink",
+        "CLI"
+      ],
+      "id": "cli",
+      "description": "Command-line interface, handles user arguments, invokes subcommands",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 16
+      }
+    },
+    {
+      "path": [
+        "GuardLink",
+        "TUI"
+      ],
+      "id": "tui",
+      "description": "Interactive terminal interface with readline input and command dispatch",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 17
+      }
+    },
+    {
+      "path": [
+        "GuardLink",
+        "MCP"
+      ],
+      "id": "mcp",
+      "description": "Model Context Protocol server, accepts tool calls from AI agents over stdio",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 18
+      }
+    },
+    {
+      "path": [
+        "GuardLink",
+        "LLM_Client"
+      ],
+      "id": "llm-client",
+      "description": "Makes HTTP requests to external AI providers (Anthropic, OpenAI, DeepSeek, OpenRouter)",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 19
+      }
+    },
+    {
+      "path": [
+        "GuardLink",
+        "Dashboard"
+      ],
+      "id": "dashboard",
+      "description": "Generates interactive HTML threat model dashboard from ThreatModel data",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 20
+      }
+    },
+    {
+      "path": [
+        "GuardLink",
+        "Init"
+      ],
+      "id": "init",
+      "description": "Initializes projects, writes config files and agent instruction files to disk",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 21
+      }
+    },
+    {
+      "path": [
+        "GuardLink",
+        "Agent_Launcher"
+      ],
+      "id": "agent-launcher",
+      "description": "Spawns child processes for AI coding agents (Claude Code, Cursor, Codex)",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 22
+      }
+    },
+    {
+      "path": [
+        "GuardLink",
+        "Diff"
+      ],
+      "id": "diff",
+      "description": "Compares threat models across git commits, invokes git commands",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 23
+      }
+    },
+    {
+      "path": [
+        "GuardLink",
+        "Report"
+      ],
+      "id": "report",
+      "description": "Generates markdown threat model reports with Mermaid diagrams",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 24
+      }
+    },
+    {
+      "path": [
+        "GuardLink",
+        "SARIF"
+      ],
+      "id": "sarif",
+      "description": "Exports findings as SARIF 2.1.0 JSON for security tooling",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 25
+      }
+    },
+    {
+      "path": [
+        "GuardLink",
+        "Suggest"
+      ],
+      "id": "suggest",
+      "description": "Analyzes code patterns to suggest appropriate security annotations",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 26
+      }
+    },
+    {
+      "path": [
+        "Workspace",
+        "Link"
+      ],
+      "id": "workspace-link",
+      "description": "Multi-repo workspace linking setup",
+      "location": {
+        "file": "src/workspace/link.ts",
+        "line": 7
+      }
+    },
+    {
+      "path": [
+        "Workspace",
+        "Merge"
+      ],
+      "id": "merge-engine",
+      "description": "Cross-repo threat model unification",
+      "location": {
+        "file": "src/workspace/merge.ts",
+        "line": 7
+      }
+    },
+    {
+      "path": [
+        "Workspace",
+        "Metadata"
+      ],
+      "id": "report-metadata",
+      "description": "Report provenance data",
+      "location": {
+        "file": "src/workspace/metadata.ts",
+        "line": 7
+      }
+    },
+    {
+      "path": [
+        "Workspace",
+        "Config"
+      ],
+      "id": "workspace-config",
+      "description": "Multi-repo workspace definition",
+      "location": {
+        "file": "src/workspace/types.ts",
+        "line": 7
+      }
+    }
+  ],
+  "threats": [
+    {
+      "name": "Path_Traversal",
+      "canonical_name": "path_traversal",
+      "id": "path-traversal",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "File read/write operations outside intended project directory via ../ sequences or absolute paths",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 31
+      }
+    },
+    {
+      "name": "Command_Injection",
+      "canonical_name": "command_injection",
+      "id": "cmd-injection",
+      "severity": "critical",
+      "external_refs": [
+        "cwe:CWE-78"
+      ],
+      "description": "Shell command execution with unsanitized user input",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 32
+      }
+    },
+    {
+      "name": "Cross_Site_Scripting",
+      "canonical_name": "cross_site_scripting",
+      "id": "xss",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-79"
+      ],
+      "description": "Injection of malicious scripts into generated HTML output",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 33
+      }
+    },
+    {
+      "name": "API_Key_Exposure",
+      "canonical_name": "api_key_exposure",
+      "id": "api-key-exposure",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-798"
+      ],
+      "description": "API keys leaked in logs, error messages, or unintended output",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 34
+      }
+    },
+    {
+      "name": "Server_Side_Request_Forgery",
+      "canonical_name": "server_side_request_forgery",
+      "id": "ssrf",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-918"
+      ],
+      "description": "LLM API requests to attacker-controlled URLs via config override",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 35
+      }
+    },
+    {
+      "name": "ReDoS",
+      "canonical_name": "redos",
+      "id": "redos",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-1333"
+      ],
+      "description": "Regular expression denial of service from crafted annotation content",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 36
+      }
+    },
+    {
+      "name": "Arbitrary_File_Write",
+      "canonical_name": "arbitrary_file_write",
+      "id": "arbitrary-write",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "Writing files to attacker-controlled paths outside project",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 37
+      }
+    },
+    {
+      "name": "Prompt_Injection",
+      "canonical_name": "prompt_injection",
+      "id": "prompt-injection",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-77"
+      ],
+      "description": "Malicious content in annotations injected into LLM prompts",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 38
+      }
+    },
+    {
+      "name": "Denial_of_Service",
+      "canonical_name": "denial_of_service",
+      "id": "dos",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "Resource exhaustion from processing large files or deep directory trees",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 39
+      }
+    },
+    {
+      "name": "Sensitive_Data_Exposure",
+      "canonical_name": "sensitive_data_exposure",
+      "id": "data-exposure",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-200"
+      ],
+      "description": "Threat model details exposed to unauthorized parties",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 40
+      }
+    },
+    {
+      "name": "Insecure_Deserialization",
+      "canonical_name": "insecure_deserialization",
+      "id": "insecure-deser",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-502"
+      ],
+      "description": "Unsafe parsing of JSON/YAML configuration files",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 41
+      }
+    },
+    {
+      "name": "Child_Process_Injection",
+      "canonical_name": "child_process_injection",
+      "id": "child-proc-injection",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-78"
+      ],
+      "description": "Agent launcher executing attacker-controlled commands via process spawn",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 42
+      }
+    },
+    {
+      "name": "Information_Disclosure",
+      "canonical_name": "information_disclosure",
+      "id": "info-disclosure",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-200"
+      ],
+      "description": "Unintended exposure of internal paths, structure, or implementation details",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 43
+      }
+    },
+    {
+      "name": "Tag_Collision",
+      "canonical_name": "tag_collision",
+      "id": "tag-collision",
+      "severity": "medium",
+      "external_refs": [],
+      "description": "Duplicate tag definitions across repos",
+      "location": {
+        "file": "src/workspace/merge.ts",
+        "line": 8
+      }
+    },
+    {
+      "name": "Config_Tampering",
+      "canonical_name": "config_tampering",
+      "id": "config-tamper",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-15"
+      ],
+      "description": "Malicious workspace.yaml could misdirect agent annotations",
+      "location": {
+        "file": "src/workspace/types.ts",
+        "line": 8
+      }
+    }
+  ],
+  "controls": [
+    {
+      "name": "Path_Validation",
+      "canonical_name": "path_validation",
+      "id": "path-validation",
+      "description": "Validates file paths using resolve() + startsWith() to ensure access within allowed directories",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 48
+      }
+    },
+    {
+      "name": "Input_Sanitization",
+      "canonical_name": "input_sanitization",
+      "id": "input-sanitize",
+      "description": "Input validation with anchored regex patterns and length limits",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 49
+      }
+    },
+    {
+      "name": "Output_Encoding",
+      "canonical_name": "output_encoding",
+      "id": "output-encoding",
+      "description": "HTML entity encoding for untrusted data in generated output",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 50
+      }
+    },
+    {
+      "name": "Key_Redaction",
+      "canonical_name": "key_redaction",
+      "id": "key-redaction",
+      "description": "Masking API keys in logs and error messages",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 51
+      }
+    },
+    {
+      "name": "Process_Sandboxing",
+      "canonical_name": "process_sandboxing",
+      "id": "process-sandbox",
+      "description": "Controlled child process spawning with explicit args array, no shell",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 52
+      }
+    },
+    {
+      "name": "Config_Validation",
+      "canonical_name": "config_validation",
+      "id": "config-validation",
+      "description": "Schema validation for configuration files before use",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 53
+      }
+    },
+    {
+      "name": "Resource_Limits",
+      "canonical_name": "resource_limits",
+      "id": "resource-limits",
+      "description": "File size limits, recursion depth limits, timeout constraints",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 54
+      }
+    },
+    {
+      "name": "Parameterized_Commands",
+      "canonical_name": "parameterized_commands",
+      "id": "param-commands",
+      "description": "Using spawn with args array instead of shell string interpolation",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 55
+      }
+    },
+    {
+      "name": "Glob_Pattern_Filtering",
+      "canonical_name": "glob_pattern_filtering",
+      "id": "glob-filtering",
+      "description": "Filtering files using glob patterns with explicit excludes",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 56
+      }
+    },
+    {
+      "name": "Regex_Anchoring",
+      "canonical_name": "regex_anchoring",
+      "id": "regex-anchoring",
+      "description": "Using anchored regex patterns (^...$) to prevent backtracking",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 57
+      }
+    },
+    {
+      "name": "Prefix_Ownership",
+      "canonical_name": "prefix_ownership",
+      "id": "prefix-ownership",
+      "description": "Tag prefix determines owning repo, preventing cross-repo tag collisions",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 58
+      }
+    },
+    {
+      "name": "YAML_Validation",
+      "canonical_name": "yaml_validation",
+      "id": "yaml-validation",
+      "description": "Schema validation for workspace.yaml configuration files",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 59
+      }
+    }
+  ],
+  "mitigations": [
+    {
+      "asset": "#agent-launcher",
+      "threat": "#api-key-exposure",
+      "control": "#key-redaction",
+      "description": "maskKey() redacts keys for display; keys never logged",
+      "location": {
+        "file": "src/agents/config.ts",
+        "line": 14
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "join() with known base dirs constrains paths",
+      "location": {
+        "file": "src/agents/config.ts",
+        "line": 16
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "Output path is fixed relative to project root",
+      "location": {
+        "file": "src/agents/config.ts",
+        "line": 18
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "threat": "#child-proc-injection",
+      "control": "#param-commands",
+      "description": "Binary names from hardcoded AGENTS registry; no shell interpolation",
+      "location": {
+        "file": "src/agents/launcher.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "threat": "#cmd-injection",
+      "control": "#param-commands",
+      "description": "Arguments passed as array, not shell string",
+      "location": {
+        "file": "src/agents/launcher.ts",
+        "line": 12
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "resolve() with root constrains file access",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 9
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "join() with root constrains file access",
+      "location": {
+        "file": "src/analyze/index.ts",
+        "line": 9
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "Output path is fixed to .guardlink/threat-reports/",
+      "location": {
+        "file": "src/analyze/index.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "join() constrains reads to .guardlink/",
+      "location": {
+        "file": "src/analyze/index.ts",
+        "line": 761
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#ssrf",
+      "control": "#config-validation",
+      "description": "BASE_URLS are hardcoded; baseUrl override is optional config",
+      "location": {
+        "file": "src/analyze/llm.ts",
+        "line": 14
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#api-key-exposure",
+      "control": "#key-redaction",
+      "description": "Keys never logged; passed directly to API",
+      "location": {
+        "file": "src/analyze/llm.ts",
+        "line": 16
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#ssrf",
+      "control": "#input-sanitize",
+      "description": "CVE ID validated with strict regex; URL hardcoded to NVD",
+      "location": {
+        "file": "src/analyze/tools.ts",
+        "line": 10
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#path-traversal",
+      "control": "#glob-filtering",
+      "description": "skipDirs excludes sensitive directories; relative() bounds output",
+      "location": {
+        "file": "src/analyze/tools.ts",
+        "line": 12
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "maxResults caps output; stat.size < 500KB filter",
+      "location": {
+        "file": "src/analyze/tools.ts",
+        "line": 14
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "Every write is join(root, '.guardlink', …); feature names are slugified before use as filenames",
+      "location": {
+        "file": "src/artifacts/emit.ts",
+        "line": 28
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "resolve() canonicalizes paths; cwd-relative by design",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 28
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "Output paths resolved relative to project root",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 30
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#api-key-exposure",
+      "control": "#key-redaction",
+      "description": "maskKey() redacts keys in show output",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 32
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Diagram labels are sanitized before emission as Mermaid source",
+      "location": {
+        "file": "src/dashboard/diagrams.ts",
+        "line": 15
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "esc() HTML-encodes all interpolated values",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 9
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "resolve() with root constrains file access",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Serialized model data escapes closing script tags before embedding in <script>",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 15
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "esc() function encodes all interpolated values",
+      "location": {
+        "file": "src/dashboard/index.ts",
+        "line": 5
+      }
+    },
+    {
+      "asset": "#diff",
+      "threat": "#cmd-injection",
+      "control": "#input-sanitize",
+      "description": "rev-parse validates ref exists before use in other commands",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 7
+      }
+    },
+    {
+      "asset": "#diff",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "mkdtempSync creates isolated temp dir; rmSync cleans up",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 9
+      }
+    },
+    {
+      "asset": "#diff",
+      "threat": "#path-traversal",
+      "control": "#glob-filtering",
+      "description": "Files constrained to relevantFiles from git ls-tree",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#init",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "join() with root constrains; reads well-known files only",
+      "location": {
+        "file": "src/init/detect.ts",
+        "line": 6
+      }
+    },
+    {
+      "asset": "#init",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "All paths are relative to root; join() constrains",
+      "location": {
+        "file": "src/init/index.ts",
+        "line": 9
+      }
+    },
+    {
+      "asset": "#init",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "join() with explicit root constrains file access",
+      "location": {
+        "file": "src/init/index.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#init",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "callers pass join(root, ...) constrained paths",
+      "location": {
+        "file": "src/init/index.ts",
+        "line": 392
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "Paths are resolved then required to stay inside root; outside paths are reported, never read",
+      "location": {
+        "file": "src/mcp/context.ts",
+        "line": 18
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#redos",
+      "control": "#regex-anchoring",
+      "description": "Patterns are simple and bounded",
+      "location": {
+        "file": "src/mcp/lookup.ts",
+        "line": 18
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "Zod schema validates root; resolve() canonicalizes",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 27
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "Output paths resolved relative to validated root",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 29
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#api-key-exposure",
+      "control": "#key-redaction",
+      "description": "Keys from env only; never logged or returned",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 33
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "Depth is clamped; visited set makes every node terminal, so cycles cannot revisit",
+      "location": {
+        "file": "src/mcp/subgraph.ts",
+        "line": 43
+      }
+    },
+    {
+      "asset": "#suggest",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "join() with validated root constrains access",
+      "location": {
+        "file": "src/mcp/suggest.ts",
+        "line": 13
+      }
+    },
+    {
+      "asset": "#suggest",
+      "threat": "#redos",
+      "control": "#regex-anchoring",
+      "description": "Patterns designed with bounded quantifiers",
+      "location": {
+        "file": "src/mcp/suggest.ts",
+        "line": 15
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#path-traversal",
+      "control": "#glob-filtering",
+      "description": "DEFAULT_EXCLUDE blocks sensitive dirs; cwd constrains scope",
+      "location": {
+        "file": "src/parser/clear.ts",
+        "line": 10
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "Reuses DEFAULT_EXCLUDE; stats come from the glob walk, no extra stat() calls, no file reads",
+      "location": {
+        "file": "src/parser/fingerprint.ts",
+        "line": 21
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#redos",
+      "control": "#regex-anchoring",
+      "description": "All patterns are anchored (^...$) to prevent backtracking",
+      "location": {
+        "file": "src/parser/parse-line.ts",
+        "line": 6
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#path-traversal",
+      "control": "#glob-filtering",
+      "description": "DEFAULT_EXCLUDE blocks node_modules, .git; fast-glob cwd constrains scan",
+      "location": {
+        "file": "src/parser/parse-project.ts",
+        "line": 6
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "DEFAULT_EXCLUDE skips build artifacts, tests; limits effective file count",
+      "location": {
+        "file": "src/parser/parse-project.ts",
+        "line": 8
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#tag-collision",
+      "control": "#prefix-ownership",
+      "description": "findDanglingRefs ensures #id refs resolve to definitions",
+      "location": {
+        "file": "src/parser/validate.ts",
+        "line": 7
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "Only modifies files already in the parsed project",
+      "location": {
+        "file": "src/review/index.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#tui",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "resolve() with ctx.root constrains file access",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 8
+      }
+    },
+    {
+      "asset": "#tui",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "Output paths resolved relative to project root",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 10
+      }
+    },
+    {
+      "asset": "#tui",
+      "threat": "#api-key-exposure",
+      "control": "#key-redaction",
+      "description": "API keys masked in /model show output",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 14
+      }
+    },
+    {
+      "asset": "#tui",
+      "threat": "#api-key-exposure",
+      "control": "#key-redaction",
+      "description": "Delegates to agents/config.ts with masking",
+      "location": {
+        "file": "src/tui/config.ts",
+        "line": 8
+      }
+    },
+    {
+      "asset": "#tui",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "resolve() canonicalizes paths; starts from cwd",
+      "location": {
+        "file": "src/tui/index.ts",
+        "line": 10
+      }
+    },
+    {
+      "asset": "#tui",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "Keystroke buffer bounded by terminal width",
+      "location": {
+        "file": "src/tui/input.ts",
+        "line": 16
+      }
+    },
+    {
+      "asset": "#merge-engine",
+      "threat": "#tag-collision",
+      "control": "#prefix-ownership",
+      "description": "Tag prefix determines owning repo",
+      "location": {
+        "file": "src/workspace/merge.ts",
+        "line": 9
+      }
+    },
+    {
+      "asset": "#workspace-config",
+      "threat": "#config-tamper",
+      "control": "#yaml-validation",
+      "description": "Schema validation on load",
+      "location": {
+        "file": "src/workspace/types.ts",
+        "line": 9
+      }
+    }
+  ],
+  "exposures": [
+    {
+      "asset": "#agent-launcher",
+      "threat": "#api-key-exposure",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-798"
+      ],
+      "description": "API keys loaded from env vars, files; stored in config.json",
+      "location": {
+        "file": "src/agents/config.ts",
+        "line": 13
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "threat": "#path-traversal",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "Config paths resolved from root and homedir",
+      "location": {
+        "file": "src/agents/config.ts",
+        "line": 15
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "threat": "#arbitrary-write",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "saveProjectConfig writes to .guardlink/config.json",
+      "location": {
+        "file": "src/agents/config.ts",
+        "line": 17
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "threat": "#child-proc-injection",
+      "severity": "critical",
+      "external_refs": [
+        "cwe:CWE-78"
+      ],
+      "description": "spawn/spawnSync execute external binaries",
+      "location": {
+        "file": "src/agents/launcher.ts",
+        "line": 10
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "threat": "#prompt-injection",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-77"
+      ],
+      "description": "User prompt passed to agent CLI as argument",
+      "location": {
+        "file": "src/agents/launcher.ts",
+        "line": 13
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "No timeout on foreground spawn; agent controls duration",
+      "location": {
+        "file": "src/agents/launcher.ts",
+        "line": 15
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "threat": "#prompt-injection",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-77"
+      ],
+      "description": "User prompt concatenated into agent instruction text",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 6
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "threat": "#path-traversal",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "Reads reference docs from root-relative paths",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 8
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "threat": "#config-tamper",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-15"
+      ],
+      "description": "Translate prompt may read CXG reference paths from environment overrides",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 10
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#path-traversal",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "buildProjectContext reads files from root-relative paths",
+      "location": {
+        "file": "src/analyze/index.ts",
+        "line": 8
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#arbitrary-write",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "writeFileSync saves threat reports to .guardlink/",
+      "location": {
+        "file": "src/analyze/index.ts",
+        "line": 10
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#data-exposure",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-200"
+      ],
+      "description": "Serializes full threat model and code snippets for LLM",
+      "location": {
+        "file": "src/analyze/index.ts",
+        "line": 12
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#ssrf",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-918"
+      ],
+      "description": "fetch() calls external LLM API endpoints",
+      "location": {
+        "file": "src/analyze/llm.ts",
+        "line": 13
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#api-key-exposure",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-798"
+      ],
+      "description": "API keys passed in Authorization headers",
+      "location": {
+        "file": "src/analyze/llm.ts",
+        "line": 15
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#prompt-injection",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-77"
+      ],
+      "description": "User prompts sent to LLM API",
+      "location": {
+        "file": "src/analyze/llm.ts",
+        "line": 17
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#ssrf",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-918"
+      ],
+      "description": "lookupCve fetches from NVD API with user-controlled CVE ID",
+      "location": {
+        "file": "src/analyze/tools.ts",
+        "line": 9
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#path-traversal",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "searchCodebase reads files from project root",
+      "location": {
+        "file": "src/analyze/tools.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "searchCodebase reads many files; bounded by maxResults",
+      "location": {
+        "file": "src/analyze/tools.ts",
+        "line": 13
+      }
+    },
+    {
+      "asset": "#sarif",
+      "threat": "#data-exposure",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-200"
+      ],
+      "description": "Exposes threat model findings to SARIF consumers",
+      "location": {
+        "file": "src/analyzer/sarif.ts",
+        "line": 16
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#arbitrary-write",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "Writes .mmd, model.json and MANIFEST.json under a caller-supplied root",
+      "location": {
+        "file": "src/artifacts/emit.ts",
+        "line": 27
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#path-traversal",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "User-supplied dir argument resolved via path.resolve",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 27
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "init/report/sarif/dashboard write files to user-specified paths",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 29
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#api-key-exposure",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-798"
+      ],
+      "description": "API keys handled in config set/show commands",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 31
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#cmd-injection",
+      "severity": "critical",
+      "external_refs": [
+        "cwe:CWE-78"
+      ],
+      "description": "Agent launcher spawns child processes",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 33
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-79"
+      ],
+      "description": "Generates HTML with user-controlled threat model data",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 8
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#path-traversal",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "readFileSync reads code files for annotation context",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 10
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-79"
+      ],
+      "description": "Generates HTML with threat model data",
+      "location": {
+        "file": "src/dashboard/index.ts",
+        "line": 4
+      }
+    },
+    {
+      "asset": "#diff",
+      "threat": "#cmd-injection",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-78"
+      ],
+      "description": "execSync runs git commands with ref argument",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 6
+      }
+    },
+    {
+      "asset": "#diff",
+      "threat": "#arbitrary-write",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "writeFileSync creates files in temp directory",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 8
+      }
+    },
+    {
+      "asset": "#diff",
+      "threat": "#path-traversal",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "git show extracts files based on ls-tree output",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 10
+      }
+    },
+    {
+      "asset": "#diff",
+      "threat": "#cmd-injection",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-78"
+      ],
+      "description": "git.ts uses execSync with ref argument",
+      "location": {
+        "file": "src/diff/index.ts",
+        "line": 4
+      }
+    },
+    {
+      "asset": "#init",
+      "threat": "#path-traversal",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "Reads package.json, pyproject.toml, etc. from root",
+      "location": {
+        "file": "src/init/detect.ts",
+        "line": 5
+      }
+    },
+    {
+      "asset": "#init",
+      "threat": "#arbitrary-write",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "Creates/modifies files: .guardlink/, CLAUDE.md, .cursorrules, etc.",
+      "location": {
+        "file": "src/init/index.ts",
+        "line": 8
+      }
+    },
+    {
+      "asset": "#init",
+      "threat": "#path-traversal",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "Reads/writes files based on root argument",
+      "location": {
+        "file": "src/init/index.ts",
+        "line": 10
+      }
+    },
+    {
+      "asset": "#init",
+      "threat": "#data-exposure",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-200"
+      ],
+      "description": "Writes API key config to .guardlink/config.json",
+      "location": {
+        "file": "src/init/index.ts",
+        "line": 12
+      }
+    },
+    {
+      "asset": "#init",
+      "threat": "#arbitrary-write",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "Creates directories for agent-file writes",
+      "location": {
+        "file": "src/init/index.ts",
+        "line": 391
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#path-traversal",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "Caller-supplied file path is resolved against the project root",
+      "location": {
+        "file": "src/mcp/context.ts",
+        "line": 17
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#info-disclosure",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-200"
+      ],
+      "description": "Envelope discloses the absolute project root and git SHA to the connected client",
+      "location": {
+        "file": "src/mcp/freshness.ts",
+        "line": 17
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#cmd-injection",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-78"
+      ],
+      "description": "Accepts tool calls from external MCP clients",
+      "location": {
+        "file": "src/mcp/index.ts",
+        "line": 4
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#redos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-1333"
+      ],
+      "description": "Regex patterns applied to query strings",
+      "location": {
+        "file": "src/mcp/lookup.ts",
+        "line": 17
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#path-traversal",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "Tool arguments include 'root' directory path from external client",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 26
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#arbitrary-write",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "report, dashboard, sarif tools write files",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 28
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#prompt-injection",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-77"
+      ],
+      "description": "annotate and threat_report tools pass user prompts to LLM",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 30
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#api-key-exposure",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-798"
+      ],
+      "description": "threat_report tool uses API keys from environment",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 32
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#data-exposure",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-200"
+      ],
+      "description": "Resources expose full threat model to MCP clients",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 34
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "Unbounded depth on a dense graph expands the frontier",
+      "location": {
+        "file": "src/mcp/subgraph.ts",
+        "line": 42
+      }
+    },
+    {
+      "asset": "#suggest",
+      "threat": "#path-traversal",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "File path from MCP client joined with root",
+      "location": {
+        "file": "src/mcp/suggest.ts",
+        "line": 12
+      }
+    },
+    {
+      "asset": "#suggest",
+      "threat": "#redos",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-1333"
+      ],
+      "description": "Complex regex patterns applied to source code",
+      "location": {
+        "file": "src/mcp/suggest.ts",
+        "line": 14
+      }
+    },
+    {
+      "asset": "#suggest",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "Large files loaded into memory for pattern scanning",
+      "location": {
+        "file": "src/mcp/suggest.ts",
+        "line": 16
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#arbitrary-write",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "Writes modified content back to discovered files",
+      "location": {
+        "file": "src/parser/clear.ts",
+        "line": 8
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#path-traversal",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "Glob patterns determine which files are modified",
+      "location": {
+        "file": "src/parser/clear.ts",
+        "line": 9
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "Fingerprint globs the project tree on every call",
+      "location": {
+        "file": "src/parser/fingerprint.ts",
+        "line": 20
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#path-traversal",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "File path from caller read via readFile; no validation here",
+      "location": {
+        "file": "src/parser/parse-file.ts",
+        "line": 6
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#dos",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "Large files loaded entirely into memory",
+      "location": {
+        "file": "src/parser/parse-file.ts",
+        "line": 7
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#redos",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-1333"
+      ],
+      "description": "Complex regex patterns applied to annotation text",
+      "location": {
+        "file": "src/parser/parse-line.ts",
+        "line": 5
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#path-traversal",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "Glob patterns could escape root directory",
+      "location": {
+        "file": "src/parser/parse-project.ts",
+        "line": 5
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#dos",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "Large projects with many files could exhaust memory",
+      "location": {
+        "file": "src/parser/parse-project.ts",
+        "line": 7
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "Writes @accepts/@audit annotations into source files",
+      "location": {
+        "file": "src/review/index.ts",
+        "line": 10
+      }
+    },
+    {
+      "asset": "#tui",
+      "threat": "#path-traversal",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "File paths from user args in /view, /sarif -o",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 7
+      }
+    },
+    {
+      "asset": "#tui",
+      "threat": "#arbitrary-write",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "/report, /sarif, /dashboard write files",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 9
+      }
+    },
+    {
+      "asset": "#tui",
+      "threat": "#cmd-injection",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-78"
+      ],
+      "description": "/annotate and /threat-report spawn child processes",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#tui",
+      "threat": "#api-key-exposure",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-798"
+      ],
+      "description": "/model handles API key input and storage",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 13
+      }
+    },
+    {
+      "asset": "#tui",
+      "threat": "#prompt-injection",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-77"
+      ],
+      "description": "Freeform chat sends user text to LLM",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 15
+      }
+    },
+    {
+      "asset": "#tui",
+      "threat": "#api-key-exposure",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-798"
+      ],
+      "description": "API keys loaded from and saved to config files",
+      "location": {
+        "file": "src/tui/config.ts",
+        "line": 7
+      }
+    },
+    {
+      "asset": "#tui",
+      "threat": "#path-traversal",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "User-supplied dir argument resolved via path.resolve",
+      "location": {
+        "file": "src/tui/index.ts",
+        "line": 9
+      }
+    },
+    {
+      "asset": "#tui",
+      "threat": "#api-key-exposure",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-798"
+      ],
+      "description": "API keys displayed in banner via resolveLLMConfig",
+      "location": {
+        "file": "src/tui/index.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#tui",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "Rapid keystrokes could consume CPU in raw mode",
+      "location": {
+        "file": "src/tui/input.ts",
+        "line": 15
+      }
+    }
+  ],
+  "confirmed": [],
+  "acceptances": [],
+  "transfers": [],
+  "flows": [
+    {
+      "source": "EnvVars",
+      "target": "#agent-launcher",
+      "mechanism": "process.env",
+      "description": "Environment variable input",
+      "location": {
+        "file": "src/agents/config.ts",
+        "line": 19
+      }
+    },
+    {
+      "source": "ConfigFile",
+      "target": "#agent-launcher",
+      "mechanism": "readFileSync",
+      "description": "Config file read",
+      "location": {
+        "file": "src/agents/config.ts",
+        "line": 20
+      }
+    },
+    {
+      "source": "#agent-launcher",
+      "target": "ConfigFile",
+      "mechanism": "writeFileSync",
+      "description": "Config file write",
+      "location": {
+        "file": "src/agents/config.ts",
+        "line": 21
+      }
+    },
+    {
+      "source": "UserPrompt",
+      "target": "#agent-launcher",
+      "mechanism": "launchAgent",
+      "description": "Prompt input path",
+      "location": {
+        "file": "src/agents/launcher.ts",
+        "line": 17
+      }
+    },
+    {
+      "source": "#agent-launcher",
+      "target": "AgentProcess",
+      "mechanism": "spawn",
+      "description": "Process spawn path",
+      "location": {
+        "file": "src/agents/launcher.ts",
+        "line": 18
+      }
+    },
+    {
+      "source": "AgentProcess",
+      "target": "#agent-launcher",
+      "mechanism": "stdout",
+      "description": "Agent output capture",
+      "location": {
+        "file": "src/agents/launcher.ts",
+        "line": 19
+      }
+    },
+    {
+      "source": "UserPrompt",
+      "target": "#agent-launcher",
+      "mechanism": "buildAnnotatePrompt",
+      "description": "User instruction input",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 12
+      }
+    },
+    {
+      "source": "UserPrompt",
+      "target": "#agent-launcher",
+      "mechanism": "buildTranslatePrompt",
+      "description": "Template translation instruction input",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 13
+      }
+    },
+    {
+      "source": "UserPrompt",
+      "target": "#agent-launcher",
+      "mechanism": "buildAskPrompt",
+      "description": "Threat model question input",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 14
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#agent-launcher",
+      "mechanism": "model",
+      "description": "Model context injection",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 15
+      }
+    },
+    {
+      "source": "#agent-launcher",
+      "target": "AgentPrompt",
+      "mechanism": "return",
+      "description": "Assembled prompt output",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 16
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#llm-client",
+      "mechanism": "serializeModel",
+      "description": "Model serialization input",
+      "location": {
+        "file": "src/analyze/index.ts",
+        "line": 14
+      }
+    },
+    {
+      "source": "ProjectFiles",
+      "target": "#llm-client",
+      "mechanism": "readFileSync",
+      "description": "Project context read",
+      "location": {
+        "file": "src/analyze/index.ts",
+        "line": 15
+      }
+    },
+    {
+      "source": "#llm-client",
+      "target": "ReportFile",
+      "mechanism": "writeFileSync",
+      "description": "Report output",
+      "location": {
+        "file": "src/analyze/index.ts",
+        "line": 16
+      }
+    },
+    {
+      "source": "PentestFindings",
+      "target": "#llm-client",
+      "mechanism": "readFileSync",
+      "description": "Reads CXG scan results for dashboard and report context",
+      "location": {
+        "file": "src/analyze/index.ts",
+        "line": 688
+      }
+    },
+    {
+      "source": "LLMConfig",
+      "target": "#llm-client",
+      "mechanism": "chatCompletion",
+      "description": "Config and prompt input",
+      "location": {
+        "file": "src/analyze/llm.ts",
+        "line": 19
+      }
+    },
+    {
+      "source": "#llm-client",
+      "target": "LLMProvider",
+      "mechanism": "fetch",
+      "description": "API request output",
+      "location": {
+        "file": "src/analyze/llm.ts",
+        "line": 20
+      }
+    },
+    {
+      "source": "LLMProvider",
+      "target": "#llm-client",
+      "mechanism": "response",
+      "description": "API response input",
+      "location": {
+        "file": "src/analyze/llm.ts",
+        "line": 21
+      }
+    },
+    {
+      "source": "LLMToolCall",
+      "target": "#llm-client",
+      "mechanism": "createToolExecutor",
+      "description": "Tool invocation input",
+      "location": {
+        "file": "src/analyze/tools.ts",
+        "line": 15
+      }
+    },
+    {
+      "source": "#llm-client",
+      "target": "NVD",
+      "mechanism": "fetch",
+      "description": "CVE lookup API call",
+      "location": {
+        "file": "src/analyze/tools.ts",
+        "line": 16
+      }
+    },
+    {
+      "source": "ProjectFiles",
+      "target": "#llm-client",
+      "mechanism": "readFileSync",
+      "description": "Codebase search reads",
+      "location": {
+        "file": "src/analyze/tools.ts",
+        "line": 17
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#sarif",
+      "mechanism": "generateSarif",
+      "description": "Model input",
+      "location": {
+        "file": "src/analyzer/sarif.ts",
+        "line": 20
+      }
+    },
+    {
+      "source": "#sarif",
+      "target": "SarifLog",
+      "mechanism": "return",
+      "description": "SARIF output",
+      "location": {
+        "file": "src/analyzer/sarif.ts",
+        "line": 21
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#dashboard",
+      "mechanism": "emitArtifacts",
+      "description": "Model rendered to disk artifacts",
+      "location": {
+        "file": "src/artifacts/emit.ts",
+        "line": 29
+      }
+    },
+    {
+      "source": "#dashboard",
+      "target": "FileSystem",
+      "mechanism": "writeFileSync",
+      "description": "Artifact write path",
+      "location": {
+        "file": "src/artifacts/emit.ts",
+        "line": 30
+      }
+    },
+    {
+      "source": "UserArgs",
+      "target": "#cli",
+      "mechanism": "process.argv",
+      "description": "CLI argument input path",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 35
+      }
+    },
+    {
+      "source": "#cli",
+      "target": "FileSystem",
+      "mechanism": "writeFile",
+      "description": "Report/config output path",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 36
+      }
+    },
+    {
+      "source": "PackageJson",
+      "target": "#cli",
+      "mechanism": "readFileSync",
+      "description": "Version string read from package.json",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 108
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#dashboard",
+      "mechanism": "generateThreatGraph",
+      "description": "Threat model relationships rendered as Mermaid source",
+      "location": {
+        "file": "src/dashboard/diagrams.ts",
+        "line": 14
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#dashboard",
+      "mechanism": "computeStats",
+      "description": "Model statistics input",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 12
+      }
+    },
+    {
+      "source": "SourceFiles",
+      "target": "#dashboard",
+      "mechanism": "readFileSync",
+      "description": "Code snippet reads",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 13
+      }
+    },
+    {
+      "source": "#dashboard",
+      "target": "HTML",
+      "mechanism": "return",
+      "description": "Generated HTML output",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 14
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#dashboard",
+      "mechanism": "generateDashboardHTML",
+      "description": "Model to HTML transformation",
+      "location": {
+        "file": "src/dashboard/index.ts",
+        "line": 6
+      }
+    },
+    {
+      "source": "GitRef",
+      "target": "#diff",
+      "mechanism": "execSync",
+      "description": "Git command execution",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 12
+      }
+    },
+    {
+      "source": "#diff",
+      "target": "TempDir",
+      "mechanism": "writeFileSync",
+      "description": "Extracted file writes",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 13
+      }
+    },
+    {
+      "source": "#diff",
+      "target": "ThreatModel",
+      "mechanism": "parseProject",
+      "description": "Parsed model output",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 14
+      }
+    },
+    {
+      "source": "GitRef",
+      "target": "#diff",
+      "mechanism": "parseAtRef",
+      "description": "Git reference input",
+      "location": {
+        "file": "src/diff/index.ts",
+        "line": 6
+      }
+    },
+    {
+      "source": "ProjectRoot",
+      "target": "#init",
+      "mechanism": "detectProject",
+      "description": "Project detection input",
+      "location": {
+        "file": "src/init/detect.ts",
+        "line": 7
+      }
+    },
+    {
+      "source": "ProjectRoot",
+      "target": "#init",
+      "mechanism": "options.root",
+      "description": "Project root input",
+      "location": {
+        "file": "src/init/index.ts",
+        "line": 14
+      }
+    },
+    {
+      "source": "#init",
+      "target": "AgentFiles",
+      "mechanism": "writeFileSync",
+      "description": "Agent instruction file writes",
+      "location": {
+        "file": "src/init/index.ts",
+        "line": 15
+      }
+    },
+    {
+      "source": "#init",
+      "target": "ConfigFile",
+      "mechanism": "writeFileSync",
+      "description": "Config file write",
+      "location": {
+        "file": "src/init/index.ts",
+        "line": 16
+      }
+    },
+    {
+      "source": "MCPClient",
+      "target": "#mcp",
+      "mechanism": "guardlink_context",
+      "description": "File path input",
+      "location": {
+        "file": "src/mcp/context.ts",
+        "line": 19
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#mcp",
+      "mechanism": "fileContext",
+      "description": "Model grouped by location.file",
+      "location": {
+        "file": "src/mcp/context.ts",
+        "line": 20
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#mcp",
+      "mechanism": "buildEnvelope",
+      "description": "Model content hashed for the freshness envelope",
+      "location": {
+        "file": "src/mcp/freshness.ts",
+        "line": 19
+      }
+    },
+    {
+      "source": "GitRepo",
+      "target": "#mcp",
+      "mechanism": "readFileSync",
+      "description": "HEAD read directly from .git, no subprocess",
+      "location": {
+        "file": "src/mcp/freshness.ts",
+        "line": 20
+      }
+    },
+    {
+      "source": "MCPClient",
+      "target": "#mcp",
+      "mechanism": "stdio",
+      "description": "MCP protocol transport",
+      "location": {
+        "file": "src/mcp/index.ts",
+        "line": 6
+      }
+    },
+    {
+      "source": "ConfigFile",
+      "target": "#mcp",
+      "mechanism": "readFileSync",
+      "description": "Annotation mode read for the initialize instructions",
+      "location": {
+        "file": "src/mcp/instructions.ts",
+        "line": 25
+      }
+    },
+    {
+      "source": "QueryString",
+      "target": "#mcp",
+      "mechanism": "lookup",
+      "description": "Query input path",
+      "location": {
+        "file": "src/mcp/lookup.ts",
+        "line": 19
+      }
+    },
+    {
+      "source": "MCPClient",
+      "target": "#mcp",
+      "mechanism": "tool_call",
+      "description": "Tool invocation input",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 36
+      }
+    },
+    {
+      "source": "#mcp",
+      "target": "FileSystem",
+      "mechanism": "writeFile",
+      "description": "Report/dashboard output",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 37
+      }
+    },
+    {
+      "source": "#mcp",
+      "target": "#llm-client",
+      "mechanism": "generateThreatReport",
+      "description": "LLM API call path",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 38
+      }
+    },
+    {
+      "source": "#mcp",
+      "target": "MCPClient",
+      "mechanism": "resource",
+      "description": "Threat model data output",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 39
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#mcp",
+      "mechanism": "selectSubgraph",
+      "description": "Model filtered to a neighbourhood",
+      "location": {
+        "file": "src/mcp/subgraph.ts",
+        "line": 44
+      }
+    },
+    {
+      "source": "FilePath",
+      "target": "#suggest",
+      "mechanism": "readFileSync",
+      "description": "File read path",
+      "location": {
+        "file": "src/mcp/suggest.ts",
+        "line": 18
+      }
+    },
+    {
+      "source": "#suggest",
+      "target": "Suggestions",
+      "mechanism": "suggestAnnotations",
+      "description": "Suggestion output",
+      "location": {
+        "file": "src/mcp/suggest.ts",
+        "line": 19
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#parser",
+      "mechanism": "computeAnnotationHash",
+      "description": "Model content read for hashing",
+      "location": {
+        "file": "src/parser/annotation-hash.ts",
+        "line": 28
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#parser",
+      "mechanism": "detectAnnotationMode",
+      "description": "Annotation locations read to infer storage mode",
+      "location": {
+        "file": "src/parser/annotation-mode.ts",
+        "line": 10
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#parser",
+      "mechanism": "canonicalizeModelOrder",
+      "description": "Model ordered deterministically before emission",
+      "location": {
+        "file": "src/parser/canonical-order.ts",
+        "line": 24
+      }
+    },
+    {
+      "source": "ProjectRoot",
+      "target": "#parser",
+      "mechanism": "fast-glob",
+      "description": "File discovery path",
+      "location": {
+        "file": "src/parser/clear.ts",
+        "line": 12
+      }
+    },
+    {
+      "source": "#parser",
+      "target": "SourceFiles",
+      "mechanism": "writeFile",
+      "description": "Modified file write path",
+      "location": {
+        "file": "src/parser/clear.ts",
+        "line": 13
+      }
+    },
+    {
+      "source": "ProjectRoot",
+      "target": "#parser",
+      "mechanism": "fast-glob",
+      "description": "Directory metadata scan for cache validity",
+      "location": {
+        "file": "src/parser/fingerprint.ts",
+        "line": 22
+      }
+    },
+    {
+      "source": "FilePath",
+      "target": "#parser",
+      "mechanism": "readFile",
+      "description": "Disk read path",
+      "location": {
+        "file": "src/parser/parse-file.ts",
+        "line": 9
+      }
+    },
+    {
+      "source": "#parser",
+      "target": "Annotations",
+      "mechanism": "parseString",
+      "description": "Parsed annotation output",
+      "location": {
+        "file": "src/parser/parse-file.ts",
+        "line": 10
+      }
+    },
+    {
+      "source": "ProjectRoot",
+      "target": "#parser",
+      "mechanism": "fast-glob",
+      "description": "Directory traversal path",
+      "location": {
+        "file": "src/parser/parse-project.ts",
+        "line": 9
+      }
+    },
+    {
+      "source": "#parser",
+      "target": "ThreatModel",
+      "mechanism": "assembleModel",
+      "description": "Aggregated threat model output",
+      "location": {
+        "file": "src/parser/parse-project.ts",
+        "line": 10
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#report",
+      "mechanism": "generateReport",
+      "description": "Model input",
+      "location": {
+        "file": "src/report/report.ts",
+        "line": 8
+      }
+    },
+    {
+      "source": "#report",
+      "target": "Markdown",
+      "mechanism": "return",
+      "description": "Report output",
+      "location": {
+        "file": "src/report/report.ts",
+        "line": 9
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#report",
+      "mechanism": "generateSequenceDiagram",
+      "description": "Sequence diagram generation",
+      "location": {
+        "file": "src/report/sequence.ts",
+        "line": 7
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#cli",
+      "mechanism": "getReviewableExposures",
+      "description": "Exposure list input",
+      "location": {
+        "file": "src/review/index.ts",
+        "line": 13
+      }
+    },
+    {
+      "source": "#cli",
+      "target": "SourceFiles",
+      "mechanism": "writeFile",
+      "description": "Annotation insertion output",
+      "location": {
+        "file": "src/review/index.ts",
+        "line": 14
+      }
+    },
+    {
+      "source": "UserArgs",
+      "target": "#tui",
+      "mechanism": "args",
+      "description": "Command argument input",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 17
+      }
+    },
+    {
+      "source": "#tui",
+      "target": "FileSystem",
+      "mechanism": "writeFile",
+      "description": "Report/config output",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 18
+      }
+    },
+    {
+      "source": "#tui",
+      "target": "#agent-launcher",
+      "mechanism": "launchAgent",
+      "description": "Agent spawn path",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 19
+      }
+    },
+    {
+      "source": "#tui",
+      "target": "#llm-client",
+      "mechanism": "chatCompletion",
+      "description": "LLM API call path",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 20
+      }
+    },
+    {
+      "source": "ConfigFile",
+      "target": "#tui",
+      "mechanism": "loadProjectConfig",
+      "description": "Config load path",
+      "location": {
+        "file": "src/tui/config.ts",
+        "line": 9
+      }
+    },
+    {
+      "source": "#tui",
+      "target": "ConfigFile",
+      "mechanism": "saveProjectConfig",
+      "description": "Config save path",
+      "location": {
+        "file": "src/tui/config.ts",
+        "line": 10
+      }
+    },
+    {
+      "source": "UserInput",
+      "target": "#tui",
+      "mechanism": "readline",
+      "description": "Interactive command input",
+      "location": {
+        "file": "src/tui/index.ts",
+        "line": 13
+      }
+    },
+    {
+      "source": "#tui",
+      "target": "Commands",
+      "mechanism": "dispatch",
+      "description": "Command routing",
+      "location": {
+        "file": "src/tui/index.ts",
+        "line": 14
+      }
+    },
+    {
+      "source": "RawStdin",
+      "target": "#tui",
+      "mechanism": "process.stdin",
+      "description": "Raw keystroke input",
+      "location": {
+        "file": "src/tui/input.ts",
+        "line": 17
+      }
+    },
+    {
+      "source": "#tui",
+      "target": "Terminal",
+      "mechanism": "process.stdout",
+      "description": "ANSI escape sequence output",
+      "location": {
+        "file": "src/tui/input.ts",
+        "line": 18
+      }
+    },
+    {
+      "source": "PackageJson",
+      "target": "#cli",
+      "mechanism": "readFileSync",
+      "description": "Version string read from package.json",
+      "location": {
+        "file": "src/version.ts",
+        "line": 10
+      }
+    },
+    {
+      "source": "UserArgs",
+      "target": "#workspace-link",
+      "mechanism": "linkProject",
+      "description": "CLI args to workspace scaffolding",
+      "location": {
+        "file": "src/workspace/link.ts",
+        "line": 8
+      }
+    },
+    {
+      "source": "#workspace-link",
+      "target": "AgentFiles",
+      "mechanism": "updateAgentWorkspaceContext",
+      "description": "Inject workspace context",
+      "location": {
+        "file": "src/workspace/link.ts",
+        "line": 9
+      }
+    },
+    {
+      "source": "ReportJSON",
+      "target": "#merge-engine",
+      "mechanism": "mergeReports",
+      "description": "Per-repo reports feed into merge",
+      "location": {
+        "file": "src/workspace/merge.ts",
+        "line": 10
+      }
+    },
+    {
+      "source": "#merge-engine",
+      "target": "MergedReport",
+      "mechanism": "mergeReports",
+      "description": "Unified output",
+      "location": {
+        "file": "src/workspace/merge.ts",
+        "line": 11
+      }
+    },
+    {
+      "source": "GitRepo",
+      "target": "#report-metadata",
+      "mechanism": "execSync",
+      "description": "Git info extraction",
+      "location": {
+        "file": "src/workspace/metadata.ts",
+        "line": 8
+      }
+    },
+    {
+      "source": "#report-metadata",
+      "target": "ThreatModel",
+      "mechanism": "populateMetadata",
+      "description": "Metadata injection",
+      "location": {
+        "file": "src/workspace/metadata.ts",
+        "line": 9
+      }
+    }
+  ],
+  "boundaries": [
+    {
+      "asset_a": "#agent-launcher",
+      "asset_b": "AgentProcess",
+      "id": "agent-boundary",
+      "description": "Trust boundary at process spawn",
+      "location": {
+        "file": "src/agents/launcher.ts",
+        "line": 20
+      }
+    },
+    {
+      "asset_a": "#llm-client",
+      "asset_b": "LLMProvider",
+      "id": "llm-api-boundary",
+      "description": "Trust boundary at external API call",
+      "location": {
+        "file": "src/analyze/llm.ts",
+        "line": 22
+      }
+    },
+    {
+      "asset_a": "#llm-client",
+      "asset_b": "NVD",
+      "id": "nvd-api-boundary",
+      "description": "Trust boundary at external API",
+      "location": {
+        "file": "src/analyze/tools.ts",
+        "line": 18
+      }
+    },
+    {
+      "asset_a": "#cli",
+      "asset_b": "UserInput",
+      "id": "cli-input-boundary",
+      "description": "Trust boundary at CLI argument parsing",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 37
+      }
+    },
+    {
+      "asset_a": "#diff",
+      "asset_b": "GitRepo",
+      "id": "git-boundary",
+      "description": "Trust boundary at git command execution",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 15
+      }
+    },
+    {
+      "asset_a": "#mcp",
+      "asset_b": "MCPClient",
+      "id": "mcp-boundary",
+      "description": "Trust boundary at MCP protocol",
+      "location": {
+        "file": "src/mcp/index.ts",
+        "line": 7
+      }
+    },
+    {
+      "asset_a": "#mcp",
+      "asset_b": "MCPClient",
+      "id": "mcp-tool-boundary",
+      "description": "Trust boundary at tool argument parsing",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 40
+      }
+    },
+    {
+      "asset_a": "#parser",
+      "asset_b": "FileSystem",
+      "id": "fs-boundary",
+      "description": "Trust boundary between parser and disk I/O",
+      "location": {
+        "file": "src/parser/parse-project.ts",
+        "line": 12
+      }
+    },
+    {
+      "asset_a": "#tui",
+      "asset_b": "UserInput",
+      "id": "tui-input-boundary",
+      "description": "Trust boundary at interactive input",
+      "location": {
+        "file": "src/tui/index.ts",
+        "line": 15
+      }
+    }
+  ],
+  "validations": [],
+  "audits": [
+    {
+      "asset": "#agent-launcher",
+      "description": "Prompt content is opaque to agent binary; injection risk depends on agent implementation",
+      "location": {
+        "file": "src/agents/launcher.ts",
+        "line": 14
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "description": "Timeout intentionally omitted for interactive sessions; inline mode has implicit control",
+      "location": {
+        "file": "src/agents/launcher.ts",
+        "line": 16
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "description": "Prompt injection mitigated by agent's own safety measures; GuardLink prompt is read-only context",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 7
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "description": "Environment override paths are optional convenience; verify trusted local paths in CI",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "description": "Threat model data intentionally sent to LLM for analysis",
+      "location": {
+        "file": "src/analyze/index.ts",
+        "line": 13
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "description": "Prompt injection mitigated by LLM provider safety; local code is read-only",
+      "location": {
+        "file": "src/analyze/llm.ts",
+        "line": 18
+      }
+    },
+    {
+      "asset": "#sarif",
+      "description": "SARIF output intentionally reveals security findings for CI/CD integration",
+      "location": {
+        "file": "src/analyzer/sarif.ts",
+        "line": 17
+      }
+    },
+    {
+      "asset": "#cli",
+      "description": "Child process spawning delegated to agents/launcher.ts with explicit args",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 34
+      }
+    },
+    {
+      "asset": "#diff",
+      "description": "Git commands use execSync; ref is validated with rev-parse before use",
+      "location": {
+        "file": "src/diff/index.ts",
+        "line": 5
+      }
+    },
+    {
+      "asset": "#init",
+      "description": "Config file may contain API keys; .gitignore entry added automatically",
+      "location": {
+        "file": "src/init/index.ts",
+        "line": 13
+      }
+    },
+    {
+      "asset": "#mcp",
+      "description": "Root and SHA are disclosed deliberately: without them a client cannot tell which repo answered (D9). Client is already trusted with the full threat model.",
+      "location": {
+        "file": "src/mcp/freshness.ts",
+        "line": 18
+      }
+    },
+    {
+      "asset": "#mcp",
+      "description": "All tool calls validated by server.ts before execution",
+      "location": {
+        "file": "src/mcp/index.ts",
+        "line": 5
+      }
+    },
+    {
+      "asset": "#mcp",
+      "description": "User prompts passed to LLM; model context is read-only",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 31
+      }
+    },
+    {
+      "asset": "#mcp",
+      "description": "Threat model data intentionally exposed to connected agents",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 35
+      }
+    },
+    {
+      "asset": "#suggest",
+      "description": "File size is bounded by project scope; production use involves reasonable file sizes",
+      "location": {
+        "file": "src/mcp/suggest.ts",
+        "line": 17
+      }
+    },
+    {
+      "asset": "#parser",
+      "description": "Destructive operation requires explicit user confirmation via dryRun flag",
+      "location": {
+        "file": "src/parser/clear.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#parser",
+      "description": "Path validation delegated to callers (CLI/MCP validate root)",
+      "location": {
+        "file": "src/parser/parse-file.ts",
+        "line": 8
+      }
+    },
+    {
+      "asset": "#cli",
+      "description": "Review decisions require human justification; no empty accepts allowed",
+      "location": {
+        "file": "src/review/index.ts",
+        "line": 12
+      }
+    },
+    {
+      "asset": "#tui",
+      "description": "Child process spawning delegated to agents/launcher.ts",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 12
+      }
+    },
+    {
+      "asset": "#tui",
+      "description": "User freeform text passed to LLM via cmdChat; model context is read-only",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 16
+      }
+    },
+    {
+      "asset": "#tui",
+      "description": "API keys masked via maskKey() in banner display",
+      "location": {
+        "file": "src/tui/index.ts",
+        "line": 12
+      }
+    }
+  ],
+  "ownership": [],
+  "data_handling": [
+    {
+      "classification": "secrets",
+      "asset": "#agent-launcher",
+      "description": "Processes and stores LLM API keys",
+      "location": {
+        "file": "src/agents/config.ts",
+        "line": 22
+      }
+    },
+    {
+      "classification": "internal",
+      "asset": "#agent-launcher",
+      "description": "Serializes threat model IDs and flows into prompt",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 17
+      }
+    },
+    {
+      "classification": "internal",
+      "asset": "#llm-client",
+      "description": "Processes project dependencies, env examples, code snippets",
+      "location": {
+        "file": "src/analyze/index.ts",
+        "line": 17
+      }
+    },
+    {
+      "classification": "internal",
+      "asset": "#llm-client",
+      "description": "Processes pentest scan output (JSON/SARIF)",
+      "location": {
+        "file": "src/analyze/index.ts",
+        "line": 689
+      }
+    },
+    {
+      "classification": "secrets",
+      "asset": "#llm-client",
+      "description": "Processes API keys for authentication",
+      "location": {
+        "file": "src/analyze/llm.ts",
+        "line": 23
+      }
+    },
+    {
+      "classification": "secrets",
+      "asset": "#cli",
+      "description": "Processes API keys via config commands",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 38
+      }
+    },
+    {
+      "classification": "internal",
+      "asset": "#dashboard",
+      "description": "Processes and displays threat model data",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 16
+      }
+    },
+    {
+      "classification": "internal",
+      "asset": "#init",
+      "description": "Generates definitions and agent instruction content",
+      "location": {
+        "file": "src/init/index.ts",
+        "line": 17
+      }
+    },
+    {
+      "classification": "internal",
+      "asset": "#mcp",
+      "description": "Processes project annotations and threat model data",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 41
+      }
+    },
+    {
+      "classification": "internal",
+      "asset": "#parser",
+      "description": "Operates on project source files only",
+      "location": {
+        "file": "src/parser/clear.ts",
+        "line": 14
+      }
+    },
+    {
+      "classification": "internal",
+      "asset": "#cli",
+      "description": "Processes exposure metadata and user justification text",
+      "location": {
+        "file": "src/review/index.ts",
+        "line": 15
+      }
+    },
+    {
+      "classification": "secrets",
+      "asset": "#tui",
+      "description": "Processes and stores API keys via /model",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 21
+      }
+    },
+    {
+      "classification": "secrets",
+      "asset": "#tui",
+      "description": "API keys stored in .guardlink/config.json",
+      "location": {
+        "file": "src/tui/config.ts",
+        "line": 11
+      }
+    },
+    {
+      "classification": "secrets",
+      "asset": "#tui",
+      "description": "Displays LLM config including masked API keys",
+      "location": {
+        "file": "src/tui/index.ts",
+        "line": 16
+      }
+    }
+  ],
+  "assumptions": [
+    {
+      "asset": "#parser",
+      "description": "location.file is the logical source path in both inline and external mode (parse-file.ts resolves @source before the model is assembled)",
+      "location": {
+        "file": "src/parser/annotation-hash.ts",
+        "line": 30
+      }
+    }
+  ],
+  "shields": [
+    {
+      "reason": "Example annotation block for reference, excluded from parsing",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 204
+      }
+    },
+    {
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 217
+      }
+    },
+    {
+      "reason": "Description examples, excluded from parsing",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 224
+      }
+    },
+    {
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 234
+      }
+    },
+    {
+      "reason": "Flow examples, excluded from parsing",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 241
+      }
+    },
+    {
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 250
+      }
+    },
+    {
+      "reason": "Boundary examples, excluded from parsing",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 257
+      }
+    },
+    {
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 263
+      }
+    },
+    {
+      "reason": "@accepts alternative examples, excluded from parsing",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 322
+      }
+    },
+    {
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 332
+      }
+    },
+    {
+      "reason": "Definition syntax examples, excluded from parsing",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 359
+      }
+    },
+    {
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 363
+      }
+    },
+    {
+      "reason": "Relationship syntax examples, excluded from parsing",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 368
+      }
+    },
+    {
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 383
+      }
+    },
+    {
+      "reason": "graph/README example content, excluded from parsing",
+      "location": {
+        "file": "src/artifacts/emit.ts",
+        "line": 258
+      }
+    },
+    {
+      "location": {
+        "file": "src/artifacts/emit.ts",
+        "line": 326
+      }
+    },
+    {
+      "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
+      "location": {
+        "file": "src/init/templates.ts",
+        "line": 646
+      }
+    },
+    {
+      "location": {
+        "file": "src/init/templates.ts",
+        "line": 918
+      }
+    }
+  ],
+  "features": [
+    {
+      "feature": "Dashboard",
+      "description": "Interactive HTML threat model dashboard",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 17
+      }
+    },
+    {
+      "feature": "MCP Integration",
+      "description": "Model Context Protocol server for AI agent tooling",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 42
+      }
+    }
+  ],
+  "comments": [
+    {
+      "description": "Agent binaries are hardcoded; no user-controlled binary names",
+      "location": {
+        "file": "src/agents/index.ts",
+        "line": 7
+      }
+    },
+    {
+      "description": "parseAgentFlag extracts flags from args; no injection risk",
+      "location": {
+        "file": "src/agents/index.ts",
+        "line": 8
+      }
+    },
+    {
+      "description": "Prompt templates are static; no user input interpolation in system prompts",
+      "location": {
+        "file": "src/analyze/prompts.ts",
+        "line": 7
+      }
+    },
+    {
+      "description": "customPrompt is appended to user message, not system prompt — bounded injection risk",
+      "location": {
+        "file": "src/analyze/prompts.ts",
+        "line": 8
+      }
+    },
+    {
+      "description": "SARIF generation is pure transformation; no I/O in this module",
+      "location": {
+        "file": "src/analyzer/index.ts",
+        "line": 4
+      }
+    },
+    {
+      "description": "File writes handled by CLI/MCP callers",
+      "location": {
+        "file": "src/analyzer/index.ts",
+        "line": 5
+      }
+    },
+    {
+      "description": "Pure function: transforms ThreatModel to SARIF JSON; no I/O",
+      "location": {
+        "file": "src/analyzer/sarif.ts",
+        "line": 18
+      }
+    },
+    {
+      "description": "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} derived from the asset's inbound @flows route so downstream HTTP consumers (e.g. cert-x-gen) can target the endpoint; emitted verbatim from the annotation, no base path assumed",
+      "location": {
+        "file": "src/analyzer/sarif.ts",
+        "line": 19
+      }
+    },
+    {
+      "description": "Artifacts carry a provenance header so a stale one is detectable rather than merely wrong",
+      "location": {
+        "file": "src/artifacts/emit.ts",
+        "line": 31
+      }
+    },
+    {
+      "description": "Alias map collapses #id / name / path-joined ref forms so all three diagrams agree on identity",
+      "location": {
+        "file": "src/dashboard/diagrams.ts",
+        "line": 16
+      }
+    },
+    {
+      "description": "Self-contained HTML; no external data injection after generation",
+      "location": {
+        "file": "src/dashboard/index.ts",
+        "line": 7
+      }
+    },
+    {
+      "description": "Detection is read-only; no file writes",
+      "location": {
+        "file": "src/init/detect.ts",
+        "line": 8
+      }
+    },
+    {
+      "description": "Migrations should never modify existing user files. Only create missing ones.",
+      "location": {
+        "file": "src/init/migrate.ts",
+        "line": 9
+      }
+    },
+    {
+      "description": "Pure projection over the parsed model; the only I/O is an existence check performed by the caller",
+      "location": {
+        "file": "src/mcp/context.ts",
+        "line": 21
+      }
+    },
+    {
+      "description": "git SHA is read from .git/HEAD rather than spawned via execSync: this runs on every tool call",
+      "location": {
+        "file": "src/mcp/freshness.ts",
+        "line": 21
+      }
+    },
+    {
+      "description": "Pure string builder; the only I/O is one optional config read by the caller",
+      "location": {
+        "file": "src/mcp/instructions.ts",
+        "line": 26
+      }
+    },
+    {
+      "description": "Pure function; no I/O; operates on in-memory ThreatModel",
+      "location": {
+        "file": "src/mcp/lookup.ts",
+        "line": 20
+      }
+    },
+    {
+      "description": "Pure function over the model; returns a ThreatModel so the existing Mermaid generator needs no changes",
+      "location": {
+        "file": "src/mcp/subgraph.ts",
+        "line": 45
+      }
+    },
+    {
+      "description": "Skips node_modules and .guardlink directories",
+      "location": {
+        "file": "src/mcp/suggest.ts",
+        "line": 20
+      }
+    },
+    {
+      "description": "Pure function; no I/O; deterministic across machines and annotation modes",
+      "location": {
+        "file": "src/parser/annotation-hash.ts",
+        "line": 29
+      }
+    },
+    {
+      "description": "Excludes line, origin_file, origin_line and parent_symbol so inline and external authoring of the same model hash identically",
+      "location": {
+        "file": "src/parser/annotation-hash.ts",
+        "line": 31
+      }
+    },
+    {
+      "description": "Pure function; mixed is a real answer, not an error — a repo mid-migration is genuinely both",
+      "location": {
+        "file": "src/parser/annotation-mode.ts",
+        "line": 11
+      }
+    },
+    {
+      "description": "Pure; returns a new model, mutates nothing. Sort is total, so the result cannot depend on input order.",
+      "location": {
+        "file": "src/parser/canonical-order.ts",
+        "line": 25
+      }
+    },
+    {
+      "description": "Pure filtering utility; no I/O",
+      "location": {
+        "file": "src/parser/feature-filter.ts",
+        "line": 9
+      }
+    },
+    {
+      "description": "Metadata only: path, size, mtime. File contents are never read.",
+      "location": {
+        "file": "src/parser/fingerprint.ts",
+        "line": 23
+      }
+    },
+    {
+      "description": "Regex patterns designed with bounded quantifiers and explicit structure",
+      "location": {
+        "file": "src/parser/parse-line.ts",
+        "line": 7
+      }
+    },
+    {
+      "description": "Scans standalone .gal files in addition to comment-based source annotations",
+      "location": {
+        "file": "src/parser/parse-project.ts",
+        "line": 11
+      }
+    },
+    {
+      "description": "@confirmed refs validated same as @exposes for asset and threat",
+      "location": {
+        "file": "src/parser/validate.ts",
+        "line": 8
+      }
+    },
+    {
+      "description": "Report generation is pure transformation; no I/O in this module",
+      "location": {
+        "file": "src/report/index.ts",
+        "line": 4
+      }
+    },
+    {
+      "description": "File writes handled by CLI/MCP callers",
+      "location": {
+        "file": "src/report/index.ts",
+        "line": 5
+      }
+    },
+    {
+      "description": "Pure function: transforms ThreatModel to markdown string",
+      "location": {
+        "file": "src/report/report.ts",
+        "line": 6
+      }
+    },
+    {
+      "description": "No file I/O; caller (CLI/MCP) handles write",
+      "location": {
+        "file": "src/report/report.ts",
+        "line": 7
+      }
+    },
+    {
+      "description": "Pure function: transforms ThreatModel flows to Mermaid sequence diagram",
+      "location": {
+        "file": "src/report/sequence.ts",
+        "line": 6
+      }
+    },
+    {
+      "description": "Raw mode enables full keystroke control for command palette",
+      "location": {
+        "file": "src/tui/input.ts",
+        "line": 19
+      }
+    },
+    {
+      "description": "Resolved relative to this module, so it is correct from both src/ and dist/",
+      "location": {
+        "file": "src/version.ts",
+        "line": 11
+      }
+    },
+    {
+      "description": "Workspace module: config loading, merge engine, link-project setup",
+      "location": {
+        "file": "src/workspace/index.ts",
+        "line": 4
+      }
+    }
+  ],
+  "coverage": {
+    "total_symbols": 0,
+    "annotated_symbols": 351,
+    "coverage_percent": 0,
+    "unannotated_critical": []
+  },
+  "external_refs": []
+}

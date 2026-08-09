@@ -1,0 +1,182 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        dataflow.mmd
+%% annotation_hash: sha256-v1:0a695cb5d589161a45a198f34419459a9a5f683558356a89035ea5bcc1a41a87
+%% git_sha:         427814705d6b6dca4e5a1cde10d19e1ab2fe218c
+%% generated_at:    2026-08-09T15:56:41.617Z
+%% generator:       guardlink@1.4.5
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%%{init: {"flowchart": {"nodeSpacing": 47, "rankSpacing": 67, "curve": "basis", "htmlLabels": false}}}%%
+graph LR
+  subgraph Z0["🧱 GuardLink.Agent_Launcher · Trust boundary at process spawn"]
+    agent_launcher["🧩 GuardLink.Agent_Launcher · secrets, internal"]
+  end
+  subgraph Z1["🧱 AgentProcess · Trust boundary at process spawn"]
+    agentprocess["🧩 AgentProcess"]
+  end
+  subgraph Z2["🧱 GuardLink.LLM_Client · Trust boundary at external API call"]
+    llm_client["👤 GuardLink.LLM_Client · internal, secrets"]
+  end
+  subgraph Z3["🧱 LLMProvider · Trust boundary at external API call"]
+    llmprovider["🧩 LLMProvider"]
+  end
+  subgraph Z4["🧱 NVD · Trust boundary at external API"]
+    nvd["🧩 NVD"]
+  end
+  subgraph Z5["🧱 GuardLink.CLI · Trust boundary at CLI argument parsing"]
+    cli["🧩 GuardLink.CLI · secrets, internal"]
+  end
+  subgraph Z6["🧱 UserInput · Trust boundary at CLI argument parsing"]
+    userinput["👤 UserInput"]
+  end
+  subgraph Z7["🧱 GuardLink.Diff · Trust boundary at git command execution"]
+    diff["🧩 GuardLink.Diff"]
+  end
+  subgraph Z8["🧱 GitRepo · Trust boundary at git command execution"]
+    gitrepo["🧩 GitRepo"]
+  end
+  subgraph Z9["🧱 GuardLink.MCP · Trust boundary at MCP protocol"]
+    mcp["🧩 GuardLink.MCP · internal"]
+  end
+  subgraph Z10["🧱 MCPClient · Trust boundary at MCP protocol"]
+    mcpclient["👤 MCPClient"]
+  end
+  subgraph Z11["🧱 GuardLink.Parser · Trust boundary between parser and disk I/O"]
+    parser["🧩 GuardLink.Parser · internal"]
+  end
+  subgraph Z12["🧱 FileSystem · Trust boundary between parser and disk I/O"]
+    filesystem["🧩 FileSystem"]
+  end
+  subgraph Z13["🧱 GuardLink.TUI · Trust boundary at interactive input"]
+    tui["👤 GuardLink.TUI · secrets"]
+  end
+  envvars["🧩 EnvVars"]
+  configfile["🧩 ConfigFile"]
+  userprompt["👤 UserPrompt"]
+  threatmodel["🧩 ThreatModel"]
+  agentprompt["🧩 AgentPrompt"]
+  projectfiles["🧩 ProjectFiles"]
+  reportfile["🧩 ReportFile"]
+  pentestfindings["🧩 PentestFindings"]
+  llmconfig["🧩 LLMConfig"]
+  llmtoolcall["🧩 LLMToolCall"]
+  sarif["🧩 GuardLink.SARIF"]
+  sariflog["🧩 SarifLog"]
+  dashboard["🧩 GuardLink.Dashboard · internal"]
+  userargs["👤 UserArgs"]
+  packagejson["🧩 PackageJson"]
+  sourcefiles["🧩 SourceFiles"]
+  html["🧩 HTML"]
+  gitref["🧩 GitRef"]
+  tempdir["🧩 TempDir"]
+  projectroot["🧩 ProjectRoot"]
+  init["🧩 GuardLink.Init · internal"]
+  agentfiles["🧩 AgentFiles"]
+  querystring["🧩 QueryString"]
+  filepath["🧩 FilePath"]
+  suggest["🧩 GuardLink.Suggest"]
+  suggestions["🧩 Suggestions"]
+  annotations["🧩 Annotations"]
+  report["🧩 GuardLink.Report"]
+  markdown["🧩 Markdown"]
+  commands["🧩 Commands"]
+  rawstdin["🧩 RawStdin"]
+  terminal["🧩 Terminal"]
+  workspace_link["🧩 Workspace.Link"]
+  reportjson["🧩 ReportJSON"]
+  merge_engine["🧩 Workspace.Merge"]
+  mergedreport["🧩 MergedReport"]
+  report_metadata["🧩 Workspace.Metadata"]
+  agent_launcher -.-|🧱 Trust boundary at process spawn| agentprocess
+  llm_client -.-|🧱 Trust boundary at external API call| llmprovider
+  llm_client -.-|🧱 Trust boundary at external API| nvd
+  cli -.-|🧱 Trust boundary at CLI argument parsing| userinput
+  diff -.-|🧱 Trust boundary at git command execution| gitrepo
+  mcp -.-|🧱 Trust boundary at MCP protocol| mcpclient
+  parser -.-|🧱 Trust boundary between parser and disk I/O| filesystem
+  tui -.-|🧱 Trust boundary at interactive input| userinput
+  envvars -- "📡 process.env" --> agent_launcher
+  configfile -- "🗄️ readFileSync" --> agent_launcher
+  agent_launcher -- "🗄️ writeFileSync" --> configfile
+  userprompt -- "📡 launchAgent" --> agent_launcher
+  agent_launcher -- "📡 spawn" --> agentprocess
+  agentprocess -- "📡 stdout" --> agent_launcher
+  userprompt -- "📡 buildAnnotatePrompt" --> agent_launcher
+  userprompt -- "📡 buildTranslatePrompt" --> agent_launcher
+  userprompt -- "📡 buildAskPrompt" --> agent_launcher
+  threatmodel -- "📡 model" --> agent_launcher
+  agent_launcher -- "📡 return" --> agentprompt
+  threatmodel -- "📡 serializeModel" --> llm_client
+  projectfiles -- "🗄️ readFileSync" --> llm_client
+  llm_client -- "🗄️ writeFileSync" --> reportfile
+  pentestfindings -- "🗄️ readFileSync" --> llm_client
+  llmconfig -- "📡 chatCompletion" --> llm_client
+  llm_client -- "📡 fetch" --> llmprovider
+  llmprovider -- "📡 response" --> llm_client
+  llmtoolcall -- "📡 createToolExecutor" --> llm_client
+  llm_client -- "📡 fetch" --> nvd
+  threatmodel -- "📡 generateSarif" --> sarif
+  sarif -- "📡 return" --> sariflog
+  threatmodel -- "📡 emitArtifacts" --> dashboard
+  dashboard -- "🗄️ writeFileSync" --> filesystem
+  userargs -- "📡 process.argv" --> cli
+  cli -- "🗄️ writeFile" --> filesystem
+  packagejson -- "🗄️ readFileSync" --> cli
+  threatmodel -- "📡 generateThreatGraph" --> dashboard
+  threatmodel -- "📡 computeStats" --> dashboard
+  sourcefiles -- "🗄️ readFileSync" --> dashboard
+  dashboard -- "📡 return" --> html
+  threatmodel -- "📡 generateDashboardHTML" --> dashboard
+  gitref -- "📡 execSync" --> diff
+  diff -- "🗄️ writeFileSync" --> tempdir
+  diff -- "📡 parseProject" --> threatmodel
+  gitref -- "📡 parseAtRef" --> diff
+  projectroot -- "📡 detectProject" --> init
+  projectroot -- "📡 options.root" --> init
+  init -- "🗄️ writeFileSync" --> agentfiles
+  init -- "🗄️ writeFileSync" --> configfile
+  mcpclient -- "📡 guardlink_context" --> mcp
+  threatmodel -- "🗄️ fileContext" --> mcp
+  threatmodel -- "📡 buildEnvelope" --> mcp
+  gitrepo -- "🗄️ readFileSync" --> mcp
+  mcpclient -- "📡 stdio" --> mcp
+  configfile -- "🗄️ readFileSync" --> mcp
+  querystring -- "📡 lookup" --> mcp
+  mcpclient -- "📡 tool_call" --> mcp
+  mcp -- "🗄️ writeFile" --> filesystem
+  mcp -- "📡 generateThreatReport" --> llm_client
+  mcp -- "📡 resource" --> mcpclient
+  threatmodel -- "📡 selectSubgraph" --> mcp
+  filepath -- "🗄️ readFileSync" --> suggest
+  suggest -- "📡 suggestAnnotations" --> suggestions
+  threatmodel -- "📡 computeAnnotationHash" --> parser
+  threatmodel -- "📡 detectAnnotationMode" --> parser
+  threatmodel -- "📡 canonicalizeModelOrder" --> parser
+  projectroot -- "📡 fast-glob" --> parser
+  parser -- "🗄️ writeFile" --> sourcefiles
+  filepath -- "🗄️ readFile" --> parser
+  parser -- "📡 parseString" --> annotations
+  parser -- "📡 assembleModel" --> threatmodel
+  threatmodel -- "📡 generateReport" --> report
+  report -- "📡 return" --> markdown
+  threatmodel -- "📡 generateSequenceDiagram" --> report
+  threatmodel -- "📡 getReviewableExposures" --> cli
+  cli -- "🗄️ writeFile" --> sourcefiles
+  userargs -- "📡 args" --> tui
+  tui -- "🗄️ writeFile" --> filesystem
+  tui -- "📡 launchAgent" --> agent_launcher
+  tui -- "📡 chatCompletion" --> llm_client
+  configfile -- "📡 loadProjectConfig" --> tui
+  tui -- "📡 saveProjectConfig" --> configfile
+  userinput -- "📡 readline" --> tui
+  tui -- "📡 dispatch" --> commands
+  rawstdin -- "📡 process.stdin" --> tui
+  tui -- "📡 process.stdout" --> terminal
+  userargs -- "📡 linkProject" --> workspace_link
+  workspace_link -- "📡 updateAgentWorkspaceContext" --> agentfiles
+  reportjson -- "📡 mergeReports" --> merge_engine
+  merge_engine -- "📡 mergeReports" --> mergedreport
+  gitrepo -- "📡 execSync" --> report_metadata
+  report_metadata -- "📡 populateMetadata" --> threatmodel
