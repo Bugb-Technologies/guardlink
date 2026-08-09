@@ -114,7 +114,9 @@ two authors; there is one.
 | D15 | Med | The MCP model cache is **process-global**, not per-server — four module-level `let`s shared by every `createServer()` in a process. Two servers in one process share one `cachedRoot`, so server B's resources can answer for server A's repo. Superset of D9. Latent under stdio (one server per process), live under any multi-server host | `server.ts:64-66`; found by the GL-104 two-repo test, not by inspection |
 | D16 | **High** | `guardlink validate` silently rewrites 7 tracked files — it runs `syncAgentFiles` as a side effect, modifying `CLAUDE.md`, `AGENTS.md`, `.clinerules`, `.cursor/rules/guardlink.mdc`, `.gemini/GEMINI.md`, `.github/copilot-instructions.md`, `.windsurfrules`. A command that reads as read-only leaves a dirty tree, making it unusable as a CI check | observed during Phase 1 verification; needs a `--check` / read-only mode |
 | D17 | Med | `guardlink_dashboard` writes `threat-dashboard.html` into its own scan set (`.html` is in `DEFAULT_INCLUDE`, `parse-project.ts:52`). It yields zero annotations, but it does change `source_files` and `unannotated_files`. The MCP cache was masking the divergence from a fresh CLI run | fixed incidentally by A3's invalidation; the scan-set inclusion itself remains |
-| D18 | **High** | *(regression, introduced by A1 — see §3.6)* Any threat or control resolvable **only by substring** is silently dropped entirely. `threat denial` → `count: 0` where Phase 0 measured `#dos` | `lookup.ts:411,418,430` |
+| D18 | **High** | *(regression, introduced by A1 — fixed in 5959e8a)* Any threat or control resolvable **only by substring** is silently dropped entirely. `threat denial` → `count: 0` where Phase 0 measured `#dos` | `lookup.ts:411,418,430` |
+| D19 | **High** | **The documented cross-repo tag syntax does not parse.** `ASSET_REF` (`parse-line.ts:22`) offers `#[a-zA-Z0-9_-]+`, a quoted form, or `[A-Za-z_]\w*(\.[A-Za-z_]\w*)*` — the `#` alternative excludes dots and the dotted alternative excludes `#` and hyphens, so `#auth-lib.token-verify` matches `#auth-lib` and the remainder fails the `$` anchor. `THREAT_REF` (`:26`) has no dotted alternative at all. Cross-repo tags parse **only when quoted**, and **never in threat or control position**. Two documented examples are unwritable: `parse-project.ts:385`'s own canonical `#auth-lib.token-verify`, and both rules emitted by `guardlink_workspace_info` (`server.ts:859,861`) — the tool whose purpose is teaching this syntax | reproduced independently; parser grammar decision required |
+| D20 | Med | **Name collision on `external_refs`.** `model.external_refs` (built by `detectExternalRefs`, `parse-project.ts:393`) holds cross-repo sibling tags. `threat.external_refs` (built from `EXT_REF`, `parse-line.ts:28`) holds `cwe:` / `owasp:` identifiers. Two unrelated concepts under one field name, now with adjacent query surfaces — GL-203's `external refs` form returns the former, GL-204 will query the latter | risk of silent wrong answers at the CXG bridge |
 
 **Line-reference drift** found in Phase 0 verification (cosmetic, behaviour confirmed in
 every case): `parse-project.ts` 104-110 → 108-113 and 137 → 141; `cli/index.ts` 419-427 →
@@ -429,7 +431,17 @@ Implementation is a grouping over `location.file`. Works unchanged in both modes
 - [ ] Optional `line` narrows to the enclosing symbol where `parent_symbol` is available.
 - [ ] A file with no annotations returns an explicit empty result — distinguishable from
       an error or an unparsed file.
-- [ ] Response is ≤ 5% of full-model size on the `specter-v1` corpus.
+- [ ] Response size: **median ≤ 10% of model content**, with the max reported separately.
+      Measured on the Phase 2a implementation — guardlink 2,684 B median (4.39% of
+      61,111 B content); specter-v1 4,626 B median (6.83% of 67,702 B); max 18,977 B on
+      `.guardlink/definitions.ts`.
+      *Criterion corrected. The original "≤5% of full model" was restated mid-epic as
+      "≤5% of model content" without adjusting the threshold — tightening a denominator
+      from 716 KB to 68 KB while holding 5% constant made the target ~10× stricter by
+      accident. The depth-1 neighbourhood is 55–60% of every response and is the
+      specified value of the feature, not overhead. The figure that matters is the
+      practical one: 4.6 KB instead of 68 KB, a 14× saving on the question the tool
+      exists to answer.*
 
 ### GL-202 — `guardlink_graph(...)` — subgraph selector *(closes G2, G3)*
 **As** P4 about to change an asset, **I want** the transitive neighbourhood and paths
@@ -475,8 +487,19 @@ Query forms: `owner of X` / `who owns X`, `handles pii` / `pii`, `assumptions fo
 **Acceptance**
 - [ ] All 9 types reachable; 19/19 coverage verified by a test asserting against the
       `ThreatModel` interface field list.
+      *Corrected in Phase 2a: `acceptances` is a **tenth** orphan, not a ninth — Appendix A
+      called it "a boolean flag, not content," which would have forced a special case into
+      any honest 19/19 test. It now has its own form. The coverage test enumerates array
+      fields off the runtime model, so a relation added to `assembleModel` fails the test
+      until someone registers a query form.*
 - [ ] `@handles` queryable by classification *and* by asset.
 - [ ] Results carry `location` and, in external mode, `origin_file`.
+      *Corrected in Phase 2a: `comments for X` and `shields for X` as **asset-scoped**
+      queries are not expressible — `@comment` and `@shield` carry only `description` and
+      `location`, with no asset reference. Implemented as location scoping instead: a
+      path-shaped scope selects by file; an asset-shaped scope returns rows sharing a file
+      with that asset, every row tagged `join: "co-located"` so a proximity inference is
+      never presented as a declared relation.*
 - [ ] **Unknown query forms are rejected explicitly** rather than falling through to fuzzy
       matching. An unrecognised form returns a `no_match` with the list of supported forms
       — never a confident wrong payload.
