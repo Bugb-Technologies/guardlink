@@ -111,3 +111,72 @@ describe('MCP server — cache invalidation after a destructive write (D11)', ()
     expect(after.count).toBe(0);
   });
 });
+
+// ─── GL-103: the cache follows the filesystem, with no explicit invalidation ──
+
+describe('MCP server — fingerprint invalidation (D5)', () => {
+  let root: string;
+  let session: Awaited<ReturnType<typeof connect>>;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'guardlink-mcp-fp-'));
+    await mkdir(join(root, '.guardlink', 'annotations', 'src'), { recursive: true });
+    await mkdir(join(root, 'src'), { recursive: true });
+    await writeFile(join(root, '.guardlink', 'definitions.ts'), DEFINITIONS);
+    await writeFile(join(root, 'src', 'auth.ts'), 'export function login() { return true; }\n');
+    await writeFile(
+      join(root, '.guardlink', 'annotations', 'src', 'auth.ts.gal'),
+      '@source file:src/auth.ts line:1 symbol:login\n@exposes #auth to #sqli [critical] -- "Concatenated SQL"\n',
+    );
+    session = await connect();
+  });
+
+  afterEach(async () => {
+    await session.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('editing a .gal is reflected without any invalidating tool call', async () => {
+    const before = JSON.parse(payload(
+      await session.client.callTool({ name: 'guardlink_status', arguments: { root } }),
+    ));
+    expect(before.exposures).toBe(1);
+    expect(before.mitigations).toBe(0);
+
+    // The source file does not move — only the sidecar. In external mode this is
+    // the only signal there is, which is why root-only cache keying failed here.
+    await writeFile(
+      join(root, '.guardlink', 'annotations', 'src', 'auth.ts.gal'),
+      '@source file:src/auth.ts line:1 symbol:login\n'
+      + '@exposes #auth to #sqli [critical] -- "Concatenated SQL"\n'
+      + '@mitigates #auth against #sqli using #prepared-stmts -- "Parameterized"\n',
+    );
+
+    // guardlink_status is one of the thirteen tools that never invalidated.
+    const after = JSON.parse(payload(
+      await session.client.callTool({ name: 'guardlink_status', arguments: { root } }),
+    ));
+    expect(after.mitigations).toBe(1);
+  });
+
+  it('a new .gal appearing mid-session is picked up', async () => {
+    await session.client.callTool({ name: 'guardlink_status', arguments: { root } });
+
+    await writeFile(join(root, 'src', 'db.ts'), 'export function q() { return []; }\n');
+    await writeFile(
+      join(root, '.guardlink', 'annotations', 'src', 'db.ts.gal'),
+      '@source file:src/db.ts line:1 symbol:q\n@flows #auth -> #auth via query -- "lookup"\n',
+    );
+
+    const after = JSON.parse(payload(
+      await session.client.callTool({ name: 'guardlink_status', arguments: { root } }),
+    ));
+    expect(after.flows).toBe(1);
+  });
+
+  it('an untouched project is served from cache (fingerprint is stable)', async () => {
+    const a = JSON.parse(payload(await session.client.callTool({ name: 'guardlink_status', arguments: { root } })));
+    const b = JSON.parse(payload(await session.client.callTool({ name: 'guardlink_status', arguments: { root } })));
+    expect(b).toEqual(a);
+  });
+});

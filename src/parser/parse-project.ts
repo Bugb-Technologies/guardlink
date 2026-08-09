@@ -39,7 +39,7 @@ export interface ParseProjectOptions {
   project?: string;
 }
 
-const DEFAULT_INCLUDE = [
+export const DEFAULT_INCLUDE = [
   '**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx',
   '**/*.py', '**/*.rb', '**/*.go', '**/*.rs',
   '**/*.java', '**/*.kt', '**/*.scala',
@@ -55,7 +55,7 @@ const DEFAULT_INCLUDE = [
   '**/*.[gG][aA][lL]',
 ];
 
-const DEFAULT_EXCLUDE = [
+export const DEFAULT_EXCLUDE = [
   '**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**',
   '**/__pycache__/**', '**/target/**', '**/vendor/**', '**/.next/**',
   '**/tests/**', '**/test/**', '**/__tests__/**',

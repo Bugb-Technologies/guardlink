@@ -46,6 +46,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { parseProject, findDanglingRefs, findUnmitigatedExposures, clearAnnotations } from '../parser/index.js';
+import { fingerprintProject } from '../parser/fingerprint.js';
 import { getReviewableExposures, applyReviewAction, type ReviewableExposure } from '../review/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { generateReport } from '../report/index.js';
@@ -65,21 +66,40 @@ import type { ThreatModel } from '../types/index.js';
 let cachedModel: ThreatModel | null = null;
 let cachedDiagnostics: any[] = [];
 let cachedRoot: string = '';
+let cachedFingerprint: string | null = null;
 
+/**
+ * Return the parsed model, re-parsing when anything on disk has moved.
+ *
+ * The cache used to be keyed on `root` alone and never expired, so a session
+ * that had called any tool once served that first answer for the rest of its
+ * life — the agent edits a file, asks again, and is told the old thing. Only
+ * five of the eighteen tools invalidated explicitly, which left the other
+ * thirteen and all three resources stale.
+ *
+ * The fingerprint closes that without a watcher: it is directory metadata only
+ * (path, size, mtime), so it costs a glob walk rather than a parse. It is also
+ * the only mechanism that can catch an edit GuardLink did not make itself —
+ * which is the common case, since `guardlink_annotate` hands a prompt to the
+ * agent and the writes land afterwards, outside any tool call.
+ */
 async function getModel(root: string): Promise<{ model: ThreatModel; diagnostics: any[] }> {
-  if (cachedModel && cachedRoot === root) {
+  const fingerprint = await fingerprintProject(root);
+  if (cachedModel && cachedRoot === root && cachedFingerprint === fingerprint) {
     return { model: cachedModel, diagnostics: cachedDiagnostics };
   }
   const result = await parseProject({ root, project: 'unknown' });
   cachedModel = result.model;
   cachedDiagnostics = result.diagnostics;
   cachedRoot = root;
+  cachedFingerprint = fingerprint;
   return result;
 }
 
 function invalidateCache() {
   cachedModel = null;
   cachedDiagnostics = [];
+  cachedFingerprint = null;
 }
 
 // ─── Server setup ────────────────────────────────────────────────────
