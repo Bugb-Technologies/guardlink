@@ -101,7 +101,7 @@ export function initProject(options: InitOptions): InitResult {
 
   const configPath = join(tsDir, 'config.json');
   if (!existsSync(configPath) || force) {
-    if (!dryRun) writeFileSync(configPath, configContent(project));
+    if (!dryRun) writeFileSync(configPath, configContent(project, isExternal ? 'external' : 'inline'));
     created.push('.guardlink/config.json');
   } else {
     skipped.push('.guardlink/config.json (exists)');

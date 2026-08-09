@@ -56,6 +56,7 @@ import { diffModels, parseAtRef, formatDiffMarkdown } from '../diff/index.js';
 import { lookup, type LookupQuery } from './lookup.js';
 import { fileContext, normalizeContextPath } from './context.js';
 import { selectSubgraph, traverseGraph, findPath } from './subgraph.js';
+import { buildServerInstructions, readConfiguredMode } from './instructions.js';
 import { suggestAnnotations } from './suggest.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModel, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
@@ -208,10 +209,19 @@ function registerResource(
 // ─── Server setup ────────────────────────────────────────────────────
 
 export function createServer(): McpServer {
-  const server = new McpServer({
-    name: 'guardlink',
-    version: getPackageVersion(),
-  });
+  // Instructions must be built before any tool is registered — the SDK stores
+  // them privately at construction. See instructions.ts on how the tool names in
+  // that text are kept honest.
+  const cwd = process.cwd();
+  const server = new McpServer(
+    { name: 'guardlink', version: getPackageVersion() },
+    {
+      instructions: buildServerInstructions({
+        mode: readConfiguredMode(cwd),
+        definitionsPath: '.guardlink/definitions.*',
+      }),
+    },
+  );
 
   const cache = createModelCache();
   const { getModel, invalidateCache } = cache;

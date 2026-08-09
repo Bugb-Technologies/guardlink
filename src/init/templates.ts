@@ -4,6 +4,7 @@
 
 import type { ProjectInfo } from './detect.js';
 import type { ThreatModel } from '../types/index.js';
+import type { AnnotationMode } from '../parser/annotation-mode.js';
 
 // ─── Canonical reference document ────────────────────────────────────
 
@@ -384,11 +385,15 @@ ${c} ─── Your Definitions ────────────────
 
 // ─── Config file ─────────────────────────────────────────────────────
 
-export function configContent(project: ProjectInfo): string {
+export function configContent(project: ProjectInfo, mode: AnnotationMode = 'inline'): string {
   return JSON.stringify({
     version: '1.1.0',
     project: project.name,
     language: project.language,
+    // Recorded so `sync` and the MCP server can state the mode in effect
+    // instead of inferring it — a repo with no annotations yet has nothing to
+    // observe, and guessing "inline" there would be a guess dressed as config.
+    annotation_mode: mode,
     definitions: `definitions${project.definitionsExt}`,
     include: defaultIncludeForLanguage(project.language),
     exclude: [
