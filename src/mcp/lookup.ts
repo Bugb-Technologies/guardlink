@@ -87,12 +87,11 @@ export const SUPPORTED_QUERY_FORMS = [
   '<id>            (bare identifier, fuzzy match across all categories)',
 ] as const;
 
-export function lookup(model: ThreatModel, query: string): LookupResult {
-  // A trailing question mark is punctuation, not part of the identifier. Left in
-  // place it degrades an otherwise exact ref to a substring match.
-  const q = query.trim().toLowerCase().replace(/\?+$/, '').trim();
-
-  // Build ID ↔ path resolution maps
+/**
+ * Expand a ref to every alias the model knows for it — id to dotted path and back.
+ * Extracted so anything resolving a ref uses the same alias set `lookup` does.
+ */
+export function buildResolver(model: ThreatModel): Resolver {
   const idToPath = new Map<string, string>();
   const pathToId = new Map<string, string>();
   for (const a of model.assets) {
@@ -108,15 +107,46 @@ export function lookup(model: ThreatModel, query: string): LookupResult {
   for (const c of model.controls) {
     if (c.id) idToPath.set(c.id.toLowerCase(), c.canonical_name.toLowerCase());
   }
-
-  // Create a resolver that expands a ref to all known aliases
-  const resolve = (ref: string): string[] => {
+  return (ref: string): string[] => {
     const r = ref.toLowerCase().replace(/^#/, '');
     const aliases = [r];
     if (idToPath.has(r)) aliases.push(idToPath.get(r)!);
     if (pathToId.has(r)) aliases.push(pathToId.get(r)!);
     return aliases;
   };
+}
+
+/** What `asset X` decided a ref names, and how. */
+export interface AssetResolution {
+  /** The declared asset, when the ref resolved to one at scope tier. */
+  declared: ThreatModelAsset | undefined;
+  /** Admits relation refs belonging to the resolved identity. */
+  keep: (value: string) => boolean;
+  match: RefMatch | null;
+  /** Declared assets tied at the winning tier. More than one means ambiguous. */
+  tied: ThreatModelAsset[];
+}
+
+/**
+ * Resolve an asset ref exactly as `asset X` does.
+ *
+ * The single entry point for anything outside this module that needs to agree
+ * with lookup about which asset a ref names — graph traversal above all, where a
+ * second resolver would put a D18 at hop 0 and compound it at every hop after.
+ */
+export function resolveAssetRef(model: ThreatModel, ref: string): AssetResolution {
+  const aliases = buildResolver(model)(ref);
+  const declared = findBest(model.assets, assetIdentityOf, ref, aliases);
+  const scope = resolveScope(declared, assetIdentityOf, assetRelationRefs(model), ref, aliases);
+  return { declared: scope.declaredItem, keep: scope.keep, match: scope.match, tied: scope.tied };
+}
+
+export function lookup(model: ThreatModel, query: string): LookupResult {
+  // A trailing question mark is punctuation, not part of the identifier. Left in
+  // place it degrades an otherwise exact ref to a substring match.
+  const q = query.trim().toLowerCase().replace(/\?+$/, '').trim();
+
+  const resolve = buildResolver(model);
 
   // ── "unmitigated" ──
   if (/^unmitigated/.test(q)) {

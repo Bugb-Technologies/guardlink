@@ -51,10 +51,11 @@ import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
 import { getReviewableExposures, applyReviewAction, type ReviewableExposure } from '../review/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { generateReport } from '../report/index.js';
-import { generateDashboardHTML } from '../dashboard/index.js';
+import { generateDashboardHTML, generateThreatGraph } from '../dashboard/index.js';
 import { diffModels, parseAtRef, formatDiffMarkdown } from '../diff/index.js';
 import { lookup, type LookupQuery } from './lookup.js';
 import { fileContext, normalizeContextPath } from './context.js';
+import { selectSubgraph, traverseGraph, findPath } from './subgraph.js';
 import { suggestAnnotations } from './suggest.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModel, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
@@ -391,6 +392,50 @@ export function createServer(): McpServer {
       const context = fileContext(model, { file: rel, exists: existsSync(resolve(root, rel)), line });
 
       return { content: [{ type: 'text', text: JSON.stringify(context, null, 2) }] };
+    },
+  );
+
+  // ── Tool: guardlink_graph ──
+  registerTool(
+    server, cache,
+    'guardlink_graph',
+    'Blast radius: the neighbourhood around an asset, or the path between two. Traversal walks the ASSET plane only — @flows (directed), @boundary (undirected, crossable either way) and @transfers (directed). It does NOT hop through shared threats: #path-traversal alone is declared on 10 assets here, so crossing threats would make depth 2 reach most of the graph and depth would stop meaning anything. Threats and controls are still returned for every asset in the neighbourhood, they just are not transited through. Returns a filtered ThreatModel, so the result is a model like any other. Use format: "mermaid" for a diagram, or path_to for a route between two assets.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      from: z.string().describe('Asset to start from. Resolved exactly as "asset X" is — same tiers, same ambiguity reporting. Later hops match canonical identity only, never fuzzily.'),
+      path_to: z.string().describe('If set, return the shortest path from `from` to this asset instead of a neighbourhood. Directed edges are followed forwards; boundaries either way. An unresolvable endpoint and a genuinely disconnected pair are reported differently.').optional(),
+      depth: z.number().describe('Hops from `from`. 0 is the asset alone, 1 matches what "asset X" reports. Clamped to 10.').default(2),
+      direction: z.enum(['in', 'out', 'both']).describe('Which way directed edges are followed. Boundaries are undirected and are crossed in every direction regardless.').default('both'),
+      kinds: z.array(z.string()).describe('Relation arrays to keep in the returned model. Filters the OUTPUT, not the traversal — excluding "flows" still walks flows, it just omits them from the result. Assets, threats and controls are always kept as the node vocabulary.').optional(),
+      format: z.enum(['json', 'mermaid']).describe('json returns the filtered ThreatModel plus traversal detail; mermaid renders it with the same generator the dashboard uses.').default('json'),
+      feature: z.string().describe('Restrict to one feature before traversing.').optional(),
+      file: z.string().describe('Restrict to annotations declared in one file before traversing.').optional(),
+    },
+    async ({ root, from, path_to, depth, direction, kinds, format, feature, file }) => {
+      const { model } = await getModel(root);
+
+      if (path_to) {
+        const path = findPath(model, from, path_to);
+        return { content: [{ type: 'text', text: JSON.stringify(path, null, 2) }] };
+      }
+
+      const options = { from, depth, direction, kinds, feature, file };
+      const traversal = traverseGraph(model, options);
+      const sub = selectSubgraph(model, options);
+
+      if (format === 'mermaid') {
+        // showAll: the caller already scoped this graph. generateThreatGraph
+        // otherwise drops everything below high severity once a model names more
+        // than 12 distinct threats, which on a deliberately narrowed subgraph
+        // would silently remove data that was explicitly asked for.
+        return {
+          content: [{ type: 'text', text: generateThreatGraph(sub, { showAll: true }) }],
+        };
+      }
+
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ traversal, model: sub }, null, 2) }],
+      };
     },
   );
 

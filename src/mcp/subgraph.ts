@@ -1,0 +1,458 @@
+/**
+ * GuardLink — Subgraph selection (GL-202). The architectural spine.
+ *
+ * `selectSubgraph` returns a **ThreatModel**, not a bespoke graph shape. That is
+ * the whole point: a subgraph is a filtered model, so the existing renderer
+ * consumes it unchanged —
+ *
+ *     generateThreatGraph(selectSubgraph(model, opts))
+ *
+ * — and SG-3's `.mmd` artifacts become a disk cache of common selections rather
+ * than a second implementation of selection. `filterByFeature` already proved
+ * the ThreatModel → ThreatModel shape works; this generalises it.
+ *
+ * ── Graph semantics, decided rather than inherited ──────────────────
+ *
+ * **Traversal walks the asset plane only.** Edges are `@flows` (directed),
+ * `@boundary` (undirected) and `@transfers` (directed). Threats and controls
+ * attach to every visited asset but are never transited *through*.
+ *
+ * Measured on this repo: `#path-traversal` is declared on 10 distinct assets. If
+ * a hop could cross asset → threat → asset, depth 2 from #cli would reach 10 of
+ * 16 declared assets — 62% of the graph — because shared threats act as hubs.
+ * Depth would stop meaning anything. A threat is a shared *classification*, not
+ * a coupling: two components exposed to path traversal are not related, they
+ * merely have the same kind of weakness. Blast radius is about where data goes,
+ * which is the flow graph.
+ *
+ * **Boundaries traverse in every direction.** They are undirected by
+ * construction (`@boundary between A and B`) and therefore simultaneously in-
+ * and out-adjacent. Dropping them from a directional query would silently hide
+ * exactly the edges a trust review is looking for. Each hop records whether the
+ * edge it crossed was directed, so a caller can tell.
+ *
+ * **Hop 0 resolves fuzzily; every later hop is exact.** The starting ref goes
+ * through `resolveAssetRef` — the same resolution `asset X` performs, with the
+ * same tiers, `matched_via` and ambiguity reporting. After that the frontier is
+ * made of refs that already exist in the model, and there is no user input left
+ * to interpret, so hops walk canonical identity only. Fuzzy matching at hop N
+ * would let `#cli` pull in `#llm-client` at every level and the frontier would
+ * blow out into everything sharing three characters.
+ *
+ * @exposes #mcp to #dos [low] cwe:CWE-400 -- "Unbounded depth on a dense graph expands the frontier"
+ * @mitigates #mcp against #dos using #resource-limits -- "Depth is clamped; visited set makes every node terminal, so cycles cannot revisit"
+ * @flows ThreatModel -> #mcp via selectSubgraph -- "Model filtered to a neighbourhood"
+ * @comment -- "Pure function over the model; returns a ThreatModel so the existing Mermaid generator needs no changes"
+ */
+
+import { resolveAssetRef, type MatchKind } from './lookup.js';
+import { filterByFeature } from '../parser/feature-filter.js';
+import type { ThreatModel, ThreatModelAsset } from '../types/index.js';
+
+export type Direction = 'in' | 'out' | 'both';
+
+/** Relation arrays `kinds` can select. Assets, threats and controls are the node
+ *  vocabulary and are always kept — filtering them out would leave edges whose
+ *  endpoints have no definition. */
+export const SELECTABLE_KINDS = [
+  'exposures', 'mitigations', 'confirmed', 'acceptances', 'transfers',
+  'flows', 'boundaries', 'validations', 'audits', 'ownership',
+  'data_handling', 'assumptions', 'comments', 'shields', 'features',
+] as const;
+export type SelectableKind = typeof SELECTABLE_KINDS[number];
+
+/** Hard ceiling on depth. Beyond the graph's diameter another hop adds nothing. */
+export const MAX_DEPTH = 10;
+
+export interface SubgraphOptions {
+  /** Asset ref to start from. Omitted → no traversal, just the pre-filters. */
+  from?: string;
+  /** Hops from `from`. 0 is the node alone. Clamped to MAX_DEPTH. */
+  depth?: number;
+  direction?: Direction;
+  /** Relation arrays to keep. Omitted → all. */
+  kinds?: string[];
+  /** Restrict to annotations declared in one file, applied before traversal. */
+  file?: string;
+  /** Restrict to one or more features, applied before traversal. */
+  feature?: string | string[];
+}
+
+export interface GraphEdge {
+  kind: 'flow' | 'boundary' | 'transfer';
+  from: string;
+  to: string;
+  directed: boolean;
+  label?: string;
+  file: string;
+  line: number;
+}
+
+export interface TraversalNode {
+  key: string;
+  /** Hops from the start. 0 is the start node itself. */
+  depth: number;
+  declared: boolean;
+}
+
+export interface Traversal {
+  /** How the starting ref resolved — null when `from` was omitted. */
+  start: {
+    ref: string;
+    canonical: string | null;
+    resolved: boolean;
+    matched_via?: MatchKind;
+    matched_against?: string;
+    ambiguous?: boolean;
+    candidates?: string[];
+  } | null;
+  nodes: TraversalNode[];
+  /** Edges whose endpoints are both in the node set. */
+  edges: GraphEdge[];
+  depth_reached: number;
+  depth_requested: number;
+  /** True when the frontier was still growing at the depth limit. */
+  truncated: boolean;
+}
+
+/** Canonicalise a ref to one key per asset: `#cli`, `cli` and `GuardLink.CLI` agree. */
+export function canonicaliser(model: ThreatModel): (ref: string) => string {
+  const canon = new Map<string, string>();
+  for (const a of model.assets) {
+    if (!a.id) continue;
+    const id = a.id.toLowerCase();
+    canon.set(id, id);
+    canon.set(a.path.join('.').toLowerCase(), id);
+  }
+  return (ref: string) => {
+    const bare = (ref ?? '').trim().replace(/^#/, '').toLowerCase();
+    return canon.get(bare) ?? bare;
+  };
+}
+
+/** Every asset-plane edge in the model, with endpoints canonicalised. */
+export function graphEdges(model: ThreatModel): GraphEdge[] {
+  const key = canonicaliser(model);
+  const edges: GraphEdge[] = [];
+  for (const f of model.flows) {
+    edges.push({
+      kind: 'flow', from: key(f.source), to: key(f.target), directed: true,
+      label: f.mechanism, file: f.location.file, line: f.location.line,
+    });
+  }
+  for (const b of model.boundaries) {
+    edges.push({
+      kind: 'boundary', from: key(b.asset_a), to: key(b.asset_b), directed: false,
+      label: b.id, file: b.location.file, line: b.location.line,
+    });
+  }
+  for (const t of model.transfers) {
+    edges.push({
+      kind: 'transfer', from: key(t.source), to: key(t.target), directed: true,
+      label: t.threat, file: t.location.file, line: t.location.line,
+    });
+  }
+  return edges;
+}
+
+/** The node an edge leads to from `node`, or null when direction forbids the hop. */
+function step(edge: GraphEdge, node: string, direction: Direction): string | null {
+  if (!edge.directed) {
+    // Undirected: symmetric, so adjacent in every direction.
+    if (edge.from === node) return edge.to;
+    if (edge.to === node) return edge.from;
+    return null;
+  }
+  if (edge.from === node && direction !== 'in') return edge.to;
+  if (edge.to === node && direction !== 'out') return edge.from;
+  return null;
+}
+
+/**
+ * Breadth-first walk of the asset plane.
+ *
+ * The `visited` map is what makes cycles terminate: a node entering the frontier
+ * records the depth it entered at and is never enqueued again, so a cycle walks
+ * each of its nodes exactly once regardless of how the edges loop.
+ */
+export function traverseGraph(model: ThreatModel, options: SubgraphOptions = {}): Traversal {
+  const depthRequested = options.depth ?? 2;
+  const depth = Math.max(0, Math.min(depthRequested, MAX_DEPTH));
+  const direction = options.direction ?? 'both';
+  const key = canonicaliser(model);
+  const edges = graphEdges(model);
+
+  if (!options.from) {
+    return {
+      start: null,
+      nodes: [], edges: [],
+      depth_reached: 0, depth_requested: depthRequested, truncated: false,
+    };
+  }
+
+  // Hop 0 — the only place a ref is interpreted rather than matched literally.
+  const resolution = resolveAssetRef(model, options.from);
+  const declaredAssets = new Map<string, ThreatModelAsset>();
+  for (const a of model.assets) declaredAssets.set(key(a.id || a.path.join('.')), a);
+
+  // The start node is the declared asset when one resolved; otherwise the
+  // strongest-tier ref the annotation graph actually contains, so an undeclared
+  // endpoint like `LLMProvider` is a legal starting point.
+  let startKey: string | null = null;
+  if (resolution.declared) {
+    startKey = key(resolution.declared.id || resolution.declared.path.join('.'));
+  } else {
+    const endpoints = new Set<string>();
+    for (const e of edges) { endpoints.add(e.from); endpoints.add(e.to); }
+    for (const candidate of endpoints) {
+      if (resolution.keep(candidate)) { startKey = candidate; break; }
+    }
+  }
+
+  const start: Traversal['start'] = {
+    ref: options.from,
+    canonical: startKey,
+    resolved: startKey !== null,
+    ...(resolution.match ? { matched_via: resolution.match.kind, matched_against: resolution.match.matched_against } : {}),
+    ...(resolution.tied.length > 1
+      ? { ambiguous: true, candidates: resolution.tied.map(a => a.id || a.path.join('.')) }
+      : {}),
+  };
+
+  if (startKey === null) {
+    return { start, nodes: [], edges: [], depth_reached: 0, depth_requested: depthRequested, truncated: false };
+  }
+
+  const visited = new Map<string, number>([[startKey, 0]]);
+  let frontier = [startKey];
+  let reached = 0;
+  let truncated = false;
+
+  for (let d = 1; d <= depth && frontier.length > 0; d++) {
+    const next: string[] = [];
+    for (const node of frontier) {
+      for (const edge of edges) {
+        const to = step(edge, node, direction);
+        if (to === null || visited.has(to)) continue;   // ← cycle termination
+        visited.set(to, d);
+        next.push(to);
+      }
+    }
+    if (next.length > 0) reached = d;
+    frontier = next;
+  }
+
+  // Still growing when we stopped — the caller's depth, not the graph, ended it.
+  if (frontier.length > 0 && depth < MAX_DEPTH) truncated = true;
+
+  const nodes: TraversalNode[] = [...visited.entries()]
+    .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+    .map(([k, d]) => ({ key: k, depth: d, declared: declaredAssets.has(k) }));
+
+  const included = new Set(visited.keys());
+  return {
+    start,
+    nodes,
+    edges: edges.filter(e => included.has(e.from) && included.has(e.to)),
+    depth_reached: reached,
+    depth_requested: depthRequested,
+    truncated,
+  };
+}
+
+/**
+ * Filter a model to a neighbourhood, returning a ThreatModel.
+ *
+ * The return type is the contract. Anything that consumes a ThreatModel —
+ * `generateThreatGraph`, the report writer, SG-3's artifact emission — consumes
+ * this without modification.
+ */
+export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}): ThreatModel {
+  // Pre-filters compose before traversal, so `feature` and `file` narrow the
+  // graph that is then walked rather than the answer that comes back.
+  let base = model;
+  if (options.feature) {
+    const names = Array.isArray(options.feature) ? options.feature : [options.feature];
+    base = filterByFeature(base, names);
+  }
+  if (options.file) {
+    const want = options.file.replace(/^\.\//, '').replaceAll('\\', '/').toLowerCase();
+    const inFile = <T extends { location: { file: string } }>(arr: T[]): T[] =>
+      arr.filter(r => r.location.file.toLowerCase() === want);
+    base = {
+      ...base,
+      assets: inFile(base.assets), threats: inFile(base.threats), controls: inFile(base.controls),
+      mitigations: inFile(base.mitigations), exposures: inFile(base.exposures),
+      confirmed: inFile(base.confirmed), acceptances: inFile(base.acceptances),
+      transfers: inFile(base.transfers), flows: inFile(base.flows),
+      boundaries: inFile(base.boundaries), validations: inFile(base.validations),
+      audits: inFile(base.audits), ownership: inFile(base.ownership),
+      data_handling: inFile(base.data_handling), assumptions: inFile(base.assumptions),
+      shields: inFile(base.shields), features: inFile(base.features), comments: inFile(base.comments),
+    };
+  }
+
+  const selected = options.from ? nodeSetOf(base, options) : null;
+  const kinds = options.kinds?.length ? new Set(options.kinds) : null;
+
+  const key = canonicaliser(base);
+  const inSet = (ref: string) => selected === null || selected.has(key(ref));
+  const bothIn = (a: string, b: string) => inSet(a) && inSet(b);
+  const wanted = (kind: SelectableKind) => !kinds || kinds.has(kind);
+  const pick = <T>(kind: SelectableKind, rows: T[]) => (wanted(kind) ? rows : []);
+
+  const exposures    = pick('exposures',    base.exposures.filter(e => inSet(e.asset)));
+  const mitigations  = pick('mitigations',  base.mitigations.filter(m => inSet(m.asset)));
+  const confirmed    = pick('confirmed',    (base.confirmed || []).filter(c => inSet(c.asset)));
+  const acceptances  = pick('acceptances',  base.acceptances.filter(a => inSet(a.asset)));
+  const transfers    = pick('transfers',    base.transfers.filter(t => bothIn(t.source, t.target)));
+  const flows        = pick('flows',        base.flows.filter(f => bothIn(f.source, f.target)));
+  const boundaries   = pick('boundaries',   base.boundaries.filter(b => bothIn(b.asset_a, b.asset_b)));
+  const validations  = pick('validations',  base.validations.filter(v => inSet(v.asset)));
+  const audits       = pick('audits',       base.audits.filter(a => inSet(a.asset)));
+  const ownership    = pick('ownership',    base.ownership.filter(o => inSet(o.asset)));
+  const dataHandling = pick('data_handling', base.data_handling.filter(d => inSet(d.asset)));
+  const assumptions  = pick('assumptions',  base.assumptions.filter(a => inSet(a.asset)));
+
+  // Node definitions are always kept: an edge whose endpoint has no declaration
+  // renders as a bare id and reads as missing data rather than as a filter.
+  const assets = base.assets.filter(a => inSet(a.id || a.path.join('.')));
+
+  const threatRefs = new Set<string>();
+  for (const r of [...exposures, ...mitigations, ...confirmed, ...acceptances]) threatRefs.add(bare(r.threat));
+  for (const t of transfers) threatRefs.add(bare(t.threat));
+  const threats = base.threats.filter(t => threatRefs.has(bare(t.id || '')) || threatRefs.has(bare(t.canonical_name)));
+
+  const controlRefs = new Set<string>();
+  for (const m of mitigations) if (m.control) controlRefs.add(bare(m.control));
+  for (const v of validations) controlRefs.add(bare(v.control));
+  const controls = base.controls.filter(c => controlRefs.has(bare(c.id || '')) || controlRefs.has(bare(c.canonical_name)));
+
+  // @comment, @shield and @feature carry no ref, so they follow the files that
+  // contributed something — the same file-proximity rule filterByFeature uses.
+  const files = new Set<string>();
+  for (const row of [...assets, ...threats, ...controls, ...exposures, ...mitigations,
+    ...confirmed, ...acceptances, ...transfers, ...flows, ...boundaries, ...validations,
+    ...audits, ...ownership, ...dataHandling, ...assumptions]) files.add(row.location.file);
+  const byFile = <T extends { location: { file: string } }>(rows: T[]) => rows.filter(r => files.has(r.location.file));
+
+  const comments = pick('comments', byFile(base.comments));
+  const shields  = pick('shields',  byFile(base.shields));
+  const features = pick('features', byFile(base.features));
+
+  const arrays = [assets, threats, controls, mitigations, exposures, confirmed,
+    acceptances, transfers, flows, boundaries, validations, audits, ownership,
+    dataHandling, assumptions, shields, features, comments];
+
+  return {
+    ...base,
+    // Recomputed, not carried over: a subgraph reporting the whole model's
+    // annotation count would misdescribe what it contains.
+    annotations_parsed: arrays.reduce((n, a) => n + a.length, 0),
+    annotated_files: base.annotated_files.filter(f => files.has(f)),
+    assets, threats, controls, mitigations, exposures, confirmed, acceptances,
+    transfers, flows, boundaries, validations, audits, ownership,
+    data_handling: dataHandling, assumptions, shields, features, comments,
+  };
+}
+
+const bare = (s: string) => (s ?? '').replace(/^#/, '').toLowerCase();
+
+/** Canonical keys reachable under `options`, or null when there is no start. */
+function nodeSetOf(model: ThreatModel, options: SubgraphOptions): Set<string> | null {
+  const traversal = traverseGraph(model, options);
+  if (!traversal.start?.resolved) return new Set();
+  return new Set(traversal.nodes.map(n => n.key));
+}
+
+// ─── Path queries ────────────────────────────────────────────────────
+
+export interface PathHop {
+  from: string;
+  to: string;
+  via: GraphEdge;
+}
+
+export interface PathResult {
+  from: { ref: string; canonical: string | null; resolved: boolean };
+  to: { ref: string; canonical: string | null; resolved: boolean };
+  found: boolean;
+  hops: PathHop[];
+  /** Present when no path exists, explaining which of the two failure modes it is. */
+  reason?: string;
+}
+
+/**
+ * Shortest path between two assets, or an explicit no-path answer.
+ *
+ * Directed edges are followed forwards — the question "can data get from X to Y"
+ * is directional — while boundaries, being undirected, are crossable either way.
+ *
+ * An unresolvable endpoint and a genuinely disconnected pair are different
+ * answers and are reported as such: returning `found: false` for both would tell
+ * a caller its graph is disconnected when in fact it typed a name that does not
+ * exist.
+ */
+export function findPath(model: ThreatModel, fromRef: string, toRef: string): PathResult {
+  const key = canonicaliser(model);
+  const edges = graphEdges(model);
+  const endpoints = new Set<string>();
+  for (const e of edges) { endpoints.add(e.from); endpoints.add(e.to); }
+
+  const resolveEnd = (ref: string) => {
+    const r = resolveAssetRef(model, ref);
+    if (r.declared) {
+      return { ref, canonical: key(r.declared.id || r.declared.path.join('.')), resolved: true };
+    }
+    for (const candidate of endpoints) {
+      if (r.keep(candidate)) return { ref, canonical: candidate, resolved: true };
+    }
+    return { ref, canonical: null, resolved: false };
+  };
+
+  const from = resolveEnd(fromRef);
+  const to = resolveEnd(toRef);
+
+  if (!from.resolved || !to.resolved) {
+    const missing = [!from.resolved ? fromRef : null, !to.resolved ? toRef : null].filter(Boolean);
+    return {
+      from, to, found: false, hops: [],
+      reason: `Unresolved: ${missing.join(' and ')}. No asset or annotation endpoint of that name exists, so no path could be attempted.`,
+    };
+  }
+
+  if (from.canonical === to.canonical) {
+    return { from, to, found: true, hops: [] };
+  }
+
+  // BFS, so the first path found is a shortest one.
+  const prev = new Map<string, PathHop>();
+  const seen = new Set([from.canonical!]);
+  let frontier = [from.canonical!];
+
+  while (frontier.length > 0) {
+    const next: string[] = [];
+    for (const node of frontier) {
+      for (const edge of edges) {
+        const onward = edge.directed
+          ? (edge.from === node ? edge.to : null)
+          : (edge.from === node ? edge.to : edge.to === node ? edge.from : null);
+        if (onward === null || seen.has(onward)) continue;
+        seen.add(onward);
+        prev.set(onward, { from: node, to: onward, via: edge });
+        if (onward === to.canonical) {
+          const hops: PathHop[] = [];
+          for (let at = to.canonical!; prev.has(at); at = prev.get(at)!.from) hops.unshift(prev.get(at)!);
+          return { from, to, found: true, hops };
+        }
+        next.push(onward);
+      }
+    }
+    frontier = next;
+  }
+
+  return {
+    from, to, found: false, hops: [],
+    reason: `Both endpoints exist, but no directed path runs from ${from.canonical} to ${to.canonical}. Boundaries are crossable in either direction; flows and transfers are followed forwards only.`,
+  };
+}
