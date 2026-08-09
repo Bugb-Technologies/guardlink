@@ -378,6 +378,11 @@ export function createServer(): McpServer {
       const analyses = loadThreatReportsForDashboard(root);
       const html = generateDashboardHTML(model, root, analyses);
       await writeFile(resolve(root, output), html);
+      // `.html` is in the parser's DEFAULT_INCLUDE, so the file just written
+      // joins the scan set. It carries no annotations, but it does change
+      // source_files / unannotated_files — leaving the cache in place makes
+      // guardlink_unannotated disagree with a fresh CLI run for the session.
+      invalidateCache();
       return {
         content: [{ type: 'text', text: JSON.stringify({
           dashboard: output,
@@ -488,6 +493,12 @@ export function createServer(): McpServer {
         dryRun: dry_run,
         includeDefinitions: include_definitions,
       });
+
+      // A non-dry-run clear strips annotation lines from source files. Without
+      // this the cached model keeps describing annotations that are no longer on
+      // disk for the rest of the session — the one tool that knows the model
+      // just changed was the only mutating tool not saying so.
+      if (!dry_run) invalidateCache();
 
       if (result.totalRemoved === 0) {
         return { content: [{ type: 'text', text: 'No GuardLink annotations found in source files.' }] };
