@@ -66,9 +66,10 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 - #agent-launcher exposed to #config-tamper [medium] (src/agents/prompts.ts:10)
 - #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
 - #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
-- #cli exposed to #cmd-injection [critical] (src/cli/index.ts:33)
 - #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:16)
+- #cli exposed to #cmd-injection [critical] (src/cli/index.ts:33)
 - #init exposed to #data-exposure [low] (src/init/index.ts:12)
+- #mcp exposed to #info-disclosure [low] (src/mcp/freshness.ts:17)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
 - #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:30)
 - #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:34)
@@ -79,6 +80,7 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 
 ### Existing Data Flows (extend, don't duplicate)
 
+- PackageJson -> #cli via readFileSync
 - EnvVars -> #agent-launcher via process.env
 - ConfigFile -> #agent-launcher via readFileSync
 - #agent-launcher -> ConfigFile via writeFileSync
@@ -98,8 +100,7 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 - #llm-client -> LLMProvider via fetch
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
-- #llm-client -> NVD via fetch
-- ... and 54 more
+- ... and 60 more
 
 ### Features (filter with `--feature`)
 
@@ -108,13 +109,16 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 
 ### Model Stats
 
-312 annotations, 16 assets, 15 threats, 12 controls, 62 exposures, 0 confirmed, 49 mitigations, 74 flows, 2 features
+329 annotations, 16 assets, 15 threats, 12 controls, 64 exposures, 0 confirmed, 50 mitigations, 80 flows, 2 features
 
 > **Note:** This section is auto-generated. Run `guardlink sync` to update after code changes.
 > Any coding agent (Cursor, Claude, Copilot, Windsurf, etc.) should reference these IDs
 > and continue annotating new code using the same threat model vocabulary.
 
 <!-- guardlink:end -->
+
+
+
 
 
 

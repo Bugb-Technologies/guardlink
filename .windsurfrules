@@ -52,9 +52,10 @@ Every time you write or modify code that touches security-relevant behavior, you
 - #agent-launcher exposed to #config-tamper [medium] (src/agents/prompts.ts:10)
 - #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
 - #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
-- #cli exposed to #cmd-injection [critical] (src/cli/index.ts:33)
 - #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:16)
+- #cli exposed to #cmd-injection [critical] (src/cli/index.ts:33)
 - #init exposed to #data-exposure [low] (src/init/index.ts:12)
+- #mcp exposed to #info-disclosure [low] (src/mcp/freshness.ts:17)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
 - #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:30)
 - #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:34)
@@ -65,6 +66,7 @@ Every time you write or modify code that touches security-relevant behavior, you
 
 ### Existing Data Flows (extend, don't duplicate)
 
+- PackageJson -> #cli via readFileSync
 - EnvVars -> #agent-launcher via process.env
 - ConfigFile -> #agent-launcher via readFileSync
 - #agent-launcher -> ConfigFile via writeFileSync
@@ -84,8 +86,7 @@ Every time you write or modify code that touches security-relevant behavior, you
 - #llm-client -> LLMProvider via fetch
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
-- #llm-client -> NVD via fetch
-- ... and 54 more
+- ... and 60 more
 
 ### Features (filter with `--feature`)
 
@@ -94,9 +95,12 @@ Every time you write or modify code that touches security-relevant behavior, you
 
 ### Model Stats
 
-312 annotations, 16 assets, 15 threats, 12 controls, 62 exposures, 0 confirmed, 49 mitigations, 74 flows, 2 features
+329 annotations, 16 assets, 15 threats, 12 controls, 64 exposures, 0 confirmed, 50 mitigations, 80 flows, 2 features
 
 <!-- guardlink:end -->
+
+
+
 
 
 
