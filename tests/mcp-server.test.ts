@@ -368,3 +368,91 @@ describe('MCP server — resource scoping across linked repos (D9)', () => {
     }
   });
 });
+
+// ─── GL-205: guardlink_parse returns model content, not a path inventory ──
+
+describe('MCP server — guardlink_parse payload (GL-205)', () => {
+  let root: string;
+  let session: Awaited<ReturnType<typeof connect>>;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'guardlink-parse-'));
+    await mkdir(join(root, '.guardlink'), { recursive: true });
+    await mkdir(join(root, 'src'), { recursive: true });
+    await writeFile(join(root, '.guardlink', 'definitions.ts'), DEFINITIONS);
+    await writeFile(join(root, 'src', 'auth.ts'), ANNOTATED_SOURCE);
+    // Files with no annotations — the inventory this tool stops shipping.
+    for (let i = 0; i < 25; i++) {
+      await writeFile(join(root, 'src', `filler-${i}.ts`), `export const v${i} = ${i};\n`);
+    }
+    session = await connect();
+  });
+
+  afterEach(async () => {
+    await session.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  const parse = async (args: Record<string, unknown> = {}) =>
+    JSON.parse(payload(await session.client.callTool({ name: 'guardlink_parse', arguments: { root, ...args } })));
+
+  it('omits unannotated_files by default and says that it did', async () => {
+    const model = await parse();
+    expect(model.unannotated_files).toBeUndefined();
+    expect(model.unannotated_files_omitted.count).toBe(25);
+    expect(model.unannotated_files_omitted.reason).toMatch(/guardlink_unannotated/);
+  });
+
+  it('omitted-because-empty is distinguishable from omitted-by-default', async () => {
+    // Without the marker a caller cannot tell "no unannotated files" from
+    // "the list was dropped", and would read a large repo as fully annotated.
+    const model = await parse();
+    expect(model.unannotated_files_omitted.count).toBeGreaterThan(0);
+  });
+
+  it('include_unannotated restores the exact previous payload', async () => {
+    const model = await parse({ include_unannotated: true });
+    expect(Array.isArray(model.unannotated_files)).toBe(true);
+    expect(model.unannotated_files).toHaveLength(25);
+    expect(model.unannotated_files_omitted).toBeUndefined();
+  });
+
+  it('everything except unannotated_files is untouched by the default', async () => {
+    const withList = await parse({ include_unannotated: true });
+    const without = await parse();
+    delete withList.unannotated_files;
+    delete without.unannotated_files_omitted;
+    // generated_at moves between parses; the rest must be identical.
+    withList.generated_at = without.generated_at = '';
+    expect(without).toEqual(withList);
+  });
+
+  it('the default payload is smaller than the full one', async () => {
+    const a = payload(await session.client.callTool({ name: 'guardlink_parse', arguments: { root } }));
+    const b = payload(await session.client.callTool({ name: 'guardlink_parse', arguments: { root, include_unannotated: true } }));
+    expect(Buffer.byteLength(a)).toBeLessThan(Buffer.byteLength(b));
+  });
+
+  it('compact returns the compact serialization', async () => {
+    const compact = await parse({ compact: true });
+    expect(compact.summary).toMatch(/annotations/);
+    expect(compact.assets).toBeDefined();
+    // Compact drops the file inventories entirely.
+    expect(compact.unannotated_files).toBeUndefined();
+    expect(compact.annotated_files).toBeUndefined();
+  });
+
+  it('compact is smaller than the default payload', async () => {
+    const def = payload(await session.client.callTool({ name: 'guardlink_parse', arguments: { root } }));
+    const cmp = payload(await session.client.callTool({ name: 'guardlink_parse', arguments: { root, compact: true } }));
+    expect(Buffer.byteLength(cmp)).toBeLessThan(Buffer.byteLength(def));
+  });
+
+  it('still carries the freshness envelope in every mode', async () => {
+    for (const args of [{}, { compact: true }, { include_unannotated: true }]) {
+      const r: any = await session.client.callTool({ name: 'guardlink_parse', arguments: { root, ...args } });
+      const env = JSON.parse(r.content[r.content.length - 1].text).guardlink;
+      expect(env.annotation_hash, JSON.stringify(args)).toMatch(/^sha256-v\d+:/);
+    }
+  });
+});

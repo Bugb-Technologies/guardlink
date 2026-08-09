@@ -219,14 +219,40 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_parse',
-    'Parse GuardLink annotations from the project and return the full threat model as JSON',
-    { root: z.string().describe('Project root directory').default('.') },
-    async ({ root }) => {
+    'Parse GuardLink annotations and return the threat model as JSON. Omits unannotated_files by default — on a large repo that list is ~90% of the payload and carries no threat-model information; use guardlink_unannotated, which exists for exactly that data, or set include_unannotated. Prefer guardlink_context for a single file and guardlink_lookup for a specific question; this is the expensive call for when you genuinely need the whole model.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      compact: z.boolean().describe('Return the compact serialization: stats, assets, ALL unmitigated exposures, threat severity index, flows, boundaries and data classifications, with descriptions capped. Omits resolved mitigations, working controls, comments and validations.').default(false),
+      include_unannotated: z.boolean().describe('Include the unannotated_files list. Off by default; guardlink_unannotated is the dedicated tool for it.').default(false),
+    },
+    async ({ root, compact, include_unannotated }) => {
       invalidateCache();
       const { model } = await getModel(root);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(model, null, 2) }],
+
+      if (compact) {
+        return { content: [{ type: 'text', text: serializeModelCompact(model) }] };
+      }
+
+      // The one non-additive change in this epic: the default payload drops a
+      // key. Measured on specter-v1, unannotated_files alone was 646,200 B —
+      // 90.1% of the dump — a flat path list with nothing about the threat
+      // model in it. Model content does not scale with repo size; the file
+      // inventory does.
+      if (include_unannotated) {
+        return { content: [{ type: 'text', text: JSON.stringify(model, null, 2) }] };
+      }
+      const { unannotated_files, ...rest } = model;
+      // Say the key was dropped. Absent-because-omitted and absent-because-empty
+      // are different facts, and a consumer that cannot tell them apart will
+      // read a large repo as fully annotated.
+      const payload = {
+        ...rest,
+        unannotated_files_omitted: {
+          count: unannotated_files.length,
+          reason: 'Omitted by default — call guardlink_unannotated, or pass include_unannotated: true.',
+        },
       };
+      return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] };
     },
   );
 
