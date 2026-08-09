@@ -959,6 +959,51 @@ These exclusions give the hash four properties a conforming implementation must 
 
 Property 4 makes the hash the correctness test for migration between annotation modes: a migration that preserves meaning must preserve the hash. Properties 1 and 2 exist so the signal stays trustworthy — a hash that changed on cosmetic edits would be warned about constantly and then ignored.
 
+#### 8.2.3. Reference Resolution
+
+A conforming query surface resolves a reference in **tiers**, strongest first, and reports which tier answered:
+
+| Tier | Meaning |
+|---|---|
+| `exact` | The value is the reference, or its last dotted segment is. |
+| `alias` | The value is a resolved alias of the reference — an id matched against its dotted path, or the reverse. |
+| `substring` | One contains the other, at three characters or more. |
+
+Two rules follow, and both exist because violating either produces a confidently wrong answer:
+
+1. **A stronger match always beats a weaker one, regardless of declaration order.** Where `#redos` is declared before `#dos`, a resolver that takes the first substring hit returns ReDoS for the query `dos` and never reaches the exactly-declared `#dos`. The response is indistinguishable from a correct one.
+2. **Precedence is not exclusivity.** A reference resolvable *only* by substring must still resolve. Tiers are compared, never re-derived: classifying a match's own `matched_against` value compares the reference against itself and always yields `exact`, which silently promotes a substring match and then discards the record it resolved.
+
+Where several records tie at the winning tier, the result carries `ambiguous: true` and `candidates`, naming the whole tie rather than letting declaration order pick one silently.
+
+##### Identity join, and where it does not apply
+
+Once a query resolves to a **declared record**, that record's relations are found through *its own* identifiers, not through the query string. Annotations write `@exposes … to #dos`, but a query may arrive as `denial`, which matches only the `canonical_name`. Joining on the query would leave the record correct and its relations empty.
+
+**This produces an intentional and observable difference between two shapes of query, and consumers — including any traversal built on top of these joins — must not assume they agree.**
+
+- `asset <id>`, `threat <id>` and `control <id>` resolve a declared record first, then join on that record's identity.
+- The relational forms — `flows into X`, `exposures for X`, `owner of X` and the rest — have no declared-record step, because their endpoints are frequently *undeclared* free-form strings. They match against the query directly.
+
+Worked example. In a model where `#llm-client` is declared and `LLMProvider`, `LLMConfig` and `LLMToolCall` appear only as flow endpoints:
+
+```
+asset llm         → resolves #llm-client, then joins on #llm-client
+                    inbound_flows: 9
+flows into llm    → matches endpoints against "llm" directly
+                    10  (the 9 above, plus LLMProvider)
+```
+
+Both answers are correct for the question asked. The second is broader by design: forcing it through record resolution would make undeclared endpoints unqueryable, and those are precisely the nodes a developer is most likely to be hunting. The breadth is signalled — the relational form returns `ambiguous: true` with `candidates: ["#llm-client", "LLMProvider"]` — so a consumer can see that more than one identity was admitted rather than inferring a single one.
+
+A conforming implementation that adds traversal or path queries **must decide explicitly which of these two joins it inherits**, and say so, rather than acquiring one by accident from whichever helper it happened to call.
+
+##### Relations with no reference of their own
+
+`@comment` and `@shield` record only a description and a location. There is no asset, threat or control on the record to join against. A conforming implementation scopes them by *location*: a path-shaped scope selects by file, and an asset-shaped scope returns the records sharing a file with annotations that name that asset.
+
+The second is an inference about proximity, not a declared relationship, and must be labelled as such — GuardLink marks every such row `join: "co-located"`. Returning a proximity join as though it were declared is the same class of error as returning a substring match as though it were exact.
+
 ### 8.3. AI-Powered Threat Analysis
 
 A conforming Level 4 implementation may provide AI-driven threat analysis that takes the parsed ThreatModel as input and produces structured reports using established threat modeling frameworks:
