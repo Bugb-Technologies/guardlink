@@ -111,6 +111,10 @@ two authors; there is one.
 | D12 | **High** | Unknown `lookup` query forms do not error — they fall through to `lookupFuzzy`, and `matchRef`'s reverse-substring rule matches the query string itself. `owner of #cli`, `assumptions for #cli`, `comments for #cli` all return byte-identical `count: 1` payloads containing none of the requested data | `lookup.ts:446`; measured |
 | D13 | **High** | `.find()` substring precedence silently drops exact matches. `lookup("threat dos")` returns `#redos` — `#redos` is declared at `definitions.ts:36`, `#dos` at `:39`, and `"redos".includes("dos")` short-circuits the exact match. `lookup("asset cli")` merges all 9 of `#llm-client`'s exposures into `#cli` | `lookup.ts:293,444`; reproduces on committed definitions |
 | D14 | Med | `coverage_percent` is dead — hardcoded `0` and never computed for a single repo. Three consumers display 0% today | `parse-project.ts:194`; consumers at `dashboard/data.ts:95`, `analyze/index.ts:407`, `tui/commands.ts:506`; only real assignment is `workspace/merge.ts:478` (multi-repo path) |
+| D15 | Med | The MCP model cache is **process-global**, not per-server — four module-level `let`s shared by every `createServer()` in a process. Two servers in one process share one `cachedRoot`, so server B's resources can answer for server A's repo. Superset of D9. Latent under stdio (one server per process), live under any multi-server host | `server.ts:64-66`; found by the GL-104 two-repo test, not by inspection |
+| D16 | **High** | `guardlink validate` silently rewrites 7 tracked files — it runs `syncAgentFiles` as a side effect, modifying `CLAUDE.md`, `AGENTS.md`, `.clinerules`, `.cursor/rules/guardlink.mdc`, `.gemini/GEMINI.md`, `.github/copilot-instructions.md`, `.windsurfrules`. A command that reads as read-only leaves a dirty tree, making it unusable as a CI check | observed during Phase 1 verification; needs a `--check` / read-only mode |
+| D17 | Med | `guardlink_dashboard` writes `threat-dashboard.html` into its own scan set (`.html` is in `DEFAULT_INCLUDE`, `parse-project.ts:52`). It yields zero annotations, but it does change `source_files` and `unannotated_files`. The MCP cache was masking the divergence from a fresh CLI run | fixed incidentally by A3's invalidation; the scan-set inclusion itself remains |
+| D18 | **High** | *(regression, introduced by A1 — see §3.6)* Any threat or control resolvable **only by substring** is silently dropped entirely. `threat denial` → `count: 0` where Phase 0 measured `#dos` | `lookup.ts:411,418,430` |
 
 **Line-reference drift** found in Phase 0 verification (cosmetic, behaviour confirmed in
 every case): `parse-project.ts` 104-110 → 108-113 and 137 → 141; `cli/index.ts` 419-427 →
@@ -330,7 +334,18 @@ set, **so that** I can tell whether what I am reading reflects the current code.
 **Acceptance**
 - [ ] Editing an annotation and re-calling `guardlink_lookup` returns updated results with
       no explicit invalidation call.
-- [ ] Fingerprint check adds < 50 ms on a 1,000-file repo.
+- [ ] Fingerprint cost is characterised **per-file**, not at a single scale.
+      Measured on the Phase 1 implementation: ~17 µs/file — 2.97 ms at 1,000 files,
+      0.74 ms on guardlink (70 files), 136.7 ms on specter-v1 (8,142 files).
+      *The original criterion ("< 50 ms on a 1,000-file repo") passed at 2.97 ms while
+      the real cost at 8k files sits far outside what that number implies. State the
+      per-file rate and the largest scale you intend to support.*
+- [ ] At every scale measured, the check must remain cheaper than the parse it replaces
+      (achieved: 5.3% / 3.7% / 12.6% of a full parse respectively).
+- [ ] **No grace window.** Skipping re-fingerprint within N ms of the last check trades a
+      bounded staleness window for latency — reintroducing exactly the bug class GL-103
+      exists to kill. If per-call latency on very large repos becomes a real complaint,
+      raise it as a separate decision with its own evidence.
 - [ ] Regression test: edit a `.gal`, confirm `status` reflects it.
 - [ ] **D11:** `guardlink_clear` calls `invalidateCache()`. It mutates annotations on disk
       and currently does not — the tool that *caused* the divergence is the one that knows
@@ -375,6 +390,15 @@ matched, **so that** I do not act on a confidently wrong answer.
 - [ ] When a substring match is returned, the result names what it matched *against*.
 - [ ] `lookupThreat` and `lookupControl` adopt the `declared` / `referenced_in` shape that
       `lookupAsset` already uses (`lookup.ts:225` vs `:291`, `:308`).
+- [ ] **D18 — substring resolution must survive.** Exact-match *precedence* must not become
+      exact-match *exclusivity*. Verified regression cases: `threat denial` → `#dos`,
+      `threat inject` → `#cmd-injection` or an honest ambiguity result, `control valid` →
+      the validation control. Each pinned by a test.
+- [ ] **Ambiguous substring sets are reported, not silently resolved.** `asset client`
+      matches both `#cli` and `#llm-client` at substring tier and currently returns `#cli`
+      with no signal. Either return the set or name the ambiguity.
+- [ ] `lookupAsset`, `lookupThreat` and `lookupControl` agree: a ref that resolves in one
+      must resolve in all three at the same tier. Pinned by a test.
 
 ---
 
