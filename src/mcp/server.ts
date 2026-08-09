@@ -47,6 +47,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { parseProject, findDanglingRefs, findUnmitigatedExposures, clearAnnotations } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
+import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
 import { getReviewableExposures, applyReviewAction, type ReviewableExposure } from '../review/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { generateReport } from '../report/index.js';
@@ -61,45 +62,145 @@ import { loadWorkspaceConfig } from '../workspace/index.js';
 import { getPackageVersion } from '../version.js';
 import type { ThreatModel } from '../types/index.js';
 
-// ─── Cached model ────────────────────────────────────────────────────
+// ─── Per-server model cache ──────────────────────────────────────────
 
-let cachedModel: ThreatModel | null = null;
-let cachedDiagnostics: any[] = [];
-let cachedRoot: string = '';
-let cachedFingerprint: string | null = null;
+type TextBlock = { type: 'text'; text: string };
 
 /**
- * Return the parsed model, re-parsing when anything on disk has moved.
+ * The cache belongs to one server, not to the module.
  *
- * The cache used to be keyed on `root` alone and never expired, so a session
- * that had called any tool once served that first answer for the rest of its
- * life — the agent edits a file, asks again, and is told the old thing. Only
- * five of the eighteen tools invalidated explicitly, which left the other
- * thirteen and all three resources stale.
- *
- * The fingerprint closes that without a watcher: it is directory metadata only
- * (path, size, mtime), so it costs a glob walk rather than a parse. It is also
- * the only mechanism that can catch an edit GuardLink did not make itself —
- * which is the common case, since `guardlink_annotate` hands a prompt to the
- * agent and the writes land afterwards, outside any tool call.
+ * It used to be four module-level `let`s, so every server built in a process
+ * shared one cached model and one `cachedRoot`. A stdio deployment runs one
+ * server per process and never noticed, but the state is what the resources use
+ * to decide *which repo they answer for* — sharing that across instances is the
+ * same wrong-repo failure as D9, one level up. Scoping it per server also means
+ * a second server in the same process starts genuinely cold.
  */
-async function getModel(root: string): Promise<{ model: ThreatModel; diagnostics: any[] }> {
-  const fingerprint = await fingerprintProject(root);
-  if (cachedModel && cachedRoot === root && cachedFingerprint === fingerprint) {
-    return { model: cachedModel, diagnostics: cachedDiagnostics };
+function createModelCache() {
+  let cachedModel: ThreatModel | null = null;
+  let cachedDiagnostics: any[] = [];
+  let cachedRoot = '';
+  let cachedFingerprint: string | null = null;
+
+  /**
+   * Return the parsed model, re-parsing when anything on disk has moved.
+   *
+   * The cache used to be keyed on `root` alone and never expired, so a session
+   * that had called any tool once served that first answer for the rest of its
+   * life — the agent edits a file, asks again, and is told the old thing. Only
+   * five of the eighteen tools invalidated explicitly, which left the other
+   * thirteen and all three resources stale.
+   *
+   * The fingerprint closes that without a watcher: it is directory metadata only
+   * (path, size, mtime), so it costs a glob walk rather than a parse. It is also
+   * the only mechanism that can catch an edit GuardLink did not make itself —
+   * which is the common case, since `guardlink_annotate` hands a prompt to the
+   * agent and the writes land afterwards, outside any tool call.
+   */
+  async function getModel(root: string): Promise<{ model: ThreatModel; diagnostics: any[] }> {
+    const fingerprint = await fingerprintProject(root);
+    if (cachedModel && cachedRoot === root && cachedFingerprint === fingerprint) {
+      return { model: cachedModel, diagnostics: cachedDiagnostics };
+    }
+    const result = await parseProject({ root, project: 'unknown' });
+    cachedModel = result.model;
+    cachedDiagnostics = result.diagnostics;
+    cachedRoot = root;
+    cachedFingerprint = fingerprint;
+    return result;
   }
-  const result = await parseProject({ root, project: 'unknown' });
-  cachedModel = result.model;
-  cachedDiagnostics = result.diagnostics;
-  cachedRoot = root;
-  cachedFingerprint = fingerprint;
-  return result;
+
+  function invalidateCache(): void {
+    cachedModel = null;
+    cachedDiagnostics = [];
+    cachedFingerprint = null;
+  }
+
+  /**
+   * Which repo the resources answer for, and how confidently.
+   *
+   * The resources take no `root` argument and used to fall back to
+   * `cachedRoot || '.'`. Two problems lived in that expression. `'.'` is the
+   * *server's* cwd, which for a stdio server is wherever the client happened to
+   * spawn it — an arbitrary directory, silently answered for. And once any tool
+   * had run, `cachedRoot` pinned the resources to that repo with nothing in the
+   * response saying so, which in a linked workspace means reading a sibling's
+   * model believing it is yours.
+   *
+   * Behaviour is preserved — a resource read before any tool call still answers
+   * for the working directory, because refusing would break the common case
+   * where the server was spawned in the project root. What changes is that the
+   * answer now says which root it used and whether it was established or assumed.
+   */
+  function resourceRoot(): { root: string; source: 'tool_call' | 'server_cwd' } {
+    return cachedRoot
+      ? { root: cachedRoot, source: 'tool_call' }
+      : { root: process.cwd(), source: 'server_cwd' };
+  }
+
+  /** Envelope for `root`, degrading to a labelled stub if the model cannot be parsed. */
+  async function envelopeFor(root: string) {
+    try {
+      const { model } = await getModel(root);
+      return buildEnvelope(root, model);
+    } catch (err: any) {
+      return degradedEnvelope(root, err?.message ?? 'model unavailable');
+    }
+  }
+
+  return { getModel, invalidateCache, resourceRoot, envelopeFor };
 }
 
-function invalidateCache() {
-  cachedModel = null;
-  cachedDiagnostics = [];
-  cachedFingerprint = null;
+type ModelCache = ReturnType<typeof createModelCache>;
+
+// ─── Freshness envelope (GL-102) ─────────────────────────────────────
+
+/**
+ * Register a tool whose result always carries the envelope.
+ *
+ * Wrapping at registration rather than editing 18 return statements is what makes
+ * "all 18 tools" true by construction instead of by inspection — including the
+ * error branches inside handlers, which are the returns most likely to be missed.
+ */
+function registerTool(
+  server: McpServer,
+  cache: ModelCache,
+  name: string,
+  description: string,
+  schema: z.ZodRawShape,
+  handler: (args: any) => Promise<{ content: TextBlock[] }>,
+): void {
+  server.tool(name, description, schema, (async (args: any) => {
+    const result = await handler(args);
+    const root = typeof args?.root === 'string' && args.root ? args.root : cache.resourceRoot().root;
+    return { content: [...result.content, envelopeBlock(await cache.envelopeFor(root))] };
+  }) as any);
+}
+
+/** Register a resource whose read always carries the envelope and names its root. */
+function registerResource(
+  server: McpServer,
+  cache: ModelCache,
+  name: string,
+  uri: string,
+  metadata: { description: string },
+  handler: (root: string) => Promise<{ contents: any[] }>,
+): void {
+  server.resource(name, uri, metadata, (async () => {
+    const { root, source } = cache.resourceRoot();
+    const result = await handler(root);
+    const envelope = { ...(await cache.envelopeFor(root)), root_source: source };
+    return {
+      contents: [
+        ...result.contents,
+        {
+          uri: 'guardlink://freshness',
+          mimeType: 'application/json',
+          text: JSON.stringify({ guardlink: envelope }, null, 2),
+        },
+      ],
+    };
+  }) as any);
 }
 
 // ─── Server setup ────────────────────────────────────────────────────
@@ -110,8 +211,12 @@ export function createServer(): McpServer {
     version: getPackageVersion(),
   });
 
+  const cache = createModelCache();
+  const { getModel, invalidateCache } = cache;
+
   // ── Tool: guardlink_parse ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_parse',
     'Parse GuardLink annotations from the project and return the full threat model as JSON',
     { root: z.string().describe('Project root directory').default('.') },
@@ -125,7 +230,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_status ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_status',
     'Return coverage statistics: asset/threat/control counts, unmitigated exposures, @confirmed count, coverage percentage',
     { root: z.string().describe('Project root directory').default('.') },
@@ -164,7 +270,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_validate ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_validate',
     'Check annotations for syntax errors, duplicate IDs, and dangling references. Returns structured error list.',
     { root: z.string().describe('Project root directory').default('.') },
@@ -193,7 +300,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_suggest ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_suggest',
     'Given a file path or code diff, suggest appropriate GuardLink annotations based on code patterns, imports, and function signatures',
     {
@@ -211,7 +319,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_lookup ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_lookup',
     'Query the threat model graph. Find assets, threats, controls, flows, exposures by ID or relationship. Examples: "threats for #auth", "flows into Scanner", "unmitigated", "confirmed". A query that is not one of the supported forms returns no_match listing them — it is never answered by guesswork.',
     {
@@ -228,7 +337,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_threat_report ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_threat_report',
     'Generate an AI threat report using a security framework (STRIDE, DREAD, PASTA, attacker, rapid, general). If an LLM API key is set in environment, runs analysis internally and saves result. If no API key is set, returns the framework prompt and serialized threat model for the calling agent to analyze directly — write the result as markdown to .guardlink/threat-reports/.',
     {
@@ -306,7 +416,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_annotate ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_annotate',
     'Build an annotation prompt with project context, GuardLink reference docs, and GAL syntax guidelines. The calling agent should use this prompt to read source files and add security annotations directly. Returns the prompt text — the agent should then read files, decide annotation placement, and write comments.',
     {
@@ -345,7 +456,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_report ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_report',
     'Generate a markdown threat model report with Mermaid diagram. Also writes threat-model.json alongside.',
     {
@@ -382,7 +494,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_dashboard ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_dashboard',
     'Generate an interactive HTML threat model dashboard with diagrams, charts, code annotations, and heatmap.',
     {
@@ -415,7 +528,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_sarif ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_sarif',
     'Export findings as SARIF 2.1.0 for GitHub Advanced Security, VS Code, and other SARIF consumers.',
     {
@@ -440,7 +554,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_diff ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_diff',
     'Compare the current threat model against a git ref (commit, branch, tag). Shows added/removed/changed annotations, new unmitigated exposures.',
     {
@@ -464,7 +579,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_threat_reports ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_threat_reports',
     'List saved AI threat reports from .guardlink/threat-reports/ (and legacy .guardlink/analyses/). Returns filename, framework, timestamp, and model used.',
     {
@@ -479,7 +595,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_sync ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_sync',
     'Sync all agent instruction files (CLAUDE.md, .cursorrules, etc.) with the current threat model. Injects live asset/threat/control IDs, open exposures, and data flows so every coding agent knows the current security posture. Run after adding or changing annotations.',
     {
@@ -500,7 +617,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_clear ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_clear',
     'Remove all GuardLink annotations from source files. Use --dry-run to preview without modifying files. WARNING: destructive operation — requires explicit user confirmation before calling without dry-run.',
     {
@@ -537,7 +655,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_unannotated ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_unannotated',
     'List source files that have no GuardLink annotations. Useful for identifying coverage gaps. Not all files need annotations — only those touching security boundaries (endpoints, auth, data access, I/O, crypto).',
     {
@@ -561,7 +680,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_review_list ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_review_list',
     'List all unmitigated exposures eligible for governance review, sorted by severity. Returns exposure IDs, details, and severity. Use guardlink_review_accept to record decisions. IMPORTANT: Acceptance decisions require explicit human confirmation — do not accept exposures without asking the user first.',
     {
@@ -599,7 +719,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_review_accept ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_review_accept',
     'Record a governance decision for an unmitigated exposure. Writes @accepts + @audit (for accept) or @audit (for remediate) directly into the source file. IMPORTANT: This modifies source files. Only call after explicit human confirmation of the decision and justification.',
     {
@@ -643,7 +764,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_workspace_info ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_workspace_info',
     'Get workspace configuration for multi-repo threat modeling. Returns workspace name, this repo\'s identity, sibling repos, and their tag prefixes. Use this to understand cross-repo references when writing annotations. Returns null fields if the repo is not part of a workspace.',
     {
@@ -687,12 +809,13 @@ export function createServer(): McpServer {
   );
 
   // ── Resource: guardlink://model ──
-  server.resource(
+  registerResource(
+    server, cache,
     'threat-model',
     'guardlink://model',
     { description: 'Full ThreatModel JSON for the current project' },
-    async () => {
-      const { model } = await getModel(cachedRoot || '.');
+    async (root: string) => {
+      const { model } = await getModel(root);
       return {
         contents: [{ uri: 'guardlink://model', mimeType: 'application/json', text: JSON.stringify(model, null, 2) }],
       };
@@ -700,12 +823,13 @@ export function createServer(): McpServer {
   );
 
   // ── Resource: guardlink://definitions ──
-  server.resource(
+  registerResource(
+    server, cache,
     'definitions',
     'guardlink://definitions',
     { description: 'All defined assets, threats, and controls with their IDs' },
-    async () => {
-      const { model } = await getModel(cachedRoot || '.');
+    async (root: string) => {
+      const { model } = await getModel(root);
       const defs = {
         assets: model.assets.map(a => ({ id: a.id, path: a.path.join('.'), description: a.description })),
         threats: model.threats.map(t => ({ id: t.id, name: t.canonical_name, severity: t.severity, description: t.description })),
@@ -718,12 +842,13 @@ export function createServer(): McpServer {
   );
 
   // ── Resource: guardlink://unmitigated ──
-  server.resource(
+  registerResource(
+    server, cache,
     'unmitigated',
     'guardlink://unmitigated',
     { description: 'List of unmitigated exposures — assets exposed to threats with no @mitigates or @accepts' },
-    async () => {
-      const { model } = await getModel(cachedRoot || '.');
+    async (root: string) => {
+      const { model } = await getModel(root);
       const covered = new Set<string>();
       for (const m of model.mitigations) covered.add(`${m.asset}::${m.threat}`);
       for (const a of model.acceptances) covered.add(`${a.asset}::${a.threat}`);

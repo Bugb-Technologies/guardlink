@@ -180,3 +180,189 @@ describe('MCP server — fingerprint invalidation (D5)', () => {
     expect(b).toEqual(a);
   });
 });
+
+// ─── GL-102 / GL-104: freshness envelope and resource scoping ────────
+
+describe('MCP server — freshness envelope (GL-102)', () => {
+  let root: string;
+  let session: Awaited<ReturnType<typeof connect>>;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'guardlink-mcp-env-'));
+    await mkdir(join(root, '.guardlink'), { recursive: true });
+    await mkdir(join(root, 'src'), { recursive: true });
+    await writeFile(join(root, '.guardlink', 'definitions.ts'), DEFINITIONS);
+    await writeFile(join(root, 'src', 'auth.ts'), ANNOTATED_SOURCE);
+    session = await connect();
+  });
+
+  afterEach(async () => {
+    await session.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  /** The envelope block — always last, always a sibling of the payload. */
+  function envelope(result: any) {
+    const blocks = result.content;
+    return JSON.parse(blocks[blocks.length - 1].text).guardlink;
+  }
+
+  const ALL_TOOLS = [
+    'guardlink_parse', 'guardlink_status', 'guardlink_validate', 'guardlink_suggest',
+    'guardlink_lookup', 'guardlink_threat_report', 'guardlink_annotate', 'guardlink_report',
+    'guardlink_dashboard', 'guardlink_sarif', 'guardlink_diff', 'guardlink_threat_reports',
+    'guardlink_sync', 'guardlink_clear', 'guardlink_unannotated', 'guardlink_review_list',
+    'guardlink_review_accept', 'guardlink_workspace_info',
+  ];
+
+  it('the server still advertises exactly the 18 known tools', async () => {
+    const { tools } = await session.client.listTools();
+    expect(tools.map(t => t.name).sort()).toEqual([...ALL_TOOLS].sort());
+  });
+
+  it('every one of the 18 tools returns the envelope', async () => {
+    const args: Record<string, any> = {
+      guardlink_lookup: { query: 'unmitigated' },
+      guardlink_annotate: { prompt: 'annotate auth' },
+      guardlink_clear: { dry_run: true },
+      guardlink_review_accept: { exposure_id: 'nope', decision: 'skip', justification: 'test' },
+      guardlink_diff: { ref: 'HEAD' },
+    };
+    for (const name of ALL_TOOLS) {
+      const result: any = await session.client.callTool({
+        name, arguments: { root, ...(args[name] ?? {}) },
+      });
+      const env = envelope(result);
+      expect(env, name).toBeDefined();
+      expect(env.annotation_hash, name).toMatch(/^(sha256-v\d+:[0-9a-f]{64}|unavailable)$/);
+      expect(env.generated_at, name).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(['inline', 'external', 'mixed'], name).toContain(env.mode);
+      expect(env.root, name).toBe(root);
+      expect(env.guardlink_version, name).toMatch(/^\d+\.\d+\.\d+/);
+    }
+  });
+
+  it('the envelope is a sibling — content[0] is the untouched payload', async () => {
+    const result: any = await session.client.callTool({ name: 'guardlink_status', arguments: { root } });
+    expect(result.content).toHaveLength(2);
+    const parsed = JSON.parse(result.content[0].text);
+    // Payload keys are exactly what they were before the envelope existed.
+    expect(parsed).toHaveProperty('assets');
+    expect(parsed).toHaveProperty('unmitigated');
+    expect(parsed).not.toHaveProperty('guardlink');
+    expect(parsed).not.toHaveProperty('annotation_hash');
+  });
+
+  it('annotation_hash moves when an annotation changes, and not otherwise', async () => {
+    const first = envelope(await session.client.callTool({ name: 'guardlink_status', arguments: { root } }));
+    const second = envelope(await session.client.callTool({ name: 'guardlink_lookup', arguments: { root, query: 'unmitigated' } }));
+    expect(second.annotation_hash).toBe(first.annotation_hash);
+
+    await writeFile(join(root, 'src', 'auth.ts'), ANNOTATED_SOURCE.replace('[critical]', '[low]'));
+    const third = envelope(await session.client.callTool({ name: 'guardlink_status', arguments: { root } }));
+    expect(third.annotation_hash).not.toBe(first.annotation_hash);
+  });
+
+  it('mode reports where the annotations actually live', async () => {
+    const inline = envelope(await session.client.callTool({ name: 'guardlink_status', arguments: { root } }));
+    expect(inline.mode).toBe('inline');
+  });
+
+  it('all three resources carry the envelope and name the root they answered for', async () => {
+    // Establish the root through a tool call first.
+    await session.client.callTool({ name: 'guardlink_status', arguments: { root } });
+
+    for (const uri of ['guardlink://model', 'guardlink://definitions', 'guardlink://unmitigated']) {
+      const res: any = await session.client.readResource({ uri });
+      expect(res.contents.length, uri).toBe(2);
+      expect(res.contents[0].uri, uri).toBe(uri);
+      const env = JSON.parse(res.contents[1].text).guardlink;
+      expect(env.root, uri).toBe(root);
+      expect(env.root_source, uri).toBe('tool_call');
+      expect(env.annotation_hash, uri).toMatch(/^sha256-v\d+:/);
+    }
+  });
+
+  it('a resource read before any tool call says the root was assumed', async () => {
+    const fresh = await connect();
+    try {
+      const res: any = await fresh.client.readResource({ uri: 'guardlink://definitions' });
+      const env = JSON.parse(res.contents[1].text).guardlink;
+      expect(env.root_source).toBe('server_cwd');
+      expect(env.root).toBe(process.cwd());
+    } finally {
+      await fresh.close();
+    }
+  });
+});
+
+// ─── GL-104: two repos, two answers, each labelled ───────────────────
+
+describe('MCP server — resource scoping across linked repos (D9)', () => {
+  let repoA: string;
+  let repoB: string;
+
+  beforeEach(async () => {
+    repoA = await mkdtemp(join(tmpdir(), 'guardlink-ws-a-'));
+    repoB = await mkdtemp(join(tmpdir(), 'guardlink-ws-b-'));
+    for (const [root, extra] of [[repoA, ''], [repoB, ' * @asset App.Extra (#extra) -- "B only"\n']] as const) {
+      await mkdir(join(root, '.guardlink'), { recursive: true });
+      await mkdir(join(root, 'src'), { recursive: true });
+      await writeFile(join(root, '.guardlink', 'definitions.ts'),
+        DEFINITIONS.replace(' */', `${extra} */`));
+      await writeFile(join(root, 'src', 'auth.ts'), ANNOTATED_SOURCE);
+    }
+  });
+
+  afterEach(async () => {
+    await rm(repoA, { recursive: true, force: true });
+    await rm(repoB, { recursive: true, force: true });
+  });
+
+  it('each server answers for its own repo and says which one', async () => {
+    const a = await connect();
+    const b = await connect();
+    try {
+      await a.client.callTool({ name: 'guardlink_status', arguments: { root: repoA } });
+      await b.client.callTool({ name: 'guardlink_status', arguments: { root: repoB } });
+
+      const resA: any = await a.client.readResource({ uri: 'guardlink://definitions' });
+      const resB: any = await b.client.readResource({ uri: 'guardlink://definitions' });
+
+      const envA = JSON.parse(resA.contents[1].text).guardlink;
+      const envB = JSON.parse(resB.contents[1].text).guardlink;
+
+      // Each names the repo it answered for — the thing that was missing.
+      expect(envA.root).toBe(repoA);
+      expect(envB.root).toBe(repoB);
+      expect(envA.root_source).toBe('tool_call');
+      expect(envB.root_source).toBe('tool_call');
+
+      // And the payloads genuinely differ, so a mix-up would be visible.
+      const defsA = JSON.parse(resA.contents[0].text);
+      const defsB = JSON.parse(resB.contents[0].text);
+      expect(defsA.assets.map((x: any) => x.id)).not.toContain('extra');
+      expect(defsB.assets.map((x: any) => x.id)).toContain('extra');
+      expect(envA.annotation_hash).not.toBe(envB.annotation_hash);
+    } finally {
+      await a.close();
+      await b.close();
+    }
+  });
+
+  it('one server switched between roots reports the root it last answered for', async () => {
+    const s = await connect();
+    try {
+      await s.client.callTool({ name: 'guardlink_status', arguments: { root: repoA } });
+      let res: any = await s.client.readResource({ uri: 'guardlink://definitions' });
+      expect(JSON.parse(res.contents[1].text).guardlink.root).toBe(repoA);
+
+      await s.client.callTool({ name: 'guardlink_status', arguments: { root: repoB } });
+      res = await s.client.readResource({ uri: 'guardlink://definitions' });
+      expect(JSON.parse(res.contents[1].text).guardlink.root).toBe(repoB);
+      expect(JSON.parse(res.contents[0].text).assets.map((x: any) => x.id)).toContain('extra');
+    } finally {
+      await s.close();
+    }
+  });
+});

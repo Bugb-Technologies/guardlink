@@ -914,6 +914,51 @@ A conforming GuardLink tool may expose a Model Context Protocol (MCP) server wit
 
 MCP integration enables real-time threat model awareness during coding sessions. Tools should support project-scoped MCP configuration (e.g., `.mcp.json` for Claude Code) so that the MCP server can be committed to the repository and automatically available to all developers.
 
+#### 8.2.1. Freshness Envelope
+
+A conforming MCP server **should** attach a freshness envelope to every tool result and every resource read, so a consumer can distinguish a current answer from a cached or stale one without making a second call.
+
+The envelope is a **sibling of the payload, never merged into it**. For tools it is an additional trailing content block; for resources it is an additional `contents` entry addressed as `guardlink://freshness`. The payload at index `0` is unchanged, so a consumer that ignores the envelope is unaffected.
+
+```json
+{
+  "guardlink": {
+    "annotation_hash": "sha256-v1:14956d87cc37c1de452c262ebbe0c8ae7384cee371dc73be5c255cf8eea672b6",
+    "git_sha": "9ac65fb9b780dba42f618ca72f1dcca8cb60c600",
+    "generated_at": "2026-08-09T09:39:24.229Z",
+    "mode": "inline",
+    "root": "/abs/path/to/repo",
+    "guardlink_version": "1.4.5"
+  }
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `annotation_hash` | Content hash of the annotation set (§8.2.2). `unavailable` if the model could not be parsed, alongside an `unavailable` field naming the reason. |
+| `git_sha` | Commit SHA of the answering repository, or `null` outside a git checkout. |
+| `generated_at` | ISO 8601 timestamp of the response. |
+| `mode` | Where annotations are stored: `inline`, `external`, or `mixed`. Observed from the model, not configured. |
+| `root` | Absolute path of the repository this answer describes. |
+| `guardlink_version` | Implementation version that produced the answer. |
+
+Resource envelopes carry one additional field, `root_source`, with the value `tool_call` when the root was established by a prior tool invocation or `server_cwd` when it was assumed from the server's working directory. Resources are addressed by URI and take no arguments, so without this a consumer in a multi-repository workspace cannot tell which repository answered.
+
+#### 8.2.2. Annotation Hash
+
+`annotation_hash` is a content fingerprint of the annotation set, formatted as `sha256-v<algorithm-version>:<hex>`.
+
+It is computed over annotation **content** only. Specifically it includes each annotation's verb, its verb-specific fields, its description, and its logical source file; and it excludes line numbers, `origin_file`, `origin_line`, and `parent_symbol`. Records are sorted as a multiset before hashing.
+
+These exclusions give the hash four properties a conforming implementation must preserve:
+
+1. Reordering annotations within a file does not change it.
+2. Reformatting surrounding code does not change it.
+3. Adding, editing, or deleting any annotation does change it — including deleting one of two identical annotations.
+4. The same logical model authored inline and authored externally as `.gal` sidecars produces the **same** hash.
+
+Property 4 makes the hash the correctness test for migration between annotation modes: a migration that preserves meaning must preserve the hash. Properties 1 and 2 exist so the signal stays trustworthy — a hash that changed on cosmetic edits would be warned about constantly and then ignored.
+
 ### 8.3. AI-Powered Threat Analysis
 
 A conforming Level 4 implementation may provide AI-driven threat analysis that takes the parsed ThreatModel as input and produces structured reports using established threat modeling frameworks:
