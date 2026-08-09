@@ -128,29 +128,32 @@ describe('GL-403 — weakness 3: the block declares its own freshness', () => {
   let model: ThreatModel;
   beforeAll(async () => { ({ model } = await parseProject({ root: repoRoot, project: 'guardlink' })); });
 
-  it('carries synced_at, git_sha and annotation_hash', () => {
-    const text = buildModelContext(model, {
-      synced_at: '2026-08-09T12:00:00.000Z',
-      git_sha: 'abc123',
-      annotation_hash: computeAnnotationHash(model),
-    });
+  it('carries annotation_hash', () => {
+    const text = buildModelContext(model, { annotation_hash: computeAnnotationHash(model) });
     expect(text).toMatch(/### Block Freshness/);
-    expect(text).toContain('2026-08-09T12:00:00.000Z');
-    expect(text).toContain('abc123');
     expect(text).toContain(computeAnnotationHash(model));
   });
 
-  it('tells the reader what to do when the hash disagrees', () => {
-    const text = buildModelContext(model, {
-      synced_at: 'x', git_sha: null, annotation_hash: 'sha256-v1:deadbeef',
-    });
-    expect(text).toMatch(/trust the tool/);
-    expect(text).toMatch(/guardlink sync/);
+  it('carries NO volatile fields', () => {
+    // synced_at and git_sha were here and are deliberately gone: this block lives
+    // in tracked files regenerated on every sync, so a field moving for reasons
+    // unrelated to its content makes every regeneration a diff. Both still ship
+    // in the MCP envelope, computed per call and written nowhere.
+    const text = buildModelContext(model, { annotation_hash: 'sha256-v1:abc' });
+    expect(text).not.toMatch(/synced_at/);
+    expect(text).not.toMatch(/git_sha/);
+    expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
   });
 
-  it('reports a missing git_sha honestly rather than blank', () => {
-    const text = buildModelContext(model, { synced_at: 'x', git_sha: null, annotation_hash: 'h' });
-    expect(text).toMatch(/not a git checkout/);
+  it('points at the envelope for the fields it no longer carries', () => {
+    const text = buildModelContext(model, { annotation_hash: 'sha256-v1:abc' });
+    expect(text).toMatch(/read the envelope on any MCP/);
+  });
+
+  it('tells the reader what to do when the hash disagrees', () => {
+    const text = buildModelContext(model, { annotation_hash: 'sha256-v1:deadbeef' });
+    expect(text).toMatch(/trust the tool/);
+    expect(text).toMatch(/guardlink sync/);
   });
 
   it('omitting freshness omits the section rather than emitting placeholders', () => {
@@ -158,10 +161,7 @@ describe('GL-403 — weakness 3: the block declares its own freshness', () => {
   });
 
   it('the hash in the block equals the one the MCP envelope reports', () => {
-    // Same primitive both sides — that equality is what makes the marker usable.
-    const text = buildModelContext(model, {
-      synced_at: 'x', git_sha: null, annotation_hash: computeAnnotationHash(model),
-    });
+    const text = buildModelContext(model, { annotation_hash: computeAnnotationHash(model) });
     expect(text).toContain(computeAnnotationHash(model));
   });
 });
@@ -187,7 +187,7 @@ describe('GL-403 — end to end through sync', () => {
     const text = await readFile(join(root, 'CLAUDE.md'), 'utf-8');
     expect(text).toMatch(/### Block Freshness/);
     expect(text).toContain(computeAnnotationHash(model));
-    expect(text).toMatch(/synced_at/);
+    expect(text).not.toMatch(/synced_at/);
   });
 
   it('every agent file gets the block, not only the markdown ones', async () => {
@@ -201,23 +201,46 @@ describe('GL-403 — end to end through sync', () => {
     }
   });
 
-  it('D16 interaction: synced_at makes the block change on every sync', async () => {
-    // Recorded, not fixed. Before this the block was byte-stable when the model
-    // had not changed; a timestamp necessarily churns it. Combined with D16 —
-    // `guardlink validate` running sync as a side effect — every validate now
-    // dirties the agent files. D16 is separately ticketed; this test exists so
-    // the trade-off is visible rather than discovered later in a noisy diff.
+  it('two consecutive syncs of an unchanged model are BYTE-IDENTICAL', async () => {
+    // The property F1 restores. It does not fix D16 — `guardlink validate` still
+    // rewrites these files as a side effect — but it makes that rewrite a no-op
+    // in the working tree, which is what made D16 tolerable in the first place.
     const { model } = await parseProject({ root, project: 'demo' });
     syncAgentFiles({ root, model });
     const first = await readFile(join(root, 'CLAUDE.md'), 'utf-8');
     await new Promise(r => setTimeout(r, 5));
     syncAgentFiles({ root, model });
     const second = await readFile(join(root, 'CLAUDE.md'), 'utf-8');
+    expect(second).toBe(first);
+  });
 
-    expect(second).not.toBe(first);
-    // …and the ONLY difference is the timestamp. Everything else is stable.
-    const strip = (s: string) => s.replace(/`synced_at`: [^\n]+/, '`synced_at`: X');
-    expect(strip(second)).toBe(strip(first));
+  it('every agent file is byte-stable across syncs, not only CLAUDE.md', async () => {
+    const { model } = await parseProject({ root, project: 'demo' });
+    syncAgentFiles({ root, model });
+    const before = new Map<string, string>();
+    for (const f of ['CLAUDE.md', 'AGENTS.md', '.clinerules', '.windsurfrules']) {
+      const text = await readFile(join(root, f), 'utf-8').catch(() => '');
+      if (text) before.set(f, text);
+    }
+    expect(before.size).toBeGreaterThan(0);
+    await new Promise(r => setTimeout(r, 5));
+    syncAgentFiles({ root, model });
+    for (const [f, text] of before) {
+      expect(await readFile(join(root, f), 'utf-8'), f).toBe(text);
+    }
+  });
+
+  it('a changed annotation DOES change the block', async () => {
+    // Byte-stability must not come from the block being inert.
+    const { model } = await parseProject({ root, project: 'demo' });
+    syncAgentFiles({ root, model });
+    const before = await readFile(join(root, 'CLAUDE.md'), 'utf-8');
+    await writeFile(join(root, 'src', 'auth.ts'),
+      '/**\n * @asset App.Auth (#auth) -- "auth"\n * @threat SQLi (#sqli) [low] cwe:CWE-89 -- "sqli"\n'
+      + ' * @exposes #auth to #sqli [low] -- "changed"\n */\nexport function login() {}\n');
+    const { model: after } = await parseProject({ root, project: 'demo' });
+    syncAgentFiles({ root, model: after });
+    expect(await readFile(join(root, 'CLAUDE.md'), 'utf-8')).not.toBe(before);
   });
 
   it('the README, unlike the agent block, stays byte-stable', async () => {

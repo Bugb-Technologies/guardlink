@@ -38,7 +38,6 @@ import {
 } from './templates.js';
 import { computeAnnotationHash } from '../parser/annotation-hash.js';
 import { detectAnnotationMode, readConfiguredMode } from '../parser/annotation-mode.js';
-import { readGitSha } from '../workspace/metadata.js';
 import type { ThreatModel } from '../types/index.js';
 import type { AnnotationMode } from '../agents/index.js';
 import { AGENT_CHOICES } from './picker.js';
@@ -519,21 +518,18 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
   const updated: string[] = [];
   const skipped: string[] = [];
 
-  // Freshness for the synced block, computed once. A reader otherwise cannot
-  // tell a block synced from this commit from one synced months ago, and a
-  // stale block that looks current is worse than an absent one.
+  // Freshness for the synced block: the content hash alone.
   //
-  // NOTE: this makes the agent files churn on every sync, where before they
-  // were byte-stable when the model had not changed. Combined with D16 —
-  // `guardlink validate` running sync as a side effect — every validate now
-  // dirties 7 tracked files with a new timestamp. That interaction is real and
-  // is called out in the report; D16 is separately ticketed and not fixed here.
+  // synced_at and git_sha were here and are gone. These are TRACKED files
+  // regenerated on every sync, so a field moving for reasons unrelated to the
+  // block’s content turns every regeneration into a diff — measured at a 9-line
+  // diff across 7 files per `guardlink validate`. Both still ship in the MCP
+  // envelope, computed per call and written nowhere.
+  //
+  // This does not fix D16. It restores the property that made D16 tolerable:
+  // rewriting unchanged content produces no diff.
   const freshness: ModelContextFreshness | undefined = model && model.annotations_parsed > 0
-    ? {
-        synced_at: new Date().toISOString(),
-        git_sha: readGitSha(root),
-        annotation_hash: computeAnnotationHash(model),
-      }
+    ? { annotation_hash: computeAnnotationHash(model) }
     : undefined;
 
   // Regenerate .guardlink/README.md so it cannot drift from what the tooling

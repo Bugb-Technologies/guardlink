@@ -53,14 +53,14 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Open Exposures (need @mitigates or @audit)
 
-- #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
-- #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
-- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:16)
-- #cli exposed to #cmd-injection [critical] (src/cli/index.ts:33)
 - #agent-launcher exposed to #prompt-injection [medium] (src/agents/launcher.ts:13)
 - #agent-launcher exposed to #dos [low] (src/agents/launcher.ts:15)
 - #agent-launcher exposed to #prompt-injection [high] (src/agents/prompts.ts:6)
 - #agent-launcher exposed to #config-tamper [medium] (src/agents/prompts.ts:10)
+- #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
+- #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
+- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:16)
+- #cli exposed to #cmd-injection [critical] (src/cli/index.ts:33)
 - #init exposed to #data-exposure [low] (src/init/index.ts:12)
 - #mcp exposed to #info-disclosure [low] (src/mcp/freshness.ts:17)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
@@ -73,7 +73,17 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Existing Data Flows (extend, don't duplicate)
 
-- PackageJson -> #cli via readFileSync
+- EnvVars -> #agent-launcher via process.env
+- ConfigFile -> #agent-launcher via readFileSync
+- #agent-launcher -> ConfigFile via writeFileSync
+- UserPrompt -> #agent-launcher via launchAgent
+- #agent-launcher -> AgentProcess via spawn
+- AgentProcess -> #agent-launcher via stdout
+- UserPrompt -> #agent-launcher via buildAnnotatePrompt
+- UserPrompt -> #agent-launcher via buildTranslatePrompt
+- UserPrompt -> #agent-launcher via buildAskPrompt
+- ThreatModel -> #agent-launcher via model
+- #agent-launcher -> AgentPrompt via return
 - ThreatModel -> #llm-client via serializeModel
 - ProjectFiles -> #llm-client via readFileSync
 - #llm-client -> ReportFile via writeFileSync
@@ -83,17 +93,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
 - #llm-client -> NVD via fetch
-- ProjectFiles -> #llm-client via readFileSync
-- ThreatModel -> #sarif via generateSarif
-- #sarif -> SarifLog via return
-- UserArgs -> #cli via process.argv
-- #cli -> FileSystem via writeFile
-- PackageJson -> #cli via readFileSync
-- EnvVars -> #agent-launcher via process.env
-- ConfigFile -> #agent-launcher via readFileSync
-- #agent-launcher -> ConfigFile via writeFileSync
-- UserPrompt -> #agent-launcher via launchAgent
-- … and 64 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
+- … and 65 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
 
 ### Features (filter with `--feature`)
 
@@ -102,4 +102,4 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-342 annotations, 16 assets, 15 threats, 12 controls, 66 exposures, 0 confirmed, 52 mitigations, 84 flows, 2 features
+344 annotations, 16 assets, 15 threats, 12 controls, 66 exposures, 0 confirmed, 52 mitigations, 85 flows, 2 features

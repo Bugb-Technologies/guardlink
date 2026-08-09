@@ -5,6 +5,7 @@
 import type { ProjectInfo } from './detect.js';
 import type { ThreatModel } from '../types/index.js';
 import type { AnnotationMode } from '../parser/annotation-mode.js';
+import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 
 // ─── Canonical reference document ────────────────────────────────────
 
@@ -193,22 +194,38 @@ the same change.** This includes: new endpoints, authentication/authorization lo
  * Contains real asset/threat/control IDs, open exposures, and existing flows
  * so any coding agent knows the current security posture.
  */
+/**
+ * Freshness for the synced block — the content hash, and nothing else.
+ *
+ * `synced_at` and `git_sha` were here and are deliberately gone. This block
+ * lives in tracked files that are regenerated on every sync, so a field that
+ * moves for reasons unrelated to the block’s content makes every regeneration a
+ * diff. `synced_at` carried no information at all; `git_sha` moved on every
+ * commit and, because the block is regenerated *before* the commit it would
+ * name, was permanently one behind and permanently dirty.
+ *
+ * Both still ship in the MCP freshness envelope (GL-102), computed per call and
+ * touching no disk. That is where a volatile field belongs.
+ *
+ * `annotation_hash` stays because it moves when, and only when, the thing it
+ * describes moves — which is the entire point of a staleness marker.
+ */
 export interface ModelContextFreshness {
-  /** ISO timestamp of the sync that produced the block. */
-  synced_at: string;
-  /** Commit the model was read at, or null outside a git checkout. */
-  git_sha: string | null;
   /** Content hash of the annotation set — identical hash means identical model. */
   annotation_hash: string;
 }
 
 export function buildModelContext(model: ThreatModel, freshness?: ModelContextFreshness): string {
+  // Ordered before anything is sliced. Parse order varies across processes
+  // (fast-glob completion order), so without this the "first 25 exposures"
+  // window showed a different subset run to run and every sync was a diff.
+  const ordered = canonicalizeModelOrder(model);
   const sections: string[] = [];
 
   // Existing defined IDs
-  const assetIds = model.assets.filter(a => a.id).map(a => `#${a.id} (${a.path})`);
-  const threatIds = model.threats.filter(t => t.id).map(t => `#${t.id} (${t.name})${t.severity ? ` [${t.severity}]` : ''}`);
-  const controlIds = model.controls.filter(c => c.id).map(c => `#${c.id} (${c.name})`);
+  const assetIds = ordered.assets.filter(a => a.id).map(a => `#${a.id} (${a.path})`);
+  const threatIds = ordered.threats.filter(t => t.id).map(t => `#${t.id} (${t.name})${t.severity ? ` [${t.severity}]` : ''}`);
+  const controlIds = ordered.controls.filter(c => c.id).map(c => `#${c.id} (${c.name})`);
 
   if (assetIds.length + threatIds.length + controlIds.length > 0) {
     sections.push('### Current Definitions (REUSE these IDs — do NOT redefine)\n');
@@ -219,8 +236,8 @@ export function buildModelContext(model: ThreatModel, freshness?: ModelContextFr
   }
 
   // Open exposures (unmitigated)
-  const unmitigated = model.exposures.filter(e =>
-    !model.mitigations.some(m => m.asset === e.asset && m.threat === e.threat)
+  const unmitigated = ordered.exposures.filter(e =>
+    !ordered.mitigations.some(m => m.asset === e.asset && m.threat === e.threat)
   );
   if (unmitigated.length > 0) {
     sections.push('\n### Open Exposures (need @mitigates or @audit)\n');
@@ -234,31 +251,31 @@ export function buildModelContext(model: ThreatModel, freshness?: ModelContextFr
   }
 
   // Confirmed exploitable findings
-  if ((model.confirmed || []).length > 0) {
+  if ((ordered.confirmed || []).length > 0) {
     sections.push('\n### 🔴 Confirmed Exploitable (verified, not false positives)\n');
-    const confirmedLines = model.confirmed.slice(0, 25).map(c =>
+    const confirmedLines = ordered.confirmed.slice(0, 25).map(c =>
       `- ${c.asset} confirmed ${c.threat}${c.severity ? ` [${c.severity}]` : ''} (${c.location.file}:${c.location.line})`
     );
     sections.push(confirmedLines.join('\n'));
-    if (model.confirmed.length > 25) {
-      sections.push(`- … and ${model.confirmed.length - 25} more — \`guardlink_lookup("confirmed")\` returns all of them`);
+    if (ordered.confirmed.length > 25) {
+      sections.push(`- … and ${ordered.confirmed.length - 25} more — \`guardlink_lookup("confirmed")\` returns all of them`);
     }
   }
 
   // Existing flows (top 20)
-  if (model.flows.length > 0) {
+  if (ordered.flows.length > 0) {
     sections.push('\n### Existing Data Flows (extend, don\'t duplicate)\n');
-    const flowLines = model.flows.slice(0, 20).map(f =>
+    const flowLines = ordered.flows.slice(0, 20).map(f =>
       `- ${f.source} -> ${f.target}${f.mechanism ? ` via ${f.mechanism}` : ''}`
     );
     sections.push(flowLines.join('\n'));
-    if (model.flows.length > 20) {
-      sections.push(`- … and ${model.flows.length - 20} more — \`guardlink_lookup("flows into X")\` for one asset, or \`guardlink_graph(from: X)\` for a neighbourhood`);
+    if (ordered.flows.length > 20) {
+      sections.push(`- … and ${ordered.flows.length - 20} more — \`guardlink_lookup("flows into X")\` for one asset, or \`guardlink_graph(from: X)\` for a neighbourhood`);
     }
   }
 
   // Features
-  const uniqueFeatures = new Set((model.features || []).map(f => f.feature));
+  const uniqueFeatures = new Set((ordered.features || []).map(f => f.feature));
   if (uniqueFeatures.size > 0) {
     sections.push('\n### Features (filter with `--feature`)\n');
     sections.push([...uniqueFeatures].sort().map(f => `- "${f}"`).join('\n'));
@@ -266,14 +283,14 @@ export function buildModelContext(model: ThreatModel, freshness?: ModelContextFr
 
   // Summary stats
   const stats = [
-    `${model.annotations_parsed} annotations`,
-    `${model.assets.length} assets`,
-    `${model.threats.length} threats`,
-    `${model.controls.length} controls`,
-    `${model.exposures.length} exposures`,
-    `${(model.confirmed || []).length} confirmed`,
-    `${model.mitigations.length} mitigations`,
-    `${model.flows.length} flows`,
+    `${ordered.annotations_parsed} annotations`,
+    `${ordered.assets.length} assets`,
+    `${ordered.threats.length} threats`,
+    `${ordered.controls.length} controls`,
+    `${ordered.exposures.length} exposures`,
+    `${(ordered.confirmed || []).length} confirmed`,
+    `${ordered.mitigations.length} mitigations`,
+    `${ordered.flows.length} flows`,
     ...(uniqueFeatures.size > 0 ? [`${uniqueFeatures.size} features`] : []),
   ].join(', ');
   sections.push(`\n### Model Stats\n\n${stats}`);
@@ -284,12 +301,12 @@ export function buildModelContext(model: ThreatModel, freshness?: ModelContextFr
   if (freshness) {
     sections.push([
       '\n### Block Freshness\n',
-      `- \`synced_at\`: ${freshness.synced_at}`,
-      `- \`git_sha\`: ${freshness.git_sha ?? 'not a git checkout'}`,
       `- \`annotation_hash\`: \`${freshness.annotation_hash}\``,
       '',
       'Every MCP response carries this same hash. If it differs from the one above, this',
       'block predates the current annotations — trust the tool, and run `guardlink sync`.',
+      'For when it was synced and at which commit, read the envelope on any MCP',
+      'response: those move independently of the model and are not written to disk.',
     ].join('\n'));
   }
 
