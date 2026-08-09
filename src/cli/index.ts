@@ -476,6 +476,10 @@ program
     console.error(`${verb} ${result.written.length} artifact(s):`);
     for (const path of result.written) console.error(`   ${path}`);
     console.error(`\nannotation_hash: ${result.provenance.annotation_hash}`);
+    console.error(`generated_at:    ${result.emission.generated_at}`);
+    console.error(`git_sha:         ${result.emission.git_sha ?? 'not a git checkout'}`);
+    console.error('(the last two are reported here, not written into the files — they would');
+    console.error(' otherwise churn every commit; the files are tracked.)');
     console.error('Every .mmd carries that hash in a %% header. Check with: guardlink validate . --artifacts');
   });
 

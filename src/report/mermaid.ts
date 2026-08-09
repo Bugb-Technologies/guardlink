@@ -9,6 +9,33 @@
  * 5. Distinct shapes: Actors (()), Processes [], Data stores [()]
  * 6. Deduplicate: One node per asset, one label per data classification
  * 7. Top-down layout: External → boundary → internal → data
+ *
+ * ── Why this is not dashboard/diagrams.ts (GL-303) ──────────────────
+ *
+ * There are two diagram generator sets and that is deliberate. This one renders
+ * a **DFD**: top-down, classic threat-modelling shapes (actors `(())`, processes
+ * `[]`, data stores `[()]`), severity rolled onto the asset label, and controls
+ * held OUT of the graph because the markdown report prints them in a table
+ * directly beneath it — putting them in both would duplicate the page.
+ * dashboard/diagrams.ts renders left-to-right with controls as first-class
+ * nodes, for a viewer where the table is a separate tab.
+ *
+ * The removal of the D3 topology view (5ca53eb) is not a precedent for merging
+ * them. That was removed for two reasons together: it was an unreadable hairball
+ * at scale AND the Mermaid views already covered the same relationships legibly.
+ * Neither holds here — this generator has an explicit compact mode above 15
+ * unmitigated exposures, so it degrades rather than tangling, and it shows a
+ * projection (DFD shapes, boundary-scoped severity) that no other generator does.
+ *
+ * The divergence the epic worried about — two answers to "what does the threat
+ * graph look like" — is handled by scope rather than by merging. The emitted
+ * .guardlink/graph/*.mmd artifacts come from the dashboard set and carry a
+ * provenance header naming the annotation hash they were built from. This
+ * diagram is inline in a generated report, never a standalone file, so there is
+ * nothing here for a reader to mistake for the canonical graph.
+ *
+ * If that ever stops being true — if this output starts being written to its own
+ * file — revisit the decision rather than shipping two unlabelled .mmd files.
  */
 
 import type { ThreatModel } from '../types/index.js';

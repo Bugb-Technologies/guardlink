@@ -89,13 +89,13 @@ describe('GL-301 — emission', () => {
     expect(written.exposures).toEqual(canonicalizeModelOrder(model).exposures);
   });
 
-  it('regenerating an unchanged model rewrites identical bytes apart from generated_at', async () => {
+  it('regenerating an unchanged model rewrites BYTE-IDENTICAL files', async () => {
     emitArtifacts({ root, model });
     const first = await readFile(join(root, '.guardlink/graph/threat-graph.mmd'), 'utf-8');
+    await new Promise(r => setTimeout(r, 5));
     emitArtifacts({ root, model });
     const second = await readFile(join(root, '.guardlink/graph/threat-graph.mmd'), 'utf-8');
-    const strip = (s: string) => s.replace(/^%% generated_at:.*$/m, '');
-    expect(strip(second)).toBe(strip(first));
+    expect(second).toBe(first);
     expect(stripHeader(second)).toBe(stripHeader(first));
   });
 
@@ -156,14 +156,16 @@ describe('GL-302 — provenance headers', () => {
 
   afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 
-  it('every .mmd carries the four provenance fields', async () => {
+  it('every .mmd carries content-derived provenance and no volatile fields', async () => {
     for (const rel of ['graph/threat-graph.mmd', 'graph/dataflow.mmd',
       'graph/attack-surface.mmd', 'graph/by-feature/checkout.mmd']) {
       const text = await readFile(join(root, '.guardlink', rel), 'utf-8');
       expect(text, rel).toMatch(/^%% annotation_hash: sha256-v\d+:[0-9a-f]{64}$/m);
-      expect(text, rel).toMatch(/^%% git_sha:/m);
-      expect(text, rel).toMatch(/^%% generated_at:\s+\d{4}-\d{2}-\d{2}T/m);
       expect(text, rel).toMatch(/^%% generator:\s+guardlink@/m);
+      // Volatile fields are deliberately absent: these files are committed and a
+      // pre-commit hook regenerates them, so a clock would diff every commit.
+      expect(text, rel).not.toMatch(/^%% git_sha:/m);
+      expect(text, rel).not.toMatch(/^%% generated_at:/m);
       expect(text, rel).toMatch(/GENERATED FILE/);
     }
   });
@@ -189,11 +191,10 @@ describe('GL-302 — provenance headers', () => {
     expect(readArtifactHash(text)).toBe(computeAnnotationHash(canonicalizeModelOrder(model)));
   });
 
-  it('mermaidHeader reports a missing git sha honestly', () => {
-    const text = mermaidHeader('x.mmd', {
-      annotation_hash: 'h', git_sha: null, generated_at: 't', generator: 'g',
-    });
-    expect(text).toMatch(/not a git checkout/);
+  it('mermaidHeader points at git for the facts it does not store', () => {
+    const text = mermaidHeader('x.mmd', { annotation_hash: 'h', generator: 'g' });
+    expect(text).toMatch(/ask git/);
+    expect(text).not.toMatch(/generated_at/);
   });
 });
 

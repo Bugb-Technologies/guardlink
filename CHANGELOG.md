@@ -5,6 +5,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## \[Unreleased\]
 
+### Decisions
+
+- **GL-303 — two diagram generator sets are kept, not unified.** `report --diagram-only`
+  uses `src/report/mermaid.ts`, which renders a top-down DFD with actor/process/data-store
+  shapes and keeps controls in the report's table rather than in the graph.
+  `src/dashboard/diagrams.ts` renders left-to-right with controls as nodes, and is the set
+  the emitted `.guardlink/graph/*.mmd` artifacts come from. These are different projections
+  for different consumers, not a duplicated implementation. **`report --diagram-only` output
+  is unchanged.** The precedent of 5ca53eb (removing the D3 topology view) does not apply:
+  that was removed for being both redundant *and* illegible at scale, and neither is true
+  here — the report generator has an explicit compact mode above 15 unmitigated exposures.
+- **GL-304 — derived artifacts are committed.** `.guardlink/model.json` and
+  `.guardlink/graph/` are tracked so a fresh clone has the threat model without running
+  anything and model changes appear in review. `.gitattributes` marks them
+  `linguist-generated`. Machine exports that are rebuilt on demand
+  (`threat-model.json`, `guardlink.sarif.json`, `threat-dashboard.html`) remain ignored.
+
 ### Removed
 
 - **Risk Topology graph removed from the dashboard Diagrams page.** The force-directed D3 view (`generateTopologyData`, the `Risk Topology` tab, and its client-side renderer/inspector) grew unreadably dense on large codebases — a hairball that obscured more than it showed. The three Mermaid views (Threat Graph, Data Flow, Attack Surface) remain, and the Threat Graph still auto-filters to high/critical with an *All severities* toggle. `generateTopologyData` and the `DiagramTopology*` types are gone from `src/dashboard/diagrams.js`.
