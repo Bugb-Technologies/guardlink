@@ -35,6 +35,38 @@ function getGuardlinkVersion(): string {
 }
 
 /**
+ * Read HEAD straight out of `.git`.
+ *
+ * `populateMetadata` shells out to `git rev-parse`, which is fine once per
+ * report but not once per tool call. Two small file reads cost microseconds and
+ * cannot go stale the way a cached subprocess result would.
+ */
+export function readGitSha(root: string): string | null {
+  const sha = /^[0-9a-f]{40}$/;
+  try {
+    const head = readFileSync(join(root, '.git', 'HEAD'), 'utf-8').trim();
+    if (!head.startsWith('ref: ')) return sha.test(head) ? head : null;
+
+    const ref = head.slice(5).trim();
+    try {
+      const direct = readFileSync(join(root, '.git', ref), 'utf-8').trim();
+      if (sha.test(direct)) return direct;
+    } catch { /* ref is packed */ }
+
+    const packed = readFileSync(join(root, '.git', 'packed-refs'), 'utf-8');
+    for (const line of packed.split('\n')) {
+      const [hash, name] = line.trim().split(/\s+/);
+      if (name === ref && sha.test(hash)) return hash;
+    }
+    return null;
+  } catch {
+    // Not a git checkout, or `.git` is a file (worktree / submodule). Reporting
+    // null is honest; guessing would defeat the point of the field.
+    return null;
+  }
+}
+
+/**
  * Get git commit SHA (full) for the given directory.
  * Returns null if not a git repo.
  */

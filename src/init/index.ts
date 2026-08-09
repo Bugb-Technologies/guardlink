@@ -34,9 +34,11 @@ import {
   promptMdContent,
   guardlinkReadmeContent,
   GITIGNORE_ENTRY,
+  type ModelContextFreshness,
 } from './templates.js';
 import { computeAnnotationHash } from '../parser/annotation-hash.js';
 import { detectAnnotationMode, readConfiguredMode } from '../parser/annotation-mode.js';
+import { readGitSha } from '../workspace/metadata.js';
 import type { ThreatModel } from '../types/index.js';
 import type { AnnotationMode } from '../agents/index.js';
 import { AGENT_CHOICES } from './picker.js';
@@ -355,8 +357,15 @@ function replaceOrAppend(existing: string, block: string): string {
   const endIdx = existing.indexOf(GUARDLINK_MARKER_END);
 
   if (beginIdx !== -1 && endIdx !== -1) {
-    // Replace existing block
-    return existing.slice(0, beginIdx) + block + existing.slice(endIdx + GUARDLINK_MARKER_END.length);
+    // Replace existing block.
+    //
+    // The preserved tail must have its leading newlines stripped: `wrapMarkers`
+    // already ends the block with exactly one, and the tail begins with the one
+    // the *previous* sync wrote. Keeping both added a blank line on every run —
+    // this repo's own CLAUDE.md had accumulated 55 of them. Stripping makes the
+    // replacement idempotent, so syncing an unchanged model is a no-op.
+    const tail = existing.slice(endIdx + GUARDLINK_MARKER_END.length).replace(/^\n+/, '');
+    return existing.slice(0, beginIdx) + block + tail;
   }
 
   // Append with separator
@@ -480,10 +489,10 @@ function toPascalCase(s: string): string {
     .join('');
 }
 
-function buildMdFromScratch(project: ProjectInfo, model: ThreatModel | null): string {
+function buildMdFromScratch(project: ProjectInfo, model: ThreatModel | null, freshness?: ModelContextFreshness): string {
   return `# ${toPascalCase(project.name)} — Project Instructions
 
-${wrapMarkers(agentInstructionsWithModel(project, model))}`;
+${wrapMarkers(agentInstructionsWithModel(project, model, freshness))}`;
 }
 
 // ─── Sync: regenerate agent files with live threat model ─────────────
@@ -509,6 +518,23 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
   const project = detectProject(root);
   const updated: string[] = [];
   const skipped: string[] = [];
+
+  // Freshness for the synced block, computed once. A reader otherwise cannot
+  // tell a block synced from this commit from one synced months ago, and a
+  // stale block that looks current is worse than an absent one.
+  //
+  // NOTE: this makes the agent files churn on every sync, where before they
+  // were byte-stable when the model had not changed. Combined with D16 —
+  // `guardlink validate` running sync as a side effect — every validate now
+  // dirties 7 tracked files with a new timestamp. That interaction is real and
+  // is called out in the report; D16 is separately ticketed and not fixed here.
+  const freshness: ModelContextFreshness | undefined = model && model.annotations_parsed > 0
+    ? {
+        synced_at: new Date().toISOString(),
+        git_sha: readGitSha(root),
+        annotation_hash: computeAnnotationHash(model),
+      }
+    : undefined;
 
   // Regenerate .guardlink/README.md so it cannot drift from what the tooling
   // actually does. Mode comes from config where recorded, and is otherwise
@@ -557,12 +583,12 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
       }
       let content: string;
       if (choice.file.endsWith('.mdc')) {
-        content = cursorMdcContentWithModel(project, model);
+        content = cursorMdcContentWithModel(project, model, freshness);
       } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
-        content = wrapMarkers(cursorRulesContentWithModel(project, model));
+        content = wrapMarkers(cursorRulesContentWithModel(project, model, freshness));
       } else {
         // Markdown-based: CLAUDE.md, AGENTS.md, copilot-instructions.md, etc.
-        content = buildMdFromScratch(project, model);
+        content = buildMdFromScratch(project, model, freshness);
       }
       const res = safeWriteAgentFile(filePath, content, dryRun, project);
       if (!res.ok) skipped.push(res.skipReason);
@@ -577,13 +603,13 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
       // File exists — update the GuardLink block (marker-based replacement)
       if (choice.file.endsWith('.mdc')) {
         if (!dryRun) {
-          writeFileSync(filePath, cursorMdcContentWithModel(project, model));
+          writeFileSync(filePath, cursorMdcContentWithModel(project, model, freshness));
         }
         updated.push(choice.file);
       } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
         const existing = readFileSync(filePath, 'utf-8');
         if (!dryRun) {
-          const block = wrapMarkers(cursorRulesContentWithModel(project, model));
+          const block = wrapMarkers(cursorRulesContentWithModel(project, model, freshness));
           writeFileSync(filePath, replaceOrAppend(existing, block));
         }
         updated.push(choice.file);
@@ -592,7 +618,7 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
       } else {
         const existing = readFileSync(filePath, 'utf-8');
         if (!dryRun) {
-          const block = wrapMarkers(agentInstructionsWithModel(project, model));
+          const block = wrapMarkers(agentInstructionsWithModel(project, model, freshness));
           writeFileSync(filePath, replaceOrAppend(existing, block));
         }
         updated.push(choice.file);

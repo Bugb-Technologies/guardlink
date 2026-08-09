@@ -45,20 +45,22 @@ Every time you write or modify code that touches security-relevant behavior, you
 
 ### Current Definitions (REUSE these IDs — do NOT redefine)
 
+_Full records with descriptions and locations: `guardlink_lookup("asset <id>")`, or read `.guardlink/definitions.*`._
+
 **Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest), #workspace-link (Workspace,Link), #merge-engine (Workspace,Merge), #report-metadata (Workspace,Metadata), #workspace-config (Workspace,Config)
 **Threats:** #path-traversal (Path_Traversal) [high], #cmd-injection (Command_Injection) [critical], #xss (Cross_Site_Scripting) [high], #api-key-exposure (API_Key_Exposure) [high], #ssrf (Server_Side_Request_Forgery) [medium], #redos (ReDoS) [medium], #arbitrary-write (Arbitrary_File_Write) [high], #prompt-injection (Prompt_Injection) [medium], #dos (Denial_of_Service) [medium], #data-exposure (Sensitive_Data_Exposure) [medium], #insecure-deser (Insecure_Deserialization) [medium], #child-proc-injection (Child_Process_Injection) [high], #info-disclosure (Information_Disclosure) [low], #tag-collision (Tag_Collision) [medium], #config-tamper (Config_Tampering) [medium]
 **Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring), #prefix-ownership (Prefix_Ownership), #yaml-validation (YAML_Validation)
 
 ### Open Exposures (need @mitigates or @audit)
 
-- #agent-launcher exposed to #prompt-injection [medium] (src/agents/launcher.ts:13)
-- #agent-launcher exposed to #dos [low] (src/agents/launcher.ts:15)
-- #agent-launcher exposed to #prompt-injection [high] (src/agents/prompts.ts:6)
-- #agent-launcher exposed to #config-tamper [medium] (src/agents/prompts.ts:10)
 - #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
 - #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
 - #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:16)
 - #cli exposed to #cmd-injection [critical] (src/cli/index.ts:33)
+- #agent-launcher exposed to #prompt-injection [medium] (src/agents/launcher.ts:13)
+- #agent-launcher exposed to #dos [low] (src/agents/launcher.ts:15)
+- #agent-launcher exposed to #prompt-injection [high] (src/agents/prompts.ts:6)
+- #agent-launcher exposed to #config-tamper [medium] (src/agents/prompts.ts:10)
 - #init exposed to #data-exposure [low] (src/init/index.ts:12)
 - #mcp exposed to #info-disclosure [low] (src/mcp/freshness.ts:17)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
@@ -72,17 +74,6 @@ Every time you write or modify code that touches security-relevant behavior, you
 ### Existing Data Flows (extend, don't duplicate)
 
 - PackageJson -> #cli via readFileSync
-- EnvVars -> #agent-launcher via process.env
-- ConfigFile -> #agent-launcher via readFileSync
-- #agent-launcher -> ConfigFile via writeFileSync
-- UserPrompt -> #agent-launcher via launchAgent
-- #agent-launcher -> AgentProcess via spawn
-- AgentProcess -> #agent-launcher via stdout
-- UserPrompt -> #agent-launcher via buildAnnotatePrompt
-- UserPrompt -> #agent-launcher via buildTranslatePrompt
-- UserPrompt -> #agent-launcher via buildAskPrompt
-- ThreatModel -> #agent-launcher via model
-- #agent-launcher -> AgentPrompt via return
 - ThreatModel -> #llm-client via serializeModel
 - ProjectFiles -> #llm-client via readFileSync
 - #llm-client -> ReportFile via writeFileSync
@@ -91,7 +82,18 @@ Every time you write or modify code that touches security-relevant behavior, you
 - #llm-client -> LLMProvider via fetch
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
-- ... and 60 more
+- #llm-client -> NVD via fetch
+- ProjectFiles -> #llm-client via readFileSync
+- ThreatModel -> #sarif via generateSarif
+- #sarif -> SarifLog via return
+- UserArgs -> #cli via process.argv
+- #cli -> FileSystem via writeFile
+- PackageJson -> #cli via readFileSync
+- EnvVars -> #agent-launcher via process.env
+- ConfigFile -> #agent-launcher via readFileSync
+- #agent-launcher -> ConfigFile via writeFileSync
+- UserPrompt -> #agent-launcher via launchAgent
+- … and 64 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
 
 ### Features (filter with `--feature`)
 
@@ -100,4 +102,4 @@ Every time you write or modify code that touches security-relevant behavior, you
 
 ### Model Stats
 
-329 annotations, 16 assets, 15 threats, 12 controls, 64 exposures, 0 confirmed, 50 mitigations, 80 flows, 2 features
+342 annotations, 16 assets, 15 threats, 12 controls, 66 exposures, 0 confirmed, 52 mitigations, 84 flows, 2 features

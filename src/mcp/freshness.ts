@@ -21,12 +21,15 @@
  * @comment -- "git SHA is read from .git/HEAD rather than spawned via execSync: this runs on every tool call"
  */
 
-import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
+import { readGitSha } from '../workspace/metadata.js';
 import { computeAnnotationHash } from '../parser/annotation-hash.js';
 import { detectAnnotationMode, type AnnotationMode } from '../parser/annotation-mode.js';
 import { getPackageVersion } from '../version.js';
 import type { ThreatModel } from '../types/index.js';
+
+// Re-exported for the tools that already import it from here.
+export { readGitSha };
 
 export interface FreshnessEnvelope {
   /** Content hash of the annotation set (GL-101). Moves only when annotations change. */
@@ -43,37 +46,6 @@ export interface FreshnessEnvelope {
   guardlink_version: string;
 }
 
-/**
- * Read HEAD straight out of `.git`.
- *
- * `populateMetadata` shells out to `git rev-parse`, which is fine once per
- * report but not once per tool call. Two small file reads cost microseconds and
- * cannot go stale the way a cached subprocess result would.
- */
-export function readGitSha(root: string): string | null {
-  const sha = /^[0-9a-f]{40}$/;
-  try {
-    const head = readFileSync(join(root, '.git', 'HEAD'), 'utf-8').trim();
-    if (!head.startsWith('ref: ')) return sha.test(head) ? head : null;
-
-    const ref = head.slice(5).trim();
-    try {
-      const direct = readFileSync(join(root, '.git', ref), 'utf-8').trim();
-      if (sha.test(direct)) return direct;
-    } catch { /* ref is packed */ }
-
-    const packed = readFileSync(join(root, '.git', 'packed-refs'), 'utf-8');
-    for (const line of packed.split('\n')) {
-      const [hash, name] = line.trim().split(/\s+/);
-      if (name === ref && sha.test(hash)) return hash;
-    }
-    return null;
-  } catch {
-    // Not a git checkout, or `.git` is a file (worktree / submodule). Reporting
-    // null is honest; guessing would defeat the point of the field.
-    return null;
-  }
-}
 
 /** Build the envelope for a model that parsed successfully. */
 export function buildEnvelope(root: string, model: ThreatModel): FreshnessEnvelope {

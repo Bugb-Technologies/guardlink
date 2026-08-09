@@ -1,14 +1,32 @@
 # Guardlink — Project Instructions
 
 <!-- guardlink:begin -->
-## GuardLink — Security Annotations (Required)
+## GuardLink — Security Model
 
-This project uses [GuardLink](https://guardlink.bugb.io) annotations in source code comments.
+This project carries a [GuardLink](https://guardlink.bugb.io) threat model: security facts
+recorded next to the code they describe — what each component is exposed to, what mitigates
+it, how data flows between components — parsed into something you can query.
+
+**Ask it instead of inferring security context from the source.** It already answers most of
+what you would otherwise guess at, and it records decisions that are invisible in the code,
+such as which risks a human has explicitly accepted.
+
+| You are about to… | Ask |
+|---|---|
+| edit a file | `guardlink_context(file)` — annotations there, the assets they name, open exposures, controls the file must uphold |
+| change a shared component | `guardlink_graph(from, depth, direction)` — blast radius across data flows and trust boundaries |
+| act on a scanner finding | `guardlink_lookup("cwe:CWE-89")` — is this weakness class declared, and is it mitigated, accepted, open or confirmed |
+| finish a change | `guardlink validate .` then `guardlink diff HEAD~1` — did I make this worse |
+
+Without MCP, the same answers come from `guardlink status .`, `guardlink parse . --format json`
+and `guardlink diff HEAD~1`.
+
 **Full reference: `docs/GUARDLINK_REFERENCE.md`**
 
-### Core Requirement
+### What you owe it back
 
-**Every time you write or modify code that touches security-relevant behavior, you MUST add GuardLink annotations in the same change.** This includes: new endpoints, authentication/authorization logic, data validation, database queries, file I/O, external API calls, crypto operations, process spawning, user input handling, and configuration parsing. Do NOT annotate pure business logic, formatting utilities, UI components, or helper functions that never touch security boundaries.
+**When you write or change code that touches security-relevant behavior, add the annotations in
+the same change.** This includes: new endpoints, authentication/authorization logic, data validation, database queries, file I/O, external API calls, crypto operations, process spawning, user input handling, and configuration parsing. Do NOT annotate pure business logic, formatting utilities, UI components, or helper functions that never touch security boundaries.
 
 ### Key Rules
 
@@ -23,15 +41,23 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 
 ### Workflow (while coding)
 
-- Before writing code: skim `.guardlink/definitions.ts` to understand existing assets, threats, and controls.
-- While writing code: add annotations above or in the doc-block of security-relevant functions as you write them — not as a separate pass afterward.
-- After changes: run `guardlink validate .` to catch syntax/dangling refs; run `guardlink status .` to check coverage; commit annotation updates with the code.
-- After adding annotations: run `guardlink sync` to update all agent instruction files with the current threat model context. This ensures every agent sees the latest assets, threats, controls, and open exposures.
+- **Opening a file:** `guardlink_context(file)` before you read far into it. Note which kind of empty an empty answer is — `scanned_without_annotations` means clean, `not_scanned` means the parser never read it. They are not the same.
+- **Before writing:** skim `.guardlink/definitions.ts` for the existing assets, threats and controls. Reuse those ids.
+- **While writing:** annotate in the doc-block as you go, not as a pass afterward.
+- **After changing:** `guardlink diff HEAD~1` — the one command that answers "did I add exposure". Then `guardlink validate .` for syntax and dangling refs, and `guardlink status .` for coverage.
+- **After annotating:** `guardlink sync` refreshes this block and `.guardlink/README.md` from the current model.
 
 ### Tools
 
-- MCP tools (when available, e.g., Claude Code): `guardlink_lookup`, `guardlink_validate`, `guardlink_status`, `guardlink_parse`, `guardlink_suggest <file>`.
-- CLI equivalents (always available): `guardlink validate .`, `guardlink status .`, `guardlink parse .`.
+- **MCP** (Claude Code, Cursor): `guardlink_context`, `guardlink_graph`, `guardlink_lookup`, `guardlink_diff`, `guardlink_validate`, `guardlink_status`, `guardlink_suggest`.
+- **CLI** (always): `guardlink status .`, `guardlink parse .`, `guardlink validate .`, `guardlink diff HEAD~1`, `guardlink report .`.
+- `guardlink_lookup` answers a fixed set of named forms and **refuses anything else rather than
+  guessing** — send it a bad query to get the list. Beyond `asset`/`threat`/`control`, it reaches
+  every relation the model holds: `owner of X`, `handles pii`, `assumptions for X`, `audits for X`,
+  `validations for X`, `acceptances`, `transfers`, `comments for X`, `shields`, `cross-repo refs`,
+  and `cwe:CWE-89` / `owasp:A03` for scanner findings.
+- Reference matches report `matched_via: exact | alias | substring`. A substring match is a
+  suggestion, not an identification; `ambiguous` with `candidates` means several records tied.
 
 ### Quick Syntax (common verbs)
 
@@ -54,20 +80,22 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 
 ### Current Definitions (REUSE these IDs — do NOT redefine)
 
+_Full records with descriptions and locations: `guardlink_lookup("asset <id>")`, or read `.guardlink/definitions.*`._
+
 **Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest), #workspace-link (Workspace,Link), #merge-engine (Workspace,Merge), #report-metadata (Workspace,Metadata), #workspace-config (Workspace,Config)
 **Threats:** #path-traversal (Path_Traversal) [high], #cmd-injection (Command_Injection) [critical], #xss (Cross_Site_Scripting) [high], #api-key-exposure (API_Key_Exposure) [high], #ssrf (Server_Side_Request_Forgery) [medium], #redos (ReDoS) [medium], #arbitrary-write (Arbitrary_File_Write) [high], #prompt-injection (Prompt_Injection) [medium], #dos (Denial_of_Service) [medium], #data-exposure (Sensitive_Data_Exposure) [medium], #insecure-deser (Insecure_Deserialization) [medium], #child-proc-injection (Child_Process_Injection) [high], #info-disclosure (Information_Disclosure) [low], #tag-collision (Tag_Collision) [medium], #config-tamper (Config_Tampering) [medium]
 **Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring), #prefix-ownership (Prefix_Ownership), #yaml-validation (YAML_Validation)
 
 ### Open Exposures (need @mitigates or @audit)
 
-- #agent-launcher exposed to #prompt-injection [medium] (src/agents/launcher.ts:13)
-- #agent-launcher exposed to #dos [low] (src/agents/launcher.ts:15)
-- #agent-launcher exposed to #prompt-injection [high] (src/agents/prompts.ts:6)
-- #agent-launcher exposed to #config-tamper [medium] (src/agents/prompts.ts:10)
 - #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
 - #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
 - #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:16)
 - #cli exposed to #cmd-injection [critical] (src/cli/index.ts:33)
+- #agent-launcher exposed to #prompt-injection [medium] (src/agents/launcher.ts:13)
+- #agent-launcher exposed to #dos [low] (src/agents/launcher.ts:15)
+- #agent-launcher exposed to #prompt-injection [high] (src/agents/prompts.ts:6)
+- #agent-launcher exposed to #config-tamper [medium] (src/agents/prompts.ts:10)
 - #init exposed to #data-exposure [low] (src/init/index.ts:12)
 - #mcp exposed to #info-disclosure [low] (src/mcp/freshness.ts:17)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
@@ -81,17 +109,6 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 ### Existing Data Flows (extend, don't duplicate)
 
 - PackageJson -> #cli via readFileSync
-- EnvVars -> #agent-launcher via process.env
-- ConfigFile -> #agent-launcher via readFileSync
-- #agent-launcher -> ConfigFile via writeFileSync
-- UserPrompt -> #agent-launcher via launchAgent
-- #agent-launcher -> AgentProcess via spawn
-- AgentProcess -> #agent-launcher via stdout
-- UserPrompt -> #agent-launcher via buildAnnotatePrompt
-- UserPrompt -> #agent-launcher via buildTranslatePrompt
-- UserPrompt -> #agent-launcher via buildAskPrompt
-- ThreatModel -> #agent-launcher via model
-- #agent-launcher -> AgentPrompt via return
 - ThreatModel -> #llm-client via serializeModel
 - ProjectFiles -> #llm-client via readFileSync
 - #llm-client -> ReportFile via writeFileSync
@@ -100,7 +117,18 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 - #llm-client -> LLMProvider via fetch
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
-- ... and 60 more
+- #llm-client -> NVD via fetch
+- ProjectFiles -> #llm-client via readFileSync
+- ThreatModel -> #sarif via generateSarif
+- #sarif -> SarifLog via return
+- UserArgs -> #cli via process.argv
+- #cli -> FileSystem via writeFile
+- PackageJson -> #cli via readFileSync
+- EnvVars -> #agent-launcher via process.env
+- ConfigFile -> #agent-launcher via readFileSync
+- #agent-launcher -> ConfigFile via writeFileSync
+- UserPrompt -> #agent-launcher via launchAgent
+- … and 64 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
 
 ### Features (filter with `--feature`)
 
@@ -109,53 +137,19 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 
 ### Model Stats
 
-329 annotations, 16 assets, 15 threats, 12 controls, 64 exposures, 0 confirmed, 50 mitigations, 80 flows, 2 features
+342 annotations, 16 assets, 15 threats, 12 controls, 66 exposures, 0 confirmed, 52 mitigations, 84 flows, 2 features
+
+### Block Freshness
+
+- `synced_at`: 2026-08-09T15:29:06.959Z
+- `git_sha`: 63c12b2bcac4d1809f01aa61862367c02bbeafdc
+- `annotation_hash`: `sha256-v1:a125a5df80dc24ea05213efe5958e24d79d7de5e99ad0930a59222250d7f2d05`
+
+Every MCP response carries this same hash. If it differs from the one above, this
+block predates the current annotations — trust the tool, and run `guardlink sync`.
 
 > **Note:** This section is auto-generated. Run `guardlink sync` to update after code changes.
 > Any coding agent (Cursor, Claude, Copilot, Windsurf, etc.) should reference these IDs
 > and continue annotating new code using the same threat model vocabulary.
 
 <!-- guardlink:end -->
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
