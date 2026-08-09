@@ -296,6 +296,94 @@ describe('lookup — exact-match precedence (D13)', () => {
     expect(viaExposures).toHaveLength(viaAsset.length);
   });
 
+  // ─── D12: unknown query forms are rejected, not guessed ────────────
+  //
+  // All three of these previously returned a byte-identical
+  // {type:'mixed', count:1, results:[{type:'asset', id:'cli'}]} — the #cli asset
+  // record, containing zero ownership / assumption / comment data — because
+  // "owner of #cli".includes("cli") is true under the reverse-substring rule.
+
+  it.each([
+    'owner of #cli',
+    'assumptions for #cli',
+    'comments for #cli',
+  ])('rejects the unrecognised form %j instead of returning the #cli record', (q) => {
+    const result = lookup(model, q);
+    expect(result.type).toBe('no_match');
+    expect(result.count).toBe(0);
+    expect(JSON.stringify(result.results)).not.toContain('"id":"cli"');
+  });
+
+  it('the three D12 queries no longer return identical payloads to each other', () => {
+    // They are all no_match now, but each names the query it rejected.
+    const a = lookup(model, 'owner of #cli');
+    const b = lookup(model, 'assumptions for #cli');
+    expect(a.results[0].hint).not.toBe(b.results[0].hint);
+  });
+
+  it('rejection lists the supported forms so the caller can retry', () => {
+    const result = lookup(model, 'who owns the cli');
+    expect(result.type).toBe('no_match');
+    const forms = result.results[0].supported_forms as string[];
+    expect(forms).toContain('unmitigated');
+    expect(forms).toContain('threats for <asset>');
+    expect(forms).toContain('asset <id>');
+  });
+
+  it('rejection hint carries no literal double quotes (survives double JSON encoding)', () => {
+    const hint = lookup(model, 'owner of #cli').results[0].hint as string;
+    expect(hint).not.toContain('"');
+  });
+
+  it('bare identifiers still fuzzy-match — only phrases are rejected', () => {
+    const result = lookup(model, '#parser');
+    expect(result.type).not.toBe('no_match');
+    expect(result.count).toBeGreaterThan(0);
+  });
+
+  it('a trailing question mark does not degrade an exact ref', () => {
+    const withMark = lookup(model, 'threats for #cli?');
+    const without = lookup(model, 'threats for #cli');
+    expect(withMark.count).toBe(without.count);
+    expect(withMark.count).toBeGreaterThan(0);
+  });
+
+  it('substring matching still resolves a ref that has no exact match', () => {
+    // No asset is declared as #llm, so the substring fallback must still find
+    // #llm-client. Precedence changed; the fallback did not go away.
+    const result = lookup(model, 'asset llm');
+    expect(result.count).toBe(1);
+    expect(result.results[0].id).toBe('llm-client');
+  });
+
+  // ─── GL-105: how the match was made is part of the answer ──────────
+
+  it('an exact hit is labelled exact', () => {
+    const result = lookup(model, 'asset cli');
+    expect(result.matched_via).toBe('exact');
+    expect(result.matched_against).toBe('cli');
+  });
+
+  it('a substring hit is labelled, and names what it matched against', () => {
+    const result = lookup(model, 'asset llm');
+    expect(result.matched_via).toBe('substring');
+    expect(result.matched_against).toBe('llm');
+    // The caller can see the answer came from a partial match and check it.
+    expect(result.results[0].id).toBe('llm-client');
+  });
+
+  it('threat and control resolution are labelled too', () => {
+    expect(lookup(model, 'threat dos').matched_via).toBe('exact');
+    expect(lookup(model, 'control path-validation').matched_via).toBe('exact');
+  });
+
+  it('relational forms carry the label as well', () => {
+    for (const q of ['threats for #cli', 'controls for #cli', 'exposures for #cli',
+      'mitigations for #cli', 'flows into #cli', 'flows from #cli', 'boundary for #cli']) {
+      expect(lookup(model, q).matched_via, q).toBe('exact');
+    }
+  });
+
   // ─── D18: exact-match PRECEDENCE must not become EXCLUSIVITY ───────
   //
   // The first cut of this work composed the scope tier by re-classifying a

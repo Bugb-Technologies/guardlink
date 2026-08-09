@@ -192,10 +192,10 @@ export function createServer(): McpServer {
   // ── Tool: guardlink_lookup ──
   server.tool(
     'guardlink_lookup',
-    'Query the threat model graph. Find assets, threats, controls, flows, exposures by ID or relationship. Examples: "what threats target #auth?", "flows into Scanner", "unmitigated exposures", "confirmed"',
+    'Query the threat model graph. Find assets, threats, controls, flows, exposures by ID or relationship. Examples: "threats for #auth", "flows into Scanner", "unmitigated", "confirmed". A query that is not one of the supported forms returns no_match listing them — it is never answered by guesswork.',
     {
       root: z.string().describe('Project root directory').default('.'),
-      query: z.string().describe('Natural language or structured query: asset ID, threat ID, "flows into X", "threats for X", "unmitigated", "confirmed", "controls for X"'),
+      query: z.string().describe('A supported query form: "unmitigated", "confirmed", "features", "asset <id>", "threat <id>", "control <id>", "threats for <asset>", "controls for <asset>", "exposures for <asset>", "mitigations for <asset>", "flows into <asset>", "flows from <asset>", "boundary for <asset>", or a bare identifier. Free-form questions are not parsed.'),
     },
     async ({ root, query }) => {
       const { model } = await getModel(root);

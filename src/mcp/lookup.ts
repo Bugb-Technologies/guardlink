@@ -53,8 +53,32 @@ export interface LookupQuery {
   raw: string;
 }
 
+/**
+ * Every query form `lookup` understands. Returned verbatim when a query is not
+ * recognised, so the caller can retry with something that exists rather than
+ * acting on a fuzzy hit for a question that was never parsed.
+ */
+export const SUPPORTED_QUERY_FORMS = [
+  'unmitigated',
+  'confirmed',
+  'features',
+  'asset <id>',
+  'threat <id>',
+  'control <id>',
+  'threats for <asset>',
+  'controls for <asset>',
+  'exposures for <asset>',
+  'mitigations for <asset>',
+  'flows into <asset>',
+  'flows from <asset>',
+  'boundary for <asset>',
+  '<id>            (bare identifier, fuzzy match across all categories)',
+] as const;
+
 export function lookup(model: ThreatModel, query: string): LookupResult {
-  const q = query.trim().toLowerCase();
+  // A trailing question mark is punctuation, not part of the identifier. Left in
+  // place it degrades an otherwise exact ref to a substring match.
+  const q = query.trim().toLowerCase().replace(/\?+$/, '').trim();
 
   // Build ID ↔ path resolution maps
   const idToPath = new Map<string, string>();
@@ -147,6 +171,27 @@ export function lookup(model: ThreatModel, query: string): LookupResult {
   // ── "mitigations for <asset>" ──
   const mitigationsFor = q.match(/^mitigations?\s+(?:for|on)\s+(.+)/);
   if (mitigationsFor) return lookupMitigationsFor(model, query, mitigationsFor[1].trim(), resolve);
+
+  // ── Unrecognised multi-word form → say so; never guess ──
+  //
+  // Falling through to fuzzy matching here is what made `owner of #cli`,
+  // `assumptions for #cli` and `comments for #cli` return byte-identical
+  // `count: 1` payloads holding the #cli asset record and none of the requested
+  // data: matchRef's reverse-substring rule matched the *query string* against
+  // the asset id, because "owner of #cli".includes("cli").
+  //
+  // Identifiers never contain whitespace, so a phrase that matched no form above
+  // is a question we did not understand. Say that instead of answering it.
+  // (Reaching the orphaned relation types is GL-203, not this fix.)
+  if (/\s/.test(q)) {
+    return {
+      query, type: 'no_match', count: 0,
+      results: [{
+        hint: `Unrecognised query form: \`${query}\`. This is not a supported form, so no result was guessed.`,
+        supported_forms: [...SUPPORTED_QUERY_FORMS],
+      }],
+    };
+  }
 
   // ── Bare #id or name → try all categories ──
   return lookupFuzzy(model, query, q);
