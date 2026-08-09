@@ -24,6 +24,7 @@ import type {
   ThreatModel, ThreatModelAsset, ThreatModelThreat, ThreatModelControl,
   ThreatModelExposure, ThreatModelMitigation, ThreatModelFlow,
   ThreatModelBoundary, ThreatModelTransfer, ThreatModelAcceptance,
+  SourceLocation, DataClassification,
 } from '../types/index.js';
 
 export interface LookupResult {
@@ -72,6 +73,17 @@ export const SUPPORTED_QUERY_FORMS = [
   'flows into <asset>',
   'flows from <asset>',
   'boundary for <asset>',
+  'owner of <asset>          (also: who owns <asset>)',
+  'handles <classification>  (pii, phi, financial, secrets, internal, public — or the bare word)',
+  'handles for <asset>',
+  'assumptions for <asset>',
+  'audits [for <asset>]',
+  'validations for <asset-or-control>',
+  'acceptances [for <asset>]',
+  'transfers [for <threat-or-asset>]',
+  'comments [for <file-or-asset>]',
+  'shields [for <file-or-asset>]',
+  'external refs [for <repo-or-tag>]',
   '<id>            (bare identifier, fuzzy match across all categories)',
 ] as const;
 
@@ -171,6 +183,120 @@ export function lookup(model: ThreatModel, query: string): LookupResult {
   // ── "mitigations for <asset>" ──
   const mitigationsFor = q.match(/^mitigations?\s+(?:for|on)\s+(.+)/);
   if (mitigationsFor) return lookupMitigationsFor(model, query, mitigationsFor[1].trim(), resolve);
+
+  // ── GL-203: the nine relation types that had no query form ────────
+  //
+  // Every asset-scoped form routes through lookupAssetRelation, which resolves
+  // the ref exactly as `asset X` does. Same tiers, same identity join, same
+  // ambiguity reporting — a form that resolved refs its own way would be D18
+  // again.
+
+  // "owner of X" / "who owns X" / "ownership for X"
+  const ownerOf = q.match(/^(?:owner|owners|ownership)\s+(?:of|for)\s+(.+)/)
+    || q.match(/^who\s+owns\s+(.+)/);
+  if (ownerOf) {
+    return lookupAssetRelation(model, query, 'ownership', ownerOf[1].trim(), resolve,
+      model.ownership, o => o.asset,
+      o => ({ owner: o.owner, asset: o.asset, description: o.description, ...loc(o.location) }));
+  }
+
+  // "handles <classification>" / bare "pii" / "handles for X"
+  const handlesClass = q.match(/^handles\s+(\S+)$/);
+  if (handlesClass && CLASSIFICATIONS.includes(handlesClass[1] as DataClassification)) {
+    return lookupByClassification(model, query, handlesClass[1]);
+  }
+  if (CLASSIFICATIONS.includes(q as DataClassification)) {
+    return lookupByClassification(model, query, q);
+  }
+  const handlesFor = q.match(/^handles\s+(?:for|on)\s+(.+)/);
+  if (handlesFor) {
+    return lookupAssetRelation(model, query, 'data_handling', handlesFor[1].trim(), resolve,
+      model.data_handling, d => d.asset,
+      d => ({ classification: d.classification, asset: d.asset, description: d.description, ...loc(d.location) }));
+  }
+
+  // "assumptions for X"
+  const assumesFor = q.match(/^(?:assumptions?|assumes)\s+(?:for|on|about)\s+(.+)/);
+  if (assumesFor) {
+    return lookupAssetRelation(model, query, 'assumptions', assumesFor[1].trim(), resolve,
+      model.assumptions, a => a.asset,
+      a => ({ asset: a.asset, description: a.description, ...loc(a.location) }));
+  }
+
+  // "audits" / "audits for X"
+  const auditsQ = q.match(/^audits?(?:\s+(?:for|on)\s+(.+))?$/);
+  if (auditsQ) {
+    const projectAudit = (a: typeof model.audits[number]) =>
+      ({ asset: a.asset, description: a.description, ...loc(a.location) });
+    if (!auditsQ[1]) {
+      return { query, type: 'audits', count: model.audits.length, results: model.audits.map(projectAudit) };
+    }
+    return lookupAssetRelation(model, query, 'audits', auditsQ[1].trim(), resolve,
+      model.audits, a => a.asset, projectAudit);
+  }
+
+  // "validations for X" — X may be the asset validated or the control validated
+  const validationsFor = q.match(/^(?:validations?|validates)\s+(?:for|on)\s+(.+)/);
+  if (validationsFor) {
+    const target = validationsFor[1].trim();
+    const project = (v: typeof model.validations[number]) =>
+      ({ control: v.control, asset: v.asset, description: v.description, ...loc(v.location) });
+    const byAsset = lookupAssetRelation(model, query, 'validations', target, resolve,
+      model.validations, v => v.asset, project);
+    if (byAsset.count > 0) return byAsset;
+    // Fall back to the control side, so `validations for #prepared-stmts` works.
+    const aliases = resolve(target);
+    const { keep, match } = selectStrongest(model.validations.map(v => v.control), target, aliases);
+    const results = model.validations.filter(v => keep(v.control)).map(project);
+    return { query, type: 'validations', count: results.length, results, ...provenance(match) };
+  }
+
+  // "acceptances" / "acceptances for X" — governance decisions, human-only to write
+  const acceptsQ = q.match(/^(?:acceptances?|accepted)(?:\s+(?:for|on)\s+(.+))?$/);
+  if (acceptsQ) {
+    const project = (a: ThreatModelAcceptance) =>
+      ({ asset: a.asset, threat: a.threat, description: a.description, ...loc(a.location) });
+    if (!acceptsQ[1]) {
+      return { query, type: 'acceptances', count: model.acceptances.length, results: model.acceptances.map(project) };
+    }
+    return lookupAssetRelation(model, query, 'acceptances', acceptsQ[1].trim(), resolve,
+      model.acceptances, a => a.asset, project);
+  }
+
+  // "transfers" / "transfers for X" — X may be the threat, the source or the target
+  const transfersQ = q.match(/^transfers?(?:\s+(?:for|of|on)\s+(.+))?$/);
+  if (transfersQ) {
+    const project = (t: ThreatModelTransfer) =>
+      ({ threat: t.threat, source: t.source, target: t.target, description: t.description, ...loc(t.location) });
+    if (!transfersQ[1]) {
+      return { query, type: 'transfers', count: model.transfers.length, results: model.transfers.map(project) };
+    }
+    const target = transfersQ[1].trim();
+    const aliases = resolve(target);
+    const ends = model.transfers.flatMap(t => [t.threat, t.source, t.target]);
+    const { keep, match, matched } = selectStrongest(ends, target, aliases);
+    const results = model.transfers
+      .filter(t => keep(t.threat) || keep(t.source) || keep(t.target))
+      .map(project);
+    return { query, type: 'transfers', count: results.length, results, ...provenance(match), ...ambiguity(matched, v => v) };
+  }
+
+  // "comments" / "comments for <file-or-asset>"
+  const commentsQ = q.match(/^comments?(?:\s+(?:for|in|on)\s+(.+))?$/);
+  if (commentsQ) {
+    return lookupCoLocated(model, query, 'comments', model.comments, commentsQ[1]?.trim(), resolve);
+  }
+
+  // "shields" / "shields for <file-or-asset>"
+  const shieldsQ = q.match(/^shields?(?:\s+(?:for|in|on)\s+(.+))?$/);
+  if (shieldsQ) {
+    return lookupCoLocated(model, query, 'shields', model.shields, shieldsQ[1]?.trim(), resolve,
+      s => ({ reason: s.reason }));
+  }
+
+  // "external refs" / "external_refs" / "refs [for <repo-or-tag>]"
+  const refsQ = q.match(/^(?:external[\s_-]?refs?|refs?)(?:\s+(?:for|from|in)\s+(.+))?$/);
+  if (refsQ) return lookupExternalRefs(model, query, refsQ[1]?.trim());
 
   // ── Unrecognised multi-word form → say so; never guess ──
   //
@@ -313,10 +439,175 @@ function lookupBoundaries(model: ThreatModel, query: string, assetRef: string, r
   return { query, type: 'boundaries', count: results.length, results, ...provenance(match), ...ambiguity(matched, v => v) };
 }
 
+/** How an asset is identified, wherever an asset is looked up. */
+const assetIdentityOf = (a: ThreatModelAsset) => [a.id || '', a.path.join('.')];
+
+/**
+ * Every asset ref the model names, across every relation that carries one.
+ *
+ * One list, so `asset X` and each `<relation> for X` form resolve X's identity
+ * from the same evidence and therefore at the same tier. Computing it per-form
+ * from only that form's own array would let `owner of X` and `asset X` disagree
+ * about which asset X is — the disagreement class D18 was.
+ */
+function assetRelationRefs(model: ThreatModel): string[] {
+  return [
+    ...model.exposures.map(e => e.asset),
+    ...model.mitigations.map(m => m.asset),
+    ...model.flows.map(f => f.target),
+    ...model.flows.map(f => f.source),
+    ...(model.confirmed || []).map(c => c.asset),
+    ...model.acceptances.map(a => a.asset),
+    ...model.audits.map(a => a.asset),
+    ...model.boundaries.flatMap(b => [b.asset_a, b.asset_b]),
+    ...model.ownership.map(o => o.asset),
+    ...model.data_handling.map(d => d.asset),
+    ...model.assumptions.map(a => a.asset),
+    ...model.validations.map(v => v.asset),
+    ...model.transfers.flatMap(t => [t.source, t.target]),
+  ];
+}
+
+/** `file`/`line`, plus the `.gal` origin when the annotation was written externally. */
+function loc(l: SourceLocation) {
+  return {
+    file: l.file,
+    line: l.line,
+    ...(l.origin_file ? { origin_file: l.origin_file, origin_line: l.origin_line } : {}),
+  };
+}
+
+/**
+ * Project one asset-scoped relation array, resolving the ref exactly as
+ * `asset X` does.
+ *
+ * Every GL-203 form that takes an asset goes through here, so they all inherit
+ * one tier resolution, one identity join and one ambiguity report. A form that
+ * resolved refs its own way would be a D18 waiting to happen.
+ */
+function lookupAssetRelation<R>(
+  model: ThreatModel,
+  query: string,
+  type: string,
+  ref: string,
+  resolve: Resolver,
+  rows: R[],
+  refOf: (row: R) => string,
+  project: (row: R) => any,
+): LookupResult {
+  const aliases = resolve(ref);
+  const declared = findBest(model.assets, assetIdentityOf, ref, aliases);
+  const scope = resolveScope(declared, assetIdentityOf, assetRelationRefs(model), ref, aliases);
+  const results = rows.filter(r => scope.keep(refOf(r))).map(project);
+  return {
+    query, type, count: results.length, results,
+    ...provenance(scope.match),
+    ...ambiguity(scope.tied, a => a.id || a.path.join('.')),
+  };
+}
+
+const CLASSIFICATIONS: DataClassification[] = ['pii', 'phi', 'financial', 'secrets', 'internal', 'public'];
+
+/** `@handles <classification>` — every asset processing data of that class. */
+function lookupByClassification(model: ThreatModel, query: string, classification: string): LookupResult {
+  const results = model.data_handling
+    .filter(d => String(d.classification).toLowerCase() === classification)
+    .map(d => ({ classification: d.classification, asset: d.asset, description: d.description, ...loc(d.location) }));
+  return {
+    query, type: 'data_handling', count: results.length, results,
+    matched_via: 'exact', matched_against: classification,
+  };
+}
+
+/**
+ * `@comment` and `@shield` carry no asset reference — only a description and a
+ * location. There is no declared relation to join on, so they are reached by
+ * *where they are*: a file path, or the files in which a given asset is
+ * annotated.
+ *
+ * The second join is an inference, not a recorded fact, so it says so:
+ * `join: 'co-located'` means "these sit in the same files as annotations naming
+ * that asset", not "these are about that asset". Presenting a proximity join as
+ * a declared one is the confident-wrong-answer shape this surface exists to
+ * avoid.
+ */
+function lookupCoLocated<R extends { location: SourceLocation; description?: string }>(
+  model: ThreatModel,
+  query: string,
+  type: string,
+  rows: R[],
+  scope: string | undefined,
+  resolve: Resolver,
+  extra: (row: R) => Record<string, unknown> = () => ({}),
+): LookupResult {
+  const project = (r: R, join?: string) => ({
+    ...extra(r), description: r.description, ...loc(r.location), ...(join ? { join } : {}),
+  });
+
+  if (!scope) {
+    return { query, type, count: rows.length, results: rows.map(r => project(r)) };
+  }
+
+  // A path-shaped scope selects by file.
+  if (scope.includes('/') || /\.[a-z0-9]+$/i.test(scope)) {
+    const want = scope.replace(/^\.\//, '').replaceAll('\\', '/').toLowerCase();
+    const hit = (f: string) => f.toLowerCase() === want || f.toLowerCase().endsWith('/' + want);
+    const results = rows.filter(r => hit(r.location.file)).map(r => project(r));
+    return {
+      query, type, count: results.length, results,
+      matched_via: results.length ? 'exact' : undefined, matched_against: scope,
+    };
+  }
+
+  // Otherwise treat it as an asset ref and return what shares a file with it.
+  const aliases = resolve(scope);
+  const declared = findBest(model.assets, assetIdentityOf, scope, aliases);
+  const assetScope = resolveScope(declared, assetIdentityOf, assetRelationRefs(model), scope, aliases);
+
+  const files = new Set<string>();
+  const addIf = (ref: string, l: SourceLocation) => { if (assetScope.keep(ref)) files.add(l.file); };
+  for (const e of model.exposures) addIf(e.asset, e.location);
+  for (const m of model.mitigations) addIf(m.asset, m.location);
+  for (const a of model.audits) addIf(a.asset, a.location);
+  for (const o of model.ownership) addIf(o.asset, o.location);
+  for (const d of model.data_handling) addIf(d.asset, d.location);
+  for (const a of model.assumptions) addIf(a.asset, a.location);
+  for (const v of model.validations) addIf(v.asset, v.location);
+  for (const f of model.flows) { addIf(f.source, f.location); addIf(f.target, f.location); }
+  for (const b of model.boundaries) { addIf(b.asset_a, b.location); addIf(b.asset_b, b.location); }
+  for (const a of model.assets) {
+    if (assetScope.keep(a.id ? `#${a.id}` : a.path.join('.'))) files.add(a.location.file);
+  }
+
+  const results = rows.filter(r => files.has(r.location.file)).map(r => project(r, 'co-located'));
+  return {
+    query, type, count: results.length, results,
+    ...provenance(assetScope.match),
+    ...ambiguity(assetScope.tied, a => a.id || a.path.join('.')),
+  };
+}
+
+/** Cross-repo tag references detected during parsing. */
+function lookupExternalRefs(model: ThreatModel, query: string, scope?: string): LookupResult {
+  const rows = model.external_refs || [];
+  const filtered = scope
+    ? rows.filter(r => r.tag.toLowerCase().includes(scope.toLowerCase())
+        || (r.inferred_repo || '').toLowerCase() === scope.toLowerCase())
+    : rows;
+  const results = filtered.map(r => ({
+    tag: r.tag, context_verb: r.context_verb, inferred_repo: r.inferred_repo ?? null, ...loc(r.location),
+  }));
+  return {
+    query, type: 'external_refs', count: results.length, results,
+    ...(results.length === 0 && rows.length === 0
+      ? { hint: 'No cross-repo tag references. These are only detected when .guardlink/workspace.yaml declares sibling repos.' } as any
+      : {}),
+  };
+}
+
 function lookupAsset(model: ThreatModel, query: string, ref: string, resolve: Resolver): LookupResult {
   const aliases = resolve(ref);
-  const assetIdentity = (a: ThreatModelAsset) => [a.id || '', a.path.join('.')];
-  const declared = findBest(model.assets, assetIdentity, ref, aliases);
+  const declared = findBest(model.assets, assetIdentityOf, ref, aliases);
 
   // Resolve the asset's identity at the strongest tier available anywhere in
   // scope — the declaration if there is one, plus every annotation that names an
@@ -326,20 +617,11 @@ function lookupAsset(model: ThreatModel, query: string, ref: string, resolve: Re
   // are declared on it, and all 9 of #llm-client's were merged in unmarked
   // because "llm-client".includes("cli"). Inbound and outbound flows were
   // contaminated the same way.
-  const relationRefs: string[] = [
-    ...model.exposures.map(e => e.asset),
-    ...model.mitigations.map(m => m.asset),
-    ...model.flows.map(f => f.target),
-    ...model.flows.map(f => f.source),
-    ...(model.confirmed || []).map(c => c.asset),
-    ...model.acceptances.map(a => a.asset),
-    ...model.audits.map(a => a.asset),
-    ...model.boundaries.flatMap(b => [b.asset_a, b.asset_b]),
-  ];
+  const relationRefs = assetRelationRefs(model);
   // A declaration that only matched more weakly than the annotation graph is not
   // this ref's asset — `declaredItem` is undefined there and we fall through to
   // the referenced-but-undeclared branch.
-  const scope = resolveScope(declared, assetIdentity, relationRefs, ref, aliases);
+  const scope = resolveScope(declared, assetIdentityOf, relationRefs, ref, aliases);
   const { keep, match: scopeMatch } = scope;
   const asset = scope.declaredItem;
   const ambiguous = ambiguity(scope.tied, a => a.id || a.path.join('.'));

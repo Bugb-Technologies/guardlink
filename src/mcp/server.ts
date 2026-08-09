@@ -323,10 +323,10 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_lookup',
-    'Query the threat model graph. Find assets, threats, controls, flows, exposures by ID or relationship. Examples: "threats for #auth", "flows into Scanner", "unmitigated", "confirmed". A query that is not one of the supported forms returns no_match listing them — it is never answered by guesswork.',
+    'Query the threat model graph. Reaches every relation type the model carries: assets, threats, controls, mitigations, exposures, confirmed, acceptances, transfers, flows, boundaries, validations, audits, ownership, data classification, assumptions, shields, features, comments and cross-repo refs. Examples: "threats for #auth", "owner of #api", "handles pii", "assumptions for #api", "flows into Scanner", "unmitigated". A query that is not one of the supported forms returns no_match listing them — it is never answered by guesswork.',
     {
       root: z.string().describe('Project root directory').default('.'),
-      query: z.string().describe('A supported query form: "unmitigated", "confirmed", "features", "asset <id>", "threat <id>", "control <id>", "threats for <asset>", "controls for <asset>", "exposures for <asset>", "mitigations for <asset>", "flows into <asset>", "flows from <asset>", "boundary for <asset>", or a bare identifier. Free-form questions are not parsed.'),
+      query: z.string().describe('A supported query form: "unmitigated", "confirmed", "features", "asset <id>", "threat <id>", "control <id>", "threats for <asset>", "controls for <asset>", "exposures for <asset>", "mitigations for <asset>", "flows into <asset>", "flows from <asset>", "boundary for <asset>", "owner of <asset>", "handles <pii|phi|financial|secrets|internal|public>", "handles for <asset>", "assumptions for <asset>", "audits [for <asset>]", "validations for <asset-or-control>", "acceptances [for <asset>]", "transfers [for <threat-or-asset>]", "comments [for <file-or-asset>]", "shields [for <file-or-asset>]", "external refs", or a bare identifier. @comment and @shield record no asset, so scoping them by an asset joins by co-location (same file) and the result says so. Free-form questions are not parsed.'),
     },
     async ({ root, query }) => {
       const { model } = await getModel(root);

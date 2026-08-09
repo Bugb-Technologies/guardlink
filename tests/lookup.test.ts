@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { lookup } from '../src/mcp/lookup.js';
+import { lookup, SUPPORTED_QUERY_FORMS } from '../src/mcp/lookup.js';
 import { parseProject } from '../src/parser/parse-project.js';
 import type { ThreatModel } from '../src/types/index.js';
 
@@ -296,33 +296,47 @@ describe('lookup — exact-match precedence (D13)', () => {
     expect(viaExposures).toHaveLength(viaAsset.length);
   });
 
-  // ─── D12: unknown query forms are rejected, not guessed ────────────
+  // ─── D12: a query is answered, or refused — never guessed ─────────
   //
-  // All three of these previously returned a byte-identical
+  // These three previously returned a byte-identical
   // {type:'mixed', count:1, results:[{type:'asset', id:'cli'}]} — the #cli asset
   // record, containing zero ownership / assumption / comment data — because
   // "owner of #cli".includes("cli") is true under the reverse-substring rule.
+  //
+  // A2 made them an honest no_match. GL-203 gives them real query forms, so they
+  // now return their own relation type. What must hold across BOTH regimes, and
+  // is the actual D12 property, is that none of them ever answers with the #cli
+  // asset record.
 
   it.each([
-    'owner of #cli',
-    'assumptions for #cli',
-    'comments for #cli',
-  ])('rejects the unrecognised form %j instead of returning the #cli record', (q) => {
+    ['owner of #cli', 'ownership'],
+    ['assumptions for #cli', 'assumptions'],
+    ['comments for #cli', 'comments'],
+  ])('%j is answered as its own relation type, never as the #cli asset record', (q, type) => {
     const result = lookup(model, q);
-    expect(result.type).toBe('no_match');
+    expect(result.type).toBe(type);
+    expect(result.type).not.toBe('mixed');
+    expect(JSON.stringify(result.results)).not.toContain('"type":"asset"');
+  });
+
+  it('the three D12 queries return three different things', () => {
+    const types = ['owner of #cli', 'assumptions for #cli', 'comments for #cli']
+      .map(q => lookup(model, q).type);
+    expect(new Set(types).size).toBe(3);
+  });
+
+  it('a relation type with no annotations answers zero rather than refusing', () => {
+    // This repo declares no @owns anywhere. "Nobody owns this" is a real answer
+    // and is not the same as "I did not understand the question".
+    expect(model.ownership).toHaveLength(0);
+    const result = lookup(model, 'owner of #cli');
+    expect(result.type).toBe('ownership');
     expect(result.count).toBe(0);
-    expect(JSON.stringify(result.results)).not.toContain('"id":"cli"');
+    expect(result.type).not.toBe('no_match');
   });
 
-  it('the three D12 queries no longer return identical payloads to each other', () => {
-    // They are all no_match now, but each names the query it rejected.
-    const a = lookup(model, 'owner of #cli');
-    const b = lookup(model, 'assumptions for #cli');
-    expect(a.results[0].hint).not.toBe(b.results[0].hint);
-  });
-
-  it('rejection lists the supported forms so the caller can retry', () => {
-    const result = lookup(model, 'who owns the cli');
+  it('a genuinely unrecognised phrase still lists the supported forms', () => {
+    const result = lookup(model, 'how bad is the cli really');
     expect(result.type).toBe('no_match');
     const forms = result.results[0].supported_forms as string[];
     expect(forms).toContain('unmitigated');
@@ -330,8 +344,17 @@ describe('lookup — exact-match precedence (D13)', () => {
     expect(forms).toContain('asset <id>');
   });
 
+  it('every GL-203 form is registered in SUPPORTED_QUERY_FORMS', () => {
+    // A form that works but is not listed makes the rejection message a lie.
+    const listed = SUPPORTED_QUERY_FORMS.join('\n');
+    for (const stem of ['owner of', 'handles', 'assumptions for', 'audits',
+      'validations for', 'acceptances', 'transfers', 'comments', 'shields', 'external refs']) {
+      expect(listed, stem).toContain(stem);
+    }
+  });
+
   it('rejection hint carries no literal double quotes (survives double JSON encoding)', () => {
-    const hint = lookup(model, 'owner of #cli').results[0].hint as string;
+    const hint = lookup(model, 'how bad is the cli really').results[0].hint as string;
     expect(hint).not.toContain('"');
   });
 
