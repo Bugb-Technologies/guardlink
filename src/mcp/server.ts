@@ -54,6 +54,7 @@ import { generateReport } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
 import { diffModels, parseAtRef, formatDiffMarkdown } from '../diff/index.js';
 import { lookup, type LookupQuery } from './lookup.js';
+import { fileContext, normalizeContextPath } from './context.js';
 import { suggestAnnotations } from './suggest.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModel, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
@@ -333,6 +334,37 @@ export function createServer(): McpServer {
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
+    },
+  );
+
+  // ── Tool: guardlink_context ──
+  registerTool(
+    server, cache,
+    'guardlink_context',
+    'Everything GuardLink knows about one file: the annotations declared there, the assets they name with each asset\'s depth-1 neighbourhood, open exposures and @confirmed findings, controls the file upholds, and its @assumes/@handles/@owns. Call this when you open or are about to edit a file. Accepts the source path or, in external mode, the .gal path that annotates it. An empty result is explicit about WHY: `scanned_without_annotations` means the file is genuinely clean, `not_scanned` means the parser never read it, `not_found` means nothing is there — do not read them as the same answer. Does not tell you where to write a NEW annotation; the .gal path convention is not yet codified in code (GL-501), so only origin_file for annotations that already exist is reported.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      file: z.string().describe('File to describe. Absolute, relative or ./-prefixed; resolved against root. In external mode the .gal path resolves to the source file it annotates.'),
+      line: z.number().describe('Optional line number. Narrows to the enclosing symbol where the annotation recorded one (@source symbol:). Reports symbol_scope.applied = "unavailable" when no annotation for the file records a symbol, rather than silently returning the whole file.').optional(),
+    },
+    async ({ root, file, line }) => {
+      const { model } = await getModel(root);
+      const rel = normalizeContextPath(root, file);
+
+      if (rel === null) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({
+            file, status: 'outside_root',
+            hint: 'That path resolves outside the project root. Paths are interpreted relative to root; nothing outside it is read.',
+          }, null, 2) }],
+        };
+      }
+
+      const { existsSync } = await import('node:fs');
+      const { resolve } = await import('node:path');
+      const context = fileContext(model, { file: rel, exists: existsSync(resolve(root, rel)), line });
+
+      return { content: [{ type: 'text', text: JSON.stringify(context, null, 2) }] };
     },
   );
 

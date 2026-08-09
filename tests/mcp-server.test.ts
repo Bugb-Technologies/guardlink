@@ -209,24 +209,26 @@ describe('MCP server — freshness envelope (GL-102)', () => {
 
   const ALL_TOOLS = [
     'guardlink_parse', 'guardlink_status', 'guardlink_validate', 'guardlink_suggest',
+    'guardlink_context',
     'guardlink_lookup', 'guardlink_threat_report', 'guardlink_annotate', 'guardlink_report',
     'guardlink_dashboard', 'guardlink_sarif', 'guardlink_diff', 'guardlink_threat_reports',
     'guardlink_sync', 'guardlink_clear', 'guardlink_unannotated', 'guardlink_review_list',
     'guardlink_review_accept', 'guardlink_workspace_info',
   ];
 
-  it('the server still advertises exactly the 18 known tools', async () => {
+  it('the server advertises exactly the known tool set', async () => {
     const { tools } = await session.client.listTools();
     expect(tools.map(t => t.name).sort()).toEqual([...ALL_TOOLS].sort());
   });
 
-  it('every one of the 18 tools returns the envelope', async () => {
+  it('every registered tool returns the envelope', async () => {
     const args: Record<string, any> = {
       guardlink_lookup: { query: 'unmitigated' },
       guardlink_annotate: { prompt: 'annotate auth' },
       guardlink_clear: { dry_run: true },
       guardlink_review_accept: { exposure_id: 'nope', decision: 'skip', justification: 'test' },
       guardlink_diff: { ref: 'HEAD' },
+      guardlink_context: { file: 'src/auth.ts' },
     };
     for (const name of ALL_TOOLS) {
       const result: any = await session.client.callTool({
