@@ -489,6 +489,54 @@ describe('lookup — exact-match precedence (D13)', () => {
   });
 });
 
+describe('lookup — declared vs referenced for threats and controls (D8)', () => {
+  it('a declared threat is marked declared', () => {
+    const model = juiceShopLikeModel();
+    model.threats.push({
+      name: 'SQLi', canonical_name: 'sqli', id: 'sqli', severity: 'critical',
+      external_refs: [], location: loc,
+    });
+    const result = lookup(model, 'threat #sqli');
+    expect(result.count).toBe(1);
+    expect(result.results[0].declared).toBe(true);
+  });
+
+  it('a threat referenced only by an exposure is found and marked undeclared', () => {
+    // #sqli is the threat of an exposure but never declared. `unmitigated`
+    // reports it; `threat #sqli` used to return a bare count: 0 — the two
+    // queries disagreeing about the same identifier.
+    const result = lookup(juiceShopLikeModel(), 'threat #sqli');
+    expect(result.count).toBe(1);
+    expect(result.results[0].declared).toBe(false);
+    expect(result.results[0].referenced_in).toContain('exposures');
+    expect(result.results[0].affected_assets).toHaveLength(1);
+  });
+
+  it('a genuinely unknown threat is still count: 0', () => {
+    const result = lookup(juiceShopLikeModel(), 'threat #no-such-threat-anywhere');
+    expect(result.count).toBe(0);
+    expect(result.results).toEqual([]);
+  });
+
+  it('a control referenced only by a mitigation is found and marked undeclared', () => {
+    const model = juiceShopLikeModel();
+    model.mitigations.push({
+      asset: '#login-sqli', threat: '#sqli', control: '#prepared-stmts',
+      description: 'parameterized query', location: loc,
+    });
+    const result = lookup(model, 'control #prepared-stmts');
+    expect(result.count).toBe(1);
+    expect(result.results[0].declared).toBe(false);
+    expect(result.results[0].referenced_in).toContain('mitigations');
+    expect(result.results[0].protects).toHaveLength(1);
+  });
+
+  it('a genuinely unknown control is still count: 0', () => {
+    const result = lookup(juiceShopLikeModel(), 'control #no-such-control');
+    expect(result.count).toBe(0);
+  });
+});
+
 // ─── F4: ambiguous substring sets are named, not silently resolved ───
 
 describe('lookup — ambiguous refs (D18 / F4)', () => {

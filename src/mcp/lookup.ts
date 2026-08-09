@@ -448,11 +448,35 @@ function lookupThreat(model: ThreatModel, query: string, ref: string, resolve: R
       query, type: 'threat', count: 1,
       ...provenance(scopeMatch),
       ...ambiguous,
-      results: [{ ...scope.declaredItem, affected_assets: affected }],
+      results: [{ ...scope.declaredItem, declared: true, affected_assets: affected }],
     };
   }
 
-  return { query, type: 'threat', count: 0, results: [] };
+  // Referenced by annotations but never declared. `lookupAsset` has always drawn
+  // this distinction; threats and controls returned a bare `count: 0`, which made
+  // "no such threat" and "declared but unused" indistinguishable — and disagreed
+  // with `unmitigated`, which happily reports exposures naming an undeclared threat.
+  const referencedIn: string[] = [];
+  if (exposures.length)   referencedIn.push('exposures');
+  if (mitigations.length) referencedIn.push('mitigations');
+  if (confirmed.length)   referencedIn.push('confirmed');
+  if (acceptances.length) referencedIn.push('acceptances');
+  if (transfers.length)   referencedIn.push('transfers');
+
+  if (referencedIn.length === 0) return { query, type: 'threat', count: 0, results: [] };
+
+  return {
+    query, type: 'threat', count: 1,
+    ...provenance(scopeMatch),
+    ...ambiguous,
+    results: [{
+      id: ref.replace(/^#/, ''),
+      canonical_name: ref.replace(/^#/, ''),
+      declared: false,
+      referenced_in: referencedIn,
+      affected_assets: affected,
+    }],
+  };
 }
 
 function lookupControl(model: ThreatModel, query: string, ref: string, resolve: Resolver): LookupResult {
@@ -469,6 +493,7 @@ function lookupControl(model: ThreatModel, query: string, ref: string, resolve: 
   const ambiguous = ambiguity(scope.tied, c => c.id || c.canonical_name);
 
   const mitigations = model.mitigations.filter(m => keep(m.control || ''));
+  const validations = model.validations.filter(v => keep(v.control));
   const protects = mitigations.map(m => ({ asset: m.asset, threat: m.threat }));
 
   if (scope.declaredItem) {
@@ -476,11 +501,28 @@ function lookupControl(model: ThreatModel, query: string, ref: string, resolve: 
       query, type: 'control', count: 1,
       ...provenance(scopeMatch),
       ...ambiguous,
-      results: [{ ...scope.declaredItem, protects }],
+      results: [{ ...scope.declaredItem, declared: true, protects }],
     };
   }
 
-  return { query, type: 'control', count: 0, results: [] };
+  const referencedIn: string[] = [];
+  if (mitigations.length) referencedIn.push('mitigations');
+  if (validations.length) referencedIn.push('validations');
+
+  if (referencedIn.length === 0) return { query, type: 'control', count: 0, results: [] };
+
+  return {
+    query, type: 'control', count: 1,
+    ...provenance(scopeMatch),
+    ...ambiguous,
+    results: [{
+      id: ref.replace(/^#/, ''),
+      canonical_name: ref.replace(/^#/, ''),
+      declared: false,
+      referenced_in: referencedIn,
+      protects,
+    }],
+  };
 }
 
 function lookupExposuresFor(model: ThreatModel, query: string, assetRef: string, resolve: Resolver): LookupResult {
