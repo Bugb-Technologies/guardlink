@@ -459,6 +459,20 @@ the filtered model — no second renderer.
 - [ ] `path from X to Y` returns ordered hops, or an explicit no-path result.
 - [ ] `format: 'mermaid'` output renders in a standard Mermaid viewer.
 - [ ] `kinds[]` filters which relation types are included.
+- [ ] **Defaults must sit in the affordable regime.** Measured on the Phase 2b
+      implementation (model content 61,914 B on this repo): `depth=1/both` 6.6 KB (11%),
+      `depth=2/out` 20.6 KB (34%), **`depth=2/both` 46.4 KB (77%)**, `depth=3/both`
+      exceeds a full dump. The shipped defaults are `depth=2, direction='both'`
+      (`server.ts:407-408`) — the most expensive corner measured. A default invocation
+      costing ~77–86% of model content inverts the epic's purpose.
+      *Decision required:* default `depth=1`; or default `direction='out'`; or keep both
+      and enforce a byte budget using the existing `truncated` flag. Recommended: the
+      third — depth ≥ 2 is the tool's whole value, so cap output rather than cripple the
+      default.
+- [ ] The `truncated` flag must mean one thing. Observed: `#llm-client d1 out` reports
+      `trunc=true` while `d2 out` reports `trunc=false` with an identical 4 nodes /
+      6 edges. If depth 1 truncated, its result was incomplete; the flag currently
+      conflates "budget hit" with "frontier saturated."
 
 ### GL-203 — Reach the 9 orphaned relation types *(closes G4)* **[priority raised to P0]**
 **As** P4, **I want** to query ownership, data classification, assumptions, audits,
@@ -829,7 +843,7 @@ Two consequences, both already folded into the stories above:
 | **0 — Measure** | ~~U1, U2, U3~~ | **COMPLETE.** Results in §3.4. Four PRD claims corrected, four new defects found (D11–D14). |
 | **0.5 — Hotfix?** | D12, D13 (+ D11, D6) | **DECISION REQUIRED.** These are silent-wrong-answer bugs in **released** code (v1.4.5 on npm), reproducing on GuardLink's own committed definitions. They are contained fixes in `lookup.ts` and do not depend on anything else in the epic. Options: (a) patch release ahead of the epic, (b) fold into Phase 1 and release with it. Leaning (a) — a shipped tool that answers "who owns this?" with a confident wrong record is worse than a missing feature. |
 | **1 — Foundation** | SG-1 (GL-101 → GL-105) | Four downstream consumers. GL-105's scope grew materially (D13 exact-match precedence). |
-| **2 — Query** | GL-201, GL-203, GL-202, GL-204, GL-205 | GL-201 first: highest use frequency, lowest complexity. GL-203 raised to P0 — it closes a correctness bug (D12), not just a gap. |
+| **2 — Query** | GL-201, GL-203, GL-205 *(2a — done)* · GL-202, GL-204 *(2b — done)* | **COMPLETE.** 375 tests. §6's composition claim held exactly — `generateThreatGraph(selectSubgraph(model, opts))` works with `src/dashboard/` untouched, which is what SG-3 depends on. Two decisions deferred out: `guardlink_graph` defaults (above) and renaming `ThreatModel.external_refs` → `cross_repo_refs` (breaking, needs a `schema_version` bump). |
 | **3 — Discovery** | SG-4 (GL-401 → GL-403) | Cheap, high leverage, independent. Can run parallel to Phase 2. |
 | **4 — Artifacts** | SG-3 (GL-301 → GL-304) | Requires the SG-2 selector. U3 resolved: simpler than feared — `by-feature/` is a hedge, not a necessity. |
 | **5 — External readiness** | GL-501 **+ GL-503 together**, then GL-502, GL-504, GL-505, GL-506, GL-507 | GL-503 must land with GL-501: the documented convention currently points into a directory the parser silently refuses to read. |
