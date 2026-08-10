@@ -7,7 +7,8 @@ import { parseProject } from '../src/parser/parse-project.js';
 import { clearAnnotations } from '../src/parser/clear.js';
 import { normalizeName, resolveSeverity, unescapeDescription } from '../src/parser/normalize.js';
 import { stripCommentPrefix } from '../src/parser/comment-strip.js';
-import { findDanglingRefs, findUnmitigatedExposures } from '../src/parser/validate.js';
+import { findDanglingRefs, findUnmitigatedExposures, findOffConventionGalFiles } from '../src/parser/validate.js';
+import { galPathFor, sourceFileForGal, isConventionalGalPath, ANNOTATIONS_DIR } from '../src/parser/gal-path.js';
 import type { ThreatModel } from '../src/types/index.js';
 
 // ─── Normalize ───────────────────────────────────────────────────────
@@ -625,9 +626,12 @@ describe('parseString', () => {
         origin_line: 2,
       });
       expect(model.annotated_files).toContain('.guardlink/definitions.ts');
-      expect(model.annotated_files).toContain('.guardlink/annotations/annotations.GAL');
       expect(model.annotated_files).toContain('src/api.ts');
       expect(model.unannotated_files).not.toContain('src/api.ts');
+      // GL-502: the sidecar is not a source file. It used to appear here as
+      // well as src/api.ts, double-counting every externally annotated file.
+      expect(model.annotated_files).not.toContain('.guardlink/annotations/annotations.GAL');
+      expect(model.annotated_files.filter(f => f.endsWith('.GAL'))).toEqual([]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -826,5 +830,233 @@ describe('findUnmitigatedExposures', () => {
     });
     const unmitigated = findUnmitigatedExposures(model);
     expect(unmitigated).toHaveLength(0);
+  });
+});
+
+// ─── GL-501/GL-503 — the .gal path convention, and finding sidecars ──
+
+describe('GL-501 — resolveGalPath is the convention, as code', () => {
+  it('mirrors the source path and appends .gal', () => {
+    expect(galPathFor('src/auth/login.ts')).toBe('.guardlink/annotations/src/auth/login.ts.gal');
+    expect(galPathFor('./src/a.ts')).toBe('.guardlink/annotations/src/a.ts.gal');
+    expect(galPathFor('src\\a.ts')).toBe('.guardlink/annotations/src/a.ts.gal');
+  });
+
+  it('appends rather than replacing the extension, so siblings cannot collide', () => {
+    // login.ts and login.js in one directory must map to distinct sidecars.
+    expect(galPathFor('src/login.ts')).not.toBe(galPathFor('src/login.js'));
+  });
+
+  it('the inverse is exact, which is what makes migration reversible', () => {
+    for (const source of ['src/a.ts', 'src/deep/nested/b.py', 'test/helper.ts']) {
+      expect(sourceFileForGal(galPathFor(source))).toBe(source);
+    }
+  });
+
+  it('rejects paths that are not on-convention', () => {
+    expect(sourceFileForGal('.guardlink/misc/whatever.gal')).toBeNull();
+    expect(sourceFileForGal('src/inline.gal')).toBeNull();
+    expect(isConventionalGalPath('.guardlink/annotations/src/a.ts.gal')).toBe(true);
+    expect(isConventionalGalPath('.guardlink/notes.gal')).toBe(false);
+  });
+
+  it('the agent prompt is generated from the resolver, not hand-written', async () => {
+    const { buildAnnotatePrompt } = await import('../src/agents/prompts.js');
+    const prompt = buildAnnotatePrompt('annotate auth', '/tmp/x', null, 'external');
+    expect(prompt).toContain(galPathFor('src/auth/login.ts'));
+    expect(prompt).toContain(ANNOTATIONS_DIR);
+  });
+});
+
+describe('GL-503 — sidecars under excluded directories are found', () => {
+  it('the Phase 0 §8 case: a .gal for test/helper.ts is parsed', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-gl503-'));
+    try {
+      await mkdir(join(root, '.guardlink', 'annotations', 'test'), { recursive: true });
+      await mkdir(join(root, 'test'), { recursive: true });
+      await writeFile(join(root, '.guardlink', 'definitions.ts'),
+        '/**\n * @asset App.X (#x) -- "x"\n * @threat T (#t) [high] -- "t"\n */\nexport {};\n');
+      await writeFile(join(root, 'test', 'helper.ts'), 'export function seed() { return 1; }\n');
+      await writeFile(join(root, '.guardlink', 'annotations', 'test', 'helper.ts.gal'),
+        '@source file:test/helper.ts line:1 symbol:seed\n@exposes #x to #t [high] -- "D4 PROBE"\n');
+
+      const { model } = await parseProject({ root, project: 'p' });
+
+      // Measured in Phase 0 as silently dropped: no warning, no diagnostic, the
+      // annotation count simply did not move.
+      expect(model.exposures).toHaveLength(1);
+      expect(model.exposures[0].description).toBe('D4 PROBE');
+      expect(model.exposures[0].location.file).toBe('test/helper.ts');
+      expect(model.annotated_files).toContain('test/helper.ts');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['tests', '__tests__', 'vendor', 'build', 'dist', 'target'])(
+    'a sidecar for a source file under %s/ is parsed', async (dir) => {
+      const root = await mkdtemp(join(tmpdir(), 'guardlink-gl503b-'));
+      try {
+        await mkdir(join(root, '.guardlink', 'annotations', dir), { recursive: true });
+        await writeFile(join(root, '.guardlink', 'definitions.ts'),
+          '/**\n * @asset App.X (#x) -- "x"\n */\nexport {};\n');
+        await writeFile(join(root, '.guardlink', 'annotations', dir, 'f.ts.gal'),
+          `@source file:${dir}/f.ts line:1 symbol:f\n@audit #x -- "rescued from ${dir}"\n`);
+        const { model } = await parseProject({ root, project: 'p' });
+        expect(model.audits, dir).toHaveLength(1);
+        expect(model.audits[0].description).toBe(`rescued from ${dir}`);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+  it('SOURCE files under excluded directories stay excluded', async () => {
+    // Only the sidecar is rescued. Annotating a test file is deliberate; scanning
+    // every test file for annotations is not what the exclusion list is for.
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-gl503c-'));
+    try {
+      await mkdir(join(root, 'test'), { recursive: true });
+      await mkdir(join(root, '.guardlink'), { recursive: true });
+      await writeFile(join(root, '.guardlink', 'definitions.ts'),
+        '/**\n * @asset App.X (#x) -- "x"\n */\nexport {};\n');
+      await writeFile(join(root, 'test', 'inline.ts'),
+        '/**\n * @audit #x -- "inline in an excluded dir"\n */\nexport const t = 1;\n');
+      const { model } = await parseProject({ root, project: 'p' });
+      expect(model.audits).toHaveLength(0);
+      expect(model.annotated_files).not.toContain('test/inline.ts');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('off-convention sidecars parse, and are warned about rather than dropped', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-gl503d-'));
+    try {
+      await mkdir(join(root, '.guardlink', 'notes'), { recursive: true });
+      await mkdir(join(root, 'src'), { recursive: true });
+      await writeFile(join(root, '.guardlink', 'definitions.ts'),
+        '/**\n * @asset App.X (#x) -- "x"\n */\nexport {};\n');
+      await writeFile(join(root, 'src', 'b.ts'), 'export function b() {}\n');
+      // Outside annotations/ entirely — the parser finds it via DEFAULT_INCLUDE.
+      await writeFile(join(root, '.guardlink', 'notes', 'wrong-name.gal'),
+        '@source file:src/b.ts line:1 symbol:b\n@audit #x -- "off convention"\n');
+
+      const { model } = await parseProject({ root, project: 'p' });
+      // Parsed — enforcement is by warning, never by discarding a developer's work.
+      expect(model.audits).toHaveLength(1);
+
+      const warnings = findOffConventionGalFiles(model);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].level).toBe('warning');
+      expect(warnings[0].message).toContain('.guardlink/annotations/src/b.ts.gal');
+      expect(warnings[0].message).toMatch(/still parsed/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('an on-convention sidecar annotating the wrong file is warned about', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-gl503e-'));
+    try {
+      await mkdir(join(root, '.guardlink', 'annotations', 'src'), { recursive: true });
+      await mkdir(join(root, 'src'), { recursive: true });
+      await writeFile(join(root, '.guardlink', 'definitions.ts'),
+        '/**\n * @asset App.X (#x) -- "x"\n */\nexport {};\n');
+      await writeFile(join(root, 'src', 'a.ts'), 'export function a() {}\n');
+      await writeFile(join(root, '.guardlink', 'annotations', 'src', 'a.ts.gal'),
+        '@source file:src/elsewhere.ts line:1 symbol:z\n@audit #x -- "wrong home"\n');
+      const { model } = await parseProject({ root, project: 'p' });
+      const warnings = findOffConventionGalFiles(model);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].message).toMatch(/carries @source blocks for/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('GL-502 — coverage math is mode-invariant', () => {
+  const DEFS = '/**\n * @asset App.A (#a) -- "a"\n * @threat T (#t) [high] -- "t"\n */\nexport {};\n';
+  const ANNOTATIONS = ['@exposes #a to #t [high] -- "risk"', '@audit #a -- "review"'];
+
+  async function build(mode: 'inline' | 'external'): Promise<string> {
+    const root = await mkdtemp(join(tmpdir(), `guardlink-gl502-${mode}-`));
+    await mkdir(join(root, '.guardlink'), { recursive: true });
+    await mkdir(join(root, 'src'), { recursive: true });
+    await writeFile(join(root, '.guardlink', 'definitions.ts'), DEFS);
+    for (const f of ['x', 'y', 'z']) {
+      await writeFile(join(root, 'src', `${f}.ts`), `export const ${f} = 1;\n`);
+    }
+    if (mode === 'inline') {
+      await writeFile(join(root, 'src', 'api.ts'),
+        `/**\n${ANNOTATIONS.map(a => ` * ${a}`).join('\n')}\n */\nexport const api = 1;\n`);
+    } else {
+      await mkdir(join(root, '.guardlink', 'annotations', 'src'), { recursive: true });
+      await writeFile(join(root, 'src', 'api.ts'), 'export const api = 1;\n');
+      await writeFile(join(root, '.guardlink', 'annotations', 'src', 'api.ts.gal'),
+        ['@source file:src/api.ts line:1 symbol:api', ...ANNOTATIONS].join('\n') + '\n');
+    }
+    return root;
+  }
+
+  it('identical logical models give identical counts in both modes', async () => {
+    const inline = await build('inline');
+    const external = await build('external');
+    try {
+      const { model: i } = await parseProject({ root: inline, project: 'p' });
+      const { model: e } = await parseProject({ root: external, project: 'p' });
+      // Measured before the fix: source_files 7 vs 9, annotated_files 3 vs 5,
+      // a derived-ratio drift of +12.70 pp for zero semantic change.
+      expect(e.source_files).toBe(i.source_files);
+      expect(e.annotated_files).toEqual(i.annotated_files);
+      expect(e.unannotated_files).toEqual(i.unannotated_files);
+      expect(e.coverage.coverage_percent).toBe(i.coverage.coverage_percent);
+    } finally {
+      await rm(inline, { recursive: true, force: true });
+      await rm(external, { recursive: true, force: true });
+    }
+  });
+
+  it('no .gal path appears in annotated_files or the denominator', async () => {
+    const external = await build('external');
+    try {
+      const { model } = await parseProject({ root: external, project: 'p' });
+      expect(model.annotated_files.filter(f => f.endsWith('.gal'))).toEqual([]);
+      expect(model.unannotated_files.filter(f => f.endsWith('.gal'))).toEqual([]);
+      expect(model.source_files).toBe(model.annotated_files.length + model.unannotated_files.length);
+    } finally {
+      await rm(external, { recursive: true, force: true });
+    }
+  });
+
+  it('D14 — coverage_percent is computed, not a hardcoded 0', async () => {
+    const inline = await build('inline');
+    try {
+      const { model } = await parseProject({ root: inline, project: 'p' });
+      expect(model.coverage.coverage_percent).toBeGreaterThan(0);
+      expect(model.coverage.coverage_percent).toBe(
+        Math.round((model.annotated_files.length / model.source_files) * 100));
+    } finally {
+      await rm(inline, { recursive: true, force: true });
+    }
+  });
+
+  it('a file annotated only through a sidecar still counts in the denominator', async () => {
+    // GL-503 lets a source file under test/ be annotated externally. It is
+    // excluded from the scan, so without the union it would appear in
+    // annotated_files while missing from source_files — annotated > scanned.
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-gl502d-'));
+    try {
+      await mkdir(join(root, '.guardlink', 'annotations', 'test'), { recursive: true });
+      await writeFile(join(root, '.guardlink', 'definitions.ts'), DEFS);
+      await writeFile(join(root, '.guardlink', 'annotations', 'test', 'h.ts.gal'),
+        '@source file:test/h.ts line:1 symbol:h\n@audit #a -- "x"\n');
+      const { model } = await parseProject({ root, project: 'p' });
+      expect(model.annotated_files).toContain('test/h.ts');
+      expect(model.source_files).toBeGreaterThanOrEqual(model.annotated_files.length);
+      expect(model.coverage.coverage_percent).toBeLessThanOrEqual(100);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

@@ -679,11 +679,10 @@ under a \`@source\` block naming the real code location:
 Write raw GAL lines in \`.gal\` files — no \`//\` or \`#\` prefix. Do not edit source files
 to add annotations in this mode.
 
-> **Known gap, read before you write.** A \`.gal\` placed under \`test/\`, \`tests/\`,
-> \`__tests__/\`, \`vendor/\`, \`build/\`, \`dist/\` or \`target/\` — including at the mirrored
-> path above — is **silently dropped**. The parser excludes those directories and gives
-> no warning: the annotation count simply does not change. Do not annotate code in those
-> directories yet. Tracked as GL-503.`
+> Sidecars are found wherever the convention puts them, including for source
+> files under \`test/\`, \`vendor/\` or \`dist/\` — directories the parser skips for
+> *source* but not for annotations. \`guardlink validate\` warns if a \`.gal\` is
+> off-convention, and still parses it.`
     : `Put annotations in the comment syntax of the file you are editing — the doc-block of
 the function or module they describe:
 

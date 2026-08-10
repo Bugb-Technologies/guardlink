@@ -42,7 +42,7 @@ import { Command } from 'commander';
 import { resolve, basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findOffConventionGalFiles, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { ensurePromptMd } from '../init/migrate.js';
@@ -285,7 +285,11 @@ program
     // Check for @accepts without @audit (governance concern)
     const acceptAuditDiags = findAcceptedWithoutAudit(model);
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags];
+    // GL-501 — sidecars that are not where the convention says. Warnings only:
+    // the file still parsed and every annotation in it counted.
+    const galConventionDiags = findOffConventionGalFiles(model);
+
+    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...galConventionDiags];
 
     // Check for unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);

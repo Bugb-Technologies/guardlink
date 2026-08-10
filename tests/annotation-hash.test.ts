@@ -183,14 +183,21 @@ describe('property 4 — inline and external authoring hash identically (GL-507 
     const inline = await inlineRepo(AUTH_ANNOTATIONS);
     const external = await externalRepo(AUTH_ANNOTATIONS);
 
-    // Precondition: the two repos really do differ on disk, and differ in
-    // exactly the way D1/D2 describe — otherwise this proves nothing.
+    // Precondition: the two repos really do differ ON DISK — one stores
+    // annotations in source comments, the other in sidecars — otherwise this
+    // proves nothing.
     const { model: im } = await parseProject({ root: inline, project: 'test' });
     const { model: em } = await parseProject({ root: external, project: 'test' });
-    expect(em.source_files).toBeGreaterThan(im.source_files);
-    expect(em.annotated_files.length).toBeGreaterThan(im.annotated_files.length);
-    expect(em.annotated_files.some(x => x.endsWith('.gal'))).toBe(true);
-    expect(im.annotated_files.some(x => x.endsWith('.gal'))).toBe(false);
+    expect(em.exposures[0].location.origin_file).toMatch(/\.gal$/);
+    expect(im.exposures[0].location.origin_file).toBeUndefined();
+
+    // And the counts now AGREE. This assertion was the inverse until GL-502:
+    // source_files was 7 vs 9 and annotated_files 3 vs 5, because the sidecar
+    // was counted as source and the file it annotated was counted twice.
+    expect(em.source_files).toBe(im.source_files);
+    expect(em.annotated_files.length).toBe(im.annotated_files.length);
+    expect(em.coverage.coverage_percent).toBe(im.coverage.coverage_percent);
+    expect(em.annotated_files.some(x => x.endsWith('.gal'))).toBe(false);
     expect(im.annotations_parsed).toBe(em.annotations_parsed);
 
     expect(computeAnnotationHash(em)).toBe(computeAnnotationHash(im));

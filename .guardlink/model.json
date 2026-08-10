@@ -1,8 +1,8 @@
 {
   "version": "1.1.0",
   "project": "unknown",
-  "source_files": 77,
-  "annotations_parsed": 351,
+  "source_files": 78,
+  "annotations_parsed": 353,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -40,6 +40,7 @@
     "src/parser/clear.ts",
     "src/parser/feature-filter.ts",
     "src/parser/fingerprint.ts",
+    "src/parser/gal-path.ts",
     "src/parser/parse-file.ts",
     "src/parser/parse-line.ts",
     "src/parser/parse-project.ts",
@@ -2630,6 +2631,16 @@
       }
     },
     {
+      "source": "SourceFile",
+      "target": "#parser",
+      "mechanism": "resolveGalPath",
+      "description": "Source path mapped to its annotation sidecar",
+      "location": {
+        "file": "src/parser/gal-path.ts",
+        "line": 20
+      }
+    },
+    {
       "source": "FilePath",
       "target": "#parser",
       "mechanism": "readFile",
@@ -3297,91 +3308,91 @@
       "reason": "Example annotation block for reference, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 204
+        "line": 206
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 217
+        "line": 219
       }
     },
     {
       "reason": "Description examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 224
+        "line": 226
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 234
+        "line": 236
       }
     },
     {
       "reason": "Flow examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 241
+        "line": 243
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 250
+        "line": 252
       }
     },
     {
       "reason": "Boundary examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 257
+        "line": 259
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 263
+        "line": 265
       }
     },
     {
       "reason": "@accepts alternative examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 322
+        "line": 324
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 332
+        "line": 334
       }
     },
     {
       "reason": "Definition syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 359
+        "line": 361
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 363
+        "line": 365
       }
     },
     {
       "reason": "Relationship syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 368
+        "line": 370
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 383
+        "line": 385
       }
     },
     {
@@ -3407,7 +3418,7 @@
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 918
+        "line": 917
       }
     }
   ],
@@ -3606,6 +3617,13 @@
       }
     },
     {
+      "description": "Pure path arithmetic; no I/O. The inverse is exact, which is what makes migration reversible.",
+      "location": {
+        "file": "src/parser/gal-path.ts",
+        "line": 21
+      }
+    },
+    {
       "description": "Regex patterns designed with bounded quantifiers and explicit structure",
       "location": {
         "file": "src/parser/parse-line.ts",
@@ -3685,8 +3703,8 @@
   ],
   "coverage": {
     "total_symbols": 0,
-    "annotated_symbols": 351,
-    "coverage_percent": 0,
+    "annotated_symbols": 353,
+    "coverage_percent": 71,
     "unannotated_critical": []
   },
   "external_refs": []

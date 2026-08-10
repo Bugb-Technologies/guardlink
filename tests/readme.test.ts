@@ -152,12 +152,15 @@ describe('GL-402 — content an agent needs', () => {
     expect(text).toMatch(/raw GAL lines/);
   });
 
-  it('states the D4 gap rather than documenting a convention that loses data', () => {
+  it('no longer warns about D4, because it is fixed', () => {
+    // Phase 3 documented the gap honestly. GL-503 closed it, so the warning
+    // would now be false — and a stale warning teaches readers to distrust
+    // the accurate ones.
     const text = external();
-    expect(text).toMatch(/Known gap/);
-    expect(text).toMatch(/silently dropped/);
-    expect(text).toMatch(/test\//);
-    expect(text).toMatch(/GL-503/);
+    expect(text).not.toMatch(/Known gap/);
+    expect(text).not.toMatch(/silently dropped/);
+    expect(text).toMatch(/found wherever the convention puts them/);
+    expect(text).toMatch(/off-convention/);
   });
 
   it('lists CLI commands and MCP tools, and how to enable MCP', () => {
