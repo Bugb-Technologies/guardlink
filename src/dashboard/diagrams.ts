@@ -17,6 +17,7 @@
  */
 
 import type { ThreatModel } from '../types/index.js';
+import { buildCoverageIndex } from '../parser/coverage.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * Shared sanitizers and ranking utilities
@@ -591,11 +592,20 @@ export function generateAttackSurface(model: ThreatModel): string {
   const resolveAsset = (ref: string) => aliases.resolve('asset', ref);
   const resolveThreat = (ref: string) => aliases.resolve('threat', ref);
 
-  // Compute per-pair resolution using canonical keys
-  const mitigatedPairs = new Set<string>();
-  const acceptedPairs = new Set<string>();
-  for (const m of model.mitigations) mitigatedPairs.add(`${resolveAsset(m.asset).key}::${resolveThreat(m.threat).key}`);
-  for (const a of model.acceptances) acceptedPairs.add(`${resolveAsset(a.asset).key}::${resolveThreat(a.threat).key}`);
+  // D57: mitigation and acceptance status now come from the canonical predicate
+  // rather than a local pair set, so the attack surface agrees with validate,
+  // the report, SARIF and the MCP surfaces about what is open.
+  //
+  // This deliberately gives up the alias resolution that the local pair set had:
+  // a `@mitigates Svc.Db` no longer covers an `@exposes #db` here, because the
+  // predicate does not alias dotted paths (D47). That is the safe direction — it
+  // can only mark more entries open — and it is the point of the change: D47 is
+  // now ONE known limit in ONE predicate, instead of this diagram quietly
+  // disagreeing with every other surface about the same model.
+  //
+  // `confirmed` stays pair-keyed. It is an escalation, not a coverage decision:
+  // a verified exploit on (asset, threat) escalates that pair wherever it appears.
+  const coverage = buildCoverageIndex(model);
   const confirmedPairs = new Set<string>();
   for (const c of model.confirmed || []) confirmedPairs.add(`${resolveAsset(c.asset).key}::${resolveThreat(c.threat).key}`);
 
@@ -620,7 +630,10 @@ export function generateAttackSurface(model: ThreatModel): string {
     const sev = normalizeSeverity(e.severity || threatNode.severity);
     const existing = group.threats.get(threatNode.key);
     const isConfirmed = confirmedPairs.has(pair);
-    const status: AttackSurfaceEntry['status'] = isConfirmed ? 'confirmed' : acceptedPairs.has(pair) ? 'accepted' : mitigatedPairs.has(pair) ? 'mitigated' : 'open';
+    const status: AttackSurfaceEntry['status'] = isConfirmed ? 'confirmed'
+      : coverage.isAccepted(e) ? 'accepted'
+        : coverage.isMitigated(e) ? 'mitigated'
+          : 'open';
     const escalated = isConfirmed ? 'critical' : sev;
     if (!existing) {
       group.threats.set(threatNode.key, { threatLabel: threatNode.label, severity: escalated, count: 1, status });

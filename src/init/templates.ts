@@ -6,6 +6,7 @@ import type { ProjectInfo } from './detect.js';
 import type { ThreatModel } from '../types/index.js';
 import type { AnnotationMode } from '../parser/annotation-mode.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
+import { buildCoverageIndex } from '../parser/coverage.js';
 // D19: cross-repo tags shown in generated docs are BUILT from the parser's tag
 // grammar, never typed as strings. Hand-written examples of a grammar are how
 // D19 shipped in the first place.
@@ -352,10 +353,16 @@ export function buildModelContext(model: ThreatModel, freshness?: ModelContextFr
     if (controlIds.length) sections.push(`**Controls:** ${controlIds.join(', ')}`);
   }
 
-  // Open exposures (unmitigated)
-  const unmitigated = ordered.exposures.filter(e =>
-    !ordered.mitigations.some(m => m.asset === e.asset && m.threat === e.threat)
-  );
+  // Open exposures (unmitigated).
+  //
+  // D57: this was a nested `.some()` on raw `===`, so the "Open Exposures" block
+  // written into every repo's CLAUDE.md disagreed with `guardlink validate` in
+  // that same repo. Acceptance semantics are preserved deliberately — this block
+  // has always listed accepted exposures as still needing attention, and its
+  // heading says "need @mitigates or @audit", so it asks isMitigated, not
+  // isCovered. Only the site and `#`-normalisation dimensions change here.
+  const coverage = buildCoverageIndex(ordered);
+  const unmitigated = ordered.exposures.filter(e => !coverage.isMitigated(e));
   if (unmitigated.length > 0) {
     sections.push('\n### Open Exposures (need @mitigates or @audit)\n');
     const lines = unmitigated.slice(0, 25).map(e =>

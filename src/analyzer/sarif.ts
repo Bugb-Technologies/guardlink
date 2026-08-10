@@ -24,6 +24,7 @@
 import { createHash } from 'node:crypto';
 
 import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
+import { buildCoverageIndex } from '../parser/coverage.js';
 
 // ─── SARIF 2.1.0 types (subset) ─────────────────────────────────────
 
@@ -148,10 +149,10 @@ export function generateSarif(
   const results: SarifResult[] = [];
 
   // ── Unmitigated exposures ──
-  const mitigated = new Set<string>();
-  const accepted = new Set<string>();
-  for (const m of model.mitigations) mitigated.add(`${m.asset}::${m.threat}`);
-  for (const a of model.acceptances) accepted.add(`${a.asset}::${a.threat}`);
+  // D57: raw pair set. SARIF is the feed into GitHub Advanced Security, so a
+  // suppressed exposure here never becomes an alert at all — measured on
+  // expense-api, the critical #db → #sqli was one of two findings dropped.
+  const coverage = buildCoverageIndex(model);
 
   // Route lookup so each finding can carry the HTTP endpoint it is reachable
   // through. Routes live on @flows (mechanism "METHOD./path"); index them by the
@@ -172,8 +173,7 @@ export function generateSarif(
   };
 
   for (const e of model.exposures) {
-    const key = `${e.asset}::${e.threat}`;
-    if (mitigated.has(key) || accepted.has(key)) continue;
+    if (coverage.isCovered(e)) continue;
 
     // Severity filter
     if (options.minSeverity && !meetsMinSeverity(e.severity, options.minSeverity)) continue;

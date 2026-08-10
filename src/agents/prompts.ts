@@ -40,6 +40,7 @@ function readIfExists(path: string, maxChars = 5000): string {
 }
 
 import { ANNOTATIONS_DIR, galPathFor } from '../parser/gal-path.js';
+import { buildCoverageIndex } from '../parser/coverage.js';
 
 export type AnnotationMode = 'inline' | 'external';
 
@@ -137,9 +138,10 @@ export function buildAnnotatePrompt(
 
     // Include unmitigated exposures so agent knows what still needs attention
     // NOTE: Do NOT filter out @accepts — agents should see ALL exposures without real mitigations
-    const unmitigatedExposures = model.exposures.filter(e => {
-      return !model.mitigations.some(m => m.asset === e.asset && m.threat === e.threat);
-    });
+    // D57: was a nested `.some()` on raw `===`. The NOTE above is preserved —
+    // this asks isMitigated, not isCovered, so an @accepts still shows here.
+    const annotateCoverage = buildCoverageIndex(model);
+    const unmitigatedExposures = model.exposures.filter(e => !annotateCoverage.isMitigated(e));
     if (unmitigatedExposures.length > 0) {
       const expLines = unmitigatedExposures.slice(0, 20).map(e =>
         `  ${e.asset} exposed to ${e.threat} [${e.severity || 'unrated'}] (${e.location.file}:${e.location.line})`
@@ -490,9 +492,11 @@ export function buildTranslatePrompt(
   let modelSummary = 'No threat model parsed yet.';
   let candidateExposures = '';
   if (model) {
-    const unmitigated = model.exposures.filter((e) =>
-      !model.mitigations.some((m) => m.asset === e.asset && m.threat === e.threat)
-    );
+    // D57: the CXG candidate list — the eleventh copy of the predicate, and the
+    // one that matters most: it decides which threats an agent writes exploits
+    // for. It contains no `::`, which is exactly how the shape audit missed it.
+    const coverage = buildCoverageIndex(model);
+    const unmitigated = model.exposures.filter((e) => !coverage.isMitigated(e));
 
     modelSummary = `Current model: ${model.annotations_parsed} annotations, ${model.exposures.length} exposures, ${(model.confirmed || []).length} confirmed, ${unmitigated.length} unmitigated exposures, ${model.assets.length} assets, ${model.threats.length} threats.`;
     if (unmitigated.length > 0) {
@@ -841,9 +845,9 @@ export function buildAskPrompt(
     if (controlIds.length) idLines.push(`Controls: ${controlIds.join(', ')}`);
     if (idLines.length) idSummary = `\n\nKnown IDs:\n${idLines.join('\n')}`;
 
-    const unmitigated = model.exposures.filter((e) =>
-      !model.mitigations.some((m) => m.asset === e.asset && m.threat === e.threat)
-    );
+    // D57: the same predicate a third time, in the `guardlink ask` prompt.
+    const askCoverage = buildCoverageIndex(model);
+    const unmitigated = model.exposures.filter((e) => !askCoverage.isMitigated(e));
     if (unmitigated.length > 0) {
       const lines = unmitigated.slice(0, 25).map((e) =>
         `- ${e.asset} -> ${e.threat} [${e.severity || 'unrated'}] (${e.location.file}:${e.location.line})`

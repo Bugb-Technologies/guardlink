@@ -13,6 +13,7 @@ import type { ThreatModel, ThreatModelExposure, Severity } from '../types/index.
 import { generateMermaid } from './mermaid.js';
 import { generateSequenceDiagram } from './sequence.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
+import { findUnmitigatedExposures } from '../parser/coverage.js';
 
 /**
  * D23 — canonicalise at the emission boundary. See generateMermaid for the why;
@@ -24,15 +25,9 @@ export function generateReport(rawModel: ThreatModel): string {
   const lines: string[] = [];
 
   // ── Pre-compute shared data ──
-  const mitigatedPairs = new Set<string>();
-  const acceptedPairs = new Set<string>();
-  for (const m of model.mitigations) mitigatedPairs.add(`${m.asset}::${m.threat}`);
-  for (const a of model.acceptances) acceptedPairs.add(`${a.asset}::${a.threat}`);
-
-  const unmitigated = model.exposures.filter(e => {
-    const key = `${e.asset}::${e.threat}`;
-    return !mitigatedPairs.has(key) && !acceptedPairs.has(key);
-  });
+  // D57: raw pair set. The headline "Unmitigated exposures | N (…critical…)"
+  // read `9 (0 critical)` on a repo with a live critical SQL injection.
+  const unmitigated = findUnmitigatedExposures(model);
 
   const severityCounts = countBySeverity(unmitigated);
   const hasAI = detectAI(model);

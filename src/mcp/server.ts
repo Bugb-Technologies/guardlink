@@ -1036,11 +1036,11 @@ export function createServer(): McpServer {
     { description: 'List of unmitigated exposures — assets exposed to threats with no @mitigates or @accepts' },
     async (root: string) => {
       const { model } = await getModel(root);
-      const covered = new Set<string>();
-      for (const m of model.mitigations) covered.add(`${m.asset}::${m.threat}`);
-      for (const a of model.acceptances) covered.add(`${a.asset}::${a.threat}`);
-      const unmitigated = model.exposures
-        .filter(e => !covered.has(`${e.asset}::${e.threat}`))
+      // D57: a raw pair set here disagreed with guardlink_status and validate,
+      // which route through the canonical predicate. Same server, same model,
+      // two different answers to "what is unmitigated" depending on whether the
+      // client read the resource or called the tool.
+      const unmitigated = findUnmitigatedExposures(model)
         .map(e => ({ asset: e.asset, threat: e.threat, severity: e.severity, file: e.location.file, line: e.location.line }));
       return {
         contents: [{ uri: 'guardlink://unmitigated', mimeType: 'application/json', text: JSON.stringify(unmitigated, null, 2) }],
