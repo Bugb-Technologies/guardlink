@@ -263,6 +263,73 @@ Examples:
 
 Parsers must unescape `\"` and `\\` when extracting description text. Writers must escape `"` and `\` when generating annotations programmatically.
 
+### 2.12. Diagnostics: Malformed Annotations vs Prose
+
+A line beginning with `@` followed by a known verb, which then fails to parse, is
+ambiguous. It may be an annotation whose author made a mistake, or it may be a
+sentence *about* GuardLink written in ordinary documentation:
+
+```
+@exposes #api to                             <- an annotation, truncated
+@exposes was renamed in v1.2                 <- a sentence about the verb
+```
+
+Treating both as errors makes it impossible to write documentation about
+GuardLink inside a GuardLink-annotated repository without breaking that
+repository's own validation. Treating both as silent no-ops discards the most
+useful signal the parser produces. Implementations therefore **must** split them
+on structural evidence, and **must** report both.
+
+**Structural evidence.** A failing line carries structural evidence if any of
+the following appear after the verb:
+
+| Evidence | Example |
+|---|---|
+| A `#reference` | `@exposes #api to` |
+| A spaced `--` description delimiter | `@audit App.API --` |
+| A grammar keyword **belonging to that verb** | `@exposes App.API to` |
+
+The keyword set is **per verb**, not global. `to` is structural in `@exposes`,
+which is defined as `@exposes <asset> to <threat>`; it is not structural in
+`@feature`, whose grammar has no `to`. A global keyword list misclassifies
+ordinary English — `@feature still claims to describe the model` — as a broken
+annotation.
+
+Verb keyword sets:
+
+| Verb | Keywords |
+|---|---|
+| `@exposes`, `@connects` | `to` |
+| `@mitigates` | `against`, `using`, `with` |
+| `@confirmed`, `@handles` | `on` |
+| `@accepts` | `on`, `to` |
+| `@transfers` | `from`, `to` |
+| `@flows` | `->` |
+| `@boundary` | `between`, `and`, `\|` |
+| `@validates`, `@owns` | `for` |
+| all others | *(none — structure comes from a ref or a `--`)* |
+
+**The two tiers.**
+
+| Evidence | Level | Fails validation | Meaning |
+|---|---|---|---|
+| present | `error` | yes | A malformed annotation. Someone meant to write one and missed. |
+| absent | `warning` | no | Read as prose. Reported under its own heading, never silently dropped. |
+
+Diagnostics carry a machine-readable `code` — `malformed-annotation` or
+`prose-like` — so consumers can group and filter without matching on message
+text.
+
+**The escape hatch.** Prose that *does* look structural — documentation quoting
+real annotations — is excluded with `@shield:begin` / `@shield:end` (§3.4). The
+prose warning names this in its own text, because an author who sees the warning
+needs to know the remedy without consulting the specification.
+
+**Residual ambiguity is expected.** `@transfers moves ownership from one team to
+another` contains `from`, which is genuinely part of `@transfers`'s grammar, and
+will be reported as an error. The split is heuristic by construction; the
+`@shield` markers are the deterministic override.
+
 ---
 
 ## 3. Annotation Reference

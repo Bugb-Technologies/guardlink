@@ -384,22 +384,21 @@ export function parseLine(
     return ok({ ...base, verb: 'shield', description: desc(m[1]) });
   }
 
-  // Starts with @ but didn't match — likely a malformed annotation
-  const verbMatch = trimmed.match(/^@(\S+)/);
-  if (verbMatch) {
-    const knownVerbs: Set<string> = new Set([
-      'asset', 'threat', 'control', 'mitigates', 'exposes', 'confirmed', 'accepts',
-      'transfers', 'flows', 'boundary', 'validates', 'audit', 'owns',
-      'handles', 'assumes', 'feature', 'source', 'comment', 'shield', 'shield:begin', 'shield:end',
-      // v1 compat
-      'review', 'connects',
-    ]);
-    if (knownVerbs.has(verbMatch[1])) {
+  // Starts with @ but didn't match. Two very different things look like this —
+  // see structuralEvidence() for the split (D29).
+  const verbMatch = trimmed.match(/^@(\S+)\s*([\s\S]*)$/);
+  if (verbMatch && KNOWN_VERBS.has(verbMatch[1])) {
+    const verb = verbMatch[1];
+    const rest = verbMatch[2];
+    const evidence = structuralEvidence(verb, rest);
+
+    if (evidence) {
       return {
         annotation: null,
         diagnostic: {
           level: 'error',
-          message: `Malformed @${verbMatch[1]} annotation: could not parse arguments`,
+          code: 'malformed-annotation',
+          message: `Malformed @${verb} annotation: could not parse arguments (looks structural — found ${evidence})`,
           file: location.file,
           line: location.line,
           raw: trimmed,
@@ -407,6 +406,20 @@ export function parseLine(
         isContinuation: false,
       };
     }
+
+    return {
+      annotation: null,
+      diagnostic: {
+        level: 'warning',
+        code: 'prose-like',
+        message: `Line begins with @${verb} but has no annotation structure — read as prose, not parsed. `
+          + `If it IS an annotation, it is missing its arguments. If it is documentation, wrap it in @shield:begin / @shield:end to silence this.`,
+        file: location.file,
+        line: location.line,
+        raw: trimmed,
+      },
+      isContinuation: false,
+    };
   }
 
   // Not a GuardLink annotation (could be @param, @returns, etc.)
@@ -417,6 +430,93 @@ export function parseLine(
 
 function ok(annotation: Annotation): ParseLineResult {
   return { annotation, diagnostic: null, isContinuation: false, sourceDirective: null };
+}
+
+// ─── D29: prose that starts with a verb vs a broken annotation ───────
+
+const KNOWN_VERBS: ReadonlySet<string> = new Set([
+  'asset', 'threat', 'control', 'mitigates', 'exposes', 'confirmed', 'accepts',
+  'transfers', 'flows', 'boundary', 'validates', 'audit', 'owns',
+  'handles', 'assumes', 'feature', 'source', 'comment', 'shield', 'shield:begin', 'shield:end',
+  // v1 compat
+  'review', 'connects',
+]);
+
+/**
+ * The keywords each verb's grammar actually uses.
+ *
+ * PER VERB, not one global list, and that distinction is the whole point.
+ * The ruling proposed a single list — to / against / using / -> / from — and
+ * measurement argued against it: 3 of 10 realistic prose lines still errored,
+ * including the exact line that broke this repo's own validate during the
+ * defect sweep ("@feature still claims to describe the model"). `to` is not
+ * part of `@feature`'s grammar, so its presence there is English, not
+ * structure. Scoping the keyword to the verb that owns it drops that to 1 of
+ * 10 while keeping every malformed case an error.
+ *
+ * A verb with no entry has no keywords: `@audit <asset> -- "why"` is a ref and
+ * a delimiter, both of which are already covered as evidence.
+ */
+const VERB_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
+  exposes: ['to'],
+  mitigates: ['against', 'using', 'with'],
+  confirmed: ['on'],
+  accepts: ['on', 'to'],
+  transfers: ['from', 'to'],
+  flows: ['->'],
+  boundary: ['between', 'and', '|'],
+  connects: ['to'],
+  validates: ['for'],
+  owns: ['for'],
+  handles: ['on'],
+};
+
+/**
+ * Why we believe a line was MEANT to be an annotation, or null if we do not.
+ *
+ * D29: a diagnostic on every line beginning with a verb means that writing
+ * prose about GuardLink inside a GuardLink-annotated repo breaks that repo's
+ * own `validate`. It bit this codebase twice during the defect sweep, once by
+ * accident, in an ordinary code comment.
+ *
+ * The fix is not to stay silent — "you wrote this annotation wrong" is the most
+ * useful signal the parser produces, and dropping it to fix a false positive
+ * would trade a loud wrong answer for a quiet one. So the line is split on
+ * evidence:
+ *
+ *   evidence present -> ERROR. Someone tried to write an annotation and missed.
+ *   no evidence      -> WARNING. Probably prose. Reported, never silent, but it
+ *                       does not fail a build.
+ *
+ * `@shield:begin` / `@shield:end` remains the escape hatch for prose that does
+ * look structural — documentation quoting real examples — and the warning text
+ * says so.
+ *
+ * Returns a short human-readable reason so the error can state what convinced
+ * it, rather than asserting "this is malformed" without evidence.
+ */
+export function structuralEvidence(verb: string, rest: string): string | null {
+  // A bare verb with nothing after it is not prose — prose is a sentence, and a
+  // sentence has words. `@mitigates` alone is someone starting an annotation and
+  // stopping, which is exactly the mistake the error tier exists to catch.
+  if (rest.trim() === '') return 'no arguments at all';
+
+  // A `#ref` is the strongest signal: prose about GuardLink names verbs, but it
+  // rarely names concrete ids.
+  if (/#[a-zA-Z0-9_-]/.test(rest)) return 'a #reference';
+
+  // The description delimiter. Spaced, so a double hyphen inside prose
+  // ("well--maybe") is not evidence.
+  if (/\s--\s/.test(rest) || /\s--$/.test(rest)) return 'a `--` delimiter';
+
+  for (const keyword of VERB_KEYWORDS[verb] ?? []) {
+    const pattern = /^[a-z]+$/.test(keyword)
+      ? new RegExp(String.raw`\b${keyword}\b`)
+      : new RegExp(keyword.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&'));
+    if (pattern.test(rest)) return `the \`${keyword}\` keyword`;
+  }
+
+  return null;
 }
 
 /** Like ok(), but for parser branches that emit multiple annotations from

@@ -912,6 +912,27 @@ would not accept a dot after \`#\`; that was D19, and it is fixed.)
 Write coupled blocks, not lone facts: a risk plus the control or audit that answers it, plus
 the flow that gives it context.
 
+### Writing *about* these verbs
+
+A line starting with a verb that then fails to parse is either a broken annotation or a
+sentence about GuardLink. They are told apart by **structural evidence** after the verb: a
+\`#reference\`, a spaced \`--\` delimiter, or a grammar keyword **belonging to that verb**
+(\`to\` for \`@exposes\`, \`against\`/\`using\` for \`@mitigates\`, \`->\` for \`@flows\`, and so on).
+
+| Line | Verdict |
+|---|---|
+| \`@exposes #api to\` | **error** — has a \`#ref\`, so it was meant to be an annotation. Fails validation. |
+| \`@exposes was renamed in v1.2\` | **warning** — no structure. Read as prose. Does not fail validation. |
+
+The keyword set is per verb, so \`@feature still claims to describe the model\` is prose:
+\`to\` is not part of \`@feature\`'s grammar. Prose warnings are always reported under their
+own heading — never suppressed, because a line you *meant* as an annotation shows up there
+too.
+
+If you are documenting real annotation syntax and the examples do look structural, wrap
+them in \`@shield:begin\` / \`@shield:end\`. That is the deterministic override; the split
+above is a heuristic.
+
 **The complete reference is \`${referencePath}\`** — every verb, every alias, the conformance
 levels, and worked examples per language. Read it before inventing syntax.
 

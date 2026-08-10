@@ -2182,10 +2182,28 @@ if (process.argv.length <= 2) {
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function printDiagnostics(diagnostics: ParseDiagnostic[]) {
-  for (const d of diagnostics) {
+  // D29: prose-like lines get their own heading. Mixed into the error list they
+  // read as failures, which is what made writing documentation about GuardLink
+  // inside a GuardLink repo feel like breaking it.
+  const prose = diagnostics.filter(d => d.code === 'prose-like');
+  const rest = diagnostics.filter(d => d.code !== 'prose-like');
+
+  for (const d of rest) {
     console.error(`${diagnosticIcon(d.level)} ${d.file}:${d.line}: ${d.message}`);
     if (d.raw) console.error(`  → ${d.raw}`);
   }
+
+  if (prose.length > 0) {
+    console.error(`\nLines that look like prose, not annotations (${prose.length}) — these do not fail validation:`);
+    for (const d of prose) {
+      console.error(`  ${d.file}:${d.line}: ${d.raw ?? ''}`);
+    }
+    console.error(`  Each begins with a GuardLink verb but carries no #reference, no \`--\` delimiter,`);
+    console.error(`  and none of that verb's grammar keywords, so it was read as prose and not parsed.`);
+    console.error(`  If one IS an annotation, it is missing its arguments. If it is documentation,`);
+    console.error(`  wrap it in @shield:begin / @shield:end.`);
+  }
+
   if (diagnostics.length > 0) {
     const fatals = diagnostics.filter(d => d.level === 'fatal').length;
     const errors = diagnostics.filter(d => d.level === 'error').length;
