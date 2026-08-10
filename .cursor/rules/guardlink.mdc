@@ -53,10 +53,6 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 **Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring), #prefix-ownership (Prefix_Ownership), #yaml-validation (YAML_Validation)
 **Actors:** #local-dev (Local_Developer), #mcp-agent (MCP_Agent), #ci-runner (CI_Runner)
 
-### Entitlements (capabilities held by design — never a reason to skip testing)
-
-- #local-dev entitled to `clear_annotations` on #parser — cites src/cli/index.ts:1071
-
 ### Open Exposures (need @mitigates or @audit)
 
 - #agent-launcher exposed to #prompt-injection [medium] (src/agents/launcher.ts:13)
@@ -107,4 +103,4 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-423 annotations, 16 assets, 15 threats, 12 controls, 78 exposures, 0 confirmed, 66 mitigations, 3 actors, 1 entitlements, 102 flows, 2 features
+421 annotations, 16 assets, 15 threats, 12 controls, 78 exposures, 0 confirmed, 66 mitigations, 3 actors, 102 flows, 2 features
