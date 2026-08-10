@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        attack-surface.mmd
-%% annotation_hash: sha256-v1:21f5e96f6d9b6bafdeb5ce04253995f7b746dd718c640782fd6321602d879710
+%% annotation_hash: sha256-v1:fdc3f6b903452086173e96f0eb9dc67b4a82e4de7abeea30cd5bb840e3768a34
 %% generator:       guardlink@1.4.5
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -66,32 +66,34 @@ graph TB
   end
   subgraph A_parser["GuardLink.Parser · ⚠ 1 open"]
     direction TB
-    E36["⚠️ Arbitrary_File_Write"]:::sev_high
-    E37["✅ Path_Traversal ×3"]:::sev_high
+    E36["✅ Arbitrary_File_Write ×3"]:::sev_high
+    E37["✅ Path_Traversal ×4"]:::sev_high
     E38["✅ Denial_of_Service ×3"]:::sev_med
     E39["✅ ReDoS"]:::sev_med
+    E40["✅ Insecure_Deserialization"]:::sev_low
+    E41["⚠️ Sensitive_Data_Exposure"]:::sev_low
   end
   subgraph A_sarif["GuardLink.SARIF · ⚠ 1 open"]
     direction TB
-    E40["⚠️ Sensitive_Data_Exposure"]:::sev_low
+    E42["⚠️ Sensitive_Data_Exposure"]:::sev_low
   end
   subgraph A_suggest["GuardLink.Suggest · ⚠ 1 open"]
     direction TB
-    E41["✅ Path_Traversal"]:::sev_high
-    E42["✅ ReDoS"]:::sev_med
-    E43["⚠️ Denial_of_Service"]:::sev_low
+    E43["✅ Path_Traversal"]:::sev_high
+    E44["✅ ReDoS"]:::sev_med
+    E45["⚠️ Denial_of_Service"]:::sev_low
   end
   subgraph A_dashboard["GuardLink.Dashboard · ✅ 100% covered"]
     direction TB
-    E44["✅ Cross_Site_Scripting ×2"]:::sev_high
-    E45["✅ Arbitrary_File_Write"]:::sev_med
-    E46["✅ Path_Traversal"]:::sev_med
+    E46["✅ Cross_Site_Scripting ×2"]:::sev_high
+    E47["✅ Arbitrary_File_Write"]:::sev_med
+    E48["✅ Path_Traversal"]:::sev_med
   end
   subgraph A_diff["GuardLink.Diff · ✅ 100% covered"]
     direction TB
-    E47["✅ Command_Injection ×2"]:::sev_high
-    E48["✅ Arbitrary_File_Write"]:::sev_med
-    E49["✅ Path_Traversal"]:::sev_med
+    E49["✅ Command_Injection ×2"]:::sev_high
+    E50["✅ Arbitrary_File_Write"]:::sev_med
+    E51["✅ Path_Traversal"]:::sev_med
   end
   classDef sev_crit fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.4px
   classDef sev_high fill:#402019,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.2px
