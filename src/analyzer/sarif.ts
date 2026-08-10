@@ -13,9 +13,18 @@
  *   3. Parse errors (annotation syntax problems)
  *   4. Dangling references (broken #id refs)
  *
+ * We deliberately emit NOTHING for @entitles. @mitigates and @accepts already
+ * remove an exposure from this export, and a suppression that also prevents
+ * verification is how a threat model becomes confidently wrong. An entitlement
+ * therefore carries no export semantics at all: the exposure is probed exactly
+ * as before, and a reader of this SARIF cannot tell an entitlement exists. Only
+ * the downstream *recommendation* changes. See docs/prd/actor-entitlement-design.md
+ * §3.2 — and do not "complete" this exporter by adding entitlements to it.
+ *
  * @exposes #sarif to #data-exposure [low] cwe:CWE-200 -- "Exposes threat model findings to SARIF consumers"
  * @audit #sarif -- "SARIF output intentionally reveals security findings for CI/CD integration"
  * @comment -- "Pure function: transforms ThreatModel to SARIF JSON; no I/O"
+ * @comment -- "@entitles has no export semantics by design: SARIF for a model with entitlements is byte-identical to one without, so an entitlement can never hide an exposure from the pentest export (actor-entitlement design §3.2)"
  * @comment -- "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} derived from the asset's inbound @flows route so downstream HTTP consumers (e.g. cert-x-gen) can target the endpoint; emitted verbatim from the annotation, no base path assumed"
  * @flows ThreatModel -> #sarif via generateSarif -- "Model input"
  * @flows #sarif -> SarifLog via return -- "SARIF output"

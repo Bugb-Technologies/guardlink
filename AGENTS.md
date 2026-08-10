@@ -17,9 +17,10 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 3. **Use `@confirmed` for verified exploits.** When a pentest, CXG scan, or manual reproduction proves a threat is exploitable, mark it with `@confirmed #threat on Asset [severity] -- "evidence"`. This is distinct from `@exposes` (theoretical) — `@confirmed` means real, verified, not a false positive. Include severity based on actual observed impact.
 4. Do not delete or mangle existing annotations. Treat them as part of the code. Edit only when intentionally changing the threat model.
 5. Definitions (`@asset`, `@threat`, `@control` with `(#id)`) live in `.guardlink/definitions.ts`. Reuse existing `#id`s — never redefine. If you need a new asset or threat, add the definition there first, then reference it in source files.
-6. Source files use relationship verbs only: `@mitigates`, `@exposes`, `@confirmed`, `@flows`, `@handles`, `@boundary`, `@comment`, `@validates`, `@audit`, `@owns`, `@assumes`, `@transfers`, `@feature`.
+6. Source files use relationship verbs only: `@mitigates`, `@exposes`, `@confirmed`, `@flows`, `@handles`, `@boundary`, `@comment`, `@validates`, `@audit`, `@owns`, `@assumes`, `@transfers`, `@feature`. (`@actor` is a definition — it belongs in the definitions file with `@asset`/`@threat`/`@control`. `@entitles` is proposed, not written — see rule 9.)
 7. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note. Never write a lone `@exposes` without follow-up.
 8. Avoid `@shield` unless a human explicitly asks to hide code from AI — it creates blind spots.
+9. **NEVER write `@entitles` into source — propose it.** `@entitles` says a privilege is *supposed* to have this effect, so an over-grant closes a real privilege escalation as by-design. That makes it the second claim you may not make on a human's behalf, alongside `@accepts`. File it with `guardlink entitle --propose` (or `guardlink_entitlement_propose`) and a human's acceptance is what writes the annotation, under their name; an `@entitles` in source with no accepted proposal is a validation error. The rationale must cite the authz code as `file:line` or the claim is inert — parsed and then ignored. It never suppresses a finding and never gates testing; it only changes what triage recommends. Never propose one for an ownership question (IDOR, tenant isolation) — both peers hold the capability, so it cannot say whose object it was. When unsure which role the code actually requires, write `@comment` describing what you saw instead: under-granting costs noise, over-granting hides a real bug.
 
 ### Workflow (while coding)
 
@@ -47,7 +48,15 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 @confirmed #sqli on App.API [critical] cwe:CWE-89 -- "Pentest verified: raw SQL injection via email param"
 @feature "SSO Login" -- "Single sign-on authentication flow"
 @owns security-team for App.API -- "Team responsible for reviews"
+@actor Namespace_Admin (#ns-admin) -- "Administers one namespace's configuration"   (definitions file)
 @comment -- "Rate limit: 100 req/15min via express-rate-limit"
+```
+
+`@entitles` is absent from that list on purpose — you propose it, you do not write it:
+
+```bash
+guardlink entitle --propose --actor '#ns-admin' --capability configure-archival-destination \
+  --asset '#archival-fs' --rationale "By design: the archival URI is namespace configuration. Authz: common/api/metadata.go:189"
 ```
 
 ## Live Threat Model Context (auto-synced by `guardlink sync`)
@@ -57,6 +66,12 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 **Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest), #workspace-link (Workspace,Link), #merge-engine (Workspace,Merge), #report-metadata (Workspace,Metadata), #workspace-config (Workspace,Config)
 **Threats:** #path-traversal (Path_Traversal) [high], #cmd-injection (Command_Injection) [critical], #xss (Cross_Site_Scripting) [high], #api-key-exposure (API_Key_Exposure) [high], #ssrf (Server_Side_Request_Forgery) [medium], #redos (ReDoS) [medium], #arbitrary-write (Arbitrary_File_Write) [high], #prompt-injection (Prompt_Injection) [medium], #dos (Denial_of_Service) [medium], #data-exposure (Sensitive_Data_Exposure) [medium], #insecure-deser (Insecure_Deserialization) [medium], #child-proc-injection (Child_Process_Injection) [high], #info-disclosure (Information_Disclosure) [low], #tag-collision (Tag_Collision) [medium], #config-tamper (Config_Tampering) [medium]
 **Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring), #prefix-ownership (Prefix_Ownership), #yaml-validation (YAML_Validation)
+**Actors:** #local-dev (Local_Developer), #mcp-agent (MCP_Agent), #ci-runner (CI_Runner)
+
+### Entitlements (capabilities held by design — never a reason to skip testing)
+
+- #local-dev entitled to `clear_annotations` on #parser — cites src/cli/index.ts:1071
+- #mcp-agent entitled to `preview_annotation_clear` on #parser — cites src/mcp/server.ts:505
 
 ### Open Exposures (need @mitigates or @audit)
 

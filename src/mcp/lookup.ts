@@ -11,6 +11,8 @@
  *   - "flows from #config" → data flows with source = config
  *   - "unmitigated" → all unmitigated exposures
  *   - "confirmed" → @confirmed verified exploitable findings
+ *   - "actors" → declared principals (@actor) with the capabilities each is entitled to
+ *   - "entitlements" / "entitlements for #actor" → @entitles claims, with citation and inert flag
  *   - "boundary #config" → boundaries involving asset
  *   - Free text → fuzzy match across assets, threats, controls
  *
@@ -74,6 +76,17 @@ export function lookup(model: ThreatModel, query: string): LookupResult {
   // ── "confirmed" (verified exploitable @confirmed annotations) ──
   if (/^confirmed(\s|$)/.test(q)) {
     return lookupConfirmed(model, query);
+  }
+
+  // ── "actors" (declared principals) ──
+  if (/^actors?(\s|$)/.test(q)) {
+    return lookupActors(model, query);
+  }
+
+  // ── "entitlements [for <actor>]" ──
+  const entitlementsQ = q.match(/^entitlements?(?:\s+(?:for|of|on)\s+(.+))?$/);
+  if (entitlementsQ) {
+    return lookupEntitlements(model, query, entitlementsQ[1]?.trim());
   }
 
   // ── "features" ──
@@ -149,6 +162,61 @@ function lookupUnmitigated(model: ThreatModel, query: string): LookupResult {
       description: e.description, file: e.location.file, line: e.location.line,
     }));
   return { query, type: 'unmitigated_exposures', count: results.length, results };
+}
+
+/**
+ * Declared principals, each with the capabilities it is entitled to. Answers the
+ * question the entitled-principal rubric asks: what is this role allowed to do
+ * by design?
+ */
+function lookupActors(model: ThreatModel, query: string): LookupResult {
+  const results = (model.actors || []).map(ac => {
+    const key = ac.id || ac.canonical_name;
+    const held = (model.entitlements || []).filter(en => bareRef(en.actor) === key);
+    return {
+      name: ac.name,
+      id: ac.id,
+      canonical_name: ac.canonical_name,
+      description: ac.description,
+      file: ac.location.file,
+      line: ac.location.line,
+      entitled_to: held.map(en => ({
+        capability: en.canonical_capability,
+        asset: en.asset,
+        citation: en.citation?.raw,
+        inert: en.inert,
+      })),
+    };
+  });
+  return { query, type: 'actors', count: results.length, results };
+}
+
+/**
+ * @entitles claims. `inert` is surfaced on every row on purpose: an uncited
+ * entitlement must never be read as one that can demote a finding (§3.4).
+ */
+function lookupEntitlements(model: ThreatModel, query: string, actorRef?: string): LookupResult {
+  const wanted = actorRef ? bareRef(actorRef.toLowerCase()) : undefined;
+  const results = (model.entitlements || [])
+    .filter(en => !wanted || bareRef(en.actor).toLowerCase() === wanted)
+    .map(en => ({
+      actor: en.actor,
+      capability: en.canonical_capability,
+      capability_as_written: en.capability,
+      asset: en.asset,
+      description: en.description,
+      citation: en.citation?.raw,
+      cited_file: en.citation?.file,
+      cited_line: en.citation?.line,
+      inert: en.inert,
+      file: en.location.file,
+      line: en.location.line,
+    }));
+  return { query, type: 'entitlements', count: results.length, results };
+}
+
+function bareRef(ref: string): string {
+  return ref.startsWith('#') ? ref.slice(1) : ref;
 }
 
 function lookupConfirmed(model: ThreatModel, query: string): LookupResult {

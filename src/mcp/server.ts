@@ -14,7 +14,13 @@
  *   guardlink_sarif    — Export SARIF 2.1.0
  *   guardlink_diff     — Compare threat model against a git ref
  *   guardlink_threat_reports — List saved AI threat report files
+ *   guardlink_entitlement_propose — Propose an @entitles claim into the review artifact
+ *   guardlink_entitlement_list — List entitlement proposals and their decisions
  *   guardlink_workspace_info — Workspace config, siblings, tag prefixes
+ *
+ * There is no entitlement *accept* tool. An entitlement's error mode is a silent
+ * false negative, so acceptance stays a human decision recorded by name through
+ * `guardlink entitle` (docs/prd/actor-entitlement-design.md §3.6).
  *
  * Resources:
  *   guardlink://model        — Full ThreatModel JSON
@@ -33,6 +39,9 @@
  * @mitigates #mcp against #api-key-exposure using #key-redaction -- "Keys from env only; never logged or returned"
  * @exposes #mcp to #data-exposure [medium] cwe:CWE-200 -- "Resources expose full threat model to MCP clients"
  * @audit #mcp -- "Threat model data intentionally exposed to connected agents"
+ * @exposes #mcp to #arbitrary-write [medium] cwe:CWE-73 -- "guardlink_entitlement_propose writes a client-supplied claim into .guardlink/entitlement-proposals.json"
+ * @mitigates #mcp against #arbitrary-write using #path-validation -- "The proposal artifact path is fixed, and its target file must resolve inside the project root — a proposal never writes to source"
+ * @comment -- "No guardlink_entitlement_accept tool exists on purpose: proposing is an agent's job, granting authority is not (actor-entitlement design §3.6)"
  * @flows MCPClient -> #mcp via tool_call -- "Tool invocation input"
  * @flows #mcp -> FileSystem via writeFile -- "Report/dashboard output"
  * @flows #mcp -> #llm-client via generateThreatReport -- "LLM API call path"
@@ -45,8 +54,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, clearAnnotations } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findInertEntitlements, clearAnnotations } from '../parser/index.js';
 import { getReviewableExposures, applyReviewAction, type ReviewableExposure } from '../review/index.js';
+import {
+  proposeEntitlement, listProposals, checkEntitlementProvenance, PROPOSALS_FILE,
+  type ProposalStatus,
+} from '../review/entitlements.js';
 import { generateSarif } from '../analyzer/index.js';
 import { generateReport } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
@@ -123,6 +136,9 @@ export function createServer(): McpServer {
         exposures: model.exposures.length,
         confirmed: (model.confirmed || []).length,
         acceptances: model.acceptances.length,
+        actors: (model.actors || []).length,
+        entitlements: (model.entitlements || []).length,
+        entitlements_inert: (model.entitlements || []).filter(e => e.inert).length,
         flows: model.flows.length,
         boundaries: model.boundaries.length,
         features: [...uniqueFeatures].sort(),
@@ -153,7 +169,14 @@ export function createServer(): McpServer {
 
       // Compute dangling refs using shared validation
       const danglingDiags = findDanglingRefs(model);
-      const allDiags = [...diagnostics, ...danglingDiags];
+      // @entitles checks: undeclared actor is an error, an uncited (inert)
+      // entitlement is a warning — it parses but can never demote a finding.
+      const actorDiags = findUndeclaredActors(model);
+      const inertDiags = findInertEntitlements(model);
+      // §3.6: an @entitles no human accepted. Only checked where the project has
+      // a proposal ledger, so it never fires on a repo not using the flow.
+      const provenanceDiags = await checkEntitlementProvenance(root, model);
+      const allDiags = [...diagnostics, ...danglingDiags, ...actorDiags, ...inertDiags, ...provenanceDiags];
 
       const errors = allDiags.filter(d => d.level === 'error');
       const warnings = allDiags.filter(d => d.level === 'warning');
@@ -192,10 +215,10 @@ export function createServer(): McpServer {
   // ── Tool: guardlink_lookup ──
   server.tool(
     'guardlink_lookup',
-    'Query the threat model graph. Find assets, threats, controls, flows, exposures by ID or relationship. Examples: "what threats target #auth?", "flows into Scanner", "unmitigated exposures", "confirmed"',
+    'Query the threat model graph. Find assets, threats, controls, actors, flows, exposures by ID or relationship. Examples: "what threats target #auth?", "flows into Scanner", "unmitigated exposures", "confirmed", "actors", "entitlements for #ns-admin"',
     {
       root: z.string().describe('Project root directory').default('.'),
-      query: z.string().describe('Natural language or structured query: asset ID, threat ID, "flows into X", "threats for X", "unmitigated", "confirmed", "controls for X"'),
+      query: z.string().describe('Natural language or structured query: asset ID, threat ID, "flows into X", "threats for X", "unmitigated", "confirmed", "controls for X", "actors", "entitlements [for X]"'),
     },
     async ({ root, query }) => {
       const { model } = await getModel(root);
@@ -607,6 +630,77 @@ export function createServer(): McpServer {
       return {
         content: [{ type: 'text', text: `${verb}: ${target.exposure.asset} → ${target.exposure.threat} [${target.exposure.severity}]\nJustification: ${justification}\n${result.linesInserted} annotation line(s) written to ${result.targetFile}` }],
       };
+    },
+  );
+
+  // ── Tool: guardlink_entitlement_propose ──
+  //
+  // §3.6 of docs/prd/actor-entitlement-design.md. An agent may file entitlement
+  // claims; it may not grant them. There is deliberately no accept tool here —
+  // acceptance is a human decision recorded by name through `guardlink entitle`,
+  // the same reasoning that keeps @accepts out of an agent's hands.
+  server.tool(
+    'guardlink_entitlement_propose',
+    'Propose an @entitles claim (an actor is entitled to a capability BY DESIGN) into .guardlink/entitlement-proposals.json. This writes NOTHING to source: a human accepts the proposal with "guardlink entitle", and only that writes the annotation. Cite the authorization code as file:line in the rationale — without a citation the entitlement is inert and will never affect triage. Never propose one for an ownership question (IDOR, tenant/namespace isolation, CWE-639/862/863): both peers hold the capability, so an entitlement cannot say whose object it was. When unsure which role the code requires, under-grant or write @exposes + @audit instead.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      actor: z.string().describe('Actor ref — #id of a declared @actor, or its declared name'),
+      capability: z.string().describe('Capability — one identifier, never prose (e.g. configure-archival-destination). It is the join key.'),
+      asset: z.string().optional().describe('Optional "on <asset>" context ref'),
+      threat: z.string().optional().describe('Threat class this claim is meant to answer for — supply it, it is what enables the ownership-class check'),
+      rationale: z.string().describe('Why this is by design. MUST contain a file:line pointer at the authz check, e.g. "By design: namespace config. Authz: common/api/metadata.go:189"'),
+      file: z.string().describe('Repo-relative source file the accepted @entitles should be written to'),
+      line: z.number().int().positive().describe('1-indexed anchor line in `file` — normally the @exposes line the claim answers for'),
+      proposed_by: z.string().optional().describe('Agent or person filing this, e.g. "claude-code"'),
+    },
+    async ({ root, actor, capability, asset, threat, rationale, file, line, proposed_by }) => {
+      const { model } = await getModel(root);
+      try {
+        const result = await proposeEntitlement(root, {
+          actor, capability, asset, threat, rationale, file, line,
+          proposed_by: proposed_by || 'mcp-client',
+        }, { model });
+
+        if (result.refused) {
+          return { content: [{ type: 'text', text: `Refused: ${result.refused}` }] };
+        }
+
+        const lines = [
+          `${result.created ? 'Filed' : 'Replaced'} proposal ${result.proposal.id} in .guardlink/${PROPOSALS_FILE}.`,
+          'No source file was modified. A human must accept it: `guardlink entitle --accept ' + result.proposal.id + '`.',
+          result.proposal.inert
+            ? 'This claim cites no authorization code, so it would be INERT — say so to the user and offer to add a file:line pointer.'
+            : `Citation: ${result.proposal.citation!.raw}`,
+        ];
+        for (const w of result.warnings) lines.push(`WARNING ${w}`);
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Error: ${(err as Error).message}` }] };
+      }
+    },
+  );
+
+  // ── Tool: guardlink_entitlement_list ──
+  server.tool(
+    'guardlink_entitlement_list',
+    'List entitlement proposals and their decisions from .guardlink/entitlement-proposals.json. Use it to see what has been proposed, what a human accepted, and what was rejected or deferred — a rejected claim should not be re-filed, and an accepted one is already in source. Accepting is not available to agents: it is a human decision made with "guardlink entitle".',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      status: z.string().optional().describe('Filter by status: "proposed", "accepted,rejected", etc.'),
+    },
+    async ({ root, status }) => {
+      const statuses = status
+        ? status.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean) as ProposalStatus[]
+        : undefined;
+      try {
+        const proposals = await listProposals(root, { status: statuses });
+        if (proposals.length === 0) {
+          return { content: [{ type: 'text', text: 'No entitlement proposals recorded.' }] };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(proposals, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Error: ${(err as Error).message}` }] };
+      }
     },
   );
 

@@ -55,6 +55,8 @@ You will receive:
 - **@boundary** — a trust boundary between security zones
 - **@handles** — sensitive data classification (pii, phi, financial, secrets)
 - **@assumes** — a security assumption the developer is relying on (potential blind spot)
+- **@actor** — a principal in the authorization model (a role, not a person)
+- **@entitles** — a capability an actor holds **by design**: the privilege needed to trigger the effect is a privilege that already grants that effect. It is NOT a mitigation and NOT an acceptance — the exposure is still real and still testable. Only treat it as a reason a finding is by-design when the *measured* minimum privilege matches the entitled actor, and never for an ownership question (IDOR, tenant isolation), where both peers hold the capability. An entitlement whose description cites no authorization code is inert; ignore it.
 - **@audit** — marks an asset as requiring human review
 
 ## Critical rules

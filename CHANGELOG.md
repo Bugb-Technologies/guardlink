@@ -5,6 +5,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## \[Unreleased\]
 
+### Added
+
+- **`@actor` and `@entitles` — the principal and the capability held by design.** Two new verbs answer the one question the threat model had no field for: *is the caller already entitled to this effect?* `@actor Namespace_Admin (#ns-admin)` declares a principal in the authorization model (a role, not a person — distinct from `@owns`, which names a responsible team), and `@entitles #ns-admin to configure-archival-destination on #archival-fs -- "... Authz: common/api/metadata.go:189"` records that the privilege required to trigger an effect is a privilege that already grants that effect. Design: [`docs/prd/actor-entitlement-design.md`](docs/prd/actor-entitlement-design.md); spec: `docs/SPEC.md` §3.1, §3.2.
+
+  An entitlement is the only annotation whose error mode is a silent false negative, so three constraints are enforced rather than documented:
+
+  - **It never gates testing — only reporting.** Unlike `@mitigates` and `@accepts`, `@entitles` has *no export semantics*: the exposure stays unmitigated, stays in the SARIF, and stays testable. A regression test asserts the SARIF for a model with entitlements is byte-identical to the same model without them.
+  - **No citation, no effect.** An `@entitles` whose description carries no `file:line` pointer to the authorization code is **inert** — parsed and carried in the model so a reviewer can see the claim, but flagged by `guardlink validate` and ignored by consumers. `guardlink diff` reports an entitlement whose cited file changed as **stale** (not removed), even when the delta is otherwise empty.
+  - **It cannot answer an ownership question.** For IDOR / tenant-isolation classes both peers hold the capability, so entitlement cannot say *whose object it was*. Ownership stays measured and is deliberately absent from the grammar.
+
+  `<capability>` must be a single normalised identifier — prose there is a parse error, since it is the join key downstream consumers match on. `guardlink validate` errors on an `@entitles` naming an undeclared actor and on a duplicate actor id. Surfaced through `guardlink status`, `report` (Entitlements section + Roles & Access), the dashboard, `guardlink diff`, `guardlink sync`, and MCP (`guardlink_lookup "actors"` / `"entitlements [for #actor]"`, `guardlink_status`). Purely additive: a model with no `@actor`/`@entitles` parses and exports exactly as before.
+
 ### Removed
 
 - **Risk Topology graph removed from the dashboard Diagrams page.** The force-directed D3 view (`generateTopologyData`, the `Risk Topology` tab, and its client-side renderer/inspector) grew unreadably dense on large codebases — a hairball that obscured more than it showed. The three Mermaid views (Threat Graph, Data Flow, Attack Surface) remain, and the Threat Graph still auto-filters to high/critical with an *All severities* toggle. `generateTopologyData` and the `DiagramTopology*` types are gone from `src/dashboard/diagrams.js`.

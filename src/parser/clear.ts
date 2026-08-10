@@ -9,6 +9,9 @@
  * @exposes #parser to #path-traversal [high] cwe:CWE-22 -- "Glob patterns determine which files are modified"
  * @mitigates #parser against #path-traversal using #glob-filtering -- "DEFAULT_EXCLUDE blocks sensitive dirs; cwd constrains scope"
  * @audit #parser -- "Destructive operation requires explicit user confirmation via dryRun flag"
+ * @entitles #local-dev to clear-annotations on #parser -- "By design: guardlink clear exists to reset a project's annotations, and the operator already holds shell write access to the very tree it rewrites, so this is no privilege gain. Gate: dry-run preview, then a y/N prompt, then a hard refusal when stdin is not a TTY and --yes was not passed, at src/cli/index.ts:1071"
+ * @entitles #mcp-agent to preview-annotation-clear on #parser -- "By design: a connected agent may enumerate which annotation lines a clear would remove, because dry_run defaults to true at src/mcp/server.ts:505 so the read-only form is what the tool call gets unless the flag is set explicitly"
+ * @comment -- "Scope of the two @entitles above is deliberately narrow: #mcp-agent is granted the preview only and NOT clear-annotations, because no code makes an MCP caller obtain the confirmation its tool description asks for — under-grant beats over-grant (actor-entitlement design §2)"
  * @flows ProjectRoot -> #parser via fast-glob -- "File discovery path"
  * @flows #parser -> SourceFiles via writeFile -- "Modified file write path"
  * @handles internal on #parser -- "Operates on project source files only"
@@ -22,8 +25,8 @@ import { isStandaloneAnnotationFile, stripCommentPrefix } from './comment-strip.
 // ─── Known GuardLink verbs ──────────────────────────────────────────
 
 const GUARDLINK_VERBS = new Set([
-  'asset', 'threat', 'control',
-  'mitigates', 'exposes', 'confirmed', 'accepts', 'transfers', 'flows', 'boundary',
+  'asset', 'threat', 'control', 'actor',
+  'mitigates', 'exposes', 'confirmed', 'accepts', 'entitles', 'transfers', 'flows', 'boundary',
   'validates', 'audit', 'owns', 'handles', 'assumes',
   'comment', 'source', 'shield', 'shield:begin', 'shield:end',
   // v1 compat

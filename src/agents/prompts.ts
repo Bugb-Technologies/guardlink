@@ -15,6 +15,7 @@
  * @flows ThreatModel -> #agent-launcher via model -- "Model context injection"
  * @flows #agent-launcher -> AgentPrompt via return -- "Assembled prompt output"
  * @handles internal on #agent-launcher -- "Serializes threat model IDs and flows into prompt"
+ * @comment -- "The @entitles section instructs agents to file a proposal rather than write the annotation: the rule itself is enforced in src/review/entitlements.ts (an @entitles with no accepted proposal is a validation error), because a prompt is guidance and this claim needs a gate (actor-entitlement design §3.6)"
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -191,6 +192,7 @@ At each boundary crossing and data transformation, ask:
 - Is there an assumption that could be violated? (@assumes)
 - Does this need human security review? (@audit)
 - Is this risk handled by someone else? (@transfers)
+- Is the privilege this requires already meant to grant this effect? (@entitles — cite the authz code, and never for an ownership question)
 
 ### Step 4: Write Coupled Annotation Blocks
 NEVER write a single annotation in isolation. Every annotated location should tell a complete story.
@@ -307,6 +309,41 @@ Don't rate everything P0. A SQL injection in an admin-only internal tool is diff
 ### @comment — Always Add Context
 Every annotation block should include at least one @comment explaining non-obvious security decisions, assumptions, or context that helps future developers (and AI tools) understand the "why".
 
+### @entitles — Propose, Never Grant
+@entitles states that an actor is entitled to a capability **by design** — the answer to "is the caller already allowed to do this?". Reach for it when a finding requires a privilege that is *supposed* to have that effect (a namespace admin setting namespace config, a cluster operator managing cluster endpoints).
+
+It is not @mitigates and not @accepts: it has **no effect on what gets exported or tested**. The exposure is still probed, still in the SARIF, still real. Only the downstream *recommendation* changes.
+
+Rules you must follow:
+1. **Never write @entitles into a source file.** You *propose* it; a human accepts it. Use the \`guardlink_entitlement_propose\` MCP tool if you have it, otherwise the CLI below. The proposal lands in \`.guardlink/entitlement-proposals.json\` and nothing else changes. An @entitles in source with no accepted proposal behind it is a validation error, so writing one directly does not save anyone time.
+2. **Cite the authorization code.** Put a \`file:line\` pointer to the authz check in the rationale. Without one the annotation is inert — it is parsed and then ignored, so an uncited entitlement is wasted work, and a human has to acknowledge the inertness before it can even be accepted.
+3. **Never for an ownership question.** IDOR, tenant isolation, CWE-639/862/863: both peers hold the capability, so entitlement cannot say *whose object it was*. Use @exposes + @audit there. Pass the threat you are answering for when you propose, so the ownership-class check can see it.
+4. **Under-grant, don't over-grant.** Naming too narrow an actor costs noise; naming too broad an actor can close a real privilege escalation as by-design. When unsure which role the code actually requires, write @comment describing what you saw and let a human decide.
+5. **Declare the actor first.** \`@actor <Name> (#id)\` belongs in the definitions file next to @asset/@threat/@control; an @entitles naming an undeclared actor is a validation error.
+
+\`\`\`
+// In the definitions file — declaring the principal is yours to do:
+// @actor Namespace_Admin (#ns-admin) -- "Administers one namespace's configuration"
+\`\`\`
+
+Then propose the entitlement instead of writing it:
+
+\`\`\`
+guardlink entitle --propose \\
+  --actor "#ns-admin" --capability configure-archival-destination \\
+  --asset "#archival-fs" --threat "#path-traversal" \\
+  --file common/archiver/filestore/archiver.go --line 61 \\
+  --rationale "By design: the archival URI is namespace configuration. Authz: ScopeCluster/AccessAdmin at common/api/metadata.go:189" \\
+  --proposed-by "annotating-agent"
+\`\`\`
+
+Report what you proposed at the end of your run, and tell the user to review it with \`guardlink entitle\`. If they accept, the annotation below is what lands — written by the accept step, with their name on it:
+
+\`\`\`
+// @entitles #ns-admin to configure-archival-destination on #archival-fs
+//     -- "By design: the archival URI is namespace configuration. Authz: ScopeCluster/AccessAdmin at common/api/metadata.go:189"
+\`\`\`
+
 ### @accepts — NEVER USE (Human-Only Decision)
 @accepts marks a risk as intentionally unmitigated. This is a **human-only governance decision** — it requires conscious risk ownership by a person or team.
 As an AI agent, you MUST NEVER write @accepts annotations. You cannot accept risk on behalf of humans.
@@ -378,6 +415,7 @@ Definitions go in .guardlink/definitions.{ts,js,py,rs}. Relationship annotations
 // @audit #auth -- "Session token rotation logic needs cryptographic review"
 // @assumes #auth -- "Upstream API gateway has already validated TLS and rate-limited requests"
 // @owns security-team for #auth -- "Security team reviews all auth PRs"
+// @entitles #tenant-admin to rotate-signing-key on #auth -- "By design: key rotation is tenant admin scope. Authz: src/authz/scopes.ts:88"
 // @feature "SSO Login" -- "Single sign-on authentication flow"
 // @comment -- "Password hashing uses bcrypt with cost factor 12, migration from SHA256 completed in v2.1"
 // @shield:end

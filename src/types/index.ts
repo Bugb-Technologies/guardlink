@@ -13,9 +13,9 @@ export type DataClassification = 'pii' | 'phi' | 'financial' | 'secrets' | 'inte
 
 export type AnnotationVerb =
   // Definition
-  | 'asset' | 'threat' | 'control'
+  | 'asset' | 'threat' | 'control' | 'actor'
   // Relationship
-  | 'mitigates' | 'exposes' | 'accepts' | 'transfers' | 'flows' | 'boundary'
+  | 'mitigates' | 'exposes' | 'accepts' | 'transfers' | 'flows' | 'boundary' | 'entitles'
   // Evidence
   | 'confirmed'
   // Lifecycle
@@ -67,6 +67,17 @@ export interface ControlAnnotation extends BaseAnnotation {
   id?: string;
 }
 
+/**
+ * A principal in the system's authorization model — a role, not a person.
+ * Declared once per project alongside @asset/@threat/@control.
+ */
+export interface ActorAnnotation extends BaseAnnotation {
+  verb: 'actor';
+  name: string;
+  canonical_name: string;
+  id?: string;
+}
+
 export interface MitigatesAnnotation extends BaseAnnotation {
   verb: 'mitigates';
   asset: string;
@@ -94,6 +105,34 @@ export interface AcceptsAnnotation extends BaseAnnotation {
   verb: 'accepts';
   threat: string;
   asset: string;
+}
+
+/**
+ * States that an actor is legitimately entitled to a capability — i.e. the
+ * privilege required to trigger an effect is a privilege that already grants
+ * that effect by design.
+ *
+ * Carries NO export semantics: unlike @mitigates/@accepts it never removes an
+ * exposure from SARIF and never gates testing. It only informs downstream
+ * triage. See docs/prd/actor-entitlement-design.md §3.2.
+ */
+export interface EntitlesAnnotation extends BaseAnnotation {
+  verb: 'entitles';
+  /** Actor ref — `#id` or a declared actor name */
+  actor: string;
+  /** Capability as written (single normalised identifier, never prose) */
+  capability: string;
+  /**
+   * §2.10-normalised capability. NOT a join key (§9.3): nothing on the finding
+   * side carries a capability, so there is nothing for it to match against. It
+   * is the justification — the operation a reviewer reads to judge whether the
+   * claim is honest — plus a stable label to group claims by.
+   */
+  canonical_capability: string;
+  /** `on <asset>` — half of the `(actor, asset, threat)` join (§9.3) */
+  asset?: string;
+  /** `against <threat>` — the other half. Absent means the claim joins nothing. */
+  threat?: string;
 }
 
 export interface TransfersAnnotation extends BaseAnnotation {
@@ -162,10 +201,12 @@ export type Annotation =
   | AssetAnnotation
   | ThreatAnnotation
   | ControlAnnotation
+  | ActorAnnotation
   | MitigatesAnnotation
   | ExposesAnnotation
   | ConfirmedAnnotation
   | AcceptsAnnotation
+  | EntitlesAnnotation
   | TransfersAnnotation
   | FlowsAnnotation
   | BoundaryAnnotation
@@ -242,6 +283,11 @@ export interface ThreatModel {
   assets: ThreatModelAsset[];
   threats: ThreatModelThreat[];
   controls: ThreatModelControl[];
+  /** Declared principals (@actor). Optional so report JSON written before
+   *  v1.6 still satisfies the schema — always populated by parseProject. */
+  actors?: ThreatModelActor[];
+  /** Entitlement claims (@entitles). Optional for the same reason as `actors`. */
+  entitlements?: ThreatModelEntitlement[];
   mitigations: ThreatModelMitigation[];
   exposures: ThreatModelExposure[];
   confirmed: ThreatModelConfirmed[];
@@ -283,6 +329,69 @@ export interface ThreatModelControl {
   canonical_name: string;
   id?: string;
   description?: string;
+  location: SourceLocation;
+}
+
+export interface ThreatModelActor {
+  name: string;
+  canonical_name: string;
+  id?: string;
+  description?: string;
+  location: SourceLocation;
+}
+
+/**
+ * A file:line pointer, extracted from an @entitles description, at the
+ * authorization code that grants the entitlement. §3.4: no citation, no effect.
+ */
+export interface EntitlementCitation {
+  /** Path as written in the description (e.g. "common/api/metadata.go") */
+  file: string;
+  /** Line number if the citation carried one */
+  line?: number;
+  /** The citation token verbatim, for display */
+  raw: string;
+}
+
+/**
+ * Why an entitlement may not demote a finding. `uncited` (§3.4) and the two
+ * halves of the join (§9.3) are independent conditions, reported separately
+ * because a reviewer fixing the claim needs to know which one is missing (§9.8).
+ */
+export type EntitlementDemotionBlocker = 'uncited' | 'no-asset' | 'no-threat';
+
+export interface ThreatModelEntitlement {
+  actor: string;
+  capability: string;
+  /**
+   * §2.10-normalised capability. NOT the join key — the join is
+   * `(actor, asset, threat)` (§9.3). Triage holds an `(asset, threat)` pair and
+   * a measured role; no capability is recorded anywhere on the finding side, so
+   * a capability-keyed join could never match. What this field carries is the
+   * justification a reviewer reads, and a label to group claims by.
+   */
+  canonical_capability: string;
+  /** `on <asset>` — half of the join key (§9.3) */
+  asset?: string;
+  /** `against <threat>` — the other half of the join key (§9.3) */
+  threat?: string;
+  description?: string;
+  /** Extracted from `description`; absent when the claim is uncited */
+  citation?: EntitlementCitation;
+  /**
+   * True when no citation could be extracted. An inert entitlement is parsed
+   * and carried in the model but MUST NOT demote a finding (§3.4).
+   */
+  inert: boolean;
+  /**
+   * True when `asset` or `threat` is missing, so the claim joins nothing and
+   * MUST NOT demote a finding (§9.3). Stored rather than left to the reader for
+   * the same reason `inert` is: the imprecise form is deliberately not an error
+   * and not a warning, so nothing else warns a consumer about it. Independent of
+   * `inert` — a claim can be cited and imprecise, or precise and uncited. Use
+   * `canEntitlementDemote` rather than ANDing these two by hand.
+   */
+  imprecise: boolean;
   location: SourceLocation;
 }
 

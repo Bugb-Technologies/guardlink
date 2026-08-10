@@ -305,6 +305,35 @@ export function generateReport(model: ThreatModel): string {
     lines.push('');
   }
 
+  // ── Entitlements ──
+  // Printed with the citation, and with the demotion reason spelled out. §3.3:
+  // an over-grant is the failure mode that matters, and the only way it gets
+  // caught is a human reading the sentence and disagreeing with it.
+  if ((model.entitlements || []).length > 0) {
+    lines.push('## Entitlements');
+    lines.push('');
+    lines.push('Capabilities that a principal is claimed to hold **by design**. An entitlement never');
+    lines.push('suppresses a finding and never gates testing — it only changes what downstream triage');
+    lines.push('recommends. Each claim must cite the authorization code that grants it; an uncited');
+    lines.push('claim is inert and has no effect.');
+    lines.push('');
+    for (const en of model.entitlements!) {
+      const scope = en.asset ? ` on ${en.asset}` : '';
+      const cite = en.citation
+        ? `cites \`${en.citation.raw}\``
+        : '**uncited — inert**';
+      const desc = en.description ? ` — ${en.description}` : '';
+      lines.push(`- **${en.actor}** entitled to \`${en.capability}\`${scope} — ${cite}${desc} (${en.location.file}:${en.location.line})`);
+    }
+    lines.push('');
+
+    const inert = model.entitlements!.filter(e => e.inert).length;
+    if (inert > 0) {
+      lines.push(`⚠ ${inert} entitlement(s) cite no authorization code and are therefore inert.`);
+      lines.push('');
+    }
+  }
+
   // ── Assumptions ──
   if (model.assumptions.length > 0) {
     lines.push('## Assumptions');
@@ -769,6 +798,30 @@ function emitDataInventory(model: ThreatModel, hasAI: boolean, lines: string[]):
 }
 
 function emitRolesAccess(model: ThreatModel, lines: string[]): void {
+  // ── Declared principals ──
+  // Unlike the inferred actors further down, these are written down: @actor is
+  // the authorization model as the maintainers state it, and each entitlement
+  // is a claim that some capability is a principal's by design.
+  const declared = model.actors || [];
+  if (declared.length > 0) {
+    lines.push('### Declared Principals');
+    lines.push('');
+    for (const ac of declared) {
+      const ref = ac.id ? `#${ac.id}` : ac.canonical_name;
+      const held = (model.entitlements || []).filter(en =>
+        (en.actor.startsWith('#') ? en.actor.slice(1) : en.actor) === (ac.id || ac.canonical_name)
+      );
+      const desc = ac.description ? ` — ${ac.description}` : '';
+      lines.push(`- **${ac.name}** (\`${ref}\`)${desc}`);
+      for (const en of held) {
+        const scope = en.asset ? ` on ${en.asset}` : '';
+        const cite = en.citation ? ` [cites \`${en.citation.raw}\`]` : ' [uncited — inert]';
+        lines.push(`  - entitled to \`${en.capability}\`${scope}${cite}`);
+      }
+    }
+    lines.push('');
+  }
+
   // ── Owners / Internal Actors ──
   if (model.ownership.length > 0) {
     lines.push('### Ownership & Internal Actors');
