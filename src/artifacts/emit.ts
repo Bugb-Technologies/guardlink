@@ -212,8 +212,15 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
   }
 
   // The model itself, canonically ordered so a diff is a real change.
+  //
+  // `generated_at` is dropped for the same reason it is absent from the .mmd
+  // headers, and harder here: model.json is the artifact GL-304 justified
+  // committing SPECIFICALLY so that "this PR added an exposure" shows up in
+  // review. A permanent one-line diff on every commit would train reviewers to
+  // skip the one file whose diffs were supposed to matter.
+  const { generated_at, ...durableModel } = ordered;
   write(join(guardlinkDir, 'model.json'), '.guardlink/model.json',
-    JSON.stringify(ordered, null, 2) + '\n');
+    JSON.stringify(durableModel, null, 2) + '\n');
 
   // Committed, so content-derived only — same rule as the .mmd headers.
   const manifestBody = JSON.stringify({

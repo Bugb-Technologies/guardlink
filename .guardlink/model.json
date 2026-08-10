@@ -1,7 +1,6 @@
 {
   "version": "1.1.0",
   "project": "unknown",
-  "generated_at": "2026-08-09T16:00:59.228Z",
   "source_files": 77,
   "annotations_parsed": 351,
   "annotated_files": [
@@ -3389,13 +3388,13 @@
       "reason": "graph/README example content, excluded from parsing",
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 283
+        "line": 290
       }
     },
     {
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 352
+        "line": 359
       }
     },
     {

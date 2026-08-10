@@ -275,3 +275,45 @@ describe('GL-302 — drift detection', () => {
     expect(checkArtifactDrift(root, after).length).toBeGreaterThan(0);   // …annotation drift is
   });
 });
+
+// ─── F0/D26: model.json carries no volatile field either ─────────────
+
+describe('F0 — model.json is byte-stable across regenerations', () => {
+  let root: string;
+  let model: ThreatModel;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'guardlink-f0-'));
+    await mkdir(join(root, 'src'), { recursive: true });
+    await writeFile(join(root, 'src', 'api.ts'), SOURCE);
+    ({ model } = await parseProject({ root, project: 'art' }));
+  });
+
+  afterEach(async () => { await rm(root, { recursive: true, force: true }); });
+
+  it('carries no generated_at', async () => {
+    emitArtifacts({ root, model });
+    const written = JSON.parse(await readFile(join(root, '.guardlink', 'model.json'), 'utf-8'));
+    expect(written.generated_at).toBeUndefined();
+  });
+
+  it('two consecutive regenerations are byte-identical', async () => {
+    // model.json is the artifact GL-304 justified committing so that a new
+    // exposure is visible in review. A one-line diff on every commit would
+    // train reviewers to skip exactly that signal.
+    emitArtifacts({ root, model });
+    const first = await readFile(join(root, '.guardlink', 'model.json'), 'utf-8');
+    await new Promise(r => setTimeout(r, 5));
+    emitArtifacts({ root, model });
+    expect(await readFile(join(root, '.guardlink', 'model.json'), 'utf-8')).toBe(first);
+  });
+
+  it('a real model change still changes it', async () => {
+    emitArtifacts({ root, model });
+    const before = await readFile(join(root, '.guardlink', 'model.json'), 'utf-8');
+    await writeFile(join(root, 'src', 'api.ts'), SOURCE.replace('[critical]', '[low]'));
+    const { model: after } = await parseProject({ root, project: 'art' });
+    emitArtifacts({ root, model: after });
+    expect(await readFile(join(root, '.guardlink', 'model.json'), 'utf-8')).not.toBe(before);
+  });
+});

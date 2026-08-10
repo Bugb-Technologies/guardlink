@@ -30,7 +30,7 @@
     },
     {
       "path": ".guardlink/model.json",
-      "bytes": 94046,
+      "bytes": 94000,
       "annotation_hash": "sha256-v1:0a695cb5d589161a45a198f34419459a9a5f683558356a89035ea5bcc1a41a87"
     }
   ]
