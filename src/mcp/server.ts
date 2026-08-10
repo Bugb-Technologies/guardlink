@@ -45,7 +45,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, clearAnnotations } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, clearAnnotations, applyAnnotations } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
 import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
 import { getReviewableExposures, applyReviewAction, type ReviewableExposure } from '../review/index.js';
@@ -446,6 +446,27 @@ export function createServer(): McpServer {
       return {
         content: [{ type: 'text', text: JSON.stringify({ traversal, model: sub }, null, 2) }],
       };
+    },
+  );
+
+  // ── Tool: guardlink_annotate_apply ──
+  registerTool(
+    server, cache,
+    'guardlink_annotate_apply',
+    'Write a validated @source block into the annotation sidecar for a file. Unlike guardlink_annotate — which returns a prompt for you to act on — this writes the annotations itself, into .guardlink/annotations/, never into source. Every line is re-parsed before anything touches disk; malformed input is rejected with the reason. Idempotent: re-applying the same block is a no-op, not a duplicate. Refuses @accepts, which is a human governance decision.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      file: z.string().describe('Source file the annotations describe. The sidecar path is derived from it; you do not choose where it is written.'),
+      line: z.number().describe('Line in that file the block anchors to'),
+      symbol: z.string().describe('Enclosing symbol name. Strongly recommended — it is what lets guardlink_reanchor detect drift after a refactor.').optional(),
+      annotations: z.array(z.string()).describe('Raw GAL lines with no comment prefix, e.g. [\'@exposes #api to #sqli [critical] -- "concatenated"\']. Do NOT include @source; the header is generated.'),
+      dry_run: z.boolean().describe('Validate and return the diff without writing').default(false),
+    },
+    async ({ root, file, line, symbol, annotations, dry_run }) => {
+      const result = applyAnnotations({ root, file, line, symbol, annotations, dryRun: dry_run });
+      // Any tool that writes must invalidate — the D11/D5 lesson.
+      if (result.status === 'written' && !dry_run) invalidateCache();
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     },
   );
 
