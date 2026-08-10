@@ -12,8 +12,15 @@
 import type { ThreatModel, ThreatModelExposure, Severity } from '../types/index.js';
 import { generateMermaid } from './mermaid.js';
 import { generateSequenceDiagram } from './sequence.js';
+import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 
-export function generateReport(model: ThreatModel): string {
+/**
+ * D23 — canonicalise at the emission boundary. See generateMermaid for the why;
+ * the report embeds two diagrams and its own tables, all of which inherited
+ * glob order.
+ */
+export function generateReport(rawModel: ThreatModel): string {
+  const model = canonicalizeModelOrder(rawModel);
   const lines: string[] = [];
 
   // ── Pre-compute shared data ──

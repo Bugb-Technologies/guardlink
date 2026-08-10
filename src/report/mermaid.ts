@@ -39,6 +39,7 @@
  */
 
 import type { ThreatModel } from '../types/index.js';
+import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 
 /** Sanitize for Mermaid node IDs */
 function nid(name: string): string {
@@ -61,7 +62,22 @@ function trunc(s: string, max = 30): string {
   return s.length <= max ? s : s.slice(0, max - 1) + '…';
 }
 
-export function generateMermaid(model: ThreatModel): string {
+/**
+ * D23 — canonicalise at the emission boundary, not in the parser.
+ *
+ * `parseProject` walks with fast-glob, which returns files in completion order
+ * under concurrency: stable within a process, not between two. Anything durable
+ * that inherits that order churns. a921afa fixed it for artifacts and 096c291
+ * for the dashboard; `report --diagram-only` was the last output that did not.
+ * Measured before this: three runs in three processes produced two distinct
+ * sha256 hashes, differing by whole node blocks.
+ *
+ * Applied here rather than at the call site so every caller — CLI, TUI, MCP —
+ * gets it without having to remember. Sorting a sorted model is a no-op, so
+ * `generateReport` canonicalising before it calls this costs nothing.
+ */
+export function generateMermaid(rawModel: ThreatModel): string {
+  const model = canonicalizeModelOrder(rawModel);
   const lines: string[] = [];
 
   // ── Build mitigation coverage map ──

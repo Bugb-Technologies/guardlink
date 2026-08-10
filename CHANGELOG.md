@@ -33,6 +33,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **`guardlink report` output is now deterministic across processes (D23).** `generateMermaid`
+  and `generateReport` canonicalise the model at the emission boundary, the same place and for
+  the same reason as the artifact fix in `a921afa` and the dashboard fix in `096c291`.
+  `parseProject` walks with fast-glob, which returns files in completion order under
+  concurrency — stable within a process, not between two — so anything that inherited that
+  order churned. Measured before: three `report --diagram-only` runs in three processes
+  produced two distinct sha256 hashes, differing by whole node blocks. After: byte-identical.
+  **This changes `report --diagram-only` output** — nodes and edges are emitted in a
+  deterministic order rather than glob order, so a diff against a previously captured diagram
+  will show reordering once. Nothing is added or removed. The parser is untouched: parse output
+  order is observable behaviour and stays fenced.
+  The full markdown report remains byte-identical apart from its two `Generated: <iso>` lines.
+  `threat-model.md` is git-ignored and rebuilt on demand, so a clock there is deliberate and is
+  not the tracked-file class D25/D26 ruled on.
+
 - **`init --mode` and `init --no-root-files` are now separate flags (GL-506), and the
   default annotation mode is `external`.** `--mode external` previously meant two unrelated
   things at once — annotations go in sidecars, *and* init writes nothing outside
@@ -59,8 +74,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   shapes and keeps controls in the report's table rather than in the graph.
   `src/dashboard/diagrams.ts` renders left-to-right with controls as nodes, and is the set
   the emitted `.guardlink/graph/*.mmd` artifacts come from. These are different projections
-  for different consumers, not a duplicated implementation. **`report --diagram-only` output
-  is unchanged.** The precedent of 5ca53eb (removing the D3 topology view) does not apply:
+  for different consumers, not a duplicated implementation. **The GL-303 decision itself
+  changes nothing about `report --diagram-only`'s content**; its node ORDER did change, once,
+  under D23 above. The precedent of 5ca53eb (removing the D3 topology view) does not apply:
   that was removed for being both redundant *and* illegible at scale, and neither is true
   here — the report generator has an explicit compact mode above 15 unmitigated exposures.
 - **GL-304 — derived artifacts are committed.** `.guardlink/model.json` and
