@@ -799,7 +799,6 @@ ${userMessage}
         analysisPrompt,
         root,
         (text) => process.stdout.write(text),
-        { autoYes: true },
       );
 
       if (result.error) {
@@ -1003,7 +1002,13 @@ program
 
     if (agent.cmd && result.launched) {
       // Agent exited — suggest next step
-      console.log(`\n✓ ${agent.name} session ended.`);
+      // D31 — a non-zero exit is a failed run, not a finished one.
+      if (result.exitCode != null && result.exitCode !== 0) {
+        console.error(`\n✗ ${agent.name} exited with code ${result.exitCode}.`);
+        process.exitCode = 1;
+      } else {
+        console.log(`\n✓ ${agent.name} session ended.`);
+      }
       console.log('  Run: guardlink parse  to update the threat model.');
     } else if (agent.app && result.launched) {
       console.log(`✓ ${agent.name} launched with project: ${project}`);
@@ -1100,7 +1105,13 @@ program
     }
 
     if (agent.cmd && result.launched) {
-      console.log(`\n✓ ${agent.name} session ended.`);
+      // D31 — a non-zero exit is a failed run, not a finished one.
+      if (result.exitCode != null && result.exitCode !== 0) {
+        console.error(`\n✗ ${agent.name} exited with code ${result.exitCode}.`);
+        process.exitCode = 1;
+      } else {
+        console.log(`\n✓ ${agent.name} session ended.`);
+      }
       console.log('  Expected output location: .guardlink/cxg-templates/');
       console.log('  Note: Templates are generated only, not executed.');
     } else if (agent.app && result.launched) {
@@ -1192,7 +1203,13 @@ program
     }
 
     if (agent.cmd && result.launched) {
-      console.log(`\n✓ ${agent.name} session ended.`);
+      // D31 — a non-zero exit is a failed run, not a finished one.
+      if (result.exitCode != null && result.exitCode !== 0) {
+        console.error(`\n✗ ${agent.name} exited with code ${result.exitCode}.`);
+        process.exitCode = 1;
+      } else {
+        console.log(`\n✓ ${agent.name} session ended.`);
+      }
     } else if (agent.app && result.launched) {
       console.log(`✓ ${agent.name} launched with project: ${project}`);
       console.log('\nPaste (Cmd+V) the prompt in the AI chat panel.');

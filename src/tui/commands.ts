@@ -1381,7 +1381,6 @@ export async function cmdThreatReport(args: string, ctx: TuiContext): Promise<vo
       analysisPrompt,
       ctx.root,
       (text) => process.stdout.write(text),
-      { autoYes: true },
     );
 
     if (result.error) {
@@ -1530,7 +1529,12 @@ export async function cmdAnnotate(args: string, ctx: TuiContext): Promise<void> 
       }
     } else {
       console.log('');
-      console.log(C.success(`  ✓ ${agent.name} session ended.`));
+      // D31 — a non-zero exit is a failed run, not a finished one.
+      if (result.exitCode != null && result.exitCode !== 0) {
+        console.log(C.error(`  ✗ ${agent.name} exited with code ${result.exitCode}.`));
+      } else {
+        console.log(C.success(`  ✓ ${agent.name} session ended.`));
+      }
       console.log(`  Run ${C.bold('/parse')} to update the threat model.`);
     }
   } else {
@@ -1609,7 +1613,6 @@ Keep responses under 500 words unless the user asks for detail.`;
       prompt,
       ctx.root,
       (chunk) => process.stdout.write(chunk),
-      { autoYes: true }
     );
 
     if (result.error) {

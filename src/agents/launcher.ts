@@ -200,13 +200,6 @@ export async function launchAgentInline(
   prompt: string,
   cwd: string,
   onChunk?: (text: string) => void,
-  // D30 — UNIMPLEMENTED, NOT UNUSED. All three call sites (cli/index.ts:797,
-  // tui/commands.ts:1379 and :1607) pass `{ autoYes: true }` and nothing reads
-  // it. Deleting the parameter would silently change three callers' intent from
-  // "ignored" to "never asked for"; implementing it is a behaviour change that
-  // needs its own decision. Kept, flagged, and logged in the defect ledger.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  opts?: { autoYes?: boolean }
 ): Promise<InlineResult> {
   if (!agent.cmd) {
     return { content: '', error: `${agent.name} is not a terminal agent — cannot run inline` };
@@ -295,9 +288,27 @@ export async function launchAgentInline(
 // ─── Unified agent launch ────────────────────────────────────────────
 
 export interface LaunchResult {
+  /**
+   * We successfully STARTED the agent — not that it succeeded.
+   *
+   * D31: the distinction matters because IDE agents have no exit status at all
+   * (`launched with project` is the only claim that can be made about opening an
+   * app), so this field cannot be redefined to mean "it worked" without making
+   * those call sites wrong. Terminal agents get `exitCode` for that.
+   */
   launched: boolean;
   clipboardCopied: boolean;
   error?: string;
+  /**
+   * The terminal agent's process exit status; null for IDE and clipboard agents,
+   * and for a spawn that failed before the process ran (`error` carries that).
+   *
+   * D31: this used to be discarded. `launchAgentForeground` has always returned
+   * it, and the caller checked only `error`, so an agent that exited NON-ZERO
+   * without a spawn error was rendered as "✓ session ended". A failed run looked
+   * like a successful one.
+   */
+  exitCode?: number | null;
 }
 
 /**
@@ -324,15 +335,11 @@ export function launchAgent(agent: AgentEntry, prompt: string, cwd: string): Lau
 
   // Step 3: Terminal agent — foreground spawn
   if (agent.cmd) {
-    // D31 — `exitCode` is a real process exit status and is discarded: an agent
-    // that exits non-zero WITHOUT a spawn error is reported as `launched: true`.
-    // Propagating it is a behaviour change, so it is flagged rather than fixed here.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { exitCode, error } = launchAgentForeground(agent, cwd);
     if (error) {
-      return { launched: false, clipboardCopied, error };
+      return { launched: false, clipboardCopied, error, exitCode };
     }
-    return { launched: true, clipboardCopied };
+    return { launched: true, clipboardCopied, exitCode };
   }
 
   // Step 4: IDE agent — open app
