@@ -1,8 +1,8 @@
 {
   "version": "1.1.0",
   "project": "unknown",
-  "source_files": 83,
-  "annotations_parsed": 385,
+  "source_files": 84,
+  "annotations_parsed": 386,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -39,6 +39,7 @@
     "src/parser/annotation-mode.ts",
     "src/parser/apply-annotations.ts",
     "src/parser/canonical-order.ts",
+    "src/parser/canonical-ref.ts",
     "src/parser/clear.ts",
     "src/parser/coverage.ts",
     "src/parser/feature-filter.ts",
@@ -704,7 +705,7 @@
       "description": "join() constrains reads to .guardlink/",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 761
+        "line": 762
       }
     },
     {
@@ -2321,7 +2322,7 @@
       "description": "Reads CXG scan results for dashboard and report context",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 688
+        "line": 689
       }
     },
     {
@@ -3451,7 +3452,7 @@
       "description": "Processes pentest scan output (JSON/SARIF)",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 689
+        "line": 690
       }
     },
     {
@@ -3560,91 +3561,91 @@
       "reason": "Example annotation block for reference, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 206
+        "line": 208
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 219
+        "line": 221
       }
     },
     {
       "reason": "Description examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 226
+        "line": 228
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 236
+        "line": 238
       }
     },
     {
       "reason": "Flow examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 243
+        "line": 245
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 252
+        "line": 254
       }
     },
     {
       "reason": "Boundary examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 259
+        "line": 261
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 265
+        "line": 267
       }
     },
     {
       "reason": "@accepts alternative examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 324
+        "line": 326
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 334
+        "line": 336
       }
     },
     {
       "reason": "Definition syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 361
+        "line": 363
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 365
+        "line": 367
       }
     },
     {
       "reason": "Relationship syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 370
+        "line": 372
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 385
+        "line": 387
       }
     },
     {
@@ -3664,26 +3665,26 @@
       "reason": "Placement examples for both modes; they would otherwise parse as real annotations",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 38
+        "line": 39
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 116
+        "line": 117
       }
     },
     {
       "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 758
+        "line": 764
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1048
+        "line": 1059
       }
     }
   ],
@@ -3889,6 +3890,13 @@
       }
     },
     {
+      "description": "Aliasing can only ever ADD coverage, so the map is built from declared assets only; an undeclared ref resolves to itself, which is the pre-D47 behaviour",
+      "location": {
+        "file": "src/parser/canonical-ref.ts",
+        "line": 37
+      }
+    },
+    {
       "description": "Inline annotations never carry parent_symbol (parse-file.ts populates it only from @source), so this rule is inert in every inline repo — measured: 0 of 74 exposures change state on guardlink, 0 of 61 on specter-v1, 2 of 11 on expense-api",
       "location": {
         "file": "src/parser/coverage.ts",
@@ -4017,8 +4025,8 @@
   ],
   "coverage": {
     "total_symbols": 0,
-    "annotated_symbols": 385,
-    "coverage_percent": 72,
+    "annotated_symbols": 386,
+    "coverage_percent": 73,
     "unannotated_critical": []
   },
   "external_refs": []

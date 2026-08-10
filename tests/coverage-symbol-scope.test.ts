@@ -217,15 +217,34 @@ describe('D36 — properties of the predicate', () => {
     expect(diffModels(model, model).summary.newUnmitigated).toBe(0);
   });
 
-  it('does NOT resolve a dotted path to its #id — a known, deliberate limit', async () => {
+  it('resolves a dotted path to its #id — D47, fixed', async () => {
     const { model } = await build(`@source file:app/db.py line:1 symbol:find_expenses
 @exposes #db to #sqli [critical] -- "hash form"
 @mitigates Svc.Db against #sqli using #prepared -- "same asset, written as its dotted path"
 `);
-    // `Svc.Db` and `#db` are the same asset, and `guardlink_graph` resolves them
-    // to one node. Coverage does not, and this pins that rather than hiding it:
-    // teaching coverage to alias would ADD coverage, which is the direction that
-    // hides vulnerabilities, and it predates D36. Logged as D47, not fixed here.
+    // `Svc.Db` and `#db` are the same asset — the definitions file declares
+    // `@asset Svc.Db (#db)`. `guardlink_graph` always resolved them to one node;
+    // coverage did not, so two tools disagreed about one model.
+    //
+    // This assertion used to expect 1, pinning the gap on purpose: aliasing ADDS
+    // coverage, the direction that hides vulnerabilities. It was fixed only
+    // after measuring that it moves nothing anywhere real — 0 exposures change
+    // state on expense-api, guardlink or specter-v1 — because the resolver is
+    // built from DECLARED assets only. See the guard below.
+    expect(findUnmitigatedExposures(model)).toHaveLength(0);
+  });
+
+  it('does NOT alias an UNDECLARED dotted path — the over-resolution guard', async () => {
+    // The failure aliasing could introduce, and the reason D47 sat open: a
+    // mitigation naming something that merely looks related must not answer for
+    // a live exposure. `Other.Thing` is declared nowhere, so it resolves to
+    // itself and covers nothing. Without this, the fix could silently mark real
+    // vulnerabilities as handled — exactly what D36 exists to prevent.
+    const { model } = await build(`@source file:app/db.py line:1 symbol:find_expenses
+@exposes #db to #sqli [critical] -- "real, live exposure"
+@source file:app/db.py line:5 symbol:insert_expense
+@mitigates Other.Thing against #sqli using #prepared -- "a different, undeclared asset"
+`);
     expect(findUnmitigatedExposures(model)).toHaveLength(1);
   });
 

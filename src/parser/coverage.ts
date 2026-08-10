@@ -71,6 +71,7 @@ import type {
   ThreatModel, ThreatModelExposure, ThreatModelMitigation, ThreatModelAcceptance,
   SourceLocation,
 } from '../types/index.js';
+import { canonicaliser } from './canonical-ref.js';
 
 /** Strip a leading `#` and case so `#sqli`, `sqli` and `SQLi` compare equal. */
 export function normalizeRef(ref: string): string {
@@ -101,9 +102,20 @@ function anchorsContradict(cover: SitedRelation, exposure: SitedRelation): boole
     && a !== b;
 }
 
-/** Does this mitigation or acceptance cover this exposure? */
-export function coversExposure(cover: SitedRelation, exposure: SitedRelation): boolean {
-  return normalizeRef(cover.asset) === normalizeRef(exposure.asset)
+/**
+ * Does this mitigation or acceptance cover this exposure?
+ *
+ * `assetKey` canonicalises the asset dimension (D47). Pass the model's
+ * canonicaliser to resolve a dotted path to its `#id`; omit it and asset refs
+ * compare on `normalizeRef` alone, which is the pre-D47 behaviour and is what
+ * a caller holding two relations but no model gets.
+ */
+export function coversExposure(
+  cover: SitedRelation,
+  exposure: SitedRelation,
+  assetKey: (ref: string) => string = normalizeRef,
+): boolean {
+  return assetKey(cover.asset) === assetKey(exposure.asset)
     && normalizeRef(cover.threat) === normalizeRef(exposure.threat)
     && !anchorsContradict(cover, exposure);
 }
@@ -125,10 +137,10 @@ export interface CoverageIndex {
   mitigationsFor(exposure: SitedRelation): ThreatModelMitigation[];
 }
 
-function indexByPair<T extends SitedRelation>(rows: T[]): Map<string, T[]> {
+function indexByPair<T extends SitedRelation>(rows: T[], assetKey: (ref: string) => string): Map<string, T[]> {
   const map = new Map<string, T[]>();
   for (const r of rows) {
-    const key = `${normalizeRef(r.asset)}::${normalizeRef(r.threat)}`;
+    const key = `${assetKey(r.asset)}::${normalizeRef(r.threat)}`;
     const bucket = map.get(key);
     if (bucket) bucket.push(r); else map.set(key, [r]);
   }
@@ -136,11 +148,26 @@ function indexByPair<T extends SitedRelation>(rows: T[]): Map<string, T[]> {
 }
 
 export function buildCoverageIndex(model: ThreatModel): CoverageIndex {
-  const mitigations = indexByPair(model.mitigations as unknown as SitedRelation[] as ThreatModelMitigation[]);
-  const acceptances = indexByPair(model.acceptances as unknown as SitedRelation[] as ThreatModelAcceptance[]);
+  // D47: `#db` and `Svc.Db` are one asset when the model declares
+  // `@asset Svc.Db (#db)`. `guardlink_graph` resolved both to one node and
+  // coverage did not, so a mitigation written in dotted form left its exposure
+  // reading unmitigated and the two tools disagreed about the same model.
+  //
+  // This is the ONE direction of change that can hide a vulnerability, so it is
+  // deliberately the narrowest resolver that fixes it: built from DECLARED
+  // assets only, two keys each (id and dotted path), and any unknown ref falls
+  // through to its bare form — exactly the pre-D47 behaviour. Two refs collapse
+  // only where the model itself says they name the same declared asset.
+  //
+  // Measured before landing: 0 exposures change state on expense-api (11 → 11),
+  // guardlink (16 → 16) or specter-v1 (1 → 1). It adds no coverage on any real
+  // corpus; it removes a disagreement.
+  const assetKey = canonicaliser(model);
+  const mitigations = indexByPair(model.mitigations as unknown as SitedRelation[] as ThreatModelMitigation[], assetKey);
+  const acceptances = indexByPair(model.acceptances as unknown as SitedRelation[] as ThreatModelAcceptance[], assetKey);
 
   const matching = <T extends SitedRelation>(index: Map<string, T[]>, e: SitedRelation): T[] => {
-    const bucket = index.get(`${normalizeRef(e.asset)}::${normalizeRef(e.threat)}`);
+    const bucket = index.get(`${assetKey(e.asset)}::${normalizeRef(e.threat)}`);
     if (!bucket) return [];
     return bucket.filter(c => !anchorsContradict(c, e));
   };

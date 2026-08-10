@@ -50,6 +50,7 @@
 
 import { resolveAssetRef, type MatchKind } from './lookup.js';
 import { filterByFeature } from '../parser/feature-filter.js';
+import { canonicaliser } from '../parser/canonical-ref.js';
 import type { ThreatModel, ThreatModelAsset } from '../types/index.js';
 
 export type Direction = 'in' | 'out' | 'both';
@@ -165,19 +166,10 @@ export interface Traversal {
 }
 
 /** Canonicalise a ref to one key per asset: `#cli`, `cli` and `GuardLink.CLI` agree. */
-export function canonicaliser(model: ThreatModel): (ref: string) => string {
-  const canon = new Map<string, string>();
-  for (const a of model.assets) {
-    if (!a.id) continue;
-    const id = a.id.toLowerCase();
-    canon.set(id, id);
-    canon.set(a.path.join('.').toLowerCase(), id);
-  }
-  return (ref: string) => {
-    const bare = (ref ?? '').trim().replace(/^#/, '').toLowerCase();
-    return canon.get(bare) ?? bare;
-  };
-}
+// Moved to parser/canonical-ref.ts so parser/coverage.ts can reach it without
+// inverting the layering — D47 was the cost of it living here. Re-exported so
+// existing callers of `canonicaliser` from this module are unaffected.
+export { canonicaliser };
 
 /** Every asset-plane edge in the model, with endpoints canonicalised. */
 export function graphEdges(model: ThreatModel): GraphEdge[] {
