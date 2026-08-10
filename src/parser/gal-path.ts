@@ -88,3 +88,24 @@ export function offConventionMessage(galPath: string, declaredSources: string[])
   return `\`${rel}\` is not at the conventional path (${GAL_CONVENTION}). `
     + `It is still parsed — this is a convention, not a requirement.`;
 }
+
+/**
+ * A caller-supplied path as a repo-relative path, or `null` if it escapes root.
+ *
+ * Absolute, relative and `./`-prefixed forms all normalise; backslashes become
+ * forward slashes so a Windows caller and a POSIX caller agree.
+ *
+ * D51: this lived twice — here as `normalizeContextPath` in `mcp/context.ts`,
+ * and again inline in `apply-annotations.ts`. The read tool got the containment
+ * check and the write tool got a copy of it, which is how the write tool ended
+ * up without the existence check that sat next to the original. One function,
+ * in the layer both can reach; `mcp/context.ts` re-exports it under its old
+ * name so its callers are unaffected.
+ */
+export function normalizeRepoPath(root: string, input: string): string | null {
+  const cleaned = input.trim().replaceAll('\\', '/').replace(/^\.\//, '');
+  const abs = isAbsolute(cleaned) ? cleaned : resolve(root, cleaned);
+  const rel = relative(resolve(root), abs).replaceAll('\\', '/');
+  if (rel === '' || rel.startsWith('../')) return null;
+  return rel;
+}

@@ -461,17 +461,30 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_annotate_apply',
-    'Write a validated @source block into the annotation sidecar for a file. Unlike guardlink_annotate — which returns a prompt for you to act on — this writes the annotations itself, into .guardlink/annotations/, never into source. Every line is re-parsed before anything touches disk; malformed input is rejected with the reason. Idempotent: re-applying the same block is a no-op, not a duplicate. Refuses @accepts, which is a human governance decision.',
+    'Write a validated @source block into the annotation sidecar for a file. Unlike guardlink_annotate — which returns a prompt for you to act on — this writes the annotations itself, into .guardlink/annotations/, never into source. Rejected with the reason, before anything touches disk: a line the parser cannot read, a #reference that is not declared in .guardlink/definitions.*, a source file that does not exist, and @accepts, which is a human governance decision. Idempotent: re-applying the same block is a no-op, not a duplicate. Definitions come first — if you need a new asset, threat or control, declare it before you reference it, or pass allow_undeclared_refs to write ahead of the definition and get a warning instead.',
     {
       root: z.string().describe('Project root directory').default('.'),
-      file: z.string().describe('Source file the annotations describe. The sidecar path is derived from it; you do not choose where it is written.'),
+      file: z.string().describe('Source file the annotations describe. Must exist — the sidecar is named after it, and one for a missing file puts annotations into the model that describe nothing. The sidecar path is derived from it; you do not choose where it is written.'),
       line: z.number().describe('Line in that file the block anchors to'),
       symbol: z.string().describe('Enclosing symbol name. Strongly recommended — it is what lets guardlink_reanchor detect drift after a refactor.').optional(),
       annotations: z.array(z.string()).describe('Raw GAL lines with no comment prefix, e.g. [\'@exposes #api to #sqli [critical] -- "concatenated"\']. Do NOT include @source; the header is generated.'),
       dry_run: z.boolean().describe('Validate and return the diff without writing').default(false),
+      allow_undeclared_refs: z.boolean().describe('Write even though a #reference is not declared yet, returning it in warnings. For a deliberate forward reference when the definition is coming; the default rejects, because an undeclared reference is usually a typo.').default(false),
     },
-    async ({ root, file, line, symbol, annotations, dry_run }) => {
-      const result = applyAnnotations({ root, file, line, symbol, annotations, dryRun: dry_run });
+    async ({ root, file, line, symbol, annotations, dry_run, allow_undeclared_refs }) => {
+      // D39: the write path holds no model, and the caller does. Pass the ids
+      // rather than re-parsing the project inside an interactive write.
+      const { model } = await getModel(root);
+      const declaredIds = new Set<string>();
+      for (const a of model.assets) if (a.id) declaredIds.add(a.id);
+      for (const t of model.threats) if (t.id) declaredIds.add(t.id);
+      for (const c of model.controls) if (c.id) declaredIds.add(c.id);
+      for (const b of model.boundaries) if (b.id) declaredIds.add(b.id);
+
+      const result = applyAnnotations({
+        root, file, line, symbol, annotations, dryRun: dry_run,
+        declaredIds, allowUndeclaredRefs: allow_undeclared_refs,
+      });
       // Any tool that writes must invalidate — the D11/D5 lesson.
       if (result.status === 'written' && !dry_run) invalidateCache();
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
