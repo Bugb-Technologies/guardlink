@@ -11,8 +11,8 @@ accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 371 annotations · 16 assets · 15 threats · 12 controls · 72 exposures · 93 flows
-Content hash: `sha256-v1:fdc3f6b903452086173e96f0eb9dc67b4a82e4de7abeea30cd5bb840e3768a34` — identical hash means identical model.
+Current model: 378 annotations · 16 assets · 15 threats · 12 controls · 73 exposures · 95 flows
+Content hash: `sha256-v1:5a9ed457c2593a35ed3eb36858eccb79541fdc3e648b44819c6c3b0ae8780246` — identical hash means identical model.
 
 ---
 
@@ -66,8 +66,8 @@ from this model.
 
 **inline** — annotations live in source-file comments.
 
-Put annotations in the comment syntax of the file you are editing — the doc-block of
-the function or module they describe:
+**Annotation mode: `inline`. Annotations live in source-file comments**, in the comment
+syntax of the file you are editing — the doc-block of the function or module they describe.
 
 ```ts
 /**
@@ -76,6 +76,9 @@ the function or module they describe:
  */
 export function login(email: string) { … }
 ```
+
+Do not create `.gal` sidecars under `.guardlink/annotations/` in this mode; a repo with
+both is a mixed repo, and that is the failure this section exists to prevent.
 
 **Definitions go in `definitions.ts`, always — in both modes.** Reuse existing `#id`s; never
 redefine one. If you need a new asset or threat, add it there first, then reference it.
@@ -118,11 +121,14 @@ Assets are referenced as `#id` or as a `Dotted.Path`; both resolve to the same n
 | `@comment` | `@comment -- "context that fits no other verb"` |
 | `@accepts` | `@accepts <threat> on <asset> -- "why"` — **human only, never write this** |
 
-Two notes that catch people out. `@confirmed` and `@exposes` take their arguments in
-**opposite orders** — exposes is asset-then-threat, confirmed is threat-then-asset. And a
-cross-repo tag such as `#other-repo.component` must be **quoted** —
-`@flows "#other-repo.tokens" -> #api via header` — because an unquoted `#id` may not contain
-a dot.
+One note that catches people out: `@confirmed` and `@exposes` take their arguments in
+**opposite orders** — exposes is asset-then-threat, confirmed is threat-then-asset.
+
+Cross-repo tags are written qualified and unquoted, in any reference position —
+`@flows #other-repo.tokens -> #api via header`, and equally
+`@exposes #api to #other-repo.injection [high] -- "why"`. Quoting is
+only for a reference containing spaces. (This used to require quotes because the grammar
+would not accept a dot after `#`; that was D19, and it is fixed.)
 
 Write coupled blocks, not lone facts: a risk plus the control or audit that answers it, plus
 the flow that gives it context.

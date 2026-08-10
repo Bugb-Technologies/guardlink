@@ -23,6 +23,22 @@ and `guardlink diff HEAD~1`.
 
 **Full reference: `docs/GUARDLINK_REFERENCE.md`**
 
+### Where annotations go
+
+**Annotation mode: `inline`. Annotations live in source-file comments**, in the comment
+syntax of the file you are editing — the doc-block of the function or module they describe.
+
+```ts
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
+ * @mitigates #api against #sqli using #prepared-stmts -- "parameterized via pg"
+ */
+export function login(email: string) { … }
+```
+
+Do not create `.gal` sidecars under `.guardlink/annotations/` in this mode; a repo with
+both is a mixed repo, and that is the failure this section exists to prevent.
+
 ### What you owe it back
 
 **When you write or change code that touches security-relevant behavior, add the annotations in
@@ -43,7 +59,7 @@ the same change.** This includes: new endpoints, authentication/authorization lo
 
 - **Opening a file:** `guardlink_context(file)` before you read far into it. Note which kind of empty an empty answer is — `scanned_without_annotations` means clean, `not_scanned` means the parser never read it. They are not the same.
 - **Before writing:** skim `.guardlink/definitions.ts` for the existing assets, threats and controls. Reuse those ids.
-- **While writing:** annotate in the doc-block as you go, not as a pass afterward.
+- **While writing:** annotate as you go, not as a pass afterward — in the doc-block of the code you are writing.
 - **After changing:** `guardlink diff HEAD~1` — the one command that answers "did I add exposure". Then `guardlink validate .` for syntax and dangling refs, and `guardlink status .` for coverage.
 - **After annotating:** `guardlink sync` refreshes this block and `.guardlink/README.md` from the current model.
 
@@ -128,7 +144,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
 - #llm-client -> NVD via fetch
-- … and 73 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
+- … and 75 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
 
 ### Features (filter with `--feature`)
 
@@ -137,11 +153,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-371 annotations, 16 assets, 15 threats, 12 controls, 72 exposures, 0 confirmed, 57 mitigations, 93 flows, 2 features
+378 annotations, 16 assets, 15 threats, 12 controls, 73 exposures, 0 confirmed, 58 mitigations, 95 flows, 2 features
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v1:fdc3f6b903452086173e96f0eb9dc67b4a82e4de7abeea30cd5bb840e3768a34`
+- `annotation_hash`: `sha256-v1:5a9ed457c2593a35ed3eb36858eccb79541fdc3e648b44819c6c3b0ae8780246`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.

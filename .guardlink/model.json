@@ -1,7 +1,7 @@
 {
   "version": "1.1.0",
   "project": "unknown",
-  "source_files": 81,
+  "source_files": 82,
   "annotations_parsed": 378,
   "annotated_files": [
     ".guardlink/definitions.ts",
@@ -71,6 +71,7 @@
     ".github/workflows/ci.yml",
     ".github/workflows/release.yml",
     "docs/examples/guardlink-pentest.html",
+    "eslint.config.js",
     "examples/ci/per-repo-report.yml",
     "examples/ci/workspace-merge.yml",
     "examples/github-action.yml",
@@ -3952,7 +3953,7 @@
   "coverage": {
     "total_symbols": 0,
     "annotated_symbols": 378,
-    "coverage_percent": 73,
+    "coverage_percent": 72,
     "unannotated_critical": []
   },
   "external_refs": []
