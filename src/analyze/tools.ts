@@ -190,6 +190,11 @@ function validateFinding(
       // asset/threat pair answered for every site of it. Now the coverage
       // question is asked per matched exposure, which is what makes the answer
       // site-aware and `#`-normalised like every other surface.
+      //
+      // Entitlements are deliberately NOT consulted here. @entitles carries no
+      // export or suppression semantics (design §3.2): an entitled exposure is
+      // still unmitigated, still probed, still reported. Only downstream triage
+      // may soften the recommendation. Do not add it to this check.
       const matching = model.exposures.filter(e => matchAsset(e.asset) && matchThreat(e.threat));
       const coverage = buildCoverageIndex(model);
       const exposed = matching.length > 0;

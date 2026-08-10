@@ -46,6 +46,8 @@ const QUERY_FOR: Record<string, string> = {
   shields: 'shields',
   features: 'features',
   comments: 'comments',
+  actors: 'actors',
+  entitlements: 'entitlements',
   external_refs: 'external refs',
 };
 
@@ -55,6 +57,7 @@ const DEFINITIONS = `/**
  * @threat SQL_Injection (#sqli) [critical] cwe:CWE-89 -- "Untrusted input into SQL"
  * @threat Auth_Bypass (#auth-bypass) [high] -- "Authentication sidestepped"
  * @control Prepared_Statements (#prepared-stmts) -- "Parameterized queries"
+ * @actor Namespace_Admin (#ns-admin) -- "Administers one namespace's configuration"
  */
 export {};
 `;
@@ -77,6 +80,7 @@ const SOURCE = `/**
  * @assumes #api -- "Runs behind a WAF"
  * @feature "Checkout" -- "Cart and order placement"
  * @comment -- "Rate limit: 100 req/15min"
+ * @entitles #ns-admin to configure-archival-destination on #api against #sqli -- "By design: this is namespace configuration. Authz: src/authz.ts:12"
  * @flows "#sibling-lib.tokens" -> #api via header -- "Cross-repo token handoff (quoted: the unquoted form does not parse — see report)"
  */
 export function handler(): void {}

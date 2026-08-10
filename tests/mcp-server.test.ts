@@ -214,6 +214,7 @@ describe('MCP server — freshness envelope (GL-102)', () => {
     'guardlink_dashboard', 'guardlink_sarif', 'guardlink_diff', 'guardlink_threat_reports',
     'guardlink_sync', 'guardlink_clear', 'guardlink_unannotated', 'guardlink_review_list',
     'guardlink_review_accept', 'guardlink_workspace_info',
+    'guardlink_entitlement_propose', 'guardlink_entitlement_list',
   ];
 
   it('the server advertises exactly the known tool set', async () => {
@@ -231,6 +232,12 @@ describe('MCP server — freshness envelope (GL-102)', () => {
       guardlink_context: { file: 'src/auth.ts' },
       guardlink_graph: { from: '#auth' },
       guardlink_annotate_apply: { file: 'src/auth.ts', line: 1, annotations: ['@audit #auth -- "x"'], dry_run: true },
+      // Names an actor this fixture never declares, so the proposal is refused and
+      // nothing is written — the envelope must ride along on the refusal too.
+      guardlink_entitlement_propose: {
+        actor: '#nobody', capability: 'read-thing', rationale: 'Authz: src/auth.ts:1',
+        file: 'src/auth.ts', line: 1,
+      },
     };
     for (const name of ALL_TOOLS) {
       const result: any = await session.client.callTool({

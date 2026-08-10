@@ -57,3 +57,15 @@
 // @control Regex_Anchoring (#regex-anchoring) -- "Using anchored regex patterns (^...$) to prevent backtracking"
 // @control Prefix_Ownership (#prefix-ownership) -- "Tag prefix determines owning repo, preventing cross-repo tag collisions"
 // @control YAML_Validation (#yaml-validation) -- "Schema validation for workspace.yaml configuration files"
+
+// ─── ACTORS ───────────────────────────────────────────────────────────
+// Principals in guardlink's own authorization model — roles, not people.
+// The actor verb is a definition (docs/prd/actor-entitlement-design.md §3.1), so
+// it lives here beside @asset/@threat/@control. Declaring an actor grants nothing;
+// only an entitlement in a source file grants, and only when it cites authz code
+// (§3.4). NOTE: never begin a comment line with @actor or @entitles followed by
+// prose — the parser reads it as a real annotation and reports it malformed.
+
+// @actor Local_Developer (#local-dev) -- "Runs the guardlink binary from a shell on the project; already holds write access to the same working tree guardlink edits, and has an interactive TTY that can answer a confirmation prompt"
+// @actor MCP_Agent (#mcp-agent) -- "AI coding agent calling guardlink tools over stdio through the MCP server; acts only with the tool set src/mcp/server.ts exposes, not with the operator's shell"
+// @actor CI_Runner (#ci-runner) -- "GitHub Actions job invoking the built CLI (see .github/workflows/ci.yml); has no TTY, so it cannot answer a confirmation prompt, and is deliberately granted no entitlement"

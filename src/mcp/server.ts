@@ -14,7 +14,13 @@
  *   guardlink_sarif    — Export SARIF 2.1.0
  *   guardlink_diff     — Compare threat model against a git ref
  *   guardlink_threat_reports — List saved AI threat report files
+ *   guardlink_entitlement_propose — Propose an @entitles claim into the review artifact
+ *   guardlink_entitlement_list — List entitlement proposals and their decisions
  *   guardlink_workspace_info — Workspace config, siblings, tag prefixes
+ *
+ * There is no entitlement *accept* tool. An entitlement's error mode is a silent
+ * false negative, so acceptance stays a human decision recorded by name through
+ * `guardlink entitle` (docs/prd/actor-entitlement-design.md §3.6).
  *
  * Resources:
  *   guardlink://model        — Full ThreatModel JSON
@@ -33,6 +39,9 @@
  * @mitigates #mcp against #api-key-exposure using #key-redaction -- "Keys from env only; never logged or returned"
  * @exposes #mcp to #data-exposure [medium] cwe:CWE-200 -- "Resources expose full threat model to MCP clients"
  * @audit #mcp -- "Threat model data intentionally exposed to connected agents"
+ * @exposes #mcp to #arbitrary-write [medium] cwe:CWE-73 -- "guardlink_entitlement_propose writes a client-supplied claim into .guardlink/entitlement-proposals.json"
+ * @mitigates #mcp against #arbitrary-write using #path-validation -- "The proposal artifact path is fixed, and its target file must resolve inside the project root — a proposal never writes to source"
+ * @comment -- "No guardlink_entitlement_accept tool exists on purpose: proposing is an agent's job, granting authority is not (actor-entitlement design §3.6)"
  * @flows MCPClient -> #mcp via tool_call -- "Tool invocation input"
  * @flows #mcp -> FileSystem via writeFile -- "Report/dashboard output"
  * @flows #mcp -> #llm-client via generateThreatReport -- "LLM API call path"
@@ -40,14 +49,23 @@
  * @boundary #mcp and MCPClient (#mcp-tool-boundary) -- "Trust boundary at tool argument parsing"
  * @handles internal on #mcp -- "Processes project annotations and threat model data"
  * @feature "MCP Integration" -- "Model Context Protocol server for AI agent tooling"
+ * @entitles #mcp-agent to read-threat-model on #mcp against #data-exposure -- "By design: guardlink mcp exists to hand a connected coding agent the threat model — that disclosure is the product, not a leak. No privilege gain either: the agent already reads the annotated source these records are parsed from, so the assembled model tells it nothing it could not derive itself. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:23"
+ * @comment -- "Entitlement accepted by zippon on 2026-08-10 via guardlink entitle (proposal ent-mcp_agent.mcp.data_exposure)."
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag } from '../parser/index.js';
+// MERGE: main added the entitlement validators and the proposal module; ours
+// kept `crossRepoTag` (D19). Union — main's list had dropped crossRepoTag only
+// because it branched before D19 landed.
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
 import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
 import { getReviewableExposures, applyReviewAction } from '../review/index.js';
+import {
+  proposeEntitlement, listProposals, checkEntitlementProvenance, PROPOSALS_FILE,
+  type ProposalStatus,
+} from '../review/entitlements.js';
 import { generateSarif } from '../analyzer/index.js';
 import { generateReport } from '../report/index.js';
 import { generateDashboardHTML, generateThreatGraph } from '../dashboard/index.js';
@@ -287,6 +305,9 @@ export function createServer(): McpServer {
         exposures: model.exposures.length,
         confirmed: (model.confirmed || []).length,
         acceptances: model.acceptances.length,
+        actors: (model.actors || []).length,
+        entitlements: (model.entitlements || []).length,
+        entitlements_inert: (model.entitlements || []).filter(e => e.inert).length,
         flows: model.flows.length,
         boundaries: model.boundaries.length,
         features: [...uniqueFeatures].sort(),
@@ -318,7 +339,15 @@ export function createServer(): McpServer {
 
       // Compute dangling refs using shared validation
       const danglingDiags = findDanglingRefs(model);
-      const allDiags = [...diagnostics, ...danglingDiags];
+      // Entitlement checks: undeclared actor is an error, an uncited (inert)
+      // entitlement is a warning — it parses but can never demote a finding.
+      const actorDiags = findUndeclaredActors(model);
+      const inertDiags = findInertEntitlements(model);
+      const impreciseDiags = findImpreciseEntitlements(model);
+      // §3.6: an @entitles no human accepted. Only checked where the project has
+      // a proposal ledger, so it never fires on a repo not using the flow.
+      const provenanceDiags = await checkEntitlementProvenance(root, model);
+      const allDiags = [...diagnostics, ...danglingDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags];
 
       const errors = allDiags.filter(d => d.level === 'error');
       const warnings = allDiags.filter(d => d.level === 'warning');
@@ -359,10 +388,10 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_lookup',
-    'Query the threat model graph. Reaches every relation type the model carries: assets, threats, controls, mitigations, exposures, confirmed, acceptances, transfers, flows, boundaries, validations, audits, ownership, data classification, assumptions, shields, features, comments and cross-repo refs. Examples: "threats for #auth", "owner of #api", "handles pii", "assumptions for #api", "flows into Scanner", "unmitigated". A query that is not one of the supported forms returns no_match listing them — it is never answered by guesswork.',
+    'Query the threat model graph. Reaches every relation type the model carries: assets, threats, controls, mitigations, exposures, confirmed, acceptances, transfers, flows, boundaries, validations, audits, ownership, data classification, assumptions, actors, entitlements, shields, features, comments and cross-repo refs. Examples: "threats for #auth", "owner of #api", "handles pii", "assumptions for #api", "flows into Scanner", "unmitigated", "actors", "entitlements for #ns-admin". A query that is not one of the supported forms returns no_match listing them — it is never answered by guesswork.',
     {
       root: z.string().describe('Project root directory').default('.'),
-      query: z.string().describe('A supported query form: "unmitigated", "confirmed", "features", "asset <id>", "threat <id>", "control <id>", "threats for <asset>", "controls for <asset>", "exposures for <asset>", "mitigations for <asset>", "flows into <asset>", "flows from <asset>", "boundary for <asset>", "owner of <asset>", "handles <pii|phi|financial|secrets|internal|public>", "handles for <asset>", "assumptions for <asset>", "audits [for <asset>]", "validations for <asset-or-control>", "acceptances [for <asset>]", "transfers [for <threat-or-asset>]", "comments [for <file-or-asset>]", "shields [for <file-or-asset>]", or a bare identifier. TWO DIFFERENT REF QUERIES, do not confuse them: "cwe:CWE-89" / "CWE-89" / "owasp:A03" asks about external identifiers declared on threats — the scanner bridge, and returns external_id.declared so you can tell \'never heard of this weakness\' from \'declared, nothing exposed\'; "cross-repo refs" asks about sibling-repo tags from workspace.yaml and is unrelated. @comment and @shield record no asset, so scoping them by an asset joins by co-location (same file) and the result says so. Free-form questions are not parsed.'),
+      query: z.string().describe('A supported query form: "unmitigated", "confirmed", "features", "asset <id>", "threat <id>", "control <id>", "threats for <asset>", "controls for <asset>", "exposures for <asset>", "mitigations for <asset>", "flows into <asset>", "flows from <asset>", "boundary for <asset>", "owner of <asset>", "handles <pii|phi|financial|secrets|internal|public>", "handles for <asset>", "assumptions for <asset>", "audits [for <asset>]", "validations for <asset-or-control>", "acceptances [for <asset>]", "transfers [for <threat-or-asset>]", "actors", "entitlements [for <actor>]", "comments [for <file-or-asset>]", "shields [for <file-or-asset>]", or a bare identifier. TWO DIFFERENT REF QUERIES, do not confuse them: "cwe:CWE-89" / "CWE-89" / "owasp:A03" asks about external identifiers declared on threats — the scanner bridge, and returns external_id.declared so you can tell \'never heard of this weakness\' from \'declared, nothing exposed\'; "cross-repo refs" asks about sibling-repo tags from workspace.yaml and is unrelated. Every entitlements row carries inert: an uncited claim is carried and visible but cannot demote a finding (actor-entitlement design §3.4). @comment and @shield record no asset, so scoping them by an asset joins by co-location (same file) and the result says so. Free-form questions are not parsed.'),
     },
     async ({ root, query }) => {
       const { model } = await getModel(root);
@@ -461,7 +490,7 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_annotate_apply',
-    'Write a validated @source block into the annotation sidecar for a file. Unlike guardlink_annotate — which returns a prompt for you to act on — this writes the annotations itself, into .guardlink/annotations/, never into source. Every line is re-parsed before anything touches disk; malformed input is rejected with the reason. Idempotent: re-applying the same block is a no-op, not a duplicate. Refuses @accepts, which is a human governance decision.',
+    'Write a validated @source block into the annotation sidecar for a file. Unlike guardlink_annotate — which returns a prompt for you to act on — this writes the annotations itself, into .guardlink/annotations/, never into source. Every line is re-parsed before anything touches disk; malformed input is rejected with the reason. Idempotent: re-applying the same block is a no-op, not a duplicate. Refuses @accepts and @entitles, which are human governance decisions — for an entitlement use guardlink_entitlement_propose, which files it for human acceptance instead of writing it.',
     {
       root: z.string().describe('Project root directory').default('.'),
       file: z.string().describe('Source file the annotations describe. The sidecar path is derived from it; you do not choose where it is written.'),
@@ -935,6 +964,84 @@ export function createServer(): McpServer {
       return {
         content: [{ type: 'text', text: `${verb}: ${target.exposure.asset} → ${target.exposure.threat} [${target.exposure.severity}]\nJustification: ${justification}\n${result.linesInserted} annotation line(s) written to ${result.targetFile}` }],
       };
+    },
+  );
+
+  // ── Tool: guardlink_entitlement_propose ──
+  //
+  // §3.6 of docs/prd/actor-entitlement-design.md. An agent may file entitlement
+  // claims; it may not grant them. There is deliberately no accept tool here —
+  // acceptance is a human decision recorded by name through `guardlink entitle`,
+  // the same reasoning that keeps @accepts out of an agent's hands.
+  //
+  // Registered through registerTool so it carries the GL-102 freshness envelope
+  // like every other tool: this tool decides what an agent believes about the
+  // authorization model, so "which parse is this answer from" matters more here,
+  // not less.
+  registerTool(
+    server, cache,
+    'guardlink_entitlement_propose',
+    'Propose an @entitles claim (an actor is entitled to a capability BY DESIGN) into .guardlink/entitlement-proposals.json. This writes NOTHING to source: a human accepts the proposal with "guardlink entitle", and only that writes the annotation. Cite the authorization code as file:line in the rationale — without a citation the entitlement is inert and will never affect triage. Never propose one for an ownership question (IDOR, tenant/namespace isolation, CWE-639/862/863): both peers hold the capability, so an entitlement cannot say whose object it was. When unsure which role the code requires, under-grant or write @exposes + @audit instead.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      actor: z.string().describe('Actor ref — #id of a declared @actor, or its declared name'),
+      capability: z.string().describe('Capability — one identifier, never prose (e.g. configure-archival-destination). It is the join key.'),
+      asset: z.string().optional().describe('Optional "on <asset>" context ref'),
+      threat: z.string().optional().describe('Threat class this claim is meant to answer for — supply it, it is what enables the ownership-class check'),
+      rationale: z.string().describe('Why this is by design. MUST contain a file:line pointer at the authz check, e.g. "By design: namespace config. Authz: common/api/metadata.go:189"'),
+      file: z.string().describe('Repo-relative source file the accepted @entitles should be written to'),
+      line: z.number().int().positive().describe('1-indexed anchor line in `file` — normally the @exposes line the claim answers for'),
+      proposed_by: z.string().optional().describe('Agent or person filing this, e.g. "claude-code"'),
+    },
+    async ({ root, actor, capability, asset, threat, rationale, file, line, proposed_by }) => {
+      const { model } = await getModel(root);
+      try {
+        const result = await proposeEntitlement(root, {
+          actor, capability, asset, threat, rationale, file, line,
+          proposed_by: proposed_by || 'mcp-client',
+        }, { model });
+
+        if (result.refused) {
+          return { content: [{ type: 'text', text: `Refused: ${result.refused}` }] };
+        }
+
+        const lines = [
+          `${result.created ? 'Filed' : 'Replaced'} proposal ${result.proposal.id} in .guardlink/${PROPOSALS_FILE}.`,
+          'No source file was modified. A human must accept it: `guardlink entitle --accept ' + result.proposal.id + '`.',
+          result.proposal.inert
+            ? 'This claim cites no authorization code, so it would be INERT — say so to the user and offer to add a file:line pointer.'
+            : `Citation: ${result.proposal.citation!.raw}`,
+        ];
+        for (const w of result.warnings) lines.push(`WARNING ${w}`);
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Error: ${(err as Error).message}` }] };
+      }
+    },
+  );
+
+  // ── Tool: guardlink_entitlement_list ──
+  registerTool(
+    server, cache,
+    'guardlink_entitlement_list',
+    'List entitlement proposals and their decisions from .guardlink/entitlement-proposals.json. Use it to see what has been proposed, what a human accepted, and what was rejected or deferred — a rejected claim should not be re-filed, and an accepted one is already in source. Accepting is not available to agents: it is a human decision made with "guardlink entitle".',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      status: z.string().optional().describe('Filter by status: "proposed", "accepted,rejected", etc.'),
+    },
+    async ({ root, status }) => {
+      const statuses = status
+        ? status.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean) as ProposalStatus[]
+        : undefined;
+      try {
+        const proposals = await listProposals(root, { status: statuses });
+        if (proposals.length === 0) {
+          return { content: [{ type: 'text', text: 'No entitlement proposals recorded.' }] };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(proposals, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Error: ${(err as Error).message}` }] };
+      }
     },
   );
 

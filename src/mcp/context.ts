@@ -136,6 +136,8 @@ function allRecords(model: ThreatModel): { verb: string; location: SourceLocatio
   add('exposes', model.exposures);
   add('confirmed', model.confirmed);
   add('accepts', model.acceptances);
+  add('actor', model.actors);
+  add('entitles', model.entitlements);
   add('transfers', model.transfers);
   add('flows', model.flows);
   add('boundary', model.boundaries);
@@ -165,6 +167,10 @@ function projectRow(verb: string, row: any): ContextAnnotation {
 function assetRefsOf(verb: string, row: any): string[] {
   switch (verb) {
     case 'asset':     return [row.id ? `#${row.id}` : (row.path || []).join('.')];
+    // An actor is a principal, not an asset, so it names none. An entitlement
+    // names one only through its optional `on <asset>` clause.
+    case 'actor':     return [];
+    case 'entitles':  return row.asset ? [row.asset] : [];
     case 'exposes':
     case 'mitigates':
     case 'confirmed':

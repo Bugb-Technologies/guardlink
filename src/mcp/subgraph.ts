@@ -61,7 +61,7 @@ export type Direction = 'in' | 'out' | 'both';
 export const SELECTABLE_KINDS = [
   'exposures', 'mitigations', 'confirmed', 'acceptances', 'transfers',
   'flows', 'boundaries', 'validations', 'audits', 'ownership',
-  'data_handling', 'assumptions', 'comments', 'shields', 'features',
+  'data_handling', 'assumptions', 'entitlements', 'comments', 'shields', 'features',
 ] as const;
 export type SelectableKind = typeof SELECTABLE_KINDS[number];
 
@@ -363,6 +363,7 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
       boundaries: inFile(base.boundaries), validations: inFile(base.validations),
       audits: inFile(base.audits), ownership: inFile(base.ownership),
       data_handling: inFile(base.data_handling), assumptions: inFile(base.assumptions),
+      actors: inFile(base.actors || []), entitlements: inFile(base.entitlements || []),
       shields: inFile(base.shields), features: inFile(base.features), comments: inFile(base.comments),
     };
   }
@@ -388,6 +389,11 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
   const ownership    = pick('ownership',    base.ownership.filter(o => inSet(o.asset)));
   const dataHandling = pick('data_handling', base.data_handling.filter(d => inSet(d.asset)));
   const assumptions  = pick('assumptions',  base.assumptions.filter(a => inSet(a.asset)));
+  // An entitlement scopes by its `on <asset>` clause. A claim with no asset joins
+  // nothing (it is imprecise, §9.3), so it cannot be placed in an asset-scoped
+  // subgraph and is kept only when no selection narrows the graph.
+  const entitlements = pick('entitlements', (base.entitlements || [])
+    .filter(en => (en.asset ? inSet(en.asset) : selected === null)));
 
   // Node definitions are always kept: an edge whose endpoint has no declaration
   // renders as a bare id and reads as missing data rather than as a filter.
@@ -408,16 +414,22 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
   const files = new Set<string>();
   for (const row of [...assets, ...threats, ...controls, ...exposures, ...mitigations,
     ...confirmed, ...acceptances, ...transfers, ...flows, ...boundaries, ...validations,
-    ...audits, ...ownership, ...dataHandling, ...assumptions]) files.add(row.location.file);
+    ...audits, ...ownership, ...dataHandling, ...assumptions, ...entitlements]) files.add(row.location.file);
   const byFile = <T extends { location: { file: string } }>(rows: T[]) => rows.filter(r => files.has(r.location.file));
 
   const comments = pick('comments', byFile(base.comments));
   const shields  = pick('shields',  byFile(base.shields));
   const features = pick('features', byFile(base.features));
 
-  const arrays = [assets, threats, controls, mitigations, exposures, confirmed,
+  // An actor is a definition, so it follows the same always-kept rule as
+  // @asset/@threat/@control: dropping it would leave entitlements naming a
+  // principal with no declaration, which reads as missing data, not as a filter.
+  const actors = (base.actors || []).filter(ac =>
+    entitlements.some(en => bare(en.actor) === bare(ac.id || ac.canonical_name)));
+
+  const arrays = [assets, threats, controls, actors, mitigations, exposures, confirmed,
     acceptances, transfers, flows, boundaries, validations, audits, ownership,
-    dataHandling, assumptions, shields, features, comments];
+    dataHandling, assumptions, entitlements, shields, features, comments];
 
   return {
     ...base,
@@ -435,9 +447,9 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
     // exactly why the graph tool omits the key at emission rather than shipping
     // an empty array that reads as "this repo is fully annotated".
     unannotated_files: base.unannotated_files.filter(f => files.has(f)),
-    assets, threats, controls, mitigations, exposures, confirmed, acceptances,
+    assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances,
     transfers, flows, boundaries, validations, audits, ownership,
-    data_handling: dataHandling, assumptions, shields, features, comments,
+    data_handling: dataHandling, assumptions, entitlements, shields, features, comments,
   };
 }
 
@@ -452,8 +464,14 @@ export type GraphDetail = 'summary' | 'full';
  * this list rather than the object's own keys, so a scalar field on the model
  * (`source_files`, `annotation_hash`) is never mistaken for a row array.
  */
+// MERGE: `actors` belongs with the node vocabulary, not with SELECTABLE_KINDS —
+// like assets, threats and controls it is always kept, so it is named here.
+// Omitting it meant `detail: "summary"` shipped every actor's description and
+// full location object, which is the one thing summary promises not to do.
+// tests/graph-detail.test.ts caught it; that test enumerates the payload rather
+// than a fixed list, which is why it noticed a relation array nobody told it about.
 const ALL_ROW_ARRAYS = [
-  'assets', 'threats', 'controls',
+  'assets', 'threats', 'controls', 'actors',
   ...SELECTABLE_KINDS,
 ] as const;
 
