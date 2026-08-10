@@ -5,6 +5,70 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## \[Unreleased\]
 
+### Added
+
+- **`guardlink migrate --to external|inline` (GL-507).** Moves a project's annotations
+  between source comments and `.guardlink/annotations/*.gal` sidecars. Annotation text is
+  moved verbatim, never re-serialised from parsed objects, and only annotation lines are
+  removed from source — surrounding comment structure is left exactly as it was, so the
+  round trip reproduces the original file rather than an equivalent one. Every run
+  re-parses and compares `annotation_hash` before and after, and **exits non-zero if it
+  moved**: the hash excludes line, `origin_file` and `parent_symbol` — exactly the fields a
+  migration may change — so a moved hash means the threat model itself changed. Measured on
+  this repo at 311 annotations across 61 files: hash identical in both directions, and
+  `inline → external → inline` byte-identical to `HEAD`. `--dry-run` reports without
+  writing. Existing repos are never migrated implicitly; nothing but this command moves an
+  annotation.
+- **`guardlink reanchor` and MCP `guardlink_reanchor` (GL-505).** Finds `@source` blocks
+  whose recorded `file:line` no longer holds the symbol they name — the drift external
+  annotations accumulate after a refactor. Reports four distinct kinds (`moved`,
+  `symbol_gone`, `file_gone`, `line_gone`) and proposes a corrected line only where the
+  symbol was actually found elsewhere. `--apply` moves those; a renamed or deleted symbol is
+  always left for a human, because there is no correct line to move it to.
+- **MCP `guardlink_annotate_apply` (GL-504).** Writes a validated `@source` block into a
+  file's sidecar — into `.guardlink/`, never into source — after re-parsing every line with
+  the real parser. Idempotent, returns a diff, invalidates the parse cache, and **refuses
+  `@accepts`**: accepting a risk is a human governance decision, and a tool that can write
+  one lets an agent close a finding by declaring it acceptable.
+
+### Changed
+
+- **`init --mode` and `init --no-root-files` are now separate flags (GL-506), and the
+  default annotation mode is `external`.** `--mode external` previously meant two unrelated
+  things at once — annotations go in sidecars, *and* init writes nothing outside
+  `.guardlink/` — so asking for the first silently cost you the root `.mcp.json`, every
+  agent instruction file, and `docs/`, which are the things that make an agent aware
+  GuardLink exists. `--mode inline|external` now only decides where annotations live;
+  `--no-root-files` only decides the footprint and reproduces the old external behaviour.
+  The new default is external annotations *with* root files. **Existing projects keep their
+  recorded mode** — `init` does not rewrite an existing `config.json` without `--force`.
+
+### Fixed
+
+- **`@shield` regions are no longer broken by migration.** `@shield:begin`/`@shield:end`
+  delimit a region of source text and mean nothing outside the file whose lines they
+  bracket, so they never migrate, and annotations *inside* a shielded region are never
+  extracted. Both were found by the hash gate on this repo: externalising the markers
+  unshielded the examples in `src/init/templates.ts`, and extracting from inside the region
+  turned 38 documentation examples into real records.
+
+### Decisions
+
+- **GL-303 — two diagram generator sets are kept, not unified.** `report --diagram-only`
+  uses `src/report/mermaid.ts`, which renders a top-down DFD with actor/process/data-store
+  shapes and keeps controls in the report's table rather than in the graph.
+  `src/dashboard/diagrams.ts` renders left-to-right with controls as nodes, and is the set
+  the emitted `.guardlink/graph/*.mmd` artifacts come from. These are different projections
+  for different consumers, not a duplicated implementation. **`report --diagram-only` output
+  is unchanged.** The precedent of 5ca53eb (removing the D3 topology view) does not apply:
+  that was removed for being both redundant *and* illegible at scale, and neither is true
+  here — the report generator has an explicit compact mode above 15 unmitigated exposures.
+- **GL-304 — derived artifacts are committed.** `.guardlink/model.json` and
+  `.guardlink/graph/` are tracked so a fresh clone has the threat model without running
+  anything and model changes appear in review. `.gitattributes` marks them
+  `linguist-generated`. Machine exports that are rebuilt on demand
+  (`threat-model.json`, `guardlink.sarif.json`, `threat-dashboard.html`) remain ignored.
+
 ### Removed
 
 - **Risk Topology graph removed from the dashboard Diagrams page.** The force-directed D3 view (`generateTopologyData`, the `Risk Topology` tab, and its client-side renderer/inspector) grew unreadably dense on large codebases — a hairball that obscured more than it showed. The three Mermaid views (Threat Graph, Data Flow, Attack Surface) remain, and the Threat Graph still auto-filters to high/critical with an *All severities* toggle. `generateTopologyData` and the `DiagramTopology*` types are gone from `src/dashboard/diagrams.js`.

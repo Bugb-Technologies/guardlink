@@ -42,13 +42,14 @@ import { Command } from 'commander';
 import { resolve, basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { ensurePromptMd } from '../init/migrate.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getCurrentRef } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
+import { emitArtifacts, checkArtifactDrift } from '../artifacts/emit.js';
 import { startStdioServer } from '../mcp/index.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, loadPentestData, serializePentestFindings, buildConfig, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, serializeModel, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
@@ -132,11 +133,12 @@ program
   .argument('[dir]', 'Project directory', '.')
   .option('-p, --project <n>', 'Override project name')
   .option('-a, --agent <agents>', 'Agent(s) to create files for: claude,cursor,codex,copilot,windsurf,cline,none (comma-separated)')
-  .option('--mode <mode>', 'Annotation mode: inline (default) or external. external restricts all writes to .guardlink/ — no agent files, no .mcp.json at root', 'inline')
+  .option('--mode <mode>', 'Where annotations live: external (default, .gal sidecars under .guardlink/annotations/) or inline (comments in source)', 'external')
+  .option('--no-root-files', 'Write nothing outside .guardlink/ — no root .mcp.json, no agent instruction files, no docs/')
   .option('--skip-agent-files', 'Only create .guardlink/, skip agent file updates')
   .option('--force', 'Overwrite existing GuardLink config and instructions')
   .option('--dry-run', 'Show what would be created without writing files')
-  .action(async (dir: string, opts: { project?: string; agent?: string; mode?: string; skipAgentFiles?: boolean; force?: boolean; dryRun?: boolean }) => {
+  .action(async (dir: string, opts: { project?: string; agent?: string; mode?: string; rootFiles?: boolean; skipAgentFiles?: boolean; force?: boolean; dryRun?: boolean }) => {
     const root = resolve(dir);
 
     // Show detection results first
@@ -174,6 +176,8 @@ program
       root,
       project: opts.project,
       mode: resolveAnnotationMode(opts.mode),
+      // Commander sets rootFiles=false for --no-root-files, true otherwise.
+      rootFiles: opts.rootFiles !== false,
       skipAgentFiles: opts.skipAgentFiles,
       force: opts.force,
       dryRun: opts.dryRun,
@@ -273,7 +277,8 @@ program
   .argument('[dir]', 'Project directory to scan', '.')
   .option('-p, --project <n>', 'Project name', 'unknown')
   .option('--strict', 'Also fail on unmitigated exposures (for CI gates)')
-  .action(async (dir: string, opts: { project: string; strict?: boolean }) => {
+  .option('--artifacts', 'Also check .guardlink/graph/ artifacts against the current model; exits non-zero on drift')
+  .action(async (dir: string, opts: { project: string; strict?: boolean; artifacts?: boolean }) => {
     const root = resolve(dir);
     const { model, diagnostics } = await parseProject({ root, project: opts.project });
 
@@ -283,7 +288,11 @@ program
     // Check for @accepts without @audit (governance concern)
     const acceptAuditDiags = findAcceptedWithoutAudit(model);
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags];
+    // GL-501 — sidecars that are not where the convention says. Warnings only:
+    // the file still parsed and every annotation in it counted.
+    const galConventionDiags = findOffConventionGalFiles(model);
+
+    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...galConventionDiags];
 
     // Check for unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);
@@ -333,8 +342,35 @@ program
       }
     }
 
-    // Exit 1 on errors always; also on unmitigated if --strict
-    process.exit(errorCount > 0 || (opts.strict && hasUnmitigated) ? 1 : 0);
+    // ── Artifact drift (GL-302) ──
+    // A generated .mmd in a repo looks like source, so a stale one is trusted
+    // rather than questioned. This is the check that makes emission safe.
+    let artifactDrift = false;
+    if (opts.artifacts) {
+      const findings = checkArtifactDrift(root, model);
+      if (findings.length === 0) {
+        console.error('\n✓ Artifacts are current.');
+      } else {
+        artifactDrift = true;
+        console.error(`\n⚠  ${findings.length} artifact issue(s):`);
+        for (const f of findings) {
+          if (f.kind === 'missing') {
+            console.error(`   ${f.path} — not emitted. Run: guardlink artifacts .`);
+          } else if (f.kind === 'unheadered') {
+            console.error(`   ${f.path} — no provenance header; cannot tell whether it is current. Regenerate.`);
+          } else {
+            console.error(`   ${f.path} — STALE`);
+            console.error(`      built from: ${f.found}`);
+            console.error(`      model is:   ${f.expected}`);
+          }
+        }
+        console.error('\n   Regenerate with: guardlink artifacts .');
+        console.error('   Never hand-edit an artifact to silence this — the hash describes the annotations.');
+      }
+    }
+
+    // Exit 1 on errors always; also on unmitigated if --strict, or on artifact drift
+    process.exit(errorCount > 0 || artifactDrift || (opts.strict && hasUnmitigated) ? 1 : 0);
   });
 
 // ─── report ──────────────────────────────────────────────────────────
@@ -423,6 +459,135 @@ program
       );
       console.error(`✓ Wrote threat model JSON to ${jsonFile} (schema v${enrichedModel.metadata?.schema_version})`);
     }
+  });
+
+// ─── migrate ─────────────────────────────────────────────────────────
+
+program
+  .command('migrate')
+  .description('Move annotations between source comments and .guardlink/annotations/ sidecars')
+  .argument('[dir]', 'Project directory', '.')
+  .requiredOption('--to <mode>', 'Target mode: external (.gal sidecars) or inline (source comments)')
+  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('--dry-run', 'Report what would move without writing anything')
+  .action(async (dir: string, opts: { to: string; project: string; dryRun?: boolean }) => {
+    const root = resolve(dir);
+    if (opts.to !== 'inline' && opts.to !== 'external') {
+      console.error(`Invalid --to "${opts.to}". Use "inline" or "external".`);
+      process.exit(1);
+    }
+
+    const before = await parseProject({ root, project: opts.project });
+    const hashBefore = computeAnnotationHash(before.model);
+
+    const result = migrateAnnotationMode({ root, to: opts.to, model: before.model, dryRun: opts.dryRun });
+
+    const verb = opts.dryRun ? 'Would move' : 'Moved';
+    console.error(`${verb} ${result.annotationsMoved} annotation(s) to ${opts.to} mode.`);
+    for (const f of result.sourceFiles) console.error(`  source   ${f}`);
+    for (const f of result.galFiles) console.error(`  sidecar  ${f}`);
+    if (result.alreadyThere.length > 0) {
+      console.error(`  ${result.alreadyThere.length} file(s) already in ${opts.to} mode — left alone.`);
+    }
+    for (const s of result.skipped) console.error(`  skipped  ${s.file} — ${s.reason}`);
+
+    if (opts.dryRun) {
+      console.error('\nDry run — nothing was written.');
+      process.exit(0);
+    }
+
+    // The correctness check, run every time rather than offered as a flag.
+    // A migration that moves the hash changed the threat model, which is the
+    // one thing it must not do.
+    const after = await parseProject({ root, project: opts.project });
+    const hashAfter = computeAnnotationHash(after.model);
+    if (hashBefore !== hashAfter) {
+      console.error('\n✗ annotation_hash CHANGED across the migration:');
+      console.error(`    before  ${hashBefore}`);
+      console.error(`    after   ${hashAfter}`);
+      console.error('  The threat model is not the same one you started with. Revert with git and report this.');
+      process.exit(1);
+    }
+    console.error(`\n✓ annotation_hash unchanged: ${hashAfter}`);
+
+    if (!opts.dryRun) {
+      const configPath = join(root, '.guardlink', 'config.json');
+      if (existsSync(configPath)) {
+        const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
+        cfg.annotation_mode = opts.to;
+        writeFileSync(configPath, JSON.stringify(cfg, null, 2) + '\n');
+        console.error(`✓ .guardlink/config.json annotation_mode → ${opts.to}`);
+      }
+    }
+    process.exit(0);
+  });
+
+// ─── reanchor ────────────────────────────────────────────────────────
+
+program
+  .command('reanchor')
+  .description('Find @source blocks whose file:line no longer holds the symbol they name')
+  .argument('[dir]', 'Project directory to scan', '.')
+  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('--apply', 'Rewrite @source lines to the proposed positions (moved symbols only)')
+  .action(async (dir: string, opts: { project: string; apply?: boolean }) => {
+    const root = resolve(dir);
+    const { model } = await parseProject({ root, project: opts.project });
+    const drifts = findAnchorDrift(root, model);
+
+    if (drifts.length === 0) {
+      console.error('✓ Every anchored @source block still points at its symbol.');
+      process.exit(0);
+    }
+
+    console.error(`${drifts.length} drifted @source block(s):\n`);
+    for (const d of drifts) {
+      console.error(`  [${d.kind}] ${d.message}`);
+    }
+
+    if (!opts.apply) {
+      const movable = drifts.filter(d => d.kind === 'moved').length;
+      console.error(`\n${movable} of ${drifts.length} can be re-anchored automatically.`);
+      console.error('Run with --apply to move them. The rest need a human — their symbol is gone.');
+      process.exit(1);
+    }
+
+    const { updated, skipped } = applyReanchor(root, drifts);
+    console.error(`\n✓ Re-anchored ${updated.length} file(s): ${updated.join(', ')}`);
+    if (skipped.length > 0) {
+      console.error(`⚠  ${skipped.length} left alone — their symbol was renamed or removed, so there is no`);
+      console.error('   correct line to move them to. Rewrite those annotations rather than re-pointing them.');
+    }
+    process.exit(0);
+  });
+
+// ─── artifacts ───────────────────────────────────────────────────────
+
+program
+  .command('artifacts')
+  .description('Emit .guardlink/model.json and .guardlink/graph/ — diagrams and the model as plain files')
+  .argument('[dir]', 'Project directory to scan', '.')
+  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('--dry-run', 'Show what would be written without writing')
+  .action(async (dir: string, opts: { project: string; dryRun?: boolean }) => {
+    const root = resolve(dir);
+    const { model } = await parseProject({ root, project: opts.project });
+
+    if (model.annotations_parsed === 0) {
+      console.error('No annotations found — nothing to emit.');
+      process.exit(1);
+    }
+
+    const result = emitArtifacts({ root, model, dryRun: opts.dryRun });
+    const verb = opts.dryRun ? 'Would write' : 'Wrote';
+    console.error(`${verb} ${result.written.length} artifact(s):`);
+    for (const path of result.written) console.error(`   ${path}`);
+    console.error(`\nannotation_hash: ${result.provenance.annotation_hash}`);
+    console.error(`generated_at:    ${result.emission.generated_at}`);
+    console.error(`git_sha:         ${result.emission.git_sha ?? 'not a git checkout'}`);
+    console.error('(the last two are reported here, not written into the files — they would');
+    console.error(' otherwise churn every commit; the files are tracked.)');
+    console.error('Every .mmd carries that hash in a %% header. Check with: guardlink validate . --artifacts');
   });
 
 // ─── diff ────────────────────────────────────────────────────────────

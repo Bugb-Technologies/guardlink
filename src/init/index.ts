@@ -32,8 +32,13 @@ import {
   mcpConfig,
   referenceDocContent,
   promptMdContent,
+  guardlinkReadmeContent,
   GITIGNORE_ENTRY,
+  GITATTRIBUTES_ENTRY,
+  type ModelContextFreshness,
 } from './templates.js';
+import { computeAnnotationHash } from '../parser/annotation-hash.js';
+import { detectAnnotationMode, readConfiguredMode } from '../parser/annotation-mode.js';
 import type { ThreatModel } from '../types/index.js';
 import type { AnnotationMode } from '../agents/index.js';
 import { AGENT_CHOICES } from './picker.js';
@@ -57,11 +62,27 @@ export interface InitOptions {
   /** Explicit agent IDs to create files for (when no existing agent files found) */
   agentIds?: string[];
   /**
-   * Annotation placement mode.
-   * external: restrict all writes to .guardlink/ — no agent files, no .mcp.json at root, no docs/.
-   * inline: default behavior, writes all files including agent instruction files.
+   * Where annotations LIVE. Nothing else.
+   *
+   *   external (default) — `.gal` sidecars under `.guardlink/annotations/`
+   *   inline             — comments in the source files themselves
+   *
+   * This used to also decide whether init wrote anything outside `.guardlink/`,
+   * which conflated two unrelated questions and made "keep annotations out of my
+   * source" cost you MCP auto-discovery and every agent instruction file — the
+   * two things that make an agent aware GuardLink exists at all. That footprint
+   * question is now `rootFiles` (GL-506).
    */
   mode?: AnnotationMode;
+  /**
+   * Whether init may write outside `.guardlink/`.
+   *
+   * Default true: root `.mcp.json`, agent instruction files, `docs/`,
+   * `.gitignore` and `.gitattributes`. Set false for a zero-footprint install
+   * where `.guardlink/` is the entire diff — what `--mode external` used to
+   * imply, now asked for on its own.
+   */
+  rootFiles?: boolean;
 }
 
 export interface InitResult {
@@ -79,8 +100,10 @@ const GUARDLINK_MARKER_END = '<!-- guardlink:end -->';
 // ─── Main init function ──────────────────────────────────────────────
 
 export function initProject(options: InitOptions): InitResult {
-  const { root, force = false, dryRun = false, skipAgentFiles = false } = options;
-  const isExternal = options.mode === 'external';
+  const { root, force = false, dryRun = false, skipAgentFiles = false, rootFiles = true } = options;
+  // Annotation storage. Defaults to external: source files stay clean and the
+  // model is reviewable as one directory.
+  const mode: 'inline' | 'external' = options.mode === 'inline' ? 'inline' : 'external';
 
   const project = detectProject(root);
   if (options.project) project.name = options.project;
@@ -101,7 +124,7 @@ export function initProject(options: InitOptions): InitResult {
 
   const configPath = join(tsDir, 'config.json');
   if (!existsSync(configPath) || force) {
-    if (!dryRun) writeFileSync(configPath, configContent(project));
+    if (!dryRun) writeFileSync(configPath, configContent(project, mode));
     created.push('.guardlink/config.json');
   } else {
     skipped.push('.guardlink/config.json (exists)');
@@ -118,6 +141,26 @@ export function initProject(options: InitOptions): InitResult {
     skipped.push(`.guardlink/${defsFile} (exists)`);
   }
 
+  // ── 3b. Create .guardlink/README.md (agent cold-start, GL-402) ──
+  // Written unconditionally. With --no-root-files this is the only discovery
+  // path an agent has left, so it is never the thing that gets skipped.
+
+  const readmePath = join(tsDir, 'README.md');
+  if (!existsSync(readmePath) || force) {
+    if (!dryRun) {
+      writeFileSync(readmePath, guardlinkReadmeContent(project, {
+        mode,
+        modeSource: 'config',
+        model: null,
+        annotationHash: null,
+        mcpAtRoot: rootFiles,
+      }));
+    }
+    created.push('.guardlink/README.md');
+  } else {
+    skipped.push('.guardlink/README.md (exists)');
+  }
+
   // ── 4. Create .guardlink/prompt.md (skeleton for report) ──
 
   const promptPath = join(tsDir, 'prompt.md');
@@ -129,10 +172,10 @@ export function initProject(options: InitOptions): InitResult {
   }
 
   // ── 5. Create reference doc ──
-  // external mode: inside .guardlink/ (zero footprint outside it)
-  // inline mode: docs/GUARDLINK_REFERENCE.md (visible to humans browsing the project)
+  // --no-root-files: inside .guardlink/ (zero footprint outside it)
+  // default:         docs/GUARDLINK_REFERENCE.md (visible to humans browsing the project)
 
-  if (isExternal) {
+  if (!rootFiles) {
     const refDocPath = join(tsDir, 'GUARDLINK_REFERENCE.md');
     if (!existsSync(refDocPath) || force) {
       if (!dryRun) writeFileSync(refDocPath, referenceDocContent(project));
@@ -155,9 +198,10 @@ export function initProject(options: InitOptions): InitResult {
   }
 
   // ── 6. Update .gitignore ──
-  // Skipped in external mode: .guardlink/ is intentionally committed as a whole.
+  // A root file, so gated on rootFiles — and it only ever ignores root-level
+  // exports; .guardlink/ is committed as a whole either way.
 
-  if (!isExternal) {
+  if (rootFiles) {
     const gitignorePath = join(root, '.gitignore');
     if (existsSync(gitignorePath)) {
       const content = readFileSync(gitignorePath, 'utf-8');
@@ -168,10 +212,23 @@ export function initProject(options: InitOptions): InitResult {
     }
   }
 
-  // ── 7. Update/create agent instruction files ──
-  // Skipped in external mode: all writes are contained in .guardlink/.
+  // ── 6b. Mark derived artifacts as generated (GL-302/GL-304) ──
 
-  if (!skipAgentFiles && !isExternal) {
+  const gitattributesPath = join(root, '.gitattributes');
+  const existingAttrs = rootFiles && existsSync(gitattributesPath) ? readFileSync(gitattributesPath, 'utf-8') : '';
+  if (rootFiles && !existingAttrs.includes('.guardlink/graph')) {
+    if (!dryRun) {
+      if (existingAttrs) appendFileSync(gitattributesPath, GITATTRIBUTES_ENTRY);
+      else writeFileSync(gitattributesPath, GITATTRIBUTES_ENTRY.trimStart());
+    }
+    (existingAttrs ? updated : created).push('.gitattributes');
+  }
+
+  // ── 7. Update/create agent instruction files ──
+  // Written under external mode too, since GL-506: an agent that never learns
+  // GuardLink exists cannot annotate in either mode.
+
+  if (!skipAgentFiles && rootFiles) {
     const agentResults = updateAgentFiles(root, project, force, dryRun, options.agentIds);
     created.push(...agentResults.created);
     updated.push(...agentResults.updated);
@@ -179,11 +236,11 @@ export function initProject(options: InitOptions): InitResult {
   }
 
   // ── 8. Create .mcp.json for Claude Code MCP integration ──
-  // external mode: placed inside .guardlink/ as a reference template (won't be auto-discovered
-  //   by MCP clients, but documents the config for devs who want to enable it locally).
-  // inline mode: .mcp.json at project root for auto-discovery by Claude Code and other MCP clients.
+  // --no-root-files: inside .guardlink/ as a reference template — not auto-discovered
+  //   by MCP clients, but it documents the config for devs who want it locally.
+  // default: at the project root, where Claude Code and other MCP clients find it.
 
-  if (isExternal) {
+  if (!rootFiles) {
     const mcpPath = join(tsDir, '.mcp.json');
     if (!existsSync(mcpPath) || force) {
       if (!dryRun) writeFileSync(mcpPath, mcpConfig());
@@ -332,8 +389,15 @@ function replaceOrAppend(existing: string, block: string): string {
   const endIdx = existing.indexOf(GUARDLINK_MARKER_END);
 
   if (beginIdx !== -1 && endIdx !== -1) {
-    // Replace existing block
-    return existing.slice(0, beginIdx) + block + existing.slice(endIdx + GUARDLINK_MARKER_END.length);
+    // Replace existing block.
+    //
+    // The preserved tail must have its leading newlines stripped: `wrapMarkers`
+    // already ends the block with exactly one, and the tail begins with the one
+    // the *previous* sync wrote. Keeping both added a blank line on every run —
+    // this repo's own CLAUDE.md had accumulated 55 of them. Stripping makes the
+    // replacement idempotent, so syncing an unchanged model is a no-op.
+    const tail = existing.slice(endIdx + GUARDLINK_MARKER_END.length).replace(/^\n+/, '');
+    return existing.slice(0, beginIdx) + block + tail;
   }
 
   // Append with separator
@@ -457,10 +521,10 @@ function toPascalCase(s: string): string {
     .join('');
 }
 
-function buildMdFromScratch(project: ProjectInfo, model: ThreatModel | null): string {
+function buildMdFromScratch(project: ProjectInfo, model: ThreatModel | null, freshness?: ModelContextFreshness): string {
   return `# ${toPascalCase(project.name)} — Project Instructions
 
-${wrapMarkers(agentInstructionsWithModel(project, model))}`;
+${wrapMarkers(agentInstructionsWithModel(project, model, freshness))}`;
 }
 
 // ─── Sync: regenerate agent files with live threat model ─────────────
@@ -487,6 +551,44 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
   const updated: string[] = [];
   const skipped: string[] = [];
 
+  // Freshness for the synced block: the content hash alone.
+  //
+  // synced_at and git_sha were here and are gone. These are TRACKED files
+  // regenerated on every sync, so a field moving for reasons unrelated to the
+  // block’s content turns every regeneration into a diff — measured at a 9-line
+  // diff across 7 files per `guardlink validate`. Both still ship in the MCP
+  // envelope, computed per call and written nowhere.
+  //
+  // This does not fix D16. It restores the property that made D16 tolerable:
+  // rewriting unchanged content produces no diff.
+  const freshness: ModelContextFreshness | undefined = model && model.annotations_parsed > 0
+    ? { annotation_hash: computeAnnotationHash(model) }
+    : undefined;
+
+  // Regenerate .guardlink/README.md so it cannot drift from what the tooling
+  // actually does. Mode comes from config where recorded, and is otherwise
+  // observed from the annotations rather than assumed.
+  const configuredMode = readConfiguredMode(root);
+  const observed = model ? detectAnnotationMode(model) : null;
+  const readmeMode = configuredMode
+    ?? (observed && observed.inline + observed.external > 0 ? observed.mode : null);
+  const readmeModeSource = configuredMode ? 'config' as const
+    : readmeMode ? 'observed' as const : 'default' as const;
+
+  const readmePath = join(root, '.guardlink', 'README.md');
+  const readme = guardlinkReadmeContent(project, {
+    mode: readmeMode,
+    modeSource: readmeModeSource,
+    model,
+    annotationHash: model && model.annotations_parsed > 0 ? computeAnnotationHash(model) : null,
+    mcpAtRoot: existsSync(join(root, '.mcp.json')),
+  });
+  if (!dryRun) {
+    ensureDir(join(root, '.guardlink'));
+    writeFileSync(readmePath, readme);
+  }
+  updated.push('.guardlink/README.md');
+
   // Ensure .guardlink/prompt.md exists (fallback if init wasn't run)
   const promptPath = join(root, '.guardlink', 'prompt.md');
   if (!existsSync(promptPath)) {
@@ -510,12 +612,12 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
       }
       let content: string;
       if (choice.file.endsWith('.mdc')) {
-        content = cursorMdcContentWithModel(project, model);
+        content = cursorMdcContentWithModel(project, model, freshness);
       } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
-        content = wrapMarkers(cursorRulesContentWithModel(project, model));
+        content = wrapMarkers(cursorRulesContentWithModel(project, model, freshness));
       } else {
         // Markdown-based: CLAUDE.md, AGENTS.md, copilot-instructions.md, etc.
-        content = buildMdFromScratch(project, model);
+        content = buildMdFromScratch(project, model, freshness);
       }
       const res = safeWriteAgentFile(filePath, content, dryRun, project);
       if (!res.ok) skipped.push(res.skipReason);
@@ -530,13 +632,13 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
       // File exists — update the GuardLink block (marker-based replacement)
       if (choice.file.endsWith('.mdc')) {
         if (!dryRun) {
-          writeFileSync(filePath, cursorMdcContentWithModel(project, model));
+          writeFileSync(filePath, cursorMdcContentWithModel(project, model, freshness));
         }
         updated.push(choice.file);
       } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
         const existing = readFileSync(filePath, 'utf-8');
         if (!dryRun) {
-          const block = wrapMarkers(cursorRulesContentWithModel(project, model));
+          const block = wrapMarkers(cursorRulesContentWithModel(project, model, freshness));
           writeFileSync(filePath, replaceOrAppend(existing, block));
         }
         updated.push(choice.file);
@@ -545,7 +647,7 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
       } else {
         const existing = readFileSync(filePath, 'utf-8');
         if (!dryRun) {
-          const block = wrapMarkers(agentInstructionsWithModel(project, model));
+          const block = wrapMarkers(agentInstructionsWithModel(project, model, freshness));
           writeFileSync(filePath, replaceOrAppend(existing, block));
         }
         updated.push(choice.file);

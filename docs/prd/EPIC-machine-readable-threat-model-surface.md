@@ -111,6 +111,20 @@ two authors; there is one.
 | D12 | **High** | Unknown `lookup` query forms do not error — they fall through to `lookupFuzzy`, and `matchRef`'s reverse-substring rule matches the query string itself. `owner of #cli`, `assumptions for #cli`, `comments for #cli` all return byte-identical `count: 1` payloads containing none of the requested data | `lookup.ts:446`; measured |
 | D13 | **High** | `.find()` substring precedence silently drops exact matches. `lookup("threat dos")` returns `#redos` — `#redos` is declared at `definitions.ts:36`, `#dos` at `:39`, and `"redos".includes("dos")` short-circuits the exact match. `lookup("asset cli")` merges all 9 of `#llm-client`'s exposures into `#cli` | `lookup.ts:293,444`; reproduces on committed definitions |
 | D14 | Med | `coverage_percent` is dead — hardcoded `0` and never computed for a single repo. Three consumers display 0% today | `parse-project.ts:194`; consumers at `dashboard/data.ts:95`, `analyze/index.ts:407`, `tui/commands.ts:506`; only real assignment is `workspace/merge.ts:478` (multi-repo path) |
+| D15 | Med | The MCP model cache is **process-global**, not per-server — four module-level `let`s shared by every `createServer()` in a process. Two servers in one process share one `cachedRoot`, so server B's resources can answer for server A's repo. Superset of D9. Latent under stdio (one server per process), live under any multi-server host | `server.ts:64-66`; found by the GL-104 two-repo test, not by inspection |
+| D16 | **High** | `guardlink validate` silently rewrites 7 tracked files — it runs `syncAgentFiles` as a side effect, modifying `CLAUDE.md`, `AGENTS.md`, `.clinerules`, `.cursor/rules/guardlink.mdc`, `.gemini/GEMINI.md`, `.github/copilot-instructions.md`, `.windsurfrules`. A command that reads as read-only leaves a dirty tree, making it unusable as a CI check | observed during Phase 1 verification; needs a `--check` / read-only mode |
+| D17 | Med | `guardlink_dashboard` writes `threat-dashboard.html` into its own scan set (`.html` is in `DEFAULT_INCLUDE`, `parse-project.ts:52`). It yields zero annotations, but it does change `source_files` and `unannotated_files`. The MCP cache was masking the divergence from a fresh CLI run | fixed incidentally by A3's invalidation; the scan-set inclusion itself remains |
+| D18 | **High** | *(regression, introduced by A1 — fixed in 5959e8a)* Any threat or control resolvable **only by substring** is silently dropped entirely. `threat denial` → `count: 0` where Phase 0 measured `#dos` | `lookup.ts:411,418,430` |
+| D19 | **High** | **The documented cross-repo tag syntax does not parse.** `ASSET_REF` (`parse-line.ts:22`) offers `#[a-zA-Z0-9_-]+`, a quoted form, or `[A-Za-z_]\w*(\.[A-Za-z_]\w*)*` — the `#` alternative excludes dots and the dotted alternative excludes `#` and hyphens, so `#auth-lib.token-verify` matches `#auth-lib` and the remainder fails the `$` anchor. `THREAT_REF` (`:26`) has no dotted alternative at all. Cross-repo tags parse **only when quoted**, and **never in threat or control position**. Two documented examples are unwritable: `parse-project.ts:385`'s own canonical `#auth-lib.token-verify`, and both rules emitted by `guardlink_workspace_info` (`server.ts:859,861`) — the tool whose purpose is teaching this syntax | reproduced independently; parser grammar decision required |
+| D20 | Med | **Name collision on `external_refs`.** `model.external_refs` (built by `detectExternalRefs`, `parse-project.ts:393`) holds cross-repo sibling tags. `threat.external_refs` (built from `EXT_REF`, `parse-line.ts:28`) holds `cwe:` / `owasp:` identifiers. Two unrelated concepts under one field name, now with adjacent query surfaces — GL-203's `external refs` form returns the former, GL-204 will query the latter | risk of silent wrong answers at the CXG bridge |
+| D21 | Med | *(fixed in ed1da5e)* `replaceOrAppend` preserved the previous sync's trailing newline while `wrapMarkers` emitted a fresh one — every sync appended a blank line to every markdown agent file. Measured at `f022d5b`: `CLAUDE.md` 54 trailing newlines, `AGENTS.md` 53, `.clinerules` 44, accumulated silently across the repo's history | found by the D16-interaction test |
+| D22 | Med | **Templates embedding GAL syntax pollute the model.** Template literals live inside `.ts` files, so once the comment prefix is stripped their example annotations parse as *real* ones. The GL-402 README template injected `#api`, `#sqli` and `cwe:CWE-89` into this repo's own model, surfacing as a GL-204 test failure. Mitigated case-by-case with `@shield:begin/end`; the class recurs for any future template | `init/templates.ts`; same pattern already used in `agents/prompts.ts` |
+| D23 | Med | *(fixed at the emission boundary in a921afa)* **Parse order is unstable across processes.** `fast-glob` returns files in completion order under concurrency — stable within a process, not between two — so anything durable that inherits parse order churns. `computeAnnotationHash` was immune (it sorts before hashing), which is why the hash held while the prose moved. Still unreproducible and out of scope: `report --diagram-only`, and the dashboard HTML (D25) | `parse-project.ts` glob walk |
+| D24 | **High** | `guardlink init --force` **silently destroys a populated `definitions` file.** Observed during Phase 4: it overwrote 38 declarations with a 9-item template, plus `config.json`, with no warning and no prompt. Recovered via `git checkout` — a repo where definitions were not yet committed would have lost them outright | `init/index.ts`; needs a confirmation prompt or a refusal when definitions are non-empty |
+| D25 | Med | The dashboard embeds a wall-clock timestamp (`generate.ts:40`), so `docs/examples/threat-dashboard.html` — which is **committed** — churns on every regeneration. Same class as the GL-302/F1 volatile-field problem, different file | out of scope in Phase 4 |
+| D26 | Med | *(fixed in f71950c)* **`.guardlink/model.json` carried a top-level `generated_at`.** The `.mmd` headers had volatile fields stripped in `a921afa`; `model.json` did not. It is the artifact GL-304 most deliberately commits — justified precisely so a model change shows up in PR review | verified fixed: two `guardlink artifacts .` runs now byte-identical |
+| D27 | **BLOCKER** | **Agent instruction files never state where annotations go.** `agentInstructions(project)` takes no mode parameter, so no agent file can name it. Verified on a fresh default-init repo: `config.json` says `annotation_mode: external`, while `CLAUDE.md` contains **zero** occurrences of `.gal`, `annotations/`, `sidecar` or `@source` (its one "external" is "external API calls"). `.guardlink/README.md` states it correctly — 6, 4 and 2 occurrences — but that is the cold-start path, not the file an agent reads every turn. Under the new default an agent reads inline syntax with no placement guidance and writes inline; the repo silently goes mixed | **gates GL-507's default flip**; fix is GL-403 territory: thread mode into `agentInstructions` plus a short placement section |
+| D28 | Med | Committed artifacts go stale silently. `validate . --artifacts` on the current committed state reports 5 STALE and exits 1 — Phase 5 added annotated source without regenerating. The pre-commit hook ships uninstalled in `docs/hooks/` by design (correct: tooling should not silently install a hook that rewrites files), so nothing catches it. CI needs `validate --artifacts` as a required check, or the artifacts are decoration | measured on `376df26` |
 
 **Line-reference drift** found in Phase 0 verification (cosmetic, behaviour confirmed in
 every case): `parse-project.ts` 104-110 → 108-113 and 137 → 141; `cli/index.ts` 419-427 →
@@ -330,7 +344,18 @@ set, **so that** I can tell whether what I am reading reflects the current code.
 **Acceptance**
 - [ ] Editing an annotation and re-calling `guardlink_lookup` returns updated results with
       no explicit invalidation call.
-- [ ] Fingerprint check adds < 50 ms on a 1,000-file repo.
+- [ ] Fingerprint cost is characterised **per-file**, not at a single scale.
+      Measured on the Phase 1 implementation: ~17 µs/file — 2.97 ms at 1,000 files,
+      0.74 ms on guardlink (70 files), 136.7 ms on specter-v1 (8,142 files).
+      *The original criterion ("< 50 ms on a 1,000-file repo") passed at 2.97 ms while
+      the real cost at 8k files sits far outside what that number implies. State the
+      per-file rate and the largest scale you intend to support.*
+- [ ] At every scale measured, the check must remain cheaper than the parse it replaces
+      (achieved: 5.3% / 3.7% / 12.6% of a full parse respectively).
+- [ ] **No grace window.** Skipping re-fingerprint within N ms of the last check trades a
+      bounded staleness window for latency — reintroducing exactly the bug class GL-103
+      exists to kill. If per-call latency on very large repos becomes a real complaint,
+      raise it as a separate decision with its own evidence.
 - [ ] Regression test: edit a `.gal`, confirm `status` reflects it.
 - [ ] **D11:** `guardlink_clear` calls `invalidateCache()`. It mutates annotations on disk
       and currently does not — the tool that *caused* the divergence is the one that knows
@@ -375,6 +400,15 @@ matched, **so that** I do not act on a confidently wrong answer.
 - [ ] When a substring match is returned, the result names what it matched *against*.
 - [ ] `lookupThreat` and `lookupControl` adopt the `declared` / `referenced_in` shape that
       `lookupAsset` already uses (`lookup.ts:225` vs `:291`, `:308`).
+- [ ] **D18 — substring resolution must survive.** Exact-match *precedence* must not become
+      exact-match *exclusivity*. Verified regression cases: `threat denial` → `#dos`,
+      `threat inject` → `#cmd-injection` or an honest ambiguity result, `control valid` →
+      the validation control. Each pinned by a test.
+- [ ] **Ambiguous substring sets are reported, not silently resolved.** `asset client`
+      matches both `#cli` and `#llm-client` at substring tier and currently returns `#cli`
+      with no signal. Either return the set or name the ambiguity.
+- [ ] `lookupAsset`, `lookupThreat` and `lookupControl` agree: a ref that resolves in one
+      must resolve in all three at the same tier. Pinned by a test.
 
 ---
 
@@ -405,7 +439,17 @@ Implementation is a grouping over `location.file`. Works unchanged in both modes
 - [ ] Optional `line` narrows to the enclosing symbol where `parent_symbol` is available.
 - [ ] A file with no annotations returns an explicit empty result — distinguishable from
       an error or an unparsed file.
-- [ ] Response is ≤ 5% of full-model size on the `specter-v1` corpus.
+- [ ] Response size: **median ≤ 10% of model content**, with the max reported separately.
+      Measured on the Phase 2a implementation — guardlink 2,684 B median (4.39% of
+      61,111 B content); specter-v1 4,626 B median (6.83% of 67,702 B); max 18,977 B on
+      `.guardlink/definitions.ts`.
+      *Criterion corrected. The original "≤5% of full model" was restated mid-epic as
+      "≤5% of model content" without adjusting the threshold — tightening a denominator
+      from 716 KB to 68 KB while holding 5% constant made the target ~10× stricter by
+      accident. The depth-1 neighbourhood is 55–60% of every response and is the
+      specified value of the feature, not overhead. The figure that matters is the
+      practical one: 4.6 KB instead of 68 KB, a 14× saving on the question the tool
+      exists to answer.*
 
 ### GL-202 — `guardlink_graph(...)` — subgraph selector *(closes G2, G3)*
 **As** P4 about to change an asset, **I want** the transitive neighbourhood and paths
@@ -423,6 +467,20 @@ the filtered model — no second renderer.
 - [ ] `path from X to Y` returns ordered hops, or an explicit no-path result.
 - [ ] `format: 'mermaid'` output renders in a standard Mermaid viewer.
 - [ ] `kinds[]` filters which relation types are included.
+- [ ] **Defaults must sit in the affordable regime.** Measured on the Phase 2b
+      implementation (model content 61,914 B on this repo): `depth=1/both` 6.6 KB (11%),
+      `depth=2/out` 20.6 KB (34%), **`depth=2/both` 46.4 KB (77%)**, `depth=3/both`
+      exceeds a full dump. The shipped defaults are `depth=2, direction='both'`
+      (`server.ts:407-408`) — the most expensive corner measured. A default invocation
+      costing ~77–86% of model content inverts the epic's purpose.
+      *Decision required:* default `depth=1`; or default `direction='out'`; or keep both
+      and enforce a byte budget using the existing `truncated` flag. Recommended: the
+      third — depth ≥ 2 is the tool's whole value, so cap output rather than cripple the
+      default.
+- [ ] The `truncated` flag must mean one thing. Observed: `#llm-client d1 out` reports
+      `trunc=true` while `d2 out` reports `trunc=false` with an identical 4 nodes /
+      6 edges. If depth 1 truncated, its result was incomplete; the flag currently
+      conflates "budget hit" with "frontier saturated."
 
 ### GL-203 — Reach the 9 orphaned relation types *(closes G4)* **[priority raised to P0]**
 **As** P4, **I want** to query ownership, data classification, assumptions, audits,
@@ -451,8 +509,19 @@ Query forms: `owner of X` / `who owns X`, `handles pii` / `pii`, `assumptions fo
 **Acceptance**
 - [ ] All 9 types reachable; 19/19 coverage verified by a test asserting against the
       `ThreatModel` interface field list.
+      *Corrected in Phase 2a: `acceptances` is a **tenth** orphan, not a ninth — Appendix A
+      called it "a boolean flag, not content," which would have forced a special case into
+      any honest 19/19 test. It now has its own form. The coverage test enumerates array
+      fields off the runtime model, so a relation added to `assembleModel` fails the test
+      until someone registers a query form.*
 - [ ] `@handles` queryable by classification *and* by asset.
 - [ ] Results carry `location` and, in external mode, `origin_file`.
+      *Corrected in Phase 2a: `comments for X` and `shields for X` as **asset-scoped**
+      queries are not expressible — `@comment` and `@shield` carry only `description` and
+      `location`, with no asset reference. Implemented as location scoping instead: a
+      path-shaped scope selects by file; an asset-shaped scope returns rows sharing a file
+      with that asset, every row tagged `join: "co-located"` so a proximity inference is
+      never presented as a declared relation.*
 - [ ] **Unknown query forms are rejected explicitly** rather than falling through to fuzzy
       matching. An unrecognised form returns a `no_match` with the list of supported forms
       — never a confident wrong payload.
@@ -534,7 +603,7 @@ go verify.
 
 **Acceptance**
 - [ ] Every `.mmd` carries a `%%` header with `annotation_hash`, `git_sha`, `generated_at`,
-      generator version.
+      generator version. **Corrected in Phase 4: `generated_at` and `git_sha` are NOT stored.** A clock in a tracked file that a pre-commit hook regenerates guarantees the file always looks changed — F1's disease, made automatic. Header carries `annotation_hash` + generator (which moves only on a version bump, a real reason output can differ); the volatile two are reported on `guardlink artifacts` stdout. Also: never emit a bare `%%` line — mermaid reads it as the start of a `%%{init}%%` directive and fails. Pinned.
 - [ ] `guardlink validate --artifacts` recomputes and exits non-zero on mismatch.
 - [ ] Pre-commit hook **regenerates** rather than blocking — derived artifacts must never
       block a commit.
@@ -606,6 +675,17 @@ external-mode-default it is the *only* surviving path.
       enable them; what the `graph/` artifacts are and how to refresh them; one worked
       example of answering a real question.
 - [ ] Regenerated by `guardlink sync` so it never drifts from actual capability.
+- [ ] **It must work as a writing reference, not only an orientation.** Phase 3's
+      cold-start test found the README succeeds at orientation and at the two
+      wrong-conclusion traps, but fails for an agent that needs to *extend* the model:
+      the annotation grammar is shown by example and never stated (where `[critical]`
+      goes, whether `cwe:` is required, the `@flows A -> B via M` shape), and
+      `GUARDLINK_REFERENCE.md` is never named. Under external default this is the only
+      path — an agent that can query but not write is half a tool. Inline the verb table
+      and name the reference file.
+- [ ] The `graph/` artifacts section is **deliberately absent until SG-3 ships** — a cold
+      agent sent looking for a directory `init` never creates is worse off than one told
+      nothing. Pinned by a test so it is not forgotten when SG-3 lands.
 
 ### GL-403 — Rework the synced agent-file block
 **As** P1 reading `CLAUDE.md`, **I want** the block to lead with capability and declare its
@@ -624,7 +704,18 @@ confirmed, flows, features, stats. Four specific weaknesses:
 **Acceptance**
 - [ ] Block opens with capability framing; obligations follow.
 - [ ] Truncated lists point at the tool or artifact that returns the remainder.
-- [ ] Block carries `synced_at`, `git_sha`, `annotation_hash` (GL-101).
+- [ ] Block carries `annotation_hash` (GL-101) **only**.
+      *Criterion corrected after Phase 3. The original asked for `synced_at`, `git_sha`
+      and `annotation_hash` in the tracked block, without considering what "tracked"
+      means. Measured: one `guardlink validate` now dirties all 7 agent files with a
+      9-line diff. Two churn sources — `synced_at` moves on wall clock and carries no
+      information; `git_sha` moves on every commit, and since the block is regenerated by
+      `validate` it is permanently one commit behind and permanently dirty. Only
+      `annotation_hash` moves when and only when the thing it describes moves. All three
+      already ship in the MCP envelope (GL-102), computed per call, touching no disk —
+      that is where the volatile two belong.*
+      Combined with D16 this matters: a read-only-sounding command that produced no diff
+      for an unchanged model now always produces one.
 - [ ] Workflow section includes `guardlink diff HEAD~1` and `guardlink_context`.
 
 ---
@@ -782,10 +873,10 @@ Two consequences, both already folded into the stories above:
 | **0 — Measure** | ~~U1, U2, U3~~ | **COMPLETE.** Results in §3.4. Four PRD claims corrected, four new defects found (D11–D14). |
 | **0.5 — Hotfix?** | D12, D13 (+ D11, D6) | **DECISION REQUIRED.** These are silent-wrong-answer bugs in **released** code (v1.4.5 on npm), reproducing on GuardLink's own committed definitions. They are contained fixes in `lookup.ts` and do not depend on anything else in the epic. Options: (a) patch release ahead of the epic, (b) fold into Phase 1 and release with it. Leaning (a) — a shipped tool that answers "who owns this?" with a confident wrong record is worse than a missing feature. |
 | **1 — Foundation** | SG-1 (GL-101 → GL-105) | Four downstream consumers. GL-105's scope grew materially (D13 exact-match precedence). |
-| **2 — Query** | GL-201, GL-203, GL-202, GL-204, GL-205 | GL-201 first: highest use frequency, lowest complexity. GL-203 raised to P0 — it closes a correctness bug (D12), not just a gap. |
-| **3 — Discovery** | SG-4 (GL-401 → GL-403) | Cheap, high leverage, independent. Can run parallel to Phase 2. |
-| **4 — Artifacts** | SG-3 (GL-301 → GL-304) | Requires the SG-2 selector. U3 resolved: simpler than feared — `by-feature/` is a hedge, not a necessity. |
-| **5 — External readiness** | GL-501 **+ GL-503 together**, then GL-502, GL-504, GL-505, GL-506, GL-507 | GL-503 must land with GL-501: the documented convention currently points into a directory the parser silently refuses to read. |
+| **2 — Query** | GL-201, GL-203, GL-205 *(2a — done)* · GL-202, GL-204 *(2b — done)* | **COMPLETE.** 375 tests. §6's composition claim held exactly — `generateThreatGraph(selectSubgraph(model, opts))` works with `src/dashboard/` untouched, which is what SG-3 depends on. Two decisions deferred out: `guardlink_graph` defaults (above) and renaming `ThreatModel.external_refs` → `cross_repo_refs` (breaking, needs a `schema_version` bump). |
+| **3 — Discovery** | SG-4 (GL-401 → GL-403) | **COMPLETE.** 431 tests. D21 and D22 found and fixed. Two follow-ups: strip `synced_at`/`git_sha` from the tracked block (above), and close the README grammar gap the cold-start test surfaced. |
+| **4 — Artifacts** | SG-3 (GL-301 → GL-304) | **COMPLETE.** 465 tests. GL-302 acceptance argued down with measurement: headers carry `annotation_hash` + generator only, consistent with F1. GL-303 decided as keep-both (different projections, measured). GL-304 commits the artifacts. One carry-over: D26. |
+| **5 — External readiness** | GL-501+GL-503+GL-502+D14, GL-504, GL-505, GL-506, GL-507 | **COMPLETE — but the default flip is BLOCKED on D27.** 571 tests. Migration proven byte-identical by annotation_hash, both directions, round-trip diff clean. D14 resolved by computing coverage_percent rather than deleting it — correct, because GL-502 had just made both sides of the ratio mode-invariant. Two silent `@shield` migration bugs caught by the hash gate that a count check would have passed. |
 
 **Shippable increments:** Phase 0.5 alone is a defensible patch release. Phase 1 fixes real
 bugs. Phase 1 + GL-201 is a coherent release delivering most of the agent-facing value.

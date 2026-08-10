@@ -1,0 +1,27 @@
+#!/bin/sh
+#
+# GuardLink — regenerate derived artifacts before committing.
+#
+# This hook REGENERATES; it never blocks. A derived artifact must not stand
+# between a developer and a commit: the artifact is downstream of the change, so
+# refusing the commit punishes the author for a file the tooling owns. If
+# regeneration fails, the commit proceeds and CI reports it — `guardlink validate
+# . --artifacts` exits non-zero on drift and belongs in the pipeline, not here.
+#
+# Install:
+#   cp docs/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -u
+
+command -v guardlink >/dev/null 2>&1 || exit 0
+[ -d .guardlink ] || exit 0
+[ -d .guardlink/graph ] || exit 0
+
+if guardlink artifacts . >/dev/null 2>&1; then
+  git add .guardlink/model.json .guardlink/graph 2>/dev/null || true
+else
+  echo "guardlink: could not regenerate artifacts; committing without refreshing them." >&2
+  echo "           run 'guardlink validate . --artifacts' to see the state." >&2
+fi
+
+exit 0

@@ -2,6 +2,7 @@
   "version": "1.1.0",
   "project": "guardlink",
   "language": "typescript",
+  "annotation_mode": "inline",
   "definitions": "definitions.ts",
   "include": [
     "**/*.ts",

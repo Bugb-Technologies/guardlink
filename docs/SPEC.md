@@ -914,6 +914,155 @@ A conforming GuardLink tool may expose a Model Context Protocol (MCP) server wit
 
 MCP integration enables real-time threat model awareness during coding sessions. Tools should support project-scoped MCP configuration (e.g., `.mcp.json` for Claude Code) so that the MCP server can be committed to the repository and automatically available to all developers.
 
+#### 8.2.1. Freshness Envelope
+
+A conforming MCP server **should** attach a freshness envelope to every tool result and every resource read, so a consumer can distinguish a current answer from a cached or stale one without making a second call.
+
+The envelope is a **sibling of the payload, never merged into it**. For tools it is an additional trailing content block; for resources it is an additional `contents` entry addressed as `guardlink://freshness`. The payload at index `0` is unchanged, so a consumer that ignores the envelope is unaffected.
+
+```json
+{
+  "guardlink": {
+    "annotation_hash": "sha256-v1:14956d87cc37c1de452c262ebbe0c8ae7384cee371dc73be5c255cf8eea672b6",
+    "git_sha": "9ac65fb9b780dba42f618ca72f1dcca8cb60c600",
+    "generated_at": "2026-08-09T09:39:24.229Z",
+    "mode": "inline",
+    "root": "/abs/path/to/repo",
+    "guardlink_version": "1.4.5"
+  }
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `annotation_hash` | Content hash of the annotation set (§8.2.2). `unavailable` if the model could not be parsed, alongside an `unavailable` field naming the reason. |
+| `git_sha` | Commit SHA of the answering repository, or `null` outside a git checkout. |
+| `generated_at` | ISO 8601 timestamp of the response. |
+| `mode` | Where annotations are stored: `inline`, `external`, or `mixed`. Observed from the model, not configured. |
+| `root` | Absolute path of the repository this answer describes. |
+| `guardlink_version` | Implementation version that produced the answer. |
+
+Resource envelopes carry one additional field, `root_source`, with the value `tool_call` when the root was established by a prior tool invocation or `server_cwd` when it was assumed from the server's working directory. Resources are addressed by URI and take no arguments, so without this a consumer in a multi-repository workspace cannot tell which repository answered.
+
+#### 8.2.2. Annotation Hash
+
+`annotation_hash` is a content fingerprint of the annotation set, formatted as `sha256-v<algorithm-version>:<hex>`.
+
+It is computed over annotation **content** only. Specifically it includes each annotation's verb, its verb-specific fields, its description, and its logical source file; and it excludes line numbers, `origin_file`, `origin_line`, and `parent_symbol`. Records are sorted as a multiset before hashing.
+
+These exclusions give the hash four properties a conforming implementation must preserve:
+
+1. Reordering annotations within a file does not change it.
+2. Reformatting surrounding code does not change it.
+3. Adding, editing, or deleting any annotation does change it — including deleting one of two identical annotations.
+4. The same logical model authored inline and authored externally as `.gal` sidecars produces the **same** hash.
+
+Property 4 makes the hash the correctness test for migration between annotation modes: a migration that preserves meaning must preserve the hash. Properties 1 and 2 exist so the signal stays trustworthy — a hash that changed on cosmetic edits would be warned about constantly and then ignored.
+
+#### 8.2.3. Reference Resolution
+
+A conforming query surface resolves a reference in **tiers**, strongest first, and reports which tier answered:
+
+| Tier | Meaning |
+|---|---|
+| `exact` | The value is the reference, or its last dotted segment is. |
+| `alias` | The value is a resolved alias of the reference — an id matched against its dotted path, or the reverse. |
+| `substring` | One contains the other, at three characters or more. |
+
+Two rules follow, and both exist because violating either produces a confidently wrong answer:
+
+1. **A stronger match always beats a weaker one, regardless of declaration order.** Where `#redos` is declared before `#dos`, a resolver that takes the first substring hit returns ReDoS for the query `dos` and never reaches the exactly-declared `#dos`. The response is indistinguishable from a correct one.
+2. **Precedence is not exclusivity.** A reference resolvable *only* by substring must still resolve. Tiers are compared, never re-derived: classifying a match's own `matched_against` value compares the reference against itself and always yields `exact`, which silently promotes a substring match and then discards the record it resolved.
+
+Where several records tie at the winning tier, the result carries `ambiguous: true` and `candidates`, naming the whole tie rather than letting declaration order pick one silently.
+
+##### Identity join, and where it does not apply
+
+Once a query resolves to a **declared record**, that record's relations are found through *its own* identifiers, not through the query string. Annotations write `@exposes … to #dos`, but a query may arrive as `denial`, which matches only the `canonical_name`. Joining on the query would leave the record correct and its relations empty.
+
+**This produces an intentional and observable difference between two shapes of query, and consumers — including any traversal built on top of these joins — must not assume they agree.**
+
+- `asset <id>`, `threat <id>` and `control <id>` resolve a declared record first, then join on that record's identity.
+- The relational forms — `flows into X`, `exposures for X`, `owner of X` and the rest — have no declared-record step, because their endpoints are frequently *undeclared* free-form strings. They match against the query directly.
+
+Worked example. In a model where `#llm-client` is declared and `LLMProvider`, `LLMConfig` and `LLMToolCall` appear only as flow endpoints:
+
+```
+asset llm         → resolves #llm-client, then joins on #llm-client
+                    inbound_flows: 9
+flows into llm    → matches endpoints against "llm" directly
+                    10  (the 9 above, plus LLMProvider)
+```
+
+Both answers are correct for the question asked. The second is broader by design: forcing it through record resolution would make undeclared endpoints unqueryable, and those are precisely the nodes a developer is most likely to be hunting. The breadth is signalled — the relational form returns `ambiguous: true` with `candidates: ["#llm-client", "LLMProvider"]` — so a consumer can see that more than one identity was admitted rather than inferring a single one.
+
+A conforming implementation that adds traversal or path queries **must decide explicitly which of these two joins it inherits**, and say so, rather than acquiring one by accident from whichever helper it happened to call.
+
+##### Relations with no reference of their own
+
+`@comment` and `@shield` record only a description and a location. There is no asset, threat or control on the record to join against. A conforming implementation scopes them by *location*: a path-shaped scope selects by file, and an asset-shaped scope returns the records sharing a file with annotations that name that asset.
+
+The second is an inference about proximity, not a declared relationship, and must be labelled as such — GuardLink marks every such row `join: "co-located"`. Returning a proximity join as though it were declared is the same class of error as returning a substring match as though it were exact.
+
+#### 8.2.4. External Identifier Queries — the scanner integration point
+
+A conforming query surface resolves external identifiers (`cwe:`, `owasp:`, `cve:`, `capec:`) declared on threats, exposures and confirmed findings. This is the supported integration point for a deterministic scanner: *"I found CWE-89 at this site — does the threat model already declare it, and is anything done about it?"*
+
+**Accepted forms.** `cwe:CWE-89`, bare `CWE-89`, and any case variation resolve identically. Bare identifiers are recognised for `CWE-`, `CVE-` and `CAPEC-` patterns only. A bare OWASP category code such as `A03` is **not** recognised — three alphanumeric characters could equally be an asset id, and reinterpreting it would be a guess; write `owasp:A03`.
+
+**The distinction the integration depends on.** Two situations both yield `count: 0` and demand opposite responses:
+
+| | `external_id.declared` | `count` | What a scanner should do |
+|---|---|---|---|
+| Model has never heard of this weakness class | `false` | 0 | The finding is new information. Report it. |
+| Model declares it; nothing is currently exposed | `true` | 0 | The class is known and the model says no site is affected. Investigate the discrepancy. |
+
+A conforming implementation **must** make these distinguishable. Returning a bare empty result for both tells a scanner its finding is unknown when in fact the model has considered and dismissed the class.
+
+**Site partitioning.** Sites come from `@exposes` and `@confirmed` — the places a weakness is declared to exist. `@mitigates` and `@accepts` are *status*, not sites. Each site carries independent booleans plus a `status` applying the precedence **confirmed > accepted > mitigated > open**. Confirmed ranks first because verified exploitability is the strongest evidence in the model and must not be masked by a control that may be incomplete; the booleans are returned alongside so a consumer may apply its own ordering.
+
+**Worked example.** A scanner reports CWE-22 in `src/cli/index.ts`:
+
+```jsonc
+// query: "cwe:CWE-22"   (or "CWE-22")
+{
+  "type": "external_id",
+  "count": 10,
+  "external_id": {
+    "scheme": "cwe", "id": "CWE-22", "normalized": "cwe-22",
+    "declared": true,
+    "threats": [ { "id": "path-traversal", "name": "path_traversal",
+                   "severity": "high", "external_refs": ["cwe:CWE-22"] } ],
+    "totals": { "confirmed": 0, "accepted": 0, "mitigated": 10, "open": 0 }
+  },
+  "results": [
+    { "status": "mitigated", "asset": "#cli", "threat": "#path-traversal",
+      "severity": "medium", "confirmed": false, "accepted": false, "mitigated": true,
+      "controls": ["#path-validation"], "file": "src/cli/index.ts", "line": 32 }
+  ]
+}
+```
+
+The integration logic a scanner implements against this:
+
+1. `external_id.declared === false` → the model has no knowledge of the class. Report the finding as new.
+2. `declared === true` and no site matches the scanner's file → the class is known but not declared at that location. Report it as an undeclared site of a known class.
+3. A site matches and `status === "mitigated"` → a control is declared. Either the finding is a false positive or the control is insufficient; surface both possibilities rather than suppressing.
+4. `status === "confirmed"` → previously verified as exploitable. The scanner corroborates a known-real issue.
+5. `status === "accepted"` → a human recorded a governance decision. Do not re-raise without referencing it.
+6. `status === "open"` → declared, nothing done. The scanner corroborates a known gap.
+
+##### Two unrelated things named `external_refs`
+
+A conforming implementation must keep these apart, and should name them so a caller cannot confuse them:
+
+| | Contents | Built from |
+|---|---|---|
+| `ThreatModel.external_refs` | Cross-repo tags pointing at sibling repositories | Workspace configuration; empty without one |
+| `threat.external_refs`, `exposure.external_refs`, `confirmed.external_refs` | `cwe:` / `owasp:` identifiers | The annotation itself |
+
+They share a name and nothing else. GuardLink exposes the first as `cross-repo refs` and the second through identifier queries, and each form's documentation names the other — a caller who picks the wrong one otherwise receives a confidently empty answer.
+
 ### 8.3. AI-Powered Threat Analysis
 
 A conforming Level 4 implementation may provide AI-driven threat analysis that takes the parsed ThreatModel as input and produces structured reports using established threat modeling frameworks:

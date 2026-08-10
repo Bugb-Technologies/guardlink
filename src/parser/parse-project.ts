@@ -27,6 +27,10 @@ import type {
 } from '../types/index.js';
 import { parseFile } from './parse-file.js';
 import { loadWorkspaceConfig } from '../workspace/index.js';
+import { ANNOTATIONS_DIR } from './gal-path.js';
+
+/** A standalone annotation sidecar, not a source file. */
+const isGalPath = (p: string): boolean => /\.gal$/i.test(p);
 
 export interface ParseProjectOptions {
   /** Root directory to scan */
@@ -39,7 +43,7 @@ export interface ParseProjectOptions {
   project?: string;
 }
 
-const DEFAULT_INCLUDE = [
+export const DEFAULT_INCLUDE = [
   '**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx',
   '**/*.py', '**/*.rb', '**/*.go', '**/*.rs',
   '**/*.java', '**/*.kt', '**/*.scala',
@@ -55,7 +59,7 @@ const DEFAULT_INCLUDE = [
   '**/*.[gG][aA][lL]',
 ];
 
-const DEFAULT_EXCLUDE = [
+export const DEFAULT_EXCLUDE = [
   '**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**',
   '**/__pycache__/**', '**/target/**', '**/vendor/**', '**/.next/**',
   '**/tests/**', '**/test/**', '**/__tests__/**',
@@ -80,12 +84,34 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   } = options;
 
   // Discover files (dot: true to include .guardlink/ definitions)
-  const files = await fg(include, {
+  const scanned = await fg(include, {
     cwd: root,
     ignore: exclude,
     absolute: true,
     dot: true,
   });
+
+  // GL-503 — rescue annotation sidecars under excluded directories.
+  //
+  // DEFAULT_EXCLUDE drops test/, tests/, __tests__/, vendor/, build/, dist/ and
+  // target/ at any depth, which also matched INSIDE .guardlink/annotations/. A
+  // sidecar written at the documented convention path for a source file under
+  // test/ was silently dropped: no warning, no diagnostic, and the annotation
+  // count simply did not move (measured, Phase 0 §8).
+  //
+  // Those exclusions exist to skip *source* the model should not describe. They
+  // have no business inside .guardlink/annotations/, which contains nothing but
+  // GuardLink's own data. The source file stays excluded; only its sidecar is
+  // rescued — annotating a test file is a deliberate act, and losing the
+  // annotation because of where the code lives is not a policy anyone chose.
+  const sidecars = await fg([`${ANNOTATIONS_DIR}/**/*.[gG][aA][lL]`], {
+    cwd: root,
+    ignore: ['**/node_modules/**', '**/.git/**'],
+    absolute: true,
+    dot: true,
+  });
+
+  const files = [...new Set([...scanned, ...sidecars])];
 
   // Parse all files
   const allAnnotations: Annotation[] = [];
@@ -106,10 +132,21 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
       diag.file = relPath;
     }
     if (result.annotations.length > 0) {
-      filesWithAnnotations.add(relPath);
+      // GL-502 — count the LOGICAL source, never the sidecar.
+      //
+      // This used to add both relPath and ann.location.file. In inline mode they
+      // are the same string and the second add is a no-op; in external mode they
+      // are the .gal and the source it annotates, so every externally annotated
+      // file was counted twice (measured: annotated_files 3 -> 5 on an identical
+      // logical model). location.file is already the logical source in both
+      // modes, so adding it alone is both simpler and correct.
       for (const ann of result.annotations) {
         filesWithAnnotations.add(ann.location.file);
       }
+      // A .gal with no @source block leaves location.file pointing at the .gal
+      // itself; it is still a real annotation, just not attributable to a source
+      // file. Keep the physical path in that case so the annotation is not orphaned.
+      if (!isGalPath(relPath)) filesWithAnnotations.add(relPath);
     }
     allAnnotations.push(...result.annotations);
     allDiagnostics.push(...result.diagnostics);
@@ -135,14 +172,27 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   }
 
   // Compute annotated vs unannotated files (exclude .guardlink/ definitions from unannotated)
-  const allRelPaths = files.map(f => relative(root, f));
-  const annotatedFiles = [...filesWithAnnotations].sort();
+  const allRelPaths = files.map(f => relative(root, f).replaceAll('\\', '/'));
+  const annotatedFiles = [...filesWithAnnotations].filter(f => !isGalPath(f)).sort();
   const unannotatedFiles = allRelPaths
-    .filter(f => !filesWithAnnotations.has(f) && !f.startsWith('.guardlink/') && !f.startsWith('.guardlink\\'))
+    .filter(f => !isGalPath(f) && !filesWithAnnotations.has(f) && !f.startsWith('.guardlink/'))
     .sort();
 
+  // GL-502 — the denominator is source files, and a sidecar is not one.
+  //
+  // `files.length` counted .gal sidecars as source, inflating the denominator by
+  // one per externally annotated file (measured: source_files 7 -> 9 on an
+  // identical logical model) and making coverage incomparable across modes.
+  //
+  // The union with annotated files matters for the case GL-503 just unlocked: a
+  // source file under test/ is excluded from the scan but can still be annotated
+  // through its sidecar. Without the union it would appear in annotated_files
+  // while missing from the denominator, so annotated could exceed scanned.
+  const sourceFiles = new Set(allRelPaths.filter(f => !isGalPath(f)));
+  for (const f of annotatedFiles) sourceFiles.add(f);
+
   // Assemble ThreatModel
-  const model = assembleModel(allAnnotations, files.length, project, annotatedFiles, unannotatedFiles);
+  const model = assembleModel(allAnnotations, sourceFiles.size, project, annotatedFiles, unannotatedFiles);
 
   // Detect cross-repo tag references (requires workspace.yaml)
   model.external_refs = detectExternalRefs(model, root);
@@ -189,9 +239,16 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
     features: [],
     comments: [],
     coverage: {
+      // Symbol-level coverage would need per-symbol parsing; not computed.
       total_symbols: 0,
       annotated_symbols: annotations.length,
-      coverage_percent: 0,
+      // D14 — file coverage, actually computed. This was a hardcoded 0 that three
+      // consumers rendered as "0%" on fully annotated projects. Meaningful only
+      // because GL-502 made both sides of the ratio exclude sidecars, so the
+      // number no longer moves when a repo changes annotation mode.
+      coverage_percent: fileCount > 0
+        ? Math.round((annotatedFiles.length / fileCount) * 100)
+        : 0,
       unannotated_critical: [],
     },
   };

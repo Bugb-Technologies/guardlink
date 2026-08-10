@@ -12,6 +12,7 @@
 import { execSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { computeAnnotationHash } from '../parser/annotation-hash.js';
 import type { ThreatModel, ReportMetadata } from '../types/index.js';
 import type { WorkspaceConfig } from './types.js';
 
@@ -30,6 +31,38 @@ function getGuardlinkVersion(): string {
     return pkg.version || 'unknown';
   } catch {
     return 'unknown';
+  }
+}
+
+/**
+ * Read HEAD straight out of `.git`.
+ *
+ * `populateMetadata` shells out to `git rev-parse`, which is fine once per
+ * report but not once per tool call. Two small file reads cost microseconds and
+ * cannot go stale the way a cached subprocess result would.
+ */
+export function readGitSha(root: string): string | null {
+  const sha = /^[0-9a-f]{40}$/;
+  try {
+    const head = readFileSync(join(root, '.git', 'HEAD'), 'utf-8').trim();
+    if (!head.startsWith('ref: ')) return sha.test(head) ? head : null;
+
+    const ref = head.slice(5).trim();
+    try {
+      const direct = readFileSync(join(root, '.git', ref), 'utf-8').trim();
+      if (sha.test(direct)) return direct;
+    } catch { /* ref is packed */ }
+
+    const packed = readFileSync(join(root, '.git', 'packed-refs'), 'utf-8');
+    for (const line of packed.split('\n')) {
+      const [hash, name] = line.trim().split(/\s+/);
+      if (name === ref && sha.test(hash)) return hash;
+    }
+    return null;
+  } catch {
+    // Not a git checkout, or `.git` is a file (worktree / submodule). Reporting
+    // null is honest; guessing would defeat the point of the field.
+    return null;
   }
 }
 
@@ -175,6 +208,7 @@ export function populateMetadata(model: ThreatModel, root: string): ThreatModel 
     commit_sha: getCommitSha(root),
     branch: getBranch(root),
     generated_at: model.generated_at,
+    annotation_hash: computeAnnotationHash(model),
     ...(workspace?.workspace && { workspace: workspace.workspace }),
   };
 
