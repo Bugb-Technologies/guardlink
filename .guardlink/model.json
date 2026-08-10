@@ -1,6 +1,6 @@
 {
   "version": "1.1.0",
-  "project": "unknown",
+  "project": "guardlink",
   "source_files": 86,
   "annotations_parsed": 438,
   "annotated_files": [
@@ -980,7 +980,7 @@
       "description": "callers pass join(root, ...) constrained paths",
       "location": {
         "file": "src/init/index.ts",
-        "line": 487
+        "line": 492
       }
     },
     {
@@ -1833,7 +1833,7 @@
       "description": "Creates directories for agent-file writes",
       "location": {
         "file": "src/init/index.ts",
-        "line": 486
+        "line": 491
       }
     },
     {
@@ -2675,7 +2675,7 @@
       "description": "Version string read from package.json",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 115
+        "line": 116
       }
     },
     {
@@ -4034,13 +4034,13 @@
       "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 802
+        "line": 831
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1097
+        "line": 1126
       }
     }
   ],

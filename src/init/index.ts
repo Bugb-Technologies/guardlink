@@ -34,6 +34,9 @@ import {
   promptMdContent,
   guardlinkReadmeContent,
   GITIGNORE_ENTRY,
+  referenceDocPath,
+  REFERENCE_DOC_IN_GUARDLINK,
+  REFERENCE_DOC_IN_DOCS,
   GITATTRIBUTES_ENTRY,
   type ModelContextFreshness,
 } from './templates.js';
@@ -225,6 +228,8 @@ export function initProject(options: InitOptions): InitResult {
         model: null,
         annotationHash: null,
         mcpAtRoot: rootFiles,
+        // D45: the same rule init writes by, not a guess from annotation mode.
+        referencePath: referenceDocPath(rootFiles),
       }));
     }
     created.push('.guardlink/README.md');
@@ -246,40 +251,40 @@ export function initProject(options: InitOptions): InitResult {
   // --no-root-files: inside .guardlink/ (zero footprint outside it)
   // default:         docs/GUARDLINK_REFERENCE.md (visible to humans browsing the project)
 
-  if (!rootFiles) {
-    const refDocPath = join(tsDir, 'GUARDLINK_REFERENCE.md');
-    if (!existsSync(refDocPath) || force) {
-      if (!dryRun) writeFileSync(refDocPath, referenceDocContent(project));
-      created.push('.guardlink/GUARDLINK_REFERENCE.md');
-    } else {
-      skipped.push('.guardlink/GUARDLINK_REFERENCE.md (exists)');
+  // D45: one rule for where this goes, shared with the README writer that
+  // points at it. They used to decide independently, off different inputs.
+  const refRelative = referenceDocPath(rootFiles);
+  const refDocPath = join(root, refRelative);
+  if (!existsSync(refDocPath) || force) {
+    if (!dryRun) {
+      ensureDir(dirname(refDocPath));
+      writeFileSync(refDocPath, referenceDocContent(project));
     }
+    created.push(refRelative);
   } else {
-    const docsDir = join(root, 'docs');
-    const refDocPath = join(docsDir, 'GUARDLINK_REFERENCE.md');
-    if (!existsSync(refDocPath) || force) {
-      if (!dryRun) {
-        ensureDir(docsDir);
-        writeFileSync(refDocPath, referenceDocContent(project));
-      }
-      created.push('docs/GUARDLINK_REFERENCE.md');
-    } else {
-      skipped.push('docs/GUARDLINK_REFERENCE.md (exists)');
-    }
+    skipped.push(`${refRelative} (exists)`);
   }
 
   // ── 6. Update .gitignore ──
   // A root file, so gated on rootFiles — and it only ever ignores root-level
   // exports; .guardlink/ is committed as a whole either way.
 
+  // D44: this only ever appended, so a project with no `.gitignore` — every
+  // fresh one — got no entry at all. init has already decided which four
+  // generated names it expects ignored; it then left `guardlink dashboard`
+  // output both untracked and unignored. Create the file when it is absent,
+  // exactly as the `.gitattributes` block below already does.
   if (rootFiles) {
     const gitignorePath = join(root, '.gitignore');
-    if (existsSync(gitignorePath)) {
-      const content = readFileSync(gitignorePath, 'utf-8');
-      if (!content.includes('GuardLink') && !content.includes('.guardlink')) {
-        if (!dryRun) appendFileSync(gitignorePath, GITIGNORE_ENTRY);
-        updated.push('.gitignore');
+    const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf-8') : null;
+    const alreadyOurs = existing !== null
+      && (existing.includes('GuardLink') || existing.includes('.guardlink'));
+    if (!alreadyOurs) {
+      if (!dryRun) {
+        if (existing === null) writeFileSync(gitignorePath, GITIGNORE_ENTRY.trimStart());
+        else appendFileSync(gitignorePath, GITIGNORE_ENTRY);
       }
+      (existing === null ? created : updated).push('.gitignore');
     }
   }
 
@@ -670,6 +675,11 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
     model,
     annotationHash: model && model.annotations_parsed > 0 ? computeAnnotationHash(model) : null,
     mcpAtRoot: existsSync(join(root, '.mcp.json')),
+    // D45: sync did not write the reference doc, so it observes where it is
+    // rather than assuming — the same shape as mcpAtRoot directly above.
+    referencePath: existsSync(join(root, REFERENCE_DOC_IN_GUARDLINK))
+      ? REFERENCE_DOC_IN_GUARDLINK
+      : REFERENCE_DOC_IN_DOCS,
   });
   if (!dryRun) {
     ensureDir(join(root, '.guardlink'));

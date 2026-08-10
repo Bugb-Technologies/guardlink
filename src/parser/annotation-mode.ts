@@ -106,3 +106,26 @@ export function readConfiguredMode(root: string): AnnotationMode | null {
     return null;
   }
 }
+
+/**
+ * The project name a repo declared at init, from `.guardlink/config.json`.
+ *
+ * D43: `parseProject` defaults `project` to `'unknown'` and the CLI passed that
+ * default through, so `guardlink status .` printed "GuardLink Status: unknown"
+ * in every repo including this one — while `config.json` held the name three
+ * lines away. Nothing read it. The first command anyone runs after `init`
+ * reported the project as unknown.
+ *
+ * Returns null when absent or unreadable, so callers keep their own default and
+ * an explicit `--project` still wins. Same shape as `readConfiguredMode` above,
+ * deliberately — one way to ask config.json a question.
+ */
+export function readConfiguredProject(root: string): string | null {
+  try {
+    const config = JSON.parse(readFileSync(join(root, '.guardlink', 'config.json'), 'utf-8'));
+    const name = config.project;
+    return typeof name === 'string' && name.trim() !== '' ? name : null;
+  } catch {
+    return null;
+  }
+}

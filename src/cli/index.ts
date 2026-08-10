@@ -67,6 +67,7 @@ import { populateMetadata, mergeReports, formatMergeSummary, diffMergedReports, 
 import type { MergedReport, LinkResult } from '../workspace/index.js';
 import type { ThreatModel, ParseDiagnostic } from '../types/index.js';
 import gradient from 'gradient-string';
+import { readConfiguredProject } from '../parser/annotation-mode.js';
 
 const program = new Command();
 
@@ -180,10 +181,11 @@ program
     console.log('');
 
     // Run init
+    const mode = resolveAnnotationMode(opts.mode);
     const result = initProject({
       root,
-      project: opts.project,
-      mode: resolveAnnotationMode(opts.mode),
+      project: opts.project ?? readConfiguredProject(root) ?? undefined,
+      mode,
       // Commander sets rootFiles=false for --no-root-files, true otherwise.
       rootFiles: opts.rootFiles !== false,
       skipAgentFiles: opts.skipAgentFiles,
@@ -217,9 +219,17 @@ program
     }
 
     if (!opts.dryRun && (result.created.length > 0 || result.updated.length > 0)) {
+      // D38: step 2 said "Add annotations to your source files" regardless of
+      // mode, while the `.guardlink/README.md` written by this same command says
+      // annotations do NOT go in source files under the default. One command
+      // contradicting itself inside one screen of output, and the terminal is
+      // the half a cold agent acts on. Both halves now come from the mode.
+      const external = mode === 'external';
       console.log(`\n✓ GuardLink initialized. Next steps:`);
       console.log(`  1. Review .guardlink/definitions${info.definitionsExt} — remove threats/controls not relevant to your project`);
-      console.log(`  2. Add annotations to your source files (or ask your coding agent to do it)`);
+      console.log(external
+        ? `  2. Add annotations in .guardlink/annotations/<source path>.gal sidecars — NOT in source files (or ask your coding agent to do it)`
+        : `  2. Add annotations in source-file comments (or ask your coding agent to do it)`);
       console.log(`  3. Run: guardlink validate .`);
     }
   });
@@ -230,12 +240,12 @@ program
   .command('parse')
   .description('Parse all GuardLink annotations and output the threat model as JSON')
   .argument('[dir]', 'Project directory to scan', '.')
-  .option('-p, --project <name>', 'Project name', 'unknown')
+  .option('-p, --project <name>', 'Project name (default: the name in .guardlink/config.json)')
   .option('-o, --output <file>', 'Write JSON to file instead of stdout')
   .option('--pretty', 'Pretty-print JSON output', true)
   .action(async (dir: string, opts: { project: string; output?: string; pretty: boolean }) => {
     const root = resolve(dir);
-    const { model, diagnostics } = await parseProject({ root, project: opts.project });
+    const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
 
     // Print diagnostics to stderr
     printDiagnostics(diagnostics);
@@ -259,13 +269,13 @@ program
   .command('status')
   .description('Show annotation coverage summary')
   .argument('[dir]', 'Project directory to scan', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--not-annotated', 'List source files with no GuardLink annotations')
   .option('--feature <names>', 'Filter status to specific feature(s) (comma-separated)')
   .option('--sync', 'Also refresh agent instruction files (this used to happen unasked — see D16)')
   .action(async (dir: string, opts: { project: string; notAnnotated?: boolean; feature?: string; sync?: boolean }) => {
     const root = resolve(dir);
-    let { model, diagnostics } = await parseProject({ root, project: opts.project });
+    let { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
 
     // Apply feature filter if specified
     if (opts.feature) {
@@ -297,13 +307,13 @@ program
   .command('validate')
   .description('Check annotations for syntax errors and dangling references')
   .argument('[dir]', 'Project directory to scan', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--strict', 'Also fail on unmitigated exposures (for CI gates)')
   .option('--artifacts', 'Also check .guardlink/graph/ artifacts against the current model; exits non-zero on drift')
   .option('--sync', 'Also refresh agent instruction files (this used to happen unasked — see D16)')
   .action(async (dir: string, opts: { project: string; strict?: boolean; artifacts?: boolean; sync?: boolean }) => {
     const root = resolve(dir);
-    const { model, diagnostics } = await parseProject({ root, project: opts.project });
+    const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
 
     // Check for dangling refs
     const danglingDiags = findDanglingRefs(model);
@@ -415,7 +425,7 @@ program
   .command('report')
   .description('Generate a threat model report with Mermaid diagram')
   .argument('[dir]', 'Project directory to scan', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('-o, --output <file>', 'Write report to file')
   .option('-f, --format <fmt>', 'Output format: md, json, or both (default: md)', 'md')
   .option('--diagram-only', 'Output only the Mermaid diagram, no report wrapper')
@@ -423,7 +433,7 @@ program
   .option('--feature <names>', 'Filter report to specific feature(s) (comma-separated)')
   .action(async (dir: string, opts: { project: string; output?: string; format: string; diagramOnly?: boolean; json?: boolean; feature?: string }) => {
     const root = resolve(dir);
-    let { model, diagnostics } = await parseProject({ root, project: opts.project });
+    let { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
 
     // Apply feature filter if specified
     if (opts.feature) {
@@ -504,7 +514,7 @@ program
   .description('Move annotations between source comments and .guardlink/annotations/ sidecars')
   .argument('[dir]', 'Project directory', '.')
   .requiredOption('--to <mode>', 'Target mode: external (.gal sidecars) or inline (source comments)')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--dry-run', 'Report what would move without writing anything')
   .option('--allow-anchor-loss', 'Proceed even when the migration discards symbol anchors (D48)')
   .action(async (dir: string, opts: { to: string; project: string; dryRun?: boolean; allowAnchorLoss?: boolean }) => {
@@ -514,7 +524,7 @@ program
       process.exit(1);
     }
 
-    const before = await parseProject({ root, project: opts.project });
+    const before = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
     const hashBefore = computeAnnotationHash(before.model);
 
     // D48 — refuse BEFORE writing, not after.
@@ -564,7 +574,7 @@ program
     // The correctness check, run every time rather than offered as a flag.
     // A migration that moves the hash changed the threat model, which is the
     // one thing it must not do.
-    const after = await parseProject({ root, project: opts.project });
+    const after = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
     const hashAfter = computeAnnotationHash(after.model);
     if (hashBefore !== hashAfter) {
       console.error('\n✗ annotation_hash CHANGED across the migration:');
@@ -623,11 +633,11 @@ program
   .command('reanchor')
   .description('Find @source blocks whose file:line no longer holds the symbol they name')
   .argument('[dir]', 'Project directory to scan', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--apply', 'Rewrite @source lines to the proposed positions (moved symbols only)')
   .action(async (dir: string, opts: { project: string; apply?: boolean }) => {
     const root = resolve(dir);
-    const { model } = await parseProject({ root, project: opts.project });
+    const { model } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
     const drifts = findAnchorDrift(root, model);
 
     if (drifts.length === 0) {
@@ -675,11 +685,11 @@ program
   .command('artifacts')
   .description('Emit .guardlink/model.json and .guardlink/graph/ — diagrams and the model as plain files')
   .argument('[dir]', 'Project directory to scan', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--dry-run', 'Show what would be written without writing')
   .action(async (dir: string, opts: { project: string; dryRun?: boolean }) => {
     const root = resolve(dir);
-    const { model } = await parseProject({ root, project: opts.project });
+    const { model } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
 
     if (model.annotations_parsed === 0) {
       console.error('No annotations found — nothing to emit.');
@@ -705,7 +715,7 @@ program
   .description('Compare threat model against a git ref — find what changed')
   .argument('[ref]', 'Git ref to compare against (commit, branch, tag, HEAD~1)', 'HEAD~1')
   .option('-d, --dir <dir>', 'Project directory', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--markdown', 'Output as markdown (for PR comments)')
   .option('--json', 'Output as JSON')
   .option('--fail-on-new', 'Exit 1 if new unmitigated exposures found (CI mode)')
@@ -714,7 +724,7 @@ program
 
     // Parse current state
     console.error(`Parsing current threat model...`);
-    const { model: current } = await parseProject({ root, project: opts.project });
+    const { model: current } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
 
     // Parse at ref
     console.error(`Parsing threat model at ${ref}...`);
@@ -751,13 +761,13 @@ program
   .command('sarif')
   .description('Export findings as SARIF 2.1.0 for GitHub Advanced Security, VS Code, etc.')
   .argument('[dir]', 'Project directory to scan', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('-o, --output <file>', 'Write SARIF to file (default: stdout)')
   .option('--min-severity <sev>', 'Only include exposures at or above this severity (critical|high|medium|low)')
   .option('--no-diagnostics', 'Exclude parse errors from SARIF output')
   .action(async (dir: string, opts: { project: string; output?: string; minSeverity?: string; diagnostics?: boolean }) => {
     const root = resolve(dir);
-    const { model, diagnostics } = await parseProject({ root, project: opts.project });
+    const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
 
     // Compute dangling refs (reuse validate logic)
     const danglingDiags = findDanglingRefs(model);
@@ -797,7 +807,7 @@ program
   .description('Generate an AI threat report using a framework or custom prompt')
   .argument('[prompt...]', 'Framework (stride, dread, pasta, attacker, rapid, general) or custom prompt text')
   .option('-d, --dir <dir>', 'Project directory', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--provider <provider>', 'LLM provider: anthropic, openai, google, openrouter, deepseek (auto-detected from env)')
   .option('--model <model>', 'Model name (default: provider-specific)')
   .option('--api-key <key>', 'API key (default: from env variable)')
@@ -1017,7 +1027,7 @@ program
   .description('Launch a coding agent to add GuardLink security annotations')
   .argument('<prompt>', 'Annotation instructions (e.g., "annotate auth endpoints for OWASP Top 10")')
   .argument('[dir]', 'Project directory', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--mode <mode>', 'Annotation placement mode: inline (default) or external (externalized .gal files)', 'inline')
   .option('--claude-code', 'Launch Claude Code in foreground')
   .option('--codex', 'Launch Codex CLI in foreground')
@@ -1116,7 +1126,7 @@ program
   .description('Translate GuardLink threats into CERT-X-GEN pentest templates (generation only, no execution)')
   .argument('[prompt...]', 'Optional translation instructions')
   .option('-d, --dir <dir>', 'Project directory', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--claude-code', 'Launch Claude Code in foreground')
   .option('--codex', 'Launch Codex CLI in foreground')
   .option('--gemini', 'Launch Gemini CLI in foreground')
@@ -1220,7 +1230,7 @@ program
   .description('Ask questions about this project, its threat model, and security posture')
   .argument('[query...]', 'Question to answer')
   .option('-d, --dir <dir>', 'Project directory', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--claude-code', 'Launch Claude Code in foreground')
   .option('--codex', 'Launch Codex CLI in foreground')
   .option('--gemini', 'Launch Gemini CLI in foreground')
@@ -1416,10 +1426,10 @@ program
   .command('unannotated')
   .description('List source files with no GuardLink annotations')
   .argument('[dir]', 'Project directory to scan', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .action(async (dir: string, opts: { project: string }) => {
     const root = resolve(dir);
-    const { model } = await parseProject({ root, project: opts.project });
+    const { model } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
     printUnannotatedFiles(model);
   });
 
@@ -1429,12 +1439,12 @@ program
   .command('review')
   .description('Interactive governance review of unmitigated exposures — accept, remediate, or skip')
   .argument('[dir]', 'Project directory to scan', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--severity <levels>', 'Filter by severity: critical,high,medium,low', undefined)
   .option('--list', 'Just list reviewable exposures without prompting')
   .action(async (dir: string, opts: { project: string; severity?: string; list?: boolean }) => {
     const root = resolve(dir);
-    const { model } = await parseProject({ root, project: opts.project });
+    const { model } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
     let exposures = getReviewableExposures(model);
 
     // Filter by severity if requested
@@ -1520,7 +1530,7 @@ program
       if (results.some(r => r.linesInserted > 0)) {
         try {
           // Re-parse to get updated model
-          const { model: newModel } = await parseProject({ root, project: opts.project });
+          const { model: newModel } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
           const syncResult = syncAgentFiles({ root, model: newModel });
           if (syncResult.updated.length > 0) console.error(`↻ Synced ${syncResult.updated.length} agent instruction file(s)`);
         } catch {}
@@ -1946,7 +1956,7 @@ program
   .command('dashboard')
   .description('Generate an interactive HTML threat model dashboard with diagrams')
   .argument('[dir]', 'Project directory to scan', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('-o, --output <file>', 'Output file (default: threat-dashboard.html)')
   .option('--light', 'Default to light theme instead of dark')
   .option('--feature <names>', 'Filter dashboard to specific feature(s) (comma-separated)')
@@ -2235,7 +2245,7 @@ featureCmd
   .command('list')
   .description('List all features found in annotations')
   .argument('[dir]', 'Project directory to scan', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--json', 'Output as JSON')
   .action(async (dir: string, opts: { project: string; json?: boolean }) => {
     const root = resolve(dir);
@@ -2274,7 +2284,7 @@ featureCmd
   .description('Show detailed threat model for a specific feature')
   .argument('<name>', 'Feature name (case-insensitive)')
   .option('-d, --dir <dir>', 'Project directory', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--json', 'Output as JSON')
   .action(async (name: string, opts: { dir: string; project: string; json?: boolean }) => {
     const root = resolve(opts.dir);

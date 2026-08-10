@@ -21,7 +21,6 @@
  * @comment -- "Pure projection over the parsed model; the only I/O is an existence check performed by the caller"
  */
 
-import { isAbsolute, relative, resolve as resolvePath } from 'node:path';
 import { lookup, type LookupResult } from './lookup.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
 import type {
@@ -115,13 +114,7 @@ function hasScannedExtension(path: string): boolean {
  * than silently clamped, because a path outside the project is a different
  * answer from a path with no annotations.
  */
-export function normalizeContextPath(root: string, input: string): string | null {
-  const cleaned = input.trim().replaceAll('\\', '/').replace(/^\.\//, '');
-  const abs = isAbsolute(cleaned) ? cleaned : resolvePath(root, cleaned);
-  const rel = relative(resolvePath(root), abs).replaceAll('\\', '/');
-  if (rel === '' || rel.startsWith('../')) return null;
-  return rel;
-}
+export { normalizeRepoPath as normalizeContextPath } from '../parser/gal-path.js';
 
 /** Every annotation in the model, flattened with its verb and location. */
 function allRecords(model: ThreatModel): { verb: string; location: SourceLocation; row: any }[] {

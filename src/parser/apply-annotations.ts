@@ -24,9 +24,9 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { parseLine } from './parse-line.js';
-import { galPathFor, resolveGalPath } from './gal-path.js';
+import { galPathFor, resolveGalPath, normalizeRepoPath } from './gal-path.js';
 
 /** Verbs a tool may never write. */
 const HUMAN_ONLY = new Set(['accepts', 'entitles']);
@@ -42,6 +42,25 @@ export interface ApplyAnnotationsOptions {
   /** Raw GAL lines, without comment prefixes. */
   annotations: string[];
   dryRun?: boolean;
+  /**
+   * Every `#id` the model declares — assets, threats, controls, boundaries.
+   *
+   * D39: without this the write path could not tell `#sqli` from a typo, so it
+   * wrote both. Supplied by the caller because it already holds a parsed model;
+   * re-parsing the project inside a write would make an interactive tool slow
+   * for a check the caller can do for free.
+   *
+   * Omitted means "no model available" and reference checking is skipped — the
+   * pre-D39 behaviour, so a caller that genuinely has no model is not broken.
+   */
+  declaredIds?: Set<string>;
+  /**
+   * Write despite undeclared references, reporting them as warnings (D39).
+   *
+   * Default false: an undeclared ref is overwhelmingly a typo, and the workflow
+   * this project ships to agents is definition-first. See the module doc-block.
+   */
+  allowUndeclaredRefs?: boolean;
 }
 
 export interface ApplyAnnotationsResult {
@@ -54,11 +73,22 @@ export interface ApplyAnnotationsResult {
   diff: string;
   /** Why the write was refused. Present only when status is 'rejected'. */
   errors: string[];
+  /** Written, but with something the caller should know (D39 forward refs). */
+  warnings?: string[];
   linesWritten: number;
 }
 
 const reject = (galPath: string, ...errors: string[]): ApplyAnnotationsResult =>
   ({ ok: false, galPath, status: 'rejected', diff: '', errors, linesWritten: 0 });
+
+/** Every `#id` referenced by an annotation line, in order of appearance. */
+function referencedIds(text: string): string[] {
+  return [...text.matchAll(/#([A-Za-z0-9][A-Za-z0-9._-]*)/g)]
+    .map(m => m[1])
+    // `cwe:CWE-89` and friends are external identifiers, not model refs, and
+    // `#` never introduces them. Nothing to strip today; guard kept narrow.
+    .filter(Boolean);
+}
 
 /**
  * Append a validated `@source` block to a source file's sidecar.
@@ -68,16 +98,34 @@ const reject = (galPath: string, ...errors: string[]): ApplyAnnotationsResult =>
  * because the damage is silent until the next parse.
  */
 export function applyAnnotations(options: ApplyAnnotationsOptions): ApplyAnnotationsResult {
-  const { root, line, symbol, annotations, dryRun = false } = options;
+  const { root, line, symbol, annotations, dryRun = false, declaredIds, allowUndeclaredRefs = false } = options;
 
-  // Normalise the source path and refuse anything outside the project.
-  const cleaned = options.file.trim().replaceAll('\\', '/').replace(/^\.\//, '');
-  const abs = isAbsolute(cleaned) ? cleaned : resolve(root, cleaned);
-  const file = relative(resolve(root), abs).replaceAll('\\', '/');
+  // Normalise the source path and refuse anything outside the project. Shared
+  // with guardlink_context (D51) — this was a private copy, which is how the
+  // write path ended up without the existence check that sat beside the original.
+  const rel = normalizeRepoPath(root, options.file);
+  const file = rel ?? options.file.trim().replaceAll('\\', '/').replace(/^\.\//, '');
   const galPath = galPathFor(file);
 
-  if (file === '' || file.startsWith('../')) {
+  if (rel === null) {
     return reject(galPath, `\`${options.file}\` resolves outside the project root; nothing was written.`);
+  }
+
+  // D51: the sidecar is named after a source file, so a source file that does
+  // not exist produces a sidecar describing nothing — and its annotations still
+  // enter the model. A single typo injected a phantom critical exposure into
+  // `expense-api` and `validate` reported "Validation passed".
+  //
+  // `guardlink_context` already answered this correctly for the same path
+  // (`status: "not_found"`). The check existed and was wired to the tool that
+  // could not cause harm.
+  if (!existsSync(resolve(root, file))) {
+    return reject(
+      galPath,
+      `\`${file}\` does not exist. A sidecar is named after the source file it annotates, so `
+      + 'writing one for a missing file puts annotations into the model that describe nothing. '
+      + 'Check the path — it is resolved relative to the project root.',
+    );
   }
   if (!Number.isInteger(line) || line < 1) {
     return reject(galPath, `line must be a positive integer; received ${JSON.stringify(line)}.`);
@@ -121,6 +169,44 @@ export function applyAnnotations(options: ApplyAnnotationsOptions): ApplyAnnotat
     normalised.push(text);
   }
 
+  // ── D39: references must resolve, or be waved through deliberately ──
+  //
+  // The tool promised "malformed input is rejected with the reason" and then
+  // wrote `@mitigates #api against #xss-by-render using #octet-stream` with
+  // `ok: true, errors: []`. Only `validate` noticed, only as a warning, exit 0 —
+  // so an invented reference survived the write path, the validate path and CI.
+  //
+  // Checked against the same rule `findDanglingRefs` uses: `#`-prefixed refs
+  // only. A dotted path like `Svc.Db` is not checked here for the same reason it
+  // is not checked there, and keeping the two rules identical matters more than
+  // catching one more case — two validators that disagree is its own defect.
+  const warnings: string[] = [];
+  if (declaredIds) {
+    const undeclared: string[] = [];
+    for (const text of normalised) {
+      for (const id of referencedIds(text)) {
+        if (!declaredIds.has(id) && !undeclared.includes(id)) undeclared.push(id);
+      }
+    }
+    if (undeclared.length > 0) {
+      const list = undeclared.map(i => `#${i}`).join(', ');
+      if (!allowUndeclaredRefs) {
+        return reject(
+          galPath,
+          `Undeclared reference(s): ${list}. Definitions live in .guardlink/definitions.* — `
+          + 'add them there first, then reference them here. If the reference is deliberate '
+          + 'and the definition is coming, re-send with allow_undeclared_refs: true and it '
+          + 'will be written with a warning instead.',
+        );
+      }
+      warnings.push(
+        `Written with undeclared reference(s): ${list}. Nothing resolves them yet, so `
+        + '`guardlink validate` will report them as dangling until they are defined in '
+        + '.guardlink/definitions.*.',
+      );
+    }
+  }
+
   if (errors.length > 0) return reject(galPath, ...errors);
   if (normalised.length === 0) return reject(galPath, 'No annotations supplied.');
 
@@ -135,7 +221,7 @@ export function applyAnnotations(options: ApplyAnnotationsOptions): ApplyAnnotat
   // Compared on normalised text so incidental whitespace does not defeat it.
   const squash = (s: string) => s.split('\n').map(l => l.trim()).filter(Boolean).join('\n');
   if (squash(existing).includes(squash(block))) {
-    return { ok: true, galPath, status: 'unchanged', diff: '', errors: [], linesWritten: 0 };
+    return { ok: true, galPath, status: 'unchanged', diff: '', errors: [], ...(warnings.length ? { warnings } : {}), linesWritten: 0 };
   }
 
   const separator = existing === '' || existing.endsWith('\n') ? '' : '\n';
@@ -151,5 +237,5 @@ export function applyAnnotations(options: ApplyAnnotationsOptions): ApplyAnnotat
     ...block.trimEnd().split('\n').map(l => `+${l}`),
   ].join('\n');
 
-  return { ok: true, galPath, status: 'written', diff, errors: [], linesWritten: normalised.length + 1 };
+  return { ok: true, galPath, status: 'written', diff, errors: [], ...(warnings.length ? { warnings } : {}), linesWritten: normalised.length + 1 };
 }
