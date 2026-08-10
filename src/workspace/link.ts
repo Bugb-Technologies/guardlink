@@ -14,6 +14,9 @@ import { writeFileSync } from 'node:fs';
 import { resolve, basename, dirname, join } from 'node:path';
 import type { WorkspaceConfig, WorkspaceRepo } from './types.js';
 import { serializeWorkspaceYaml, loadWorkspaceConfig } from './metadata.js';
+// D19/D33: cross-repo tags in emitted guidance are BUILT from the parser's tag
+// grammar, never typed as strings.
+import { crossRepoTag } from '../parser/index.js';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -680,7 +683,11 @@ export function buildWorkspaceContextBlock(
   lines.push(`- **Reference sibling repos:** You may reference assets/threats/controls from: ${siblingNames}.`);
   lines.push(`  Use their tag prefix, e.g. \`#${siblings[0]?.name || 'other-service'}.<component>\`.`);
   lines.push('- **Cross-service data flows:** If this code calls or is called by another service, document it:');
-  lines.push(`  \`@flows #request from #${config.this_repo}.handler to #${siblings[0]?.name || 'other-service'}.endpoint\``);
+  // D19/D33: built from the parser's own tag grammar, and the verb form is the
+  // one that exists. This emitted `@flows X from A to B` — the same invented
+  // form D19 corrected in guardlink_workspace_info — from a second emitter that
+  // writes into every linked repo's agent files. `@flows A -> B` is the grammar.
+  lines.push(`  \`@flows ${crossRepoTag(config.this_repo, 'handler')} -> ${crossRepoTag(siblings[0]?.name || 'other-service', 'endpoint')} -- "what crosses"\``);
   lines.push('- **Do not redefine** assets that belong to another repo. Reference them by tag.');
   lines.push('- **External refs are OK:** Tags referencing sibling repos will show as "external refs"');
   lines.push('  during local validation but resolve during workspace merge.');

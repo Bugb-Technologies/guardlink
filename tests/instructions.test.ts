@@ -43,11 +43,21 @@ describe('GL-401 — instructions arrive at initialize', () => {
     expect(instructions.length).toBeGreaterThan(500);
   });
 
-  it('stays under 400 words', () => {
+  it('stays under 400 words — in EVERY mode', () => {
     // Orientation delivered before the agent has context to rank detail against.
     // Length costs attention exactly when it is scarcest.
+    //
+    // D33: this used to measure only the mode this repo happens to be in.
+    // External mode was 426 words and null 403, both over budget, unmeasured
+    // because the assertion ran on one variant of a text that has three.
     const words = instructions.trim().split(/\s+/).length;
     expect(words, `${words} words`).toBeLessThan(400);
+
+    for (const mode of ['inline', 'external', null] as const) {
+      const n = buildServerInstructions({ mode, definitionsPath: '.guardlink/definitions.ts' })
+        .trim().split(/\s+/).length;
+      expect(n, `mode=${mode}: ${n} words`).toBeLessThan(400);
+    }
   });
 
   it('every tool it names actually exists', () => {
@@ -102,15 +112,18 @@ describe('GL-401 — annotation mode in the instructions', () => {
     expect(text).toContain('.guardlink/definitions.ts');
   });
 
-  it('names external mode, its path convention, and the gap that loses data', () => {
+  it('names external mode and its path convention', () => {
     const text = buildServerInstructions({ mode: 'external', definitionsPath: '.guardlink/definitions.ts' });
     expect(text).toMatch(/EXTERNALLY/);
     expect(text).toMatch(/\.guardlink\/annotations/);
     expect(text).toMatch(/@source file:/);
-    // D4: documenting a convention that silently drops data without saying so
-    // would be worse than not documenting it.
-    expect(text).toMatch(/silently dropped/);
-    expect(text).toMatch(/test\/|tests\//);
+    // D33: this used to assert `/silently dropped/`, pinning a D4 warning that
+    // GL-503 made false. The assertion was correct when written and became a
+    // stale-claim ENFORCER the moment the defect was fixed — the text could not
+    // be corrected without a test failing. Behavioural claims are now checked by
+    // executing them: see tests/instructions-claims.test.ts.
+    expect(text).not.toMatch(/silently dropped/);
+    expect(text).toMatch(/test\/, vendor\/ and dist\//);
   });
 
   it('an unrecorded mode is admitted, not guessed', () => {

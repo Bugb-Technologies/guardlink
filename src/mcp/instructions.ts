@@ -42,11 +42,11 @@ export interface InstructionsContext {
 function modeParagraph(mode: AnnotationMode | null, _definitionsPath: string): string {
   if (mode === 'external') {
     return [
-      'This project stores annotations EXTERNALLY. Source files are not edited; annotations',
+      'Annotations are stored EXTERNALLY; source files are not edited. They',
       `live in .guardlink/annotations/<mirrored source path>.gal, grouped under`,
-      '`@source file:<path> line:<n> [symbol:<name>]` blocks. Known gap: a .gal under a path',
-      'the parser excludes (test/, tests/, __tests__/, vendor/, build/, dist/, target/) is',
-      'silently dropped — do not put one there until GL-503 lands.',
+      '`@source file:<path> line:<n> [symbol:<name>]` blocks. Sidecars work anywhere the',
+      'convention puts them, including under test/, vendor/ and dist/ — skipped for source,',
+      'not annotations.',
     ].join(' ');
   }
   if (mode === 'inline') {
@@ -80,8 +80,10 @@ Opened a file, or about to edit one → guardlink_context(file)
 
 About to change a shared component → guardlink_graph(from, depth, direction)
   Blast radius. Walks data flows and trust boundaries — not shared threats, which
-  are classifications rather than couplings. depth 1-2 with direction in or out is
-  the affordable range.
+  are classifications rather than couplings. Defaults (depth 2, both, summary) are
+  the affordable setting; detail full costs ~40% more. Check traversal.completeness:
+  depth_limited means more is reachable, truncated means INCOMPLETE —
+  frontier_unexplored says what is missing.
 
 A scanner reported a CWE → guardlink_lookup("cwe:CWE-89")
   Whether this model declares that weakness class at all, and whether affected
