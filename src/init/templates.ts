@@ -192,12 +192,11 @@ Append after severity: \`cwe:CWE-89\`, \`owasp:A03:2021\`, \`capec:CAPEC-66\`, \
 ## Commands
 
 \`\`\`bash
-guardlink validate .          # Check for errors
-guardlink report .            # Generate threat-model.md
-guardlink status .            # Coverage summary
-guardlink suggest <file>      # Get annotation suggestions
-guardlink feature list        # List all @feature tags
-guardlink feature show <name> # Show model for a specific feature
+guardlink validate .            # Check for errors
+guardlink report .              # Generate threat-model.md
+guardlink status .              # Coverage summary
+guardlink feature list          # List all @feature tags
+guardlink feature show "<name>" # Show model for a feature (quote names with spaces)
 \`\`\`
 
 ## MCP Tools
@@ -241,8 +240,8 @@ such as which risks a human has explicitly accepted.
 | act on a scanner finding | \`guardlink_lookup("cwe:CWE-89")\` — is this weakness class declared, and is it mitigated, accepted, open or confirmed |
 | finish a change | \`guardlink validate .\` then \`guardlink diff HEAD~1\` — did I make this worse |
 
-Without MCP, the same answers come from \`guardlink status .\`, \`guardlink parse . --format json\`
-and \`guardlink diff HEAD~1\`.
+Without MCP, the same answers come from \`guardlink status .\`, \`guardlink parse .\`
+(the whole model as JSON on stdout) and \`guardlink diff HEAD~1\`.
 
 **Full reference: \`docs/GUARDLINK_REFERENCE.md\`**
 
@@ -817,15 +816,20 @@ With the MCP server connected:
 guardlink_context(file: "src/auth/login.ts")
 \`\`\`
 
-Without it, from a shell:
+Without it, from a shell. There is no single-command CLI equivalent — \`guardlink parse\`
+emits the whole model, so narrow it to the one file yourself:
 
 \`\`\`sh
-guardlink parse . --format json    # or: guardlink status .
+guardlink parse . | jq '[.. | objects | select(.location?.file == "src/auth/login.ts")]'
 \`\`\`
 
-The answer tells you the annotations declared in that file with line numbers, the assets
-they name, what those assets are exposed to, and which controls the file is expected to
-uphold.
+That gives you the annotations declared in that file with line numbers, and the assets,
+threats and controls each one names. It is not the whole of what \`guardlink_context\`
+returns: the tool also resolves each asset's neighbours and tells you *which kind* of empty
+an empty answer is, and neither falls out of a filter over the model.
+
+Without \`jq\`, \`guardlink status .\` is the closest thing — repo-wide counts and the
+unmitigated list, not a per-file view.
 
 **Read the empty answer carefully.** \`guardlink_context\` reports *which kind* of empty it
 found, and they mean opposite things:
@@ -945,7 +949,7 @@ risk with no control, write \`@exposes\` to record it and \`@audit\` to flag it 
 
 \`\`\`sh
 guardlink status .                       # coverage, counts, unmitigated exposures
-guardlink parse . --format json          # the whole model as JSON
+guardlink parse .                        # the whole model as JSON, on stdout
 guardlink validate .                     # syntax errors and dangling #id references
 guardlink report . --format md           # human-readable threat model report
 guardlink diff HEAD~1                    # what your change did to the model

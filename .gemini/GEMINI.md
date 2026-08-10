@@ -18,8 +18,8 @@ such as which risks a human has explicitly accepted.
 | act on a scanner finding | `guardlink_lookup("cwe:CWE-89")` — is this weakness class declared, and is it mitigated, accepted, open or confirmed |
 | finish a change | `guardlink validate .` then `guardlink diff HEAD~1` — did I make this worse |
 
-Without MCP, the same answers come from `guardlink status .`, `guardlink parse . --format json`
-and `guardlink diff HEAD~1`.
+Without MCP, the same answers come from `guardlink status .`, `guardlink parse .`
+(the whole model as JSON on stdout) and `guardlink diff HEAD~1`.
 
 **Full reference: `docs/GUARDLINK_REFERENCE.md`**
 
