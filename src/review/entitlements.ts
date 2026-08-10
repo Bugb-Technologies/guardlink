@@ -85,7 +85,9 @@ export interface EntitlementProposal {
   id: string;
   actor: string;
   capability: string;
-  /** §2.10-normalised capability — the join key downstream triage matches on */
+  /** §2.10-normalised capability. NOT a join key (§9.3): nothing on the finding side carries a
+   *  capability, so it cannot be matched against — the join is (actor, asset, threat). This is the
+   *  justification a reviewer reads, and a stable label for grouping claims. */
   canonical_capability: string;
   /** Optional `on <asset>` context */
   asset?: string;
@@ -465,12 +467,14 @@ function todayISO(): string {
  * `guardlink parse` would not read the line back as an entitlement, the claim
  * would be silently absent from the model — the failure this design is about.
  */
+// @comment -- "Writes `against <threat>` as well as `on <asset>`, because the join is the triple (design §9.3): a claim missing either clause matches no finding and demotes nothing. Omitting the threat here made acceptance produce a DEAD annotation — the proposal ledger carried it, the written line did not, so the only sanctioned way to create an entitlement produced one that could never work. Observed on a real repository before this fix, not hypothesised."
 export function buildEntitlesBody(p: {
-  actor: string; capability: string; asset?: string; rationale: string;
+  actor: string; capability: string; asset?: string; threat?: string; rationale: string;
 }): string {
   const asset = p.asset ? ` on ${p.asset}` : '';
+  const threat = p.threat ? ` against ${p.threat}` : '';
   const desc = p.rationale ? ` -- "${escapeDesc(oneLine(p.rationale))}"` : '';
-  const body = `@entitles ${p.actor} to ${p.capability}${asset}${desc}`;
+  const body = `@entitles ${p.actor} to ${p.capability}${asset}${threat}${desc}`;
 
   const parsed = parseLine(body, { file: '<entitlement-proposal>', line: 1 });
   const annotation = parsed.annotation as EntitlesAnnotation | null;
@@ -501,14 +505,15 @@ export async function proposeEntitlement(
 
   if (!CAPABILITY_RE.test(capability)) {
     throw new Error(
-      `Capability "${capability}" is not a single identifier. A capability is the join key ` +
-      `downstream triage matches on, so prose there would never join (design §3.1).`,
+      `Capability "${capability}" is not a single identifier. It is the justification a ` +
+      `reviewer reads, not the join key — the join is (actor, asset, threat) — but prose ` +
+      `there would not parse and could never be grouped (design §3.1, §9.3).`,
     );
   }
 
   // Prove the annotation an acceptance would write is well-formed, now, while
   // the proposer is still around to fix it.
-  buildEntitlesBody({ actor, capability, asset, rationale });
+  buildEntitlesBody({ actor, capability, asset, threat, rationale });
 
   // The target must be a real anchor inside this project.
   const abs = resolveInsideRoot(root, input.file);
