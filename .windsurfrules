@@ -62,7 +62,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:30)
 - #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:34)
 - #suggest exposed to #dos [low] (src/mcp/suggest.ts:16)
-- #parser exposed to #arbitrary-write [high] (src/parser/clear.ts:8)
+- #parser exposed to #data-exposure [low] (src/parser/migrate-mode.ts:26)
 - #tui exposed to #cmd-injection [high] (src/tui/commands.ts:11)
 - #tui exposed to #prompt-injection [medium] (src/tui/commands.ts:15)
 
@@ -88,7 +88,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
 - #llm-client -> NVD via fetch
-- … and 68 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
+- … and 73 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
 
 ### Features (filter with `--feature`)
 
@@ -97,11 +97,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-353 annotations, 16 assets, 15 threats, 12 controls, 67 exposures, 0 confirmed, 53 mitigations, 88 flows, 2 features
+371 annotations, 16 assets, 15 threats, 12 controls, 72 exposures, 0 confirmed, 57 mitigations, 93 flows, 2 features
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v1:21f5e96f6d9b6bafdeb5ce04253995f7b746dd718c640782fd6321602d879710`
+- `annotation_hash`: `sha256-v1:fdc3f6b903452086173e96f0eb9dc67b4a82e4de7abeea30cd5bb840e3768a34`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.

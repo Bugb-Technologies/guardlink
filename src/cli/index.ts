@@ -42,7 +42,7 @@ import { Command } from 'commander';
 import { resolve, basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findOffConventionGalFiles, findAnchorDrift, applyReanchor, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { ensurePromptMd } from '../init/migrate.js';
@@ -459,6 +459,67 @@ program
       );
       console.error(`✓ Wrote threat model JSON to ${jsonFile} (schema v${enrichedModel.metadata?.schema_version})`);
     }
+  });
+
+// ─── migrate ─────────────────────────────────────────────────────────
+
+program
+  .command('migrate')
+  .description('Move annotations between source comments and .guardlink/annotations/ sidecars')
+  .argument('[dir]', 'Project directory', '.')
+  .requiredOption('--to <mode>', 'Target mode: external (.gal sidecars) or inline (source comments)')
+  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('--dry-run', 'Report what would move without writing anything')
+  .action(async (dir: string, opts: { to: string; project: string; dryRun?: boolean }) => {
+    const root = resolve(dir);
+    if (opts.to !== 'inline' && opts.to !== 'external') {
+      console.error(`Invalid --to "${opts.to}". Use "inline" or "external".`);
+      process.exit(1);
+    }
+
+    const before = await parseProject({ root, project: opts.project });
+    const hashBefore = computeAnnotationHash(before.model);
+
+    const result = migrateAnnotationMode({ root, to: opts.to, model: before.model, dryRun: opts.dryRun });
+
+    const verb = opts.dryRun ? 'Would move' : 'Moved';
+    console.error(`${verb} ${result.annotationsMoved} annotation(s) to ${opts.to} mode.`);
+    for (const f of result.sourceFiles) console.error(`  source   ${f}`);
+    for (const f of result.galFiles) console.error(`  sidecar  ${f}`);
+    if (result.alreadyThere.length > 0) {
+      console.error(`  ${result.alreadyThere.length} file(s) already in ${opts.to} mode — left alone.`);
+    }
+    for (const s of result.skipped) console.error(`  skipped  ${s.file} — ${s.reason}`);
+
+    if (opts.dryRun) {
+      console.error('\nDry run — nothing was written.');
+      process.exit(0);
+    }
+
+    // The correctness check, run every time rather than offered as a flag.
+    // A migration that moves the hash changed the threat model, which is the
+    // one thing it must not do.
+    const after = await parseProject({ root, project: opts.project });
+    const hashAfter = computeAnnotationHash(after.model);
+    if (hashBefore !== hashAfter) {
+      console.error('\n✗ annotation_hash CHANGED across the migration:');
+      console.error(`    before  ${hashBefore}`);
+      console.error(`    after   ${hashAfter}`);
+      console.error('  The threat model is not the same one you started with. Revert with git and report this.');
+      process.exit(1);
+    }
+    console.error(`\n✓ annotation_hash unchanged: ${hashAfter}`);
+
+    if (!opts.dryRun) {
+      const configPath = join(root, '.guardlink', 'config.json');
+      if (existsSync(configPath)) {
+        const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
+        cfg.annotation_mode = opts.to;
+        writeFileSync(configPath, JSON.stringify(cfg, null, 2) + '\n');
+        console.error(`✓ .guardlink/config.json annotation_mode → ${opts.to}`);
+      }
+    }
+    process.exit(0);
   });
 
 // ─── reanchor ────────────────────────────────────────────────────────

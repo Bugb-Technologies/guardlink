@@ -19,3 +19,5 @@ export { applyAnnotations } from './apply-annotations.js';
 export type { ApplyAnnotationsOptions, ApplyAnnotationsResult } from './apply-annotations.js';
 export { findAnchorDrift, applyReanchor } from './reanchor.js';
 export type { AnchorDrift } from './reanchor.js';
+export { migrateAnnotationMode, readGalBlocks } from './migrate-mode.js';
+export type { MigrateOptions, MigrateResult, TargetMode } from './migrate-mode.js';
