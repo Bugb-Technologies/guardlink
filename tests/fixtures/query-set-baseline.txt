@@ -1,0 +1,34 @@
+=== guardlink (<repo>) ===
+server            : guardlink (tool_count 22)
+status                    : assets=16 threats=15 controls=12 mitigations=59 exposures=74 unmitigated=16 coverage=73%
+validate                  : valid=true errors=0 warnings=0
+lookup unmitigated        : type=unmitigated_exposures count=16
+lookup threat dos         : type=threat count=1 matched_via=exact
+lookup threat denial      : type=threat count=1 matched_via=substring
+lookup asset cli          : type=asset count=1 matched_via=exact
+lookup asset llm          : type=asset count=1 matched_via=substring
+lookup asset client       : type=asset count=1 matched_via=substring
+lookup exposures for #cli : type=exposures_for_asset count=5 matched_via=exact
+lookup control valid      : type=control count=1 matched_via=substring
+lookup cwe:CWE-89         : type=external_id count=0 declared=false
+graph from cli depth 2    : resolved=true canonical=cli nodes=18 edges=43 completeness=depth_limited
+context on a missing file : status=not_found annotations=0 open_exposures=0
+annotation_hash   : sha256-v1:113d4e419ad79e4c6e0f2f320210d0c74c94de3d89f805fbdbb809751ad19d20
+
+=== expense-api (<repo>/tests/fixtures/expense-api) ===
+server            : guardlink (tool_count 22)
+status                    : assets=6 threats=8 controls=7 mitigations=9 exposures=11 unmitigated=11 coverage=100%
+validate                  : valid=true errors=0 warnings=0
+lookup unmitigated        : type=unmitigated_exposures count=11
+lookup threat dos         : type=threat count=0
+lookup threat denial      : type=threat count=0
+lookup asset cli          : type=asset count=1 matched_via=substring
+lookup asset llm          : type=asset count=0
+lookup asset client       : type=asset count=1 matched_via=exact
+lookup exposures for #cli : type=exposures_for_asset count=0
+lookup control valid      : type=control count=0
+lookup cwe:CWE-89         : type=external_id count=1 declared=true
+graph from cli depth 2    : resolved=true canonical=client nodes=7 edges=18 completeness=depth_limited
+context on a missing file : status=not_found annotations=0 open_exposures=0
+annotation_hash   : sha256-v1:81168ffb1ea44c87c243a36fcb00eeb910cc9b425a8873de9b680913ec1d2f83
+
