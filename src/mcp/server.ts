@@ -49,6 +49,8 @@
  * @boundary #mcp and MCPClient (#mcp-tool-boundary) -- "Trust boundary at tool argument parsing"
  * @handles internal on #mcp -- "Processes project annotations and threat model data"
  * @feature "MCP Integration" -- "Model Context Protocol server for AI agent tooling"
+ * @entitles #mcp-agent to read-threat-model on #mcp against #data-exposure -- "By design: guardlink mcp exists to hand a connected coding agent the threat model — that disclosure is the product, not a leak. No privilege gain either: the agent already reads the annotated source these records are parsed from, so the assembled model tells it nothing it could not derive itself. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:23"
+ * @comment -- "Entitlement accepted by zippon on 2026-08-10 via guardlink entitle (proposal ent-mcp_agent.mcp.data_exposure)."
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';

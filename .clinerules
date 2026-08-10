@@ -48,6 +48,10 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 **Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring), #prefix-ownership (Prefix_Ownership), #yaml-validation (YAML_Validation)
 **Actors:** #local-dev (Local_Developer), #mcp-agent (MCP_Agent), #ci-runner (CI_Runner)
 
+### Entitlements (capabilities held by design — never a reason to skip testing)
+
+- #mcp-agent entitled to `read_threat_model` on #mcp — cites src/mcp/index.ts:23
+
 ### Open Exposures (need @mitigates or @audit)
 
 - #agent-launcher exposed to #prompt-injection [medium] (src/agents/launcher.ts:13)
@@ -98,11 +102,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-421 annotations, 16 assets, 15 threats, 12 controls, 78 exposures, 0 confirmed, 66 mitigations, 3 actors, 102 flows, 2 features
+423 annotations, 16 assets, 15 threats, 12 controls, 78 exposures, 0 confirmed, 66 mitigations, 3 actors, 1 entitlements, 102 flows, 2 features
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v2:a617fbf0f627dc75813e212d199ec6ec7cce908a69471cb68d6166313487bbb8`
+- `annotation_hash`: `sha256-v2:67e68e77d94b7fc9761d57dd1b7419c0a6d9076e12574de5a8ef4c0f8767c0fc`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.

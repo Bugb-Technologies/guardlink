@@ -65,9 +65,23 @@
       },
       "proposed_by": "claude-code (agent)",
       "proposed_at": "2026-08-10",
-      "status": "proposed",
+      "updated_at": "2026-08-10",
+      "status": "accepted",
       "warnings": [],
-      "history": []
+      "decision": {
+        "status": "accepted",
+        "by": "zippon",
+        "at": "2026-08-10",
+        "written_to": "src/mcp/server.ts:40"
+      },
+      "history": [
+        {
+          "status": "accepted",
+          "by": "zippon",
+          "at": "2026-08-10",
+          "written_to": "src/mcp/server.ts:40"
+        }
+      ]
     }
   ]
 }
