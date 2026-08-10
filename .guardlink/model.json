@@ -2,7 +2,7 @@
   "version": "1.1.0",
   "project": "unknown",
   "source_files": 81,
-  "annotations_parsed": 371,
+  "annotations_parsed": 378,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -25,6 +25,7 @@
     "src/init/detect.ts",
     "src/init/index.ts",
     "src/init/migrate.ts",
+    "src/init/preserve.ts",
     "src/init/templates.ts",
     "src/mcp/context.ts",
     "src/mcp/freshness.ts",
@@ -70,7 +71,6 @@
     ".github/workflows/ci.yml",
     ".github/workflows/release.yml",
     "docs/examples/guardlink-pentest.html",
-    "docs/examples/threat-dashboard.html",
     "examples/ci/per-repo-report.yml",
     "examples/ci/workspace-merge.yml",
     "examples/github-action.yml",
@@ -912,7 +912,17 @@
       "description": "callers pass join(root, ...) constrained paths",
       "location": {
         "file": "src/init/index.ts",
-        "line": 412
+        "line": 487
+      }
+    },
+    {
+      "asset": "#init",
+      "threat": "#arbitrary-write",
+      "control": "#config-validation",
+      "description": "Overwrite refused when the target parses to declarations the template lacks; --reset required to override",
+      "location": {
+        "file": "src/init/preserve.ts",
+        "line": 17
       }
     },
     {
@@ -1652,7 +1662,20 @@
       "description": "Creates directories for agent-file writes",
       "location": {
         "file": "src/init/index.ts",
-        "line": 411
+        "line": 486
+      }
+    },
+    {
+      "asset": "#init",
+      "threat": "#arbitrary-write",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "Decides whether init may overwrite an existing definitions/config file",
+      "location": {
+        "file": "src/init/preserve.ts",
+        "line": 16
       }
     },
     {
@@ -2534,6 +2557,26 @@
       "location": {
         "file": "src/init/index.ts",
         "line": 16
+      }
+    },
+    {
+      "source": "DefinitionsFile",
+      "target": "#init",
+      "mechanism": "definitionsArePopulated",
+      "description": "Existing declarations read to decide preservation",
+      "location": {
+        "file": "src/init/preserve.ts",
+        "line": 18
+      }
+    },
+    {
+      "source": "ConfigFile",
+      "target": "#init",
+      "mechanism": "configIsCustomised",
+      "description": "Existing config compared against template defaults",
+      "location": {
+        "file": "src/init/preserve.ts",
+        "line": 19
       }
     },
     {
@@ -3563,26 +3606,39 @@
       "reason": "graph/README example content, excluded from parsing",
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 290
+        "line": 330
       }
     },
     {
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 359
+        "line": 399
+      }
+    },
+    {
+      "reason": "Placement examples for both modes; they would otherwise parse as real annotations",
+      "location": {
+        "file": "src/init/templates.ts",
+        "line": 38
+      }
+    },
+    {
+      "location": {
+        "file": "src/init/templates.ts",
+        "line": 116
       }
     },
     {
       "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 646
+        "line": 765
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 917
+        "line": 1015
       }
     }
   ],
@@ -3694,6 +3750,13 @@
       "location": {
         "file": "src/init/migrate.ts",
         "line": 9
+      }
+    },
+    {
+      "description": "Fail-closed: an unreadable or unparseable existing file is treated as populated, never as empty",
+      "location": {
+        "file": "src/init/preserve.ts",
+        "line": 20
       }
     },
     {
@@ -3888,8 +3951,8 @@
   ],
   "coverage": {
     "total_symbols": 0,
-    "annotated_symbols": 371,
-    "coverage_percent": 72,
+    "annotated_symbols": 378,
+    "coverage_percent": 73,
     "unannotated_critical": []
   },
   "external_refs": []

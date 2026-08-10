@@ -16,7 +16,7 @@ import { computeAnnotationHash } from '../src/parser/annotation-hash.js';
 import { canonicalizeModelOrder } from '../src/parser/canonical-order.js';
 import { generateDashboardHTML } from '../src/dashboard/index.js';
 import {
-  emitArtifacts, checkArtifactDrift, readArtifactHash, stripHeader,
+  emitArtifacts, checkArtifactDrift, expectedArtifactPaths, readArtifactHash, stripHeader,
   mermaidHeader, featureSlug,
 } from '../src/artifacts/emit.js';
 import type { ThreatModel } from '../src/types/index.js';
@@ -259,6 +259,39 @@ describe('GL-302 — drift detection', () => {
     await writeFile(path, stripHeader(await readFile(path, 'utf-8')));
     const findings = checkArtifactDrift(root, model);
     expect(findings.some(f => f.kind === 'unheadered')).toBe(true);
+  });
+
+  it('D28: a DELETED artifact is reported as missing, not as clean', async () => {
+    // Found while wiring D28's CI gate. The check enumerated the .mmd files
+    // present on disk and hash-checked those, so a deleted one was never looked
+    // at: `rm .guardlink/graph/dataflow.mmd` reported "Artifacts are current"
+    // and exited 0. A gate that cannot see a deletion is not a gate.
+    emitArtifacts({ root, model });
+    expect(checkArtifactDrift(root, model)).toEqual([]);
+
+    await rm(join(root, '.guardlink/graph/dataflow.mmd'));
+    const findings = checkArtifactDrift(root, model);
+    expect(findings.some(f => f.kind === 'missing' && f.path.endsWith('dataflow.mmd'))).toBe(true);
+  });
+
+  it('D28: a deleted model.json is reported too', async () => {
+    emitArtifacts({ root, model });
+    await rm(join(root, '.guardlink/model.json'));
+    expect(checkArtifactDrift(root, model).some(f => f.kind === 'missing')).toBe(true);
+  });
+
+  it('D28: a deleted MANIFEST.json is reported too', async () => {
+    emitArtifacts({ root, model });
+    await rm(join(root, '.guardlink/graph/MANIFEST.json'));
+    expect(checkArtifactDrift(root, model).some(f => f.kind === 'missing')).toBe(true);
+  });
+
+  it('D28: the expected set is derived from the model, and the emitter writes all of it', () => {
+    const result = emitArtifacts({ root, model });
+    for (const path of expectedArtifactPaths(model)) {
+      expect(result.written, path).toContain(path);
+      expect(existsSync(join(root, path)), path).toBe(true);
+    }
   });
 
   it('hand-editing the diagram body does not hide drift', async () => {

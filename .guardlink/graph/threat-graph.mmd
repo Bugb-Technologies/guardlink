@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v1:fdc3f6b903452086173e96f0eb9dc67b4a82e4de7abeea30cd5bb840e3768a34
+%% annotation_hash: sha256-v1:5a9ed457c2593a35ed3eb36858eccb79541fdc3e648b44819c6c3b0ae8780246
 %% generator:       guardlink@1.4.5
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -143,6 +143,8 @@ graph LR
   path_validation -. protects .-> diff
   glob_filtering -. protects .-> diff
   path_validation -. protects .-> init
+  config_validation -- mitigates --> arbitrary_write
+  config_validation -. protects .-> init
   path_validation -. protects .-> mcp
   regex_anchoring -- mitigates --> redos
   regex_anchoring -. protects .-> mcp

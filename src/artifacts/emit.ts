@@ -248,12 +248,39 @@ export interface DriftFinding {
 }
 
 /**
+ * Every artifact path `emitArtifacts` produces for a given model.
+ *
+ * Derived from the model, so the emitter and the drift check agree by
+ * construction rather than by both being maintained. The check needs this
+ * because "which files should exist" cannot be answered by listing the files
+ * that do exist — see below.
+ */
+export function expectedArtifactPaths(model: ThreatModel): string[] {
+  const ordered = canonicalizeModelOrder(model);
+  return [
+    '.guardlink/graph/threat-graph.mmd',
+    '.guardlink/graph/dataflow.mmd',
+    '.guardlink/graph/attack-surface.mmd',
+    ...listFeatures(ordered).map(f => `.guardlink/graph/by-feature/${featureSlug(f)}.mmd`),
+    '.guardlink/model.json',
+    '.guardlink/graph/MANIFEST.json',
+  ];
+}
+
+/**
  * Compare emitted artifacts against the current model.
  *
  * Compares the recorded `annotation_hash`, not the file bytes: a diagram is
  * stale when the annotations moved underneath it, and only then. Comparing bytes
  * would flag a generator upgrade as drift and, worse, would go quiet if someone
  * hand-edited an artifact to match.
+ *
+ * Found while wiring D28's CI gate: this used to enumerate the `.mmd` files
+ * PRESENT on disk and hash-check those, so a deleted artifact was not stale, it
+ * was simply never looked at — `rm .guardlink/graph/dataflow.mmd` reported
+ * "Artifacts are current" and exited 0. `kind: 'missing'` existed but only fired
+ * when the whole `graph/` directory was gone. A gate that cannot see a deletion
+ * is not a gate, so the check now starts from what SHOULD exist.
  */
 export function checkArtifactDrift(root: string, model: ThreatModel): DriftFinding[] {
   const expected = computeAnnotationHash(canonicalizeModelOrder(model));
@@ -264,16 +291,29 @@ export function checkArtifactDrift(root: string, model: ThreatModel): DriftFindi
     return [{ path: '.guardlink/graph/', kind: 'missing', expected }];
   }
 
+  // 1. Everything the model says should be there, is.
   const files: string[] = [];
-  for (const entry of readdirSync(graphDir)) {
-    if (entry.endsWith('.mmd')) files.push(join(graphDir, entry));
-  }
-  const byFeatureDir = join(graphDir, 'by-feature');
-  if (existsSync(byFeatureDir)) {
-    for (const entry of readdirSync(byFeatureDir)) {
-      if (entry.endsWith('.mmd')) files.push(join(byFeatureDir, entry));
+  for (const relative of expectedArtifactPaths(model)) {
+    const absolute = join(root, relative);
+    if (!existsSync(absolute)) {
+      findings.push({ path: relative, kind: 'missing', expected });
+    } else if (relative.endsWith('.mmd')) {
+      files.push(absolute);
     }
   }
+
+  // 2. Plus any other .mmd sitting in graph/. A leftover from a renamed
+  //    feature still claims to describe the model, so it is checked too.
+  const alsoCheck = (dir: string) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir)) {
+      if (!entry.endsWith('.mmd')) continue;
+      const absolute = join(dir, entry);
+      if (!files.includes(absolute)) files.push(absolute);
+    }
+  };
+  alsoCheck(graphDir);
+  alsoCheck(join(graphDir, 'by-feature'));
 
   for (const file of files) {
     const relative = file.slice(root.length + 1).replaceAll('\\', '/');
