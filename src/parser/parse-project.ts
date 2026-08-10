@@ -59,6 +59,36 @@ export const DEFAULT_INCLUDE = [
   '**/*.[gG][aA][lL]',
 ];
 
+/**
+ * Files GuardLink itself writes. Never scan input.
+ *
+ * D17: the `.html` glob is in DEFAULT_INCLUDE, so `guardlink dashboard` wrote
+ * `threat-dashboard.html` straight into its own scan set. It yields zero
+ * annotations, but it does move `source_files` and `unannotated_files` — the
+ * tool measuring the repo was measuring its own output. Measured here:
+ * `docs/examples/threat-dashboard.html` was one of 23 `unannotated_files`.
+ *
+ * Excluded by name rather than by dropping `.html` from DEFAULT_INCLUDE.
+ * Dropping the extension would silently stop parsing annotations in
+ * server-rendered templates (Django, Jinja, ERB, Handlebars), which carry them
+ * in `<!-- -->` comments perfectly well — a silent-loss-by-convention fix in the
+ * same family as D4, traded for a narrower problem. The generated names are
+ * fixed and few, so naming them costs nothing and loses nothing.
+ *
+ * Matched by basename anywhere in the tree, because these are written wherever
+ * `-o` points, not only at the root.
+ *
+ * This is the same list `.gitignore` gets on init — see GITIGNORE_ENTRY in
+ * init/templates.ts, which is built from it. One list, so a new output format
+ * cannot be added to one and forgotten in the other.
+ */
+export const GENERATED_OUTPUT_FILES = [
+  'threat-dashboard.html',
+  'threat-model.md',
+  'threat-model.json',
+  'guardlink.sarif.json',
+];
+
 export const DEFAULT_EXCLUDE = [
   '**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**',
   '**/__pycache__/**', '**/target/**', '**/vendor/**', '**/.next/**',
@@ -67,6 +97,8 @@ export const DEFAULT_EXCLUDE = [
   // otherwise walk these: .bravos holds agent rollback backups of annotated source, so
   // re-parsing them double-counts every exposure in the original; .bugb is siete's session store.
   '**/.bravos/**', '**/.bugb/**',
+  // D17 — our own generated outputs.
+  ...GENERATED_OUTPUT_FILES.map(f => `**/${f}`),
 ];
 
 /**

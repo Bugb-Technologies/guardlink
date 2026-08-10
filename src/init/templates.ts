@@ -10,6 +10,9 @@ import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 // grammar, never typed as strings. Hand-written examples of a grammar are how
 // D19 shipped in the first place.
 import { crossRepoTag } from '../parser/parse-line.js';
+// D17: one list of GuardLink's own generated outputs — the parser excludes them
+// from the scan set, and .gitignore ignores them, from the same constant.
+import { GENERATED_OUTPUT_FILES } from '../parser/parse-project.js';
 
 // ─── Where annotations go (D27) ──────────────────────────────────────
 
@@ -621,10 +624,7 @@ export function configContent(project: ProjectInfo, mode: AnnotationMode = 'inli
  */
 export const GITIGNORE_ENTRY = `
 # GuardLink — generated exports, rebuilt on demand
-threat-model.json
-threat-model.md
-guardlink.sarif.json
-threat-dashboard.html
+${GENERATED_OUTPUT_FILES.join('\n')}
 
 # Committed deliberately (see .guardlink/graph/README.md):
 #   .guardlink/model.json   — the parsed model, canonically ordered
