@@ -54,7 +54,6 @@ export function generateSequenceDiagram(model: ThreatModel): string {
   }
 
   // Classify participants for styling
-  const assetIds = new Set(model.assets.map(a => a.id || a.path.join('.')));
   const actorPattern = /user|browser|client|external|attacker|customer|operator/i;
   const dataStorePattern = /db|database|store|cache|file|credential|config|secret|storage|filesystem/i;
 

@@ -21,7 +21,7 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs';
-import { join, extname } from 'node:path';
+import { join } from 'node:path';
 import type { ThreatModel } from '../types/index.js';
 
 export interface SuggestOptions {
@@ -121,7 +121,7 @@ const PATTERNS: CodePattern[] = [
   {
     regex: /(?:sanitize|validate|escape|htmlEscape|xss|dompurify|bleach|strip_tags)/i,
     category: 'mitigation',
-    annotation: (_m, f) => `@control Input_Validation (#input-validation) -- "Sanitizes user input"`,
+    annotation: (_m, _f) => `@control Input_Validation (#input-validation) -- "Sanitizes user input"`,
     reason: 'Input validation/sanitization detected — should be documented as a control',
     confidence: 'medium',
   },
@@ -129,7 +129,7 @@ const PATTERNS: CodePattern[] = [
   {
     regex: /(?:cors|Access-Control-Allow-Origin|allowed_origins)/i,
     category: 'mitigation',
-    annotation: (_m, f) => `@control CORS_Policy (#cors-policy) -- "Restricts cross-origin requests"`,
+    annotation: (_m, _f) => `@control CORS_Policy (#cors-policy) -- "Restricts cross-origin requests"`,
     reason: 'CORS configuration detected',
     confidence: 'medium',
   },
@@ -137,7 +137,7 @@ const PATTERNS: CodePattern[] = [
   {
     regex: /(?:rate.?limit|throttle|RateLimiter|express-rate-limit|slowapi)/i,
     category: 'mitigation',
-    annotation: (_m, f) => `@control Rate_Limiting (#rate-limit) -- "Limits request frequency"`,
+    annotation: (_m, _f) => `@control Rate_Limiting (#rate-limit) -- "Limits request frequency"`,
     reason: 'Rate limiting detected',
     confidence: 'medium',
   },
@@ -145,7 +145,7 @@ const PATTERNS: CodePattern[] = [
   {
     regex: /(?:bcrypt|scrypt|argon2|pbkdf2|hashlib|crypto\.createHash|md5|sha256)/i,
     category: 'mitigation',
-    annotation: (_m, f) => `@control Crypto_Hashing (#crypto-hash) -- "Cryptographic hashing for sensitive data"`,
+    annotation: (_m, _f) => `@control Crypto_Hashing (#crypto-hash) -- "Cryptographic hashing for sensitive data"`,
     reason: 'Cryptographic hashing detected',
     confidence: 'medium',
   },

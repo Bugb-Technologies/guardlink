@@ -15,6 +15,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { parseLine, crossRepoTag, CROSS_REPO_TAG_PATTERN } from '../src/parser/parse-line.js';
+import type { ProjectInfo } from '../src/init/detect.js';
 
 const at = { file: 'probe.ts', line: 1 };
 const parse = (line: string) => parseLine(line, at).annotation;
@@ -157,8 +158,7 @@ describe('D19 — every cross-repo example this codebase emits must parse', () =
 
   it('the .guardlink/README.md template shows only parseable cross-repo syntax', async () => {
     const { guardlinkReadmeContent } = await import('../src/init/templates.js');
-    const { detectProject } = await import('../src/init/detect.js');
-    const project = { name: 'demo', language: 'typescript', definitionsExt: '.ts', commentPrefix: '//' } as ReturnType<typeof detectProject>;
+    const project = { name: 'demo', language: 'typescript', definitionsExt: '.ts', commentPrefix: '//' } as ProjectInfo;
     const text = guardlinkReadmeContent(project, {
       mode: 'inline', modeSource: 'config', model: null, annotationHash: null, mcpAtRoot: true,
     });

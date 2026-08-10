@@ -200,6 +200,12 @@ export async function launchAgentInline(
   prompt: string,
   cwd: string,
   onChunk?: (text: string) => void,
+  // D30 — UNIMPLEMENTED, NOT UNUSED. All three call sites (cli/index.ts:797,
+  // tui/commands.ts:1379 and :1607) pass `{ autoYes: true }` and nothing reads
+  // it. Deleting the parameter would silently change three callers' intent from
+  // "ignored" to "never asked for"; implementing it is a behaviour change that
+  // needs its own decision. Kept, flagged, and logged in the defect ledger.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   opts?: { autoYes?: boolean }
 ): Promise<InlineResult> {
   if (!agent.cmd) {
@@ -318,6 +324,10 @@ export function launchAgent(agent: AgentEntry, prompt: string, cwd: string): Lau
 
   // Step 3: Terminal agent — foreground spawn
   if (agent.cmd) {
+    // D31 — `exitCode` is a real process exit status and is discarded: an agent
+    // that exits non-zero WITHOUT a spawn error is reported as `launched: true`.
+    // Propagating it is a behaviour change, so it is flagged rather than fixed here.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { exitCode, error } = launchAgentForeground(agent, cwd);
     if (error) {
       return { launched: false, clipboardCopied, error };

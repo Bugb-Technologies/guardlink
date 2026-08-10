@@ -15,7 +15,7 @@
 import fg from 'fast-glob';
 import { isAbsolute, relative } from 'node:path';
 import type {
-  Annotation, ThreatModel, ParseResult, ParseDiagnostic,
+  Annotation, ThreatModel, ParseDiagnostic,
   AssetAnnotation, ThreatAnnotation, ControlAnnotation,
   MitigatesAnnotation, ExposesAnnotation, ConfirmedAnnotation, AcceptsAnnotation,
   TransfersAnnotation, FlowsAnnotation, BoundaryAnnotation,

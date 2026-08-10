@@ -19,7 +19,7 @@
 
 import { existsSync, readFileSync, mkdirSync, writeFileSync, appendFileSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { detectProject, type ProjectInfo, type AgentFile } from './detect.js';
+import { detectProject, type ProjectInfo } from './detect.js';
 import {
   agentInstructions,
   agentInstructionsWithModel,

@@ -14,12 +14,12 @@
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import type {
-  ThreatModel, ThreatModelAsset, ThreatModelThreat, ThreatModelControl,
-  ThreatModelMitigation, ThreatModelExposure, ThreatModelAcceptance,
-  ThreatModelTransfer, ThreatModelFlow, ThreatModelBoundary,
-  ThreatModelValidation, ThreatModelAudit, ThreatModelOwnership,
-  ThreatModelDataHandling, ThreatModelAssumption,
-  SourceLocation, ExternalRef, AnnotationVerb,
+  ThreatModel,
+
+
+
+
+  SourceLocation, AnnotationVerb,
 } from '../types/index.js';
 import type {
   MergedReport, MergeTotals, MergeDiffSummary, TagOwnership, UnresolvedRef,

@@ -21,24 +21,24 @@
  * @handles secrets on #tui -- "Processes and stores API keys via /model"
  */
 
-import { resolve, basename, isAbsolute } from 'node:path';
+import { resolve, basename } from 'node:path';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
-import { generateReport, generateMermaid } from '../report/index.js';
+import { generateReport } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
 import { computeStats, computeSeverity, computeExposures } from '../dashboard/data.js';
 import { generateThreatReport, serializeModel, listThreatReports, loadThreatReportsForDashboard, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, buildProjectContext, extractCodeSnippets, type AnalysisFramework } from '../analyze/index.js';
 import { diffModels, formatDiff, parseAtRef } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { diagnosticIcon } from '../parser/format.js';
-import type { ThreatModel, ParseDiagnostic, ThreatModelExposure } from '../types/index.js';
-import { C, severityBadge, severityText, severityTextPad, severityOrder, computeGrade, gradeColored, formatTable, readCodeContext, trunc, bar, fileLink, fileLinkTrunc, cleanCliArtifacts } from './format.js';
+import type { ThreatModel, ThreatModelExposure } from '../types/index.js';
+import { C, severityBadge, severityText, severityTextPad, severityOrder, computeGrade, gradeColored, readCodeContext, trunc, bar, fileLink, fileLinkTrunc, cleanCliArtifacts } from './format.js';
 import { resolveLLMConfig, saveTuiConfig, loadTuiConfig } from './config.js';
 import { AGENTS, parseAgentFlag, parseAnnotationModeFlag, launchAgent, launchAgentInline, copyToClipboard, buildAnnotatePrompt, type AgentEntry } from '../agents/index.js';
 import { describeConfigSource } from '../agents/config.js';
-import { getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview, type ReviewResult } from '../review/index.js';
-import { loadWorkspaceConfig, linkProject, addToWorkspace, removeFromWorkspace, mergeReports, formatMergeSummary, diffMergedReports, formatDiffSummary, populateMetadata } from '../workspace/index.js';
+import { getReviewableExposures, applyReviewAction, summarizeReview, type ReviewResult } from '../review/index.js';
+import { loadWorkspaceConfig, linkProject, addToWorkspace, removeFromWorkspace, mergeReports, formatMergeSummary, diffMergedReports } from '../workspace/index.js';
 import type { MergedReport } from '../workspace/index.js';
 
 // ─── Shared context ──────────────────────────────────────────────────
@@ -2018,7 +2018,6 @@ export async function cmdLink(args: string, ctx: TuiContext): Promise<void> {
       console.log('');
       console.log(C.success(`  ✓ Removed "${removeName}", updated ${result.updated.length} repo(s)`));
     }
-
   } else if (addPath) {
     // ── Add mode (--from is implicit: ctx.root) ──
     console.log(C.dim(`  Adding ${addPath} to workspace...`));
@@ -2037,7 +2036,6 @@ export async function cmdLink(args: string, ctx: TuiContext): Promise<void> {
       console.log('');
       console.log(C.success(`  ✓ ${result.linked.length} added, ${result.updated.length} updated`));
     }
-
   } else if (repoPaths.length >= 2) {
     // ── Fresh link mode ──
     console.log(C.dim(`  Linking ${repoPaths.length} repos into "${workspace}"...`));
@@ -2055,7 +2053,6 @@ export async function cmdLink(args: string, ctx: TuiContext): Promise<void> {
       console.log('');
       console.log(C.success(`  ✓ Linked ${result.linked.length} repo(s) into "${workspace}"`));
     }
-
   } else {
     console.log('');
     console.log(`  ${C.bold('Usage:')}`);
@@ -2069,7 +2066,7 @@ export async function cmdLink(args: string, ctx: TuiContext): Promise<void> {
 
 // ─── /merge ──────────────────────────────────────────────────────────
 
-export async function cmdMerge(args: string, ctx: TuiContext): Promise<void> {
+export async function cmdMerge(args: string, _ctx: TuiContext): Promise<void> {
   const parts = args.trim().split(/\s+/).filter(Boolean);
 
   // Parse flags

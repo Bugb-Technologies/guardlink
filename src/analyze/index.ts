@@ -21,7 +21,7 @@ import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from 
 import { join, relative } from 'node:path';
 import type { ThreatModel } from '../types/index.js';
 import { type AnalysisFramework, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage } from './prompts.js';
-import { type LLMConfig, buildConfig, chatCompletion } from './llm.js';
+import { type LLMConfig, chatCompletion } from './llm.js';
 import { GUARDLINK_TOOLS, createToolExecutor } from './tools.js';
 import { formatConfidence, redactEvidence } from './format.js';
 import { loadProjectConfig } from '../agents/config.js';

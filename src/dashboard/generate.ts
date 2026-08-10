@@ -73,10 +73,6 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   // Build analysis data for drawer
   const analysisData = buildAnalysisData(model, exposures);
 
-  // Check for saved AI analyses
-  // (we embed the latest one if model has it, otherwise empty)
-  const aiAnalysis = '';  // Will be loaded from .guardlink/analyses/ by CLI
-
   return `<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -1127,7 +1123,7 @@ function renderSummaryPage(
 </div>`;
 }
 
-function renderAIAnalysisPage(analyses: ThreatReportWithContent[]): string {
+function renderAIAnalysisPage(_analyses: ThreatReportWithContent[]): string {
   return `
 <div id="sec-ai-analysis" class="section-content">
   <div class="sec-h"><span class="sec-icon">✨</span> Threat Reports</div>

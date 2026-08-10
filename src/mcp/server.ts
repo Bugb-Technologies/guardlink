@@ -43,22 +43,21 @@
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { parseProject, findDanglingRefs, findUnmitigatedExposures, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
 import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
-import { getReviewableExposures, applyReviewAction, type ReviewableExposure } from '../review/index.js';
+import { getReviewableExposures, applyReviewAction } from '../review/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { generateReport } from '../report/index.js';
 import { generateDashboardHTML, generateThreatGraph } from '../dashboard/index.js';
-import { diffModels, parseAtRef, formatDiffMarkdown } from '../diff/index.js';
-import { lookup, type LookupQuery } from './lookup.js';
+import { diffModels, parseAtRef } from '../diff/index.js';
+import { lookup } from './lookup.js';
 import { fileContext, normalizeContextPath } from './context.js';
 import { selectSubgraph, traverseGraph, findPath, summariseGraphPayload } from './subgraph.js';
 import { buildServerInstructions, readConfiguredMode } from './instructions.js';
 import { suggestAnnotations } from './suggest.js';
-import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModel, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
+import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
 import { loadWorkspaceConfig } from '../workspace/index.js';

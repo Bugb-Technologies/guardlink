@@ -23,12 +23,14 @@
  *   value, and it is not a defect sweep. Turning this on today would mean 156
  *   `any` casts becoming 156 `eslint-disable` comments, which buys nothing.
  *
- * - `no-unused-vars` — WARN, at 73 after the ignore patterns below. Mostly dead
- *   imports across 26 files. Mechanical and safe to clean (tsc catches any
- *   mistake immediately), but a 26-file cleanup does not belong in the same
- *   branch as the defect fixes it would be reviewed alongside. Visible as
- *   warnings so the debt is counted rather than hidden; promote to `error` once
- *   the cleanup lands.
+ * - `no-unused-vars` — ERROR. Was WARN at 73 findings across 26 files; the
+ *   cleanup landed and the rule was promoted so the debt cannot silently
+ *   return. Three of the 73 were NOT dead weight and are deliberately still
+ *   present, each behind a narrow `eslint-disable-next-line` with a comment
+ *   naming the defect: an accepted-but-never-read `autoYes` option (D30), a
+ *   discarded process exit code (D31), and a computed-then-ignored `endIdx`
+ *   that truncates agent files (D32). Silencing those by deletion would have
+ *   destroyed the evidence, which is the opposite of what the rule is for.
  *
  * - `no-useless-escape` — OFF. All 13 sites are inside the parser's regexes.
  *   "Useless" escapes there are often deliberate — `\.` reads as a literal dot
@@ -72,7 +74,7 @@ export default tseslint.config(
   {
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unused-vars': ['warn', {
+      '@typescript-eslint/no-unused-vars': ['error', {
         argsIgnorePattern: '^_',
         varsIgnorePattern: '^_',
         // `const { generated_at, ...durable } = model` is how volatile fields
@@ -87,5 +89,13 @@ export default tseslint.config(
       'eqeqeq': ['error', 'smart'],
       'no-var': 'error',
     },
+  },
+
+  {
+    // Fixtures are sample source that exists to be PARSED as text. `deriveKey`
+    // is there so `@shield:begin/end` has something to shield; it is data, not
+    // dead code, and deleting it would break what the fixture demonstrates.
+    files: ['tests/fixtures/**'],
+    rules: { '@typescript-eslint/no-unused-vars': 'off' },
   },
 );

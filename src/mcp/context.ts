@@ -24,7 +24,7 @@
 import { isAbsolute, relative, resolve as resolvePath } from 'node:path';
 import { lookup, type LookupResult } from './lookup.js';
 import type {
-  ThreatModel, SourceLocation, DataClassification,
+  ThreatModel, SourceLocation,
 } from '../types/index.js';
 
 /**

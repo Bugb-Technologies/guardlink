@@ -647,13 +647,6 @@ export const GITATTRIBUTES_ENTRY = `
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-function toPascalCase(s: string): string {
-  return s
-    .replace(/[-_./]/g, ' ')
-    .split(/\s+/)
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join('');
-}
 
 function defaultIncludeForLanguage(lang: string): string[] {
   switch (lang) {

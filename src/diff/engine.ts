@@ -18,7 +18,6 @@ import type {
   ThreatModelAsset, ThreatModelThreat, ThreatModelControl,
   ThreatModelMitigation, ThreatModelExposure, ThreatModelConfirmed, ThreatModelAcceptance,
   ThreatModelFlow, ThreatModelBoundary, ThreatModelTransfer,
-  Severity, SourceLocation,
 } from '../types/index.js';
 
 // ─── Delta types ─────────────────────────────────────────────────────

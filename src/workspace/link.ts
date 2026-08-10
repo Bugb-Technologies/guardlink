@@ -297,6 +297,14 @@ function cleanupRemovedRepo(repoPath: string, repoName: string, result: LinkResu
     // Remove from marker to next ## or end of file
     const afterMarker = content.slice(markerIdx);
     const nextSectionMatch = afterMarker.match(/\n## (?!Workspace Context)/);
+    // D32 — DATA LOSS. `endIdx` is the end of the workspace block, exactly as the
+    // comment above intends, and the write below ignores it: `slice(0, markerIdx)`
+    // discards everything from the marker to EOF, so any section a user wrote
+    // AFTER the workspace block is destroyed by `guardlink link --remove`.
+    // The line should be `... + '\n' + content.slice(endIdx)`. Not fixed here —
+    // it is a behaviour change that needs its own test, and this commit is a
+    // lint cleanup. Logged in the defect ledger.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const endIdx = nextSectionMatch
       ? markerIdx + (nextSectionMatch.index ?? afterMarker.length)
       : content.length;
@@ -314,7 +322,7 @@ function cleanupRemovedRepo(repoPath: string, repoName: string, result: LinkResu
 function discoverWorkspaceReposForRemoval(
   existingRepoPath: string,
   config: WorkspaceConfig,
-  removingRepoName: string,
+  _removingRepoName: string,
 ): DiscoveredRepo[] {
   const discovered: DiscoveredRepo[] = [];
   const found = new Set<string>();

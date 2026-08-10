@@ -9,7 +9,7 @@
  * @mitigates #workspace-config against #config-tamper using #yaml-validation -- "Schema validation on load"
  */
 
-import type { ThreatModel, Severity, ExternalRef } from '../types/index.js';
+import type { ThreatModel, ExternalRef } from '../types/index.js';
 
 // ─── Workspace Configuration (workspace.yaml) ───────────────────────
 

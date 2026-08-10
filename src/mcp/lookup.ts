@@ -22,8 +22,7 @@
 
 import type {
   ThreatModel, ThreatModelAsset, ThreatModelThreat, ThreatModelControl,
-  ThreatModelExposure, ThreatModelMitigation, ThreatModelFlow,
-  ThreatModelBoundary, ThreatModelTransfer, ThreatModelAcceptance,
+  ThreatModelTransfer, ThreatModelAcceptance,
   SourceLocation, DataClassification,
 } from '../types/index.js';
 
@@ -430,9 +429,6 @@ function lookupThreatsFor(model: ThreatModel, query: string, assetRef: string, r
   const aliases = resolve(assetRef);
   const { keep, match, matched } = selectStrongest(model.exposures.map(e => e.asset), assetRef, aliases);
   const exposures = model.exposures.filter(e => keep(e.asset));
-  const threatIds = new Set(exposures.map(e => e.threat));
-  const threats = model.threats.filter(t => (t.id && threatIds.has(t.id)) || threatIds.has(t.canonical_name));
-
   // Also include direct exposures info
   const results = exposures.map(e => {
     const threat = model.threats.find(t => t.id === e.threat || t.canonical_name === e.threat);
@@ -1190,11 +1186,6 @@ function classifyRef(value: string, ref: string, aliases?: string[]): RefMatch |
   }
 
   return null;
-}
-
-/** Fuzzy match: #id refs, dotted paths, partial case-insensitive match */
-function matchRef(value: string, ref: string, aliases?: string[]): boolean {
-  return classifyRef(value, ref, aliases) !== null;
 }
 
 const tierOf = (m: RefMatch | null): number => (m === null ? Infinity : TIER[m.kind]);

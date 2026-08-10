@@ -8,7 +8,7 @@
  */
 
 import type {
-  Annotation, AnnotationVerb, Severity, DataClassification,
+  Annotation, DataClassification,
   ParseDiagnostic, SourceLocation,
 } from '../types/index.js';
 import { normalizeName, resolveSeverity, unescapeDescription } from './normalize.js';
@@ -52,7 +52,6 @@ const TAG_REF = String.raw`#${TAG_SEGMENT}(?:\.${TAG_SEGMENT})*`;
 const ASSET_REF = String.raw`(?:${TAG_REF}|${QUOTED_REF}|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)`;  // #tag, #repo.tag, "quoted", or Dotted.Path
 const NAME      = String.raw`[A-Za-z]\w*(?:[_\- ][A-Za-z]\w*)*`;
 const ID_DEF    = String.raw`\(#([a-zA-Z0-9_-]+)\)`;   // DEFINITION site — never dotted; you cannot define another repo's id here
-const ID_REF    = String.raw`#([a-zA-Z0-9_-]+)`;
 /**
  * Threat AND control reference position — `@mitigates X against T using C`
  * routes the control through this same fragment, so there is no separate
@@ -69,7 +68,6 @@ const ID_REF    = String.raw`#([a-zA-Z0-9_-]+)`;
  */
 const THREAT_REF = String.raw`(?:${TAG_REF}|${QUOTED_REF}|[A-Za-z]\w*(?:[_\- ][A-Za-z]\w*)*)`;
 const SEVERITY  = String.raw`\[(P[0-3]|critical|high|medium|low)\]`;
-const EXT_REF   = String.raw`([a-zA-Z]+:[A-Za-z0-9_:.\-]+)`;
 const DESC      = String.raw`--\s*"((?:[^"\\]|\\.)*)"`;
 const SOURCE_FILE = String.raw`\S+`;
 const SOURCE_LINE = String.raw`[1-9]\d*`;

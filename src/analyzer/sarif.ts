@@ -23,7 +23,7 @@
 
 import { createHash } from 'node:crypto';
 
-import type { ThreatModel, ThreatModelExposure, ParseDiagnostic, Severity } from '../types/index.js';
+import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
 
 // ─── SARIF 2.1.0 types (subset) ─────────────────────────────────────
 

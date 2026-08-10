@@ -528,7 +528,6 @@ function emitArchitecture(model: ThreatModel, lines: string[]): void {
     assetNames.add(`#${a.path.join('.')}`);
   }
 
-  const flowTargets = new Set(model.flows.map(f => f.target));
   const flowSources = new Set(model.flows.map(f => f.source));
 
   // External sources: flow sources that are NOT defined assets

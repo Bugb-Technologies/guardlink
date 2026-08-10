@@ -7,7 +7,7 @@
  * names). The goal is "anyone screenshotting the dashboard cannot replay
  * the attack, but they can still see what was bypassed."
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   redactSensitiveTokens,
   redactEvidence,

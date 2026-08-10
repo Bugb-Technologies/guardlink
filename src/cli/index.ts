@@ -47,7 +47,7 @@ import { diagnosticIcon } from '../parser/format.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { ensurePromptMd } from '../init/migrate.js';
 import { generateReport, generateMermaid } from '../report/index.js';
-import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getCurrentRef } from '../diff/index.js';
+import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { emitArtifacts, checkArtifactDrift } from '../artifacts/emit.js';
 import { startStdioServer } from '../mcp/index.js';
@@ -1691,7 +1691,6 @@ program
       console.error('');
 
       if (result.linked.length > 0 || result.updated.length > 0) {
-        const total = result.linked.length + result.updated.length;
         console.error(`✓ ${result.linked.length} repo(s) added, ${result.updated.length} existing repo(s) updated`);
         if (result.agentFilesUpdated.length > 0) {
           console.error(`  ↻ Updated ${result.agentFilesUpdated.length} agent instruction file(s)`);

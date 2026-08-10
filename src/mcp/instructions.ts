@@ -39,7 +39,7 @@ export interface InstructionsContext {
 }
 
 
-function modeParagraph(mode: AnnotationMode | null, definitionsPath: string): string {
+function modeParagraph(mode: AnnotationMode | null, _definitionsPath: string): string {
   if (mode === 'external') {
     return [
       'This project stores annotations EXTERNALLY. Source files are not edited; annotations',

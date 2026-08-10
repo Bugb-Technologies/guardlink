@@ -3633,13 +3633,13 @@
       "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 765
+        "line": 758
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1036
+        "line": 1029
       }
     }
   ],
