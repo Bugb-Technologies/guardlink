@@ -9,12 +9,15 @@
 DEFINE   @asset <Component.Path> (#id) -- "description"
          @threat <Name> (#id) [severity] cwe:CWE-NNN -- "description"
          @control <Name> (#id) -- "description"
+         @actor <Name> (#id) -- "a principal in the authz model — a role, not a person"
 
 RELATE   @mitigates <Asset> against <#threat> using <#control> -- "how"
          @exposes <Asset> to <#threat> [severity] cwe:CWE-NNN -- "what's wrong"
          @confirmed <#threat> on <Asset> [severity] cwe:CWE-NNN -- "verified evidence"
          @accepts <#threat> on <Asset> -- "HUMAN-ONLY — AI agents must use @audit instead"
          @transfers <#threat> from <Source> to <Target> -- "who handles it"
+         @entitles <#actor> to <capability> on <Asset> against <#threat> -- "by design + authz file:line"
+                   ^ PROPOSED via `guardlink entitle --propose`, written only when a human accepts
 
 FLOW     @flows <Source> -> <Target> via <mechanism> -- "details"
          @boundary <AssetA> | <AssetB> (#id) -- "trust boundary"
@@ -50,6 +53,7 @@ Append after severity: `cwe:CWE-89`, `owasp:A03:2021`, `capec:CAPEC-66`, `attack
 3. **Read definitions before adding.** Check for existing IDs first — avoid duplicates.
 4. **Every `@exposes` needs a response.** Match with `@mitigates` (fix exists) or `@audit` (flag for human review). AI agents must NEVER write `@accepts` — that is a human-only governance decision. Use `@audit` instead.
 5. **Use the full verb set.** `@flows` for data movement, `@handles` for data classification, `@boundary` for trust boundaries.
+6. **`@entitles` is proposed, never written by hand.** An over-grant closes a real privilege escalation as by-design, so the claim goes through a review artifact: propose it (`guardlink entitle --propose`, or the `guardlink_entitlement_propose` MCP tool), and a human accepts it with `guardlink entitle` — acceptance is what writes the annotation, with their name next to it. An `@entitles` in source with no accepted proposal behind it is a validation error. The rationale must cite the authz code (`Authz: common/api/metadata.go:189`); without a `file:line` pointer the claim is **inert** — parsed but ignored — and accepting it takes an explicit acknowledgement of that. It never hides a finding and never gates testing; it only changes what triage recommends. Never propose one for an ownership question (IDOR, tenant isolation): both peers hold the capability, so entitlement cannot answer *whose object it was*.
 
 ### Standalone `.gal` Files
 
@@ -71,6 +75,8 @@ Use the same GAL syntax without language comment prefixes. Definitions still bel
 |-----------|------------|
 | Writing new endpoint/handler | `@exposes` + `@mitigates` (or `@audit`) + `@flows` + `@comment` — tell the complete story |
 | New service/component | `@asset` in definitions, then reference in source |
+| New role / permission tier | `@actor` in definitions, then `guardlink entitle --propose` for each capability it holds by design |
+| Finding needs privilege X, and X is allowed to do that | Propose an entitlement (`guardlink entitle --propose … --rationale "by design + authz file:line"`) — do not write `@entitles` yourself |
 | Security gap exists | `@exposes Asset to #threat` + `@audit Asset` |
 | Threat verified exploitable | `@confirmed #threat on Asset [severity] -- "pentest/scan evidence"` |
 | Risk with no fix yet | `@audit Asset` + `@comment` explaining potential controls. NEVER `@accepts`. |
@@ -106,6 +112,11 @@ guardlink config <show|set|clear>       # Manage LLM provider / CLI agent config
 # Governance & Maintenance
 guardlink review [dir]                  # Interactive review of unmitigated exposures (accept/remediate/skip)
 guardlink review --list [--severity X]  # List reviewable exposures without prompting
+guardlink entitle [dir]                 # Review proposed @entitles claims (accept/reject/defer)
+guardlink entitle --list [--status X]   # List entitlement proposals and their decisions
+guardlink entitle --propose --actor "#ns-admin" --capability configure-archival-destination \
+    --asset "#archival-fs" --threat "#path-traversal" --file common/api/metadata.go --line 189 \
+    --rationale "By design: namespace config. Authz: common/api/metadata.go:189"
 guardlink clear [dir] [--dry-run]       # Remove all annotations from source files
 guardlink sync [dir]                    # Sync agent instruction files with current threat model
 guardlink unannotated [dir]             # List source files with no annotations
@@ -199,12 +210,17 @@ Run `guardlink tui` for the interactive terminal interface:
 8. **External refs space-separated after severity**: `cwe:CWE-89 owasp:A03:2021 capec:CAPEC-66` (on `@threat`, `@exposes`, `@confirmed`).
 9. **@comment always needs -- and quotes**: `@comment -- "your note here"`.
 10. **One annotation per comment line.** Do NOT put two @verbs on the same line.
+11. **@entitles capability is ONE identifier, not prose**: `configure-archival-destination`, not `"can configure archival"`. It is the join key, and prose would not join.
 
 ## MCP Tools
 
 When connected via `.mcp.json`, use:
 - `guardlink_parse` — parse annotations, return threat model
-- `guardlink_lookup` — query threats, controls, exposures by ID (try `unmitigated`, `confirmed`)
+- `guardlink_lookup` — query threats, controls, exposures by ID (try `unmitigated`, `confirmed`, `actors`, `entitlements`)
 - `guardlink_suggest` — get annotation suggestions for a file
 - `guardlink_validate` — check for syntax errors
 - `guardlink_status` — coverage stats
+- `guardlink_entitlement_propose` — propose an `@entitles` claim into `.guardlink/entitlement-proposals.json` (writes nothing to source)
+- `guardlink_entitlement_list` — see proposals and their decisions; a rejected claim must not be re-filed
+
+There is deliberately no entitlement *accept* tool. Acceptance is a human decision recorded by name, through `guardlink entitle`.

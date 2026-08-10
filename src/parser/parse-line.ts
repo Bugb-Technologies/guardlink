@@ -5,6 +5,8 @@
  * @exposes #parser to #redos [medium] cwe:CWE-1333 -- "Complex regex patterns applied to annotation text"
  * @mitigates #parser against #redos using #regex-anchoring -- "All patterns are anchored (^...$) to prevent backtracking"
  * @comment -- "Regex patterns designed with bounded quantifiers and explicit structure"
+ * @comment -- "@entitles capability is a single-token identifier by grammar, so prose in that position is a parse error rather than a label nothing can group or compare (actor-entitlement design §3.1)"
+ * @comment -- "@entitles takes optional `on <asset>` and `against <threat>` clauses because the join is the (actor, asset, threat) triple, not the capability — a capability-keyed join would demote every threat on the asset including one discovered later (actor-entitlement design §9.3)"
  */
 
 import type {
@@ -24,6 +26,12 @@ const NAME      = String.raw`[A-Za-z]\w*(?:[_\- ][A-Za-z]\w*)*`;
 const ID_DEF    = String.raw`\(#([a-zA-Z0-9_-]+)\)`;
 const ID_REF    = String.raw`#([a-zA-Z0-9_-]+)`;
 const THREAT_REF = String.raw`(?:#[a-zA-Z0-9_-]+|${QUOTED_REF}|[A-Za-z]\w*(?:[_\- ][A-Za-z]\w*)*)`;
+// A capability is a single normalised identifier, never prose. It is not a join
+// key (§9.3 — the join is the (actor, asset, threat) triple); it is the
+// justification a reviewer reads, and a normalised label to group claims by.
+// Keeping it single-token is still what makes it citable and comparable rather
+// than a sentence nobody can match on.
+const CAPABILITY = String.raw`[A-Za-z][A-Za-z0-9_.\-]*`;
 const SEVERITY  = String.raw`\[(P[0-3]|critical|high|medium|low)\]`;
 const EXT_REF   = String.raw`([a-zA-Z]+:[A-Za-z0-9_:.\-]+)`;
 const DESC      = String.raw`--\s*"((?:[^"\\]|\\.)*)"`;
@@ -41,6 +49,7 @@ const PATTERNS: Record<string, RegExp> = {
   asset:   new RegExp(String.raw`^@asset\s+(${COMPONENT})(?:\s+${ID_DEF})?(?:\s+${DESC})?$`),
   threat:  new RegExp(String.raw`^@threat\s+(${NAME})(?:\s+${ID_DEF})?(?:\s+${SEVERITY})?${EXT_REFS_OPT}(?:\s+${DESC})?$`),
   control: new RegExp(String.raw`^@control\s+(${NAME})(?:\s+${ID_DEF})?(?:\s+${DESC})?$`),
+  actor:   new RegExp(String.raw`^@actor\s+(${NAME})(?:\s+${ID_DEF})?(?:\s+${DESC})?$`),
 
   // Relationship — asset positions accept #id OR Dotted.Path via ASSET_REF
   mitigates: new RegExp(String.raw`^@mitigates\s+(${ASSET_REF})\s+against\s+(${THREAT_REF})(?:\s+using\s+(${THREAT_REF}))?(?:\s+${DESC})?$`),
@@ -49,6 +58,11 @@ const PATTERNS: Record<string, RegExp> = {
   confirmed: new RegExp(String.raw`^@confirmed\s+(${THREAT_REF})\s+on\s+(${ASSET_REF})(?:\s+${SEVERITY})?${EXT_REFS_OPT}(?:\s+${DESC})?$`),
   accepts: new RegExp(String.raw`^@accepts\s+(${THREAT_REF})\s+on\s+(${ASSET_REF})(?:\s+${DESC})?$`),
   accepts_v1: new RegExp(String.raw`^@accepts\s+(${THREAT_REF})\s+to\s+(${ASSET_REF})(?:\s+${DESC})?$`),
+  // `against <threat>` is the second half of the join key (§9.3). Both clauses
+  // stay optional so the loose form still parses — an imprecise entitlement is
+  // harmless because it demotes nothing, whereas making it a parse error would
+  // reject a claim a reviewer should get to read.
+  entitles: new RegExp(String.raw`^@entitles\s+(${THREAT_REF})\s+to\s+(${CAPABILITY})(?:\s+on\s+(${ASSET_REF}))?(?:\s+against\s+(${THREAT_REF}))?(?:\s+${DESC})?$`),
   transfers: new RegExp(String.raw`^@transfers\s+(${THREAT_REF})\s+from\s+(${ASSET_REF})\s+to\s+(${ASSET_REF})(?:\s+${DESC})?$`),
   flows: new RegExp(String.raw`^@flows\s+(${ASSET_REF}(?:\s+->\s+${ASSET_REF})+)(?:\s+via\s+((?:(?!\s+--\s*").)+?))?(?:\s+${DESC})?$`),
   boundary: new RegExp(String.raw`^@boundary\s+(?:between\s+)?(${ASSET_REF})\s+and\s+(${ASSET_REF})(?:\s+${ID_DEF})?(?:\s+${DESC})?$`),
@@ -164,6 +178,15 @@ export function parseLine(
     });
   }
 
+  // ── @actor ──
+  if ((m = trimmed.match(PATTERNS.actor))) {
+    const name = m[1];
+    return ok({
+      ...base, verb: 'actor', name, canonical_name: normalizeName(name),
+      id: m[2], description: desc(m[3]),
+    });
+  }
+
   // ── @mitigates ──
   if ((m = trimmed.match(PATTERNS.mitigates)) || (m = trimmed.match(PATTERNS.mitigates_v1))) {
     return ok({
@@ -194,6 +217,24 @@ export function parseLine(
   // ── @accepts ──
   if ((m = trimmed.match(PATTERNS.accepts)) || (m = trimmed.match(PATTERNS.accepts_v1))) {
     return ok({ ...base, verb: 'accepts', threat: resolveRef(m[1]), asset: resolveRef(m[2]), description: desc(m[3]) });
+  }
+
+  // ── @entitles ──
+  // The claim joins a finding on `(actor, asset, threat)` (§9.3): nothing on the
+  // finding side carries a capability, so `to <capability>` cannot be the join —
+  // it is the operation a reviewer reads to judge whether the claim is honest.
+  // Both `on` and `against` stay optional and are resolved with resolveRef like
+  // every other asset/threat ref, so `against "Path Traversal"` and
+  // `against #path-traversal` mean the same thing here as they do on @exposes.
+  if ((m = trimmed.match(PATTERNS.entitles))) {
+    const capability = m[2];
+    return ok({
+      ...base, verb: 'entitles', actor: resolveRef(m[1]),
+      capability, canonical_capability: normalizeName(capability),
+      asset: m[3] ? resolveRef(m[3]) : undefined,
+      threat: m[4] ? resolveRef(m[4]) : undefined,
+      description: desc(m[5]),
+    });
   }
 
   // ── @transfers ──
@@ -319,8 +360,8 @@ export function parseLine(
   const verbMatch = trimmed.match(/^@(\S+)/);
   if (verbMatch) {
     const knownVerbs: Set<string> = new Set([
-      'asset', 'threat', 'control', 'mitigates', 'exposes', 'confirmed', 'accepts',
-      'transfers', 'flows', 'boundary', 'validates', 'audit', 'owns',
+      'asset', 'threat', 'control', 'actor', 'mitigates', 'exposes', 'confirmed', 'accepts',
+      'entitles', 'transfers', 'flows', 'boundary', 'validates', 'audit', 'owns',
       'handles', 'assumes', 'feature', 'source', 'comment', 'shield', 'shield:begin', 'shield:end',
       // v1 compat
       'review', 'connects',

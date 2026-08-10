@@ -72,6 +72,12 @@ export function canonicalizeModelOrder(model: ThreatModel): ThreatModel {
     shields: sorted(model.shields),
     features: sorted(model.features),
     comments: sorted(model.comments),
+    // Optional like external_refs, so an absent key stays absent rather than
+    // becoming an empty array. @actor/@entitles are written into synced agent
+    // blocks, so they inherit the same requirement as every other relation:
+    // regenerating unchanged input must not produce a diff.
+    ...(model.actors ? { actors: sorted(model.actors) } : {}),
+    ...(model.entitlements ? { entitlements: sorted(model.entitlements) } : {}),
     annotated_files: [...model.annotated_files].sort(),
     unannotated_files: [...model.unannotated_files].sort(),
     ...(model.external_refs ? { external_refs: sorted(model.external_refs) } : {}),

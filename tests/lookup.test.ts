@@ -473,8 +473,17 @@ describe('lookup — exact-match precedence (D13)', () => {
     expect(lookup(model, 'threat dos').results[0].id).toBe('dos');
     expect(lookup(model, 'threat dos').matched_via).toBe('exact');
     expect(lookup(model, 'threat dos').ambiguous).toBeUndefined();
-    // And #cli must still report only its own 5 exposures, not #llm-client's 14.
-    expect(lookup(model, 'asset cli').results[0].relationships.exposures).toHaveLength(5);
+    // And #cli must still report only its own exposures, never #llm-client's.
+    // Derived from the model rather than hardcoded: the literal count was a
+    // snapshot of this repo's annotations, so adding an @exposes #cli anywhere
+    // failed this test for a reason unrelated to substring precedence. The two
+    // assets also happen to carry the same number of exposures right now, which
+    // is why the guard compares the threats rather than the length.
+    const own = model.exposures.filter(e => e.asset === '#cli');
+    const got = lookup(model, 'asset cli').results[0].relationships.exposures;
+    expect(got).toHaveLength(own.length);
+    expect(got.map((e: any) => e.threat).sort())
+      .toEqual(own.map(e => e.threat).sort());
   });
 
   // ─── F3: the three record paths must agree ─────────────────────────

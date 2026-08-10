@@ -1040,6 +1040,8 @@ function renderSummaryPage(
     ${statCard(stats.validations, 'Validations', 'success')}
     ${statCard(stats.audits, 'Audits')}
     ${statCard(stats.assumptions, 'Assumptions')}
+    ${stats.actors > 0 ? statCard(stats.actors, 'Actors') : ''}
+    ${stats.entitlements > 0 ? statCard(stats.entitlements, 'Entitlements') : ''}
     ${statCard(stats.ownership, 'Ownership')}
     ${statCard(stats.comments, 'Comments', 'muted')}
     ${stats.shields > 0 ? statCard(stats.shields, 'Shields', 'muted') : ''}
@@ -1443,6 +1445,25 @@ function renderDataPage(model: ThreatModel): string {
     </tbody>
   </table>` : ''}
 
+  ${(model.entitlements || []).length > 0 ? `
+  <div class="sub-h">Entitlements (${model.entitlements!.length})</div>
+  <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">Capabilities a principal is claimed to hold <strong>by design</strong>. The join is (actor, asset, threat) &mdash; a row with either <em>missing</em> joins no finding and cannot demote one. An entitlement never suppresses a finding and never gates testing &mdash; it only changes what downstream triage recommends. A claim that cites no authorization code is <strong>inert</strong> and has no effect.</p>
+  <table>
+    <thead><tr><th>Actor</th><th>Capability</th><th>Asset</th><th>Threat</th><th>Citation</th><th>Rationale</th><th>Location</th></tr></thead>
+    <tbody>
+    ${model.entitlements!.map(en => `
+    <tr data-ff="${en.location ? esc(en.location.file) : ''}">
+      <td><code>${esc(en.actor)}</code></td>
+      <td><code>${esc(en.capability)}</code></td>
+      <td>${en.asset ? `<code>${esc(en.asset)}</code>` : '<strong style="color:var(--sev-high)">missing</strong>'}</td>
+      <td>${en.threat ? `<code>${esc(en.threat)}</code>` : '<strong style="color:var(--sev-high)">missing</strong>'}</td>
+      <td>${en.citation ? `<code>${esc(en.citation.raw)}</code>` : '<strong style="color:var(--sev-high)">inert &mdash; uncited</strong>'}</td>
+      <td>${esc(en.description || '(no rationale given)')}</td>
+      <td class="loc">${en.location ? `${esc(en.location.file)}:${en.location.line}` : ''}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
   ${model.assumptions.length > 0 ? `
   <div class="sub-h">Assumptions (${model.assumptions.length})</div>
   <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">Unverified assumptions that should be periodically reviewed.</p>
@@ -1488,6 +1509,7 @@ function renderDataPage(model: ThreatModel): string {
   ${model.boundaries.length === 0 && model.data_handling.length === 0 && model.comments.length === 0
     && model.validations.length === 0 && model.ownership.length === 0 && model.audits.length === 0
     && model.assumptions.length === 0 && model.shields.length === 0
+    && (model.entitlements || []).length === 0
     ? '<p class="empty-state">No data classifications, trust boundaries, or lifecycle annotations found.</p>' : ''}
 </div>`;
 }
@@ -1582,6 +1604,8 @@ function buildFileAnnotations(model: ThreatModel, root?: string): FileAnnotation
   for (const o of model.ownership) addEntry('owns', o as any, `${o.owner} owns ${o.asset}`);
   for (const a of model.audits) addEntry('audit', a as any, `Audit: ${a.asset}`);
   for (const a of model.assumptions) addEntry('assumes', a as any, `Assumes: ${a.asset}`);
+  for (const ac of model.actors || []) addEntry('actor', ac as any, `Actor: ${ac.name}`);
+  for (const en of model.entitlements || []) addEntry('entitles', en as any, `${en.actor} entitled to ${en.capability}${en.inert ? ' (inert)' : ''}`);
   for (const s of model.shields) addEntry('shield', s as any, s.reason || 'Shielded region');
   for (const c of model.comments) addEntry('comment', c as any, c.description || 'Developer note');
 

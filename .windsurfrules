@@ -9,10 +9,11 @@ Every time you write or modify code that touches security-relevant behavior, you
 ## Key Rules
 - ANNOTATE NEW CODE. When you add a function or endpoint that handles user input, accesses data, or crosses a trust boundary — add @exposes, @mitigates, @flows, @handles, or at minimum @comment. This is not optional.
 - NEVER write @accepts — that is a human-only governance decision. For risks with no mitigation: write @exposes + @audit + @comment suggesting potential controls.
+- NEVER write @entitles either — propose it with `guardlink entitle --propose` and a human's acceptance writes it, under their name. It claims a privilege is *supposed* to have this effect, so an over-grant closes a real escalation as by-design. Cite the authz code as file:line or the claim is inert. Never propose one for an ownership question (IDOR, tenant isolation).
 - Use @confirmed for verified exploits. When pentest/scanning/manual reproduction proves a threat is exploitable: @confirmed #threat on Asset [severity] -- "evidence". Distinct from @exposes (theoretical) — @confirmed means real, verified, no false positives.
 - Preserve existing annotations — do not delete or mangle them.
 - Definitions (@asset, @threat, @control with (#id)) live in .guardlink/definitions.ts. Reuse IDs — never redefine. Add new definitions there first, then reference in source files.
-- Source files use relationship verbs: @mitigates, @exposes, @confirmed, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers, @feature.
+- Source files use relationship verbs: @mitigates, @exposes, @confirmed, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers, @feature. (@actor is a definition — it lives with @asset/@threat/@control. @entitles is proposed, not written.)
 - Write coupled annotation blocks: risk + control (or audit) + data flow + context note.
 - Avoid @shield unless a human explicitly asks to hide code from AI.
 
@@ -45,6 +46,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 **Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest), #workspace-link (Workspace,Link), #merge-engine (Workspace,Merge), #report-metadata (Workspace,Metadata), #workspace-config (Workspace,Config)
 **Threats:** #path-traversal (Path_Traversal) [high], #cmd-injection (Command_Injection) [critical], #xss (Cross_Site_Scripting) [high], #api-key-exposure (API_Key_Exposure) [high], #ssrf (Server_Side_Request_Forgery) [medium], #redos (ReDoS) [medium], #arbitrary-write (Arbitrary_File_Write) [high], #prompt-injection (Prompt_Injection) [medium], #dos (Denial_of_Service) [medium], #data-exposure (Sensitive_Data_Exposure) [medium], #insecure-deser (Insecure_Deserialization) [medium], #child-proc-injection (Child_Process_Injection) [high], #info-disclosure (Information_Disclosure) [low], #tag-collision (Tag_Collision) [medium], #config-tamper (Config_Tampering) [medium]
 **Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring), #prefix-ownership (Prefix_Ownership), #yaml-validation (YAML_Validation)
+**Actors:** #local-dev (Local_Developer), #mcp-agent (MCP_Agent), #ci-runner (CI_Runner)
+
+### Entitlements (capabilities held by design — never a reason to skip testing)
+
+- #mcp-agent entitled to `read_threat_model` on #mcp — cites src/mcp/index.ts:23
 
 ### Open Exposures (need @mitigates or @audit)
 
@@ -54,13 +60,12 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - #agent-launcher exposed to #config-tamper [medium] (src/agents/prompts.ts:10)
 - #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
 - #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
-- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:16)
-- #cli exposed to #cmd-injection [critical] (src/cli/index.ts:33)
+- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:24)
 - #init exposed to #data-exposure [low] (src/init/index.ts:12)
 - #mcp exposed to #info-disclosure [low] (src/mcp/freshness.ts:17)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
-- #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:30)
-- #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:34)
+- #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:36)
+- #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:40)
 - #suggest exposed to #dos [low] (src/mcp/suggest.ts:16)
 - #parser exposed to #data-exposure [low] (src/parser/migrate-mode.ts:26)
 - #tui exposed to #cmd-injection [high] (src/tui/commands.ts:11)
@@ -88,7 +93,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
 - #llm-client -> NVD via fetch
-- … and 73 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
+- … and 82 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
 
 ### Features (filter with `--feature`)
 
@@ -97,11 +102,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-371 annotations, 16 assets, 15 threats, 12 controls, 72 exposures, 0 confirmed, 57 mitigations, 93 flows, 2 features
+423 annotations, 16 assets, 15 threats, 12 controls, 78 exposures, 0 confirmed, 66 mitigations, 3 actors, 1 entitlements, 102 flows, 2 features
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v1:fdc3f6b903452086173e96f0eb9dc67b4a82e4de7abeea30cd5bb840e3768a34`
+- `annotation_hash`: `sha256-v2:67e68e77d94b7fc9761d57dd1b7419c0a6d9076e12574de5a8ef4c0f8767c0fc`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.

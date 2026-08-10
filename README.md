@@ -189,6 +189,9 @@ GuardLink ships an MCP server and behavioral directives for AI coding agents. Af
 | `guardlink ask <query>` | Ask a natural-language question about the threat model and codebase |
 | `guardlink review [dir]` | Interactive governance review — accept, remediate, or skip unmitigated exposures |
 | `guardlink review --list` | List reviewable exposures without prompting |
+| `guardlink entitle [dir]` | Review proposed `@entitles` claims — accept (writes the annotation, under your name), reject, or defer |
+| `guardlink entitle --propose` | File an entitlement proposal into `.guardlink/entitlement-proposals.json`; writes nothing to source |
+| `guardlink entitle --list` | List entitlement proposals and the decisions taken on them |
 | `guardlink clear [dir]` | Remove all annotations from source files (with `--dry-run` preview) |
 | `guardlink sync [dir]` | Sync agent instruction files with current threat model |
 | `guardlink unannotated [dir]` | List source files with no annotations |
@@ -252,6 +255,18 @@ GuardLink annotations can live in source comments in any language or in standalo
 // @owns #api by "backend-team"
 ```
 
+### Entitlement
+
+Answers "is the caller already allowed to do this?" — the question that makes a
+finding *by design* rather than a vulnerability. It never hides a finding and never
+gates testing; without a `file:line` citation to the authorization code it is inert.
+
+```go
+// @actor Namespace_Admin (#ns-admin) -- "Administers one namespace's configuration"
+// @entitles #ns-admin to configure-archival-destination on #archival-fs against #path-traversal
+//     -- "By design: the archival URI is namespace config. Authz: common/api/metadata.go:189"
+```
+
 ### All Annotation Types
 
 | Verb | Purpose | Example |
@@ -259,12 +274,14 @@ GuardLink annotations can live in source comments in any language or in standalo
 | `@asset` | Define a component | `@asset UserService (#users)` |
 | `@threat` | Define a threat | `@threat XSS (#xss) [high] cwe:CWE-79` |
 | `@control` | Define a security control | `@control WAF (#waf)` |
+| `@actor` | Define a principal in the authz model (a role) | `@actor Namespace_Admin (#ns-admin)` |
 | `@mitigates` | Control protects asset against threat | `@mitigates #api against #sqli using #prepared-stmts` |
 | `@exposes` | Asset vulnerable to threat | `@exposes #api to #xss [P1]` |
 | `@confirmed` | Threat verified exploitable (pentest/scan) | `@confirmed #sqli on #api [critical] -- "Verified in pen test"` |
 | `@feature` | Tag code with a product feature name | `@feature "SSO Login" -- "Single sign-on authentication flow"` |
 | `@accepts` | Risk acknowledged | `@accepts #dos on #api -- "By design"` |
 | `@transfers` | Risk moved between assets | `@transfers #sqli from #api to #db` |
+| `@entitles` | Capability an actor holds **by design** (must cite the authz code; never suppresses a finding) | `@entitles #ns-admin to configure-archival on #fs against #path-traversal -- "Authz: api/metadata.go:189"` |
 | `@flow` | Data flow between assets | `@flow #api -> #db via "SQL"` |
 | `@boundary` | Trust boundary | `@boundary #api <-> #external` |
 | `@handles` | Data classification | `@handles pii on #users` |

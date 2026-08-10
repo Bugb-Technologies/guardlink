@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v1:fdc3f6b903452086173e96f0eb9dc67b4a82e4de7abeea30cd5bb840e3768a34
+%% annotation_hash: sha256-v2:67e68e77d94b7fc9761d57dd1b7419c0a6d9076e12574de5a8ef4c0f8767c0fc
 %% generator:       guardlink@1.4.5
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -39,7 +39,7 @@ graph LR
   workspace_config["🔷 Workspace.Config"]
   api_key_exposure["🟠 API_Key_Exposure (cwe:CWE-798)"]:::threat
   path_traversal["🟠 Path_Traversal (cwe:CWE-22)"]:::threat
-  arbitrary_write["🟠 Arbitrary_File_Write (cwe:CWE-73)"]:::threat
+  arbitrary_write["🟠 Arbitrary_File_Write (cwe:CWE-73, cwe:CWE-74)"]:::threat
   child_proc_injection["🔴 Child_Process_Injection (cwe:CWE-78)"]:::threat
   prompt_injection["🟠 Prompt_Injection (cwe:CWE-77)"]:::threat
   dos["🟡 Denial_of_Service (cwe:CWE-400)"]:::threat
@@ -109,6 +109,7 @@ graph LR
   parser -. exposes .-> dos
   parser -. exposes .-> data_exposure
   parser -. exposes .-> redos
+  cli -. exposes .-> insecure_deser
   tui -. exposes .-> path_traversal
   tui -. exposes .-> arbitrary_write
   tui -. exposes .-> cmd_injection
@@ -153,11 +154,18 @@ graph LR
   path_validation -. protects .-> parser
   input_sanitize -- mitigates --> insecure_deser
   input_sanitize -. protects .-> parser
+  regex_anchoring -. protects .-> parser
   glob_filtering -. protects .-> parser
   resource_limits -. protects .-> parser
-  regex_anchoring -. protects .-> parser
   prefix_ownership -- mitigates --> tag_collision
   prefix_ownership -. protects .-> parser
+  config_validation -- mitigates --> insecure_deser
+  config_validation -. protects .-> cli
+  resource_limits -- mitigates --> insecure_deser
+  resource_limits -. protects .-> cli
+  input_sanitize -- mitigates --> arbitrary_write
+  input_sanitize -. protects .-> cli
+  param_commands -. protects .-> cli
   path_validation -. protects .-> tui
   key_redaction -. protects .-> tui
   resource_limits -. protects .-> tui

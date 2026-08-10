@@ -23,13 +23,13 @@
 
 import { resolve, basename, isAbsolute } from 'node:path';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
 import { computeStats, computeSeverity, computeExposures } from '../dashboard/data.js';
 import { generateThreatReport, serializeModel, listThreatReports, loadThreatReportsForDashboard, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, buildProjectContext, extractCodeSnippets, type AnalysisFramework } from '../analyze/index.js';
-import { diffModels, formatDiff, parseAtRef } from '../diff/index.js';
+import { diffModels, formatDiff, parseAtRef, getChangedFiles } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import type { ThreatModel, ParseDiagnostic, ThreatModelExposure } from '../types/index.js';
@@ -192,6 +192,13 @@ export function cmdGal(): void {
   console.log(EX('    // @control  Rate Limiting'));
   console.log('');
 
+  console.log(`  ${V('@actor')}  ${K('<name>')}  ${D('(#id)')}  ${D('[-- "description"]')}`);
+  console.log(D('    Declare a principal in the authorization model — a role, not a person.'));
+  console.log(D('    Declared once per project, alongside @asset / @threat / @control.'));
+  console.log(EX('    // @actor  Namespace_Admin  (#ns-admin)  -- "Administers one namespace\'s configuration"'));
+  console.log(EX('    // @actor  Namespace_Writer  (#ns-writer)  -- "Starts and signals workflows"'));
+  console.log('');
+
   // ── RELATIONSHIPS ─────────────────────────────────────────────────
   console.log(H('  ── Relationships ───────────────────────────────────────────'));
   console.log('');
@@ -215,6 +222,18 @@ export function cmdGal(): void {
   console.log(D('    Explicitly accept a risk. Removes it from open findings.'));
   console.log(D('    Use when the risk is known and intentionally not mitigated.'));
   console.log(EX('    // @accepts  Timing Attack  on  api.auth  -- "Acceptable for current threat model"'));
+  console.log('');
+
+  console.log(`  ${V('@entitles')}  ${K('<actor>')}  ${D('to')}  ${K('<capability>')}  ${D('[on')}  ${K('<asset>')}${D(']')}  ${D('[against')}  ${K('<threat>')}${D(']')}  ${D('[-- "description"]')}`);
+  console.log(D('    State that an actor is legitimately entitled to a capability by design —'));
+  console.log(D('    the answer to "is the caller already allowed to do this?".'));
+  console.log(D('    <capability> is one identifier, never prose. The JOIN is (actor, asset,'));
+  console.log(D('    threat): a claim missing `on` or `against` joins nothing and cannot demote.'));
+  console.log(D('    Never suppresses a finding and never gates testing — it only informs'));
+  console.log(D('    the recommendation downstream. Absent from the SARIF export entirely.'));
+  console.log(D('    Must cite the authz code (file:line) in the description, or it is inert.'));
+  console.log(EX('    // @entitles  #ns-admin  to  configure-archival-destination  on  #archival-fs  against  #path-traversal'));
+  console.log(EX('    //     -- "By design: the archival URI is namespace config. Authz: common/api/metadata.go:189"'));
   console.log('');
 
   console.log(`  ${V('@transfers')}  ${K('<threat>')}  ${D('from')}  ${K('<source>')}  ${D('to')}  ${K('<target>')}  ${D('[-- "description"]')}`);
@@ -871,7 +890,12 @@ export async function cmdValidate(ctx: TuiContext): Promise<void> {
     // Check for @accepts without @audit (governance concern)
     const acceptAuditDiags = findAcceptedWithoutAudit(model);
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags];
+    // Entitlement checks: undeclared actor (error) and uncited/inert claim (warning)
+    const actorDiags = findUndeclaredActors(model);
+    const inertDiags = findInertEntitlements(model);
+    const impreciseDiags = findImpreciseEntitlements(model);
+
+    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...actorDiags, ...inertDiags, ...impreciseDiags];
 
     // Unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);
@@ -947,7 +971,8 @@ export async function cmdDiff(args: string, ctx: TuiContext): Promise<void> {
       return;
     }
 
-    const diff = diffModels(previous, current);
+    // changedFiles lets the engine flag an @entitles whose cited authz code moved
+    const diff = diffModels(previous, current, { changedFiles: getChangedFiles(ctx.root, ref) });
     const output = formatDiff(diff);
     console.log('');
     // Indent each line

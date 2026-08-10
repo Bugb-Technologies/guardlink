@@ -16,6 +16,8 @@
  *   guardlink translate [prompt]      Generate CERT-X-GEN pentest templates from threats
  *   guardlink ask <query>             Ask questions about threats and codebase context
  *   guardlink annotate <prompt>       Launch coding agent to add annotations
+ *   guardlink review [dir]            Interactive governance review of unmitigated exposures
+ *   guardlink entitle [dir]           Accept/reject/defer proposed @entitles claims
  *   guardlink config <action>         Manage LLM provider configuration
  *   guardlink dashboard [dir]         Generate interactive HTML dashboard
  *   guardlink mcp                     Start MCP server (stdio) for Claude Code, Cursor, etc.
@@ -42,12 +44,12 @@ import { Command } from 'commander';
 import { resolve, basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { ensurePromptMd } from '../init/migrate.js';
 import { generateReport, generateMermaid } from '../report/index.js';
-import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getCurrentRef } from '../diff/index.js';
+import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getCurrentRef, getChangedFiles } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { emitArtifacts, checkArtifactDrift } from '../artifacts/emit.js';
 import { startStdioServer } from '../mcp/index.js';
@@ -56,6 +58,11 @@ import { generateDashboardHTML } from '../dashboard/index.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt, buildTranslatePrompt, buildAskPrompt, resolveAnnotationMode } from '../agents/index.js';
 import { resolveConfig, saveProjectConfig, saveGlobalConfig, loadProjectConfig, loadGlobalConfig, maskKey, describeConfigSource } from '../agents/config.js';
 import { getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview, type ReviewResult } from '../review/index.js';
+import {
+  proposeEntitlement, listProposals, findProposal, applyProposalDecision, checkEntitlementProvenance,
+  defaultDecider, formatProposalForReview, formatProposalLine, summarizeDecisions, proposalsPath,
+  type DecisionResult, type EntitlementProposal, type ProposalStatus,
+} from '../review/entitlements.js';
 import { populateMetadata, mergeReports, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace } from '../workspace/index.js';
 import type { MergedReport, LinkResult } from '../workspace/index.js';
 import type { ThreatModel, ParseDiagnostic } from '../types/index.js';
@@ -288,11 +295,20 @@ program
     // Check for @accepts without @audit (governance concern)
     const acceptAuditDiags = findAcceptedWithoutAudit(model);
 
+    // Entitlement checks: undeclared actor (error) and uncited/inert claim (warning)
+    const actorDiags = findUndeclaredActors(model);
+    const inertDiags = findInertEntitlements(model);
+    const impreciseDiags = findImpreciseEntitlements(model);
+
+    // §3.6: an entitlement in source with no accepted proposal behind it. Skipped
+    // in projects with no proposal ledger, so this only bites where the flow is used.
+    const provenanceDiags = await checkEntitlementProvenance(root, model);
+
     // GL-501 — sidecars that are not where the convention says. Warnings only:
     // the file still parsed and every annotation in it counted.
     const galConventionDiags = findOffConventionGalFiles(model);
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...galConventionDiags];
+    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags];
 
     // Check for unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);
@@ -618,8 +634,9 @@ program
       process.exit(1);
     }
 
-    // Compute diff
-    const diff = diffModels(previous, current);
+    // Compute diff. The changed-file list lets the engine report an @entitles
+    // whose cited authorization code moved as stale (actor-entitlement §3.7).
+    const diff = diffModels(previous, current, { changedFiles: getChangedFiles(root, ref) });
 
     // Output
     if (opts.json) {
@@ -1402,6 +1419,279 @@ program
     }
   });
 
+// ─── entitle ─────────────────────────────────────────────────────────
+//
+// §3.6 of docs/prd/actor-entitlement-design.md: an agent proposes entitlements
+// with citations, a human accepts. Proposing never touches source; accepting is
+// the only thing that writes an @entitles annotation, and it records a name.
+
+program
+  .command('entitle')
+  .description('Review proposed entitlements (@entitles) — accept, reject, or defer. Only acceptance writes to source, under the name of the human who accepted.')
+  .argument('[dir]', 'Project directory to scan', '.')
+  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('--list', 'List proposals without prompting')
+  .option('--status <states>', 'Filter by status: proposed,accepted,rejected,deferred')
+  .option('--propose', 'File a proposal instead of reviewing (needs --actor, --capability, --rationale, --file, --line)')
+  .option('--actor <ref>', 'Actor being entitled — #id or a declared @actor name')
+  .option('--capability <id>', 'Capability — one identifier, never prose (it is the join key)')
+  .option('--asset <ref>', 'Optional "on <asset>" context')
+  .option('--threat <ref>', 'Threat class the claim is meant to answer for (enables the ownership-class check)')
+  .option('--rationale <text>', 'Why this is by design — must cite the authz code as file:line, or the claim is inert')
+  .option('--file <path>', 'Source file an accepted @entitles should be written to')
+  .option('--line <n>', 'Line in --file to anchor the annotation to')
+  .option('--proposed-by <name>', 'Who or what is filing the proposal', 'cli')
+  .option('--accept <id>', 'Accept a proposal by id (non-interactive)')
+  .option('--reject <id>', 'Reject a proposal by id (requires --note)')
+  .option('--defer <id>', 'Defer a proposal by id')
+  .option('--by <name>', 'Human recording the decision (defaults to git user.name)')
+  .option('--note <text>', 'Decision note — required when rejecting')
+  .option('--acknowledge-inert', 'Accept a proposal that cites no authz code, acknowledging the annotation will be inert (§3.4)')
+  .option('--acknowledge-ownership', 'Accept a proposal the ownership-class check warned about, having read the warning (§3.5)')
+  .action(async (dir: string, opts: {
+    project: string; list?: boolean; status?: string; propose?: boolean;
+    actor?: string; capability?: string; asset?: string; threat?: string;
+    rationale?: string; file?: string; line?: string; proposedBy: string;
+    accept?: string; reject?: string; defer?: string;
+    by?: string; note?: string; acknowledgeInert?: boolean; acknowledgeOwnership?: boolean;
+  }) => {
+    const root = resolve(dir);
+
+    // ── propose (agent-side; writes only the artifact) ──
+    if (opts.propose) {
+      const missing = (['actor', 'capability', 'rationale', 'file', 'line'] as const)
+        .filter(k => !opts[k]);
+      if (missing.length > 0) {
+        console.error(`✗ --propose needs ${missing.map(m => `--${m}`).join(', ')}`);
+        process.exitCode = 1;
+        return;
+      }
+      try {
+        const { model } = await parseProject({ root, project: opts.project });
+        const result = await proposeEntitlement(root, {
+          actor: opts.actor!,
+          capability: opts.capability!,
+          asset: opts.asset,
+          threat: opts.threat,
+          rationale: opts.rationale!,
+          file: opts.file!,
+          line: Number(opts.line),
+          proposed_by: opts.proposedBy,
+        }, { model });
+
+        if (result.refused) {
+          console.error(`✗ ${result.refused}`);
+          process.exitCode = 1;
+          return;
+        }
+
+        console.error(`${result.created ? '✓ Filed' : '↻ Replaced'} proposal ${result.proposal.id} in ${proposalsPath(root)}`);
+        console.error('  Nothing was written to source. A human accepts it with:');
+        console.error(`    guardlink entitle ${dir} --accept ${result.proposal.id}`);
+        for (const w of result.warnings) console.error(`  ⚠  ${w}`);
+      } catch (err) {
+        console.error(`✗ ${(err as Error).message}`);
+        process.exitCode = 1;
+      }
+      return;
+    }
+
+    // ── non-interactive decision ──
+    const decisionId = opts.accept || opts.reject || opts.defer;
+    if (decisionId) {
+      const status = opts.accept ? 'accepted' : opts.reject ? 'rejected' : 'deferred';
+      const by = defaultDecider(root, opts.by);
+      if (!by) {
+        console.error('✗ Could not work out who is deciding. Pass --by "<name>" — an entitlement carries a human\'s name.');
+        process.exitCode = 1;
+        return;
+      }
+      // Show what the proposal was warned about before acting on it, not after.
+      const target = await findProposal(root, decisionId).catch(() => undefined);
+      for (const w of target?.warnings || []) console.error(`⚠  ${w}`);
+
+      try {
+        const result = await applyProposalDecision(root, decisionId, {
+          status: status as 'accepted' | 'rejected' | 'deferred',
+          by,
+          note: opts.note,
+          acknowledgeInert: opts.acknowledgeInert,
+          acknowledgeOwnership: opts.acknowledgeOwnership,
+        });
+        if (status === 'accepted') {
+          console.error(`✓ Accepted ${decisionId} — recorded for ${by}; ${result.linesInserted} line(s) written to ${result.targetFile}`);
+          await syncAfterEntitlement(root, opts.project);
+        } else {
+          console.error(`✓ Recorded ${status} for ${decisionId} by ${by}. Source untouched.`);
+        }
+      } catch (err) {
+        console.error(`✗ ${(err as Error).message}`);
+        process.exitCode = 1;
+      }
+      return;
+    }
+
+    const statusFilter = opts.status
+      ? opts.status.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) as ProposalStatus[]
+      : undefined;
+
+    // ── list ──
+    if (opts.list) {
+      let all: EntitlementProposal[];
+      try {
+        all = await listProposals(root, { status: statusFilter });
+      } catch (err) {
+        console.error(`✗ ${(err as Error).message}`);
+        process.exitCode = 1;
+        return;
+      }
+      if (all.length === 0) {
+        console.error('No entitlement proposals recorded.');
+        return;
+      }
+      console.error(`\n${all.length} entitlement proposal(s):\n`);
+      for (const p of all) console.error(`  ${formatProposalLine(p)}`);
+      console.error('');
+      return;
+    }
+
+    // ── interactive review ──
+    let pending: EntitlementProposal[];
+    try {
+      pending = await listProposals(root, { status: statusFilter || ['proposed', 'deferred'] });
+    } catch (err) {
+      console.error(`✗ ${(err as Error).message}`);
+      process.exitCode = 1;
+      return;
+    }
+    if (pending.length === 0) {
+      console.error('✓ No entitlement proposals awaiting a decision.');
+      return;
+    }
+
+    // Walk a file bottom-up: an acceptance inserts lines, so deciding a lower
+    // anchor first would shift every anchor above it in the same file.
+    pending.sort((a, b) => a.target.file === b.target.file
+      ? b.target.line - a.target.line
+      : a.target.file.localeCompare(b.target.file));
+
+    const { createInterface } = await import('node:readline');
+    const rl = createInterface({ input: process.stdin, output: process.stderr });
+    const ask = (q: string): Promise<string> => new Promise(res => rl.question(q, res));
+
+    let resolvedBy = defaultDecider(root, opts.by);
+    while (!resolvedBy) {
+      resolvedBy = (await ask('  Your name (recorded with every decision): ')).trim() || undefined;
+    }
+    const by: string = resolvedBy;
+
+    console.error(`\n  guardlink entitle — ${pending.length} proposal(s), deciding as ${by}\n`);
+
+    const results: DecisionResult[] = [];
+
+    for (let i = 0; i < pending.length; i++) {
+      const p = pending[i];
+      console.error(formatProposalForReview(p, i + 1, pending.length));
+      console.error('');
+      console.error('  (a) Accept — write @entitles into source under your name');
+      console.error('  (r) Reject — record the refusal and its reason; source untouched');
+      console.error('  (d) Defer — still contested, decide later');
+      console.error('  (s) Skip — no record at all');
+      console.error('  (q) Quit');
+      console.error('');
+
+      const choice = (await ask('  Choice [a/r/d/s/q]: ')).trim().toLowerCase();
+
+      if (choice === 'q') {
+        console.error('\n  Review ended.\n');
+        break;
+      }
+
+      if (choice === 'a') {
+        const ownership = p.warnings.filter(w => w.startsWith('ownership-class:'));
+        let acknowledgeOwnership = false;
+        if (ownership.length > 0) {
+          console.error('');
+          console.error('  ⚠  This proposal is aimed at an ownership question, which an entitlement cannot answer (§3.5).');
+          for (const w of ownership) console.error(`     ${w}`);
+          const go = (await ask('  Accept anyway? [y/N]: ')).trim().toLowerCase();
+          if (go !== 'y') {
+            console.error('  — Not accepted\n');
+            continue;
+          }
+          acknowledgeOwnership = true;
+        }
+
+        let acknowledgeInert = false;
+        if (p.inert) {
+          console.error('');
+          console.error('  ⚠  This proposal cites no authorization code. §3.4: no citation, no effect.');
+          console.error('     Accepting writes an annotation that triage will parse and then ignore.');
+          const typed = (await ask('  Type "inert" to accept it anyway, anything else to skip: ')).trim().toLowerCase();
+          if (typed !== 'inert') {
+            console.error('  — Not accepted; add a file:line pointer at the authz check and re-propose\n');
+            continue;
+          }
+          acknowledgeInert = true;
+        }
+
+        const note = (await ask('  Note (optional): ')).trim();
+        try {
+          const result = await applyProposalDecision(root, p.id, {
+            status: 'accepted', by, note, acknowledgeInert, acknowledgeOwnership,
+          });
+          results.push(result);
+          console.error(`  ✓ Accepted — ${result.linesInserted} line(s) written to ${result.targetFile}\n`);
+        } catch (err) {
+          console.error(`  ✗ ${(err as Error).message}\n`);
+        }
+      } else if (choice === 'r') {
+        let note = '';
+        while (!note) {
+          note = (await ask('  Reason for rejection (required): ')).trim();
+          if (!note) console.error('  ⚠  A rejection must say why.');
+        }
+        const result = await applyProposalDecision(root, p.id, { status: 'rejected', by, note });
+        results.push(result);
+        console.error('  ✓ Rejected — recorded in the ledger; source untouched\n');
+      } else if (choice === 'd') {
+        const note = (await ask('  Deferral note (optional): ')).trim();
+        const result = await applyProposalDecision(root, p.id, { status: 'deferred', by, note });
+        results.push(result);
+        console.error('  ✓ Deferred — still contested; source untouched\n');
+      } else {
+        console.error('  — Skipped\n');
+      }
+    }
+
+    rl.close();
+
+    if (results.length > 0) {
+      console.error(summarizeDecisions(results));
+      if (results.some(r => r.linesInserted > 0)) {
+        await syncAfterEntitlement(root, opts.project);
+      }
+    }
+  });
+
+/**
+ * Re-parse and refresh agent instruction files after an entitlement lands in source,
+ * and report the one thing acceptance cannot check for itself: whether the actor the
+ * claim names is actually declared with @actor (§3.7). An entitlement pointing at a
+ * principal that does not exist can never be joined downstream, so it is worth saying
+ * immediately rather than at the next `guardlink validate`.
+ */
+async function syncAfterEntitlement(root: string, project: string): Promise<void> {
+  try {
+    const { model } = await parseProject({ root, project });
+    for (const d of findUndeclaredActors(model)) {
+      console.error(`⚠  ${d.file}:${d.line}: ${d.message}`);
+    }
+    const syncResult = syncAgentFiles({ root, model });
+    if (syncResult.updated.length > 0) console.error(`↻ Synced ${syncResult.updated.length} agent instruction file(s)`);
+  } catch {}
+}
+
 // ─── config ──────────────────────────────────────────────────────────
 
 program
@@ -1999,6 +2289,13 @@ program
       console.log(EX('    // @control  Rate Limiting'));
       console.log('');
 
+      console.log(`  ${V('@actor')}  ${K('<name>')}  ${D('(#id)')}  ${D('[-- "description"]')}`);
+      console.log(D('    Declare a principal in the authorization model — a role, not a person.'));
+      console.log(D('    Declared once per project, alongside @asset / @threat / @control.'));
+      console.log(EX('    // @actor  Namespace_Admin  (#ns-admin)  -- "Administers one namespace\'s configuration"'));
+      console.log(EX('    // @actor  Namespace_Writer  (#ns-writer)  -- "Starts and signals workflows"'));
+      console.log('');
+
       // ── RELATIONSHIPS ──
       console.log(H('  ── Relationships ───────────────────────────────────────────'));
       console.log('');
@@ -2029,6 +2326,27 @@ program
       console.log(D('    Explicitly accept a risk. Removes it from open findings.'));
       console.log(D('    Use when the risk is known and intentionally not mitigated.'));
       console.log(EX('    // @accepts  Timing Attack  on  api.auth  -- "Acceptable for current threat model"'));
+      console.log('');
+
+      console.log(`  ${V('@entitles')}  ${K('<actor>')}  ${D('to')}  ${K('<capability>')}  ${D('[on')}  ${K('<asset>')}${D(']')}  ${D('[against')}  ${K('<threat>')}${D(']')}  ${D('[-- "description"]')}`);
+      console.log(D('    State that an actor is legitimately entitled to a capability by design —'));
+      console.log(D('    the answer to "is the caller already allowed to do this?".'));
+      console.log(D('    <capability> is one identifier, never prose. The JOIN is (actor, asset,'));
+      console.log(D('    threat): a claim missing `on` or `against` joins nothing and cannot demote.'));
+      console.log(D('    Never suppresses a finding and never gates testing — it only informs'));
+      console.log(D('    the recommendation downstream. Absent from the SARIF export entirely.'));
+      console.log(D('    Must cite the authz code (file:line) in the description, or it is inert.'));
+      console.log(EX('    // @entitles  #ns-admin  to  configure-archival-destination  on  #archival-fs  against  #path-traversal'));
+      console.log(EX('    //     -- "By design: the archival URI is namespace config. Authz: common/api/metadata.go:189"'));
+      console.log('');
+      console.log(D('    Not written by hand and never by an agent: an over-grant closes a real'));
+      console.log(D('    escalation as by-design, so entitlements are proposed and then accepted.'));
+      console.log(D('    An @entitles with no accepted proposal behind it is a validation error.'));
+      console.log(EX('    guardlink entitle --propose --actor "#ns-admin" --capability configure-archival-destination \\'));
+      console.log(EX('        --asset "#archival-fs" --threat "#path-traversal" --file common/api/metadata.go --line 189 \\'));
+      console.log(EX('        --rationale "By design: namespace config. Authz: common/api/metadata.go:189"'));
+      console.log(EX('    guardlink entitle                 # review proposals: accept / reject / defer'));
+      console.log(EX('    guardlink entitle --list          # see the ledger, .guardlink/entitlement-proposals.json'));
       console.log('');
 
       console.log(`  ${V('@transfers')}  ${K('<threat>')}  ${D('from')}  ${K('<source>')}  ${D('to')}  ${K('<target>')}  ${D('[-- "description"]')}`);
@@ -2146,6 +2464,7 @@ program
       console.log(D('  • Run guardlink parse after adding annotations to update the threat model'));
       console.log(D('  • Run guardlink validate to check for syntax errors and dangling references'));
       console.log(D('  • Run guardlink annotate to have an AI agent add annotations automatically'));
+      console.log(D('  • Run guardlink entitle to decide proposed @entitles claims — an agent drafts, a human accepts'));
       console.log('');
       console.log(H('  ══════════════════════════════════════════════════════════'));
       console.log('');
@@ -2188,10 +2507,15 @@ function printStatus(model: ThreatModel) {
   console.log(`Assets:           ${model.assets.length}`);
   console.log(`Threats:          ${model.threats.length}`);
   console.log(`Controls:         ${model.controls.length}`);
+  if ((model.actors || []).length > 0) console.log(`Actors:           ${model.actors!.length}`);
   console.log(`Mitigations:      ${model.mitigations.length}`);
   console.log(`Exposures:        ${model.exposures.length}`);
   if ((model.confirmed || []).length > 0) console.log(`Confirmed:        ${model.confirmed.length} 🔴`);
   console.log(`Acceptances:      ${model.acceptances.length}`);
+  if ((model.entitlements || []).length > 0) {
+    const inert = model.entitlements!.filter(e => e.inert).length;
+    console.log(`Entitlements:     ${model.entitlements!.length}${inert > 0 ? ` (${inert} inert — no citation)` : ''}`);
+  }
   console.log(`Transfers:        ${model.transfers.length}`);
   console.log(`Flows:            ${model.flows.length}`);
   console.log(`Boundaries:       ${model.boundaries.length}`);

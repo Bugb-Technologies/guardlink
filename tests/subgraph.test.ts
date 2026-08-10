@@ -455,3 +455,56 @@ describe('graphEdges', () => {
     expect(byKind).toEqual({ flow: true, boundary: false, transfer: true });
   });
 });
+
+// ─── Entitlements survive scoping ────────────────────────────────────
+//
+// selectSubgraph rebuilds a ThreatModel field by field, so a collection it does
+// not name is silently dropped rather than merely unfiltered. An entitlement
+// vanishing from a scoped view would read as "this role holds nothing here",
+// which is the wrong answer to the one question the verb exists to answer.
+describe('selectSubgraph — actors and entitlements', () => {
+  const scoped = () => emptyModel({
+    assets: [
+      { path: ['Parser'], id: 'parser', location: at() },
+      { path: ['Cli'], id: 'cli', location: at('other.ts') },
+    ],
+    threats: [{ name: 'Arbitrary_Write', canonical_name: 'arbitrary_write', id: 'arbitrary-write', external_refs: [], location: at() }],
+    exposures: [{ asset: '#parser', threat: '#arbitrary-write', external_refs: [], location: at() }],
+    actors: [{ name: 'Local_Developer', canonical_name: 'local_developer', id: 'local-dev', location: at() }],
+    entitlements: [
+      { actor: '#local-dev', capability: 'clear-annotations', canonical_capability: 'clear_annotations',
+        asset: '#parser', threat: '#arbitrary-write', inert: false, imprecise: false,
+        citation: { file: 'src/cli/index.ts', line: 1071, raw: 'src/cli/index.ts:1071' }, location: at() },
+      { actor: '#local-dev', capability: 'unrelated-thing', canonical_capability: 'unrelated_thing',
+        asset: '#cli', threat: '#arbitrary-write', inert: false, imprecise: false,
+        citation: { file: 'src/cli/index.ts', line: 1, raw: 'src/cli/index.ts:1' }, location: at('other.ts') },
+    ],
+  });
+
+  it('keeps an entitlement whose asset is in the selection', () => {
+    const sub = selectSubgraph(scoped(), { from: '#parser', depth: 1 });
+    expect((sub.entitlements ?? []).map(e => e.canonical_capability)).toContain('clear_annotations');
+  });
+
+  it('drops one whose asset is outside it', () => {
+    const sub = selectSubgraph(scoped(), { from: '#parser', depth: 1 });
+    expect((sub.entitlements ?? []).map(e => e.canonical_capability)).not.toContain('unrelated_thing');
+  });
+
+  it('keeps the actor declaration behind a kept entitlement', () => {
+    const sub = selectSubgraph(scoped(), { from: '#parser', depth: 1 });
+    expect((sub.actors ?? []).map(a => a.id)).toContain('local-dev');
+  });
+
+  it('counts entitlements in the recomputed annotation total', () => {
+    const sub = selectSubgraph(scoped(), { from: '#parser', depth: 1 });
+    const counted = (sub.entitlements ?? []).length + (sub.actors ?? []).length;
+    expect(counted).toBeGreaterThan(0);
+    expect(sub.annotations_parsed).toBeGreaterThanOrEqual(counted);
+  });
+
+  it('honours an explicit kinds filter that excludes them', () => {
+    const sub = selectSubgraph(scoped(), { from: '#parser', depth: 1, kinds: ['exposures'] });
+    expect(sub.entitlements ?? []).toHaveLength(0);
+  });
+});

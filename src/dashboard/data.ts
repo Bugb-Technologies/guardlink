@@ -20,6 +20,9 @@ export interface DashboardStats {
   exposures: number;
   confirmed: number;
   acceptances: number;
+  actors: number;
+  entitlements: number;
+  entitlementsInert: number;
   transfers: number;
   flows: number;
   boundaries: number;
@@ -83,6 +86,9 @@ export function computeStats(model: ThreatModel): DashboardStats {
     exposures: model.exposures.length,
     confirmed: model.confirmed.length,
     acceptances: model.acceptances.length,
+    actors: (model.actors || []).length,
+    entitlements: (model.entitlements || []).length,
+    entitlementsInert: (model.entitlements || []).filter(e => e.inert).length,
     transfers: model.transfers.length,
     flows: model.flows.length,
     boundaries: model.boundaries.length,

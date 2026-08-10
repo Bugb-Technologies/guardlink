@@ -6,6 +6,6 @@
  * @flows GitRef -> #diff via parseAtRef -- "Git reference input"
  */
 
-export { diffModels, type ThreatModelDiff, type DiffSummary, type Change, type ChangeKind } from './engine.js';
+export { diffModels, type ThreatModelDiff, type DiffSummary, type Change, type ChangeKind, type DiffOptions, type StaleEntitlement } from './engine.js';
 export { formatDiff, formatDiffMarkdown } from './format.js';
-export { parseAtRef, getCurrentRef } from './git.js';
+export { parseAtRef, getCurrentRef, getChangedFiles } from './git.js';

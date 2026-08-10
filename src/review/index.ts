@@ -95,7 +95,7 @@ export function severityLabel(s?: Severity): string {
 
 // ─── Comment style detection ────────────────────────────────────────
 
-interface CommentStyle {
+export interface CommentStyle {
   /** The prefix to use for new annotation lines */
   prefix: string;
   /** Optional suffix for single-line wrapper styles like <!-- --> */
@@ -108,7 +108,7 @@ interface CommentStyle {
  * Detect the comment style and indentation from the @exposes source line.
  * Supports JSDoc ( * @...), single-line (// @...), and hash (# @...) styles.
  */
-function detectCommentStyle(rawLine: string, filePath: string): CommentStyle {
+export function detectCommentStyle(rawLine: string, filePath: string): CommentStyle {
   const indent = rawLine.match(/^(\s*)/)?.[1] || '';
   const trimmed = rawLine.trimStart();
 
@@ -171,7 +171,7 @@ function isAnnotationLine(line: string): boolean {
  * Walks forward from the exposure line past consecutive annotation lines
  * to find the end of the block, then returns the 0-indexed line to insert after.
  */
-function findInsertionIndex(lines: string[], exposureLine: number, stopAtSourceBoundary: boolean = false): number {
+export function findInsertionIndex(lines: string[], exposureLine: number, stopAtSourceBoundary: boolean = false): number {
   // exposureLine is 1-indexed, convert to 0-indexed
   let idx = exposureLine - 1;
 
@@ -218,36 +218,44 @@ function buildRemediateLines(style: CommentStyle, exposure: ThreatModelExposure,
 }
 
 /** Escape double quotes in description strings */
-function escapeDesc(s: string): string {
+export function escapeDesc(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 // ─── File modification ──────────────────────────────────────────────
 
 /**
- * Insert annotation lines into a source file after the coupled block
- * containing the given @exposes annotation.
+ * Insert annotation lines into a source file after the coupled block that
+ * contains the annotation at `anchor` (1-indexed line).
+ *
+ * The comment style is detected from the anchor line and handed to `build`, so
+ * a caller composes annotation text without knowing whether the target is a
+ * JSDoc block, a `#` comment, or a raw `.gal` file.
  *
  * Returns the number of lines inserted.
+ *
+ * @comment -- "Shared by exposure review (@accepts/@audit) and entitlement acceptance (@entitles) so both writers place annotations by the same rules"
+ * @exposes #cli to #arbitrary-write [high] cwe:CWE-73 -- "Writes annotation lines into a caller-supplied file path"
+ * @mitigates #cli against #arbitrary-write using #path-validation -- "Anchor line must exist in the file, and callers resolve the path against the parsed project root"
+ * @flows #cli -> SourceFiles via writeFile -- "Annotation insertion output"
  */
-async function insertAnnotations(
+export async function insertAnnotationsAt(
   root: string,
-  exposure: ThreatModelExposure,
-  newLines: string[],
+  anchor: { file: string; line: number },
+  build: (style: CommentStyle) => string[],
 ): Promise<number> {
-  const filePath = resolve(root, getWriteLocation(exposure).file);
+  const filePath = resolve(root, anchor.file);
   const content = await readFile(filePath, 'utf-8');
   const lines = content.split('\n');
 
-  // Validate that the exposure line exists and looks right
-  const targetLocation = getWriteLocation(exposure);
-  const exposureIdx = targetLocation.line - 1; // 0-indexed
-  if (exposureIdx < 0 || exposureIdx >= lines.length) {
-    throw new Error(`Line ${targetLocation.line} out of range in ${targetLocation.file}`);
+  const anchorIdx = anchor.line - 1; // 0-indexed
+  if (anchorIdx < 0 || anchorIdx >= lines.length) {
+    throw new Error(`Line ${anchor.line} out of range in ${anchor.file}`);
   }
 
-  const style = detectCommentStyle(lines[exposureIdx], targetLocation.file);
-  const insertIdx = findInsertionIndex(lines, targetLocation.line, style.prefix === '');
+  const style = detectCommentStyle(lines[anchorIdx], anchor.file);
+  const newLines = build(style);
+  const insertIdx = findInsertionIndex(lines, anchor.line, style.prefix === '');
 
   // Splice in the new lines
   lines.splice(insertIdx, 0, ...newLines);
@@ -277,22 +285,12 @@ export async function applyReviewAction(
 
   const { exposure } = reviewable;
   const targetLocation = getWriteLocation(exposure);
-  const filePath = resolve(root, targetLocation.file);
-  const content = await readFile(filePath, 'utf-8');
-  const lines = content.split('\n');
 
-  // Detect comment style from the @exposes line
-  const exposureIdx = targetLocation.line - 1;
-  const style = detectCommentStyle(lines[exposureIdx], targetLocation.file);
-
-  let newLines: string[];
-  if (action.decision === 'accept') {
-    newLines = buildAcceptLines(style, exposure, action.justification);
-  } else {
-    newLines = buildRemediateLines(style, exposure, action.justification);
-  }
-
-  const linesInserted = await insertAnnotations(root, exposure, newLines);
+  const linesInserted = await insertAnnotationsAt(root, targetLocation, style =>
+    action.decision === 'accept'
+      ? buildAcceptLines(style, exposure, action.justification)
+      : buildRemediateLines(style, exposure, action.justification),
+  );
   return { exposure: reviewable, action, linesInserted, targetFile: targetLocation.file };
 }
 

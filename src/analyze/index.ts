@@ -243,6 +243,9 @@ export function extractCodeSnippets(
   for (const a of model.assumptions) {
     refs.push({ file: a.location.file, line: a.location.line, label: `@assumes on ${a.asset}` });
   }
+  for (const en of model.entitlements || []) {
+    refs.push({ file: en.location.file, line: en.location.line, label: `@entitles ${en.actor} to ${en.capability}${en.inert ? ' (inert)' : ''}` });
+  }
   for (const b of model.boundaries) {
     refs.push({ file: b.location.file, line: b.location.line, label: `@boundary ${b.asset_a} | ${b.asset_b}` });
   }
@@ -391,6 +394,17 @@ export function serializeModel(model: ThreatModel): string {
   if (model.assumptions.length) compact.assumptions = model.assumptions.map(a => ({
     asset: a.asset, description: a.description,
     file: a.location.file, line: a.location.line,
+  }));
+  if ((model.actors || []).length) compact.actors = model.actors!.map(ac => ({
+    name: ac.name, id: ac.id, description: ac.description,
+    file: ac.location.file, line: ac.location.line,
+  }));
+  // `inert` is carried into the LLM's view on purpose: an uncited entitlement
+  // must not be read as a reason a finding is by-design (§3.4).
+  if ((model.entitlements || []).length) compact.entitlements = model.entitlements!.map(en => ({
+    actor: en.actor, capability: en.canonical_capability, asset: en.asset,
+    description: en.description, citation: en.citation?.raw, inert: en.inert,
+    file: en.location.file, line: en.location.line,
   }));
   if (model.comments.length) compact.comments = model.comments.map(c => ({
     description: c.description, file: c.location.file, line: c.location.line,

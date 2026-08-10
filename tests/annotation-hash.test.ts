@@ -242,3 +242,60 @@ describe('field-boundary safety', () => {
     expect(computeAnnotationHash(one)).not.toBe(computeAnnotationHash(two));
   });
 });
+
+// ─── @actor / @entitles are part of the content ──────────────────────
+//
+// The hash is what `guardlink migrate` uses to prove it did not change the
+// threat model. Until v2 these two verbs were absent from the record set, so a
+// migration could drop or rewrite every entitlement in a repo and the gate
+// would still report the model unchanged — a silent all-clear, which is exactly
+// the failure mode the entitlement design exists to prevent (§2).
+describe('GL-101 — actor and entitlement content is hashed', () => {
+  const ACTOR = '@actor Namespace_Admin (#ns-admin) -- "Administers one namespace"';
+  const ENTITLES = '@entitles #ns-admin to configure-archival on #auth against #sqli -- "By design. Authz: src/authz.ts:12"';
+
+  it('an added entitlement changes the hash', async () => {
+    const without = await inlineRepo(AUTH_ANNOTATIONS);
+    const with_ = await inlineRepo([...AUTH_ANNOTATIONS, ACTOR, ENTITLES]);
+    try {
+      expect(await hashOf(with_)).not.toBe(await hashOf(without));
+    } finally {
+      await rm(without, { recursive: true, force: true });
+      await rm(with_, { recursive: true, force: true });
+    }
+  });
+
+  it('a rewritten entitlement rationale changes the hash', async () => {
+    const a = await inlineRepo([...AUTH_ANNOTATIONS, ACTOR, ENTITLES]);
+    const b = await inlineRepo([...AUTH_ANNOTATIONS, ACTOR,
+      '@entitles #ns-admin to configure-archival on #auth against #sqli -- "By design. Authz: src/other.ts:99"']);
+    try {
+      expect(await hashOf(a)).not.toBe(await hashOf(b));
+    } finally {
+      await rm(a, { recursive: true, force: true });
+      await rm(b, { recursive: true, force: true });
+    }
+  });
+
+  it('a dropped entitlement changes the hash — the migration gate depends on this', async () => {
+    const full = await inlineRepo([...AUTH_ANNOTATIONS, ACTOR, ENTITLES]);
+    const dropped = await inlineRepo([...AUTH_ANNOTATIONS, ACTOR]);
+    try {
+      expect(await hashOf(full)).not.toBe(await hashOf(dropped));
+    } finally {
+      await rm(full, { recursive: true, force: true });
+      await rm(dropped, { recursive: true, force: true });
+    }
+  });
+
+  it('is stable when the same entitlement is written twice over', async () => {
+    const a = await inlineRepo([...AUTH_ANNOTATIONS, ACTOR, ENTITLES]);
+    const b = await inlineRepo([...AUTH_ANNOTATIONS, ACTOR, ENTITLES]);
+    try {
+      expect(await hashOf(a)).toBe(await hashOf(b));
+    } finally {
+      await rm(a, { recursive: true, force: true });
+      await rm(b, { recursive: true, force: true });
+    }
+  });
+});

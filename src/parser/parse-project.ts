@@ -9,6 +9,8 @@
  * @flows ProjectRoot -> #parser via fast-glob -- "Directory traversal path"
  * @flows #parser -> ThreatModel via assembleModel -- "Aggregated threat model output"
  * @comment -- "Scans standalone .gal files in addition to comment-based source annotations"
+ * @comment -- "Every @entitles gets its citation resolved at assembly time and carries inert:true when uncited, so no consumer can read an uncited privilege claim as an effective one by forgetting to check (actor-entitlement design §3.4)"
+ * @comment -- "Same reasoning for imprecise:true when the claim omits `on <asset>` or `against <threat>`, plus canEntitlementDemote/entitlementDemotionBlockers so the cited-and-precise test is written once here rather than re-derived by every consumer — a consumer that checks only !inert would demote on an entitlement that joins nothing (actor-entitlement design §9.7)"
  * @boundary #parser and FileSystem (#fs-boundary) -- "Trust boundary between parser and disk I/O"
  */
 
@@ -16,16 +18,18 @@ import fg from 'fast-glob';
 import { isAbsolute, relative } from 'node:path';
 import type {
   Annotation, ThreatModel, ParseResult, ParseDiagnostic,
-  AssetAnnotation, ThreatAnnotation, ControlAnnotation,
+  AssetAnnotation, ThreatAnnotation, ControlAnnotation, ActorAnnotation,
   MitigatesAnnotation, ExposesAnnotation, ConfirmedAnnotation, AcceptsAnnotation,
-  TransfersAnnotation, FlowsAnnotation, BoundaryAnnotation,
+  EntitlesAnnotation, TransfersAnnotation, FlowsAnnotation, BoundaryAnnotation,
   ValidatesAnnotation, AuditAnnotation, OwnsAnnotation,
   HandlesAnnotation, AssumesAnnotation, ShieldAnnotation,
   FeatureAnnotation, CommentAnnotation,
   DataClassification,
   ExternalRef, AnnotationVerb, SourceLocation,
+  ThreatModelEntitlement, EntitlementDemotionBlocker,
 } from '../types/index.js';
 import { parseFile } from './parse-file.js';
+import { extractCitation } from './citation.js';
 import { loadWorkspaceConfig } from '../workspace/index.js';
 import { ANNOTATIONS_DIR } from './gal-path.js';
 
@@ -223,6 +227,8 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
     assets: [],
     threats: [],
     controls: [],
+    actors: [],
+    entitlements: [],
     mitigations: [],
     exposures: [],
     confirmed: [],
@@ -286,6 +292,39 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
           id: c.id,
           description: c.description,
           location: c.location,
+        });
+        break;
+      }
+      case 'actor': {
+        const ac = ann as ActorAnnotation;
+        model.actors!.push({
+          name: ac.name,
+          canonical_name: ac.canonical_name,
+          id: ac.id,
+          description: ac.description,
+          location: ac.location,
+        });
+        break;
+      }
+      case 'entitles': {
+        const en = ann as EntitlesAnnotation;
+        // §3.4 — an uncited entitlement is inert: it stays in the model (so a
+        // reviewer can see the claim) but must not demote a finding.
+        const citation = extractCitation(en.description);
+        model.entitlements!.push({
+          actor: en.actor,
+          capability: en.capability,
+          canonical_capability: en.canonical_capability,
+          asset: en.asset,
+          threat: en.threat,
+          description: en.description,
+          citation,
+          inert: !citation,
+          // §9.3 — the same treatment for the other way a claim can be
+          // ineffective: without both halves of the (actor, asset, threat) join
+          // there is nothing to match a finding against.
+          imprecise: !en.asset || !en.threat,
+          location: en.location,
         });
         break;
       }
@@ -435,6 +474,51 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
   return model;
 }
 
+// ─── Can this entitlement demote? (§9.7) ─────────────────────────────
+//
+// Computed here, once, next to the assembly that produces `inert` and
+// `imprecise` — rather than left to each consumer to derive. An entitlement is
+// the one annotation whose error mode is a silent false negative (§2), and the
+// way that false negative actually arrives is not a maliciously wrong claim but
+// a consumer that checked `!inert`, forgot the join was a triple, and demoted a
+// real escalation on an entitlement that named no threat. So the check has one
+// implementation and a name, and a consumer that wants to demote has to call it.
+
+/**
+ * True when this entitlement is allowed to demote a finding: it is cited (§3.4)
+ * **and** it names both halves of the `(actor, asset, threat)` join (§9.3).
+ *
+ * This is necessary and not sufficient. The consumer must still match the
+ * finding's asset and threat, must have *measured* minimum privilege and matched
+ * the measured role against `actor` (§3.3 of the triage design), and must refuse
+ * to demote an ownership-class threat however exact the match (§3.5, §9.6).
+ * Nothing in guardlink can check those, which is why this function answers only
+ * the question guardlink owns.
+ */
+export function canEntitlementDemote(entitlement: ThreatModelEntitlement): boolean {
+  return entitlementDemotionBlockers(entitlement).length === 0;
+}
+
+/**
+ * Every reason this entitlement may not demote, in the order a reviewer would
+ * fix them. Empty means `canEntitlementDemote` is true.
+ *
+ * Uncited and imprecise are reported as separate blockers on purpose (§9.8): a
+ * single boolean tells a reviewer the claim does nothing, which is exactly the
+ * information they already have — what they need is *which* part is missing, and
+ * an imprecise claim is neither an error nor a warning anywhere else, so this is
+ * the only place it is said.
+ */
+export function entitlementDemotionBlockers(
+  entitlement: ThreatModelEntitlement,
+): EntitlementDemotionBlocker[] {
+  const blockers: EntitlementDemotionBlocker[] = [];
+  if (entitlement.inert) blockers.push('uncited');
+  if (!entitlement.asset) blockers.push('no-asset');
+  if (!entitlement.threat) blockers.push('no-threat');
+  return blockers;
+}
+
 // ─── External ref detection ──────────────────────────────────────────
 
 /**
@@ -469,6 +553,9 @@ function detectExternalRefs(model: ThreatModel, root: string): ExternalRef[] {
   }
   for (const c of model.controls) {
     if (c.id) { localIds.add(c.id); localIds.add(`#${c.id}`); }
+  }
+  for (const ac of model.actors || []) {
+    if (ac.id) { localIds.add(ac.id); localIds.add(`#${ac.id}`); }
   }
 
   const refs: ExternalRef[] = [];
@@ -525,6 +612,14 @@ function detectExternalRefs(model: ThreatModel, root: string): ExternalRef[] {
   for (const b of model.boundaries) {
     checkTag(b.asset_a, 'boundary', b.location);
     checkTag(b.asset_b, 'boundary', b.location);
+  }
+  for (const en of model.entitlements || []) {
+    checkTag(en.actor, 'entitles', en.location);
+    if (en.asset) checkTag(en.asset, 'entitles', en.location);
+    // `against <threat>` is checked like every other threat ref: a claim that
+    // names a threat nobody declared joins nothing, and a typo there is exactly
+    // the silent miss §9 is about.
+    if (en.threat) checkTag(en.threat, 'entitles', en.location);
   }
 
   return refs;
