@@ -255,7 +255,8 @@ program
   .option('-p, --project <n>', 'Project name', 'unknown')
   .option('--not-annotated', 'List source files with no GuardLink annotations')
   .option('--feature <names>', 'Filter status to specific feature(s) (comma-separated)')
-  .action(async (dir: string, opts: { project: string; notAnnotated?: boolean; feature?: string }) => {
+  .option('--sync', 'Also refresh agent instruction files (this used to happen unasked — see D16)')
+  .action(async (dir: string, opts: { project: string; notAnnotated?: boolean; feature?: string; sync?: boolean }) => {
     const root = resolve(dir);
     let { model, diagnostics } = await parseProject({ root, project: opts.project });
 
@@ -273,8 +274,9 @@ program
       printUnannotatedFiles(model);
     }
 
-    // Auto-sync agent instruction files with updated model
-    if (model.annotations_parsed > 0) {
+    // D16: syncing is opt-in. `status` reads; it does not rewrite seven tracked
+    // files on the way past.
+    if (opts.sync && model.annotations_parsed > 0) {
       const syncResult = syncAgentFiles({ root, model });
       if (syncResult.updated.length > 0) {
         console.error(`↻ Synced ${syncResult.updated.length} agent instruction file(s)`);
@@ -291,7 +293,8 @@ program
   .option('-p, --project <n>', 'Project name', 'unknown')
   .option('--strict', 'Also fail on unmitigated exposures (for CI gates)')
   .option('--artifacts', 'Also check .guardlink/graph/ artifacts against the current model; exits non-zero on drift')
-  .action(async (dir: string, opts: { project: string; strict?: boolean; artifacts?: boolean }) => {
+  .option('--sync', 'Also refresh agent instruction files (this used to happen unasked — see D16)')
+  .action(async (dir: string, opts: { project: string; strict?: boolean; artifacts?: boolean; sync?: boolean }) => {
     const root = resolve(dir);
     const { model, diagnostics } = await parseProject({ root, project: opts.project });
 
@@ -347,8 +350,12 @@ program
       console.error(`\nValidation passed with ${unmitigated.length} unmitigated exposure(s).`);
     }
 
-    // Auto-sync agent instruction files with updated model
-    if (model.annotations_parsed > 0) {
+    // D16: `validate` is a check, and a check that rewrites CLAUDE.md,
+    // AGENTS.md, .clinerules, .cursor/rules/guardlink.mdc, .gemini/GEMINI.md,
+    // .github/copilot-instructions.md and .windsurfrules on its way past cannot
+    // be a CI gate — it dirties the tree it was asked to inspect. Syncing is now
+    // opt-in here and the job of `guardlink sync` everywhere else.
+    if (opts.sync && model.annotations_parsed > 0) {
       const syncResult = syncAgentFiles({ root, model });
       if (syncResult.updated.length > 0) {
         console.error(`↻ Synced ${syncResult.updated.length} agent instruction file(s)`);

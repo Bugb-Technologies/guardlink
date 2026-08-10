@@ -844,12 +844,11 @@ export async function cmdParse(ctx: TuiContext): Promise<void> {
     console.log(`    ${model.assets.length} assets · ${model.threats.length} threats · ${model.controls.length} controls`);
     console.log(`    ${model.exposures.length} exposures · ${model.mitigations.length} mitigations · Grade: ${gradeColored(grade)}`);
 
-    // Auto-sync agent instruction files with updated model
+    // D16: /parse reads. It used to rewrite seven tracked agent instruction
+    // files on the way past, which is the same surprise `validate` had — point
+    // at /sync instead of doing it unasked.
     if (model.annotations_parsed > 0) {
-      const syncResult = syncAgentFiles({ root: ctx.root, model });
-      if (syncResult.updated.length > 0) {
-        console.log(C.dim(`    ↻ Synced ${syncResult.updated.length} agent instruction file(s)`));
-      }
+      console.log(C.dim(`    Run /sync to refresh agent instruction files with this model.`));
     }
     console.log('');
   } catch (err: any) {
