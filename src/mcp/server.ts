@@ -55,7 +55,7 @@ import { generateDashboardHTML, generateThreatGraph } from '../dashboard/index.j
 import { diffModels, parseAtRef, formatDiffMarkdown } from '../diff/index.js';
 import { lookup, type LookupQuery } from './lookup.js';
 import { fileContext, normalizeContextPath } from './context.js';
-import { selectSubgraph, traverseGraph, findPath } from './subgraph.js';
+import { selectSubgraph, traverseGraph, findPath, summariseGraphPayload } from './subgraph.js';
 import { buildServerInstructions, readConfiguredMode } from './instructions.js';
 import { suggestAnnotations } from './suggest.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModel, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
@@ -418,10 +418,11 @@ export function createServer(): McpServer {
       direction: z.enum(['in', 'out', 'both']).describe('Which way directed edges are followed. Boundaries are undirected and are crossed in every direction regardless.').default('both'),
       kinds: z.array(z.string()).describe('Relation arrays to keep in the returned model. Filters the OUTPUT, not the traversal — excluding "flows" still walks flows, it just omits them from the result. Assets, threats and controls are always kept as the node vocabulary.').optional(),
       format: z.enum(['json', 'mermaid']).describe('json returns the filtered ThreatModel plus traversal detail; mermaid renders it with the same generator the dashboard uses.').default('json'),
+      detail: z.enum(['summary', 'full']).describe('How much per-node detail to return. summary (default) drops `description` prose and compacts `location` to an `at: "file:line"` string — measured at roughly 40% of the payload, and the graph is the same graph either way: identical nodes, identical edges. full returns the complete records and is the only mode whose `model` is a valid ThreatModel.').default('summary'),
       feature: z.string().describe('Restrict to one feature before traversing.').optional(),
       file: z.string().describe('Restrict to annotations declared in one file before traversing.').optional(),
     },
-    async ({ root, from, path_to, depth, direction, kinds, format, feature, file }) => {
+    async ({ root, from, path_to, depth, direction, kinds, format, detail, feature, file }) => {
       const { model } = await getModel(root);
 
       if (path_to) {
@@ -443,8 +444,14 @@ export function createServer(): McpServer {
         };
       }
 
+      // detail is applied AFTER selection, so it cannot change which nodes or
+      // edges came back — only how much is said about each.
+      const payload = detail === 'full'
+        ? { traversal, model: sub }
+        : summariseGraphPayload({ traversal, model: sub });
+
       return {
-        content: [{ type: 'text', text: JSON.stringify({ traversal, model: sub }, null, 2) }],
+        content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
       };
     },
   );

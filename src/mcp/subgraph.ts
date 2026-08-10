@@ -358,6 +358,80 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
 
 const bare = (s: string) => (s ?? '').replace(/^#/, '').toLowerCase();
 
+// ─── Detail level ────────────────────────────────────────────────────
+
+export type GraphDetail = 'summary' | 'full';
+
+/**
+ * Every relation array plus the node vocabulary. The summary transform walks
+ * this list rather than the object's own keys, so a scalar field on the model
+ * (`source_files`, `annotation_hash`) is never mistaken for a row array.
+ */
+const ALL_ROW_ARRAYS = [
+  'assets', 'threats', 'controls',
+  ...SELECTABLE_KINDS,
+] as const;
+
+/**
+ * Strip the payload, not the graph.
+ *
+ * Measured on this repo at depth 2 from `#cli`: `description` and `location`
+ * together are 43.7% of the response, and the proportion barely moves with
+ * depth (32.7% / 43.7% / 39.1% at depths 1/2/3). The cost is what hangs off each
+ * node, not how many nodes there are — which is why the answer is not a smaller
+ * default depth. Depth 1 makes the tool redundant with `asset X`, and defaulting
+ * `direction` to `out` is an arbitrary asymmetry that would silently hide
+ * everything upstream of the asset you asked about.
+ *
+ * This is a PURE POST-TRANSFORM over an already-selected subgraph. It cannot add
+ * or remove a node or an edge, because it never sees the traversal options — the
+ * topology-identity property the tests pin is structural, not a coincidence that
+ * needs maintaining. A summary mode that quietly dropped nodes would be a
+ * silent-wrong-answer path, which is the failure this whole surface exists to
+ * eliminate.
+ *
+ * `location: {file, line}` becomes `at: "file:line"` rather than disappearing:
+ * an agent still needs to know where a fact was declared to go read it. What it
+ * does not need, to reason about blast radius, is the prose explaining why.
+ */
+export function summariseGraphPayload(payload: { traversal: Traversal; model: ThreatModel }): unknown {
+  const compactRow = (row: Record<string, unknown>): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(row)) {
+      if (k === 'description') continue;
+      if (k === 'location' && v && typeof v === 'object') {
+        const loc = v as { file?: string; line?: number };
+        out.at = `${loc.file ?? '?'}:${loc.line ?? '?'}`;
+        continue;
+      }
+      out[k] = v;
+    }
+    return out;
+  };
+
+  const model: Record<string, unknown> = { ...(payload.model as unknown as Record<string, unknown>) };
+  for (const name of ALL_ROW_ARRAYS) {
+    const rows = model[name];
+    if (Array.isArray(rows)) model[name] = rows.map(r => compactRow(r as Record<string, unknown>));
+  }
+
+  return {
+    traversal: {
+      ...payload.traversal,
+      edges: payload.traversal.edges.map(e => {
+        const { file, line, ...rest } = e;
+        return { ...rest, at: `${file}:${line}` };
+      }),
+    },
+    model,
+    detail: 'summary',
+    detail_note:
+      'description text and full location objects omitted; `at` is "file:line". '
+      + 'Node and edge sets are identical to detail:"full" — only per-node detail differs. '
+      + 'Use detail:"full" for the complete records, or when you need a valid ThreatModel.',
+  };
+}
+
 /** Canonical keys reachable under `options`, or null when there is no start. */
 function nodeSetOf(model: ThreatModel, options: SubgraphOptions): Set<string> | null {
   const traversal = traverseGraph(model, options);
