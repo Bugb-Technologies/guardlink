@@ -14,6 +14,7 @@ import {
 } from './gal-path.js';
 import type { ThreatModel, ThreatModelExposure, ParseDiagnostic, SourceLocation } from '../types/index.js';
 import { normalizeName } from './normalize.js';
+import { entitlementDemotionBlockers } from './parse-project.js';
 
 /**
  * Find all dangling #id references in the threat model.
@@ -175,6 +176,39 @@ export function findInertEntitlements(model: ThreatModel): ParseDiagnostic[] {
     diagnostics.push({
       level: 'warning',
       message: `@entitles ${en.actor} to ${en.capability} cites no authorization code — inert, will not demote any finding. Add a file:line pointer to the authz check in the description.`,
+      file: en.location.file,
+      line: en.location.line,
+    });
+  }
+
+  return diagnostics;
+}
+
+/**
+ * Find @entitles annotations that join nothing, because `on <asset>` or
+ * `against <threat>` is missing (§9.3).
+ *
+ * Reported for the same reason `findInertEntitlements` reports an uncited claim:
+ * it parses, it looks like it works, and it does nothing. Triage holds an
+ * (asset, threat) pair, so a claim missing either half can never match one —
+ * writing it is wasted effort the author has no other way to discover. Kept
+ * separate from the inert check so the message can name the missing half rather
+ * than saying "ineffective" and leaving the author to guess which.
+ */
+export function findImpreciseEntitlements(model: ThreatModel): ParseDiagnostic[] {
+  const diagnostics: ParseDiagnostic[] = [];
+
+  for (const en of model.entitlements || []) {
+    const missing = entitlementDemotionBlockers(en).filter(b => b !== 'uncited');
+    if (missing.length === 0) continue;
+    const needs = missing
+      .map(b => (b === 'no-asset' ? 'on <asset>' : 'against <threat>'))
+      .join(' and ');
+    diagnostics.push({
+      level: 'warning',
+      message:
+        `@entitles ${en.actor} to ${en.capability} is missing ${needs}, so it joins no finding `
+        + 'and will not demote anything. Triage matches on (actor, asset, threat).',
       file: en.location.file,
       line: en.location.line,
     });

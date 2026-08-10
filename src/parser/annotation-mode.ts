@@ -33,6 +33,7 @@ function allLocations(model: ThreatModel): SourceLocation[] {
     ...model.acceptances, ...model.transfers, ...model.flows,
     ...model.boundaries, ...model.validations, ...model.audits,
     ...model.ownership, ...model.data_handling, ...model.assumptions,
+    ...(model.actors || []), ...(model.entitlements || []),
     ...model.shields, ...model.features, ...model.comments,
   ].map(a => a.location);
 }

@@ -1447,15 +1447,16 @@ function renderDataPage(model: ThreatModel): string {
 
   ${(model.entitlements || []).length > 0 ? `
   <div class="sub-h">Entitlements (${model.entitlements!.length})</div>
-  <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">Capabilities a principal is claimed to hold <strong>by design</strong>. An entitlement never suppresses a finding and never gates testing &mdash; it only changes what downstream triage recommends. A claim that cites no authorization code is <strong>inert</strong> and has no effect.</p>
+  <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">Capabilities a principal is claimed to hold <strong>by design</strong>. The join is (actor, asset, threat) &mdash; a row with either <em>missing</em> joins no finding and cannot demote one. An entitlement never suppresses a finding and never gates testing &mdash; it only changes what downstream triage recommends. A claim that cites no authorization code is <strong>inert</strong> and has no effect.</p>
   <table>
-    <thead><tr><th>Actor</th><th>Capability</th><th>Asset</th><th>Citation</th><th>Rationale</th><th>Location</th></tr></thead>
+    <thead><tr><th>Actor</th><th>Capability</th><th>Asset</th><th>Threat</th><th>Citation</th><th>Rationale</th><th>Location</th></tr></thead>
     <tbody>
     ${model.entitlements!.map(en => `
     <tr data-ff="${en.location ? esc(en.location.file) : ''}">
       <td><code>${esc(en.actor)}</code></td>
       <td><code>${esc(en.capability)}</code></td>
-      <td>${en.asset ? `<code>${esc(en.asset)}</code>` : '&mdash;'}</td>
+      <td>${en.asset ? `<code>${esc(en.asset)}</code>` : '<strong style="color:var(--sev-high)">missing</strong>'}</td>
+      <td>${en.threat ? `<code>${esc(en.threat)}</code>` : '<strong style="color:var(--sev-high)">missing</strong>'}</td>
       <td>${en.citation ? `<code>${esc(en.citation.raw)}</code>` : '<strong style="color:var(--sev-high)">inert &mdash; uncited</strong>'}</td>
       <td>${esc(en.description || '(no rationale given)')}</td>
       <td class="loc">${en.location ? `${esc(en.location.file)}:${en.location.line}` : ''}</td>

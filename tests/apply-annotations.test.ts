@@ -144,6 +144,35 @@ describe('GL-504 — refuses @accepts', () => {
     expect(result.errors[0]).toContain('@exposes');
     expect(result.errors[0]).toContain('@audit');
   });
+
+  // @entitles is the second claim a tool may not make on a human's behalf. It
+  // says the caller was allowed to do this all along, so writing it here would
+  // close a finding as by-design AND bypass the proposal ledger that records who
+  // granted the privilege (actor-entitlement design §3.6).
+  it('rejects @entitles and writes nothing', async () => {
+    const result = apply([
+      '@entitles #ns-admin to configure-archival -- "By design. Authz: src/authz.ts:12"',
+    ]);
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('rejected');
+    expect(result.errors[0]).toContain('refusing to write `@entitles`');
+    const { model } = await parseProject({ root, project: 'test' });
+    expect(model.entitlements ?? []).toHaveLength(0);
+  });
+
+  it('sends the caller to the proposal flow rather than to @exposes', () => {
+    const result = apply(['@entitles #ns-admin to configure-archival -- "Authz: src/authz.ts:12"']);
+    expect(result.errors[0]).toContain('guardlink_entitlement_propose');
+    expect(result.errors[0]).toContain('guardlink entitle');
+  });
+
+  it('rejects the WHOLE block when @entitles is smuggled among valid lines', async () => {
+    const result = apply([EXPOSE, '@entitles #ns-admin to configure-archival -- "Authz: a.ts:1"', AUDIT]);
+    expect(result.ok).toBe(false);
+    const { model } = await parseProject({ root, project: 'test' });
+    expect(model.exposures).toHaveLength(0);
+    expect(model.audits).toHaveLength(0);
+  });
 });
 
 describe('GL-504 — malformed input rejected with a diagnostic', () => {

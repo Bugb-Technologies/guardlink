@@ -318,12 +318,17 @@ export function generateReport(model: ThreatModel): string {
     lines.push('claim is inert and has no effect.');
     lines.push('');
     for (const en of model.entitlements!) {
-      const scope = en.asset ? ` on ${en.asset}` : '';
+      const scope = `${en.asset ? ` on ${en.asset}` : ''}${en.threat ? ` against ${en.threat}` : ''}`;
+      // Both halves of the join are shown, and a claim missing either is called
+      // ineffective here rather than left looking operative (§9.3).
+      const missing = [!en.asset && 'on <asset>', !en.threat && 'against <threat>']
+        .filter(Boolean).join(' and ');
       const cite = en.citation
         ? `cites \`${en.citation.raw}\``
         : '**uncited — inert**';
+      const gap = missing ? ` — **ineffective: missing ${missing}**` : '';
       const desc = en.description ? ` — ${en.description}` : '';
-      lines.push(`- **${en.actor}** entitled to \`${en.capability}\`${scope} — ${cite}${desc} (${en.location.file}:${en.location.line})`);
+      lines.push(`- **${en.actor}** entitled to \`${en.capability}\`${scope} — ${cite}${gap}${desc} (${en.location.file}:${en.location.line})`);
     }
     lines.push('');
 
@@ -814,7 +819,7 @@ function emitRolesAccess(model: ThreatModel, lines: string[]): void {
       const desc = ac.description ? ` — ${ac.description}` : '';
       lines.push(`- **${ac.name}** (\`${ref}\`)${desc}`);
       for (const en of held) {
-        const scope = en.asset ? ` on ${en.asset}` : '';
+        const scope = `${en.asset ? ` on ${en.asset}` : ''}${en.threat ? ` against ${en.threat}` : ''}`;
         const cite = en.citation ? ` [cites \`${en.citation.raw}\`]` : ' [uncited — inert]';
         lines.push(`  - entitled to \`${en.capability}\`${scope}${cite}`);
       }

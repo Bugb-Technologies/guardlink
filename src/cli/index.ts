@@ -44,7 +44,7 @@ import { Command } from 'commander';
 import { resolve, basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { ensurePromptMd } from '../init/migrate.js';
@@ -295,9 +295,10 @@ program
     // Check for @accepts without @audit (governance concern)
     const acceptAuditDiags = findAcceptedWithoutAudit(model);
 
-    // @entitles checks: undeclared actor (error) and uncited/inert claim (warning)
+    // Entitlement checks: undeclared actor (error) and uncited/inert claim (warning)
     const actorDiags = findUndeclaredActors(model);
     const inertDiags = findInertEntitlements(model);
+    const impreciseDiags = findImpreciseEntitlements(model);
 
     // §3.6: an entitlement in source with no accepted proposal behind it. Skipped
     // in projects with no proposal ledger, so this only bites where the flow is used.
@@ -307,7 +308,7 @@ program
     // the file still parsed and every annotation in it counted.
     const galConventionDiags = findOffConventionGalFiles(model);
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...actorDiags, ...inertDiags, ...provenanceDiags, ...galConventionDiags];
+    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags];
 
     // Check for unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);
@@ -2327,14 +2328,15 @@ program
       console.log(EX('    // @accepts  Timing Attack  on  api.auth  -- "Acceptable for current threat model"'));
       console.log('');
 
-      console.log(`  ${V('@entitles')}  ${K('<actor>')}  ${D('to')}  ${K('<capability>')}  ${D('[on')}  ${K('<asset>')}${D(']')}  ${D('[-- "description"]')}`);
+      console.log(`  ${V('@entitles')}  ${K('<actor>')}  ${D('to')}  ${K('<capability>')}  ${D('[on')}  ${K('<asset>')}${D(']')}  ${D('[against')}  ${K('<threat>')}${D(']')}  ${D('[-- "description"]')}`);
       console.log(D('    State that an actor is legitimately entitled to a capability by design —'));
       console.log(D('    the answer to "is the caller already allowed to do this?".'));
-      console.log(D('    <capability> is one identifier, never prose: it is the join key.'));
+      console.log(D('    <capability> is one identifier, never prose. The JOIN is (actor, asset,'));
+      console.log(D('    threat): a claim missing `on` or `against` joins nothing and cannot demote.'));
       console.log(D('    Never suppresses a finding and never gates testing — it only informs'));
       console.log(D('    the recommendation downstream. Absent from the SARIF export entirely.'));
       console.log(D('    Must cite the authz code (file:line) in the description, or it is inert.'));
-      console.log(EX('    // @entitles  #ns-admin  to  configure-archival-destination  on  #archival-fs'));
+      console.log(EX('    // @entitles  #ns-admin  to  configure-archival-destination  on  #archival-fs  against  #path-traversal'));
       console.log(EX('    //     -- "By design: the archival URI is namespace config. Authz: common/api/metadata.go:189"'));
       console.log('');
       console.log(D('    Not written by hand and never by an agent: an over-grant closes a real'));

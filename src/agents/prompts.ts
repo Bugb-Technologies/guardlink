@@ -325,7 +325,9 @@ Rules you must follow:
 
 \`\`\`
 // In the definitions file — declaring the principal is yours to do:
+// @shield:begin -- "Actor example, excluded from parsing"
 // @actor Namespace_Admin (#ns-admin) -- "Administers one namespace's configuration"
+// @shield:end
 \`\`\`
 
 Then propose the entitlement instead of writing it:
@@ -342,8 +344,10 @@ guardlink entitle --propose \\
 Report what you proposed at the end of your run, and tell the user to review it with \`guardlink entitle\`. If they accept, the annotation below is what lands — written by the accept step, with their name on it:
 
 \`\`\`
+// @shield:begin -- "Entitlement example, excluded from parsing"
 // @entitles #ns-admin to configure-archival-destination on #archival-fs
 //     -- "By design: the archival URI is namespace configuration. Authz: ScopeCluster/AccessAdmin at common/api/metadata.go:189"
+// @shield:end
 \`\`\`
 
 ### @accepts — NEVER USE (Human-Only Decision)

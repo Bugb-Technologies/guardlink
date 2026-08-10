@@ -431,7 +431,7 @@ function lookupActors(model: ThreatModel, query: string): LookupResult {
 }
 
 /**
- * @entitles claims. `inert` is surfaced on every row on purpose: an uncited
+ * Entitlement claims. `inert` is surfaced on every row on purpose: an uncited
  * entitlement must never be read as one that can demote a finding (§3.4).
  */
 function lookupEntitlements(model: ThreatModel, query: string, actorRef?: string): LookupResult {

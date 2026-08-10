@@ -77,7 +77,7 @@ describe('proposal artifact', () => {
       expect(JSON.parse(raw).version).toBe(LEDGER_VERSION);
 
       const [p] = (await loadProposals(root)).proposals;
-      expect(p.id).toBe(proposalId('#ns-admin', 'configure-archival-destination'));
+      expect(p.id).toBe(proposalId('#ns-admin', 'configure-archival-destination', BASE.asset, BASE.threat));
       expect(p.actor).toBe('#ns-admin');
       expect(p.capability).toBe('configure-archival-destination');
       expect(p.canonical_capability).toBe('configure_archival_destination');
@@ -106,15 +106,44 @@ describe('proposal artifact', () => {
     }
   });
 
-  it('keys a proposal on (actor, capability), so a re-file updates rather than duplicates', async () => {
+  it('keys a proposal on (actor, asset, threat), so a re-file updates rather than duplicates', async () => {
     const root = await project();
     try {
       await proposeEntitlement(root, BASE);
-      const again = await proposeEntitlement(root, { ...BASE, asset: undefined, rationale: `${CITED} (narrowed)` });
+      const again = await proposeEntitlement(root, { ...BASE, rationale: `${CITED} (narrowed)` });
       expect(again.created).toBe(false);
       const proposals = await listProposals(root);
       expect(proposals).toHaveLength(1);
-      expect(proposals[0].asset).toBeUndefined();
+      expect(proposals[0].rationale).toMatch(/narrowed/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  // §9.3 makes the join (actor, asset, threat). Changing either half changes
+  // WHICH finding the claim answers for, so it is a different claim and must get
+  // its own record — not silently overwrite the one a human already looked at.
+  it('files a distinct claim when the pair changes, rather than overwriting', async () => {
+    const root = await project();
+    try {
+      await proposeEntitlement(root, BASE);
+      const other = await proposeEntitlement(root, { ...BASE, threat: '#namespace-isolation' });
+      expect(other.created).toBe(true);
+      expect(await listProposals(root)).toHaveLength(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps an imprecise draft distinct from the precise claim', async () => {
+    const root = await project();
+    try {
+      await proposeEntitlement(root, BASE);
+      // No `against <threat>`: joins nothing, cannot demote (§9.7). It is a
+      // different, broader claim, so it does not update the precise one.
+      const vague = await proposeEntitlement(root, { ...BASE, threat: undefined });
+      expect(vague.created).toBe(true);
+      expect(await listProposals(root)).toHaveLength(2);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -155,7 +184,7 @@ describe('proposal artifact', () => {
     const root = await project();
     try {
       await proposeEntitlement(root, BASE);
-      await applyProposalDecision(root, proposalId(BASE.actor, BASE.capability), {
+      await applyProposalDecision(root, proposalId(BASE.actor, BASE.capability, BASE.asset, BASE.threat), {
         status: 'rejected', by: 'Dana Maintainer', note: 'admin does not configure this in our deployment',
       });
 
@@ -172,7 +201,7 @@ describe('proposal artifact', () => {
   it('keeps a deferral on the record when the claim is re-filed', async () => {
     const root = await project();
     try {
-      const id = proposalId(BASE.actor, BASE.capability);
+      const id = proposalId(BASE.actor, BASE.capability, BASE.asset, BASE.threat);
       await proposeEntitlement(root, BASE);
       await applyProposalDecision(root, id, { status: 'deferred', by: 'Dana Maintainer', note: 'ask the platform team' });
 
@@ -206,7 +235,7 @@ describe('acceptance', () => {
   it('writes a well-formed @entitles line the parser accepts, with the accepting human named', async () => {
     const root = await project();
     try {
-      const id = proposalId(BASE.actor, BASE.capability);
+      const id = proposalId(BASE.actor, BASE.capability, BASE.asset, BASE.threat);
       await proposeEntitlement(root, BASE);
       const result = await applyProposalDecision(root, id, {
         status: 'accepted', by: 'Dana Maintainer', note: 'checked the scope constant myself',
@@ -245,7 +274,7 @@ describe('acceptance', () => {
   it('records the decision in the ledger, with where the annotation landed', async () => {
     const root = await project();
     try {
-      const id = proposalId(BASE.actor, BASE.capability);
+      const id = proposalId(BASE.actor, BASE.capability, BASE.asset, BASE.threat);
       await proposeEntitlement(root, BASE);
       await applyProposalDecision(root, id, { status: 'accepted', by: 'Dana Maintainer' });
 
@@ -263,7 +292,7 @@ describe('acceptance', () => {
     const root = await project();
     try {
       await proposeEntitlement(root, BASE);
-      await expect(applyProposalDecision(root, proposalId(BASE.actor, BASE.capability), {
+      await expect(applyProposalDecision(root, proposalId(BASE.actor, BASE.capability, BASE.asset, BASE.threat), {
         status: 'accepted', by: '   ',
       })).rejects.toThrow(/name of the human/);
       expect(await sourceOf(root)).not.toContain('@entitles');
@@ -275,7 +304,7 @@ describe('acceptance', () => {
   it('will not accept the same proposal twice', async () => {
     const root = await project();
     try {
-      const id = proposalId(BASE.actor, BASE.capability);
+      const id = proposalId(BASE.actor, BASE.capability, BASE.asset, BASE.threat);
       await proposeEntitlement(root, BASE);
       await applyProposalDecision(root, id, { status: 'accepted', by: 'Dana Maintainer' });
       await expect(applyProposalDecision(root, id, { status: 'accepted', by: 'Dana Maintainer' }))
@@ -319,7 +348,7 @@ describe('§3.4 — an uncited proposal cannot silently become effective', () =>
   it('refuses to accept it, and leaves both source and status alone', async () => {
     const root = await project();
     try {
-      const id = proposalId(UNCITED.actor, UNCITED.capability);
+      const id = proposalId(UNCITED.actor, UNCITED.capability, UNCITED.asset, UNCITED.threat);
       await proposeEntitlement(root, UNCITED);
       const before = await sourceOf(root);
 
@@ -340,7 +369,7 @@ describe('§3.4 — an uncited proposal cannot silently become effective', () =>
   it('accepts it only with the explicit acknowledgement, and says INERT in source', async () => {
     const root = await project();
     try {
-      const id = proposalId(UNCITED.actor, UNCITED.capability);
+      const id = proposalId(UNCITED.actor, UNCITED.capability, UNCITED.asset, UNCITED.threat);
       await proposeEntitlement(root, UNCITED);
       await applyProposalDecision(root, id, {
         status: 'accepted', by: 'Dana Maintainer', acknowledgeInert: true,
@@ -426,7 +455,7 @@ describe('§3.5 — ownership-class proposals are warned about at proposal time'
   it('refuses to accept an ownership-class proposal without an explicit acknowledgement', async () => {
     const root = await project();
     try {
-      const id = proposalId('#ns-admin', 'delete-namespace');
+      const id = proposalId('#ns-admin', 'delete-namespace', BASE.asset, '#namespace-isolation');
       await proposeEntitlement(root, {
         ...BASE, capability: 'delete-namespace', threat: '#namespace-isolation',
         rationale: 'Admins delete namespaces. Authz: common/api/metadata.go:189',
@@ -445,7 +474,7 @@ describe('§3.5 — ownership-class proposals are warned about at proposal time'
   it('carries the warning into source when a human accepts anyway', async () => {
     const root = await project();
     try {
-      const id = proposalId('#ns-admin', 'delete-namespace');
+      const id = proposalId('#ns-admin', 'delete-namespace', BASE.asset, '#namespace-isolation');
       await proposeEntitlement(root, {
         ...BASE, capability: 'delete-namespace', threat: '#namespace-isolation',
         rationale: 'Admins delete namespaces. Authz: common/api/metadata.go:189',
@@ -467,7 +496,7 @@ describe('§3.5 — ownership-class proposals are warned about at proposal time'
   it('does not gate a rejection on the acknowledgement — refusing is always available', async () => {
     const root = await project();
     try {
-      const id = proposalId('#ns-admin', 'delete-namespace');
+      const id = proposalId('#ns-admin', 'delete-namespace', BASE.asset, '#namespace-isolation');
       await proposeEntitlement(root, {
         ...BASE, capability: 'delete-namespace', threat: '#namespace-isolation',
         rationale: 'Admins delete namespaces. Authz: common/api/metadata.go:189',
@@ -488,7 +517,7 @@ describe('rejection and deferral', () => {
   it('rejection leaves source untouched and records the reason', async () => {
     const root = await project();
     try {
-      const id = proposalId(BASE.actor, BASE.capability);
+      const id = proposalId(BASE.actor, BASE.capability, BASE.asset, BASE.threat);
       await proposeEntitlement(root, BASE);
       const before = await sourceOf(root);
 
@@ -515,7 +544,7 @@ describe('rejection and deferral', () => {
     const root = await project();
     try {
       await proposeEntitlement(root, BASE);
-      await expect(applyProposalDecision(root, proposalId(BASE.actor, BASE.capability), {
+      await expect(applyProposalDecision(root, proposalId(BASE.actor, BASE.capability, BASE.asset, BASE.threat), {
         status: 'rejected', by: 'Dana Maintainer',
       })).rejects.toThrow(/must say why/);
     } finally {
@@ -526,7 +555,7 @@ describe('rejection and deferral', () => {
   it('deferral leaves source untouched and keeps the claim listable', async () => {
     const root = await project();
     try {
-      const id = proposalId(BASE.actor, BASE.capability);
+      const id = proposalId(BASE.actor, BASE.capability, BASE.asset, BASE.threat);
       await proposeEntitlement(root, BASE);
       await applyProposalDecision(root, id, { status: 'deferred', by: 'Dana Maintainer' });
 
@@ -547,7 +576,7 @@ describe('§3.6 — an entitlement written straight into source is visible', () 
     try {
       // An agent writes the annotation itself, skipping the proposal.
       await writeFile(join(root, 'src', 'sneaky.ts'), [
-        '// @entitles #ns-admin to configure-archival-destination on #archival-fs -- "By design. Authz: common/api/metadata.go:189"',
+        '// @entitles #ns-admin to configure-archival-destination on #archival-fs against #path-traversal -- "By design. Authz: common/api/metadata.go:189"',
         'export const sneaky = true;',
       ].join('\n'));
 
@@ -562,11 +591,44 @@ describe('§3.6 — an entitlement written straight into source is visible', () 
 
       // The same claim, once a human has accepted it, is clean.
       await proposeEntitlement(root, BASE);
-      await applyProposalDecision(root, proposalId(BASE.actor, BASE.capability), {
+      await applyProposalDecision(root, proposalId(BASE.actor, BASE.capability, BASE.asset, BASE.threat), {
         status: 'accepted', by: 'Dana Maintainer',
       });
       const ledger = await loadProposals(root);
       expect(findUnacceptedEntitlements(model, ledger)).toHaveLength(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  // The bug this guards: keyed on (actor, capability), one accepted proposal
+  // vouched for ANY hand-written @entitles sharing that actor and capability —
+  // including one aimed at a pair no human ever saw. A narrow acceptance could
+  // be stretched into a broad grant with no second look, which is exactly the
+  // silent over-grant §2 rules out. The key is (actor, asset, threat) (§9.3).
+  it('does not let an accepted claim vouch for a different (asset, threat) pair', async () => {
+    const root = await project();
+    try {
+      // A human accepts the narrow claim: path traversal on the archival FS.
+      await proposeEntitlement(root, BASE);
+      await applyProposalDecision(
+        root,
+        proposalId(BASE.actor, BASE.capability, BASE.asset, BASE.threat),
+        { status: 'accepted', by: 'Dana Maintainer' },
+      );
+
+      // Same actor, same capability — but aimed at a pair nobody accepted.
+      await writeFile(join(root, 'src', 'stretched.ts'), [
+        '// @entitles #ns-admin to configure-archival-destination on #archival-fs against #namespace-isolation -- "By design. Authz: common/api/metadata.go:189"',
+        'export const stretched = true;',
+      ].join('\n'));
+
+      const { model } = await parseProject({ root, project: 'tmp' });
+      const ledger = await loadProposals(root);
+      const diags = findUnacceptedEntitlements(model, ledger);
+      const stretched = diags.filter(d => d.file === 'src/stretched.ts');
+      expect(stretched).toHaveLength(1);
+      expect(stretched[0].level).toBe('error');
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -590,7 +652,7 @@ describe('§3.6 — an entitlement written straight into source is visible', () 
     const root = await project();
     try {
       await proposeEntitlement(root, BASE);
-      await applyProposalDecision(root, proposalId(BASE.actor, BASE.capability), {
+      await applyProposalDecision(root, proposalId(BASE.actor, BASE.capability, BASE.asset, BASE.threat), {
         status: 'rejected', by: 'Dana Maintainer', note: 'not how our deployment works',
       });
       await writeFile(join(root, 'src', 'sneaky.ts'), [

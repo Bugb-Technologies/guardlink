@@ -415,7 +415,7 @@ end
 #### `@entitles` — Capability Held by Design
 
 ```
-@entitles <actor> to <capability> [on <asset>] [-- "<description>"]
+@entitles <actor> to <capability> [on <asset>] [against <threat>] [-- "<description>"]
 ```
 
 Declares that an actor is **legitimately entitled** to a capability — that the privilege required to trigger an effect is a privilege that already grants that effect by design. This is the field a triage step reads to answer *"is the measured caller already allowed to do this?"*.
@@ -426,7 +426,9 @@ Declares that an actor is **legitimately entitled** to a capability — that the
 //         Authz: ScopeCluster/AccessAdmin at common/api/metadata.go:189"
 ```
 
-`<capability>` is a single normalised identifier (§2.10), never prose — it is the join key downstream consumers match on, and prose would not join. The `on <asset>` clause is optional context; the entitlement is a fact about the **actor and the capability**, not about any one exposure.
+`<capability>` is a single normalised identifier (§2.10), never prose. It is **not** the join key: nothing on the finding side records a capability, so the join is `(actor, asset, threat)` — the capability is the justification a reviewer reads and a label for grouping claims.
+
+Both `on <asset>` and `against <threat>` are syntactically optional but jointly load-bearing: a claim missing either half joins no finding and therefore **cannot demote one**. Consumers should treat such a claim as ineffective, and `guardlink validate` warns about it, exactly as it warns about an uncited claim.
 
 Four constraints define what this annotation is, and they are as much a part of the syntax as the grammar:
 

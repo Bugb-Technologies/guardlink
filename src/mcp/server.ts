@@ -54,7 +54,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findInertEntitlements, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
 import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
 import { getReviewableExposures, applyReviewAction, type ReviewableExposure } from '../review/index.js';
@@ -335,14 +335,15 @@ export function createServer(): McpServer {
 
       // Compute dangling refs using shared validation
       const danglingDiags = findDanglingRefs(model);
-      // @entitles checks: undeclared actor is an error, an uncited (inert)
+      // Entitlement checks: undeclared actor is an error, an uncited (inert)
       // entitlement is a warning — it parses but can never demote a finding.
       const actorDiags = findUndeclaredActors(model);
       const inertDiags = findInertEntitlements(model);
+      const impreciseDiags = findImpreciseEntitlements(model);
       // §3.6: an @entitles no human accepted. Only checked where the project has
       // a proposal ledger, so it never fires on a repo not using the flow.
       const provenanceDiags = await checkEntitlementProvenance(root, model);
-      const allDiags = [...diagnostics, ...danglingDiags, ...actorDiags, ...inertDiags, ...provenanceDiags];
+      const allDiags = [...diagnostics, ...danglingDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags];
 
       const errors = allDiags.filter(d => d.level === 'error');
       const warnings = allDiags.filter(d => d.level === 'warning');
@@ -476,7 +477,7 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_annotate_apply',
-    'Write a validated @source block into the annotation sidecar for a file. Unlike guardlink_annotate — which returns a prompt for you to act on — this writes the annotations itself, into .guardlink/annotations/, never into source. Every line is re-parsed before anything touches disk; malformed input is rejected with the reason. Idempotent: re-applying the same block is a no-op, not a duplicate. Refuses @accepts, which is a human governance decision.',
+    'Write a validated @source block into the annotation sidecar for a file. Unlike guardlink_annotate — which returns a prompt for you to act on — this writes the annotations itself, into .guardlink/annotations/, never into source. Every line is re-parsed before anything touches disk; malformed input is rejected with the reason. Idempotent: re-applying the same block is a no-op, not a duplicate. Refuses @accepts and @entitles, which are human governance decisions — for an entitlement use guardlink_entitlement_propose, which files it for human acceptance instead of writing it.',
     {
       root: z.string().describe('Project root directory').default('.'),
       file: z.string().describe('Source file the annotations describe. The sidecar path is derived from it; you do not choose where it is written.'),

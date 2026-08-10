@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v1:fdc3f6b903452086173e96f0eb9dc67b4a82e4de7abeea30cd5bb840e3768a34
+%% annotation_hash: sha256-v2:ad503e63987ac4228aefabf0af4f85fa38de9d800b4b2fbd2c8ca2328646c9c0
 %% generator:       guardlink@1.4.5
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -71,6 +71,7 @@ graph LR
   html["🧩 HTML"]
   gitref["🧩 GitRef"]
   tempdir["🧩 TempDir"]
+  changedfilelist["🧩 ChangedFileList"]
   projectroot["🧩 ProjectRoot"]
   init["🧩 GuardLink.Init · internal"]
   agentfiles["🧩 AgentFiles"]
@@ -82,6 +83,9 @@ graph LR
   annotations["🧩 Annotations"]
   report["🧩 GuardLink.Report"]
   markdown["🧩 Markdown"]
+  agentproposal["🧩 AgentProposal"]
+  proposalledger["🧩 ProposalLedger"]
+  gitconfig["🧩 GitConfig"]
   commands["🧩 Commands"]
   rawstdin["🧩 RawStdin"]
   terminal["🧩 Terminal"]
@@ -130,9 +134,11 @@ graph LR
   sourcefiles -- "🗄️ readFileSync" --> dashboard
   dashboard -- "📡 return" --> html
   threatmodel -- "📡 generateDashboardHTML" --> dashboard
+  threatmodel -- "📡 diffModels" --> diff
   gitref -- "📡 execSync" --> diff
   diff -- "🗄️ writeFileSync" --> tempdir
   diff -- "📡 parseProject" --> threatmodel
+  diff -- "📡 return" --> changedfilelist
   gitref -- "📡 parseAtRef" --> diff
   projectroot -- "📡 detectProject" --> init
   projectroot -- "📡 options.root" --> init
@@ -168,6 +174,11 @@ graph LR
   threatmodel -- "📡 generateReport" --> report
   report -- "📡 return" --> markdown
   threatmodel -- "📡 generateSequenceDiagram" --> report
+  agentproposal -- "📡 proposeEntitlement" --> cli
+  cli -- "🗄️ writeFile" --> proposalledger
+  proposalledger -- "🗄️ readFile" --> cli
+  cli -- "📡 applyProposalDecision" --> sourcefiles
+  gitconfig -- "🗄️ execFileSync" --> cli
   threatmodel -- "📡 getReviewableExposures" --> cli
   cli -- "🗄️ writeFile" --> sourcefiles
   userargs -- "📡 args" --> tui

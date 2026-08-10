@@ -282,3 +282,64 @@ describe('guardlink_context — external mode (.gal sidecars)', () => {
     }
   });
 });
+
+// ─── Entitlements reach the per-file view ────────────────────────────
+//
+// allRecords() rebuilds the record list verb by verb, so a collection it does not
+// name is invisible to an agent asking about that file — it would be told the
+// path holds no entitlement, the opposite of what the annotation says. Built on a
+// scratch repo rather than this one: guardlink's own claim lives in the proposal
+// ledger, not in source, and a test that reads it out of source would rot the
+// moment someone accepts or withdraws it.
+describe('guardlink_context — @entitles records', () => {
+  let root: string;
+  let model: ThreatModel;
+
+  beforeAll(async () => {
+    root = await mkdtemp(join(tmpdir(), 'guardlink-ctx-ent-'));
+    await mkdir(join(root, '.guardlink'), { recursive: true });
+    await mkdir(join(root, 'src'), { recursive: true });
+    await writeFile(join(root, '.guardlink', 'definitions.ts'), [
+      '// @asset Archival.FS (#archival-fs) -- "Archival destination"',
+      '// @threat Path_Traversal (#path-traversal) [high] cwe:CWE-22 -- "URI used as a path"',
+      '// @actor Namespace_Admin (#ns-admin) -- "Administers one namespace"',
+    ].join('\n'));
+    await writeFile(join(root, 'src', 'archiver.ts'), [
+      '// @exposes #archival-fs to #path-traversal [high] -- "URI is used as a filesystem path"',
+      '// @entitles #ns-admin to configure-archival on #archival-fs against #path-traversal -- "By design. Authz: common/api/metadata.go:189"',
+      'export function archive(uri: string) { return uri; }',
+    ].join('\n'));
+    ({ model } = await parseProject({ root, project: 'tmp' }));
+  });
+
+  afterAll(async () => { await rm(root, { recursive: true, force: true }); });
+
+  it('surfaces the entitlement, its citation, and both halves of the join', () => {
+    const c = fileContext(model, { file: 'src/archiver.ts', exists: true });
+    const [e] = c.annotations.filter(a => a.verb === 'entitles') as Record<string, unknown>[];
+    expect(e).toBeDefined();
+    expect(e.actor).toBe('#ns-admin');
+    expect(e.asset).toBe('#archival-fs');
+    expect(e.threat).toBe('#path-traversal');
+    expect(e.inert).toBe(false);
+    expect(e.citation).toBeDefined();
+  });
+
+  it('reports an uncited claim as inert rather than omitting it', async () => {
+    const scratch = await mkdtemp(join(tmpdir(), 'guardlink-ctx-inert-'));
+    try {
+      await mkdir(join(scratch, 'src'), { recursive: true });
+      await writeFile(join(scratch, 'src', 'a.ts'), [
+        '// @entitles #ns-admin to configure-archival on #archival-fs against #path-traversal -- "Admins do this"',
+        'export const a = 1;',
+      ].join('\n'));
+      const { model: m } = await parseProject({ root: scratch, project: 'tmp' });
+      const c = fileContext(m, { file: 'src/a.ts', exists: true });
+      const [e] = c.annotations.filter(a => a.verb === 'entitles') as Record<string, unknown>[];
+      expect(e).toBeDefined();
+      expect(e.inert).toBe(true);
+    } finally {
+      await rm(scratch, { recursive: true, force: true });
+    }
+  });
+});

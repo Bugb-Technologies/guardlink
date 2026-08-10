@@ -1,0 +1,29 @@
+{
+  "version": "1",
+  "proposals": [
+    {
+      "id": "ent-local_dev.parser.arbitrary_write",
+      "actor": "#local-dev",
+      "capability": "clear-annotations",
+      "canonical_capability": "clear_annotations",
+      "asset": "#parser",
+      "threat": "#arbitrary-write",
+      "rationale": "By design: guardlink clear exists to reset a project's annotations, and the operator already holds shell write access to the very tree it rewrites, so this is no privilege gain. Gate: dry-run preview, then a y/N prompt, then a hard refusal when stdin is not a TTY and --yes was not passed, at src/cli/index.ts:1071",
+      "citation": {
+        "file": "src/cli/index.ts",
+        "line": 1071,
+        "raw": "src/cli/index.ts:1071"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/parser/clear.ts",
+        "line": 8
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-08-10",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    }
+  ]
+}

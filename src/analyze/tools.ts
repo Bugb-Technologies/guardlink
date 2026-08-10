@@ -183,6 +183,10 @@ function validateFinding(
       return JSON.stringify({ exists: false });
     }
     case 'is_unmitigated': {
+      // Entitlements are deliberately NOT consulted here. @entitles carries no
+      // export or suppression semantics (design §3.2): an entitled exposure is
+      // still unmitigated, still probed, still reported. Only downstream triage
+      // may soften the recommendation. Do not add it to this check.
       const exposed = model.exposures.some(e => matchAsset(e.asset) && matchThreat(e.threat));
       const mitigated = model.mitigations.some(m => matchAsset(m.asset) && matchThreat(m.threat));
       const accepted = model.acceptances.some(a => matchAsset(a.asset) && matchThreat(a.threat));

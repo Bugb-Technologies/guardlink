@@ -263,7 +263,7 @@ gates testing; without a `file:line` citation to the authorization code it is in
 
 ```go
 // @actor Namespace_Admin (#ns-admin) -- "Administers one namespace's configuration"
-// @entitles #ns-admin to configure-archival-destination on #archival-fs
+// @entitles #ns-admin to configure-archival-destination on #archival-fs against #path-traversal
 //     -- "By design: the archival URI is namespace config. Authz: common/api/metadata.go:189"
 ```
 
@@ -281,7 +281,7 @@ gates testing; without a `file:line` citation to the authorization code it is in
 | `@feature` | Tag code with a product feature name | `@feature "SSO Login" -- "Single sign-on authentication flow"` |
 | `@accepts` | Risk acknowledged | `@accepts #dos on #api -- "By design"` |
 | `@transfers` | Risk moved between assets | `@transfers #sqli from #api to #db` |
-| `@entitles` | Capability an actor holds **by design** (must cite the authz code; never suppresses a finding) | `@entitles #ns-admin to configure-archival on #fs -- "Authz: api/metadata.go:189"` |
+| `@entitles` | Capability an actor holds **by design** (must cite the authz code; never suppresses a finding) | `@entitles #ns-admin to configure-archival on #fs against #path-traversal -- "Authz: api/metadata.go:189"` |
 | `@flow` | Data flow between assets | `@flow #api -> #db via "SQL"` |
 | `@boundary` | Trust boundary | `@boundary #api <-> #external` |
 | `@handles` | Data classification | `@handles pii on #users` |

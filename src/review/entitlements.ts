@@ -216,17 +216,46 @@ function bareRef(ref: string): string {
 /**
  * The identity of an entitlement claim: (actor, capability).
  *
- * Same key `guardlink diff` uses (§3.1), so a proposal that only changes
- * `on <asset>` updates the existing claim rather than filing a second one —
- * and two proposals cannot disagree about the same claim without one of them
- * visibly replacing the other.
+ * Same key `guardlink diff` uses — which §9.3 makes `(actor, asset, threat)`, NOT
+ * (actor, capability). Nothing on the finding side carries a capability, so a
+ * capability-keyed identity would conflate two different claims. That mattered
+ * here in two ways, both of which this key closes:
+ *
+ *   - `findUnacceptedEntitlements` matches a source annotation against accepted
+ *     proposals. Keyed on (actor, capability), accepting one narrow claim would
+ *     silently vouch for a hand-written `@entitles` naming the *same* actor and
+ *     capability on a different (asset, threat) — a human's acceptance stretched
+ *     to cover a pair they never saw, which is the over-grant §2 forbids.
+ *   - Two legitimately distinct claims — one actor entitled to one capability on
+ *     two different pairs — collided on one id, so filing the second was refused
+ *     as "already decided".
+ *
+ * A claim missing either half of the join is imprecise and cannot demote (§9.7),
+ * so its capability stays in the key: it has no join to collide on, and keeping
+ * it distinct lets each imprecise draft be reviewed on its own.
  */
-export function entitlementKey(actor: string, capability: string): string {
-  return `${normalizeName(bareRef(actor))}.${normalizeName(capability)}`;
+export function entitlementKey(
+  actor: string,
+  capability: string,
+  asset?: string,
+  threat?: string,
+): string {
+  const a = normalizeName(bareRef(actor));
+  if (asset && threat) {
+    return `${a}.${normalizeName(bareRef(asset))}.${normalizeName(bareRef(threat))}`;
+  }
+  // Two segments, so an imprecise claim can never collide with a precise one
+  // (three) no matter what the asset and threat are named.
+  return `${a}.${normalizeName(capability)}`;
 }
 
-export function proposalId(actor: string, capability: string): string {
-  return `ent-${entitlementKey(actor, capability)}`;
+export function proposalId(
+  actor: string,
+  capability: string,
+  asset?: string,
+  threat?: string,
+): string {
+  return `ent-${entitlementKey(actor, capability, asset, threat)}`;
 }
 
 // ─── §3.5: the ownership-class trap ─────────────────────────────────
@@ -393,15 +422,18 @@ function coerceProposal(value: unknown, where: string): EntitlementProposal {
   const status: ProposalStatus =
     ['proposed', 'accepted', 'rejected', 'deferred'].includes(p.status) ? p.status : 'proposed';
 
+  const asset = typeof p.asset === 'string' && p.asset ? p.asset : undefined;
+  const threat = typeof p.threat === 'string' && p.threat ? p.threat : undefined;
+
   return {
-    id: typeof p.id === 'string' && p.id ? p.id : proposalId(actor, capability),
+    id: typeof p.id === 'string' && p.id ? p.id : proposalId(actor, capability, asset, threat),
     actor,
     capability,
     canonical_capability: typeof p.canonical_capability === 'string' && p.canonical_capability
       ? p.canonical_capability
       : normalizeName(capability),
-    asset: typeof p.asset === 'string' && p.asset ? p.asset : undefined,
-    threat: typeof p.threat === 'string' && p.threat ? p.threat : undefined,
+    asset,
+    threat,
     rationale: typeof p.rationale === 'string' ? p.rationale : '',
     citation: coerceCitation(p.citation),
     // Recomputed rather than trusted: `inert` is what gates effect (§3.4), so a
@@ -533,7 +565,7 @@ export async function proposeEntitlement(
   }
 
   const ledger = await loadProposals(root);
-  const id = proposalId(actor, capability);
+  const id = proposalId(actor, capability, asset, threat);
   const existing = ledger.proposals.find(p => p.id === id);
 
   if (existing && (existing.status === 'accepted' || existing.status === 'rejected')) {
@@ -778,12 +810,12 @@ export function findUnacceptedEntitlements(
   const accepted = new Set(
     ledger.proposals
       .filter(p => p.status === 'accepted')
-      .map(p => entitlementKey(p.actor, p.capability)),
+      .map(p => entitlementKey(p.actor, p.capability, p.asset, p.threat)),
   );
 
   const diagnostics: ParseDiagnostic[] = [];
   for (const en of model.entitlements || []) {
-    if (accepted.has(entitlementKey(en.actor, en.capability))) continue;
+    if (accepted.has(entitlementKey(en.actor, en.capability, en.asset, en.threat))) continue;
     diagnostics.push({
       level: 'error',
       message:

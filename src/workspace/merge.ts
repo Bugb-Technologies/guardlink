@@ -454,7 +454,7 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
       if (c.id) seenControlIds.add(c.id);
       combined.controls.push({ ...c, location: prefixLocation(c.location, repo) });
     }
-    // @actor is a definition, so it dedups by tag ID like the three above.
+    // The actor verb is a definition, so it dedups by tag ID like the three above.
     for (const ac of m.actors || []) {
       if (ac.id && seenActorIds.has(ac.id)) continue;
       if (ac.id) seenActorIds.add(ac.id);

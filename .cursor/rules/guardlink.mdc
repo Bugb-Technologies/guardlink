@@ -53,11 +53,6 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 **Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring), #prefix-ownership (Prefix_Ownership), #yaml-validation (YAML_Validation)
 **Actors:** #local-dev (Local_Developer), #mcp-agent (MCP_Agent), #ci-runner (CI_Runner)
 
-### Entitlements (capabilities held by design — never a reason to skip testing)
-
-- #local-dev entitled to `clear_annotations` on #parser — cites src/cli/index.ts:1071
-- #mcp-agent entitled to `preview_annotation_clear` on #parser — cites src/mcp/server.ts:505
-
 ### Open Exposures (need @mitigates or @audit)
 
 - #agent-launcher exposed to #prompt-injection [medium] (src/agents/launcher.ts:13)
@@ -66,13 +61,12 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - #agent-launcher exposed to #config-tamper [medium] (src/agents/prompts.ts:10)
 - #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
 - #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
-- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:16)
-- #cli exposed to #cmd-injection [critical] (src/cli/index.ts:33)
+- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:24)
 - #init exposed to #data-exposure [low] (src/init/index.ts:12)
 - #mcp exposed to #info-disclosure [low] (src/mcp/freshness.ts:17)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
-- #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:30)
-- #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:34)
+- #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:36)
+- #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:40)
 - #suggest exposed to #dos [low] (src/mcp/suggest.ts:16)
 - #parser exposed to #data-exposure [low] (src/parser/migrate-mode.ts:26)
 - #tui exposed to #cmd-injection [high] (src/tui/commands.ts:11)
@@ -100,7 +94,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
 - #llm-client -> NVD via fetch
-- … and 73 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
+- … and 82 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
 
 ### Features (filter with `--feature`)
 
@@ -109,4 +103,4 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-371 annotations, 16 assets, 15 threats, 12 controls, 72 exposures, 0 confirmed, 57 mitigations, 93 flows, 2 features
+421 annotations, 16 assets, 15 threats, 12 controls, 78 exposures, 0 confirmed, 66 mitigations, 3 actors, 102 flows, 2 features

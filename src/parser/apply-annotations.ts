@@ -7,10 +7,12 @@
  * before it touches disk, idempotent, and confined to `.guardlink/` so a bad
  * write cannot mangle logic.
  *
- * `@accepts` is refused. Risk acceptance is a governance decision a human makes
- * and signs; a tool that can write one lets an agent close a finding by
- * declaring it acceptable, which is the one thing this system must never do on
- * its own.
+ * `@accepts` and `@entitles` are refused. Both are governance decisions a human
+ * makes and signs. A tool that can write `@accepts` lets an agent close a finding
+ * by declaring it acceptable; a tool that can write `@entitles` lets it close one
+ * by declaring the caller was allowed all along — and that second route would
+ * bypass the propose/accept ledger in src/review/entitlements.ts entirely, which
+ * is the gate that makes an entitlement carry a human's name (design §3.6).
  *
  * @exposes #parser to #arbitrary-write [high] cwe:CWE-73 -- "Writes annotation sidecars from tool input"
  * @mitigates #parser against #arbitrary-write using #path-validation -- "Target is always resolveGalPath(root, file); the caller cannot choose the path, and a file escaping root is rejected"
@@ -27,7 +29,7 @@ import { parseLine } from './parse-line.js';
 import { galPathFor, resolveGalPath } from './gal-path.js';
 
 /** Verbs a tool may never write. */
-const HUMAN_ONLY = new Set(['accepts']);
+const HUMAN_ONLY = new Set(['accepts', 'entitles']);
 
 export interface ApplyAnnotationsOptions {
   root: string;
@@ -105,8 +107,14 @@ export function applyAnnotations(options: ApplyAnnotationsOptions): ApplyAnnotat
     }
     if (HUMAN_ONLY.has(parsed.annotation.verb)) {
       errors.push(
-        `Line ${i + 1}: refusing to write \`@${parsed.annotation.verb}\`. Accepting a risk is a human `
-        + 'governance decision. Record the risk with @exposes and flag it with @audit instead.',
+        `Line ${i + 1}: refusing to write \`@${parsed.annotation.verb}\`. `
+        + (parsed.annotation.verb === 'entitles'
+          ? 'Stating that a privilege is entitled to an effect by design is a human governance '
+            + 'decision, and writing it here would bypass the proposal ledger that records who '
+            + 'granted it. Propose it with guardlink_entitlement_propose; a human accepts it with '
+            + '"guardlink entitle", and that is what writes the annotation.'
+          : 'Accepting a risk is a human governance decision. Record the risk with @exposes and '
+            + 'flag it with @audit instead.'),
       );
       continue;
     }

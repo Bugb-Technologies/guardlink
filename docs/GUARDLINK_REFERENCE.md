@@ -16,7 +16,7 @@ RELATE   @mitigates <Asset> against <#threat> using <#control> -- "how"
          @confirmed <#threat> on <Asset> [severity] cwe:CWE-NNN -- "verified evidence"
          @accepts <#threat> on <Asset> -- "HUMAN-ONLY — AI agents must use @audit instead"
          @transfers <#threat> from <Source> to <Target> -- "who handles it"
-         @entitles <#actor> to <capability> on <Asset> -- "by design + authz file:line"
+         @entitles <#actor> to <capability> on <Asset> against <#threat> -- "by design + authz file:line"
                    ^ PROPOSED via `guardlink entitle --propose`, written only when a human accepts
 
 FLOW     @flows <Source> -> <Target> via <mechanism> -- "details"
