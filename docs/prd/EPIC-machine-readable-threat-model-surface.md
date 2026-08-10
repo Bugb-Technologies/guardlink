@@ -459,6 +459,28 @@ Implementation is a grouping over `location.file`. Works unchanged in both modes
       specified value of the feature, not overhead. The figure that matters is the
       practical one: 4.6 KB instead of 68 KB, a 14× saving on the question the tool
       exists to answer.*
+- [ ] **`neighbour_detail` — NOT IMPLEMENTED. Measured saving 0.0%; recommended against.**
+      The ruling was to mirror GL-202's `detail` on the neighbourhood: drop `description`,
+      compact `location` to `file:line`, reusing `summariseGraphPayload`'s transform.
+      *The premise about where the bytes are is correct* — measured across the same five
+      files (`.guardlink/definitions.ts`, `agents/prompts.ts`, `mcp/server.ts`,
+      `parser/parse-line.ts`, `cli/index.ts`), the neighbourhood is **52.2%** of the
+      response and skews to **67.0%** on lightly-annotated `parse-line.ts`, confirming the
+      shape of the ruling's 58.1% / 76%.
+      *The mechanism cannot act on them.* `lookup`'s asset projection already strips both
+      fields before they reach `relationships`: of **408 neighbourhood rows across the five
+      files, 0 carry `description` and 0 carry `location`**. Rows are already
+      `{"threat":"#path-traversal","severity":"high"}`. Applying the transform is byte-for-
+      byte identical output on every one of the five files — 71,746 B before and after.
+      The neighbourhood is expensive because of row *count* (408 rows), not row *content*.
+      *What would work, measured on the same five files:* collapsing each already-compact
+      row to its string form (`"#path-traversal [high]"`, `"#sqli via #prepared-stmts"`)
+      saves **33.3%** overall and **45.1%** on `parse-line.ts` — the file that skews
+      hardest — and is lossless. Serialising just the neighbourhood unindented saves 15.9%.
+      Neither is the ruling's transform, so neither was implemented; both are available
+      to rule on. A row *cap* would also work and is **not** recommended: it reintroduces
+      the silent-partial-answer path that the GL-202 completeness work removed, and would
+      need the same "what was omitted" reporting to be safe.
 
 ### GL-202 — `guardlink_graph(...)` — subgraph selector *(closes G2, G3)*
 **As** P4 about to change an asset, **I want** the transitive neighbourhood and paths
