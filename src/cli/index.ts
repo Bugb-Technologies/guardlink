@@ -42,7 +42,7 @@ import { Command } from 'commander';
 import { resolve, basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { ensurePromptMd } from '../init/migrate.js';
@@ -490,7 +490,8 @@ program
   .requiredOption('--to <mode>', 'Target mode: external (.gal sidecars) or inline (source comments)')
   .option('-p, --project <n>', 'Project name', 'unknown')
   .option('--dry-run', 'Report what would move without writing anything')
-  .action(async (dir: string, opts: { to: string; project: string; dryRun?: boolean }) => {
+  .option('--allow-anchor-loss', 'Proceed even when the migration discards symbol anchors (D48)')
+  .action(async (dir: string, opts: { to: string; project: string; dryRun?: boolean; allowAnchorLoss?: boolean }) => {
     const root = resolve(dir);
     if (opts.to !== 'inline' && opts.to !== 'external') {
       console.error(`Invalid --to "${opts.to}". Use "inline" or "external".`);
@@ -499,6 +500,34 @@ program
 
     const before = await parseProject({ root, project: opts.project });
     const hashBefore = computeAnnotationHash(before.model);
+
+    // D48 — refuse BEFORE writing, not after.
+    //
+    // Going to inline mode discards every symbol anchor: inline annotations have
+    // nowhere to record one, and `serialiseGal` is right to refuse to invent one
+    // on the way back, so the loss is total and irreversible. That is knowable
+    // up front — it does not need the migration to run first — and checking
+    // afterwards would mean reporting a loss already on disk while telling the
+    // user to "re-run with a flag", which cannot undo it.
+    //
+    // `annotation_hash` cannot see this: it excludes `parent_symbol` on purpose,
+    // because that exclusion is what makes inline and external hash identically.
+    // The anchoring gets its own hash instead. See parser/annotation-hash.ts.
+    const anchorsAtRisk = opts.to === 'inline' ? countAnchors(before.model) : 0;
+    if (anchorsAtRisk > 0 && !opts.allowAnchorLoss) {
+      console.error(`✗ This migration would discard ${anchorsAtRisk} symbol anchor(s), and inline mode cannot hold them.\n`);
+      for (const a of canonicalAnchorRecords(before.model).slice(0, 20)) {
+        console.error(`    ${a.split(String.fromCharCode(1)).slice(1).join(':')}`);
+      }
+      if (anchorsAtRisk > 20) console.error(`    … and ${anchorsAtRisk - 20} more`);
+      console.error('\n  `guardlink reanchor` uses these to detect drift. Without them it has');
+      console.error('  nothing to check and reports success — a green light produced by the');
+      console.error('  absence of the thing it checks.');
+      console.error('\n  annotation_hash will NOT move, so the model is genuinely unchanged.');
+      console.error('  The anchoring is not the model, and this is the loss that hash cannot see.');
+      console.error('\n  Re-run with --allow-anchor-loss to proceed. Nothing has been written.');
+      process.exit(1);
+    }
 
     const result = migrateAnnotationMode({ root, to: opts.to, model: before.model, dryRun: opts.dryRun });
 
@@ -530,6 +559,36 @@ program
     }
     console.error(`\n✓ annotation_hash unchanged: ${hashAfter}`);
 
+    // D48. The gate above is real and it is not enough. `annotation_hash`
+    // excludes `parent_symbol` by design — that exclusion is what makes inline
+    // and external authoring hash identically — so it cannot see a migration
+    // that discards every symbol anchor in the repo. On the expense-api corpus
+    // an external → inline → external round trip took 21 anchors to 0 and
+    // printed this same ✓ both ways, truthfully.
+    //
+    // So the anchoring is checked with its own hash, and a loss is reported
+    // rather than prevented. Prevented is wrong: inline mode genuinely has
+    // nowhere to keep an anchor, and `serialiseGal` is right to refuse to
+    // invent one on the way back. What was missing was anyone saying so.
+    // The same question asked again, after the fact. The pre-check above knows
+    // that `--to inline` loses anchors; this one catches a loss nobody
+    // predicted, including in the `--to external` direction, and it generalises
+    // to any future field the anchor hash learns to cover.
+    const anchorsBefore = countAnchors(before.model);
+    const anchorsAfter = countAnchors(after.model);
+    const lost = lostAnchors(before.model, after.model);
+    if (lost.length > 0) {
+      console.error(`\n⚠ anchor_hash CHANGED — ${lost.length} symbol anchor(s) discarded (${anchorsBefore} → ${anchorsAfter}):`);
+      for (const a of lost.slice(0, 20)) console.error(`    ${a}`);
+      if (lost.length > 20) console.error(`    … and ${lost.length - 20} more`);
+      console.error('  This is already on disk. `guardlink reanchor` has nothing left to check.');
+      console.error('  They cannot be reconstructed — recover them with git, not by migrating back.');
+      if (!opts.allowAnchorLoss) process.exit(1);
+      console.error('  Proceeding: --allow-anchor-loss was given.');
+    } else if (anchorsAfter > 0) {
+      console.error(`✓ anchor_hash unchanged: ${computeAnchorHash(after.model)} (${anchorsAfter} anchors)`);
+    }
+
     if (!opts.dryRun) {
       const configPath = join(root, '.guardlink', 'config.json');
       if (existsSync(configPath)) {
@@ -556,7 +615,20 @@ program
     const drifts = findAnchorDrift(root, model);
 
     if (drifts.length === 0) {
-      console.error('✓ Every anchored @source block still points at its symbol.');
+      // D48. "Every anchored block is fine" is vacuously true when there are no
+      // anchored blocks, and that green check is exactly what a repo looks like
+      // after a migration has destroyed its anchors. A drift detector must not
+      // report success for the absence of the thing it detects drift in.
+      const anchors = countAnchors(model);
+      if (anchors === 0) {
+        console.error('No anchored @source blocks to check.');
+        console.error('  Nothing here carries `symbol:`, so there is no drift to detect.');
+        console.error('  Inline repos never have anchors. If this repo is external and you');
+        console.error('  expected some, they may have been discarded by a mode migration —');
+        console.error('  see `guardlink migrate --help` (D48).');
+      } else {
+        console.error(`✓ All ${anchors} anchored @source block(s) still point at their symbol.`);
+      }
       process.exit(0);
     }
 

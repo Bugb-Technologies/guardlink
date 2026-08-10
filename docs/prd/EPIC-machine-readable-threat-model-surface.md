@@ -95,7 +95,12 @@ two authors; there is one.
 
 ### 3.3 Confirmed — defects
 
-> **Status: 57 logged · 35 fixed · 1 won't-fix (D20) · 21 open (D22, D38–D47, D48–D56).**
+> **Status: 57 logged · 37 fixed · 1 won't-fix (D20) · 19 open (D22, D38–D47, D49–D56).**
+>
+> **D48 and D57 fixed 2026-08-10 (§3.6).** D57 reported two raw pair joins; the
+> audit for those two found **eleven more**, and had to be run twice because the
+> first sweep searched for one syntax. **D36 is only now closed** — see §3.6 for
+> the evidence and for what "closed" does and does not mean.
 >
 > D36–D46 were all found in one session by running the real stdio server against a
 > repo that is not guardlink — `/tmp/expense-api`, a 175-line Python/Flask service —
@@ -192,7 +197,7 @@ two authors; there is one.
 
 | D47 | ~~Low~~ **Med — OPEN, REPRODUCES** | **Coverage does not resolve a dotted asset path to its `#id`.** `@exposes #db to #sqli` and `@mitigates Svc.Db against #sqli` name the same asset — `guardlink_graph`'s `canonicaliser` resolves both to one node — but `coverage.ts` normalises only the leading `#` and case, so the mitigation does not cover the exposure. Predates D36; found by a D36 test that asserted the property and was written expecting it to pass. **Deliberately not fixed here:** teaching coverage to alias would ADD coverage, which is the direction that hides vulnerabilities, and it deserves its own measurement rather than a ride-along in a commit whose whole point is that the opposite direction is dangerous too. **Survived the D36 coverage unification unchanged** — the predicate was unified across eight join sites and this alias gap is orthogonal to all of them. **Raised to Med** on re-assessment: the direct effect is a false positive, which is the safe direction, but the CI effect is not. `guardlink diff` shares the predicate, so *rewriting an existing hash-form mitigation into its dotted form* — a pure refactor that changes no risk — reports `newUnmitigated > 0` and reads as a regression. A gate that fires on a no-op refactor is a gate teams switch off | re-verified 2026-08-10 at user level, not just in the pinning test: a scratch repo declaring `@asset Svc.Db (#db)`, exposed via `#db` and mitigated via `Svc.Db`, gives `guardlink validate` → `1 unmitigated: #db → #sqli`, while `guardlink_graph(from: "Svc.Db")` resolves it to `canonical: "db"`, `matched_via: "exact"`. Also pinned in `tests/coverage-symbol-scope.test.ts` |
 
-| D48 | **HIGH — OPEN** | **A `migrate` round-trip destroys every symbol anchor, and the hash that certifies the round-trip cannot see it.** On `expense-api` — born external, never migrated — `migrate --to inline` then `--to external` returns the model to its starting `annotation_hash`, and prints `✓ annotation_hash unchanged` both ways. It is telling the truth about the model and hiding a total loss of anchoring: **21 `symbol:` anchors → 0.** Every `@source file:app/config.py line:3 symbol:SECRET_KEY` comes back as `@source file:app/config.py line:3`. The consequence is not cosmetic, because `reanchor` is built on exactly that field: on the original corpus it reports **4 drifted blocks** (1 `symbol_gone`, 3 `moved`, "3 of 4 can be re-anchored automatically"); on the round-tripped copy it reports **"✓ Every anchored @source block still points at its symbol."** Same repo, same hash, same annotations — drift detection went from four actionable findings to a green check, silently. `symbol` is also the field D36 made load-bearing when it moved coverage from (asset, threat) pairs to sites. **The deeper defect is that `annotation_hash` is the advertised safety net for this operation and does not cover the anchor**, so the one signal a careful user would check is the one that cannot fire. Blocks any recommendation of `migrate` as a safe operation | reproduced 2026-08-10 on a copy of `/tmp/expense-api`; `grep -rho 'symbol:[a-z_]*' .guardlink/annotations/ \| wc -l` → 21 before, 0 after; `reanchor` output quoted above; blocks are also reordered and blank-line-padded, so the round trip is a whole-file diff on every sidecar |
+| D48 | ~~HIGH~~ **FIXED (see §3.6)** | **A `migrate` round-trip destroys every symbol anchor, and the hash that certifies the round-trip cannot see it.** On `expense-api` — born external, never migrated — `migrate --to inline` then `--to external` returns the model to its starting `annotation_hash`, and prints `✓ annotation_hash unchanged` both ways. It is telling the truth about the model and hiding a total loss of anchoring: **21 `symbol:` anchors → 0.** Every `@source file:app/config.py line:3 symbol:SECRET_KEY` comes back as `@source file:app/config.py line:3`. The consequence is not cosmetic, because `reanchor` is built on exactly that field: on the original corpus it reports **4 drifted blocks** (1 `symbol_gone`, 3 `moved`, "3 of 4 can be re-anchored automatically"); on the round-tripped copy it reports **"✓ Every anchored @source block still points at its symbol."** Same repo, same hash, same annotations — drift detection went from four actionable findings to a green check, silently. `symbol` is also the field D36 made load-bearing when it moved coverage from (asset, threat) pairs to sites. **The deeper defect is that `annotation_hash` is the advertised safety net for this operation and does not cover the anchor**, so the one signal a careful user would check is the one that cannot fire. Blocks any recommendation of `migrate` as a safe operation | reproduced 2026-08-10 on a copy of `/tmp/expense-api`; `grep -rho 'symbol:[a-z_]*' .guardlink/annotations/ \| wc -l` → 21 before, 0 after; `reanchor` output quoted above; blocks are also reordered and blank-line-padded, so the round trip is a whole-file diff on every sidecar. **FIXED:** the anchoring got its own hash (`anchor_hash`, `parser/annotation-hash.ts`) rather than being folded into `annotation_hash`, which would have broken GL-101's inline/external identity and GL-507 with it. `migrate --to inline` now refuses BEFORE writing when anchors would be lost, names every one of them, and requires `--allow-anchor-loss`. `reanchor` no longer reports success on a repo with zero anchors |
 | D49 | Medium — OPEN | **A merged workspace always reports 0% coverage.** `workspace/merge.ts:474-481` sums `total_symbols` across repos and recomputes `coverage_percent = annotated/total`, falling back to `0` when total is `0`. `total_symbols` is *always* `0` (D42), so the fallback is the only branch that ever runs. Two repos each reporting `coverage_percent: 89` merge into a workspace reporting **`coverage_percent: 0`**. This is D14 exactly — "a hardcoded 0 that three consumers rendered as 0% on fully annotated projects" — reintroduced on the workspace path, which D14's fix never reached. Worse than D42 because the workspace dashboard is the org-level view: it tells a whole organisation it has no threat-model coverage when it has 89%. Fix is to aggregate *file* coverage, the one that is actually computed | reproduced 2026-08-10: two copies of `expense-api` linked with `link-project`, `report --format json` each (both `coverage_percent: 89`), `merge --json` → `{total_symbols: 0, annotated_symbols: 210, coverage_percent: 0}` |
 | D50 | Medium — OPEN | **The no-MCP fallback command in every generated repo does not exist.** `guardlink parse . --format json` → `error: unknown option '--format'`, exit 1. `--format` is a flag on `report`, not on `parse`. It ships from `init/templates.ts` at three sites (`:243`, `:816`, `:941`) into **`CLAUDE.md:21`** — "Without MCP, the same answers come from …" — and **`.guardlink/README.md:32` and `:182`** of every initialised repo, verified in both `expense-api` and a fresh `go` project. It is precisely the instruction aimed at an agent that has no MCP, i.e. the reader least able to recover from it. Correct forms already exist: bare `guardlink parse .` prints the model as JSON to stdout, and `guardlink report --format json` works | reproduced 2026-08-10 in `/tmp/expense-api` and a freshly `init`-ed project |
 | D51 | Medium — OPEN | **`guardlink_annotate_apply` writes annotations for files that do not exist, and `validate` calls the result healthy.** `{"file": "app/typo_in_filename.py", …}` returns `ok: true, status: "written", errors: []` and creates `.guardlink/annotations/app/typo_in_filename.py.gal`. The phantom enters the model — annotations 105→106, exposures 11→12, files scanned 8→9 — so a single filename typo injects a critical exposure attributed to a file that is not in the repo. `guardlink validate` then prints **"Validation passed"**. The same server answers correctly on the read side: `guardlink_context` on that path returns `status: "not_found"` with the hint "Nothing exists at `app/typo_in_filename.py`". So the path check exists and is wired to the tool that cannot cause harm, not the one that can. Only `reanchor` catches it, as `[file_gone]` — a command CLAUDE.md does not tell you to run before finishing, unlike `validate`. Third leg of the same write-path gap as D39 (references unchecked) and D41 (anchors duplicated) | reproduced 2026-08-10 on a copy of `/tmp/expense-api` |
@@ -201,7 +206,7 @@ two authors; there is one.
 | D54 | Low — OPEN | **Merge tag-collision warnings double-count every id.** `merge` reports each collision twice, once bare and once `#`-prefixed — `Tag "api" defined in expense-api (owner) and also in: billing` immediately followed by `Tag "#api" …`. Seven colliding tags produced fourteen warnings. Cosmetic, but it is the `#tag-collision` surface, and doubling the noise on the one output a workspace owner reads to decide whether a merge is safe is the wrong direction | reproduced 2026-08-10 merging two repos under `/tmp/ws` |
 | D55 | Low — OPEN | **A repo with no annotations at all passes `validate` with a green check.** `guardlink validate` on a git repo containing one unannotated source file and no `.guardlink/` prints "✓ All annotations valid, no unmitigated exposures", exit 0. Vacuously true, and the MCP surface is careful about exactly this distinction — `guardlink_context` separates `scanned_without_annotations` from `not_scanned`, and the server instructions warn "do not read them as the same thing". The CLI makes no such distinction, so an unmodelled repo and a clean one are indistinguishable at the command the docs tell you to finish with. `unannotated` reports it correctly, which is where the signal already lives | reproduced 2026-08-10 in `/tmp/emptyrepo` |
 | D56 | Low — OPEN, **UNVERIFIED — needs a TTY** | **`guardlink ask` and `guardlink translate` fail confusingly when not attached to a terminal.** `guardlink ask "what are the biggest risks"` prints "Launching Claude Code…", then "Warning: no stdin data received in 3s", then `Error: Input must be provided either through stdin or as a prompt argument when using --print`, exits 1 — while having built the prompt correctly ("✓ Prompt copied to clipboard (1,768 chars)"). The error claims no prompt was supplied when one was supplied as an argument; the prompt appears not to be piped to the spawned agent. **Logged at low confidence:** both commands announce "Claude Code will take over this terminal" and may be TTY-only by design, and this pass had no TTY. Verify interactively before acting. Contrast `threat-report`, which fails cleanly and helpfully with "No AI provider configured" and three ways to fix it | observed 2026-08-10 in a non-interactive shell; **not** a confirmed defect |
-| D57 | **High — OPEN** | **The D36 coverage fix missed two join sites, both in the pentest/CXG path.** `src/analyze/index.ts:415` and `:450` still filter exposures on the raw `${asset}::${threat}` pair — no site check, and no `#` normalisation either. These feed `serializeModelCompact` and the `guardlink translate` / analyze prompt, so the generated CXG template-authoring prompt lists **9** unmitigated candidates against the fixed predicate's **11**, omitting the critical `#db → #sqli` at `app/db.py:9`. That is the exact suppression D36 was raised to stop, surviving in the one place it matters most: the prompt that tells an agent which threats are worth writing exploits for. Found in a generated prompt pasted by accident, not by the eight-site audit | verified: `findUnmitigatedExposures` returns 11, the analyze path returns 9, and the critical injection is absent from the compact serialisation |
+| D57 | ~~High~~ **FIXED (see §3.6)** | **The D36 coverage fix missed two join sites, both in the pentest/CXG path.** `src/analyze/index.ts:415` and `:450` still filter exposures on the raw `${asset}::${threat}` pair — no site check, and no `#` normalisation either. These feed `serializeModelCompact` and the `guardlink translate` / analyze prompt, so the generated CXG template-authoring prompt lists **9** unmitigated candidates against the fixed predicate's **11**, omitting the critical `#db → #sqli` at `app/db.py:9`. That is the exact suppression D36 was raised to stop, surviving in the one place it matters most: the prompt that tells an agent which threats are worth writing exploits for. Found in a generated prompt pasted by accident, not by the eight-site audit | verified: `findUnmitigatedExposures` returns 11, the analyze path returned 9, and the critical injection was absent from the compact serialisation. **FIXED:** thirteen sites routed through the canonical predicate — the two reported, six more found by a `${asset}::${threat}` shape sweep, and five found only by a second sweep for the nested-`.some()` shape, which has no `::` in it. Guarded by `tests/coverage-single-implementation.test.ts` |
 
 **Line-reference drift** found in Phase 0 verification (cosmetic, behaviour confirmed in
 every case): `parse-project.ts` 104-110 → 108-113 and 137 → 141; `cli/index.ts` 419-427 →
@@ -366,6 +371,127 @@ Neither reproduced on retry (3 attempts each), the CLI was fast on the same repo
 same state, and the likeliest explanation is the test harness rather than the server. Not
 a ledger row until it reproduces; noted so a third sighting is recognised as a pattern
 instead of a fluke.
+
+---
+
+### 3.6 D57 and D48 — fixed 2026-08-10
+
+#### D57: thirteen sites, and an audit that had to be run twice
+
+D57 reported two raw pair joins in `analyze/index.ts`. Auditing for those two
+found eleven more. The audit method is the finding:
+
+| sweep | searched for | found |
+|---|---|---|
+| 1 | `` `${…asset…}::${…threat…}` `` | `mcp/server.ts` (the `guardlink://unmitigated` resource), `report/report.ts`, `report/mermaid.ts`, `analyzer/sarif.ts`, `dashboard/data.ts`, `dashboard/diagrams.ts` |
+| 2 | `.asset === … && .threat === …` | `agents/prompts.ts` ×3, `init/templates.ts`, `analyze/tools.ts` |
+
+**Sweep 1 was not enough, and believing it was would have shipped the bug.**
+After fixing the two reported sites and all six from sweep 1, the CXG prompt —
+the artifact D57 was found in — *still* said 9 and still omitted the critical.
+Five copies were written as a nested `.some()` over `===` with no `::` anywhere
+in them. One of those built the CXG candidate list; another was
+`init/templates.ts`, which writes the "Open Exposures" block into every repo's
+CLAUDE.md, so a repo's own agent instructions disagreed with `guardlink
+validate` run in that same repo.
+
+Measured on expense-api: all thirteen said **9** where the predicate says **11**.
+The two they dropped were `#auth → #timing` and `#db → #sqli [critical]`, the
+repo's only critical. It was absent from SARIF (so it never becomes a GitHub
+Advanced Security alert), from the markdown report — whose headline read
+`Unmitigated exposures | 9 (0 critical, …)` — from the mermaid diagram entirely,
+and from the CXG prompt.
+
+Acceptance semantics were preserved where they legitimately differ: the prompt
+and CLAUDE.md builders ask `isMitigated`, not `isCovered`, so an `@accepts` still
+shows as needing attention. Only the site and `#`-normalisation dimensions moved.
+`dashboard/diagrams.ts` gives up its local alias resolution as a consequence,
+which is the safe direction and turns D47 into one known limit in one predicate
+instead of that diagram silently disagreeing with every other surface. A private
+`normalizeRef` in `dashboard/data.ts` died with the pair set — it stripped `#`
+but did not case-fold, so even the normaliser had been reimplemented, weaker.
+
+**The guard: `tests/coverage-single-implementation.test.ts`.** A test, not a lint
+rule, for three reasons: the justification for each legitimate survivor lives in
+one reviewable allowlist rather than scattered across `eslint-disable` comments;
+the failure message can name the function to call instead; and it runs wherever
+the suite runs, which is more places and more often than `npm run lint`.
+
+**Would it have caught D57?** Yes — verified by reintroducing the original code,
+which fails the guard naming all three lines. But the honest answer is narrower
+than it looks: the guard as first written would have caught only the two reported
+sites and sweep 1's six. It needed a second rule to see the five that mattered
+most, and its own dead-entry check caught a blind spot in the first draft of its
+regex. **The rule list is empirical, not exhaustive.** A twenty-second copy in a
+third syntax needs a third rule, and that is stated in the test rather than
+implied away.
+
+#### D36: closed now, and only now
+
+D36 should not have been considered closed before this. The predicate was
+correct; the claim that every surface used it was false, by eleven. It is closed
+now on this evidence: thirteen surfaces measured against `findUnmitigatedExposures`
+on expense-api, all returning 11 and all carrying the critical; this repo's own
+model unchanged at 16 across every surface; and a guard that fails on a
+fourteenth implementation in either known syntax.
+
+What "closed" still does not mean is unchanged from `parser/coverage.ts`'s own
+doc-block: a cross-file mitigation still blanket-covers every site on its asset
+and threat. Closing that needs a call graph. D36 fixed the class where the model
+already holds the evidence, and no more.
+
+#### D48: the recommendation, and the two options rejected
+
+**Chosen: hash the anchoring separately, and refuse the lossy direction before
+writing.** The two are one change — the refusal is driven by the hash rather than
+by a hardcoded check for `symbol`, so a future field that migration can drop is
+covered by the same mechanism instead of needing its own special case. Writing
+`if (to === 'inline' && hasSymbols)` would have been the same mistake as thirteen
+copies of a predicate: a special case the next field is not covered by.
+
+*Rejected — preserve anchors across the round trip.* This needs the symbol to
+survive a representation that has nowhere to put it. The only ways are a new
+inline marker, which is **an annotation-syntax change and therefore not mine to
+make**, or deriving the symbol from the enclosing declaration on the way back.
+Derivation is worse than it looks, and `migrate-mode.ts:146` is right to refuse
+it: `coverage.ts` documents that **omitting `symbol:` is how an author says "this
+covers the whole asset"**, so deriving one would silently convert asset-level
+mitigations into site-scoped ones and *change coverage* — the same
+silently-moves-the-answer hazard as D36, in the opposite direction. It also adds
+a permanent staleness vector to inline mode (a renamed function leaves the
+comment behind) to fix a round-trip that few repos perform.
+
+*Rejected as insufficient alone — refuse and nothing else.* Refusal is half the
+answer and it is in the fix, but on its own it hardcodes one field and fixes the
+instance rather than the class. It also leaves anyone who already round-tripped
+with no way to see what they lost.
+
+**Both hashes stay honest because they answer different questions.**
+
+| | question | across modes |
+|---|---|---|
+| `annotation_hash` | what do the annotations SAY? | invariant, by design (GL-101) |
+| `anchor_hash` | where are they ANCHORED? | mode-dependent, by nature |
+
+Folding anchors into `annotation_hash` would make every mode migration look like
+a model change and break GL-507's gate. Leaving them unhashed makes their
+destruction invisible. Neither is necessary: they are separate hashes.
+
+**Verified.** `migrate --to inline` on the corpus refuses with exit 1, names all
+21 anchors, and writes nothing — 21 still on disk afterwards. With
+`--allow-anchor-loss` it proceeds, and `reanchor` on the result now says "No
+anchored @source blocks to check" instead of "✓ Every anchored @source block
+still points at its symbol", which was a green light produced by the absence of
+the thing being checked. GL-507's inline→external→inline round trip is still
+byte-identical, and `annotation_hash` is still identical across inline and
+external authoring of the same model (`sha256-v1:75db3c7f…` both ways).
+
+**A caught mistake, recorded because the first version shipped the wrong shape.**
+The check was initially placed *after* `migrateAnnotationMode` wrote to disk. It
+reported the loss accurately and then advised re-running with a flag, which
+could not undo it — a correct diagnosis attached to useless advice. The loss is
+knowable before any write, so the refusal moved ahead of it. The post-migration
+comparison stays as a second, cheaper check for a loss nobody predicted.
 
 ---
 

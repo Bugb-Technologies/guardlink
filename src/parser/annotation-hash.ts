@@ -32,7 +32,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import type { ThreatModel } from '../types/index.js';
+import type { ThreatModel, SourceLocation } from '../types/index.js';
 
 /**
  * Bump when the set of hashed fields changes. Two hashes are only comparable at
@@ -57,6 +57,23 @@ const refs = (v: string[] | undefined): string => (v ? [...v].map(s).sort().join
 
 function record(kind: string, ...fields: string[]): string {
   return [kind, ...fields].join(FIELD_SEP);
+}
+
+/**
+ * Every `location` the model holds, across every relation.
+ *
+ * Listed by iterating the same collections `canonicalAnnotationRecords` does, so
+ * a new relation added to the model shows up in both or neither.
+ */
+function everyLocation(model: ThreatModel): SourceLocation[] {
+  return [
+    ...model.assets, ...model.threats, ...model.controls,
+    ...model.mitigations, ...model.exposures, ...(model.confirmed || []),
+    ...model.acceptances, ...model.transfers, ...model.flows,
+    ...model.boundaries, ...model.validations, ...model.audits,
+    ...model.ownership, ...model.data_handling, ...model.assumptions,
+    ...model.shields, ...model.features, ...model.comments,
+  ].map(r => r.location).filter(Boolean);
 }
 
 /**
@@ -137,4 +154,84 @@ export function computeAnnotationHash(model: ThreatModel): string {
     .update(canonicalAnnotationRecords(model).join(RECORD_SEP))
     .digest('hex');
   return `sha256-v${ANNOTATION_HASH_VERSION}:${digest}`;
+}
+
+// ─── The anchoring, hashed separately (D48) ──────────────────────────
+
+/**
+ * D48 — the second hash, and why there has to be one.
+ *
+ * `computeAnnotationHash` excludes `parent_symbol` on purpose, and that
+ * exclusion is load-bearing: it is what makes inline and external authoring of
+ * the same model hash identically, which is GL-507's migration gate.
+ *
+ * The cost showed up as a defect. `guardlink migrate --to inline --to external`
+ * on a repo that was born external discards every `symbol:` anchor — inline mode
+ * has nowhere to keep one, and `serialiseGal` correctly refuses to invent one on
+ * the way back. Measured on the expense-api corpus: 21 anchors before, 0 after.
+ * The migration printed `✓ annotation_hash unchanged` both ways, truthfully,
+ * because the hash cannot see the field the migration deleted. The safety net
+ * had a hole in exactly the place the operation it guards operates.
+ *
+ * So the anchoring gets its own hash instead of being folded into that one.
+ * Two hashes, two questions:
+ *
+ *   annotation_hash   what do the annotations SAY?   mode-invariant, by design
+ *   anchor_hash       where are they ANCHORED?       mode-dependent, by nature
+ *
+ * Keeping them separate is what lets both be honest. Folding anchors into
+ * `annotation_hash` would make a mode migration always look like a model change
+ * and would break GL-507; leaving anchors unhashed makes their destruction
+ * invisible. Neither is acceptable, and neither is necessary.
+ *
+ * This also fixes the class rather than the instance: any future field that a
+ * migration can drop, and that `annotation_hash` deliberately ignores, belongs
+ * here and becomes visible the moment it is added.
+ */
+export const ANCHOR_HASH_VERSION = 1;
+
+/**
+ * Every anchored SITE in the model, as `file:symbol`, sorted and deduplicated.
+ *
+ * A set rather than a multiset, which is the one place this differs from
+ * `canonicalAnnotationRecords`. An anchor is a fact about a site, not about an
+ * annotation: five annotations under one `@source … symbol:find_expenses` are
+ * five annotations at one anchor. Counting them five times would report a
+ * corpus with 21 `symbol:` headers as having lost 105 anchors, and would also
+ * make a D41 duplicate header read as a second anchor rather than a duplicate.
+ */
+export function canonicalAnchorRecords(model: ThreatModel): string[] {
+  const out = new Set<string>();
+  for (const loc of everyLocation(model)) {
+    if (!loc.parent_symbol) continue;
+    out.add(record('anchor', f(loc.file), s(loc.parent_symbol)));
+  }
+  return [...out].sort();
+}
+
+/** How many `@source` blocks carry a symbol anchor. */
+export function countAnchors(model: ThreatModel): number {
+  return canonicalAnchorRecords(model).length;
+}
+
+/**
+ * Hash of the anchoring, as `anchor-v<version>:<hex>`.
+ *
+ * Deliberately NOT comparable across annotation modes — an inline repo has no
+ * anchors and hashes the empty set. That is the point: a change here across a
+ * migration is a real loss, not noise.
+ */
+export function computeAnchorHash(model: ThreatModel): string {
+  const digest = createHash('sha256')
+    .update(canonicalAnchorRecords(model).join(RECORD_SEP))
+    .digest('hex');
+  return `anchor-v${ANCHOR_HASH_VERSION}:${digest}`;
+}
+
+/** The anchors present in `before` and absent from `after`, as `file:symbol`. */
+export function lostAnchors(before: ThreatModel, after: ThreatModel): string[] {
+  const kept = new Set(canonicalAnchorRecords(after));
+  return canonicalAnchorRecords(before)
+    .filter(r => !kept.has(r))
+    .map(r => r.split(FIELD_SEP).slice(1).join(':'));
 }
