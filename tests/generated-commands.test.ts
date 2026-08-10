@@ -39,8 +39,9 @@
  * declared in that file", and `guardlink parse` emits the whole model. A parser
  * cannot read the sentence; that one was fixed by hand and stays a human duty.
  */
-import { describe, it, expect } from 'vitest';
-import { execFileSync } from 'node:child_process';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -93,6 +94,8 @@ function extractCommands(text: string): string[] {
   return [...found];
 }
 
+const run = promisify(execFile);
+
 /**
  * Real `--help` text for a subcommand, or null when it does not exist.
  *
@@ -101,21 +104,78 @@ function extractCommands(text: string): string[] {
  * an exit-code check would have called every imaginable subcommand valid and
  * this probe would have been vacuously green. The self-check below pins that.
  */
-const helpCache = new Map<string, string | null>();
-function helpFor(sub: string): string | null {
-  if (helpCache.has(sub)) return helpCache.get(sub)!;
-  let out: string | null = null;
+async function fetchHelp(sub: string): Promise<string | null> {
   try {
-    const text = execFileSync(process.execPath, [CLI, sub, '--help'], {
-      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    if (new RegExp(`^Usage: guardlink ${sub}\\b`, 'm').test(text)) out = text;
+    const { stdout } = await run(process.execPath, [CLI, sub, '--help'], { encoding: 'utf8' });
+    return new RegExp(`^Usage: guardlink ${sub}\\b`, 'm').test(stdout) ? stdout : null;
   } catch {
-    out = null;
+    return null;
   }
-  helpCache.set(sub, out);
-  return out;
 }
+
+/**
+ * One spawn per distinct subcommand, all at once.
+ *
+ * This probe deliberately shells out to the BUILT CLI rather than importing the
+ * program — `cli/index.ts` calls `program.parse()` at module scope and does not
+ * export it, so importing would run the CLI. That decision is right and stays.
+ *
+ * What was wrong was doing it SERIALLY. `execFileSync` per subcommand is ~86ms
+ * locally, dominated by Node startup, and the cost is N × one-process-launch.
+ * GitHub's shared runners spawn roughly 5x slower, which put the whole file over
+ * vitest's 5000ms default and turned a correct test red on CI while it passed
+ * everywhere else. The merge tipped it over by adding `guardlink entitle` to the
+ * generated docs: 11 distinct subcommands became 12.
+ *
+ * These are independent read-only `--help` invocations with no ordering
+ * requirement, so Promise.all collapses N launches into roughly one launch of
+ * wall time. That removes the dependence on how fast the machine spawns
+ * processes, rather than deferring it to the next slower runner.
+ */
+const helpCache = new Map<string, string | null>();
+
+async function warmHelpCache(subs: Iterable<string>): Promise<void> {
+  const wanted = [...new Set(subs)].filter(sub => !helpCache.has(sub));
+  const texts = await Promise.all(wanted.map(fetchHelp));
+  wanted.forEach((sub, i) => helpCache.set(sub, texts[i]));
+}
+
+/**
+ * Cache read. Synchronous on purpose: the assertions below stay exactly the
+ * shape they were, so parallelising the spawns did not touch what is asserted.
+ *
+ * Throws rather than spawning on a miss. A lazy fallback would quietly restore
+ * the serial path the moment someone adds a subcommand the warm step misses,
+ * and the symptom would be a slow test on CI again rather than a clear failure.
+ */
+function helpFor(sub: string): string | null {
+  if (!helpCache.has(sub)) {
+    throw new Error(`helpFor(${sub}) was not warmed — add it to the beforeAll warm set.`);
+  }
+  return helpCache.get(sub)!;
+}
+
+/** Subcommands the self-check asks for by name, beyond whatever the docs use. */
+const SELF_CHECK_SUBS = ['parse', 'report', 'definitely-not-a-command'];
+
+/** Every subcommand any generated document mentions. */
+function subcommandsInDocs(): string[] {
+  const subs: string[] = [];
+  for (const { text } of generatedDocuments()) {
+    for (const command of extractCommands(text)) {
+      const sub = command.split(/\s+/).filter(Boolean)[1];
+      if (sub && !sub.startsWith('-')) subs.push(sub);
+    }
+  }
+  return subs;
+}
+
+// 30s, generous and explicit. Parallel or not, a probe that launches processes
+// should never be one runner hiccup from red — and the global testTimeout stays
+// where it is, so the NEXT slow test still surfaces instead of hiding here.
+beforeAll(async () => {
+  await warmHelpCache([...subcommandsInDocs(), ...SELF_CHECK_SUBS]);
+}, 30_000);
 
 interface Problem { doc: string; command: string; why: string }
 
@@ -152,7 +212,7 @@ describe('D50 — generated docs may only contain commands the CLI has', () => {
         `These ship into every initialised repo and are read by agents that ` +
         `cannot run --help to recover (D50).${detail}`,
     ).toEqual([]);
-  });
+  }, 30_000);
 
   it('the probe can see a broken command — it is not vacuously green', () => {
     // A guard that matched nothing would pass forever. Pin both failure modes
@@ -161,7 +221,7 @@ describe('D50 — generated docs may only contain commands the CLI has', () => {
     expect(helpFor('definitely-not-a-command')).toBeNull();
     expect(helpFor('parse')!.includes('--format')).toBe(false); // the D50 defect
     expect(helpFor('report')!.includes('--format')).toBe(true); // where it lives
-  });
+  }, 30_000);
 
   it('extraction finds commands in fences and inline code, and stops at a pipe', () => {
     const sample = 'run `guardlink status .` then:\n```sh\nguardlink parse . | jq \'.x\'\n```\n';
