@@ -206,7 +206,7 @@ export async function launchAgentInline(
     return { content: '', error: `${agent.name} is not a terminal agent — cannot run inline` };
   }
 
-  let cmd = agent.cmd;
+  const cmd = agent.cmd;
   let args = buildInlineArgs(agent.id, prompt);
   if (!args) {
     return { content: '', error: `Inline mode not supported for ${agent.name}` };

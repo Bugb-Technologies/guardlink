@@ -51,7 +51,7 @@ export function stripAnsi(str: string): string {
  * Removes terminal boxes (╭─, │, ╰─), prompts (>_), and setup logs.
  */
 export function cleanCliArtifacts(content: string): string {
-  let cleaned = stripAnsi(content);
+  const cleaned = stripAnsi(content);
   
   // Split into lines to filter out framing
   const lines = cleaned.split('\n');

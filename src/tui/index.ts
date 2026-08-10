@@ -391,7 +391,7 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
         case '/link':     await cmdLink(args, ctx); break;
         case '/merge':    await cmdMerge(args, ctx); break;
         case '/feature':  cmdFeature(args, ctx); break;
-        default:
+        default: {
           // Fuzzy match
           const matches = COMMANDS.filter(c => c.startsWith(cmd));
           if (matches.length === 1) {
@@ -402,6 +402,8 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
           } else {
             console.log(C.warn(`  Unknown command: ${cmd}. Type /help.`));
           }
+          break;
+        }
       }
     } catch (err: any) {
       console.log(C.error(`  Error: ${err.message}`));

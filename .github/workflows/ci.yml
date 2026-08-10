@@ -25,6 +25,11 @@ jobs:
       - run: npm run build
       - run: npm test
 
+      # Errors fail the build; the 73 pre-existing no-unused-vars findings are
+      # warnings, so they are counted rather than hidden. See eslint.config.js
+      # for what each rule became and why.
+      - run: npm run lint
+
       # D28 — committed artifacts go stale silently.
       #
       # Phase 5 shipped 5 STALE artifacts: annotated source landed without

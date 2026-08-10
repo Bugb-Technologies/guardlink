@@ -1571,7 +1571,7 @@ export async function cmdChat(text: string, ctx: TuiContext): Promise<void> {
   }
 
   // Build system prompt with model context
-  let systemPrompt = `You are a security expert helping a developer understand their project's threat model.
+  const systemPrompt = `You are a security expert helping a developer understand their project's threat model.
 Answer concisely and directly. Reference specific assets, threats, and exposures from the model when relevant.
 Keep responses under 500 words unless the user asks for detail.`;
 

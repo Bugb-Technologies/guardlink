@@ -212,7 +212,7 @@ async function callAnthropicWithTools(
   onChunk?: (text: string) => void,
 ): Promise<LLMResponse> {
   const maxRounds = config.maxToolRounds ?? 5;
-  let messages: any[] = [{ role: 'user', content: userMessage }];
+  const messages: any[] = [{ role: 'user', content: userMessage }];
   const allToolCalls: ToolCall[] = [];
   let finalResponse: AnthropicRawResponse | null = null;
 
