@@ -6,6 +6,10 @@ import type { ProjectInfo } from './detect.js';
 import type { ThreatModel } from '../types/index.js';
 import type { AnnotationMode } from '../parser/annotation-mode.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
+// D19: cross-repo tags shown in generated docs are BUILT from the parser's tag
+// grammar, never typed as strings. Hand-written examples of a grammar are how
+// D19 shipped in the first place.
+import { crossRepoTag } from '../parser/parse-line.js';
 
 // ─── Where annotations go (D27) ──────────────────────────────────────
 
@@ -896,11 +900,14 @@ Assets are referenced as \`#id\` or as a \`Dotted.Path\`; both resolve to the sa
 | \`@comment\` | \`@comment -- "context that fits no other verb"\` |
 | \`@accepts\` | \`@accepts <threat> on <asset> -- "why"\` — **human only, never write this** |
 
-Two notes that catch people out. \`@confirmed\` and \`@exposes\` take their arguments in
-**opposite orders** — exposes is asset-then-threat, confirmed is threat-then-asset. And a
-cross-repo tag such as \`#other-repo.component\` must be **quoted** —
-\`@flows "#other-repo.tokens" -> #api via header\` — because an unquoted \`#id\` may not contain
-a dot.
+One note that catches people out: \`@confirmed\` and \`@exposes\` take their arguments in
+**opposite orders** — exposes is asset-then-threat, confirmed is threat-then-asset.
+
+Cross-repo tags are written qualified and unquoted, in any reference position —
+\`@flows ${crossRepoTag('other-repo', 'tokens')} -> #api via header\`, and equally
+\`@exposes #api to ${crossRepoTag('other-repo', 'injection')} [high] -- "why"\`. Quoting is
+only for a reference containing spaces. (This used to require quotes because the grammar
+would not accept a dot after \`#\`; that was D19, and it is fixed.)
 
 Write coupled blocks, not lone facts: a risk plus the control or audit that answers it, plus
 the flow that gives it context.

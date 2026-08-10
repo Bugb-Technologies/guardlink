@@ -446,6 +446,14 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
  *   - The tag is not defined locally (not in this repo's assets/threats/controls)
  *
  * Requires workspace.yaml to be present — returns [] if not in a workspace.
+ *
+ * D19: that example is now writable. Until the tag grammar was fixed,
+ * `#auth-lib.token-verify` did not parse unquoted anywhere, and never parsed at
+ * all in threat or control position — while this function has always scanned
+ * threat and control positions for exactly these tags. The grammar was the only
+ * layer that disagreed. `tests/cross-repo-tags.test.ts` pins the six cases and
+ * runs every example this codebase emits through the parser, so an example can
+ * no longer describe syntax that does not exist.
  */
 function detectExternalRefs(model: ThreatModel, root: string): ExternalRef[] {
   const config = loadWorkspaceConfig(root);

@@ -17,6 +17,7 @@ import { initProject, syncAgentFiles } from '../src/init/index.js';
 import { parseProject } from '../src/parser/parse-project.js';
 import { guardlinkReadmeContent } from '../src/init/templates.js';
 import { detectProject } from '../src/init/detect.js';
+import { parseLine } from '../src/parser/parse-line.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -264,13 +265,28 @@ describe('GL-402/F2 — an agent can EXTEND the model from this file alone', () 
     expect(text).toMatch(/@asset\s+<Dotted\.Path> \(#id\)/);
   });
 
-  it('warns about the two things that actually catch people out', () => {
-    const text = inline();
+  it('warns about the thing that actually catches people out', () => {
     // Argument order differs between @exposes and @confirmed.
-    expect(text).toMatch(/opposite orders/);
-    // D19: an unquoted #id cannot contain a dot, so cross-repo tags must be quoted.
-    expect(text).toMatch(/must be \*\*quoted\*\*/);
-    expect(text).toMatch(/may not contain\s+a dot/);
+    expect(inline()).toMatch(/opposite orders/);
+  });
+
+  it('D19: documents cross-repo tags unquoted, and the examples parse', () => {
+    const text = inline();
+    // This used to document the quoting workaround as the syntax. The grammar
+    // now accepts the qualified form, so the README states that instead — and
+    // the examples it states are run through the parser here, because a
+    // hand-written example of a grammar is precisely how D19 shipped.
+    expect(text).toMatch(/unquoted/);
+    expect(text).not.toMatch(/must be \*\*quoted\*\*/);
+
+    const examples = text
+      .split('\n')
+      .flatMap(l => l.match(/@(?:flows|exposes)\s+#[\w.-]+[^`]*?-- "[^"]*"|@flows #[\w.-]+ -> #[\w.-]+ via \w+/g) ?? []);
+    expect(examples.length).toBeGreaterThan(0);
+    for (const ex of examples) {
+      const r = parseLine(ex.trim(), { file: 'readme', line: 1 });
+      expect(r.annotation, `README example does not parse: ${ex}`).not.toBeNull();
+    }
   });
 
   it('names GUARDLINK_REFERENCE.md, at the right path for the mode', () => {

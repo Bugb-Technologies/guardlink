@@ -45,7 +45,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
 import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
 import { getReviewableExposures, applyReviewAction, type ReviewableExposure } from '../review/index.js';
@@ -952,6 +952,16 @@ export function createServer(): McpServer {
 
       const siblings = config.repos.filter(r => r.name !== config.this_repo);
 
+      // D19: every example here is BUILT from the parser's own tag grammar
+      // rather than typed as a string. Both rules this tool used to emit were
+      // hand-written and neither parsed — the `#a.b` form was unwritable
+      // unquoted, and the @flows example used a `from … to …` syntax the
+      // grammar has never had. The tool whose job is teaching this syntax was
+      // teaching syntax that fails.
+      const sibling = siblings[0]?.name || 'sibling';
+      const ours = crossRepoTag(config.this_repo, 'component');
+      const theirs = crossRepoTag(sibling, 'endpoint');
+
       return {
         content: [{ type: 'text', text: JSON.stringify({
           workspace: config.workspace,
@@ -964,10 +974,12 @@ export function createServer(): McpServer {
           })),
           total_repos: config.repos.length,
           cross_repo_annotation_rules: [
-            `Use #${config.this_repo}.<component> for assets defined in this repo`,
-            `Reference sibling assets/threats/controls by their tag prefix (e.g. #${siblings[0]?.name || 'sibling'}.<component>)`,
+            `Use ${ours} for assets defined in this repo`,
+            `Reference sibling assets, threats and controls by their tag prefix (e.g. ${theirs})`,
             'Do not redefine assets that belong to another repo — reference by tag',
-            'Cross-repo @flows are encouraged: @flows #data from #this.component to #sibling.endpoint',
+            `Cross-repo @flows are encouraged: @flows ${ours} -> ${theirs} -- "what crosses"`,
+            `Threats and controls take the same qualified form: @exposes ${ours} to ${crossRepoTag(sibling, 'injection')} [high] -- "why"`,
+            'Qualified tags need no quoting. Quote a reference only if it contains spaces.',
             'External refs resolve during workspace merge, not local validation',
           ],
         }, null, 2) }],

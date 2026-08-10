@@ -19,11 +19,55 @@ const COMPONENT = String.raw`[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*`;
 // Quoted ref: any non-newline content between double quotes, with `\"` and
 // `\\` escape support. Mirrors the DESC fragment's character class.
 const QUOTED_REF = String.raw`"(?:[^"\\\n]|\\.)*"`;
-const ASSET_REF = String.raw`(?:#[a-zA-Z0-9_-]+|${QUOTED_REF}|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)`;  // #id, "quoted", or Dotted.Path
+
+/**
+ * One segment of a `#tag`. Ids are lowercase-kebab by convention but the
+ * charset has always been permissive; this is the existing `#id` charset,
+ * named so the tag grammar has exactly one definition of it.
+ */
+const TAG_SEGMENT = String.raw`[a-zA-Z0-9_-]+`;
+
+/**
+ * A `#tag`, optionally qualified by a repo prefix: `#cli`, `#auth-lib.token-verify`.
+ *
+ * D19: the `#` alternative used to be a single segment with no dots, while the
+ * dotted alternative (`Dotted.Path`, below) excluded `#` and hyphens. So the
+ * documented cross-repo form `#auth-lib.token-verify` matched `#auth-lib` and
+ * the remainder died on the `$` anchor — the tool's own canonical example, and
+ * both rules `guardlink_workspace_info` emits to teach the syntax, were
+ * unwritable. Cross-repo tags parsed only when quoted.
+ *
+ * These are two different namespaces and were never one alternative:
+ *   - `#tag` ids: kebab-case, `#`-prefixed, qualified across repos by `.`
+ *   - `Dotted.Path` names: `App.API`, identifier segments, no hyphens
+ * Qualifying a tag is repeating a segment, so it belongs in the tag rule.
+ *
+ * Strictly a superset: every string that parsed before still parses. The only
+ * inputs whose behaviour changes are ones that previously produced a
+ * diagnostic. Quoted forms are untouched and keep working for anyone who
+ * worked around this by quoting.
+ */
+const TAG_REF = String.raw`#${TAG_SEGMENT}(?:\.${TAG_SEGMENT})*`;
+
+const ASSET_REF = String.raw`(?:${TAG_REF}|${QUOTED_REF}|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)`;  // #tag, #repo.tag, "quoted", or Dotted.Path
 const NAME      = String.raw`[A-Za-z]\w*(?:[_\- ][A-Za-z]\w*)*`;
-const ID_DEF    = String.raw`\(#([a-zA-Z0-9_-]+)\)`;
+const ID_DEF    = String.raw`\(#([a-zA-Z0-9_-]+)\)`;   // DEFINITION site — never dotted; you cannot define another repo's id here
 const ID_REF    = String.raw`#([a-zA-Z0-9_-]+)`;
-const THREAT_REF = String.raw`(?:#[a-zA-Z0-9_-]+|${QUOTED_REF}|[A-Za-z]\w*(?:[_\- ][A-Za-z]\w*)*)`;
+/**
+ * Threat AND control reference position — `@mitigates X against T using C`
+ * routes the control through this same fragment, so there is no separate
+ * CONTROL_REF to change.
+ *
+ * D19 asked whether threats and controls get the dotted form too. They must:
+ * `detectExternalRefs` (parse-project.ts) already scans `mitigations[].threat`,
+ * `mitigations[].control`, `exposures[].threat`, `acceptances[].threat` and
+ * `transfers[].threat` for cross-repo tags, and `guardlink_workspace_info` tells
+ * users to "reference sibling assets/threats/controls by their tag prefix". The
+ * resolver and the documentation both expected cross-repo threats; only the
+ * grammar refused them. "An asset can be cross-repo but a threat cannot" was
+ * never a decision anyone made.
+ */
+const THREAT_REF = String.raw`(?:${TAG_REF}|${QUOTED_REF}|[A-Za-z]\w*(?:[_\- ][A-Za-z]\w*)*)`;
 const SEVERITY  = String.raw`\[(P[0-3]|critical|high|medium|low)\]`;
 const EXT_REF   = String.raw`([a-zA-Z]+:[A-Za-z0-9_:.\-]+)`;
 const DESC      = String.raw`--\s*"((?:[^"\\]|\\.)*)"`;
@@ -91,6 +135,31 @@ function extractExternalRefs(raw: string | undefined): string[] {
  *  Strips surrounding double quotes and processes escape sequences (\", \\)
  *  when the user wrote a quoted ref like `"User Browser"` or `"/api/login"`.
  *  Pass-through for `#id` and `Dotted.Path` forms. */
+/**
+ * Build a cross-repo tag from its parts, using the grammar's own segment rule.
+ *
+ * D19 happened because every example of this syntax was typed by hand — the
+ * canonical one in `parse-project.ts`, and both rules `guardlink_workspace_info`
+ * emits — and none of them was ever run through the parser. Callers that need to
+ * *show* a cross-repo tag build it here instead of writing `#a.b` in a string,
+ * so an example cannot describe a grammar that does not exist.
+ *
+ * Throws on a segment the grammar cannot express, which is the point: a bad
+ * example fails at the source rather than shipping as documentation.
+ */
+export function crossRepoTag(repo: string, ...components: string[]): string {
+  const segment = new RegExp(String.raw`^${TAG_SEGMENT}$`);
+  for (const part of [repo, ...components]) {
+    if (!segment.test(part)) {
+      throw new Error(`Not a valid tag segment: ${JSON.stringify(part)} (allowed: letters, digits, _ and -)`);
+    }
+  }
+  return `#${[repo, ...components].join('.')}`;
+}
+
+/** The tag grammar as a standalone anchored matcher — for callers validating one tag. */
+export const CROSS_REPO_TAG_PATTERN = new RegExp(String.raw`^${TAG_REF}$`);
+
 function resolveRef(ref: string): string {
   if (ref.length >= 2 && ref.charCodeAt(0) === 0x22 /* " */ && ref.charCodeAt(ref.length - 1) === 0x22) {
     return unescapeDescription(ref.slice(1, -1));
