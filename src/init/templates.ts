@@ -7,6 +7,107 @@ import type { ThreatModel } from '../types/index.js';
 import type { AnnotationMode } from '../parser/annotation-mode.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 
+// ─── Where annotations go (D27) ──────────────────────────────────────
+
+/**
+ * The one paragraph every agent instruction file was missing.
+ *
+ * D27: `agentInstructions(project)` took no mode, so no agent file *could*
+ * state where annotations belong. On a fresh default-init repo `config.json`
+ * said `annotation_mode: external` while `CLAUDE.md` contained zero occurrences
+ * of `.gal`, `annotations/`, `sidecar` or `@source`. An agent read inline syntax,
+ * had no placement guidance, wrote inline, and the repo silently went mixed.
+ *
+ * `.guardlink/README.md` already said it correctly — but that is the cold-start
+ * path, read once, not the file an agent reads every turn. So this is now ONE
+ * function that both consume: the README and every agent instruction file emit
+ * byte-identical placement text, and there is no second copy to drift.
+ *
+ * Shielded because of D22. The inline branch shows a doc-block, whose ` * @…`
+ * lines are indistinguishable from real annotations once the comment prefix is
+ * stripped — that is exactly how the GL-402 README template injected `#api`,
+ * `#sqli` and `cwe:CWE-89` into this repo's own model.
+ */
+// @shield:begin -- "Placement examples for both modes; they would otherwise parse as real annotations"
+export function annotationPlacementSection(
+  project: ProjectInfo,
+  mode: AnnotationMode | null,
+): string {
+  // A repo with annotations in both places. This is the exact state D27 said the
+  // silence would produce, so it gets named rather than rounded to one mode.
+  if (mode === 'mixed') {
+    return `**This repo is currently MIXED** — it has annotations both inline in source comments
+and in \`.gal\` sidecars under \`.guardlink/annotations/\`. That is not a supported
+configuration; it is drift.
+
+Do not add annotations until it is resolved. Converge the repo first:
+
+\`\`\`sh
+guardlink migrate --to external   # move inline annotations into .gal sidecars
+guardlink migrate --to inline     # or move sidecars back into source comments
+\`\`\`
+
+Then re-run \`guardlink sync\`, and this section will state the single mode in effect.`;
+  }
+
+  // An unrecorded mode still gets placement guidance — silence is what D27 was.
+  // It gets the product default, labelled as a default rather than a decision.
+  const effective: 'inline' | 'external' = mode ?? 'external';
+  const unrecorded = mode === null
+    ? `\n> \`annotation_mode\` is not recorded in \`.guardlink/config.json\`. The text below is the\n> default, not a decision someone made. Record it with \`guardlink migrate --to ${effective}\`.\n`
+    : '';
+
+  if (effective === 'external') {
+    return `**Annotation mode: \`external\`. Annotations live in \`.gal\` sidecars under
+\`.guardlink/annotations/\` — NOT in source files.**
+${unrecorded}
+The sidecar path mirrors the source path, with \`.gal\` appended:
+
+| Source file | Its annotations |
+|---|---|
+| \`src/auth/login.ts\` | \`.guardlink/annotations/src/auth/login.ts.gal\` |
+| \`internal/db/query.go\` | \`.guardlink/annotations/internal/db/query.go.gal\` |
+
+Inside a \`.gal\`, group annotations under a \`@source\` block naming the real code location:
+
+\`\`\`
+@source file:src/auth/login.ts line:42 symbol:login
+@exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
+@mitigates #api against #sqli using #prepared-stmts -- "parameterized via pg"
+\`\`\`
+
+\`.gal\` files hold **raw GAL lines** — no \`${project.commentPrefix}\` prefix, no doc-block. Do
+not edit source files to add annotations in this mode.
+
+> Sidecars are found wherever the convention puts them, including for source files under
+> \`test/\`, \`vendor/\` or \`dist/\` — directories the parser skips for *source* but not for
+> annotations. \`guardlink validate\` warns if a \`.gal\` is off-convention, and still parses it.`;
+  }
+
+  const example = project.commentPrefix === '#'
+    ? `\`\`\`py
+# @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
+# @mitigates #api against #sqli using #prepared-stmts -- "parameterized via psycopg"
+def login(email): ...
+\`\`\``
+    : `\`\`\`ts
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
+ * @mitigates #api against #sqli using #prepared-stmts -- "parameterized via pg"
+ */
+export function login(email: string) { … }
+\`\`\``;
+
+  return `**Annotation mode: \`inline\`. Annotations live in source-file comments**, in the comment
+syntax of the file you are editing — the doc-block of the function or module they describe.
+${unrecorded}
+${example}
+
+Do not create \`.gal\` sidecars under \`.guardlink/annotations/\` in this mode; a repo with
+both is a mixed repo, and that is the failure this section exists to prevent.`;
+}
+// @shield:end
+
 // ─── Canonical reference document ────────────────────────────────────
 
 /**
@@ -107,8 +208,13 @@ When connected via \`.mcp.json\`, use:
 /**
  * Compact GuardLink instruction block injected into agent files.
  * Points to docs/GUARDLINK_REFERENCE.md for full syntax.
+ *
+ * `mode` is not optional in spirit even though it is in the signature: D27 was
+ * this function having no way to say where annotations go. It defaults to null,
+ * which renders the product default explicitly labelled as a default — never
+ * silence.
  */
-export function agentInstructions(project: ProjectInfo): string {
+export function agentInstructions(project: ProjectInfo, mode: AnnotationMode | null = null): string {
   return `
 ## GuardLink — Security Model
 
@@ -132,6 +238,10 @@ and \`guardlink diff HEAD~1\`.
 
 **Full reference: \`docs/GUARDLINK_REFERENCE.md\`**
 
+### Where annotations go
+
+${annotationPlacementSection(project, mode)}
+
 ### What you owe it back
 
 **When you write or change code that touches security-relevant behavior, add the annotations in
@@ -152,7 +262,7 @@ the same change.** This includes: new endpoints, authentication/authorization lo
 
 - **Opening a file:** \`guardlink_context(file)\` before you read far into it. Note which kind of empty an empty answer is — \`scanned_without_annotations\` means clean, \`not_scanned\` means the parser never read it. They are not the same.
 - **Before writing:** skim \`.guardlink/definitions${project.definitionsExt}\` for the existing assets, threats and controls. Reuse those ids.
-- **While writing:** annotate in the doc-block as you go, not as a pass afterward.
+- **While writing:** annotate as you go, not as a pass afterward — ${(mode ?? 'external') === 'external' ? 'in the file\'s `.gal` sidecar (see "Where annotations go")' : 'in the doc-block of the code you are writing'}.
 - **After changing:** \`guardlink diff HEAD~1\` — the one command that answers "did I add exposure". Then \`guardlink validate .\` for syntax and dangling refs, and \`guardlink status .\` for coverage.
 - **After annotating:** \`guardlink sync\` refreshes this block and \`.guardlink/README.md\` from the current model.
 
@@ -321,8 +431,9 @@ export function agentInstructionsWithModel(
   project: ProjectInfo,
   model: ThreatModel | null,
   freshness?: ModelContextFreshness,
+  mode: AnnotationMode | null = null,
 ): string {
-  const base = agentInstructions(project);
+  const base = agentInstructions(project, mode);
 
   if (!model || model.annotations_parsed === 0) {
     return base;
@@ -343,8 +454,8 @@ ${modelCtx}
 /**
  * Enhanced cursor rules content with model context.
  */
-export function cursorRulesContentWithModel(project: ProjectInfo, model: ThreatModel | null, freshness?: ModelContextFreshness): string {
-  const base = cursorRulesContent(project);
+export function cursorRulesContentWithModel(project: ProjectInfo, model: ThreatModel | null, freshness?: ModelContextFreshness, mode: AnnotationMode | null = null): string {
+  const base = cursorRulesContent(project, mode);
 
   if (!model || model.annotations_parsed === 0) {
     return base;
@@ -361,24 +472,28 @@ ${modelCtx}
 /**
  * Enhanced cursor .mdc content with model context.
  */
-export function cursorMdcContentWithModel(project: ProjectInfo, model: ThreatModel | null, freshness?: ModelContextFreshness): string {
+export function cursorMdcContentWithModel(project: ProjectInfo, model: ThreatModel | null, freshness?: ModelContextFreshness, mode: AnnotationMode | null = null): string {
   return `---
 description: GuardLink security annotation rules
 globs:
 alwaysApply: true
 ---
 
-${cursorRulesContentWithModel(project, model)}`;
+${cursorRulesContentWithModel(project, model, freshness, mode)}`;
 }
 
 // ─── Cursor-specific format ──────────────────────────────────────────
 
-export function cursorRulesContent(project: ProjectInfo): string {
+export function cursorRulesContent(project: ProjectInfo, mode: AnnotationMode | null = null): string {
   // .cursorrules uses a flatter format without markdown headers
   return `
 # GuardLink Security Annotations
 
-This project uses GuardLink annotations in source code comments.
+This project carries a GuardLink threat model.
+
+## Where annotations go
+
+${annotationPlacementSection(project, mode)}
 
 ## Core Requirement
 Every time you write or modify code that touches security-relevant behavior, you MUST add GuardLink annotations in the same change. This includes: new endpoints, auth logic, data validation, database queries, file I/O, external API calls, crypto, process spawning, user input handling, config parsing. Do NOT annotate pure business logic, formatting utilities, UI components, or helpers that never touch security boundaries.
@@ -417,14 +532,14 @@ Every time you write or modify code that touches security-relevant behavior, you
 
 // ─── Cursor .mdc format ──────────────────────────────────────────────
 
-export function cursorMdcContent(project: ProjectInfo): string {
+export function cursorMdcContent(project: ProjectInfo, mode: AnnotationMode | null = null): string {
   return `---
 description: GuardLink security annotation rules
 globs:
 alwaysApply: true
 ---
 
-${cursorRulesContent(project)}`;
+${cursorRulesContent(project, mode)}`;
 }
 
 // ─── Shared definitions file ─────────────────────────────────────────
@@ -665,34 +780,10 @@ export function guardlinkReadmeContent(project: ProjectInfo, ctx: ReadmeContext)
   const exampleCwe = m?.threats.find(t => (t.external_refs || []).some(r => /cwe/i.test(r)))
     ?.external_refs.find(r => /cwe/i.test(r));
 
-  const writeSection = external
-    ? `Annotations for \`src/auth/login.ts\` go in \`.guardlink/annotations/src/auth/login.ts.gal\` —
-the source path mirrored under \`annotations/\`, with \`.gal\` appended. Inside, group them
-under a \`@source\` block naming the real code location:
-
-\`\`\`
-@source file:src/auth/login.ts line:42 symbol:login
-@exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
-@mitigates #api against #sqli using #prepared-stmts -- "parameterized via pg"
-\`\`\`
-
-Write raw GAL lines in \`.gal\` files — no \`//\` or \`#\` prefix. Do not edit source files
-to add annotations in this mode.
-
-> Sidecars are found wherever the convention puts them, including for source
-> files under \`test/\`, \`vendor/\` or \`dist/\` — directories the parser skips for
-> *source* but not for annotations. \`guardlink validate\` warns if a \`.gal\` is
-> off-convention, and still parses it.`
-    : `Put annotations in the comment syntax of the file you are editing — the doc-block of
-the function or module they describe:
-
-\`\`\`ts
-/**
- * @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
- * @mitigates #api against #sqli using #prepared-stmts -- "parameterized via pg"
- */
-export function login(email: string) { … }
-\`\`\``;
+  // D27: shared with every agent instruction file rather than written twice.
+  // This README stated placement correctly while CLAUDE.md said nothing at all;
+  // one function is how that stops being possible.
+  const writeSection = annotationPlacementSection(project, ctx.mode);
 
   return `# .guardlink/ — what this is
 

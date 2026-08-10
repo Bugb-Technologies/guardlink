@@ -39,6 +39,10 @@ import {
 } from './templates.js';
 import { computeAnnotationHash } from '../parser/annotation-hash.js';
 import { detectAnnotationMode, readConfiguredMode } from '../parser/annotation-mode.js';
+// The mode a repo can be OBSERVED in, which includes 'mixed'. `InitOptions.mode`
+// stays the narrower 'inline' | 'external' — init chooses one, sync reports what
+// is actually there, and the templates have to render both.
+import type { AnnotationMode as ObservedAnnotationMode } from '../parser/annotation-mode.js';
 import type { ThreatModel } from '../types/index.js';
 import type { AnnotationMode } from '../agents/index.js';
 import { AGENT_CHOICES } from './picker.js';
@@ -296,7 +300,7 @@ export function initProject(options: InitOptions): InitResult {
   // GuardLink exists cannot annotate in either mode.
 
   if (!skipAgentFiles && rootFiles) {
-    const agentResults = updateAgentFiles(root, project, force, dryRun, options.agentIds);
+    const agentResults = updateAgentFiles(root, project, force, dryRun, mode, options.agentIds);
     created.push(...agentResults.created);
     updated.push(...agentResults.updated);
     skipped.push(...agentResults.skipped);
@@ -335,6 +339,9 @@ function updateAgentFiles(
   project: ProjectInfo,
   force: boolean,
   dryRun: boolean,
+  // D27: the mode init just recorded in config.json. Without it the agent files
+  // it writes cannot say where annotations go, which is the whole defect.
+  mode: AnnotationMode,
   agentIds?: string[],
 ): { created: string[]; updated: string[]; skipped: string[] } {
   const created: string[] = [];
@@ -358,7 +365,7 @@ function updateAgentFiles(
         skipped.push(`${choice.file} (already has GuardLink)`);
         continue;
       }
-      const result = injectIntoAgentFile(root, choice.file, project, force, dryRun);
+      const result = injectIntoAgentFile(root, choice.file, project, force, dryRun, mode);
       if (result === 'updated') updated.push(choice.file);
       else if (result === 'skipped') skipped.push(choice.file);
       else skipped.push(result.skippedReason);
@@ -368,14 +375,14 @@ function updateAgentFiles(
       // directory) skips just this agent file with a warning instead of crashing init.
       let content: string;
       if (choice.file.endsWith('.mdc')) {
-        content = cursorMdcContent(project);
+        content = cursorMdcContent(project, mode);
       } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
-        content = wrapMarkers(cursorRulesContent(project));
+        content = wrapMarkers(cursorRulesContent(project, mode));
       } else {
         // Markdown-based (CLAUDE.md, AGENTS.md, copilot-instructions.md, .gemini/GEMINI.md)
-        content = buildClaudeMdFromScratch(project);
+        content = buildClaudeMdFromScratch(project, mode);
       }
-      const res = safeWriteAgentFile(filePath, content, dryRun, project);
+      const res = safeWriteAgentFile(filePath, content, dryRun, project, mode);
       if (!res.ok) skipped.push(res.skipReason);
       else if (res.action === 'merged') updated.push(`${choice.file} → merged into existing .cursor/rules`);
       else created.push(choice.file);
@@ -391,6 +398,7 @@ function injectIntoAgentFile(
   project: ProjectInfo,
   force: boolean,
   dryRun: boolean,
+  mode: AnnotationMode,
 ): 'updated' | 'skipped' | { skippedReason: string } {
   const fullPath = join(root, relPath);
 
@@ -402,7 +410,7 @@ function injectIntoAgentFile(
 
   // Special handling for Cursor .mdc files
   if (relPath.endsWith('.mdc')) {
-    const res = safeWriteAgentFile(fullPath, cursorMdcContent(project), dryRun, project);
+    const res = safeWriteAgentFile(fullPath, cursorMdcContent(project, mode), dryRun, project, mode);
     if (!res.ok) return { skippedReason: res.skipReason };
     return 'updated';
   }
@@ -413,7 +421,7 @@ function injectIntoAgentFile(
     if (existing.includes('GuardLink') && !force) return 'skipped';
 
     if (!dryRun) {
-      const block = wrapMarkers(cursorRulesContent(project));
+      const block = wrapMarkers(cursorRulesContent(project, mode));
       const newContent = replaceOrAppend(existing, block);
       writeFileSync(fullPath, newContent);
     }
@@ -430,15 +438,15 @@ function injectIntoAgentFile(
   if (existing.includes('GuardLink') && !force) return 'skipped';
 
   if (!dryRun) {
-    const block = wrapMarkers(agentInstructions(project));
+    const block = wrapMarkers(agentInstructions(project, mode));
     const newContent = replaceOrAppend(existing, block);
     writeFileSync(fullPath, newContent);
   }
   return 'updated';
 }
 
-function buildClaudeMdFromScratch(project: ProjectInfo): string {
-  return buildMdFromScratch(project, null);
+function buildClaudeMdFromScratch(project: ProjectInfo, mode: AnnotationMode): string {
+  return buildMdFromScratch(project, null, undefined, mode);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -539,6 +547,9 @@ function safeWriteAgentFile(
   content: string,
   dryRun: boolean,
   project: ProjectInfo,
+  // Only used by the legacy `.cursor/rules`-is-a-file merge path below, which
+  // regenerates the block itself instead of writing `content`.
+  mode: ObservedAnnotationMode | null = null,
 ): { ok: true; action: 'created' | 'merged' } | { ok: false; skipReason: string } {
   // CASE B: target path is itself a directory — cannot write a file there.
   if (existsSync(filePath) && statSync(filePath).isDirectory()) {
@@ -555,7 +566,7 @@ function safeWriteAgentFile(
     if (isCursorLegacy) {
       if (!dryRun) {
         const existing = readFileSync(parent, 'utf-8');
-        const block = wrapMarkers(cursorRulesContent(project));
+        const block = wrapMarkers(cursorRulesContent(project, mode));
         writeFileSync(parent, replaceOrAppend(existing, block));
       }
       return { ok: true, action: 'merged' };
@@ -588,10 +599,15 @@ function toPascalCase(s: string): string {
     .join('');
 }
 
-function buildMdFromScratch(project: ProjectInfo, model: ThreatModel | null, freshness?: ModelContextFreshness): string {
+function buildMdFromScratch(
+  project: ProjectInfo,
+  model: ThreatModel | null,
+  freshness?: ModelContextFreshness,
+  mode: ObservedAnnotationMode | null = null,
+): string {
   return `# ${toPascalCase(project.name)} — Project Instructions
 
-${wrapMarkers(agentInstructionsWithModel(project, model, freshness))}`;
+${wrapMarkers(agentInstructionsWithModel(project, model, freshness, mode))}`;
 }
 
 // ─── Sync: regenerate agent files with live threat model ─────────────
@@ -642,6 +658,11 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
   const readmeModeSource = configuredMode ? 'config' as const
     : readmeMode ? 'observed' as const : 'default' as const;
 
+  // D27: the same resolved mode the README states now also reaches every agent
+  // instruction file. They were allowed to disagree, and did — config.json said
+  // external while CLAUDE.md said nothing at all.
+  const mode = readmeMode;
+
   const readmePath = join(root, '.guardlink', 'README.md');
   const readme = guardlinkReadmeContent(project, {
     mode: readmeMode,
@@ -679,14 +700,14 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
       }
       let content: string;
       if (choice.file.endsWith('.mdc')) {
-        content = cursorMdcContentWithModel(project, model, freshness);
+        content = cursorMdcContentWithModel(project, model, freshness, mode);
       } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
-        content = wrapMarkers(cursorRulesContentWithModel(project, model, freshness));
+        content = wrapMarkers(cursorRulesContentWithModel(project, model, freshness, mode));
       } else {
         // Markdown-based: CLAUDE.md, AGENTS.md, copilot-instructions.md, etc.
-        content = buildMdFromScratch(project, model, freshness);
+        content = buildMdFromScratch(project, model, freshness, mode);
       }
-      const res = safeWriteAgentFile(filePath, content, dryRun, project);
+      const res = safeWriteAgentFile(filePath, content, dryRun, project, mode);
       if (!res.ok) skipped.push(res.skipReason);
       else updated.push(res.action === 'merged' ? `${choice.file} → merged into existing .cursor/rules` : choice.file);
     } else {
@@ -699,13 +720,13 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
       // File exists — update the GuardLink block (marker-based replacement)
       if (choice.file.endsWith('.mdc')) {
         if (!dryRun) {
-          writeFileSync(filePath, cursorMdcContentWithModel(project, model, freshness));
+          writeFileSync(filePath, cursorMdcContentWithModel(project, model, freshness, mode));
         }
         updated.push(choice.file);
       } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
         const existing = readFileSync(filePath, 'utf-8');
         if (!dryRun) {
-          const block = wrapMarkers(cursorRulesContentWithModel(project, model, freshness));
+          const block = wrapMarkers(cursorRulesContentWithModel(project, model, freshness, mode));
           writeFileSync(filePath, replaceOrAppend(existing, block));
         }
         updated.push(choice.file);
@@ -714,7 +735,7 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
       } else {
         const existing = readFileSync(filePath, 'utf-8');
         if (!dryRun) {
-          const block = wrapMarkers(agentInstructionsWithModel(project, model, freshness));
+          const block = wrapMarkers(agentInstructionsWithModel(project, model, freshness, mode));
           writeFileSync(filePath, replaceOrAppend(existing, block));
         }
         updated.push(choice.file);
