@@ -14,7 +14,10 @@
  * elsewhere.
  */
 import { describe, it, expect } from 'vitest';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const run = promisify(execFile);
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -33,14 +36,16 @@ describe('D23 — report --diagram-only is byte-identical across processes', () 
   it('three processes, one hash', async () => {
     const out = await mkdtemp(join(tmpdir(), 'guardlink-d23-'));
     try {
-      const hashes = [1, 2, 3].map(i => {
-        const path = join(out, `d-${i}.mmd`);
-        const text = execFileSync('npx', ['tsx', cli, 'report', repoRoot, '--diagram-only'], {
-          cwd: repoRoot, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 32 * 1024 * 1024,
+      // Three READ-ONLY runs of the same command, previously serial. Nothing
+      // here writes, so nothing orders them; running them together removes the
+      // dependence on how fast this machine launches `npx tsx` without changing
+      // what is compared.
+      const hashes = await Promise.all([1, 2, 3].map(async () => {
+        const { stdout } = await run('npx', ['tsx', cli, 'report', repoRoot, '--diagram-only'], {
+          cwd: repoRoot, encoding: 'utf-8', maxBuffer: 32 * 1024 * 1024,
         });
-        void path;
-        return sha(text);
-      });
+        return sha(stdout);
+      }));
       expect(hashes[1]).toBe(hashes[0]);
       expect(hashes[2]).toBe(hashes[0]);
     } finally {

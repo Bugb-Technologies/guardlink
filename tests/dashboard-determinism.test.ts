@@ -18,7 +18,10 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const run = promisify(execFile);
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -63,11 +66,15 @@ describe('D25 — two generations in separate processes are byte-identical', () 
     // it is not what this test is measuring.
     const outDir = await mkdtemp(join(tmpdir(), 'guardlink-dash-out-'));
     try {
+      // The Promise.all here used to wrap execFileSync, which is synchronous —
+      // so the three generations ran strictly one after another while reading as
+      // concurrent. Now they genuinely are. They write to distinct files in a
+      // temp dir and read nothing each other writes, so concurrency changes
+      // nothing about what is being compared: three separate processes, three
+      // hashes, byte-identical.
       const hashes = await Promise.all([1, 2, 3].map(async i => {
         const out = join(outDir, `dash-${i}.html`);
-        execFileSync('npx', ['tsx', cli, 'dashboard', root, '-o', out], {
-          cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'],
-        });
+        await run('npx', ['tsx', cli, 'dashboard', root, '-o', out], { cwd: repoRoot });
         return sha(await readFile(out, 'utf-8'));
       }));
       expect(hashes[1]).toBe(hashes[0]);
