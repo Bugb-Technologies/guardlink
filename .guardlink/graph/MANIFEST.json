@@ -1,37 +1,37 @@
 {
   "schema_version": 1,
-  "annotation_hash": "sha256-v1:875c43d698eba51ccceafb30f86dffdb74d18c7fbc43e2d2ad12223fbbfe109a",
+  "annotation_hash": "sha256-v1:847e1d345c473dbb0af133f6899c5b2fb353334cd8305b8fdb646b7774ac2f57",
   "generator": "guardlink@1.4.5",
   "artifacts": [
     {
       "path": ".guardlink/graph/threat-graph.mmd",
       "bytes": 7954,
-      "annotation_hash": "sha256-v1:875c43d698eba51ccceafb30f86dffdb74d18c7fbc43e2d2ad12223fbbfe109a"
+      "annotation_hash": "sha256-v1:847e1d345c473dbb0af133f6899c5b2fb353334cd8305b8fdb646b7774ac2f57"
     },
     {
       "path": ".guardlink/graph/dataflow.mmd",
-      "bytes": 8692,
-      "annotation_hash": "sha256-v1:875c43d698eba51ccceafb30f86dffdb74d18c7fbc43e2d2ad12223fbbfe109a"
+      "bytes": 8737,
+      "annotation_hash": "sha256-v1:847e1d345c473dbb0af133f6899c5b2fb353334cd8305b8fdb646b7774ac2f57"
     },
     {
       "path": ".guardlink/graph/attack-surface.mmd",
       "bytes": 4309,
-      "annotation_hash": "sha256-v1:875c43d698eba51ccceafb30f86dffdb74d18c7fbc43e2d2ad12223fbbfe109a"
+      "annotation_hash": "sha256-v1:847e1d345c473dbb0af133f6899c5b2fb353334cd8305b8fdb646b7774ac2f57"
     },
     {
       "path": ".guardlink/graph/by-feature/dashboard.mmd",
       "bytes": 1413,
-      "annotation_hash": "sha256-v1:875c43d698eba51ccceafb30f86dffdb74d18c7fbc43e2d2ad12223fbbfe109a"
+      "annotation_hash": "sha256-v1:847e1d345c473dbb0af133f6899c5b2fb353334cd8305b8fdb646b7774ac2f57"
     },
     {
       "path": ".guardlink/graph/by-feature/mcp-integration.mmd",
       "bytes": 1813,
-      "annotation_hash": "sha256-v1:875c43d698eba51ccceafb30f86dffdb74d18c7fbc43e2d2ad12223fbbfe109a"
+      "annotation_hash": "sha256-v1:847e1d345c473dbb0af133f6899c5b2fb353334cd8305b8fdb646b7774ac2f57"
     },
     {
       "path": ".guardlink/model.json",
-      "bytes": 103200,
-      "annotation_hash": "sha256-v1:875c43d698eba51ccceafb30f86dffdb74d18c7fbc43e2d2ad12223fbbfe109a"
+      "bytes": 104258,
+      "annotation_hash": "sha256-v1:847e1d345c473dbb0af133f6899c5b2fb353334cd8305b8fdb646b7774ac2f57"
     }
   ]
 }

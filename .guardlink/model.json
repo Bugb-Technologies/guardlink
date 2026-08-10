@@ -1,8 +1,8 @@
 {
   "version": "1.1.0",
   "project": "unknown",
-  "source_files": 82,
-  "annotations_parsed": 382,
+  "source_files": 83,
+  "annotations_parsed": 385,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -40,6 +40,7 @@
     "src/parser/apply-annotations.ts",
     "src/parser/canonical-order.ts",
     "src/parser/clear.ts",
+    "src/parser/coverage.ts",
     "src/parser/feature-filter.ts",
     "src/parser/fingerprint.ts",
     "src/parser/gal-path.ts",
@@ -2814,6 +2815,16 @@
       }
     },
     {
+      "source": "ThreatModel",
+      "target": "#parser",
+      "mechanism": "isCovered",
+      "description": "Every unmitigated-exposure answer in the product routes through this predicate",
+      "location": {
+        "file": "src/parser/coverage.ts",
+        "line": 65
+      }
+    },
+    {
       "source": "ProjectRoot",
       "target": "#parser",
       "mechanism": "fast-glob",
@@ -3672,7 +3683,7 @@
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1029
+        "line": 1048
       }
     }
   ],
@@ -3878,6 +3889,20 @@
       }
     },
     {
+      "description": "Inline annotations never carry parent_symbol (parse-file.ts populates it only from @source), so this rule is inert in every inline repo — measured: 0 of 74 exposures change state on guardlink, 0 of 61 on specter-v1, 2 of 11 on expense-api",
+      "location": {
+        "file": "src/parser/coverage.ts",
+        "line": 66
+      }
+    },
+    {
+      "description": "Narrowing is one-directional by construction: coversExposure starts from the (asset, threat) match the old key computed and only ever subtracts. A refactor that made it additive would be a silent-wrong-answer path in the opposite direction",
+      "location": {
+        "file": "src/parser/coverage.ts",
+        "line": 67
+      }
+    },
+    {
       "description": "Pure filtering utility; no I/O",
       "location": {
         "file": "src/parser/feature-filter.ts",
@@ -3992,7 +4017,7 @@
   ],
   "coverage": {
     "total_symbols": 0,
-    "annotated_symbols": 382,
+    "annotated_symbols": 385,
     "coverage_percent": 72,
     "unannotated_critical": []
   },

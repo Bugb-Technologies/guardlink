@@ -43,20 +43,32 @@ describe('GL-401 — instructions arrive at initialize', () => {
     expect(instructions.length).toBeGreaterThan(500);
   });
 
-  it('stays under 400 words — in EVERY mode', () => {
+  it('stays under 460 words — in EVERY mode', () => {
     // Orientation delivered before the agent has context to rank detail against.
     // Length costs attention exactly when it is scarcest.
     //
     // D33: this used to measure only the mode this repo happens to be in.
     // External mode was 426 words and null 403, both over budget, unmeasured
     // because the assertion ran on one variant of a text that has three.
+    //
+    // Raised from 400 to 460 deliberately, and recorded rather than quietly
+    // adjusted. The write path — guardlink_annotate_apply — was absent from
+    // both this text and the generated README, so a cold agent on a foreign
+    // repo concluded it should hand-write .gal files and did. That is
+    // first-order orientation. External mode had one word of headroom at 400,
+    // and by then every substantive claim in the text was pinned by a probe in
+    // instructions-claims.test.ts, so the only way to fit under the old number
+    // was to delete a verified claim. Paying for new guidance by removing
+    // checked guidance is the wrong trade. 460 leaves external at 441 and the
+    // constraint genuinely binding.
+    const LIMIT = 460;
     const words = instructions.trim().split(/\s+/).length;
-    expect(words, `${words} words`).toBeLessThan(400);
+    expect(words, `${words} words`).toBeLessThan(LIMIT);
 
-    for (const mode of ['inline', 'external', null] as const) {
+    for (const mode of ['inline', 'external', 'mixed', null] as const) {
       const n = buildServerInstructions({ mode, definitionsPath: '.guardlink/definitions.ts' })
         .trim().split(/\s+/).length;
-      expect(n, `mode=${mode}: ${n} words`).toBeLessThan(400);
+      expect(n, `mode=${mode}: ${n} words`).toBeLessThan(LIMIT);
     }
   });
 

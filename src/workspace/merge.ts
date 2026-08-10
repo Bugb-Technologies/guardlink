@@ -26,6 +26,7 @@ import type {
   MergeWarning, MergeWarningCode, RepoStatus,
 } from './types.js';
 import { REPORT_SCHEMA_VERSION } from './metadata.js';
+import { buildCoverageIndex } from '../parser/coverage.js';
 
 // ─── Report Loading ──────────────────────────────────────────────────
 
@@ -489,17 +490,13 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
  * (same asset+threat pair) and no acceptance.
  */
 function countUnmitigated(model: ThreatModel): number {
-  const mitigatedPairs = new Set(
-    model.mitigations.map(m => `${m.asset}::${m.threat}`),
-  );
-  const acceptedPairs = new Set(
-    model.acceptances.map(a => `${a.asset}::${a.threat}`),
-  );
-
-  return model.exposures.filter(e => {
-    const key = `${e.asset}::${e.threat}`;
-    return !mitigatedPairs.has(key) && !acceptedPairs.has(key);
-  }).length;
+  // D36. Was a local pair set that also skipped ref normalisation, so a
+  // workspace total could disagree with the per-repo `validate` it summarises.
+  // Note this runs on the COMBINED model, whose locations are repo-prefixed —
+  // which is what makes the same-file test correct across repos: two repos'
+  // db.py are different files here, so neither can narrow the other.
+  const index = buildCoverageIndex(model);
+  return model.exposures.filter(e => !index.isCovered(e)).length;
 }
 
 /** Compute aggregate totals from a combined model */

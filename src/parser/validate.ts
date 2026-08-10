@@ -11,7 +11,7 @@
 import {
   isConventionalGalPath, sourceFileForGal, galPathFor, offConventionMessage,
 } from './gal-path.js';
-import type { ThreatModel, ThreatModelExposure, ParseDiagnostic, SourceLocation } from '../types/index.js';
+import type { ThreatModel, ParseDiagnostic, SourceLocation } from '../types/index.js';
 
 /**
  * Find all dangling #id references in the threat model.
@@ -88,29 +88,11 @@ export function findDanglingRefs(model: ThreatModel): ParseDiagnostic[] {
 }
 
 /**
- * Normalize a ref for matching: strip leading # so that
- * "#sqli" and "sqli" compare equal.
+ * Coverage lives in `coverage.ts` — one predicate for the whole product (D36).
+ * Re-exported here because every existing caller imports it from this module.
  */
-function normalizeRef(ref: string): string {
-  return ref.startsWith('#') ? ref.slice(1) : ref;
-}
-
-/**
- * Find exposures that have no matching @mitigates or @accepts.
- * Normalizes refs so that #id and bare-name forms are compared consistently.
- */
-export function findUnmitigatedExposures(model: ThreatModel): ThreatModelExposure[] {
-  const covered = new Set<string>();
-  for (const m of model.mitigations) {
-    covered.add(`${normalizeRef(m.asset)}::${normalizeRef(m.threat)}`);
-  }
-  for (const a of model.acceptances) {
-    covered.add(`${normalizeRef(a.asset)}::${normalizeRef(a.threat)}`);
-  }
-  return model.exposures.filter(e =>
-    !covered.has(`${normalizeRef(e.asset)}::${normalizeRef(e.threat)}`)
-  );
-}
+export { findUnmitigatedExposures, findAcceptedExposures, normalizeRef } from './coverage.js';
+import { normalizeRef } from './coverage.js';
 
 /**
  * Find @accepts annotations where the accepted asset has no corresponding @audit.
@@ -139,27 +121,6 @@ export function findAcceptedWithoutAudit(model: ThreatModel): ParseDiagnostic[] 
   }
 
   return diagnostics;
-}
-
-/**
- * Find exposures that are covered ONLY by @accepts (no real @mitigates).
- * These are "accepted but unmitigated" — the risk exists and no control is in place.
- * Useful for dashboards and reports to distinguish real mitigations from risk acceptance.
- */
-export function findAcceptedExposures(model: ThreatModel): ThreatModelExposure[] {
-  const mitigated = new Set<string>();
-  for (const m of model.mitigations) {
-    mitigated.add(`${normalizeRef(m.asset)}::${normalizeRef(m.threat)}`);
-  }
-  const accepted = new Set<string>();
-  for (const a of model.acceptances) {
-    accepted.add(`${normalizeRef(a.asset)}::${normalizeRef(a.threat)}`);
-  }
-
-  return model.exposures.filter(e => {
-    const key = `${normalizeRef(e.asset)}::${normalizeRef(e.threat)}`;
-    return accepted.has(key) && !mitigated.has(key);
-  });
 }
 
 /**

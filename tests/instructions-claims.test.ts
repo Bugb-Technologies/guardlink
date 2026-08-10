@@ -23,12 +23,13 @@
  * holding it in place. See EXPIRING_PHRASINGS for the cheap general guard.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildServerInstructions } from '../src/mcp/instructions.js';
 import { parseProject } from '../src/parser/parse-project.js';
+import { applyAnnotations } from '../src/parser/apply-annotations.js';
 import { fileContext } from '../src/mcp/context.js';
 import { lookup } from '../src/mcp/lookup.js';
 import { traverseGraph } from '../src/mcp/subgraph.js';
@@ -46,6 +47,42 @@ beforeAll(async () => {
 }, 60_000);
 
 describe('D33 — every behavioural claim is executed, not just spell-checked', () => {
+  it('the write path: annotate_apply synthesises @source and honours symbol', async () => {
+    // Added with the D37/README fix. The instructions now tell an agent to write
+    // with guardlink_annotate_apply, to pass the SOURCE path, never to send
+    // @source, and that symbol: is what reanchor needs. Each of those is a claim
+    // about behaviour, so each is executed here rather than trusted.
+    const text = forMode('external');
+    expect(text).toMatch(/guardlink_annotate_apply/);
+    expect(text).toMatch(/@source is synthesised/);
+    expect(text).toMatch(/symbol:/);
+
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-write-claim-'));
+    try {
+      await mkdir(join(root, 'app'), { recursive: true });
+      await writeFile(join(root, 'package.json'), '{"name":"w"}\n');
+      await writeFile(join(root, 'app', 'q.ts'), 'export const q = 1;\n');
+
+      // Claim: pass the SOURCE path; the sidecar path is derived, not chosen.
+      const written = applyAnnotations({
+        root, file: 'app/q.ts', line: 1, symbol: 'q',
+        annotations: ['@exposes App.Q to #x [high] -- "d"'],
+      });
+      expect(written.galPath).toBe('.guardlink/annotations/app/q.ts.gal');
+
+      // Claim: @source is synthesised — so the caller never sent one, and one exists.
+      const onDisk = await readFile(join(root, written.galPath), 'utf-8');
+      expect(onDisk).toContain('@source file:app/q.ts line:1 symbol:q');
+      expect(onDisk.match(/@source/g)).toHaveLength(1);
+
+      // Claim: symbol: is what reanchor needs to find the block again.
+      const { model: m } = await parseProject({ root, project: 'w' });
+      expect(m.exposures[0].location.parent_symbol).toBe('q');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it('external mode: a .gal under an EXCLUDED directory really is parsed', async () => {
     // The claim that went stale. It now says sidecars are found under test/,
     // vendor/ and dist/ — so the probe puts one there and requires it to parse.

@@ -100,6 +100,10 @@ Definitions — @asset, @threat, @control with #ids — live in ${ctx.definition
 existing ids; never redefine one. Never write @accepts: risk acceptance is a human
 governance decision. Found a risk with no control? @exposes plus @audit.
 
+Write with guardlink_annotate_apply, not by hand: pass the source path, not the .gal.
+@source is synthesised — never send one. Do send symbol:, which reanchor needs after a
+refactor; omitting it means the statement covers the whole asset rather than one symbol.
+
 READING THE ANSWERS
 
 Every response carries a guardlink envelope: annotation_hash, git_sha, mode, root.

@@ -33,6 +33,58 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **BEHAVIOUR CHANGE — coverage is decided per site, not per (asset, threat) pair (D36).**
+  A `@mitigates` no longer clears an `@exposes` when the two are anchored to *different
+  symbols in the same file*. Everything else is unchanged: a mitigation in a different file
+  still covers the whole asset, an unanchored mitigation still covers the whole asset, and a
+  same-symbol pair still covers.
+
+  **Why.** A correct mitigation on one function was answering for a live vulnerability on
+  another. Reproduced on a Python service with a `%`-formatted `SELECT` in `find_expenses`
+  and a correctly bound `INSERT` in `insert_expense` twelve lines below it: `unmitigated`
+  omitted the critical injection, `guardlink_context` reported `open_exposures: []` for the
+  file, and `guardlink_lookup("cwe:CWE-89")` — the scanner-triage path — answered
+  `status: "mitigated"`, `open: 0` for the vulnerable line. A deterministic scanner asking
+  GuardLink about a true positive was told it was handled.
+
+  **What you will see change.** For **inline projects, nothing at all.** `parent_symbol` is
+  captured only from `@source` blocks (`parse-file.ts`), so inline annotations carry no
+  anchor and the rule cannot engage. Measured: **0 of 74 exposures change state on this
+  repo, 0 of 61 on a second inline repo of 8,142 files, and 2 of 11 on the external repo
+  where the defect was found** — the critical injection, and a non-constant-time password
+  comparison that had been hidden the same way. If you author externally with symbol anchors
+  and you have a mitigation and an exposure on the same asset and threat in one file at
+  different symbols, that exposure will now appear in `unmitigated`. It was always there; it
+  was not being reported.
+
+  **How to say "this covers the whole asset".** Omit `symbol:` from the mitigation's
+  `@source` header. An unanchored statement is an asset-level statement and is never
+  narrowed. No new syntax was added, and none is needed.
+
+  **What this does not fix.** A cross-file mitigation still blanket-covers its asset and
+  threat. Knowing whether a control actually reaches a site needs a call graph, which
+  GuardLink does not have. The rule closes the class where the model already holds the
+  evidence — the author's own anchors — and no more.
+
+  Coverage now lives in one predicate (`src/parser/coverage.ts`) called by every surface
+  that answers the question. There were **eight** independent copies of the
+  `asset::threat` key, four of which did not normalise a leading `#`, so `guardlink diff`
+  and `guardlink validate` could disagree about what was covered on one and the same model.
+  The eighth — `lookup("unmitigated")`, the one an agent reads most often — was found by a
+  test asserting it agreed with `findUnmitigatedExposures`. It did not.
+
+- **The MCP envelope no longer reports every external project as `mixed` (D37).**
+  `@asset`, `@threat` and `@control` are structurally inline-only — they live in
+  `.guardlink/definitions.*` and there is no `@source` block for "this asset exists", so a
+  declaration can never carry an `origin_file`. Mode detection counted them as inline
+  evidence, so a correctly configured pure-external repo reported `mixed`: measured on the
+  test project, `inline 21 / external 84`, with all 21 being the definitions file and
+  nothing else. `mixed` is the alarm state — it means mid-migration, needs attention — and
+  under the external default it was firing on every new project. Detection now asks only the
+  relationship verbs, which are the only ones with a genuine choice of home. `mixed` remains
+  reachable and still fires on a genuinely mixed repo.
+
+
 - **`guardlink report` output is now deterministic across processes (D23).** `generateMermaid`
   and `generateReport` canonicalise the model at the emission boundary, the same place and for
   the same reason as the artifact fix in `a921afa` and the dashboard fix in `096c291`.

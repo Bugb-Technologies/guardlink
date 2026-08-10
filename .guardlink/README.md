@@ -11,8 +11,8 @@ accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 382 annotations · 16 assets · 15 threats · 12 controls · 74 exposures · 95 flows
-Content hash: `sha256-v1:875c43d698eba51ccceafb30f86dffdb74d18c7fbc43e2d2ad12223fbbfe109a` — identical hash means identical model.
+Current model: 385 annotations · 16 assets · 15 threats · 12 controls · 74 exposures · 96 flows
+Content hash: `sha256-v1:847e1d345c473dbb0af133f6899c5b2fb353334cd8305b8fdb646b7774ac2f57` — identical hash means identical model.
 
 ---
 
@@ -185,6 +185,25 @@ The MCP server exposes the model as tools. The ones worth knowing by name:
 | `guardlink_validate` | Before you finish. |
 | `guardlink_diff(ref)` | After a change — did I make this worse? |
 | `guardlink_status` | Cold start on an unfamiliar repo. |
+| `guardlink_annotate_apply(file, line, annotations)` | **You are writing annotations.** Prefer it over editing `.gal` files by hand. |
+
+### Writing annotations with the MCP server
+
+`guardlink_annotate_apply` writes the sidecar for you. Pass the **source** file
+you are describing — not the `.gal` path, which it derives — the line the block
+anchors to, and the raw GAL lines. Two things worth knowing before you reach for
+a text editor instead:
+
+- **Do not write `@source` yourself.** The header is synthesised from `file`,
+  `line` and `symbol`. Passing one is an error, not a shortcut.
+- **Pass `symbol`.** It is optional and it is what makes `guardlink_reanchor`
+  able to find the block again after a refactor moves the code. Omitting it is
+  also how you say "this statement is about the whole asset, not one function" —
+  an unanchored `@mitigates` is never narrowed to a single symbol.
+
+`dry_run: true` returns the diff without writing. Every line is re-parsed before
+anything reaches disk, so a syntax error is rejected with its reason — but an
+undefined `#id` is not, so run `guardlink_validate` afterwards.
 
 `guardlink_lookup` understands a fixed set of named forms and **refuses anything else
 rather than guessing**. Send it a deliberately bad query and it returns the full list.
