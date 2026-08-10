@@ -133,11 +133,12 @@ program
   .argument('[dir]', 'Project directory', '.')
   .option('-p, --project <n>', 'Override project name')
   .option('-a, --agent <agents>', 'Agent(s) to create files for: claude,cursor,codex,copilot,windsurf,cline,none (comma-separated)')
-  .option('--mode <mode>', 'Annotation mode: inline (default) or external. external restricts all writes to .guardlink/ — no agent files, no .mcp.json at root', 'inline')
+  .option('--mode <mode>', 'Where annotations live: external (default, .gal sidecars under .guardlink/annotations/) or inline (comments in source)', 'external')
+  .option('--no-root-files', 'Write nothing outside .guardlink/ — no root .mcp.json, no agent instruction files, no docs/')
   .option('--skip-agent-files', 'Only create .guardlink/, skip agent file updates')
   .option('--force', 'Overwrite existing GuardLink config and instructions')
   .option('--dry-run', 'Show what would be created without writing files')
-  .action(async (dir: string, opts: { project?: string; agent?: string; mode?: string; skipAgentFiles?: boolean; force?: boolean; dryRun?: boolean }) => {
+  .action(async (dir: string, opts: { project?: string; agent?: string; mode?: string; rootFiles?: boolean; skipAgentFiles?: boolean; force?: boolean; dryRun?: boolean }) => {
     const root = resolve(dir);
 
     // Show detection results first
@@ -175,6 +176,8 @@ program
       root,
       project: opts.project,
       mode: resolveAnnotationMode(opts.mode),
+      // Commander sets rootFiles=false for --no-root-files, true otherwise.
+      rootFiles: opts.rootFiles !== false,
       skipAgentFiles: opts.skipAgentFiles,
       force: opts.force,
       dryRun: opts.dryRun,

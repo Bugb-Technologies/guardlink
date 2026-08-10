@@ -42,11 +42,13 @@ describe('GL-402 — init writes the README in BOTH modes', () => {
     }
   });
 
-  it('external mode still gets it even though everything else outside .guardlink/ is skipped', async () => {
+  it('--no-root-files still gets it even though everything else outside .guardlink/ is skipped', async () => {
     const root = await scratch('readme-ext-only');
     try {
-      initProject({ root, mode: 'external' });
-      // The discovery paths that vanish under external default…
+      // Was `{ mode: 'external' }` until GL-506, when the footprint decision
+      // moved off the mode flag. External mode alone no longer suppresses these.
+      initProject({ root, mode: 'external', rootFiles: false });
+      // The discovery paths that vanish under a zero-footprint install…
       expect(existsSync(join(root, 'CLAUDE.md'))).toBe(false);
       expect(existsSync(join(root, '.mcp.json'))).toBe(false);
       // …leaving this one, which must therefore exist.
