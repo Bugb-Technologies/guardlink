@@ -2,7 +2,7 @@
   "version": "1.1.0",
   "project": "unknown",
   "source_files": 82,
-  "annotations_parsed": 378,
+  "annotations_parsed": 382,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -987,6 +987,16 @@
       }
     },
     {
+      "asset": "#mcp",
+      "threat": "#info-disclosure",
+      "control": "#resource-limits",
+      "description": "unannotated_files is filtered to the subgraph's own files here, and dropped entirely by withoutFileInventory at the graph emission boundary",
+      "location": {
+        "file": "src/mcp/subgraph.ts",
+        "line": 45
+      }
+    },
+    {
       "asset": "#suggest",
       "threat": "#path-traversal",
       "control": "#path-validation",
@@ -1715,7 +1725,7 @@
       "description": "Accepts tool calls from external MCP clients",
       "location": {
         "file": "src/mcp/index.ts",
-        "line": 4
+        "line": 6
       }
     },
     {
@@ -1807,6 +1817,19 @@
       "location": {
         "file": "src/mcp/subgraph.ts",
         "line": 42
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#info-disclosure",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-200"
+      ],
+      "description": "D34: the subgraph spread carried the whole repo's unannotated_files inventory into a neighbourhood answer — 8094 paths, 654.8 KB, on a query that resolved nothing",
+      "location": {
+        "file": "src/mcp/subgraph.ts",
+        "line": 44
       }
     },
     {
@@ -2627,7 +2650,7 @@
       "description": "MCP protocol transport",
       "location": {
         "file": "src/mcp/index.ts",
-        "line": 6
+        "line": 8
       }
     },
     {
@@ -2697,7 +2720,7 @@
       "description": "Model filtered to a neighbourhood",
       "location": {
         "file": "src/mcp/subgraph.ts",
-        "line": 44
+        "line": 47
       }
     },
     {
@@ -3159,7 +3182,7 @@
       "description": "Trust boundary at MCP protocol",
       "location": {
         "file": "src/mcp/index.ts",
-        "line": 7
+        "line": 9
       }
     },
     {
@@ -3193,7 +3216,17 @@
       }
     }
   ],
-  "validations": [],
+  "validations": [
+    {
+      "control": "#resource-limits",
+      "asset": "#mcp",
+      "description": "tests/graph-sparse-repo.test.ts builds two repos differing only in unannotated file count and pins that payload size does not follow it",
+      "location": {
+        "file": "src/mcp/subgraph.ts",
+        "line": 46
+      }
+    }
+  ],
   "audits": [
     {
       "asset": "#agent-launcher",
@@ -3288,7 +3321,7 @@
       "description": "All tool calls validated by server.ts before execution",
       "location": {
         "file": "src/mcp/index.ts",
-        "line": 5
+        "line": 7
       }
     },
     {
@@ -3775,6 +3808,13 @@
       }
     },
     {
+      "description": "D35: the `guardlink-mcp` bin executes this module directly, so it carries a shebang and a main guard. Startup errors go to stderr — stdout is the JSON-RPC channel and a stray line there corrupts the transport.",
+      "location": {
+        "file": "src/mcp/index.ts",
+        "line": 10
+      }
+    },
+    {
       "description": "Pure string builder; the only I/O is one optional config read by the caller",
       "location": {
         "file": "src/mcp/instructions.ts",
@@ -3792,7 +3832,7 @@
       "description": "Pure function over the model; returns a ThreatModel so the existing Mermaid generator needs no changes",
       "location": {
         "file": "src/mcp/subgraph.ts",
-        "line": 45
+        "line": 48
       }
     },
     {
@@ -3952,7 +3992,7 @@
   ],
   "coverage": {
     "total_symbols": 0,
-    "annotated_symbols": 378,
+    "annotated_symbols": 382,
     "coverage_percent": 72,
     "unannotated_critical": []
   },

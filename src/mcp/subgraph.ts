@@ -41,6 +41,9 @@
  *
  * @exposes #mcp to #dos [low] cwe:CWE-400 -- "Unbounded depth on a dense graph expands the frontier"
  * @mitigates #mcp against #dos using #resource-limits -- "Depth is clamped; visited set makes every node terminal, so cycles cannot revisit"
+ * @exposes #mcp to #info-disclosure [low] cwe:CWE-200 -- "D34: the subgraph spread carried the whole repo's unannotated_files inventory into a neighbourhood answer — 8094 paths, 654.8 KB, on a query that resolved nothing"
+ * @mitigates #mcp against #info-disclosure using #resource-limits -- "unannotated_files is filtered to the subgraph's own files here, and dropped entirely by withoutFileInventory at the graph emission boundary"
+ * @validates #resource-limits for #mcp -- "tests/graph-sparse-repo.test.ts builds two repos differing only in unannotated file count and pins that payload size does not follow it"
  * @flows ThreatModel -> #mcp via selectSubgraph -- "Model filtered to a neighbourhood"
  * @comment -- "Pure function over the model; returns a ThreatModel so the existing Mermaid generator needs no changes"
  */
@@ -430,6 +433,16 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
     // annotation count would misdescribe what it contains.
     annotations_parsed: arrays.reduce((n, a) => n + a.length, 0),
     annotated_files: base.annotated_files.filter(f => files.has(f)),
+    // D34. The spread carried this one through untouched while every relation
+    // array around it was filtered, so a neighbourhood query returned the whole
+    // repo's file inventory. Measured on specter-v1: 8094 rows, 654.8 KB — 92%
+    // of a resolved depth-2 payload, and 95% of one that resolved NOTHING.
+    // `files` is built from annotation locations, so an unannotated file can
+    // never be in it and this is always []. That is the honest value for a
+    // subgraph — an unannotated file contributes no node and no edge — and it is
+    // exactly why the graph tool omits the key at emission rather than shipping
+    // an empty array that reads as "this repo is fully annotated".
+    unannotated_files: base.unannotated_files.filter(f => files.has(f)),
     assets, threats, controls, mitigations, exposures, confirmed, acceptances,
     transfers, flows, boundaries, validations, audits, ownership,
     data_handling: dataHandling, assumptions, shields, features, comments,
@@ -509,6 +522,44 @@ export function summariseGraphPayload(payload: { traversal: Traversal; model: Th
       'description text and full location objects omitted; `at` is "file:line". '
       + 'Node and edge sets are identical to detail:"full" — only per-node detail differs. '
       + 'Use detail:"full" for the complete records, or when you need a valid ThreatModel.',
+  };
+}
+
+/**
+ * Drop the repo file inventory from a graph payload at the emission boundary.
+ *
+ * This is GL-205's ruling, not a second policy: `guardlink_parse` already decided
+ * that `unannotated_files` is a flat path list carrying nothing about the threat
+ * model, that it is the field which scales with repo size while the model does
+ * not, and that the answer is to omit it by default and name the tool that owns
+ * it. `guardlink_graph` shipped two commits later and reintroduced the field
+ * through a spread (D34). Same field, same reasoning, same shape of answer —
+ * including the `_omitted` marker, because absent-because-omitted and
+ * absent-because-empty are different facts and a caller that cannot tell them
+ * apart will read a large repo as fully annotated.
+ *
+ * `annotated_files` stays. It is already filtered to the files that contributed
+ * a node or an edge, it is proportionate to the subgraph rather than to the repo
+ * (measured: 45 rows / 1.2 KB against 8094 rows / 654.8 KB), and it answers a
+ * question a caller actually has — where do I go to read this.
+ *
+ * Applied to the payload rather than to the model so `selectSubgraph` keeps
+ * returning a ThreatModel: the type is the contract every other consumer relies on.
+ */
+export function withoutFileInventory(payload: unknown, repoUnannotatedCount: number): unknown {
+  const p = payload as { model?: Record<string, unknown> };
+  if (!p?.model) return payload;
+  const { unannotated_files: _dropped, ...model } = p.model;
+  return {
+    ...p,
+    model: {
+      ...model,
+      unannotated_files_omitted: {
+        count: repoUnannotatedCount,
+        scope: 'whole repository, not this subgraph',
+        reason: 'A subgraph is about relations; an unannotated file contributes no node and no edge. Call guardlink_unannotated, which owns this data.',
+      },
+    },
   };
 }
 

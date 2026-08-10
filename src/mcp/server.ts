@@ -54,7 +54,7 @@ import { generateDashboardHTML, generateThreatGraph } from '../dashboard/index.j
 import { diffModels, parseAtRef } from '../diff/index.js';
 import { lookup } from './lookup.js';
 import { fileContext, normalizeContextPath } from './context.js';
-import { selectSubgraph, traverseGraph, findPath, summariseGraphPayload } from './subgraph.js';
+import { selectSubgraph, traverseGraph, findPath, summariseGraphPayload, withoutFileInventory } from './subgraph.js';
 import { buildServerInstructions, readConfiguredMode } from './instructions.js';
 import { suggestAnnotations } from './suggest.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
@@ -408,7 +408,7 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_graph',
-    'Blast radius: the neighbourhood around an asset, or the path between two. Traversal walks the ASSET plane only — @flows (directed), @boundary (undirected, crossable either way) and @transfers (directed). It does NOT hop through shared threats: #path-traversal alone is declared on 10 assets here, so crossing threats would make depth 2 reach most of the graph and depth would stop meaning anything. Threats and controls are still returned for every asset in the neighbourhood, they just are not transited through. Returns a filtered ThreatModel, so the result is a model like any other. Use format: "mermaid" for a diagram, or path_to for a route between two assets.',
+    'Blast radius: the neighbourhood around an asset, or the path between two. Traversal walks the ASSET plane only — @flows (directed), @boundary (undirected, crossable either way) and @transfers (directed). It does NOT hop through shared threats: #path-traversal alone is declared on 10 assets here, so crossing threats would make depth 2 reach most of the graph and depth would stop meaning anything. Threats and controls are still returned for every asset in the neighbourhood, they just are not transited through. Returns a filtered ThreatModel, so the result is a model like any other — minus unannotated_files, which is a whole-repo file inventory rather than subgraph data and is omitted here for the same reason guardlink_parse omits it; guardlink_unannotated owns that list. Use format: "mermaid" for a diagram, or path_to for a route between two assets.',
     {
       root: z.string().describe('Project root directory').default('.'),
       from: z.string().describe('Asset to start from. Resolved exactly as "asset X" is — same tiers, same ambiguity reporting. Later hops match canonical identity only, never fuzzily.'),
@@ -449,8 +449,10 @@ export function createServer(): McpServer {
         ? { traversal, model: sub }
         : summariseGraphPayload({ traversal, model: sub });
 
+      // D34. Both detail modes, because the leak was in the model the two share.
       return {
-        content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
+        content: [{ type: 'text', text: JSON.stringify(
+          withoutFileInventory(payload, model.unannotated_files.length), null, 2) }],
       };
     },
   );
