@@ -64,6 +64,30 @@ export type SelectableKind = typeof SELECTABLE_KINDS[number];
 /** Hard ceiling on depth. Beyond the graph's diameter another hop adds nothing. */
 export const MAX_DEPTH = 10;
 
+/**
+ * How complete a traversal result is. Three states, because the two questions
+ * a caller actually has — "is there more?" and "can I get it?" — have three
+ * answers between them, not two.
+ */
+export type Completeness =
+  /**
+   * Every reachable node is present and the frontier was exhausted. There is
+   * nothing more to find at any depth. A saturated sink reports this.
+   */
+  | 'complete'
+  /**
+   * Complete FOR the requested depth, but the frontier still had unexplored
+   * neighbours. Raising `depth` would return more. The result is correct, just
+   * bounded by what you asked for.
+   */
+  | 'depth_limited'
+  /**
+   * Stopped by a limit the CALLER did not choose — `depth` was clamped to
+   * MAX_DEPTH — and there is still more beyond. THE RESULT IS INCOMPLETE and
+   * raising `depth` will not help, because the ceiling is already in force.
+   */
+  | 'truncated';
+
 export interface SubgraphOptions {
   /** Asset ref to start from. Omitted → no traversal, just the pre-filters. */
   from?: string;
@@ -111,8 +135,30 @@ export interface Traversal {
   edges: GraphEdge[];
   depth_reached: number;
   depth_requested: number;
-  /** True when the frontier was still growing at the depth limit. */
-  truncated: boolean;
+  /**
+   * Whether this result is the whole answer, and if not, why not.
+   *
+   * Replaces a `truncated: boolean` that conflated "I stopped because a limit
+   * was hit" with "I stopped because there was nothing left to reach" — the
+   * didn't-run-versus-found-nothing confusion, applied to traversal. Observed:
+   * `#llm-client` depth 1 `out` reported `truncated: true` while depth 2 `out`
+   * reported `false`, on an identical 4 nodes / 6 edges. The old flag was in
+   * fact testing "did the last hop add any nodes", which says nothing at all
+   * about whether more exist beyond them.
+   */
+  completeness: Completeness;
+  /**
+   * What lies one hop past the boundary — absent when `completeness` is
+   * `'complete'`, because then there is nothing.
+   *
+   * A blast radius that does not say what it omitted is exactly the failure
+   * this surface exists to eliminate: an agent reasoning about what a change
+   * affects, on a silently partial graph.
+   */
+  frontier_unexplored?: {
+    count: number;
+    nodes: string[];
+  };
 }
 
 /** Canonicalise a ref to one key per asset: `#cli`, `cli` and `GuardLink.CLI` agree. */
@@ -186,7 +232,8 @@ export function traverseGraph(model: ThreatModel, options: SubgraphOptions = {})
     return {
       start: null,
       nodes: [], edges: [],
-      depth_reached: 0, depth_requested: depthRequested, truncated: false,
+      // No start ref at all: nothing was asked for, so nothing is missing.
+      depth_reached: 0, depth_requested: depthRequested, completeness: 'complete',
     };
   }
 
@@ -220,13 +267,15 @@ export function traverseGraph(model: ThreatModel, options: SubgraphOptions = {})
   };
 
   if (startKey === null) {
-    return { start, nodes: [], edges: [], depth_reached: 0, depth_requested: depthRequested, truncated: false };
+    // The start ref did not resolve. `start.resolved` is false and carries the
+    // reason; completeness describes the traversal, and an unresolved start
+    // means there was no traversal to be incomplete about.
+    return { start, nodes: [], edges: [], depth_reached: 0, depth_requested: depthRequested, completeness: 'complete' };
   }
 
   const visited = new Map<string, number>([[startKey, 0]]);
   let frontier = [startKey];
   let reached = 0;
-  let truncated = false;
 
   for (let d = 1; d <= depth && frontier.length > 0; d++) {
     const next: string[] = [];
@@ -242,8 +291,33 @@ export function traverseGraph(model: ThreatModel, options: SubgraphOptions = {})
     frontier = next;
   }
 
-  // Still growing when we stopped — the caller's depth, not the graph, ended it.
-  if (frontier.length > 0 && depth < MAX_DEPTH) truncated = true;
+  // What is actually beyond the boundary.
+  //
+  // The old flag asked `frontier.length > 0`, which is "did the last hop add
+  // any nodes" — a question about what we already HAVE, not about what we are
+  // missing. Those nodes are in `visited`; they are in the answer. The real
+  // question is whether the final frontier has neighbours we never visited, and
+  // that takes one more probing hop to establish. It costs one extra edge scan
+  // and it is the difference between reporting "there is more" and reporting
+  // "the last thing I did was find something".
+  const unexplored = new Set<string>();
+  for (const node of frontier) {
+    for (const edge of edges) {
+      const to = step(edge, node, direction);
+      if (to !== null && !visited.has(to)) unexplored.add(to);
+    }
+  }
+
+  // `depth` is `depthRequested` clamped to MAX_DEPTH, so this is true only when
+  // a ceiling the caller did not choose cut the walk short. That is the one case
+  // where raising `depth` does not help, which is what separates a truncated
+  // result from a merely depth-limited one.
+  const clampedByCeiling = depth < depthRequested;
+
+  const completeness: Completeness =
+    unexplored.size === 0 ? 'complete'
+      : clampedByCeiling ? 'truncated'
+        : 'depth_limited';
 
   const nodes: TraversalNode[] = [...visited.entries()]
     .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
@@ -256,7 +330,13 @@ export function traverseGraph(model: ThreatModel, options: SubgraphOptions = {})
     edges: edges.filter(e => included.has(e.from) && included.has(e.to)),
     depth_reached: reached,
     depth_requested: depthRequested,
-    truncated,
+    completeness,
+    ...(completeness === 'complete' ? {} : {
+      frontier_unexplored: {
+        count: unexplored.size,
+        nodes: [...unexplored].sort(),
+      },
+    }),
   };
 }
 

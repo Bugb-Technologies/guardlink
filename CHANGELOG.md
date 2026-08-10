@@ -71,6 +71,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Removed
 
+- **BREAKING (MCP response shape): `traversal.truncated` is gone from
+  `guardlink_graph`, replaced by `traversal.completeness`.** The boolean conflated "I
+  stopped because a limit was hit" with "I stopped because there was nothing left to
+  reach". Measured: `#llm-client` at depth 1 `out` reported `truncated: true` while depth 2
+  `out` reported `false`, on an identical 4 nodes / 6 edges. It was in fact testing *did the
+  last hop add any nodes* — a question about what the result already contains, not about
+  what is missing from it.
+
+  `completeness` is one of `complete` (nothing more to find at any depth — a saturated sink
+  reports this), `depth_limited` (correct for the depth you asked for; raising `depth`
+  returns more) or `truncated` (the depth-10 ceiling cut it short — **the result is
+  incomplete** and raising `depth` will not help). When it is not `complete`, a new
+  `frontier_unexplored: { count, nodes }` names what lies one hop past the boundary; a blast
+  radius that does not say what it omitted is the failure this surface exists to eliminate.
+
+  Removed rather than kept as a deprecated alias, deliberately. Nothing outside
+  `subgraph.ts` read it — not the CLI, not the TUI, not a single test — and any faithful
+  alias would have to reproduce the *wrong* answer, since `completeness !== 'complete'`
+  disagrees with the old flag on exactly the case that motivated the change. A familiar name
+  with changed semantics is worse than a removed one.
 - **Risk Topology graph removed from the dashboard Diagrams page.** The force-directed D3 view (`generateTopologyData`, the `Risk Topology` tab, and its client-side renderer/inspector) grew unreadably dense on large codebases — a hairball that obscured more than it showed. The three Mermaid views (Threat Graph, Data Flow, Attack Surface) remain, and the Threat Graph still auto-filters to high/critical with an *All severities* toggle. `generateTopologyData` and the `DiagramTopology*` types are gone from `src/dashboard/diagrams.js`.
 - **Pentest Findings page removed from the dashboard.** The sidebar entry, the findings/templates page, and the finding + template detail drawers are gone; `generateDashboardHTML` no longer takes a `pentestData` argument and the dashboard no longer embeds raw scan JSON. Pentest ingestion itself is unchanged — CXG scan results in `.guardlink/pentest-findings/` still flow into `guardlink threat-report` / AI analyses as `<pentest_findings>` context, and evidence redaction still applies at load time.
 
