@@ -125,7 +125,7 @@ two authors; there is one.
 | D28 | ~~Med~~ **FIXED** (958d59c) | No CI gate on artifact drift. **Two of my claims were wrong:** CI already existed (build + test + validate + status on an 18/20/22 matrix), and my "verified it exits 1 on stale, 0 on current" was true for those two states but the gate was **blind to deletion** — `checkArtifactDrift` enumerated the `.mmd` files present on disk, so `rm dataflow.mmd` reported "artifacts are current" and exited 0. Found by testing the gate rather than trusting the PRD. Fixed by deriving the expected set from the model | verified: deleted `.mmd` → exit 1, deleted `model.json` → exit 1 |
 | D26 | Med | *(fixed in f71950c)* **`.guardlink/model.json` carried a top-level `generated_at`.** The `.mmd` headers had volatile fields stripped in `a921afa`; `model.json` did not. It is the artifact GL-304 most deliberately commits — justified precisely so a model change shows up in PR review | verified fixed: two `guardlink artifacts .` runs now byte-identical |
 | D27 | ~~BLOCKER~~ **FIXED** (45295b2) | **Agent instruction files never state where annotations go.** `agentInstructions(project)` takes no mode parameter, so no agent file can name it. Verified on a fresh default-init repo: `config.json` says `annotation_mode: external`, while `CLAUDE.md` contains **zero** occurrences of `.gal`, `annotations/`, `sidecar` or `@source` (its one "external" is "external API calls"). `.guardlink/README.md` states it correctly — 6, 4 and 2 occurrences — but that is the cold-start path, not the file an agent reads every turn. Under the new default an agent reads inline syntax with no placement guidance and writes inline; the repo silently goes mixed | **gates GL-507's default flip**; fix is GL-403 territory: thread mode into `agentInstructions` plus a short placement section |
-| D29 | **High** | **Any comment line beginning with a GuardLink verb is a live annotation** — not just templates (D22 was the narrow case). Verified: `@feature flag rollout is described below` and `@exposes was renamed in v1.2` both emit `Malformed … annotation` diagnostics, and diagnostics fail `validate`. So writing *prose about GuardLink* in your own codebase breaks your own `validate`. Inherent to the sigil design, not a template problem. Needs a decision: ignore unparseable lines that aren't annotation-shaped, tighten the recognised prefix, or make `@shield` ergonomic enough to be the answer | reproduced independently; hit twice during the sweep, once accidentally |
+| D29 | ~~High~~ **FIXED** (3d9f965) | **Any comment line beginning with a GuardLink verb is a live annotation** — not just templates (D22 was the narrow case). Verified: `@feature flag rollout is described below` and `@exposes was renamed in v1.2` both emitted `Malformed … annotation` diagnostics, and diagnostics fail `validate`. So writing *prose about GuardLink* in your own codebase broke your own `validate`. **Resolved with a two-tier split on structural evidence** — a line carrying a `#ref`, a `--` delimiter, or one of *that verb's own* grammar keywords is a malformed annotation (error, fails validate); a line with none is reported as prose-like (warning, does not fail). **My ruling specified one global keyword list; measurement corrected it to per-verb** — `to` is structural in `@exposes` but not in `@feature`, and the global list still errored on 3 of 10 realistic prose lines, including the exact line that broke this repo during the sweep. Per-verb takes that to 1 of 10; the survivor (`@transfers … from …`, a keyword `@transfers` genuinely owns) is real ambiguity with `@shield` as the deterministic override. A bare verb with nothing after it is an error, not prose | verified independently across 8 cases; `ParseDiagnostic` gained a machine-readable `code` |
 
 **Line-reference drift** found in Phase 0 verification (cosmetic, behaviour confirmed in
 every case): `parse-project.ts` 104-110 → 108-113 and 137 → 141; `cli/index.ts` 419-427 →
@@ -468,7 +468,15 @@ the filtered model — no second renderer.
 - [ ] `path from X to Y` returns ordered hops, or an explicit no-path result.
 - [ ] `format: 'mermaid'` output renders in a standard Mermaid viewer.
 - [ ] `kinds[]` filters which relation types are included.
-- [ ] **Defaults must sit in the affordable regime.** Measured on the Phase 2b
+- [ ] **RESOLVED (720a510, 39371bc).** The cost is per-node payload, not depth:
+      `description` + `location` are 48.7% of a depth-2 response. Ruling: keep
+      `depth=2, direction='both'`; add `detail: 'summary' | 'full'`, default summary
+      (ids, kinds, edges, severity, compact `file:line`). Measured saving 36–40% —
+      short of the 48.7% my ruling implied, because the ruling itself chose to keep
+      `file:line`, which costs back ~12pp. That was the right trade: an agent that knows
+      an exposure exists but not where it was declared cannot go read it. Topology is
+      identical between modes, pinned by 26 tests.
+- [ ] ~~Defaults must sit in the affordable regime.~~ Measured on the Phase 2b
       implementation (model content 61,914 B on this repo): `depth=1/both` 6.6 KB (11%),
       `depth=2/out` 20.6 KB (34%), **`depth=2/both` 46.4 KB (77%)**, `depth=3/both`
       exceeds a full dump. The shipped defaults are `depth=2, direction='both'`
@@ -478,7 +486,17 @@ the filtered model — no second renderer.
       and enforce a byte budget using the existing `truncated` flag. Recommended: the
       third — depth ≥ 2 is the tool's whole value, so cap output rather than cripple the
       default.
-- [ ] The `truncated` flag must mean one thing. Observed: `#llm-client d1 out` reports
+- [ ] **RESOLVED (39371bc).** Replaced the boolean with three states: `complete`
+      (frontier exhausted, nothing more to find), `depth_limited` (complete for the
+      requested depth, but unexplored nodes remain — with a count), `truncated` (nodes
+      dropped to fit a limit; result INCOMPLETE). Root cause: the old flag tested
+      `frontier.length > 0` — a question about what the result already *contains*, not
+      what is *missing* from it. The boolean was removed rather than aliased, because a
+      faithful alias would have to reproduce the wrong answer on the very case that
+      motivated the change. Verified: `#llm-client` d1-out and d2-out both now report
+      `complete` (were `true`/`false` for identical results); `#cli` d20 reports
+      `complete`, not `truncated`, because the clamp cost nothing.
+- [ ] ~~The `truncated` flag must mean one thing.~~ Observed: `#llm-client d1 out` reports
       `trunc=true` while `d2 out` reports `trunc=false` with an identical 4 nodes /
       6 edges. If depth 1 truncated, its result was incomplete; the flag currently
       conflates "budget hit" with "frontier saturated."
