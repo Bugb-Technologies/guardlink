@@ -95,7 +95,12 @@ two authors; there is one.
 
 ### 3.3 Confirmed — defects
 
-> **Status: 57 logged · 37 fixed · 1 won't-fix (D20) · 19 open (D22, D38–D47, D49–D56).**
+> **Status: 58 logged · 40 fixed · 1 won't-fix (D20) · 17 open (D22, D38–D46, D51–D56, D58) · 1 partial (D42).**
+>
+> **D47, D49, D50 fixed and D42 half-fixed 2026-08-10 (§3.8).** D42's remaining
+> half is BLOCKED on a decision, not on work: the wire reshape needs a
+> `schema_version` bump. D58 was found by the probe built for D50, not by
+> reading.
 >
 > **D48 and D57 fixed 2026-08-10 (§3.6).** D57 reported two raw pair joins; the
 > audit for those two found **eleven more**, and had to be run twice because the
@@ -207,6 +212,8 @@ two authors; there is one.
 | D55 | Low — OPEN | **A repo with no annotations at all passes `validate` with a green check.** `guardlink validate` on a git repo containing one unannotated source file and no `.guardlink/` prints "✓ All annotations valid, no unmitigated exposures", exit 0. Vacuously true, and the MCP surface is careful about exactly this distinction — `guardlink_context` separates `scanned_without_annotations` from `not_scanned`, and the server instructions warn "do not read them as the same thing". The CLI makes no such distinction, so an unmodelled repo and a clean one are indistinguishable at the command the docs tell you to finish with. `unannotated` reports it correctly, which is where the signal already lives | reproduced 2026-08-10 in `/tmp/emptyrepo` |
 | D56 | Low — OPEN, **UNVERIFIED — needs a TTY** | **`guardlink ask` and `guardlink translate` fail confusingly when not attached to a terminal.** `guardlink ask "what are the biggest risks"` prints "Launching Claude Code…", then "Warning: no stdin data received in 3s", then `Error: Input must be provided either through stdin or as a prompt argument when using --print`, exits 1 — while having built the prompt correctly ("✓ Prompt copied to clipboard (1,768 chars)"). The error claims no prompt was supplied when one was supplied as an argument; the prompt appears not to be piped to the spawned agent. **Logged at low confidence:** both commands announce "Claude Code will take over this terminal" and may be TTY-only by design, and this pass had no TTY. Verify interactively before acting. Contrast `threat-report`, which fails cleanly and helpfully with "No AI provider configured" and three ways to fix it | observed 2026-08-10 in a non-interactive shell; **not** a confirmed defect |
 | D57 | ~~High~~ **FIXED (see §3.6)** | **The D36 coverage fix missed two join sites, both in the pentest/CXG path.** `src/analyze/index.ts:415` and `:450` still filter exposures on the raw `${asset}::${threat}` pair — no site check, and no `#` normalisation either. These feed `serializeModelCompact` and the `guardlink translate` / analyze prompt, so the generated CXG template-authoring prompt lists **9** unmitigated candidates against the fixed predicate's **11**, omitting the critical `#db → #sqli` at `app/db.py:9`. That is the exact suppression D36 was raised to stop, surviving in the one place it matters most: the prompt that tells an agent which threats are worth writing exploits for. Found in a generated prompt pasted by accident, not by the eight-site audit | verified: `findUnmitigatedExposures` returns 11, the analyze path returned 9, and the critical injection was absent from the compact serialisation. **FIXED:** thirteen sites routed through the canonical predicate — the two reported, six more found by a `${asset}::${threat}` shape sweep, and five found only by a second sweep for the nested-`.some()` shape, which has no `::` in it. Guarded by `tests/coverage-single-implementation.test.ts` |
+
+| D58 | Low — OPEN | **The TUI reports "All security-relevant symbols are annotated!" on every repo, always.** `cmdScan` branches on `coverage.unannotated_critical.length === 0`, and `unannotated_critical` is never populated — `parse-project.ts:284` sets it to `[]` and nothing else writes it. So the green line is unconditional and carries no information, on a repo with full annotations and on one with none. Same vacuous-green family as D48's `reanchor` check ("✓ Every anchored @source block still points at its symbol" on a repo with zero anchors) and D55's `validate` on an unannotated repo. Either populate the field or delete the claim; a third option is to say what it actually knows, which is file coverage | found 2026-08-10 while fixing D42 in the same function; noted in a code comment at `tui/commands.ts` rather than fixed, as out of scope |
 
 **Line-reference drift** found in Phase 0 verification (cosmetic, behaviour confirmed in
 every case): `parse-project.ts` 104-110 → 108-113 and 137 → 141; `cli/index.ts` 419-427 →
@@ -373,6 +380,39 @@ a ledger row until it reproduces; noted so a third sighting is recognised as a p
 instead of a fluke.
 
 ---
+
+### 3.5b The MCP query set is a file now
+
+"The nine-query set" was cited across roughly eight sessions as a committed
+regression suite. It never was — it came from one Phase 1 verification run and
+was reconstructed from memory on each reference. Every reconstruction was
+plausible and none was identical, which is the worst property a baseline can
+have: "no drift" was a judgement by whoever ran it rather than something anyone
+could check.
+
+`scripts/query-set.mjs` + `tests/fixtures/query-set-baseline.txt`, gated in CI.
+
+- **Fresh stdio server per corpus**, spawned from the `guardlink-mcp` entry
+  point. A connected agent keeps a stale server across a rebuild and nothing in
+  the envelope reveals it — that trap produced a false defect report during
+  D36/D37, so never reusing a server is the only defence.
+- **Both corpora, every run.** This repo (TypeScript, inline, file count tracks
+  annotation count) and `tests/fixtures/expense-api` (Python, born external,
+  the two decoupled). The single-corpus habit hid D34 and D36, and let D57's
+  eleven extra sites survive an audit that only looked here.
+- **13 queries.** The 11 cited, plus `graph from cli depth 2` and `context` on a
+  missing file — those two cover D34/D35, D47 and D51, none of which the
+  original set would have caught.
+- **Deterministic and diffable.** Timestamps, absolute paths and git SHAs are
+  normalised out; two runs are byte-identical, so drift is a `diff -u`.
+- ~0.3 s, so CI was cheap. The first version took 60 s of wall clock for 0.4 s of
+  work — uncleared per-query timeouts held the event loop open — which would
+  have read as "the query set is slow" rather than "the script has a bug".
+
+It already earns its keep as a two-corpus check: `cwe:CWE-89` reports
+`declared=false` on this repo and `declared=true` on the fixture, and
+`asset cli` is an `exact` match here and a `substring` match there resolving to
+`client`. Both are correct, and neither is visible from one corpus.
 
 ### 3.6 D57 and D48 — fixed 2026-08-10
 
