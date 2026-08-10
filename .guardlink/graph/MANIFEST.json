@@ -1,37 +1,37 @@
 {
   "schema_version": 1,
-  "annotation_hash": "sha256-v2:ad503e63987ac4228aefabf0af4f85fa38de9d800b4b2fbd2c8ca2328646c9c0",
+  "annotation_hash": "sha256-v2:d1d3175f6533ef386fb2a9721673c210e775066562fc16af70aeb09a3f517e54",
   "generator": "guardlink@1.4.5",
   "artifacts": [
     {
       "path": ".guardlink/graph/threat-graph.mmd",
       "bytes": 8122,
-      "annotation_hash": "sha256-v2:ad503e63987ac4228aefabf0af4f85fa38de9d800b4b2fbd2c8ca2328646c9c0"
+      "annotation_hash": "sha256-v2:d1d3175f6533ef386fb2a9721673c210e775066562fc16af70aeb09a3f517e54"
     },
     {
       "path": ".guardlink/graph/dataflow.mmd",
       "bytes": 9024,
-      "annotation_hash": "sha256-v2:ad503e63987ac4228aefabf0af4f85fa38de9d800b4b2fbd2c8ca2328646c9c0"
+      "annotation_hash": "sha256-v2:d1d3175f6533ef386fb2a9721673c210e775066562fc16af70aeb09a3f517e54"
     },
     {
       "path": ".guardlink/graph/attack-surface.mmd",
       "bytes": 4365,
-      "annotation_hash": "sha256-v2:ad503e63987ac4228aefabf0af4f85fa38de9d800b4b2fbd2c8ca2328646c9c0"
+      "annotation_hash": "sha256-v2:d1d3175f6533ef386fb2a9721673c210e775066562fc16af70aeb09a3f517e54"
     },
     {
       "path": ".guardlink/graph/by-feature/dashboard.mmd",
       "bytes": 1413,
-      "annotation_hash": "sha256-v2:ad503e63987ac4228aefabf0af4f85fa38de9d800b4b2fbd2c8ca2328646c9c0"
+      "annotation_hash": "sha256-v2:d1d3175f6533ef386fb2a9721673c210e775066562fc16af70aeb09a3f517e54"
     },
     {
       "path": ".guardlink/graph/by-feature/mcp-integration.mmd",
       "bytes": 1813,
-      "annotation_hash": "sha256-v2:ad503e63987ac4228aefabf0af4f85fa38de9d800b4b2fbd2c8ca2328646c9c0"
+      "annotation_hash": "sha256-v2:d1d3175f6533ef386fb2a9721673c210e775066562fc16af70aeb09a3f517e54"
     },
     {
       "path": ".guardlink/model.json",
-      "bytes": 116491,
-      "annotation_hash": "sha256-v2:ad503e63987ac4228aefabf0af4f85fa38de9d800b4b2fbd2c8ca2328646c9c0"
+      "bytes": 117420,
+      "annotation_hash": "sha256-v2:d1d3175f6533ef386fb2a9721673c210e775066562fc16af70aeb09a3f517e54"
     }
   ]
 }

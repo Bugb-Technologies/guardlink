@@ -9,11 +9,13 @@
  * @exposes #parser to #path-traversal [high] cwe:CWE-22 -- "Glob patterns determine which files are modified"
  * @mitigates #parser against #path-traversal using #glob-filtering -- "DEFAULT_EXCLUDE blocks sensitive dirs; cwd constrains scope"
  * @audit #parser -- "Destructive operation requires explicit user confirmation via dryRun flag"
- * @comment -- "#local-dev is claimed to be entitled to the #arbitrary-write exposure above — guardlink clear exists to rewrite these files. That claim is filed as a proposal in .guardlink/entitlement-proposals.json and is NOT written here: acceptance is a human's, and acceptance is what writes the @entitles line (actor-entitlement design §3.6)"
+ * @comment -- "The @entitles below answers the #arbitrary-write exposure above, and only that one: #local-dev is NOT entitled to #path-traversal, because a glob escaping the project root is a bug, not a privilege anyone was granted by design"
  * @comment -- "#mcp-agent is granted nothing. It can only preview a clear (dry_run defaults to true at src/mcp/server.ts:505), and a preview writes nothing, so it answers no exposure — an entitlement that joins no finding is decoration. Nor is it entitled to clear-annotations: no code makes an MCP caller obtain the confirmation its tool description asks for, so granting it would be the over-grant §2 forbids"
  * @flows ProjectRoot -> #parser via fast-glob -- "File discovery path"
  * @flows #parser -> SourceFiles via writeFile -- "Modified file write path"
  * @handles internal on #parser -- "Operates on project source files only"
+ * @entitles #local-dev to clear-annotations on #parser against #arbitrary-write -- "By design: guardlink clear exists to reset a project's annotations, and the operator already holds shell write access to the very tree it rewrites, so this is no privilege gain. Gate: dry-run preview, then a y/N prompt, then a hard refusal when stdin is not a TTY and --yes was not passed, at src/cli/index.ts:1071"
+ * @comment -- "Entitlement accepted by zippon on 2026-08-10 via guardlink entitle (proposal ent-local_dev.parser.arbitrary_write)."
  */
 
 import fg from 'fast-glob';

@@ -2,7 +2,7 @@
   "version": "1.1.0",
   "project": "unknown",
   "source_files": 83,
-  "annotations_parsed": 421,
+  "annotations_parsed": 423,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -648,7 +648,27 @@
       }
     }
   ],
-  "entitlements": [],
+  "entitlements": [
+    {
+      "actor": "#local-dev",
+      "capability": "clear-annotations",
+      "canonical_capability": "clear_annotations",
+      "asset": "#parser",
+      "threat": "#arbitrary-write",
+      "description": "By design: guardlink clear exists to reset a project's annotations, and the operator already holds shell write access to the very tree it rewrites, so this is no privilege gain. Gate: dry-run preview, then a y/N prompt, then a hard refusal when stdin is not a TTY and --yes was not passed, at src/cli/index.ts:1071",
+      "citation": {
+        "file": "src/cli/index.ts",
+        "line": 1071,
+        "raw": "src/cli/index.ts:1071"
+      },
+      "inert": false,
+      "imprecise": false,
+      "location": {
+        "file": "src/parser/clear.ts",
+        "line": 17
+      }
+    }
+  ],
   "mitigations": [
     {
       "asset": "#agent-launcher",
@@ -4159,7 +4179,7 @@
       }
     },
     {
-      "description": "#local-dev is claimed to be entitled to the #arbitrary-write exposure above — guardlink clear exists to rewrite these files. That claim is filed as a proposal in .guardlink/entitlement-proposals.json and is NOT written here: acceptance is a human's, and acceptance is what writes the @entitles line (actor-entitlement design §3.6)",
+      "description": "The @entitles below answers the #arbitrary-write exposure above, and only that one: #local-dev is NOT entitled to #path-traversal, because a glob escaping the project root is a bug, not a privilege anyone was granted by design",
       "location": {
         "file": "src/parser/clear.ts",
         "line": 12
@@ -4170,6 +4190,13 @@
       "location": {
         "file": "src/parser/clear.ts",
         "line": 13
+      }
+    },
+    {
+      "description": "Entitlement accepted by zippon on 2026-08-10 via guardlink entitle (proposal ent-local_dev.parser.arbitrary_write).",
+      "location": {
+        "file": "src/parser/clear.ts",
+        "line": 18
       }
     },
     {
@@ -4343,7 +4370,7 @@
   ],
   "coverage": {
     "total_symbols": 0,
-    "annotated_symbols": 421,
+    "annotated_symbols": 423,
     "coverage_percent": 75,
     "unannotated_critical": []
   },
