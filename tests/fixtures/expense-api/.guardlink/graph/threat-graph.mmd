@@ -1,0 +1,71 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        threat-graph.mmd
+%% annotation_hash: sha256-v1:81168ffb1ea44c87c243a36fcb00eeb910cc9b425a8873de9b680913ec1d2f83
+%% generator:       guardlink@1.4.5
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
+graph LR
+  subgraph TZ0["🧱 Request-derived values become SQL here"]
+    api["🔷 Expense.API [PII, FINANCIAL]"]
+    db["🔷 Expense.DB [FINANCIAL, PII]"]
+  end
+  subgraph TZ2["🧱 Request-derived data becomes a filesyst…"]
+    receipts["🔷 Expense.Storage [FINANCIAL]"]
+  end
+  auth["🔷 Expense.Auth [SECRETS]"]
+  config["🔷 Expense.Config [SECRETS]"]
+  notify["🔷 Expense.Notify [FINANCIAL]"]
+  timing["🔵 Timing_Disclosure (cwe:CWE-208)"]:::threat
+  weak_secret["🟠 Weak_Default_Secret (cwe:CWE-1188)"]:::threat
+  sqli["🔴 SQL_Injection (cwe:CWE-89)"]:::threat
+  cred_stuffing["🟡 Credential_Stuffing (cwe:CWE-307)"]:::threat
+  malformed_input["🔵 Malformed_Input_Crash (cwe:CWE-248)"]:::threat
+  ssrf["🟠 Server_Side_Request_Forgery (cwe:CWE-918)"]:::threat
+  path_traversal["🟠 Path_Traversal (cwe:CWE-22)"]:::threat
+  xss_by_render["🟡 Rendered_Content_Injection (cwe:CWE-79)"]:::threat
+  pbkdf2["🛡️ Password_Key_Derivation"]:::control
+  hmac_token["🛡️ Signed_Session_Token"]:::control
+  constant_time["🛡️ Constant_Time_Compare"]:::control
+  prepared_stmts["🛡️ Parameterized_Queries"]:::control
+  octet_stream["🛡️ Non_Rendered_Response"]:::control
+  http_timeout["🛡️ Outbound_Timeout"]:::control
+  auth -. exposes .-> timing
+  config -. exposes .-> weak_secret
+  db -. exposes .-> sqli
+  api -. exposes .-> cred_stuffing
+  api -. exposes .-> malformed_input
+  api -. exposes .-> ssrf
+  api -. exposes .-> path_traversal
+  notify -. exposes .-> ssrf
+  receipts -. exposes .-> path_traversal
+  pbkdf2 -- mitigates --> cred_stuffing
+  pbkdf2 -. protects .-> auth
+  hmac_token -- mitigates --> weak_secret
+  hmac_token -. protects .-> auth
+  hmac_token -. protects .-> api
+  constant_time -- mitigates --> timing
+  constant_time -. protects .-> auth
+  prepared_stmts -- mitigates --> sqli
+  prepared_stmts -. protects .-> db
+  octet_stream -- mitigates --> xss_by_render
+  octet_stream -. protects .-> api
+  prepared_stmts -. protects .-> api
+  http_timeout -- mitigates --> malformed_input
+  http_timeout -. protects .-> notify
+  config -- "📡 SECRET_KEY" --> auth
+  db -- "📡 record" --> auth
+  config -- "🗄️ DB_PATH" --> db
+  api -- "📡 find_expenses" --> db
+  api -- "📡 insert_expense" --> db
+  api -- "📡 verify_token" --> auth
+  db -- "📡 user_record" --> api
+  api -- "📡 send_webhook" --> notify
+  api -- "📡 read_receipt" --> receipts
+  api -.-|🧱 Request-derived values be…| db
+  classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
+  classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px

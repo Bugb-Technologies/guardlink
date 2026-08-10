@@ -1,0 +1,33 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-feature/expense-tracking.mmd (@feature "Expense Tracking")
+%% annotation_hash: sha256-v1:81168ffb1ea44c87c243a36fcb00eeb910cc9b425a8873de9b680913ec1d2f83
+%% generator:       guardlink@1.4.5
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
+graph LR
+  subgraph TZ0["🧱 Everything past this point has been aut…"]
+    api["🔷 api [PII, FINANCIAL]"]
+  end
+  cred_stuffing["⚪ cred-stuffing"]:::threat
+  malformed_input["⚪ malformed-input"]:::threat
+  ssrf["⚪ ssrf"]:::threat
+  path_traversal["⚪ path-traversal"]:::threat
+  xss_by_render["⚪ xss-by-render"]:::threat
+  sqli["⚪ sqli"]:::threat
+  octet_stream["🛡️ octet-stream"]:::control
+  prepared_stmts["🛡️ prepared-stmts"]:::control
+  api -. exposes .-> cred_stuffing
+  api -. exposes .-> malformed_input
+  api -. exposes .-> ssrf
+  api -. exposes .-> path_traversal
+  octet_stream -- mitigates --> xss_by_render
+  octet_stream -. protects .-> api
+  prepared_stmts -- mitigates --> sqli
+  prepared_stmts -. protects .-> api
+  classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
+  classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px

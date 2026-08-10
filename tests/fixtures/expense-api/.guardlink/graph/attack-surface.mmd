@@ -1,0 +1,44 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        attack-surface.mmd
+%% annotation_hash: sha256-v1:81168ffb1ea44c87c243a36fcb00eeb910cc9b425a8873de9b680913ec1d2f83
+%% generator:       guardlink@1.4.5
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 38, "rankSpacing": 48, "curve": "linear", "htmlLabels": false}}}%%
+graph TB
+  subgraph A_api["Expense.API · ⚠ 4 open"]
+    direction TB
+    E0["⚠️ Server_Side_Request_Forgery"]:::sev_high
+    E1["⚠️ Path_Traversal"]:::sev_high
+    E2["⚠️ Credential_Stuffing"]:::sev_med
+    E3["⚠️ Malformed_Input_Crash ×2"]:::sev_low
+  end
+  subgraph A_config["Expense.Config · ⚠ 1 open"]
+    direction TB
+    E4["⚠️ Weak_Default_Secret"]:::sev_high
+  end
+  subgraph A_notify["Expense.Notify · ⚠ 1 open"]
+    direction TB
+    E5["⚠️ Server_Side_Request_Forgery"]:::sev_high
+  end
+  subgraph A_receipts["Expense.Storage · ⚠ 1 open"]
+    direction TB
+    E6["⚠️ Path_Traversal ×2"]:::sev_high
+  end
+  subgraph A_auth["Expense.Auth · ✅ 100% covered"]
+    direction TB
+    E7["✅ Timing_Disclosure"]:::sev_low
+  end
+  subgraph A_db["Expense.DB · ✅ 100% covered"]
+    direction TB
+    E8["✅ SQL_Injection"]:::sev_crit
+  end
+  classDef sev_crit fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.4px
+  classDef sev_high fill:#402019,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.2px
+  classDef sev_med fill:#1f3943,stroke:#55899e,color:#f0f0f0
+  classDef sev_low fill:#10263b,stroke:#0360a2,color:#f0f0f0
+  classDef sev_unset fill:#223942,stroke:#3b6779,color:#f0f0f0
