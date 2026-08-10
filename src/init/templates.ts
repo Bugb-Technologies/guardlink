@@ -4,6 +4,8 @@
 
 import type { ProjectInfo } from './detect.js';
 import type { ThreatModel } from '../types/index.js';
+import type { AnnotationMode } from '../parser/annotation-mode.js';
+import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 
 // ─── Canonical reference document ────────────────────────────────────
 
@@ -116,14 +118,32 @@ When connected via \`.mcp.json\`, use:
  */
 export function agentInstructions(project: ProjectInfo): string {
   return `
-## GuardLink — Security Annotations (Required)
+## GuardLink — Security Model
 
-This project uses [GuardLink](https://guardlink.bugb.io) annotations in source code comments.
+This project carries a [GuardLink](https://guardlink.bugb.io) threat model: security facts
+recorded next to the code they describe — what each component is exposed to, what mitigates
+it, how data flows between components — parsed into something you can query.
+
+**Ask it instead of inferring security context from the source.** It already answers most of
+what you would otherwise guess at, and it records decisions that are invisible in the code,
+such as which risks a human has explicitly accepted.
+
+| You are about to… | Ask |
+|---|---|
+| edit a file | \`guardlink_context(file)\` — annotations there, the assets they name, open exposures, controls the file must uphold |
+| change a shared component | \`guardlink_graph(from, depth, direction)\` — blast radius across data flows and trust boundaries |
+| act on a scanner finding | \`guardlink_lookup("cwe:CWE-89")\` — is this weakness class declared, and is it mitigated, accepted, open or confirmed |
+| finish a change | \`guardlink validate .\` then \`guardlink diff HEAD~1\` — did I make this worse |
+
+Without MCP, the same answers come from \`guardlink status .\`, \`guardlink parse . --format json\`
+and \`guardlink diff HEAD~1\`.
+
 **Full reference: \`docs/GUARDLINK_REFERENCE.md\`**
 
-### Core Requirement
+### What you owe it back
 
-**Every time you write or modify code that touches security-relevant behavior, you MUST add GuardLink annotations in the same change.** This includes: new endpoints, authentication/authorization logic, data validation, database queries, file I/O, external API calls, crypto operations, process spawning, user input handling, and configuration parsing. Do NOT annotate pure business logic, formatting utilities, UI components, or helper functions that never touch security boundaries.
+**When you write or change code that touches security-relevant behavior, add the annotations in
+the same change.** This includes: new endpoints, authentication/authorization logic, data validation, database queries, file I/O, external API calls, crypto operations, process spawning, user input handling, and configuration parsing. Do NOT annotate pure business logic, formatting utilities, UI components, or helper functions that never touch security boundaries.
 
 ### Key Rules
 
@@ -139,15 +159,23 @@ This project uses [GuardLink](https://guardlink.bugb.io) annotations in source c
 
 ### Workflow (while coding)
 
-- Before writing code: skim \`.guardlink/definitions${project.definitionsExt}\` to understand existing assets, threats, and controls.
-- While writing code: add annotations above or in the doc-block of security-relevant functions as you write them — not as a separate pass afterward.
-- After changes: run \`guardlink validate .\` to catch syntax/dangling refs; run \`guardlink status .\` to check coverage; commit annotation updates with the code.
-- After adding annotations: run \`guardlink sync\` to update all agent instruction files with the current threat model context. This ensures every agent sees the latest assets, threats, controls, and open exposures.
+- **Opening a file:** \`guardlink_context(file)\` before you read far into it. Note which kind of empty an empty answer is — \`scanned_without_annotations\` means clean, \`not_scanned\` means the parser never read it. They are not the same.
+- **Before writing:** skim \`.guardlink/definitions${project.definitionsExt}\` for the existing assets, threats and controls. Reuse those ids.
+- **While writing:** annotate in the doc-block as you go, not as a pass afterward.
+- **After changing:** \`guardlink diff HEAD~1\` — the one command that answers "did I add exposure". Then \`guardlink validate .\` for syntax and dangling refs, and \`guardlink status .\` for coverage.
+- **After annotating:** \`guardlink sync\` refreshes this block and \`.guardlink/README.md\` from the current model.
 
 ### Tools
 
-- MCP tools (when available, e.g., Claude Code): \`guardlink_lookup\`, \`guardlink_validate\`, \`guardlink_status\`, \`guardlink_parse\`, \`guardlink_suggest <file>\`.
-- CLI equivalents (always available): \`guardlink validate .\`, \`guardlink status .\`, \`guardlink parse .\`.
+- **MCP** (Claude Code, Cursor): \`guardlink_context\`, \`guardlink_graph\`, \`guardlink_lookup\`, \`guardlink_diff\`, \`guardlink_validate\`, \`guardlink_status\`, \`guardlink_suggest\`.
+- **CLI** (always): \`guardlink status .\`, \`guardlink parse .\`, \`guardlink validate .\`, \`guardlink diff HEAD~1\`, \`guardlink report .\`.
+- \`guardlink_lookup\` answers a fixed set of named forms and **refuses anything else rather than
+  guessing** — send it a bad query to get the list. Beyond \`asset\`/\`threat\`/\`control\`, it reaches
+  every relation the model holds: \`owner of X\`, \`handles pii\`, \`assumptions for X\`, \`audits for X\`,
+  \`validations for X\`, \`acceptances\`, \`transfers\`, \`comments for X\`, \`shields\`, \`cross-repo refs\`,
+  and \`cwe:CWE-89\` / \`owasp:A03\` for scanner findings.
+- Reference matches report \`matched_via: exact | alias | substring\`. A substring match is a
+  suggestion, not an identification; \`ambiguous\` with \`candidates\` means several records tied.
 
 ### Quick Syntax (common verbs)
 
@@ -183,17 +211,45 @@ guardlink entitle --propose --actor '#ns-admin' --capability configure-archival-
  * Contains real asset/threat/control IDs, open exposures, and existing flows
  * so any coding agent knows the current security posture.
  */
-export function buildModelContext(model: ThreatModel): string {
+/**
+ * Freshness for the synced block — the content hash, and nothing else.
+ *
+ * `synced_at` and `git_sha` were here and are deliberately gone. This block
+ * lives in tracked files that are regenerated on every sync, so a field that
+ * moves for reasons unrelated to the block’s content makes every regeneration a
+ * diff. `synced_at` carried no information at all; `git_sha` moved on every
+ * commit and, because the block is regenerated *before* the commit it would
+ * name, was permanently one behind and permanently dirty.
+ *
+ * Both still ship in the MCP freshness envelope (GL-102), computed per call and
+ * touching no disk. That is where a volatile field belongs.
+ *
+ * `annotation_hash` stays because it moves when, and only when, the thing it
+ * describes moves — which is the entire point of a staleness marker.
+ */
+export interface ModelContextFreshness {
+  /** Content hash of the annotation set — identical hash means identical model. */
+  annotation_hash: string;
+}
+
+export function buildModelContext(model: ThreatModel, freshness?: ModelContextFreshness): string {
+  // Ordered before anything is sliced. Parse order varies across processes
+  // (fast-glob completion order), so without this the "first 25 exposures"
+  // window showed a different subset run to run and every sync was a diff.
+  const ordered = canonicalizeModelOrder(model);
   const sections: string[] = [];
 
   // Existing defined IDs
-  const assetIds = model.assets.filter(a => a.id).map(a => `#${a.id} (${a.path})`);
-  const threatIds = model.threats.filter(t => t.id).map(t => `#${t.id} (${t.name})${t.severity ? ` [${t.severity}]` : ''}`);
-  const controlIds = model.controls.filter(c => c.id).map(c => `#${c.id} (${c.name})`);
-  const actorIds = (model.actors || []).filter(a => a.id).map(a => `#${a.id} (${a.name})`);
+  const assetIds = ordered.assets.filter(a => a.id).map(a => `#${a.id} (${a.path})`);
+  const threatIds = ordered.threats.filter(t => t.id).map(t => `#${t.id} (${t.name})${t.severity ? ` [${t.severity}]` : ''}`);
+  const controlIds = ordered.controls.filter(c => c.id).map(c => `#${c.id} (${c.name})`);
+  // Read from `ordered`, not `model`: this block is written to tracked files, so
+  // it inherits the same canonical-order requirement as every other relation.
+  const actorIds = (ordered.actors || []).filter(a => a.id).map(a => `#${a.id} (${a.name})`);
 
   if (assetIds.length + threatIds.length + controlIds.length + actorIds.length > 0) {
     sections.push('### Current Definitions (REUSE these IDs — do NOT redefine)\n');
+    sections.push('_Full records with descriptions and locations: \`guardlink_lookup("asset <id>")\`, or read \`.guardlink/definitions.*\`._\n');
     if (assetIds.length) sections.push(`**Assets:** ${assetIds.join(', ')}`);
     if (threatIds.length) sections.push(`**Threats:** ${threatIds.join(', ')}`);
     if (controlIds.length) sections.push(`**Controls:** ${controlIds.join(', ')}`);
@@ -203,7 +259,7 @@ export function buildModelContext(model: ThreatModel): string {
   // Entitlements — carried into agent context because an agent that cannot see
   // which capabilities are already granted by design will keep re-filing them
   // as exposures. Inert claims are marked so nothing reads them as effective.
-  const entitlements = model.entitlements || [];
+  const entitlements = ordered.entitlements || [];
   if (entitlements.length > 0) {
     sections.push('\n### Entitlements (capabilities held by design — never a reason to skip testing)\n');
     const lines = entitlements.slice(0, 25).map(en =>
@@ -215,8 +271,8 @@ export function buildModelContext(model: ThreatModel): string {
   }
 
   // Open exposures (unmitigated)
-  const unmitigated = model.exposures.filter(e =>
-    !model.mitigations.some(m => m.asset === e.asset && m.threat === e.threat)
+  const unmitigated = ordered.exposures.filter(e =>
+    !ordered.mitigations.some(m => m.asset === e.asset && m.threat === e.threat)
   );
   if (unmitigated.length > 0) {
     sections.push('\n### Open Exposures (need @mitigates or @audit)\n');
@@ -224,31 +280,37 @@ export function buildModelContext(model: ThreatModel): string {
       `- ${e.asset} exposed to ${e.threat}${e.severity ? ` [${e.severity}]` : ''} (${e.location.file}:${e.location.line})`
     );
     sections.push(lines.join('\n'));
-    if (unmitigated.length > 25) sections.push(`- ... and ${unmitigated.length - 25} more`);
+    if (unmitigated.length > 25) {
+      sections.push(`- … and ${unmitigated.length - 25} more — \`guardlink_lookup("unmitigated")\` or \`guardlink status .\` returns all of them`);
+    }
   }
 
   // Confirmed exploitable findings
-  if ((model.confirmed || []).length > 0) {
+  if ((ordered.confirmed || []).length > 0) {
     sections.push('\n### 🔴 Confirmed Exploitable (verified, not false positives)\n');
-    const confirmedLines = model.confirmed.slice(0, 25).map(c =>
+    const confirmedLines = ordered.confirmed.slice(0, 25).map(c =>
       `- ${c.asset} confirmed ${c.threat}${c.severity ? ` [${c.severity}]` : ''} (${c.location.file}:${c.location.line})`
     );
     sections.push(confirmedLines.join('\n'));
-    if (model.confirmed.length > 25) sections.push(`- ... and ${model.confirmed.length - 25} more`);
+    if (ordered.confirmed.length > 25) {
+      sections.push(`- … and ${ordered.confirmed.length - 25} more — \`guardlink_lookup("confirmed")\` returns all of them`);
+    }
   }
 
   // Existing flows (top 20)
-  if (model.flows.length > 0) {
+  if (ordered.flows.length > 0) {
     sections.push('\n### Existing Data Flows (extend, don\'t duplicate)\n');
-    const flowLines = model.flows.slice(0, 20).map(f =>
+    const flowLines = ordered.flows.slice(0, 20).map(f =>
       `- ${f.source} -> ${f.target}${f.mechanism ? ` via ${f.mechanism}` : ''}`
     );
     sections.push(flowLines.join('\n'));
-    if (model.flows.length > 20) sections.push(`- ... and ${model.flows.length - 20} more`);
+    if (ordered.flows.length > 20) {
+      sections.push(`- … and ${ordered.flows.length - 20} more — \`guardlink_lookup("flows into X")\` for one asset, or \`guardlink_graph(from: X)\` for a neighbourhood`);
+    }
   }
 
   // Features
-  const uniqueFeatures = new Set((model.features || []).map(f => f.feature));
+  const uniqueFeatures = new Set((ordered.features || []).map(f => f.feature));
   if (uniqueFeatures.size > 0) {
     sections.push('\n### Features (filter with `--feature`)\n');
     sections.push([...uniqueFeatures].sort().map(f => `- "${f}"`).join('\n'));
@@ -256,19 +318,34 @@ export function buildModelContext(model: ThreatModel): string {
 
   // Summary stats
   const stats = [
-    `${model.annotations_parsed} annotations`,
-    `${model.assets.length} assets`,
-    `${model.threats.length} threats`,
-    `${model.controls.length} controls`,
-    `${model.exposures.length} exposures`,
-    `${(model.confirmed || []).length} confirmed`,
-    `${model.mitigations.length} mitigations`,
-    ...((model.actors || []).length > 0 ? [`${model.actors!.length} actors`] : []),
-    ...((model.entitlements || []).length > 0 ? [`${model.entitlements!.length} entitlements`] : []),
-    `${model.flows.length} flows`,
+    `${ordered.annotations_parsed} annotations`,
+    `${ordered.assets.length} assets`,
+    `${ordered.threats.length} threats`,
+    `${ordered.controls.length} controls`,
+    `${ordered.exposures.length} exposures`,
+    `${(ordered.confirmed || []).length} confirmed`,
+    `${ordered.mitigations.length} mitigations`,
+    ...((ordered.actors || []).length > 0 ? [`${ordered.actors!.length} actors`] : []),
+    ...((ordered.entitlements || []).length > 0 ? [`${ordered.entitlements!.length} entitlements`] : []),
+    `${ordered.flows.length} flows`,
     ...(uniqueFeatures.size > 0 ? [`${uniqueFeatures.size} features`] : []),
   ].join(', ');
   sections.push(`\n### Model Stats\n\n${stats}`);
+
+  // Freshness. Without it a reader cannot tell a block synced from this commit
+  // from one synced in March — and a stale block that looks current is worse than
+  // an absent one, because nothing prompts them to go re-read the source.
+  if (freshness) {
+    sections.push([
+      '\n### Block Freshness\n',
+      `- \`annotation_hash\`: \`${freshness.annotation_hash}\``,
+      '',
+      'Every MCP response carries this same hash. If it differs from the one above, this',
+      'block predates the current annotations — trust the tool, and run `guardlink sync`.',
+      'For when it was synced and at which commit, read the envelope on any MCP',
+      'response: those move independently of the model and are not written to disk.',
+    ].join('\n'));
+  }
 
   return sections.join('\n');
 }
@@ -277,14 +354,18 @@ export function buildModelContext(model: ThreatModel): string {
  * Enhanced agent instructions that include live threat model context.
  * Used by `guardlink sync` to keep all agent instruction files up to date.
  */
-export function agentInstructionsWithModel(project: ProjectInfo, model: ThreatModel | null): string {
+export function agentInstructionsWithModel(
+  project: ProjectInfo,
+  model: ThreatModel | null,
+  freshness?: ModelContextFreshness,
+): string {
   const base = agentInstructions(project);
 
   if (!model || model.annotations_parsed === 0) {
     return base;
   }
 
-  const modelCtx = buildModelContext(model);
+  const modelCtx = buildModelContext(model, freshness);
   return `${base}
 ## Live Threat Model Context (auto-synced by \`guardlink sync\`)
 
@@ -299,14 +380,14 @@ ${modelCtx}
 /**
  * Enhanced cursor rules content with model context.
  */
-export function cursorRulesContentWithModel(project: ProjectInfo, model: ThreatModel | null): string {
+export function cursorRulesContentWithModel(project: ProjectInfo, model: ThreatModel | null, freshness?: ModelContextFreshness): string {
   const base = cursorRulesContent(project);
 
   if (!model || model.annotations_parsed === 0) {
     return base;
   }
 
-  const modelCtx = buildModelContext(model);
+  const modelCtx = buildModelContext(model, freshness);
   return `${base}
 ## Live Threat Model Context (auto-synced by \`guardlink sync\`)
 
@@ -317,7 +398,7 @@ ${modelCtx}
 /**
  * Enhanced cursor .mdc content with model context.
  */
-export function cursorMdcContentWithModel(project: ProjectInfo, model: ThreatModel | null): string {
+export function cursorMdcContentWithModel(project: ProjectInfo, model: ThreatModel | null, freshness?: ModelContextFreshness): string {
   return `---
 description: GuardLink security annotation rules
 globs:
@@ -420,26 +501,67 @@ ${c} ─── Your Definitions ────────────────
 
 // ─── Config file ─────────────────────────────────────────────────────
 
-export function configContent(project: ProjectInfo): string {
+export function configContent(project: ProjectInfo, mode: AnnotationMode = 'inline'): string {
   return JSON.stringify({
     version: '1.1.0',
     project: project.name,
     language: project.language,
+    // Recorded so `sync` and the MCP server can state the mode in effect
+    // instead of inferring it — a repo with no annotations yet has nothing to
+    // observe, and guessing "inline" there would be a guess dressed as config.
+    annotation_mode: mode,
     definitions: `definitions${project.definitionsExt}`,
     include: defaultIncludeForLanguage(project.language),
     exclude: [
       'node_modules', 'dist', 'build', '.git',
       '__pycache__', 'target', 'vendor', '.next',
+      '.bravos', '.bugb',
     ],
   }, null, 2) + '\n';
 }
 
 // ─── .gitignore addition ─────────────────────────────────────────────
 
+/**
+ * .gitignore lines added by `init`.
+ *
+ * GL-304 decision: derived artifacts are COMMITTED. A fresh clone gets the
+ * threat model without running anything, and a model change shows up in review —
+ * "this PR added an exposure" becomes visible in the diff instead of depending on
+ * a reviewer knowing to look. The cost is churn, and that cost is paid down by
+ * canonical ordering (D23): regenerating unchanged annotations produces identical
+ * bytes, so a diff means something moved.
+ *
+ * What stays ignored is the machine-generated exports that are large, rebuilt on
+ * demand and of no review value: threat-model.json, guardlink.sarif.json,
+ * threat-dashboard.html. The previous rule caught those only by accident —
+ * `.guardlink/*.json` does not cross a `/`, so graph/MANIFEST.json survived while
+ * model.json was ignored, which was glob depth deciding policy.
+ */
 export const GITIGNORE_ENTRY = `
-# GuardLink
-.guardlink/*.json
-!.guardlink/config.json
+# GuardLink — generated exports, rebuilt on demand
+threat-model.json
+threat-model.md
+guardlink.sarif.json
+threat-dashboard.html
+
+# Committed deliberately (see .guardlink/graph/README.md):
+#   .guardlink/model.json   — the parsed model, canonically ordered
+#   .guardlink/graph/       — diagrams, MANIFEST, and their provenance headers
+`;
+
+/**
+ * `.gitattributes` lines marking artifacts as generated.
+ *
+ * `linguist-generated` collapses them in pull-request diffs and excludes them
+ * from language statistics — they are committed to be *read*, not reviewed line
+ * by line.
+ */
+export const GITATTRIBUTES_ENTRY = `
+# GuardLink derived artifacts — regenerate, never hand-merge.
+# On conflict: git checkout --ours .guardlink/graph/ && guardlink artifacts .
+.guardlink/model.json linguist-generated=true
+.guardlink/graph/**  linguist-generated=true
 `;
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -534,3 +656,300 @@ export function mcpConfig(): string {
     },
   }, null, 2) + '\n';
 }
+
+// ─── .guardlink/README.md — agent cold-start (GL-402) ────────────────
+
+export interface ReadmeContext {
+  mode: AnnotationMode | null;
+  /** How `mode` was established, so the reader can weigh it. */
+  modeSource: 'config' | 'observed' | 'default';
+  model: ThreatModel | null;
+  annotationHash: string | null;
+  mcpAtRoot: boolean;
+}
+
+/**
+ * The file that explains `.guardlink/` to something that has never seen
+ * GuardLink.
+ *
+ * Written for an agent with no MCP connection and no instruction file — under
+ * external-mode default this is the only surviving discovery path, so it assumes
+ * nothing and leads with a worked example rather than a feature list.
+ *
+ * Deliberately carries no wall-clock timestamp. It is regenerated on every
+ * `guardlink sync`, and a timestamp would make a tracked file churn on every
+ * run while telling the reader nothing they cannot get from `annotation_hash`,
+ * which changes only when the annotations do.
+ */
+// @shield:begin -- "README example annotations, excluded from parsing — they would otherwise register as real records"
+export function guardlinkReadmeContent(project: ProjectInfo, ctx: ReadmeContext): string {
+  const defs = `definitions${project.definitionsExt}`;
+  const m = ctx.model;
+  const external = ctx.mode === 'external';
+  const referencePath = external ? '.guardlink/GUARDLINK_REFERENCE.md' : 'docs/GUARDLINK_REFERENCE.md';
+
+  const modeLine = ctx.mode === null
+    ? 'Not recorded. Check the `mode` field on any MCP response, which is observed from the annotations themselves.'
+    : ctx.mode === 'external'
+      ? `**external** — annotations live in \`.guardlink/annotations/\`, not in source files.${ctx.modeSource === 'observed' ? ' (Observed from the annotations; not recorded in config.json.)' : ''}`
+      : `**inline** — annotations live in source-file comments.${ctx.modeSource === 'observed' ? ' (Observed from the annotations; not recorded in config.json.)' : ''}`;
+
+  const stats = m && m.annotations_parsed > 0
+    ? `${m.annotations_parsed} annotations · ${m.assets.length} assets · ${m.threats.length} threats · ${m.controls.length} controls · ${m.exposures.length} exposures · ${m.flows.length} flows`
+    : 'No annotations parsed yet.';
+
+  const exampleAsset = m?.assets.find(a => a.id)?.id;
+  const exampleThreat = m?.threats.find(t => t.id)?.id;
+  const exampleCwe = m?.threats.find(t => (t.external_refs || []).some(r => /cwe/i.test(r)))
+    ?.external_refs.find(r => /cwe/i.test(r));
+
+  const writeSection = external
+    ? `Annotations for \`src/auth/login.ts\` go in \`.guardlink/annotations/src/auth/login.ts.gal\` —
+the source path mirrored under \`annotations/\`, with \`.gal\` appended. Inside, group them
+under a \`@source\` block naming the real code location:
+
+\`\`\`
+@source file:src/auth/login.ts line:42 symbol:login
+@exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
+@mitigates #api against #sqli using #prepared-stmts -- "parameterized via pg"
+\`\`\`
+
+Write raw GAL lines in \`.gal\` files — no \`//\` or \`#\` prefix. Do not edit source files
+to add annotations in this mode.
+
+> Sidecars are found wherever the convention puts them, including for source
+> files under \`test/\`, \`vendor/\` or \`dist/\` — directories the parser skips for
+> *source* but not for annotations. \`guardlink validate\` warns if a \`.gal\` is
+> off-convention, and still parses it.`
+    : `Put annotations in the comment syntax of the file you are editing — the doc-block of
+the function or module they describe:
+
+\`\`\`ts
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
+ * @mitigates #api against #sqli using #prepared-stmts -- "parameterized via pg"
+ */
+export function login(email: string) { … }
+\`\`\``;
+
+  return `# .guardlink/ — what this is
+
+You are looking at a **GuardLink** threat model. It is a set of security facts that
+developers recorded next to the code they describe — what each component is exposed to,
+what mitigates it, how data flows between components — parsed into a queryable model.
+
+**If you are an AI coding agent: read this file before inferring security context from
+the source.** The model already answers most of what you would otherwise guess at, and it
+records decisions that are not visible in the code, such as which risks a human has
+accepted.
+
+This file is generated. Run \`guardlink sync\` to refresh it; do not edit it by hand.
+
+Current model: ${stats}
+${ctx.annotationHash ? `Content hash: \`${ctx.annotationHash}\` — identical hash means identical model.` : ''}
+
+---
+
+## Start here: one real question, answered end to end
+
+**"I am about to edit \`src/auth/login.ts\`. What do I need to know?"**
+
+With the MCP server connected:
+
+\`\`\`
+guardlink_context(file: "src/auth/login.ts")
+\`\`\`
+
+Without it, from a shell:
+
+\`\`\`sh
+guardlink parse . --format json    # or: guardlink status .
+\`\`\`
+
+The answer tells you the annotations declared in that file with line numbers, the assets
+they name, what those assets are exposed to, and which controls the file is expected to
+uphold.
+
+**Read the empty answer carefully.** \`guardlink_context\` reports *which kind* of empty it
+found, and they mean opposite things:
+
+| \`status\` | Meaning |
+|---|---|
+| \`annotated\` | It has annotations. |
+| \`scanned_without_annotations\` | Parsed, genuinely clean. Nothing to know. |
+| \`not_scanned\` | The parser never read this file. Its annotations, if any, were **not** considered. |
+| \`not_found\` | Nothing at that path. |
+
+Treating \`not_scanned\` as "clean" is the single easiest way to draw a wrong conclusion
+from this model.
+
+---
+
+## What is in this directory
+
+| Path | What it is |
+|---|---|
+| \`${defs}\` | **Definitions.** Every \`@asset\`, \`@threat\` and \`@control\`, each with a \`#id\`. Read this first — it is the vocabulary everything else references. |
+| \`config.json\` | Project name, language, which files are scanned, and the annotation mode. |
+| \`prompt.md\` | Project description used when generating threat reports. |${external ? '\n| `annotations/` | The annotations themselves, as `.gal` sidecars mirroring source paths. |' : ''}${external ? '\n| `.mcp.json` | MCP server config. Not auto-discovered here — see "Enabling the MCP tools" below. |' : ''}
+| \`threat-reports/\` | Saved AI threat analyses, if any have been generated. |
+| \`model.json\` | The whole parsed model as JSON, canonically ordered. Generated. |
+| \`graph/\` | Mermaid diagrams of the model, plus a MANIFEST. Generated — see below. |
+
+## Annotation mode in effect
+
+${modeLine}
+
+${writeSection}
+
+**Definitions go in \`${defs}\`, always — in both modes.** Reuse existing \`#id\`s; never
+redefine one. If you need a new asset or threat, add it there first, then reference it.
+
+### The grammar
+
+One annotation per line. Everything after \`--\` is a quoted description and is optional but
+almost always worth writing. \`[severity]\` is optional and is one of \`critical\`, \`high\`,
+\`medium\`, \`low\` (or \`P0\`–\`P3\`); when omitted on an \`@exposes\`, it inherits the threat's
+declared severity. External refs like \`cwe:CWE-89\` are **optional**, may be repeated, and go
+after the severity — the \`scheme:value\` shape is all that is required, so \`owasp:A03\` and
+\`cve:CVE-2021-44228\` work too.
+
+Assets are referenced as \`#id\` or as a \`Dotted.Path\`; both resolve to the same node.
+
+**Definitions** — only in \`${defs}\`:
+
+\`\`\`
+@asset   <Dotted.Path> (#id) -- "what it is"
+@threat  <Name> (#id) [severity] cwe:CWE-89 -- "what can go wrong"
+@control <Name> (#id) -- "what defends against it"
+\`\`\`
+
+**Relationships** — in source (or in \`.gal\` blocks), never in the definitions file:
+
+| Verb | Shape |
+|---|---|
+| \`@exposes\` | \`@exposes <asset> to <threat> [severity] cwe:CWE-89 -- "why"\` |
+| \`@mitigates\` | \`@mitigates <asset> against <threat> using <control> -- "how"\` |
+| \`@confirmed\` | \`@confirmed <threat> on <asset> [severity] cwe:CWE-89 -- "evidence"\` |
+| \`@flows\` | \`@flows <A> -> <B> via <mechanism> -- "what moves"\` — chains allowed: \`A -> B -> C\` |
+| \`@boundary\` | \`@boundary between <A> and <B> (#id) -- "what changes across it"\` |
+| \`@transfers\` | \`@transfers <threat> from <A> to <B> -- "who owns it now"\` |
+| \`@validates\` | \`@validates <control> for <asset> -- "the test that proves it"\` |
+| \`@audit\` | \`@audit <asset> -- "what a human needs to look at"\` |
+| \`@owns\` | \`@owns <team> for <asset> -- "who reviews changes here"\` |
+| \`@handles\` | \`@handles <pii\\|phi\\|financial\\|secrets\\|internal\\|public> on <asset> -- "what data"\` |
+| \`@assumes\` | \`@assumes <asset> -- "what must hold for this to be safe"\` |
+| \`@feature\` | \`@feature "Name" -- "what it groups"\` |
+| \`@comment\` | \`@comment -- "context that fits no other verb"\` |
+| \`@accepts\` | \`@accepts <threat> on <asset> -- "why"\` — **human only, never write this** |
+
+Two notes that catch people out. \`@confirmed\` and \`@exposes\` take their arguments in
+**opposite orders** — exposes is asset-then-threat, confirmed is threat-then-asset. And a
+cross-repo tag such as \`#other-repo.component\` must be **quoted** —
+\`@flows "#other-repo.tokens" -> #api via header\` — because an unquoted \`#id\` may not contain
+a dot.
+
+Write coupled blocks, not lone facts: a risk plus the control or audit that answers it, plus
+the flow that gives it context.
+
+**The complete reference is \`${referencePath}\`** — every verb, every alias, the conformance
+levels, and worked examples per language. Read it before inventing syntax.
+
+**Never write \`@accepts\`.** Accepting a risk is a human governance decision. If you find a
+risk with no control, write \`@exposes\` to record it and \`@audit\` to flag it for review.
+
+---
+
+## Asking questions without MCP
+
+\`\`\`sh
+guardlink status .                       # coverage, counts, unmitigated exposures
+guardlink parse . --format json          # the whole model as JSON
+guardlink validate .                     # syntax errors and dangling #id references
+guardlink report . --format md           # human-readable threat model report
+guardlink diff HEAD~1                    # what your change did to the model
+guardlink dashboard .                    # interactive HTML view
+\`\`\`
+
+## Asking questions with MCP
+
+The MCP server exposes the model as tools. The ones worth knowing by name:
+
+| Tool | Use it when |
+|---|---|
+| \`guardlink_context(file)\` | You opened or are about to edit a file. |
+| \`guardlink_graph(from, depth, direction)\` | You are about to change a shared component and need blast radius. |
+| \`guardlink_lookup(query)\` | You have a specific question. See the query forms below. |
+| \`guardlink_validate\` | Before you finish. |
+| \`guardlink_diff(ref)\` | After a change — did I make this worse? |
+| \`guardlink_status\` | Cold start on an unfamiliar repo. |
+
+\`guardlink_lookup\` understands a fixed set of named forms and **refuses anything else
+rather than guessing**. Send it a deliberately bad query and it returns the full list.
+Representative forms:
+
+\`\`\`
+unmitigated                     confirmed                  features
+asset <id>                      threat <id>                control <id>
+threats for <asset>             exposures for <asset>      mitigations for <asset>
+flows into <asset>              flows from <asset>         boundary for <asset>
+owner of <asset>                handles pii                assumptions for <asset>
+audits [for <asset>]            validations for <asset>    comments [for <file>]
+cwe:CWE-89                      owasp:A03                  CWE-89
+\`\`\`
+
+${exampleAsset ? `Concretely, in this project: \`asset #${exampleAsset}\`${exampleThreat ? `, \`threat #${exampleThreat}\`` : ''}${exampleCwe ? `, \`${exampleCwe}\`` : ''}.\n` : ''}
+### Enabling the MCP tools
+
+${ctx.mcpAtRoot
+    ? 'A `.mcp.json` at the project root configures this automatically for clients that\nauto-discover it, such as Claude Code. If your client does not, point it at\n`guardlink mcp` over stdio.'
+    : 'The config lives at `.guardlink/.mcp.json`. MCP clients do **not** auto-discover it\nthere — copy it to the project root, or point your client at `guardlink mcp` over stdio.'}
+
+---
+
+## The generated graph
+
+\`\`\`sh
+guardlink artifacts .            # (re)write model.json and graph/
+guardlink validate . --artifacts # fail if any of them is stale
+\`\`\`
+
+| File | Shows |
+|---|---|
+| \`graph/threat-graph.mmd\` | Assets, the threats they are exposed to, the controls that mitigate them. |
+| \`graph/dataflow.mmd\` | \`@flows\` between components, with trust boundaries. |
+| \`graph/attack-surface.mmd\` | Entry points and what is reachable from them. |
+| \`graph/by-feature/<name>.mmd\` | The threat graph narrowed to one \`@feature\`. |
+| \`graph/MANIFEST.json\` | Size and source hash of each artifact. |
+
+These are Mermaid, and readable as plain text without rendering. Each opens with a
+\`%%\` header naming the \`annotation_hash\` it was built from; Mermaid treats \`%%\` as a
+comment so it does not affect the diagram.
+
+**Check the hash before trusting one.** A generated diagram in a repository looks
+like source, and a reader who does not know a file is derived will not think to ask
+whether it is current. If the header's hash differs from the one above, the diagram
+is stale — regenerate it. Never hand-edit an artifact to make the check pass: the
+hash describes the annotations, so editing the file only makes it lie.
+
+They are committed on purpose, so a fresh clone has the model without running
+anything and a reviewer sees model changes in the diff. Resolve merge conflicts by
+regenerating, never by hand-merging.
+
+## Reading the answers
+
+Every MCP response carries a \`guardlink\` envelope alongside the payload:
+\`annotation_hash\`, \`git_sha\`, \`mode\`, \`root\`. Identical hash means identical model, so
+you can tell a fresh answer from a cached one without asking twice.
+
+Anything that resolves a reference reports \`matched_via\`: \`exact\`, \`alias\` or
+\`substring\`. **A substring match is a suggestion, not an identification.** When
+\`ambiguous\` is set, several records tied and one was chosen arbitrarily —
+\`candidates\` names them all, and you should re-ask precisely.
+
+For CWE queries, check \`external_id.declared\` before reading \`count: 0\` as coverage:
+\`false\` means this model has never heard of that weakness class, which is not the same
+as declaring it and finding nothing exposed.
+`;
+}
+// @shield:end

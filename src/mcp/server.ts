@@ -54,7 +54,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findInertEntitlements, clearAnnotations } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findInertEntitlements, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor } from '../parser/index.js';
+import { fingerprintProject } from '../parser/fingerprint.js';
+import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
 import { getReviewableExposures, applyReviewAction, type ReviewableExposure } from '../review/index.js';
 import {
   proposeEntitlement, listProposals, checkEntitlementProvenance, PROPOSALS_FILE,
@@ -62,62 +64,225 @@ import {
 } from '../review/entitlements.js';
 import { generateSarif } from '../analyzer/index.js';
 import { generateReport } from '../report/index.js';
-import { generateDashboardHTML } from '../dashboard/index.js';
+import { generateDashboardHTML, generateThreatGraph } from '../dashboard/index.js';
 import { diffModels, parseAtRef, formatDiffMarkdown } from '../diff/index.js';
 import { lookup, type LookupQuery } from './lookup.js';
+import { fileContext, normalizeContextPath } from './context.js';
+import { selectSubgraph, traverseGraph, findPath } from './subgraph.js';
+import { buildServerInstructions, readConfiguredMode } from './instructions.js';
 import { suggestAnnotations } from './suggest.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModel, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
 import { loadWorkspaceConfig } from '../workspace/index.js';
+import { getPackageVersion } from '../version.js';
 import type { ThreatModel } from '../types/index.js';
 
-// ─── Cached model ────────────────────────────────────────────────────
+// ─── Per-server model cache ──────────────────────────────────────────
 
-let cachedModel: ThreatModel | null = null;
-let cachedDiagnostics: any[] = [];
-let cachedRoot: string = '';
+type TextBlock = { type: 'text'; text: string };
 
-async function getModel(root: string): Promise<{ model: ThreatModel; diagnostics: any[] }> {
-  if (cachedModel && cachedRoot === root) {
-    return { model: cachedModel, diagnostics: cachedDiagnostics };
+/**
+ * The cache belongs to one server, not to the module.
+ *
+ * It used to be four module-level `let`s, so every server built in a process
+ * shared one cached model and one `cachedRoot`. A stdio deployment runs one
+ * server per process and never noticed, but the state is what the resources use
+ * to decide *which repo they answer for* — sharing that across instances is the
+ * same wrong-repo failure as D9, one level up. Scoping it per server also means
+ * a second server in the same process starts genuinely cold.
+ */
+function createModelCache() {
+  let cachedModel: ThreatModel | null = null;
+  let cachedDiagnostics: any[] = [];
+  let cachedRoot = '';
+  let cachedFingerprint: string | null = null;
+
+  /**
+   * Return the parsed model, re-parsing when anything on disk has moved.
+   *
+   * The cache used to be keyed on `root` alone and never expired, so a session
+   * that had called any tool once served that first answer for the rest of its
+   * life — the agent edits a file, asks again, and is told the old thing. Only
+   * five of the eighteen tools invalidated explicitly, which left the other
+   * thirteen and all three resources stale.
+   *
+   * The fingerprint closes that without a watcher: it is directory metadata only
+   * (path, size, mtime), so it costs a glob walk rather than a parse. It is also
+   * the only mechanism that can catch an edit GuardLink did not make itself —
+   * which is the common case, since `guardlink_annotate` hands a prompt to the
+   * agent and the writes land afterwards, outside any tool call.
+   */
+  async function getModel(root: string): Promise<{ model: ThreatModel; diagnostics: any[] }> {
+    const fingerprint = await fingerprintProject(root);
+    if (cachedModel && cachedRoot === root && cachedFingerprint === fingerprint) {
+      return { model: cachedModel, diagnostics: cachedDiagnostics };
+    }
+    const result = await parseProject({ root, project: 'unknown' });
+    cachedModel = result.model;
+    cachedDiagnostics = result.diagnostics;
+    cachedRoot = root;
+    cachedFingerprint = fingerprint;
+    return result;
   }
-  const result = await parseProject({ root, project: 'unknown' });
-  cachedModel = result.model;
-  cachedDiagnostics = result.diagnostics;
-  cachedRoot = root;
-  return result;
+
+  function invalidateCache(): void {
+    cachedModel = null;
+    cachedDiagnostics = [];
+    cachedFingerprint = null;
+  }
+
+  /**
+   * Which repo the resources answer for, and how confidently.
+   *
+   * The resources take no `root` argument and used to fall back to
+   * `cachedRoot || '.'`. Two problems lived in that expression. `'.'` is the
+   * *server's* cwd, which for a stdio server is wherever the client happened to
+   * spawn it — an arbitrary directory, silently answered for. And once any tool
+   * had run, `cachedRoot` pinned the resources to that repo with nothing in the
+   * response saying so, which in a linked workspace means reading a sibling's
+   * model believing it is yours.
+   *
+   * Behaviour is preserved — a resource read before any tool call still answers
+   * for the working directory, because refusing would break the common case
+   * where the server was spawned in the project root. What changes is that the
+   * answer now says which root it used and whether it was established or assumed.
+   */
+  function resourceRoot(): { root: string; source: 'tool_call' | 'server_cwd' } {
+    return cachedRoot
+      ? { root: cachedRoot, source: 'tool_call' }
+      : { root: process.cwd(), source: 'server_cwd' };
+  }
+
+  /** Envelope for `root`, degrading to a labelled stub if the model cannot be parsed. */
+  async function envelopeFor(root: string) {
+    try {
+      const { model } = await getModel(root);
+      return buildEnvelope(root, model);
+    } catch (err: any) {
+      return degradedEnvelope(root, err?.message ?? 'model unavailable');
+    }
+  }
+
+  return { getModel, invalidateCache, resourceRoot, envelopeFor };
 }
 
-function invalidateCache() {
-  cachedModel = null;
-  cachedDiagnostics = [];
+type ModelCache = ReturnType<typeof createModelCache>;
+
+// ─── Freshness envelope (GL-102) ─────────────────────────────────────
+
+/**
+ * Register a tool whose result always carries the envelope.
+ *
+ * Wrapping at registration rather than editing 18 return statements is what makes
+ * "all 18 tools" true by construction instead of by inspection — including the
+ * error branches inside handlers, which are the returns most likely to be missed.
+ */
+function registerTool(
+  server: McpServer,
+  cache: ModelCache,
+  name: string,
+  description: string,
+  schema: z.ZodRawShape,
+  handler: (args: any) => Promise<{ content: TextBlock[] }>,
+): void {
+  server.tool(name, description, schema, (async (args: any) => {
+    const result = await handler(args);
+    const root = typeof args?.root === 'string' && args.root ? args.root : cache.resourceRoot().root;
+    return { content: [...result.content, envelopeBlock(await cache.envelopeFor(root))] };
+  }) as any);
+}
+
+/** Register a resource whose read always carries the envelope and names its root. */
+function registerResource(
+  server: McpServer,
+  cache: ModelCache,
+  name: string,
+  uri: string,
+  metadata: { description: string },
+  handler: (root: string) => Promise<{ contents: any[] }>,
+): void {
+  server.resource(name, uri, metadata, (async () => {
+    const { root, source } = cache.resourceRoot();
+    const result = await handler(root);
+    const envelope = { ...(await cache.envelopeFor(root)), root_source: source };
+    return {
+      contents: [
+        ...result.contents,
+        {
+          uri: 'guardlink://freshness',
+          mimeType: 'application/json',
+          text: JSON.stringify({ guardlink: envelope }, null, 2),
+        },
+      ],
+    };
+  }) as any);
 }
 
 // ─── Server setup ────────────────────────────────────────────────────
 
 export function createServer(): McpServer {
-  const server = new McpServer({
-    name: 'guardlink',
-    version: '1.4.3',
-  });
+  // Instructions must be built before any tool is registered — the SDK stores
+  // them privately at construction. See instructions.ts on how the tool names in
+  // that text are kept honest.
+  const cwd = process.cwd();
+  const server = new McpServer(
+    { name: 'guardlink', version: getPackageVersion() },
+    {
+      instructions: buildServerInstructions({
+        mode: readConfiguredMode(cwd),
+        definitionsPath: '.guardlink/definitions.*',
+      }),
+    },
+  );
+
+  const cache = createModelCache();
+  const { getModel, invalidateCache } = cache;
 
   // ── Tool: guardlink_parse ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_parse',
-    'Parse GuardLink annotations from the project and return the full threat model as JSON',
-    { root: z.string().describe('Project root directory').default('.') },
-    async ({ root }) => {
+    'Parse GuardLink annotations and return the threat model as JSON. Omits unannotated_files by default — on a large repo that list is ~90% of the payload and carries no threat-model information; use guardlink_unannotated, which exists for exactly that data, or set include_unannotated. Prefer guardlink_context for a single file and guardlink_lookup for a specific question; this is the expensive call for when you genuinely need the whole model.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      compact: z.boolean().describe('Return the compact serialization: stats, assets, ALL unmitigated exposures, threat severity index, flows, boundaries and data classifications, with descriptions capped. Omits resolved mitigations, working controls, comments and validations.').default(false),
+      include_unannotated: z.boolean().describe('Include the unannotated_files list. Off by default; guardlink_unannotated is the dedicated tool for it.').default(false),
+    },
+    async ({ root, compact, include_unannotated }) => {
       invalidateCache();
       const { model } = await getModel(root);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(model, null, 2) }],
+
+      if (compact) {
+        return { content: [{ type: 'text', text: serializeModelCompact(model) }] };
+      }
+
+      // The one non-additive change in this epic: the default payload drops a
+      // key. Measured on specter-v1, unannotated_files alone was 646,200 B —
+      // 90.1% of the dump — a flat path list with nothing about the threat
+      // model in it. Model content does not scale with repo size; the file
+      // inventory does.
+      if (include_unannotated) {
+        return { content: [{ type: 'text', text: JSON.stringify(model, null, 2) }] };
+      }
+      const { unannotated_files, ...rest } = model;
+      // Say the key was dropped. Absent-because-omitted and absent-because-empty
+      // are different facts, and a consumer that cannot tell them apart will
+      // read a large repo as fully annotated.
+      const payload = {
+        ...rest,
+        unannotated_files_omitted: {
+          count: unannotated_files.length,
+          reason: 'Omitted by default — call guardlink_unannotated, or pass include_unannotated: true.',
+        },
       };
+      return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] };
     },
   );
 
   // ── Tool: guardlink_status ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_status',
     'Return coverage statistics: asset/threat/control counts, unmitigated exposures, @confirmed count, coverage percentage',
     { root: z.string().describe('Project root directory').default('.') },
@@ -159,7 +324,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_validate ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_validate',
     'Check annotations for syntax errors, duplicate IDs, and dangling references. Returns structured error list.',
     { root: z.string().describe('Project root directory').default('.') },
@@ -195,7 +361,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_suggest ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_suggest',
     'Given a file path or code diff, suggest appropriate GuardLink annotations based on code patterns, imports, and function signatures',
     {
@@ -213,12 +380,13 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_lookup ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_lookup',
-    'Query the threat model graph. Find assets, threats, controls, actors, flows, exposures by ID or relationship. Examples: "what threats target #auth?", "flows into Scanner", "unmitigated exposures", "confirmed", "actors", "entitlements for #ns-admin"',
+    'Query the threat model graph. Reaches every relation type the model carries: assets, threats, controls, mitigations, exposures, confirmed, acceptances, transfers, flows, boundaries, validations, audits, ownership, data classification, assumptions, actors, entitlements, shields, features, comments and cross-repo refs. Examples: "threats for #auth", "owner of #api", "handles pii", "assumptions for #api", "flows into Scanner", "unmitigated", "actors", "entitlements for #ns-admin". A query that is not one of the supported forms returns no_match listing them — it is never answered by guesswork.',
     {
       root: z.string().describe('Project root directory').default('.'),
-      query: z.string().describe('Natural language or structured query: asset ID, threat ID, "flows into X", "threats for X", "unmitigated", "confirmed", "controls for X", "actors", "entitlements [for X]"'),
+      query: z.string().describe('A supported query form: "unmitigated", "confirmed", "features", "asset <id>", "threat <id>", "control <id>", "threats for <asset>", "controls for <asset>", "exposures for <asset>", "mitigations for <asset>", "flows into <asset>", "flows from <asset>", "boundary for <asset>", "owner of <asset>", "handles <pii|phi|financial|secrets|internal|public>", "handles for <asset>", "assumptions for <asset>", "audits [for <asset>]", "validations for <asset-or-control>", "acceptances [for <asset>]", "transfers [for <threat-or-asset>]", "actors", "entitlements [for <actor>]", "comments [for <file-or-asset>]", "shields [for <file-or-asset>]", or a bare identifier. TWO DIFFERENT REF QUERIES, do not confuse them: "cwe:CWE-89" / "CWE-89" / "owasp:A03" asks about external identifiers declared on threats — the scanner bridge, and returns external_id.declared so you can tell \'never heard of this weakness\' from \'declared, nothing exposed\'; "cross-repo refs" asks about sibling-repo tags from workspace.yaml and is unrelated. Every entitlements row carries inert: an uncited claim is carried and visible but cannot demote a finding (actor-entitlement design §3.4). @comment and @shield record no asset, so scoping them by an asset joins by co-location (same file) and the result says so. Free-form questions are not parsed.'),
     },
     async ({ root, query }) => {
       const { model } = await getModel(root);
@@ -229,8 +397,138 @@ export function createServer(): McpServer {
     },
   );
 
+  // ── Tool: guardlink_context ──
+  registerTool(
+    server, cache,
+    'guardlink_context',
+    'Everything GuardLink knows about one file: the annotations declared there, the assets they name with each asset\'s depth-1 neighbourhood, open exposures and @confirmed findings, controls the file upholds, and its @assumes/@handles/@owns. Call this when you open or are about to edit a file. Accepts the source path or, in external mode, the .gal path that annotates it. An empty result is explicit about WHY: `scanned_without_annotations` means the file is genuinely clean, `not_scanned` means the parser never read it, `not_found` means nothing is there — do not read them as the same answer. Does not tell you where to write a NEW annotation; the .gal path convention is not yet codified in code (GL-501), so only origin_file for annotations that already exist is reported.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      file: z.string().describe('File to describe. Absolute, relative or ./-prefixed; resolved against root. In external mode the .gal path resolves to the source file it annotates.'),
+      line: z.number().describe('Optional line number. Narrows to the enclosing symbol where the annotation recorded one (@source symbol:). Reports symbol_scope.applied = "unavailable" when no annotation for the file records a symbol, rather than silently returning the whole file.').optional(),
+    },
+    async ({ root, file, line }) => {
+      const { model } = await getModel(root);
+      const rel = normalizeContextPath(root, file);
+
+      if (rel === null) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({
+            file, status: 'outside_root',
+            hint: 'That path resolves outside the project root. Paths are interpreted relative to root; nothing outside it is read.',
+          }, null, 2) }],
+        };
+      }
+
+      const { existsSync } = await import('node:fs');
+      const { resolve } = await import('node:path');
+      const context = fileContext(model, { file: rel, exists: existsSync(resolve(root, rel)), line });
+
+      return { content: [{ type: 'text', text: JSON.stringify(context, null, 2) }] };
+    },
+  );
+
+  // ── Tool: guardlink_graph ──
+  registerTool(
+    server, cache,
+    'guardlink_graph',
+    'Blast radius: the neighbourhood around an asset, or the path between two. Traversal walks the ASSET plane only — @flows (directed), @boundary (undirected, crossable either way) and @transfers (directed). It does NOT hop through shared threats: #path-traversal alone is declared on 10 assets here, so crossing threats would make depth 2 reach most of the graph and depth would stop meaning anything. Threats and controls are still returned for every asset in the neighbourhood, they just are not transited through. Returns a filtered ThreatModel, so the result is a model like any other. Use format: "mermaid" for a diagram, or path_to for a route between two assets.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      from: z.string().describe('Asset to start from. Resolved exactly as "asset X" is — same tiers, same ambiguity reporting. Later hops match canonical identity only, never fuzzily.'),
+      path_to: z.string().describe('If set, return the shortest path from `from` to this asset instead of a neighbourhood. Directed edges are followed forwards; boundaries either way. An unresolvable endpoint and a genuinely disconnected pair are reported differently.').optional(),
+      depth: z.number().describe('Hops from `from`. 0 is the asset alone, 1 matches what "asset X" reports. Clamped to 10.').default(2),
+      direction: z.enum(['in', 'out', 'both']).describe('Which way directed edges are followed. Boundaries are undirected and are crossed in every direction regardless.').default('both'),
+      kinds: z.array(z.string()).describe('Relation arrays to keep in the returned model. Filters the OUTPUT, not the traversal — excluding "flows" still walks flows, it just omits them from the result. Assets, threats and controls are always kept as the node vocabulary.').optional(),
+      format: z.enum(['json', 'mermaid']).describe('json returns the filtered ThreatModel plus traversal detail; mermaid renders it with the same generator the dashboard uses.').default('json'),
+      feature: z.string().describe('Restrict to one feature before traversing.').optional(),
+      file: z.string().describe('Restrict to annotations declared in one file before traversing.').optional(),
+    },
+    async ({ root, from, path_to, depth, direction, kinds, format, feature, file }) => {
+      const { model } = await getModel(root);
+
+      if (path_to) {
+        const path = findPath(model, from, path_to);
+        return { content: [{ type: 'text', text: JSON.stringify(path, null, 2) }] };
+      }
+
+      const options = { from, depth, direction, kinds, feature, file };
+      const traversal = traverseGraph(model, options);
+      const sub = selectSubgraph(model, options);
+
+      if (format === 'mermaid') {
+        // showAll: the caller already scoped this graph. generateThreatGraph
+        // otherwise drops everything below high severity once a model names more
+        // than 12 distinct threats, which on a deliberately narrowed subgraph
+        // would silently remove data that was explicitly asked for.
+        return {
+          content: [{ type: 'text', text: generateThreatGraph(sub, { showAll: true }) }],
+        };
+      }
+
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ traversal, model: sub }, null, 2) }],
+      };
+    },
+  );
+
+  // ── Tool: guardlink_annotate_apply ──
+  registerTool(
+    server, cache,
+    'guardlink_annotate_apply',
+    'Write a validated @source block into the annotation sidecar for a file. Unlike guardlink_annotate — which returns a prompt for you to act on — this writes the annotations itself, into .guardlink/annotations/, never into source. Every line is re-parsed before anything touches disk; malformed input is rejected with the reason. Idempotent: re-applying the same block is a no-op, not a duplicate. Refuses @accepts, which is a human governance decision.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      file: z.string().describe('Source file the annotations describe. The sidecar path is derived from it; you do not choose where it is written.'),
+      line: z.number().describe('Line in that file the block anchors to'),
+      symbol: z.string().describe('Enclosing symbol name. Strongly recommended — it is what lets guardlink_reanchor detect drift after a refactor.').optional(),
+      annotations: z.array(z.string()).describe('Raw GAL lines with no comment prefix, e.g. [\'@exposes #api to #sqli [critical] -- "concatenated"\']. Do NOT include @source; the header is generated.'),
+      dry_run: z.boolean().describe('Validate and return the diff without writing').default(false),
+    },
+    async ({ root, file, line, symbol, annotations, dry_run }) => {
+      const result = applyAnnotations({ root, file, line, symbol, annotations, dryRun: dry_run });
+      // Any tool that writes must invalidate — the D11/D5 lesson.
+      if (result.status === 'written' && !dry_run) invalidateCache();
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  // ── Tool: guardlink_reanchor ──
+  registerTool(
+    server, cache,
+    'guardlink_reanchor',
+    'Find @source blocks whose recorded file:line no longer holds the symbol they name — the drift external annotations accumulate after a refactor. Reports and proposes; it does not rewrite anything unless you pass apply: true, and it never invents an anchor for a symbol that has disappeared.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      apply: z.boolean().describe('Rewrite @source lines to the proposed positions. Only blocks whose symbol was found elsewhere are moved; a vanished symbol is always left for a human.').default(false),
+    },
+    async ({ root, apply }) => {
+      const { model } = await getModel(root);
+      const drifts = findAnchorDrift(root, model);
+
+      if (!apply) {
+        return { content: [{ type: 'text', text: JSON.stringify({
+          drifted: drifts.length,
+          anchored_blocks_checked: model.exposures.filter(e => e.location.parent_symbol).length,
+          drifts,
+          ...(drifts.length > 0 ? { next: 'Review these, then call again with apply: true to move the ones marked "moved".' } : {}),
+        }, null, 2) }] };
+      }
+
+      const { updated, skipped } = applyReanchor(root, drifts);
+      if (updated.length > 0) invalidateCache();
+      return { content: [{ type: 'text', text: JSON.stringify({
+        updated, skipped,
+        note: skipped.length > 0
+          ? 'Skipped blocks need a human: their symbol was renamed or removed, so there is no correct line to move them to.'
+          : undefined,
+      }, null, 2) }] };
+    },
+  );
+
   // ── Tool: guardlink_threat_report ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_threat_report',
     'Generate an AI threat report using a security framework (STRIDE, DREAD, PASTA, attacker, rapid, general). If an LLM API key is set in environment, runs analysis internally and saves result. If no API key is set, returns the framework prompt and serialized threat model for the calling agent to analyze directly — write the result as markdown to .guardlink/threat-reports/.',
     {
@@ -308,7 +606,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_annotate ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_annotate',
     'Build an annotation prompt with project context, GuardLink reference docs, and GAL syntax guidelines. The calling agent should use this prompt to read source files and add security annotations directly. Returns the prompt text — the agent should then read files, decide annotation placement, and write comments.',
     {
@@ -347,7 +646,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_report ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_report',
     'Generate a markdown threat model report with Mermaid diagram. Also writes threat-model.json alongside.',
     {
@@ -384,7 +684,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_dashboard ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_dashboard',
     'Generate an interactive HTML threat model dashboard with diagrams, charts, code annotations, and heatmap.',
     {
@@ -401,6 +702,11 @@ export function createServer(): McpServer {
       const analyses = loadThreatReportsForDashboard(root);
       const html = generateDashboardHTML(model, root, analyses);
       await writeFile(resolve(root, output), html);
+      // `.html` is in the parser's DEFAULT_INCLUDE, so the file just written
+      // joins the scan set. It carries no annotations, but it does change
+      // source_files / unannotated_files — leaving the cache in place makes
+      // guardlink_unannotated disagree with a fresh CLI run for the session.
+      invalidateCache();
       return {
         content: [{ type: 'text', text: JSON.stringify({
           dashboard: output,
@@ -412,7 +718,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_sarif ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_sarif',
     'Export findings as SARIF 2.1.0 for GitHub Advanced Security, VS Code, and other SARIF consumers.',
     {
@@ -437,7 +744,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_diff ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_diff',
     'Compare the current threat model against a git ref (commit, branch, tag). Shows added/removed/changed annotations, new unmitigated exposures.',
     {
@@ -461,7 +769,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_threat_reports ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_threat_reports',
     'List saved AI threat reports from .guardlink/threat-reports/ (and legacy .guardlink/analyses/). Returns filename, framework, timestamp, and model used.',
     {
@@ -476,7 +785,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_sync ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_sync',
     'Sync all agent instruction files (CLAUDE.md, .cursorrules, etc.) with the current threat model. Injects live asset/threat/control IDs, open exposures, and data flows so every coding agent knows the current security posture. Run after adding or changing annotations.',
     {
@@ -497,7 +807,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_clear ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_clear',
     'Remove all GuardLink annotations from source files. Use --dry-run to preview without modifying files. WARNING: destructive operation — requires explicit user confirmation before calling without dry-run.',
     {
@@ -511,6 +822,12 @@ export function createServer(): McpServer {
         dryRun: dry_run,
         includeDefinitions: include_definitions,
       });
+
+      // A non-dry-run clear strips annotation lines from source files. Without
+      // this the cached model keeps describing annotations that are no longer on
+      // disk for the rest of the session — the one tool that knows the model
+      // just changed was the only mutating tool not saying so.
+      if (!dry_run) invalidateCache();
 
       if (result.totalRemoved === 0) {
         return { content: [{ type: 'text', text: 'No GuardLink annotations found in source files.' }] };
@@ -528,7 +845,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_unannotated ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_unannotated',
     'List source files that have no GuardLink annotations. Useful for identifying coverage gaps. Not all files need annotations — only those touching security boundaries (endpoints, auth, data access, I/O, crypto).',
     {
@@ -552,7 +870,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_review_list ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_review_list',
     'List all unmitigated exposures eligible for governance review, sorted by severity. Returns exposure IDs, details, and severity. Use guardlink_review_accept to record decisions. IMPORTANT: Acceptance decisions require explicit human confirmation — do not accept exposures without asking the user first.',
     {
@@ -590,7 +909,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_review_accept ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_review_accept',
     'Record a governance decision for an unmitigated exposure. Writes @accepts + @audit (for accept) or @audit (for remediate) directly into the source file. IMPORTANT: This modifies source files. Only call after explicit human confirmation of the decision and justification.',
     {
@@ -639,7 +959,13 @@ export function createServer(): McpServer {
   // claims; it may not grant them. There is deliberately no accept tool here —
   // acceptance is a human decision recorded by name through `guardlink entitle`,
   // the same reasoning that keeps @accepts out of an agent's hands.
-  server.tool(
+  //
+  // Registered through registerTool so it carries the GL-102 freshness envelope
+  // like every other tool: this tool decides what an agent believes about the
+  // authorization model, so "which parse is this answer from" matters more here,
+  // not less.
+  registerTool(
+    server, cache,
     'guardlink_entitlement_propose',
     'Propose an @entitles claim (an actor is entitled to a capability BY DESIGN) into .guardlink/entitlement-proposals.json. This writes NOTHING to source: a human accepts the proposal with "guardlink entitle", and only that writes the annotation. Cite the authorization code as file:line in the rationale — without a citation the entitlement is inert and will never affect triage. Never propose one for an ownership question (IDOR, tenant/namespace isolation, CWE-639/862/863): both peers hold the capability, so an entitlement cannot say whose object it was. When unsure which role the code requires, under-grant or write @exposes + @audit instead.',
     {
@@ -681,7 +1007,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_entitlement_list ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_entitlement_list',
     'List entitlement proposals and their decisions from .guardlink/entitlement-proposals.json. Use it to see what has been proposed, what a human accepted, and what was rejected or deferred — a rejected claim should not be re-filed, and an accepted one is already in source. Accepting is not available to agents: it is a human decision made with "guardlink entitle".',
     {
@@ -705,7 +1032,8 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_workspace_info ──
-  server.tool(
+  registerTool(
+    server, cache,
     'guardlink_workspace_info',
     'Get workspace configuration for multi-repo threat modeling. Returns workspace name, this repo\'s identity, sibling repos, and their tag prefixes. Use this to understand cross-repo references when writing annotations. Returns null fields if the repo is not part of a workspace.',
     {
@@ -749,12 +1077,13 @@ export function createServer(): McpServer {
   );
 
   // ── Resource: guardlink://model ──
-  server.resource(
+  registerResource(
+    server, cache,
     'threat-model',
     'guardlink://model',
     { description: 'Full ThreatModel JSON for the current project' },
-    async () => {
-      const { model } = await getModel(cachedRoot || '.');
+    async (root: string) => {
+      const { model } = await getModel(root);
       return {
         contents: [{ uri: 'guardlink://model', mimeType: 'application/json', text: JSON.stringify(model, null, 2) }],
       };
@@ -762,12 +1091,13 @@ export function createServer(): McpServer {
   );
 
   // ── Resource: guardlink://definitions ──
-  server.resource(
+  registerResource(
+    server, cache,
     'definitions',
     'guardlink://definitions',
     { description: 'All defined assets, threats, and controls with their IDs' },
-    async () => {
-      const { model } = await getModel(cachedRoot || '.');
+    async (root: string) => {
+      const { model } = await getModel(root);
       const defs = {
         assets: model.assets.map(a => ({ id: a.id, path: a.path.join('.'), description: a.description })),
         threats: model.threats.map(t => ({ id: t.id, name: t.canonical_name, severity: t.severity, description: t.description })),
@@ -780,12 +1110,13 @@ export function createServer(): McpServer {
   );
 
   // ── Resource: guardlink://unmitigated ──
-  server.resource(
+  registerResource(
+    server, cache,
     'unmitigated',
     'guardlink://unmitigated',
     { description: 'List of unmitigated exposures — assets exposed to threats with no @mitigates or @accepts' },
-    async () => {
-      const { model } = await getModel(cachedRoot || '.');
+    async (root: string) => {
+      const { model } = await getModel(root);
       const covered = new Set<string>();
       for (const m of model.mitigations) covered.add(`${m.asset}::${m.threat}`);
       for (const a of model.acceptances) covered.add(`${a.asset}::${a.threat}`);

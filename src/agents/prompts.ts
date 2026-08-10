@@ -40,6 +40,8 @@ function readIfExists(path: string, maxChars = 5000): string {
   }
 }
 
+import { ANNOTATIONS_DIR, galPathFor } from '../parser/gal-path.js';
+
 export type AnnotationMode = 'inline' | 'external';
 
 function annotationModeLabel(mode: AnnotationMode): string {
@@ -52,8 +54,8 @@ function annotationModeInstructions(mode: AnnotationMode): string {
 You MUST write annotations into associated standalone \`.gal\` files, not inline in the source code.
 
 - Keep definitions in \`.guardlink/definitions.*\`
-- For each annotated source file, create or update an associated file under \`.guardlink/annotations/\`
-- Mirror the source path in the annotation file path (example: \`src/auth/login.ts\` -> \`.guardlink/annotations/src/auth/login.ts.gal\`)
+- For each annotated source file, create or update an associated file under \`${ANNOTATIONS_DIR}/\`
+- Mirror the source path in the annotation file path (example: \`src/auth/login.ts\` -> \`${galPathFor('src/auth/login.ts')}\`)
 - Group annotations under \`@source file:<path> line:<n> [symbol:<name>]\` so each block points at the real code location
 - In \`.gal\` files, write raw GAL lines without \`//\` or \`#\` prefixes
 - Do NOT modify source files just to add comments when this mode is selected

@@ -41,6 +41,8 @@ Every time you write or modify code that touches security-relevant behavior, you
 
 ### Current Definitions (REUSE these IDs — do NOT redefine)
 
+_Full records with descriptions and locations: `guardlink_lookup("asset <id>")`, or read `.guardlink/definitions.*`._
+
 **Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest), #workspace-link (Workspace,Link), #merge-engine (Workspace,Merge), #report-metadata (Workspace,Metadata), #workspace-config (Workspace,Config)
 **Threats:** #path-traversal (Path_Traversal) [high], #cmd-injection (Command_Injection) [critical], #xss (Cross_Site_Scripting) [high], #api-key-exposure (API_Key_Exposure) [high], #ssrf (Server_Side_Request_Forgery) [medium], #redos (ReDoS) [medium], #arbitrary-write (Arbitrary_File_Write) [high], #prompt-injection (Prompt_Injection) [medium], #dos (Denial_of_Service) [medium], #data-exposure (Sensitive_Data_Exposure) [medium], #insecure-deser (Insecure_Deserialization) [medium], #child-proc-injection (Child_Process_Injection) [high], #info-disclosure (Information_Disclosure) [low], #tag-collision (Tag_Collision) [medium], #config-tamper (Config_Tampering) [medium]
 **Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring), #prefix-ownership (Prefix_Ownership), #yaml-validation (YAML_Validation)
@@ -59,14 +61,15 @@ Every time you write or modify code that touches security-relevant behavior, you
 - #agent-launcher exposed to #config-tamper [medium] (src/agents/prompts.ts:10)
 - #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
 - #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
-- #cli exposed to #cmd-injection [critical] (src/cli/index.ts:33)
 - #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:16)
+- #cli exposed to #cmd-injection [critical] (src/cli/index.ts:33)
 - #init exposed to #data-exposure [low] (src/init/index.ts:12)
+- #mcp exposed to #info-disclosure [low] (src/mcp/freshness.ts:17)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:4)
 - #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:30)
 - #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:34)
 - #suggest exposed to #dos [low] (src/mcp/suggest.ts:16)
-- #parser exposed to #arbitrary-write [high] (src/parser/clear.ts:8)
+- #parser exposed to #data-exposure [low] (src/parser/migrate-mode.ts:26)
 - #tui exposed to #cmd-injection [high] (src/tui/commands.ts:11)
 - #tui exposed to #prompt-injection [medium] (src/tui/commands.ts:15)
 
@@ -92,7 +95,7 @@ Every time you write or modify code that touches security-relevant behavior, you
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
 - #llm-client -> NVD via fetch
-- ... and 54 more
+- … and 73 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
 
 ### Features (filter with `--feature`)
 
@@ -101,45 +104,15 @@ Every time you write or modify code that touches security-relevant behavior, you
 
 ### Model Stats
 
-312 annotations, 16 assets, 15 threats, 12 controls, 62 exposures, 0 confirmed, 49 mitigations, 74 flows, 2 features
+371 annotations, 16 assets, 15 threats, 12 controls, 72 exposures, 0 confirmed, 57 mitigations, 93 flows, 2 features
+
+### Block Freshness
+
+- `annotation_hash`: `sha256-v1:fdc3f6b903452086173e96f0eb9dc67b4a82e4de7abeea30cd5bb840e3768a34`
+
+Every MCP response carries this same hash. If it differs from the one above, this
+block predates the current annotations — trust the tool, and run `guardlink sync`.
+For when it was synced and at which commit, read the envelope on any MCP
+response: those move independently of the model and are not written to disk.
 
 <!-- guardlink:end -->
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

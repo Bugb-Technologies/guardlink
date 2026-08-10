@@ -240,6 +240,14 @@ export interface ReportMetadata {
   generated_at: string;
   /** Workspace name if this repo is part of a workspace */
   workspace?: string;
+  /**
+   * Content hash of the annotation set (GL-101), as `sha256-v<n>:<hex>`.
+   *
+   * Stable across annotation modes, file order and cosmetic code edits — it moves
+   * only when an annotation is added, edited or deleted. Use it to tell whether a
+   * derived artifact still describes the current model.
+   */
+  annotation_hash?: string;
 }
 
 // ─── External References ─────────────────────────────────────────────
@@ -502,8 +510,22 @@ export interface ThreatModelComment {
 }
 
 export interface CoverageStats {
+  /**
+   * Symbol-level coverage is not computed — this is 0 for a single repo.
+   * Populating it needs per-symbol parsing, which GuardLink does not do.
+   * `coverage_percent` is FILE coverage; do not derive it from this.
+   */
   total_symbols: number;
+  /** Annotations parsed. Named for symbols historically; it counts annotations. */
   annotated_symbols: number;
+  /**
+   * Percentage of scanned source files carrying at least one annotation.
+   *
+   * D14: this was hardcoded 0 and never computed for a single repo, while three
+   * consumers displayed it — the dashboard showed "0% coverage" on a fully
+   * annotated project. It is real now, and comparable across annotation modes
+   * because GL-502 made both sides of the ratio mode-invariant.
+   */
   coverage_percent: number;
   unannotated_critical: UnannotatedSymbol[];
 }
