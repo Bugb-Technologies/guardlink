@@ -95,7 +95,16 @@ two authors; there is one.
 
 ### 3.3 Confirmed — defects
 
-> **Status: 58 logged · 40 fixed · 1 won't-fix (D20) · 17 open (D22, D38–D46, D51–D56, D58) · 1 partial (D42).**
+> **Status: 58 logged · 46 fixed · 1 won't-fix (D20) · 10 open · 1 partial (D42).**
+>
+> **Open at 1.5.0, deliberately — these ship as known issues:** D22, D40, D41,
+> D46, D52, D53, D54, D55, D56, D58. D42 is half-fixed; its remaining half is a
+> `schema_version` decision, not work.
+>
+> **First-run batch fixed 2026-08-10 (§3.9):** D38, D39, D43, D44, D45, D51.
+> Scope was closed on purpose. The preceding passes each found more than they
+> closed, and that ratchet had to stop before release, so nothing outside the
+> six was touched and no new hunting was done.
 >
 > **D47, D49, D50 fixed and D42 half-fixed 2026-08-10 (§3.8).** D42's remaining
 > half is BLOCKED on a decision, not on work: the wire reshape needs a
@@ -214,6 +223,57 @@ two authors; there is one.
 | D57 | ~~High~~ **FIXED (see §3.6)** | **The D36 coverage fix missed two join sites, both in the pentest/CXG path.** `src/analyze/index.ts:415` and `:450` still filter exposures on the raw `${asset}::${threat}` pair — no site check, and no `#` normalisation either. These feed `serializeModelCompact` and the `guardlink translate` / analyze prompt, so the generated CXG template-authoring prompt lists **9** unmitigated candidates against the fixed predicate's **11**, omitting the critical `#db → #sqli` at `app/db.py:9`. That is the exact suppression D36 was raised to stop, surviving in the one place it matters most: the prompt that tells an agent which threats are worth writing exploits for. Found in a generated prompt pasted by accident, not by the eight-site audit | verified: `findUnmitigatedExposures` returns 11, the analyze path returned 9, and the critical injection was absent from the compact serialisation. **FIXED:** thirteen sites routed through the canonical predicate — the two reported, six more found by a `${asset}::${threat}` shape sweep, and five found only by a second sweep for the nested-`.some()` shape, which has no `::` in it. Guarded by `tests/coverage-single-implementation.test.ts` |
 
 | D58 | Low — OPEN | **The TUI reports "All security-relevant symbols are annotated!" on every repo, always.** `cmdScan` branches on `coverage.unannotated_critical.length === 0`, and `unannotated_critical` is never populated — `parse-project.ts:284` sets it to `[]` and nothing else writes it. So the green line is unconditional and carries no information, on a repo with full annotations and on one with none. Same vacuous-green family as D48's `reanchor` check ("✓ Every anchored @source block still points at its symbol" on a repo with zero anchors) and D55's `validate` on an unannotated repo. Either populate the field or delete the claim; a third option is to say what it actually knows, which is file coverage | found 2026-08-10 while fixing D42 in the same function; noted in a code comment at `tui/commands.ts` rather than fixed, as out of scope |
+
+### 3.9 The first-run batch — 2026-08-10
+
+Six defects, all of which land before a user has done anything useful, plus the
+two write-path defects that corrupt the model rather than merely misreport it.
+
+**D39 + D51 — one defect wearing two hats.** The write path did not validate what
+it wrote while its description promised it did. Both now reject with a reason.
+These two were chosen over D40 and D41, which stay open, on a single test: D40
+and D41 produce output a caller can see is wrong; D39 and D51 produce a threat
+model that is confidently wrong and stays wrong. Under external-default, agents
+writing annotations is the primary path.
+
+*Forward references are legitimate, so they are an opt-in rather than a
+prohibition.* `allow_undeclared_refs: true` writes and returns a warning naming
+each undeclared id and saying validate will report it as dangling. The default
+rejects, because an undeclared reference is overwhelmingly a typo and the
+workflow shipped to every agent is definition-first (`CLAUDE.md` rule 5). A
+policy that contradicts the instructions we generate would be the worse of the
+two errors.
+
+**D38, D44, D45, D43 — the first five minutes.** Each was a place where the tool
+disagreed with itself inside one command's output, or pointed somewhere that did
+not exist.
+
+Two turned out to be different from their ledger rows:
+
+- **D45 does not vary by annotation mode.** The row said "the path differs by
+  mode — get both right". It differs by `rootFiles`. The README chose by MODE and
+  `init` writes by `rootFiles`, and under the default those two axes disagree —
+  which is why it reproduced on every clean init. Fixed with one
+  `referenceDocPath(rootFiles)` that both the writer and the pointer use.
+- **A test was pinning D45.** `readme.test.ts` asserted "names
+  GUARDLINK_REFERENCE.md, at the right path for the mode" — the defect, written
+  down as the contract. Updated, with the reason recorded, exactly as D47's
+  pinning test was.
+
+**D43 was only wiring**, as the row suspected. The one non-obvious part: 18
+`--project` options carried a hardcoded `'unknown'` default, so "not supplied"
+was indistinguishable from "supplied as unknown" and there was nowhere for
+config.json to be consulted.
+
+**The first run, walked end to end** in a fresh Python repo in default mode —
+`init` → read its output → read `.guardlink/README.md` → follow it → annotate
+via `annotate_apply` → `validate` → `status` → `dashboard` → `artifacts` →
+`validate --artifacts` → `sync`. Every command the output told us to run was
+run. Nothing contradicted itself, nothing pointed at a missing file, and the
+working tree ended with no generated output untracked-and-unignored.
+
+Logged and not chased, per the closed scope: nothing new surfaced during this
+batch beyond what is already on the ledger.
 
 **Line-reference drift** found in Phase 0 verification (cosmetic, behaviour confirmed in
 every case): `parse-project.ts` 104-110 → 108-113 and 137 → 141; `cli/index.ts` 419-427 →
