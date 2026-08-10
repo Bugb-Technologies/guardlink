@@ -76,12 +76,24 @@ export function formatDiff(diff: ThreatModelDiff): string {
   emitSection('Exposures', diff.exposures, lines, e => `${e.asset} → ${e.threat}${e.severity ? ` [${e.severity}]` : ''}`);
   emitSection('Acceptances', diff.acceptances, lines, a => `${a.asset} accepts ${a.threat}`);
   emitSection('Entitlements', diff.entitlements, lines, e =>
-    `${e.actor} entitled to ${e.capability}${e.asset ? ` on ${e.asset}` : ''}${e.inert ? ' (inert — no citation)' : ''}`);
+    `${e.actor} entitled to ${e.capability}${e.asset ? ` on ${e.asset}` : ''}${e.threat ? ` against ${e.threat}` : ''}`
+    + entitlementCaveat(e));
   emitSection('Flows', diff.flows, lines, f => `${f.source} → ${f.target}${f.mechanism ? ` via ${f.mechanism}` : ''}`);
   emitSection('Boundaries', diff.boundaries, lines, b => `${b.asset_a} ↔ ${b.asset_b}`);
   emitSection('Transfers', diff.transfers, lines, t => `${t.source} → ${t.target} (${t.threat})`);
 
   return lines.join('\n');
+}
+
+/** Why a claim cannot demote, or '' when it can. Both halves of the join are
+ *  named (§9.3): two claims differing only by threat must not read identically. */
+function entitlementCaveat(e: { inert: boolean; asset?: string; threat?: string }): string {
+  const reasons = [
+    e.inert && 'no citation',
+    !e.asset && 'no asset',
+    !e.threat && 'no threat',
+  ].filter(Boolean);
+  return reasons.length ? ` (ineffective: ${reasons.join(', ')})` : '';
 }
 
 function emitSection<T>(label: string, changes: Change<T>[], lines: string[], describe: (item: T) => string): void {
@@ -152,13 +164,15 @@ export function formatDiffMarkdown(diff: ThreatModelDiff): string {
   if (diff.entitlements.length > 0) {
     lines.push('#### 🔑 Entitlements');
     lines.push('');
-    lines.push('| | Actor | Capability | Asset | Citation |');
-    lines.push('|---|-------|------------|-------|----------|');
+    lines.push('| | Actor | Capability | Asset | Threat | Citation | Effect |');
+    lines.push('|---|-------|------------|-------|--------|----------|--------|');
     for (const c of diff.entitlements) {
       const e = c.item;
       const mark = c.kind === 'added' ? '+' : c.kind === 'removed' ? '-' : '~';
-      const cite = e.citation?.raw ? `\`${e.citation.raw}\`` : '**none (inert)**';
-      lines.push(`| ${mark} | ${e.actor} | ${e.capability} | ${e.asset || '—'} | ${cite} |`);
+      const cite = e.citation?.raw ? `\`${e.citation.raw}\`` : '**none**';
+      const caveat = entitlementCaveat(e);
+      const effect = caveat ? `**${caveat.replace(/^ \(|\)$/g, '')}**` : 'can demote';
+      lines.push(`| ${mark} | ${e.actor} | ${e.capability} | ${e.asset || '—'} | ${e.threat || '—'} | ${cite} | ${effect} |`);
     }
     lines.push('');
     lines.push('> An entitlement changes only what triage *recommends*. It never suppresses a finding and never gates testing.');

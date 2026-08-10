@@ -443,11 +443,17 @@ function lookupEntitlements(model: ThreatModel, query: string, actorRef?: string
       capability: en.canonical_capability,
       capability_as_written: en.capability,
       asset: en.asset,
+      threat: en.threat,
       description: en.description,
       citation: en.citation?.raw,
       cited_file: en.citation?.file,
       cited_line: en.citation?.line,
       inert: en.inert,
+      // The join is (actor, asset, threat) (§9.3). A consumer checking only
+      // `inert` would demote on a claim that joins nothing, so say so directly
+      // rather than making every caller re-derive it.
+      imprecise: en.imprecise,
+      can_demote: !en.inert && !en.imprecise,
       file: en.location.file,
       line: en.location.line,
     }));
