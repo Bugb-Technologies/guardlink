@@ -294,22 +294,34 @@ function cleanupRemovedRepo(repoPath: string, repoName: string, result: LinkResu
     const markerIdx = content.indexOf(agent.marker);
     if (markerIdx === -1) continue;
 
-    // Remove from marker to next ## or end of file
+    // Remove from marker to next ## or end of file.
+    //
+    // `endIdx` lands ON the newline preceding the next heading, because the
+    // pattern begins with `\n`. So `tail` either starts with that newline or is
+    // empty, and the head supplies its own — which is why the head is trimmed
+    // and given exactly one.
     const afterMarker = content.slice(markerIdx);
     const nextSectionMatch = afterMarker.match(/\n## (?!Workspace Context)/);
-    // D32 — DATA LOSS. `endIdx` is the end of the workspace block, exactly as the
-    // comment above intends, and the write below ignores it: `slice(0, markerIdx)`
-    // discards everything from the marker to EOF, so any section a user wrote
-    // AFTER the workspace block is destroyed by `guardlink link --remove`.
-    // The line should be `... + '\n' + content.slice(endIdx)`. Not fixed here —
-    // it is a behaviour change that needs its own test, and this commit is a
-    // lint cleanup. Logged in the defect ledger.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const endIdx = nextSectionMatch
       ? markerIdx + (nextSectionMatch.index ?? afterMarker.length)
       : content.length;
 
-    content = content.slice(0, markerIdx).trimEnd() + '\n';
+    const head = content.slice(0, markerIdx).trimEnd();
+    const tail = content.slice(endIdx);
+
+    // D32 — this used to be `head + '\n'`, dropping `tail` entirely, so every
+    // section a user wrote after the workspace block was destroyed by
+    // `link --remove`. The insert path two functions down has always spliced
+    // correctly (`slice(0, markerIdx) + block + slice(endIdx)`); only the remove
+    // path was left unfinished.
+    //
+    // The empty-head case is why this is not a one-line splice: when the
+    // workspace block is the first thing in the file, `head + '\n' + tail` would
+    // emit a leading blank line, so the tail's own separator is dropped instead.
+    content = head === ''
+      ? tail.replace(/^\n+/, '')
+      : head + '\n' + tail;
+
     writeFileSync(filePath, content);
     result.agentFilesUpdated.push(`${repoName}/${agent.path} (cleaned)`);
   }
