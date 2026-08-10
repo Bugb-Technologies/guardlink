@@ -136,9 +136,10 @@ program
   .option('--mode <mode>', 'Where annotations live: external (default, .gal sidecars under .guardlink/annotations/) or inline (comments in source)', 'external')
   .option('--no-root-files', 'Write nothing outside .guardlink/ — no root .mcp.json, no agent instruction files, no docs/')
   .option('--skip-agent-files', 'Only create .guardlink/, skip agent file updates')
-  .option('--force', 'Overwrite existing GuardLink config and instructions')
+  .option('--force', 'Re-scaffold config and agent instructions — never overwrites an authored definitions file')
+  .option('--reset', 'DESTRUCTIVE: also overwrite the definitions file and a customised config.json with the empty template')
   .option('--dry-run', 'Show what would be created without writing files')
-  .action(async (dir: string, opts: { project?: string; agent?: string; mode?: string; rootFiles?: boolean; skipAgentFiles?: boolean; force?: boolean; dryRun?: boolean }) => {
+  .action(async (dir: string, opts: { project?: string; agent?: string; mode?: string; rootFiles?: boolean; skipAgentFiles?: boolean; force?: boolean; reset?: boolean; dryRun?: boolean }) => {
     const root = resolve(dir);
 
     // Show detection results first
@@ -150,7 +151,7 @@ program
       console.log(`Found:    ${existingAgentFiles.map(f => f.path).join(', ')}`);
     }
 
-    if (info.alreadyInitialized && !opts.force) {
+    if (info.alreadyInitialized && !opts.force && !opts.reset) {
       console.log(`\n.guardlink/ already exists. Use --force to reinitialize.`);
     }
 
@@ -180,6 +181,7 @@ program
       rootFiles: opts.rootFiles !== false,
       skipAgentFiles: opts.skipAgentFiles,
       force: opts.force,
+      reset: opts.reset,
       dryRun: opts.dryRun,
       agentIds,
     });
@@ -194,6 +196,17 @@ program
     }
     for (const f of result.skipped) {
       console.log(`${prefix}Skipped:  ${f}`);
+    }
+
+    // D24: an overwrite was asked for and refused. Say so loudly — the whole
+    // point of the guard is that the user finds out now, not from git later.
+    if (result.preserved.length > 0) {
+      console.log('');
+      for (const f of result.preserved) {
+        console.log(`${prefix}Preserved: ${f}`);
+      }
+      console.log(`\n--force does not overwrite authored content. Your threat model is intact.`);
+      console.log(`Re-run with --reset only if you intend to discard the declarations above.`);
     }
 
     if (!opts.dryRun && (result.created.length > 0 || result.updated.length > 0)) {

@@ -42,6 +42,22 @@ import { detectAnnotationMode, readConfiguredMode } from '../parser/annotation-m
 import type { ThreatModel } from '../types/index.js';
 import type { AnnotationMode } from '../agents/index.js';
 import { AGENT_CHOICES } from './picker.js';
+import { definitionsArePopulated, configIsCustomised } from './preserve.js';
+
+/**
+ * Read a file we are about to consider overwriting.
+ *
+ * Returns `null` when the read fails, and both D24 guards treat `null` as
+ * authored content. A file we cannot read is the last one to destroy on the
+ * assumption that it was empty.
+ */
+function readForGuard(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf-8');
+  } catch {
+    return null;
+  }
+}
 
 export { detectProject, type ProjectInfo, type AgentFile } from './detect.js';
 export { promptAgentSelection, resolveAgentFiles, AGENT_CHOICES } from './picker.js';
@@ -55,8 +71,26 @@ export interface InitOptions {
   project?: string;
   /** Skip agent file updates (only create .guardlink/) */
   skipAgentFiles?: boolean;
-  /** Force overwrite even if already initialized */
+  /**
+   * Re-scaffold an already-initialized project: rewrite config, README, prompt,
+   * reference doc, `.mcp.json` and the agent instruction blocks.
+   *
+   * It does NOT overwrite authored content. A definitions file holding
+   * declarations the template does not, and a `config.json` carrying settings
+   * the template does not, are preserved and reported (D24). Use `reset` for
+   * those.
+   */
   force?: boolean;
+  /**
+   * Overwrite authored content too — the definitions file and a customised
+   * `config.json`.
+   *
+   * This DESTROYS the threat model's declarations. Typing the flag is the
+   * confirmation; there is no prompt, because the flag exists so the
+   * destructive intent has to be stated separately from "re-scaffold".
+   * Implies `force`.
+   */
+  reset?: boolean;
   /** Dry run — show what would be created without writing */
   dryRun?: boolean;
   /** Explicit agent IDs to create files for (when no existing agent files found) */
@@ -90,6 +124,13 @@ export interface InitResult {
   created: string[];
   updated: string[];
   skipped: string[];
+  /**
+   * Files `--force` declined to overwrite because they hold authored content
+   * (D24). Distinct from `skipped`, which is the ordinary "exists, not forcing"
+   * case: an entry here means the user asked for an overwrite and did not get
+   * one, so callers are expected to say so loudly.
+   */
+  preserved: string[];
 }
 
 // ─── Marker for detecting our content ────────────────────────────────
@@ -100,7 +141,10 @@ const GUARDLINK_MARKER_END = '<!-- guardlink:end -->';
 // ─── Main init function ──────────────────────────────────────────────
 
 export function initProject(options: InitOptions): InitResult {
-  const { root, force = false, dryRun = false, skipAgentFiles = false, rootFiles = true } = options;
+  const { root, dryRun = false, skipAgentFiles = false, rootFiles = true, reset = false } = options;
+  // --reset implies --force: it is --force plus permission to destroy authored
+  // content, not a separate mode.
+  const force = options.force === true || reset;
   // Annotation storage. Defaults to external: source files stay clean and the
   // model is reviewable as one directory.
   const mode: 'inline' | 'external' = options.mode === 'inline' ? 'inline' : 'external';
@@ -111,6 +155,7 @@ export function initProject(options: InitOptions): InitResult {
   const created: string[] = [];
   const updated: string[] = [];
   const skipped: string[] = [];
+  const preserved: string[] = [];
 
   // ── 1. Create .guardlink/ directory ──
 
@@ -123,20 +168,42 @@ export function initProject(options: InitOptions): InitResult {
   // ── 2. Create config.json ──
 
   const configPath = join(tsDir, 'config.json');
-  if (!existsSync(configPath) || force) {
-    if (!dryRun) writeFileSync(configPath, configContent(project, mode));
+  const configTemplate = configContent(project, mode);
+  if (!existsSync(configPath)) {
+    if (!dryRun) writeFileSync(configPath, configTemplate);
     created.push('.guardlink/config.json');
+  } else if (force) {
+    // D24: --force must not discard settings a human put here.
+    const existing = readForGuard(configPath);
+    if (!reset && (existing === null || configIsCustomised(existing, configTemplate))) {
+      preserved.push('.guardlink/config.json (customised — --reset to overwrite)');
+    } else {
+      if (!dryRun) writeFileSync(configPath, configTemplate);
+      updated.push('.guardlink/config.json');
+    }
   } else {
     skipped.push('.guardlink/config.json (exists)');
   }
 
   // ── 3. Create definitions file ──
+  // The one file in a GuardLink repo that is entirely hand-written. D24: --force
+  // overwriting it destroyed 38 declarations once already, so it is now guarded
+  // by content, not by the flag.
 
   const defsFile = `definitions${project.definitionsExt}`;
   const defsPath = join(tsDir, defsFile);
-  if (!existsSync(defsPath) || force) {
-    if (!dryRun) writeFileSync(defsPath, definitionsContent(project));
+  const defsTemplate = definitionsContent(project);
+  if (!existsSync(defsPath)) {
+    if (!dryRun) writeFileSync(defsPath, defsTemplate);
     created.push(`.guardlink/${defsFile}`);
+  } else if (force) {
+    const existing = readForGuard(defsPath);
+    if (!reset && (existing === null || definitionsArePopulated(existing, defsTemplate, defsFile))) {
+      preserved.push(`.guardlink/${defsFile} (has declarations — --reset to overwrite)`);
+    } else {
+      if (!dryRun) writeFileSync(defsPath, defsTemplate);
+      updated.push(`.guardlink/${defsFile}`);
+    }
   } else {
     skipped.push(`.guardlink/${defsFile} (exists)`);
   }
@@ -258,7 +325,7 @@ export function initProject(options: InitOptions): InitResult {
     }
   }
 
-  return { project, created, updated, skipped };
+  return { project, created, updated, skipped, preserved };
 }
 
 // ─── Agent file update logic ─────────────────────────────────────────
