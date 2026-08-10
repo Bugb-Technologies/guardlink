@@ -45,7 +45,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, clearAnnotations, applyAnnotations } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
 import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
 import { getReviewableExposures, applyReviewAction, type ReviewableExposure } from '../review/index.js';
@@ -467,6 +467,39 @@ export function createServer(): McpServer {
       // Any tool that writes must invalidate — the D11/D5 lesson.
       if (result.status === 'written' && !dry_run) invalidateCache();
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  // ── Tool: guardlink_reanchor ──
+  registerTool(
+    server, cache,
+    'guardlink_reanchor',
+    'Find @source blocks whose recorded file:line no longer holds the symbol they name — the drift external annotations accumulate after a refactor. Reports and proposes; it does not rewrite anything unless you pass apply: true, and it never invents an anchor for a symbol that has disappeared.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      apply: z.boolean().describe('Rewrite @source lines to the proposed positions. Only blocks whose symbol was found elsewhere are moved; a vanished symbol is always left for a human.').default(false),
+    },
+    async ({ root, apply }) => {
+      const { model } = await getModel(root);
+      const drifts = findAnchorDrift(root, model);
+
+      if (!apply) {
+        return { content: [{ type: 'text', text: JSON.stringify({
+          drifted: drifts.length,
+          anchored_blocks_checked: model.exposures.filter(e => e.location.parent_symbol).length,
+          drifts,
+          ...(drifts.length > 0 ? { next: 'Review these, then call again with apply: true to move the ones marked "moved".' } : {}),
+        }, null, 2) }] };
+      }
+
+      const { updated, skipped } = applyReanchor(root, drifts);
+      if (updated.length > 0) invalidateCache();
+      return { content: [{ type: 'text', text: JSON.stringify({
+        updated, skipped,
+        note: skipped.length > 0
+          ? 'Skipped blocks need a human: their symbol was renamed or removed, so there is no correct line to move them to.'
+          : undefined,
+      }, null, 2) }] };
     },
   );
 

@@ -209,7 +209,7 @@ describe('MCP server — freshness envelope (GL-102)', () => {
 
   const ALL_TOOLS = [
     'guardlink_parse', 'guardlink_status', 'guardlink_validate', 'guardlink_suggest',
-    'guardlink_context', 'guardlink_graph', 'guardlink_annotate_apply',
+    'guardlink_context', 'guardlink_graph', 'guardlink_annotate_apply', 'guardlink_reanchor',
     'guardlink_lookup', 'guardlink_threat_report', 'guardlink_annotate', 'guardlink_report',
     'guardlink_dashboard', 'guardlink_sarif', 'guardlink_diff', 'guardlink_threat_reports',
     'guardlink_sync', 'guardlink_clear', 'guardlink_unannotated', 'guardlink_review_list',

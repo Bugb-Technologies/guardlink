@@ -42,7 +42,7 @@ import { Command } from 'commander';
 import { resolve, basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findOffConventionGalFiles, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findOffConventionGalFiles, findAnchorDrift, applyReanchor, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { ensurePromptMd } from '../init/migrate.js';
@@ -456,6 +456,45 @@ program
       );
       console.error(`✓ Wrote threat model JSON to ${jsonFile} (schema v${enrichedModel.metadata?.schema_version})`);
     }
+  });
+
+// ─── reanchor ────────────────────────────────────────────────────────
+
+program
+  .command('reanchor')
+  .description('Find @source blocks whose file:line no longer holds the symbol they name')
+  .argument('[dir]', 'Project directory to scan', '.')
+  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('--apply', 'Rewrite @source lines to the proposed positions (moved symbols only)')
+  .action(async (dir: string, opts: { project: string; apply?: boolean }) => {
+    const root = resolve(dir);
+    const { model } = await parseProject({ root, project: opts.project });
+    const drifts = findAnchorDrift(root, model);
+
+    if (drifts.length === 0) {
+      console.error('✓ Every anchored @source block still points at its symbol.');
+      process.exit(0);
+    }
+
+    console.error(`${drifts.length} drifted @source block(s):\n`);
+    for (const d of drifts) {
+      console.error(`  [${d.kind}] ${d.message}`);
+    }
+
+    if (!opts.apply) {
+      const movable = drifts.filter(d => d.kind === 'moved').length;
+      console.error(`\n${movable} of ${drifts.length} can be re-anchored automatically.`);
+      console.error('Run with --apply to move them. The rest need a human — their symbol is gone.');
+      process.exit(1);
+    }
+
+    const { updated, skipped } = applyReanchor(root, drifts);
+    console.error(`\n✓ Re-anchored ${updated.length} file(s): ${updated.join(', ')}`);
+    if (skipped.length > 0) {
+      console.error(`⚠  ${skipped.length} left alone — their symbol was renamed or removed, so there is no`);
+      console.error('   correct line to move them to. Rewrite those annotations rather than re-pointing them.');
+    }
+    process.exit(0);
   });
 
 // ─── artifacts ───────────────────────────────────────────────────────
