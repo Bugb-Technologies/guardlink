@@ -40,6 +40,7 @@ import { describeConfigSource } from '../agents/config.js';
 import { getReviewableExposures, applyReviewAction, summarizeReview, type ReviewResult } from '../review/index.js';
 import { loadWorkspaceConfig, linkProject, addToWorkspace, removeFromWorkspace, mergeReports, formatMergeSummary, diffMergedReports } from '../workspace/index.js';
 import type { MergedReport } from '../workspace/index.js';
+import { describeCoverage } from '../parser/coverage.js';
 
 // ─── Shared context ──────────────────────────────────────────────────
 
@@ -502,12 +503,19 @@ export function cmdScan(ctx: TuiContext): void {
     return;
   }
 
-  const cov = ctx.model.coverage;
-  const pct = cov.coverage_percent;
+  // D42: this printed `${annotated_symbols}/${total_symbols} symbols` — three
+  // fields that share an object and nothing else. On expense-api it rendered
+  // `Coverage: 105/0 symbols (100%)`: 105 annotations, a denominator that is
+  // never computed, and a percentage of files. Now it says what it counts.
+  const cov = describeCoverage(ctx.model);
   console.log('');
-  console.log(`  ${C.bold('Coverage:')} ${cov.annotated_symbols}/${cov.total_symbols} symbols (${pct}%)`);
+  console.log(`  ${C.bold('Coverage:')} ${cov.annotatedFiles}/${cov.sourceFiles} files annotated (${cov.percent}%)`);
+  console.log(`  ${C.dim(`${cov.annotations} annotations parsed`)}`);
 
-  const unannotated = cov.unannotated_critical || [];
+  // NOTE: `unannotated_critical` is never populated (parse-project.ts:284 sets
+  // it to []), so the green branch below is unconditional. Same vacuous-green
+  // family as D48's reanchor check. Logged, not fixed here — out of scope.
+  const unannotated = ctx.model.coverage.unannotated_critical || [];
   if (unannotated.length === 0) {
     console.log(C.green('  All security-relevant symbols are annotated!'));
   } else {

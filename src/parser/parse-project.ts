@@ -28,6 +28,7 @@ import type {
 import { parseFile } from './parse-file.js';
 import { loadWorkspaceConfig } from '../workspace/index.js';
 import { ANNOTATIONS_DIR } from './gal-path.js';
+import { fileCoveragePercent } from './coverage.js';
 
 /** A standalone annotation sidecar, not a source file. */
 const isGalPath = (p: string): boolean => /\.gal$/i.test(p);
@@ -278,9 +279,7 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
       // consumers rendered as "0%" on fully annotated projects. Meaningful only
       // because GL-502 made both sides of the ratio exclude sidecars, so the
       // number no longer moves when a repo changes annotation mode.
-      coverage_percent: fileCount > 0
-        ? Math.round((annotatedFiles.length / fileCount) * 100)
-        : 0,
+      coverage_percent: fileCoveragePercent(annotatedFiles.length, fileCount),
       unannotated_critical: [],
     },
   };

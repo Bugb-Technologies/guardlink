@@ -170,3 +170,56 @@ export function findAcceptedExposures(model: ThreatModel): ThreatModelExposure[]
   const index = buildCoverageIndex(model);
   return model.exposures.filter(e => index.isAccepted(e) && !index.isMitigated(e));
 }
+
+// ─── What "coverage" means, said once (D42, D49) ─────────────────────
+
+/**
+ * D42/D49 — the coverage numbers, described rather than inferred.
+ *
+ * `CoverageStats` holds three fields whose names invite a reading the data does
+ * not support: `total_symbols` is never computed and is permanently 0,
+ * `annotated_symbols` counts ANNOTATIONS not symbols, and `coverage_percent` is
+ * FILE coverage and has no arithmetic relationship to either. `types/index.ts`
+ * documents all three correctly — and those doc comments do not travel with the
+ * JSON, so every consumer that believed the field names got it wrong:
+ *
+ *   tui/commands.ts   printed `Coverage: 105/0 symbols (100%)`
+ *   workspace/merge.ts recomputed percent as annotated/total, and since total is
+ *                      always 0 the `: 0` fallback was the only branch that ever
+ *                      ran — two repos at 89% merged to a workspace at 0%
+ *
+ * A contract expressed only where the consumer cannot see it is not a contract.
+ * This is that contract as a function: it names the numerator, the denominator
+ * and the unit, so nothing downstream has to infer a denominator. Reshaping the
+ * wire format is the better fix and is a separate, versioned change — `coverage`
+ * ships inside `schema_version: 1.0.0`, which `guardlink merge` cross-checks
+ * across repos, so it cannot move without a bump.
+ */
+export interface CoverageDescription {
+  /** The only coverage GuardLink actually computes. */
+  kind: 'file';
+  annotatedFiles: number;
+  sourceFiles: number;
+  /** annotatedFiles / sourceFiles, as a whole percent. 0 when there are no files. */
+  percent: number;
+  /** Annotations parsed. NOT a numerator for `percent` — a separate quantity. */
+  annotations: number;
+}
+
+/** File coverage as a whole percent. The one place this division happens. */
+export function fileCoveragePercent(annotatedFiles: number, sourceFiles: number): number {
+  return sourceFiles > 0 ? Math.round((annotatedFiles / sourceFiles) * 100) : 0;
+}
+
+/** Coverage as something a caller can render without guessing what it counts. */
+export function describeCoverage(model: ThreatModel): CoverageDescription {
+  const annotatedFiles = model.annotated_files.length;
+  const sourceFiles = model.source_files;
+  return {
+    kind: 'file',
+    annotatedFiles,
+    sourceFiles,
+    percent: fileCoveragePercent(annotatedFiles, sourceFiles),
+    annotations: model.coverage.annotated_symbols,
+  };
+}
