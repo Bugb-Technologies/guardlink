@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "annotation_hash": "sha256-v1:81168ffb1ea44c87c243a36fcb00eeb910cc9b425a8873de9b680913ec1d2f83",
+  "generator": "guardlink@1.4.5",
+  "artifacts": [
+    {
+      "path": ".guardlink/graph/threat-graph.mmd",
+      "bytes": 3375,
+      "annotation_hash": "sha256-v1:81168ffb1ea44c87c243a36fcb00eeb910cc9b425a8873de9b680913ec1d2f83"
+    },
+    {
+      "path": ".guardlink/graph/dataflow.mmd",
+      "bytes": 2630,
+      "annotation_hash": "sha256-v1:81168ffb1ea44c87c243a36fcb00eeb910cc9b425a8873de9b680913ec1d2f83"
+    },
+    {
+      "path": ".guardlink/graph/attack-surface.mmd",
+      "bytes": 1956,
+      "annotation_hash": "sha256-v1:81168ffb1ea44c87c243a36fcb00eeb910cc9b425a8873de9b680913ec1d2f83"
+    },
+    {
+      "path": ".guardlink/graph/by-feature/expense-tracking.mmd",
+      "bytes": 1700,
+      "annotation_hash": "sha256-v1:81168ffb1ea44c87c243a36fcb00eeb910cc9b425a8873de9b680913ec1d2f83"
+    },
+    {
+      "path": ".guardlink/model.json",
+      "bytes": 42654,
+      "annotation_hash": "sha256-v1:81168ffb1ea44c87c243a36fcb00eeb910cc9b425a8873de9b680913ec1d2f83"
+    }
+  ]
+}

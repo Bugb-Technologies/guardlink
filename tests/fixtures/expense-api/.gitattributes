@@ -1,0 +1,4 @@
+# GuardLink derived artifacts — regenerate, never hand-merge.
+# On conflict: git checkout --ours .guardlink/graph/ && guardlink artifacts .
+.guardlink/model.json linguist-generated=true
+.guardlink/graph/**  linguist-generated=true

@@ -21,25 +21,26 @@
  * @handles secrets on #tui -- "Processes and stores API keys via /model"
  */
 
-import { resolve, basename, isAbsolute } from 'node:path';
+import { resolve, basename } from 'node:path';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
-import { generateReport, generateMermaid } from '../report/index.js';
+import { generateReport } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
 import { computeStats, computeSeverity, computeExposures } from '../dashboard/data.js';
 import { generateThreatReport, serializeModel, listThreatReports, loadThreatReportsForDashboard, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, buildProjectContext, extractCodeSnippets, type AnalysisFramework } from '../analyze/index.js';
 import { diffModels, formatDiff, parseAtRef, getChangedFiles } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { diagnosticIcon } from '../parser/format.js';
-import type { ThreatModel, ParseDiagnostic, ThreatModelExposure } from '../types/index.js';
-import { C, severityBadge, severityText, severityTextPad, severityOrder, computeGrade, gradeColored, formatTable, readCodeContext, trunc, bar, fileLink, fileLinkTrunc, cleanCliArtifacts } from './format.js';
+import type { ThreatModel, ThreatModelExposure } from '../types/index.js';
+import { C, severityBadge, severityText, severityTextPad, severityOrder, computeGrade, gradeColored, readCodeContext, trunc, bar, fileLink, fileLinkTrunc, cleanCliArtifacts } from './format.js';
 import { resolveLLMConfig, saveTuiConfig, loadTuiConfig } from './config.js';
 import { AGENTS, parseAgentFlag, parseAnnotationModeFlag, launchAgent, launchAgentInline, copyToClipboard, buildAnnotatePrompt, type AgentEntry } from '../agents/index.js';
 import { describeConfigSource } from '../agents/config.js';
-import { getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview, type ReviewResult } from '../review/index.js';
-import { loadWorkspaceConfig, linkProject, addToWorkspace, removeFromWorkspace, mergeReports, formatMergeSummary, diffMergedReports, formatDiffSummary, populateMetadata } from '../workspace/index.js';
+import { getReviewableExposures, applyReviewAction, summarizeReview, type ReviewResult } from '../review/index.js';
+import { loadWorkspaceConfig, linkProject, addToWorkspace, removeFromWorkspace, mergeReports, formatMergeSummary, diffMergedReports } from '../workspace/index.js';
 import type { MergedReport } from '../workspace/index.js';
+import { describeCoverage } from '../parser/coverage.js';
 
 // ─── Shared context ──────────────────────────────────────────────────
 
@@ -521,12 +522,19 @@ export function cmdScan(ctx: TuiContext): void {
     return;
   }
 
-  const cov = ctx.model.coverage;
-  const pct = cov.coverage_percent;
+  // D42: this printed `${annotated_symbols}/${total_symbols} symbols` — three
+  // fields that share an object and nothing else. On expense-api it rendered
+  // `Coverage: 105/0 symbols (100%)`: 105 annotations, a denominator that is
+  // never computed, and a percentage of files. Now it says what it counts.
+  const cov = describeCoverage(ctx.model);
   console.log('');
-  console.log(`  ${C.bold('Coverage:')} ${cov.annotated_symbols}/${cov.total_symbols} symbols (${pct}%)`);
+  console.log(`  ${C.bold('Coverage:')} ${cov.annotatedFiles}/${cov.sourceFiles} files annotated (${cov.percent}%)`);
+  console.log(`  ${C.dim(`${cov.annotations} annotations parsed`)}`);
 
-  const unannotated = cov.unannotated_critical || [];
+  // NOTE: `unannotated_critical` is never populated (parse-project.ts:284 sets
+  // it to []), so the green branch below is unconditional. Same vacuous-green
+  // family as D48's reanchor check. Logged, not fixed here — out of scope.
+  const unannotated = ctx.model.coverage.unannotated_critical || [];
   if (unannotated.length === 0) {
     console.log(C.green('  All security-relevant symbols are annotated!'));
   } else {
@@ -863,12 +871,11 @@ export async function cmdParse(ctx: TuiContext): Promise<void> {
     console.log(`    ${model.assets.length} assets · ${model.threats.length} threats · ${model.controls.length} controls`);
     console.log(`    ${model.exposures.length} exposures · ${model.mitigations.length} mitigations · Grade: ${gradeColored(grade)}`);
 
-    // Auto-sync agent instruction files with updated model
+    // D16: /parse reads. It used to rewrite seven tracked agent instruction
+    // files on the way past, which is the same surprise `validate` had — point
+    // at /sync instead of doing it unasked.
     if (model.annotations_parsed > 0) {
-      const syncResult = syncAgentFiles({ root: ctx.root, model });
-      if (syncResult.updated.length > 0) {
-        console.log(C.dim(`    ↻ Synced ${syncResult.updated.length} agent instruction file(s)`));
-      }
+      console.log(C.dim(`    Run /sync to refresh agent instruction files with this model.`));
     }
     console.log('');
   } catch (err: any) {
@@ -1407,7 +1414,6 @@ export async function cmdThreatReport(args: string, ctx: TuiContext): Promise<vo
       analysisPrompt,
       ctx.root,
       (text) => process.stdout.write(text),
-      { autoYes: true },
     );
 
     if (result.error) {
@@ -1556,7 +1562,12 @@ export async function cmdAnnotate(args: string, ctx: TuiContext): Promise<void> 
       }
     } else {
       console.log('');
-      console.log(C.success(`  ✓ ${agent.name} session ended.`));
+      // D31 — a non-zero exit is a failed run, not a finished one.
+      if (result.exitCode != null && result.exitCode !== 0) {
+        console.log(C.error(`  ✗ ${agent.name} exited with code ${result.exitCode}.`));
+      } else {
+        console.log(C.success(`  ✓ ${agent.name} session ended.`));
+      }
       console.log(`  Run ${C.bold('/parse')} to update the threat model.`);
     }
   } else {
@@ -1597,7 +1608,7 @@ export async function cmdChat(text: string, ctx: TuiContext): Promise<void> {
   }
 
   // Build system prompt with model context
-  let systemPrompt = `You are a security expert helping a developer understand their project's threat model.
+  const systemPrompt = `You are a security expert helping a developer understand their project's threat model.
 Answer concisely and directly. Reference specific assets, threats, and exposures from the model when relevant.
 Keep responses under 500 words unless the user asks for detail.`;
 
@@ -1635,7 +1646,6 @@ Keep responses under 500 words unless the user asks for detail.`;
       prompt,
       ctx.root,
       (chunk) => process.stdout.write(chunk),
-      { autoYes: true }
     );
 
     if (result.error) {
@@ -2044,7 +2054,6 @@ export async function cmdLink(args: string, ctx: TuiContext): Promise<void> {
       console.log('');
       console.log(C.success(`  ✓ Removed "${removeName}", updated ${result.updated.length} repo(s)`));
     }
-
   } else if (addPath) {
     // ── Add mode (--from is implicit: ctx.root) ──
     console.log(C.dim(`  Adding ${addPath} to workspace...`));
@@ -2063,7 +2072,6 @@ export async function cmdLink(args: string, ctx: TuiContext): Promise<void> {
       console.log('');
       console.log(C.success(`  ✓ ${result.linked.length} added, ${result.updated.length} updated`));
     }
-
   } else if (repoPaths.length >= 2) {
     // ── Fresh link mode ──
     console.log(C.dim(`  Linking ${repoPaths.length} repos into "${workspace}"...`));
@@ -2081,7 +2089,6 @@ export async function cmdLink(args: string, ctx: TuiContext): Promise<void> {
       console.log('');
       console.log(C.success(`  ✓ Linked ${result.linked.length} repo(s) into "${workspace}"`));
     }
-
   } else {
     console.log('');
     console.log(`  ${C.bold('Usage:')}`);
@@ -2095,7 +2102,7 @@ export async function cmdLink(args: string, ctx: TuiContext): Promise<void> {
 
 // ─── /merge ──────────────────────────────────────────────────────────
 
-export async function cmdMerge(args: string, ctx: TuiContext): Promise<void> {
+export async function cmdMerge(args: string, _ctx: TuiContext): Promise<void> {
   const parts = args.trim().split(/\s+/).filter(Boolean);
 
   // Parse flags

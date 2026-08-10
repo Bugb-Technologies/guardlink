@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v2:67e68e77d94b7fc9761d57dd1b7419c0a6d9076e12574de5a8ef4c0f8767c0fc
+%% annotation_hash: sha256-v2:023909fdd4a7cbd2a8fbca18689860619ea09fc68e061f8d7b6e12e0268cd961
 %% generator:       guardlink@1.4.5
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -144,11 +144,14 @@ graph LR
   path_validation -. protects .-> diff
   glob_filtering -. protects .-> diff
   path_validation -. protects .-> init
+  config_validation -- mitigates --> arbitrary_write
+  config_validation -. protects .-> init
   path_validation -. protects .-> mcp
   regex_anchoring -- mitigates --> redos
   regex_anchoring -. protects .-> mcp
   key_redaction -. protects .-> mcp
   resource_limits -. protects .-> mcp
+  resource_limits -- mitigates --> info_disclosure
   path_validation -. protects .-> suggest
   regex_anchoring -. protects .-> suggest
   path_validation -. protects .-> parser
@@ -172,6 +175,7 @@ graph LR
   prefix_ownership -. protects .-> merge_engine
   yaml_validation -- mitigates --> config_tamper
   yaml_validation -. protects .-> workspace_config
+  resource_limits -. validates .-> mcp
   mcp -- "📡 generateThreatReport" --> llm_client
   tui -- "📡 launchAgent" --> agent_launcher
   tui -- "📡 chatCompletion" --> llm_client

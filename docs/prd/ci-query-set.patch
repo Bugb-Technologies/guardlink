@@ -1,0 +1,25 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 743f9c6..fee76f5 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -47,6 +47,20 @@ jobs:
+       - name: GuardLink validate + artifact drift (dogfood)
+         run: node dist/cli/index.js validate . --artifacts
+ 
++      # The MCP query set. A fixed set of queries against a FRESH stdio server,
++      # run over BOTH corpora — this repo (TypeScript, inline) and
++      # tests/fixtures/expense-api (Python, born external). The single-corpus
++      # habit is what hid D34 and D36, and what let D57's eleven extra sites
++      # survive an audit that only looked here.
++      #
++      # Output is normalised and deterministic, so drift is a diff rather than
++      # a judgement. ~0.3s. Regenerate with:
++      #   node scripts/query-set.mjs > tests/fixtures/query-set-baseline.txt
++      - name: MCP query set (no drift)
++        run: |
++          node scripts/query-set.mjs > /tmp/query-set-actual.txt
++          diff -u tests/fixtures/query-set-baseline.txt /tmp/query-set-actual.txt
++
+       - name: GuardLink status
+         run: node dist/cli/index.js status .
+ 

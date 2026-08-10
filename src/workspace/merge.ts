@@ -14,18 +14,19 @@
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import type {
-  ThreatModel, ThreatModelAsset, ThreatModelThreat, ThreatModelControl,
-  ThreatModelMitigation, ThreatModelExposure, ThreatModelAcceptance,
-  ThreatModelTransfer, ThreatModelFlow, ThreatModelBoundary,
-  ThreatModelValidation, ThreatModelAudit, ThreatModelOwnership,
-  ThreatModelDataHandling, ThreatModelAssumption,
-  SourceLocation, ExternalRef, AnnotationVerb,
+  ThreatModel,
+
+
+
+
+  SourceLocation, AnnotationVerb,
 } from '../types/index.js';
 import type {
   MergedReport, MergeTotals, MergeDiffSummary, TagOwnership, UnresolvedRef,
   MergeWarning, MergeWarningCode, RepoStatus,
 } from './types.js';
 import { REPORT_SCHEMA_VERSION } from './metadata.js';
+import { buildCoverageIndex, fileCoveragePercent } from '../parser/coverage.js';
 
 // ─── Report Loading ──────────────────────────────────────────────────
 
@@ -479,15 +480,26 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     combined.features.push(...prefixAll(m.features || [], repo));
     combined.comments.push(...prefixAll(m.comments, repo));
 
-    // Aggregate coverage
+    // Aggregate coverage. `total_symbols` is summed only to keep the emitted
+    // field shape stable for `schema_version: 1.0.0` consumers; every repo
+    // reports 0 for it, so the sum is 0. It is not a denominator.
     combined.coverage.total_symbols += m.coverage.total_symbols;
     combined.coverage.annotated_symbols += m.coverage.annotated_symbols;
   }
 
-  // Recompute coverage percent
-  combined.coverage.coverage_percent = combined.coverage.total_symbols > 0
-    ? Math.round((combined.coverage.annotated_symbols / combined.coverage.total_symbols) * 100)
-    : 0;
+  // D49: this recomputed percent as annotated_symbols / total_symbols. Since
+  // total_symbols is never populated, the `: 0` fallback was the ONLY branch
+  // that ever ran — two repos each reporting 89% merged to a workspace
+  // reporting 0%, which is D14 ("a hardcoded 0 rendered as 0% on fully
+  // annotated projects") reappearing on the path D14's fix never reached.
+  //
+  // The percent every repo actually computes is FILE coverage, and the file
+  // counts are already aggregated above, so the workspace number is the same
+  // division over the combined totals — through the same helper the parser uses.
+  combined.coverage.coverage_percent = fileCoveragePercent(
+    combined.annotated_files.length,
+    combined.source_files,
+  );
 
   return combined;
 }
@@ -499,17 +511,13 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
  * (same asset+threat pair) and no acceptance.
  */
 function countUnmitigated(model: ThreatModel): number {
-  const mitigatedPairs = new Set(
-    model.mitigations.map(m => `${m.asset}::${m.threat}`),
-  );
-  const acceptedPairs = new Set(
-    model.acceptances.map(a => `${a.asset}::${a.threat}`),
-  );
-
-  return model.exposures.filter(e => {
-    const key = `${e.asset}::${e.threat}`;
-    return !mitigatedPairs.has(key) && !acceptedPairs.has(key);
-  }).length;
+  // D36. Was a local pair set that also skipped ref normalisation, so a
+  // workspace total could disagree with the per-repo `validate` it summarises.
+  // Note this runs on the COMBINED model, whose locations are repo-prefixed —
+  // which is what makes the same-file test correct across repos: two repos'
+  // db.py are different files here, so neither can narrow the other.
+  const index = buildCoverageIndex(model);
+  return model.exposures.filter(e => !index.isCovered(e)).length;
 }
 
 /** Compute aggregate totals from a combined model */

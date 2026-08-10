@@ -25,8 +25,41 @@ jobs:
       - run: npm run build
       - run: npm test
 
-      - name: GuardLink validate (dogfood)
-        run: node dist/cli/index.js validate .
+      # Errors fail the build; the 73 pre-existing no-unused-vars findings are
+      # warnings, so they are counted rather than hidden. See eslint.config.js
+      # for what each rule became and why.
+      - run: npm run lint
+
+      # D28 — committed artifacts go stale silently.
+      #
+      # Phase 5 shipped 5 STALE artifacts: annotated source landed without
+      # regenerating .guardlink/graph/. The pre-commit hook that would have
+      # caught it ships UNINSTALLED in docs/hooks/ by design — tooling should
+      # not silently install a hook that rewrites files — so nothing caught it.
+      # A committed artifact nobody checks is decoration, and worse than none:
+      # a generated .mmd in a repo looks like source, so a stale one gets
+      # trusted rather than questioned.
+      #
+      # `--artifacts` exits 1 on stale/missing/unheadered and 0 on current.
+      # This step depends on D16: until validate stopped running syncAgentFiles
+      # as a side effect, it rewrote seven tracked files on every run and could
+      # not be a check.
+      - name: GuardLink validate + artifact drift (dogfood)
+        run: node dist/cli/index.js validate . --artifacts
 
       - name: GuardLink status
         run: node dist/cli/index.js status .
+
+      # D16 — the read commands must leave the tree exactly as they found it.
+      # This is the regression guard for the property the step above depends on:
+      # if validate or status ever starts writing again, this fails here rather
+      # than by quietly dirtying every contributor's working tree.
+      - name: Read commands leave the tree clean (D16)
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+          test -z "$(git status --porcelain)" || {
+            echo "::error::A read-only command modified the working tree:"
+            git status --porcelain
+            exit 1
+          }

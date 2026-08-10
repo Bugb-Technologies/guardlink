@@ -4,11 +4,11 @@
  */
 
 import type { ThreatModel } from '../types/index.js';
+import { buildCoverageIndex } from '../parser/coverage.js';
 
-/** Normalize a ref: strip leading # so that "#sqli" and "sqli" compare equal. */
-function normalizeRef(ref: string): string {
-  return ref.startsWith('#') ? ref.slice(1) : ref;
-}
+// D57: a private `normalizeRef` lived here — it stripped `#` but, unlike the
+// canonical one in parser/coverage.ts, did not case-fold. Even the normaliser
+// had been reimplemented, and the copy was weaker. It died with the pair set.
 
 export interface DashboardStats {
   annotations: number;
@@ -118,13 +118,11 @@ export function computeSeverity(model: ThreatModel): SeverityBreakdown {
 }
 
 export function computeExposures(model: ThreatModel): ExposureRow[] {
-  const mitigatedSet = new Set<string>();
-  for (const m of model.mitigations) mitigatedSet.add(`${normalizeRef(m.asset)}::${normalizeRef(m.threat)}`);
-  const acceptedSet = new Set<string>();
-  for (const a of model.acceptances) acceptedSet.add(`${normalizeRef(a.asset)}::${normalizeRef(a.threat)}`);
+  // D57: this normalised `#` but still keyed on the pair alone, so the dashboard
+  // exposure table showed a same-file-different-symbol exposure as mitigated.
+  const coverage = buildCoverageIndex(model);
 
   return model.exposures.map(e => {
-    const key = `${normalizeRef(e.asset)}::${normalizeRef(e.threat)}`;
     return {
       asset: e.asset,
       threat: e.threat,
@@ -132,8 +130,8 @@ export function computeExposures(model: ThreatModel): ExposureRow[] {
       description: e.description || '',
       file: e.location.file,
       line: e.location.line,
-      mitigated: mitigatedSet.has(key),
-      accepted: acceptedSet.has(key),
+      mitigated: coverage.isMitigated(e),
+      accepted: coverage.isAccepted(e),
     };
   });
 }

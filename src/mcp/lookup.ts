@@ -22,10 +22,10 @@
  * @comment -- "Pure function; no I/O; operates on in-memory ThreatModel"
  */
 
+import { buildCoverageIndex, findUnmitigatedExposures } from '../parser/coverage.js';
 import type {
   ThreatModel, ThreatModelAsset, ThreatModelThreat, ThreatModelControl,
-  ThreatModelExposure, ThreatModelMitigation, ThreatModelFlow,
-  ThreatModelBoundary, ThreatModelTransfer, ThreatModelAcceptance,
+  ThreatModelTransfer, ThreatModelAcceptance,
   SourceLocation, DataClassification,
 } from '../types/index.js';
 
@@ -387,11 +387,11 @@ export function lookup(model: ThreatModel, query: string): LookupResult {
 // ─── Lookup implementations ──────────────────────────────────────────
 
 function lookupUnmitigated(model: ThreatModel, query: string): LookupResult {
-  const covered = new Set<string>();
-  for (const m of model.mitigations) covered.add(`${m.asset}::${m.threat}`);
-  for (const a of model.acceptances) covered.add(`${a.asset}::${a.threat}`);
-  const results = model.exposures
-    .filter(e => !covered.has(`${e.asset}::${e.threat}`))
+  // D36. The EIGHTH copy of this computation, and the one an agent reads most
+  // often. Found by a test that asserted `lookup("unmitigated")` and
+  // `findUnmitigatedExposures` agree — they did not, because rewiring the other
+  // seven left this one behind. That is the argument for one predicate.
+  const results = findUnmitigatedExposures(model)
     .map(e => ({
       asset: e.asset, threat: e.threat, severity: e.severity,
       description: e.description, file: e.location.file, line: e.location.line,
@@ -504,9 +504,7 @@ function lookupThreatsFor(model: ThreatModel, query: string, assetRef: string, r
   const aliases = resolve(assetRef);
   const { keep, match, matched } = selectStrongest(model.exposures.map(e => e.asset), assetRef, aliases);
   const exposures = model.exposures.filter(e => keep(e.asset));
-  const threatIds = new Set(exposures.map(e => e.threat));
-  const threats = model.threats.filter(t => (t.id && threatIds.has(t.id)) || threatIds.has(t.canonical_name));
-
+  const assetCoverage = buildCoverageIndex(model);
   // Also include direct exposures info
   const results = exposures.map(e => {
     const threat = model.threats.find(t => t.id === e.threat || t.canonical_name === e.threat);
@@ -514,8 +512,9 @@ function lookupThreatsFor(model: ThreatModel, query: string, assetRef: string, r
       threat: e.threat,
       severity: e.severity || threat?.severity,
       description: e.description || threat?.description,
-      mitigated: model.mitigations.some(m => m.asset === e.asset && m.threat === e.threat),
-      accepted: model.acceptances.some(a => a.asset === e.asset && a.threat === e.threat),
+      // D36: per-site, and normalising refs, which raw === never did.
+      mitigated: assetCoverage.isMitigated(e),
+      accepted: assetCoverage.isAccepted(e),
     };
   });
   return { query, type: 'threats_for_asset', count: results.length, results, ...provenance(match), ...ambiguity(matched, v => v) };
@@ -799,10 +798,12 @@ function lookupExternalId(model: ThreatModel, query: string, want: ParsedExterna
   const namesThisId = (ownRefs: string[] | undefined, threatRef: string) =>
     (ownRefs || []).some(r => externalIdMatches(r, want)) || threatKeys.has(bareRef(threatRef));
 
-  const mitigated = new Set<string>();
-  for (const m of model.mitigations) mitigated.add(`${bareRef(m.asset)}::${bareRef(m.threat)}`);
-  const accepted = new Set<string>();
-  for (const a of model.acceptances) accepted.add(`${bareRef(a.asset)}::${bareRef(a.threat)}`);
+  // D36. The scanner bridge is where the defect did the most damage: a
+  // deterministic scanner reports CWE-89 at db.py:9, asks here, and used to be
+  // told `mitigated` because a DIFFERENT function on the same asset was bound
+  // correctly. Coverage is now decided per site, from the same predicate
+  // `validate` and `diff` use.
+  const coverage = buildCoverageIndex(model);
   const confirmedPairs = new Set<string>();
   for (const c of model.confirmed || []) confirmedPairs.add(`${bareRef(c.asset)}::${bareRef(c.threat)}`);
 
@@ -817,18 +818,18 @@ function lookupExternalId(model: ThreatModel, query: string, want: ParsedExterna
     seen.add(dedupe);
 
     const pair = `${bareRef(asset)}::${bareRef(threat)}`;
+    const site = { asset, threat, location };
     const isConfirmed = origin === 'confirmed' || confirmedPairs.has(pair);
-    const isAccepted = accepted.has(pair);
-    const isMitigated = mitigated.has(pair);
+    const isAccepted = coverage.isAccepted(site);
+    const isMitigated = coverage.isMitigated(site);
     const status = isConfirmed ? 'confirmed' : isAccepted ? 'accepted' : isMitigated ? 'mitigated' : 'open';
     totals[status]++;
 
     results.push({
       status, asset, threat, severity, description,
       confirmed: isConfirmed, accepted: isAccepted, mitigated: isMitigated,
-      controls: model.mitigations
-        .filter(m => bareRef(m.asset) === bareRef(asset) && bareRef(m.threat) === bareRef(threat) && m.control)
-        .map(m => m.control),
+      // Only the controls that actually reach THIS site.
+      controls: coverage.mitigationsFor(site).filter(m => m.control).map(m => m.control),
       ...loc(location),
     });
   };
@@ -997,9 +998,12 @@ function lookupThreat(model: ThreatModel, query: string, ref: string, resolve: R
   const acceptances = model.acceptances.filter(a => keep(a.threat));
   const transfers = model.transfers.filter(t => keep(t.threat));
 
+  // D36. `mitigations` is already narrowed to this threat by `keep`, so asset
+  // equality was the only remaining test; it is now the shared per-site rule.
+  const threatCoverage = buildCoverageIndex(model);
   const affected = exposures.map(e => ({
     asset: e.asset, severity: e.severity,
-    mitigated: mitigations.some(m => m.asset === e.asset),
+    mitigated: threatCoverage.isMitigated(e),
   }));
 
   // Declared in definitions — full record.
@@ -1264,11 +1268,6 @@ function classifyRef(value: string, ref: string, aliases?: string[]): RefMatch |
   }
 
   return null;
-}
-
-/** Fuzzy match: #id refs, dotted paths, partial case-insensitive match */
-function matchRef(value: string, ref: string, aliases?: string[]): boolean {
-  return classifyRef(value, ref, aliases) !== null;
 }
 
 const tierOf = (m: RefMatch | null): number => (m === null ? Infinity : TIER[m.kind]);

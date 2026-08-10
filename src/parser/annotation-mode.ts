@@ -25,10 +25,31 @@ export interface AnnotationModeReport {
   external: number;
 }
 
-/** Every annotation location in the model, across all relation types. */
-function allLocations(model: ThreatModel): SourceLocation[] {
+/**
+ * Every location that is EVIDENCE about storage mode — which excludes the
+ * declarations (D37).
+ *
+ * `@asset`, `@threat` and `@control` are structurally inline-only. They live in
+ * `.guardlink/definitions.*`, which is a source file, and there is no `@source`
+ * block for "this asset exists" — a declaration has no code location to anchor
+ * to, so it can never acquire an `origin_file`. Counting them as inline evidence
+ * meant every correctly-configured pure-external repo reported `mixed`:
+ *
+ *     /tmp/expense-api   inline 21   external 84   → mixed
+ *     …all 21 inline annotations being the definitions file, and nothing else.
+ *
+ * `mixed` is the alarm state — it means mid-migration, needs attention — and it
+ * was firing on the correct configuration. Under the external default that is
+ * every new project, which is precisely how an alarm gets trained out of people.
+ *
+ * The relationship verbs are the only ones that have a genuine choice of home,
+ * so they are the only ones asked. Nothing else in the model is structurally
+ * inline-only: every remaining verb — including `@feature`, `@comment` and
+ * `@shield`, which carry no ref — round-trips through a `.gal` sidecar, verified
+ * against the expense-api corpus where all three were written externally.
+ */
+function evidenceLocations(model: ThreatModel): SourceLocation[] {
   return [
-    ...model.assets, ...model.threats, ...model.controls,
     ...model.mitigations, ...model.exposures, ...(model.confirmed || []),
     ...model.acceptances, ...model.transfers, ...model.flows,
     ...model.boundaries, ...model.validations, ...model.audits,
@@ -43,12 +64,19 @@ function allLocations(model: ThreatModel): SourceLocation[] {
  *
  * An empty model reports `inline` with both counts at zero — there is nothing to
  * observe, and inline is the product default. The counts are returned alongside
- * so a consumer can tell "inferred from nothing" from "inline, measured".
+ * so a consumer can tell "inferred from nothing" from "inline, measured". A repo
+ * holding only definitions now lands in that case rather than reading as inline
+ * with 21 measured annotations, which is the honest answer: it has declared a
+ * vocabulary and stored no annotations anywhere yet.
+ *
+ * `mixed` stays reachable, and stays meaningful: a repo with one relationship
+ * annotation in a source comment and another in a sidecar is genuinely both, and
+ * still reports so.
  */
 export function detectAnnotationMode(model: ThreatModel): AnnotationModeReport {
   let inline = 0;
   let external = 0;
-  for (const loc of allLocations(model)) {
+  for (const loc of evidenceLocations(model)) {
     if (loc.origin_file) external++;
     else inline++;
   }

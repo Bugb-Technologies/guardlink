@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        attack-surface.mmd
-%% annotation_hash: sha256-v2:67e68e77d94b7fc9761d57dd1b7419c0a6d9076e12574de5a8ef4c0f8767c0fc
+%% annotation_hash: sha256-v2:023909fdd4a7cbd2a8fbca18689860619ea09fc68e061f8d7b6e12e0268cd961
 %% generator:       guardlink@1.4.5
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -10,27 +10,27 @@
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %%{init: {"flowchart": {"nodeSpacing": 38, "rankSpacing": 48, "curve": "linear", "htmlLabels": false}}}%%
 graph TB
-  subgraph A_mcp["GuardLink.MCP · ⚠ 4 open"]
-    direction TB
-    E0["✅ Path_Traversal ×2"]:::sev_high
-    E1["⚠️ Command_Injection"]:::sev_high
-    E2["✅ Arbitrary_File_Write ×2"]:::sev_high
-    E3["⚠️ Prompt_Injection"]:::sev_med
-    E4["✅ API_Key_Exposure"]:::sev_med
-    E5["⚠️ Sensitive_Data_Exposure"]:::sev_med
-    E6["⚠️ Information_Disclosure"]:::sev_low
-    E7["✅ ReDoS"]:::sev_low
-    E8["✅ Denial_of_Service"]:::sev_low
-  end
   subgraph A_agent_launcher["GuardLink.Agent_Launcher · ⚠ 3 open"]
     direction TB
-    E9["✅ Child_Process_Injection"]:::sev_crit
-    E10["✅ API_Key_Exposure"]:::sev_high
-    E11["⚠️ Prompt_Injection ×2"]:::sev_high
-    E12["✅ Path_Traversal ×2"]:::sev_med
-    E13["✅ Arbitrary_File_Write"]:::sev_med
-    E14["⚠️ Config_Tampering"]:::sev_med
-    E15["⚠️ Denial_of_Service"]:::sev_low
+    E0["✅ Child_Process_Injection"]:::sev_crit
+    E1["✅ API_Key_Exposure"]:::sev_high
+    E2["⚠️ Prompt_Injection ×2"]:::sev_high
+    E3["✅ Path_Traversal ×2"]:::sev_med
+    E4["✅ Arbitrary_File_Write"]:::sev_med
+    E5["⚠️ Config_Tampering"]:::sev_med
+    E6["⚠️ Denial_of_Service"]:::sev_low
+  end
+  subgraph A_mcp["GuardLink.MCP · ⚠ 3 open"]
+    direction TB
+    E7["✅ Path_Traversal ×2"]:::sev_high
+    E8["⚠️ Command_Injection"]:::sev_high
+    E9["✅ Arbitrary_File_Write ×2"]:::sev_high
+    E10["⚠️ Prompt_Injection"]:::sev_med
+    E11["✅ API_Key_Exposure"]:::sev_med
+    E12["⚠️ Sensitive_Data_Exposure"]:::sev_med
+    E13["✅ Information_Disclosure ×2"]:::sev_low
+    E14["✅ ReDoS"]:::sev_low
+    E15["✅ Denial_of_Service"]:::sev_low
   end
   subgraph A_llm_client["GuardLink.LLM_Client · ⚠ 2 open"]
     direction TB
@@ -53,7 +53,7 @@ graph TB
   end
   subgraph A_init["GuardLink.Init · ⚠ 1 open"]
     direction TB
-    E29["✅ Arbitrary_File_Write ×2"]:::sev_high
+    E29["✅ Arbitrary_File_Write ×3"]:::sev_high
     E30["✅ Path_Traversal ×2"]:::sev_med
     E31["⚠️ Sensitive_Data_Exposure"]:::sev_low
   end

@@ -41,12 +41,16 @@
  *
  * @exposes #mcp to #dos [low] cwe:CWE-400 -- "Unbounded depth on a dense graph expands the frontier"
  * @mitigates #mcp against #dos using #resource-limits -- "Depth is clamped; visited set makes every node terminal, so cycles cannot revisit"
+ * @exposes #mcp to #info-disclosure [low] cwe:CWE-200 -- "D34: the subgraph spread carried the whole repo's unannotated_files inventory into a neighbourhood answer — 8094 paths, 654.8 KB, on a query that resolved nothing"
+ * @mitigates #mcp against #info-disclosure using #resource-limits -- "unannotated_files is filtered to the subgraph's own files here, and dropped entirely by withoutFileInventory at the graph emission boundary"
+ * @validates #resource-limits for #mcp -- "tests/graph-sparse-repo.test.ts builds two repos differing only in unannotated file count and pins that payload size does not follow it"
  * @flows ThreatModel -> #mcp via selectSubgraph -- "Model filtered to a neighbourhood"
  * @comment -- "Pure function over the model; returns a ThreatModel so the existing Mermaid generator needs no changes"
  */
 
 import { resolveAssetRef, type MatchKind } from './lookup.js';
 import { filterByFeature } from '../parser/feature-filter.js';
+import { canonicaliser } from '../parser/canonical-ref.js';
 import type { ThreatModel, ThreatModelAsset } from '../types/index.js';
 
 export type Direction = 'in' | 'out' | 'both';
@@ -63,6 +67,30 @@ export type SelectableKind = typeof SELECTABLE_KINDS[number];
 
 /** Hard ceiling on depth. Beyond the graph's diameter another hop adds nothing. */
 export const MAX_DEPTH = 10;
+
+/**
+ * How complete a traversal result is. Three states, because the two questions
+ * a caller actually has — "is there more?" and "can I get it?" — have three
+ * answers between them, not two.
+ */
+export type Completeness =
+  /**
+   * Every reachable node is present and the frontier was exhausted. There is
+   * nothing more to find at any depth. A saturated sink reports this.
+   */
+  | 'complete'
+  /**
+   * Complete FOR the requested depth, but the frontier still had unexplored
+   * neighbours. Raising `depth` would return more. The result is correct, just
+   * bounded by what you asked for.
+   */
+  | 'depth_limited'
+  /**
+   * Stopped by a limit the CALLER did not choose — `depth` was clamped to
+   * MAX_DEPTH — and there is still more beyond. THE RESULT IS INCOMPLETE and
+   * raising `depth` will not help, because the ceiling is already in force.
+   */
+  | 'truncated';
 
 export interface SubgraphOptions {
   /** Asset ref to start from. Omitted → no traversal, just the pre-filters. */
@@ -111,24 +139,37 @@ export interface Traversal {
   edges: GraphEdge[];
   depth_reached: number;
   depth_requested: number;
-  /** True when the frontier was still growing at the depth limit. */
-  truncated: boolean;
+  /**
+   * Whether this result is the whole answer, and if not, why not.
+   *
+   * Replaces a `truncated: boolean` that conflated "I stopped because a limit
+   * was hit" with "I stopped because there was nothing left to reach" — the
+   * didn't-run-versus-found-nothing confusion, applied to traversal. Observed:
+   * `#llm-client` depth 1 `out` reported `truncated: true` while depth 2 `out`
+   * reported `false`, on an identical 4 nodes / 6 edges. The old flag was in
+   * fact testing "did the last hop add any nodes", which says nothing at all
+   * about whether more exist beyond them.
+   */
+  completeness: Completeness;
+  /**
+   * What lies one hop past the boundary — absent when `completeness` is
+   * `'complete'`, because then there is nothing.
+   *
+   * A blast radius that does not say what it omitted is exactly the failure
+   * this surface exists to eliminate: an agent reasoning about what a change
+   * affects, on a silently partial graph.
+   */
+  frontier_unexplored?: {
+    count: number;
+    nodes: string[];
+  };
 }
 
 /** Canonicalise a ref to one key per asset: `#cli`, `cli` and `GuardLink.CLI` agree. */
-export function canonicaliser(model: ThreatModel): (ref: string) => string {
-  const canon = new Map<string, string>();
-  for (const a of model.assets) {
-    if (!a.id) continue;
-    const id = a.id.toLowerCase();
-    canon.set(id, id);
-    canon.set(a.path.join('.').toLowerCase(), id);
-  }
-  return (ref: string) => {
-    const bare = (ref ?? '').trim().replace(/^#/, '').toLowerCase();
-    return canon.get(bare) ?? bare;
-  };
-}
+// Moved to parser/canonical-ref.ts so parser/coverage.ts can reach it without
+// inverting the layering — D47 was the cost of it living here. Re-exported so
+// existing callers of `canonicaliser` from this module are unaffected.
+export { canonicaliser };
 
 /** Every asset-plane edge in the model, with endpoints canonicalised. */
 export function graphEdges(model: ThreatModel): GraphEdge[] {
@@ -186,7 +227,8 @@ export function traverseGraph(model: ThreatModel, options: SubgraphOptions = {})
     return {
       start: null,
       nodes: [], edges: [],
-      depth_reached: 0, depth_requested: depthRequested, truncated: false,
+      // No start ref at all: nothing was asked for, so nothing is missing.
+      depth_reached: 0, depth_requested: depthRequested, completeness: 'complete',
     };
   }
 
@@ -220,13 +262,15 @@ export function traverseGraph(model: ThreatModel, options: SubgraphOptions = {})
   };
 
   if (startKey === null) {
-    return { start, nodes: [], edges: [], depth_reached: 0, depth_requested: depthRequested, truncated: false };
+    // The start ref did not resolve. `start.resolved` is false and carries the
+    // reason; completeness describes the traversal, and an unresolved start
+    // means there was no traversal to be incomplete about.
+    return { start, nodes: [], edges: [], depth_reached: 0, depth_requested: depthRequested, completeness: 'complete' };
   }
 
   const visited = new Map<string, number>([[startKey, 0]]);
   let frontier = [startKey];
   let reached = 0;
-  let truncated = false;
 
   for (let d = 1; d <= depth && frontier.length > 0; d++) {
     const next: string[] = [];
@@ -242,8 +286,33 @@ export function traverseGraph(model: ThreatModel, options: SubgraphOptions = {})
     frontier = next;
   }
 
-  // Still growing when we stopped — the caller's depth, not the graph, ended it.
-  if (frontier.length > 0 && depth < MAX_DEPTH) truncated = true;
+  // What is actually beyond the boundary.
+  //
+  // The old flag asked `frontier.length > 0`, which is "did the last hop add
+  // any nodes" — a question about what we already HAVE, not about what we are
+  // missing. Those nodes are in `visited`; they are in the answer. The real
+  // question is whether the final frontier has neighbours we never visited, and
+  // that takes one more probing hop to establish. It costs one extra edge scan
+  // and it is the difference between reporting "there is more" and reporting
+  // "the last thing I did was find something".
+  const unexplored = new Set<string>();
+  for (const node of frontier) {
+    for (const edge of edges) {
+      const to = step(edge, node, direction);
+      if (to !== null && !visited.has(to)) unexplored.add(to);
+    }
+  }
+
+  // `depth` is `depthRequested` clamped to MAX_DEPTH, so this is true only when
+  // a ceiling the caller did not choose cut the walk short. That is the one case
+  // where raising `depth` does not help, which is what separates a truncated
+  // result from a merely depth-limited one.
+  const clampedByCeiling = depth < depthRequested;
+
+  const completeness: Completeness =
+    unexplored.size === 0 ? 'complete'
+      : clampedByCeiling ? 'truncated'
+        : 'depth_limited';
 
   const nodes: TraversalNode[] = [...visited.entries()]
     .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
@@ -256,7 +325,13 @@ export function traverseGraph(model: ThreatModel, options: SubgraphOptions = {})
     edges: edges.filter(e => included.has(e.from) && included.has(e.to)),
     depth_reached: reached,
     depth_requested: depthRequested,
-    truncated,
+    completeness,
+    ...(completeness === 'complete' ? {} : {
+      frontier_unexplored: {
+        count: unexplored.size,
+        nodes: [...unexplored].sort(),
+      },
+    }),
   };
 }
 
@@ -362,6 +437,16 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
     // annotation count would misdescribe what it contains.
     annotations_parsed: arrays.reduce((n, a) => n + a.length, 0),
     annotated_files: base.annotated_files.filter(f => files.has(f)),
+    // D34. The spread carried this one through untouched while every relation
+    // array around it was filtered, so a neighbourhood query returned the whole
+    // repo's file inventory. Measured on specter-v1: 8094 rows, 654.8 KB — 92%
+    // of a resolved depth-2 payload, and 95% of one that resolved NOTHING.
+    // `files` is built from annotation locations, so an unannotated file can
+    // never be in it and this is always []. That is the honest value for a
+    // subgraph — an unannotated file contributes no node and no edge — and it is
+    // exactly why the graph tool omits the key at emission rather than shipping
+    // an empty array that reads as "this repo is fully annotated".
+    unannotated_files: base.unannotated_files.filter(f => files.has(f)),
     assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances,
     transfers, flows, boundaries, validations, audits, ownership,
     data_handling: dataHandling, assumptions, entitlements, shields, features, comments,
@@ -369,6 +454,124 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
 }
 
 const bare = (s: string) => (s ?? '').replace(/^#/, '').toLowerCase();
+
+// ─── Detail level ────────────────────────────────────────────────────
+
+export type GraphDetail = 'summary' | 'full';
+
+/**
+ * Every relation array plus the node vocabulary. The summary transform walks
+ * this list rather than the object's own keys, so a scalar field on the model
+ * (`source_files`, `annotation_hash`) is never mistaken for a row array.
+ */
+// MERGE: `actors` belongs with the node vocabulary, not with SELECTABLE_KINDS —
+// like assets, threats and controls it is always kept, so it is named here.
+// Omitting it meant `detail: "summary"` shipped every actor's description and
+// full location object, which is the one thing summary promises not to do.
+// tests/graph-detail.test.ts caught it; that test enumerates the payload rather
+// than a fixed list, which is why it noticed a relation array nobody told it about.
+const ALL_ROW_ARRAYS = [
+  'assets', 'threats', 'controls', 'actors',
+  ...SELECTABLE_KINDS,
+] as const;
+
+/**
+ * Strip the payload, not the graph.
+ *
+ * Measured on this repo at depth 2 from `#cli`: `description` and `location`
+ * together are 43.7% of the response, and the proportion barely moves with
+ * depth (32.7% / 43.7% / 39.1% at depths 1/2/3). The cost is what hangs off each
+ * node, not how many nodes there are — which is why the answer is not a smaller
+ * default depth. Depth 1 makes the tool redundant with `asset X`, and defaulting
+ * `direction` to `out` is an arbitrary asymmetry that would silently hide
+ * everything upstream of the asset you asked about.
+ *
+ * This is a PURE POST-TRANSFORM over an already-selected subgraph. It cannot add
+ * or remove a node or an edge, because it never sees the traversal options — the
+ * topology-identity property the tests pin is structural, not a coincidence that
+ * needs maintaining. A summary mode that quietly dropped nodes would be a
+ * silent-wrong-answer path, which is the failure this whole surface exists to
+ * eliminate.
+ *
+ * `location: {file, line}` becomes `at: "file:line"` rather than disappearing:
+ * an agent still needs to know where a fact was declared to go read it. What it
+ * does not need, to reason about blast radius, is the prose explaining why.
+ */
+export function summariseGraphPayload(payload: { traversal: Traversal; model: ThreatModel }): unknown {
+  const compactRow = (row: Record<string, unknown>): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(row)) {
+      if (k === 'description') continue;
+      if (k === 'location' && v && typeof v === 'object') {
+        const loc = v as { file?: string; line?: number };
+        out.at = `${loc.file ?? '?'}:${loc.line ?? '?'}`;
+        continue;
+      }
+      out[k] = v;
+    }
+    return out;
+  };
+
+  const model: Record<string, unknown> = { ...(payload.model as unknown as Record<string, unknown>) };
+  for (const name of ALL_ROW_ARRAYS) {
+    const rows = model[name];
+    if (Array.isArray(rows)) model[name] = rows.map(r => compactRow(r as Record<string, unknown>));
+  }
+
+  return {
+    traversal: {
+      ...payload.traversal,
+      edges: payload.traversal.edges.map(e => {
+        const { file, line, ...rest } = e;
+        return { ...rest, at: `${file}:${line}` };
+      }),
+    },
+    model,
+    detail: 'summary',
+    detail_note:
+      'description text and full location objects omitted; `at` is "file:line". '
+      + 'Node and edge sets are identical to detail:"full" — only per-node detail differs. '
+      + 'Use detail:"full" for the complete records, or when you need a valid ThreatModel.',
+  };
+}
+
+/**
+ * Drop the repo file inventory from a graph payload at the emission boundary.
+ *
+ * This is GL-205's ruling, not a second policy: `guardlink_parse` already decided
+ * that `unannotated_files` is a flat path list carrying nothing about the threat
+ * model, that it is the field which scales with repo size while the model does
+ * not, and that the answer is to omit it by default and name the tool that owns
+ * it. `guardlink_graph` shipped two commits later and reintroduced the field
+ * through a spread (D34). Same field, same reasoning, same shape of answer —
+ * including the `_omitted` marker, because absent-because-omitted and
+ * absent-because-empty are different facts and a caller that cannot tell them
+ * apart will read a large repo as fully annotated.
+ *
+ * `annotated_files` stays. It is already filtered to the files that contributed
+ * a node or an edge, it is proportionate to the subgraph rather than to the repo
+ * (measured: 45 rows / 1.2 KB against 8094 rows / 654.8 KB), and it answers a
+ * question a caller actually has — where do I go to read this.
+ *
+ * Applied to the payload rather than to the model so `selectSubgraph` keeps
+ * returning a ThreatModel: the type is the contract every other consumer relies on.
+ */
+export function withoutFileInventory(payload: unknown, repoUnannotatedCount: number): unknown {
+  const p = payload as { model?: Record<string, unknown> };
+  if (!p?.model) return payload;
+  const { unannotated_files: _dropped, ...model } = p.model;
+  return {
+    ...p,
+    model: {
+      ...model,
+      unannotated_files_omitted: {
+        count: repoUnannotatedCount,
+        scope: 'whole repository, not this subgraph',
+        reason: 'A subgraph is about relations; an unannotated file contributes no node and no edge. Call guardlink_unannotated, which owns this data.',
+      },
+    },
+  };
+}
 
 /** Canonical keys reachable under `options`, or null when there is no start. */
 function nodeSetOf(model: ThreatModel, options: SubgraphOptions): Set<string> | null {

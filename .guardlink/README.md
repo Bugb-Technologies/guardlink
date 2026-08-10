@@ -11,8 +11,8 @@ accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 423 annotations · 16 assets · 15 threats · 12 controls · 78 exposures · 102 flows
-Content hash: `sha256-v2:67e68e77d94b7fc9761d57dd1b7419c0a6d9076e12574de5a8ef4c0f8767c0fc` — identical hash means identical model.
+Current model: 438 annotations · 16 assets · 15 threats · 12 controls · 80 exposures · 105 flows
+Content hash: `sha256-v2:023909fdd4a7cbd2a8fbca18689860619ea09fc68e061f8d7b6e12e0268cd961` — identical hash means identical model.
 
 ---
 
@@ -26,15 +26,20 @@ With the MCP server connected:
 guardlink_context(file: "src/auth/login.ts")
 ```
 
-Without it, from a shell:
+Without it, from a shell. There is no single-command CLI equivalent — `guardlink parse`
+emits the whole model, so narrow it to the one file yourself:
 
 ```sh
-guardlink parse . --format json    # or: guardlink status .
+guardlink parse . | jq '[.. | objects | select(.location?.file == "src/auth/login.ts")]'
 ```
 
-The answer tells you the annotations declared in that file with line numbers, the assets
-they name, what those assets are exposed to, and which controls the file is expected to
-uphold.
+That gives you the annotations declared in that file with line numbers, and the assets,
+threats and controls each one names. It is not the whole of what `guardlink_context`
+returns: the tool also resolves each asset's neighbours and tells you *which kind* of empty
+an empty answer is, and neither falls out of a filter over the model.
+
+Without `jq`, `guardlink status .` is the closest thing — repo-wide counts and the
+unmitigated list, not a per-file view.
 
 **Read the empty answer carefully.** `guardlink_context` reports *which kind* of empty it
 found, and they mean opposite things:
@@ -66,8 +71,8 @@ from this model.
 
 **inline** — annotations live in source-file comments.
 
-Put annotations in the comment syntax of the file you are editing — the doc-block of
-the function or module they describe:
+**Annotation mode: `inline`. Annotations live in source-file comments**, in the comment
+syntax of the file you are editing — the doc-block of the function or module they describe.
 
 ```ts
 /**
@@ -76,6 +81,9 @@ the function or module they describe:
  */
 export function login(email: string) { … }
 ```
+
+Do not create `.gal` sidecars under `.guardlink/annotations/` in this mode; a repo with
+both is a mixed repo, and that is the failure this section exists to prevent.
 
 **Definitions go in `definitions.ts`, always — in both modes.** Reuse existing `#id`s; never
 redefine one. If you need a new asset or threat, add it there first, then reference it.
@@ -118,14 +126,38 @@ Assets are referenced as `#id` or as a `Dotted.Path`; both resolve to the same n
 | `@comment` | `@comment -- "context that fits no other verb"` |
 | `@accepts` | `@accepts <threat> on <asset> -- "why"` — **human only, never write this** |
 
-Two notes that catch people out. `@confirmed` and `@exposes` take their arguments in
-**opposite orders** — exposes is asset-then-threat, confirmed is threat-then-asset. And a
-cross-repo tag such as `#other-repo.component` must be **quoted** —
-`@flows "#other-repo.tokens" -> #api via header` — because an unquoted `#id` may not contain
-a dot.
+One note that catches people out: `@confirmed` and `@exposes` take their arguments in
+**opposite orders** — exposes is asset-then-threat, confirmed is threat-then-asset.
+
+Cross-repo tags are written qualified and unquoted, in any reference position —
+`@flows #other-repo.tokens -> #api via header`, and equally
+`@exposes #api to #other-repo.injection [high] -- "why"`. Quoting is
+only for a reference containing spaces. (This used to require quotes because the grammar
+would not accept a dot after `#`; that was D19, and it is fixed.)
 
 Write coupled blocks, not lone facts: a risk plus the control or audit that answers it, plus
 the flow that gives it context.
+
+### Writing *about* these verbs
+
+A line starting with a verb that then fails to parse is either a broken annotation or a
+sentence about GuardLink. They are told apart by **structural evidence** after the verb: a
+`#reference`, a spaced `--` delimiter, or a grammar keyword **belonging to that verb**
+(`to` for `@exposes`, `against`/`using` for `@mitigates`, `->` for `@flows`, and so on).
+
+| Line | Verdict |
+|---|---|
+| `@exposes #api to` | **error** — has a `#ref`, so it was meant to be an annotation. Fails validation. |
+| `@exposes was renamed in v1.2` | **warning** — no structure. Read as prose. Does not fail validation. |
+
+The keyword set is per verb, so `@feature still claims to describe the model` is prose:
+`to` is not part of `@feature`'s grammar. Prose warnings are always reported under their
+own heading — never suppressed, because a line you *meant* as an annotation shows up there
+too.
+
+If you are documenting real annotation syntax and the examples do look structural, wrap
+them in `@shield:begin` / `@shield:end`. That is the deterministic override; the split
+above is a heuristic.
 
 **The complete reference is `docs/GUARDLINK_REFERENCE.md`** — every verb, every alias, the conformance
 levels, and worked examples per language. Read it before inventing syntax.
@@ -139,7 +171,7 @@ risk with no control, write `@exposes` to record it and `@audit` to flag it for 
 
 ```sh
 guardlink status .                       # coverage, counts, unmitigated exposures
-guardlink parse . --format json          # the whole model as JSON
+guardlink parse .                        # the whole model as JSON, on stdout
 guardlink validate .                     # syntax errors and dangling #id references
 guardlink report . --format md           # human-readable threat model report
 guardlink diff HEAD~1                    # what your change did to the model
@@ -158,6 +190,25 @@ The MCP server exposes the model as tools. The ones worth knowing by name:
 | `guardlink_validate` | Before you finish. |
 | `guardlink_diff(ref)` | After a change — did I make this worse? |
 | `guardlink_status` | Cold start on an unfamiliar repo. |
+| `guardlink_annotate_apply(file, line, annotations)` | **You are writing annotations.** Prefer it over editing `.gal` files by hand. |
+
+### Writing annotations with the MCP server
+
+`guardlink_annotate_apply` writes the sidecar for you. Pass the **source** file
+you are describing — not the `.gal` path, which it derives — the line the block
+anchors to, and the raw GAL lines. Two things worth knowing before you reach for
+a text editor instead:
+
+- **Do not write `@source` yourself.** The header is synthesised from `file`,
+  `line` and `symbol`. Passing one is an error, not a shortcut.
+- **Pass `symbol`.** It is optional and it is what makes `guardlink_reanchor`
+  able to find the block again after a refactor moves the code. Omitting it is
+  also how you say "this statement is about the whole asset, not one function" —
+  an unanchored `@mitigates` is never narrowed to a single symbol.
+
+`dry_run: true` returns the diff without writing. Every line is re-parsed before
+anything reaches disk, so a syntax error is rejected with its reason — but an
+undefined `#id` is not, so run `guardlink_validate` afterwards.
 
 `guardlink_lookup` understands a fixed set of named forms and **refuses anything else
 rather than guessing**. Send it a deliberately bad query and it returns the full list.

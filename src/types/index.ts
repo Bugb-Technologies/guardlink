@@ -565,12 +565,27 @@ export interface UnannotatedSymbol {
  * src/tui/commands.ts (2), src/mcp/server.ts (1). See bug #6 in the
  * v1.5.1 punch list.
  */
+/**
+ * Machine-readable diagnostic kinds.
+ *
+ * Added for D29 so consumers can group and filter without matching on message
+ * prose. A renderer that greps the human-readable text is a renderer that
+ * breaks when the text is reworded.
+ */
+export type DiagnosticCode =
+  /** Line starts with a known verb, carries structural evidence, and failed to parse. */
+  | 'malformed-annotation'
+  /** Line starts with a known verb but has no structural evidence — prose about GuardLink. */
+  | 'prose-like';
+
 export interface ParseDiagnostic {
   level: 'error' | 'warning' | 'fatal';
   message: string;
   file: string;
   line: number;
   raw?: string;
+  /** Present on diagnostics that have a defined kind; absent on ad-hoc ones. */
+  code?: DiagnosticCode;
 }
 
 export interface ParseResult {

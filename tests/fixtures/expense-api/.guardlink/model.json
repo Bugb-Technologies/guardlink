@@ -1,0 +1,1341 @@
+{
+  "version": "1.1.0",
+  "project": "unknown",
+  "source_files": 8,
+  "annotations_parsed": 105,
+  "annotated_files": [
+    ".guardlink/definitions.py",
+    "app/__init__.py",
+    "app/auth.py",
+    "app/config.py",
+    "app/db.py",
+    "app/main.py",
+    "app/notify.py",
+    "app/storage.py"
+  ],
+  "unannotated_files": [],
+  "assets": [
+    {
+      "path": [
+        "Expense",
+        "API"
+      ],
+      "id": "api",
+      "description": "Flask HTTP surface — login, expense list/create, receipt download",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 31
+      }
+    },
+    {
+      "path": [
+        "Expense",
+        "Auth"
+      ],
+      "id": "auth",
+      "description": "Password hashing, session token minting and verification",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 32
+      }
+    },
+    {
+      "path": [
+        "Expense",
+        "DB"
+      ],
+      "id": "db",
+      "description": "SQLite access for users and expenses",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 33
+      }
+    },
+    {
+      "path": [
+        "Expense",
+        "Storage"
+      ],
+      "id": "receipts",
+      "description": "Reads and writes receipt files under the upload root",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 34
+      }
+    },
+    {
+      "path": [
+        "Expense",
+        "Notify"
+      ],
+      "id": "notify",
+      "description": "Outbound HTTP: team webhooks and the exchange-rate API",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 35
+      }
+    },
+    {
+      "path": [
+        "Expense",
+        "Config"
+      ],
+      "id": "config",
+      "description": "Environment-derived configuration, including the token signing secret",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 36
+      }
+    }
+  ],
+  "threats": [
+    {
+      "name": "SQL_Injection",
+      "canonical_name": "sql_injection",
+      "id": "sqli",
+      "severity": "critical",
+      "external_refs": [
+        "cwe:CWE-89"
+      ],
+      "description": "Request values concatenated into a SQL statement instead of bound",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 40
+      }
+    },
+    {
+      "name": "Path_Traversal",
+      "canonical_name": "path_traversal",
+      "id": "path-traversal",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "A request-supplied filename escapes the upload root",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 41
+      }
+    },
+    {
+      "name": "Server_Side_Request_Forgery",
+      "canonical_name": "server_side_request_forgery",
+      "id": "ssrf",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-918"
+      ],
+      "description": "A request-supplied URL is fetched by the server",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 42
+      }
+    },
+    {
+      "name": "Weak_Default_Secret",
+      "canonical_name": "weak_default_secret",
+      "id": "weak-secret",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-1188"
+      ],
+      "description": "Signing key falls back to a shipped default when unset",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 43
+      }
+    },
+    {
+      "name": "Credential_Stuffing",
+      "canonical_name": "credential_stuffing",
+      "id": "cred-stuffing",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-307"
+      ],
+      "description": "Unlimited login attempts against a known username",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 44
+      }
+    },
+    {
+      "name": "Timing_Disclosure",
+      "canonical_name": "timing_disclosure",
+      "id": "timing",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-208"
+      ],
+      "description": "Comparison time varies with how much of a secret matched",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 45
+      }
+    },
+    {
+      "name": "Rendered_Content_Injection",
+      "canonical_name": "rendered_content_injection",
+      "id": "xss-by-render",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-79"
+      ],
+      "description": "Stored file bytes rendered in the application origin instead of downloaded",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 46
+      }
+    },
+    {
+      "name": "Malformed_Input_Crash",
+      "canonical_name": "malformed_input_crash",
+      "id": "malformed-input",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-248"
+      ],
+      "description": "Missing or wrong-typed request fields raise, returning a 500",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 47
+      }
+    }
+  ],
+  "controls": [
+    {
+      "name": "Parameterized_Queries",
+      "canonical_name": "parameterized_queries",
+      "id": "prepared-stmts",
+      "description": "SQL written with ? placeholders and a parameter tuple",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 51
+      }
+    },
+    {
+      "name": "Password_Key_Derivation",
+      "canonical_name": "password_key_derivation",
+      "id": "pbkdf2",
+      "description": "PBKDF2-HMAC-SHA256, per-user salt, 200,000 iterations",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 52
+      }
+    },
+    {
+      "name": "Constant_Time_Compare",
+      "canonical_name": "constant_time_compare",
+      "id": "constant-time",
+      "description": "hmac.compare_digest instead of ==",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 53
+      }
+    },
+    {
+      "name": "Signed_Session_Token",
+      "canonical_name": "signed_session_token",
+      "id": "hmac-token",
+      "description": "HMAC-SHA256 over user id and expiry, verified before use",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 54
+      }
+    },
+    {
+      "name": "Authentication_Required",
+      "canonical_name": "authentication_required",
+      "id": "auth-required",
+      "description": "Route rejects the request with 401 unless a token verifies",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 55
+      }
+    },
+    {
+      "name": "Outbound_Timeout",
+      "canonical_name": "outbound_timeout",
+      "id": "http-timeout",
+      "description": "Every outbound request carries an explicit timeout",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 56
+      }
+    },
+    {
+      "name": "Non_Rendered_Response",
+      "canonical_name": "non_rendered_response",
+      "id": "octet-stream",
+      "description": "Bytes returned as application/octet-stream so a browser never renders them",
+      "location": {
+        "file": ".guardlink/definitions.py",
+        "line": 57
+      }
+    }
+  ],
+  "mitigations": [
+    {
+      "asset": "#auth",
+      "threat": "#cred-stuffing",
+      "control": "#pbkdf2",
+      "description": "PBKDF2-HMAC-SHA256 with a per-user salt and 200,000 iterations; a stolen hash is expensive to attack offline",
+      "location": {
+        "file": "app/auth.py",
+        "line": 9,
+        "parent_symbol": "hash_password",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 2
+      }
+    },
+    {
+      "asset": "#auth",
+      "threat": "#weak-secret",
+      "control": "#hmac-token",
+      "description": "Token is HMAC-SHA256 over user id and expiry, so neither field can be edited without the key",
+      "location": {
+        "file": "app/auth.py",
+        "line": 14,
+        "parent_symbol": "issue_token",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 6
+      }
+    },
+    {
+      "asset": "#api",
+      "threat": "#weak-secret",
+      "control": "#hmac-token",
+      "description": "Signature is checked before expiry, and both must pass before a user id is returned",
+      "location": {
+        "file": "app/auth.py",
+        "line": 22,
+        "parent_symbol": "verify_token",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 13
+      }
+    },
+    {
+      "asset": "#auth",
+      "threat": "#timing",
+      "control": "#constant-time",
+      "description": "hmac.compare_digest on the signature, so comparison time does not leak how many bytes matched",
+      "location": {
+        "file": "app/auth.py",
+        "line": 22,
+        "parent_symbol": "verify_token",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 12
+      }
+    },
+    {
+      "asset": "#db",
+      "threat": "#sqli",
+      "control": "#prepared-stmts",
+      "description": "INSERT uses ? placeholders with a parameter tuple; the note field is never concatenated even though it is free text from the request body",
+      "location": {
+        "file": "app/db.py",
+        "line": 23,
+        "parent_symbol": "insert_expense",
+        "origin_file": ".guardlink/annotations/app/db.py.gal",
+        "origin_line": 8
+      }
+    },
+    {
+      "asset": "#api",
+      "threat": "#xss-by-render",
+      "control": "#octet-stream",
+      "description": "Response is application/octet-stream, so a receipt whose bytes are HTML is downloaded rather than rendered in the origin",
+      "location": {
+        "file": "app/main.py",
+        "line": 43,
+        "parent_symbol": "get_receipt",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 27
+      }
+    },
+    {
+      "asset": "#api",
+      "threat": "#sqli",
+      "control": "#prepared-stmts",
+      "description": "SELECT binds username with a ? placeholder; the login path is not injectable",
+      "location": {
+        "file": "app/main.py",
+        "line": 51,
+        "parent_symbol": "_lookup_user",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 31
+      }
+    },
+    {
+      "asset": "#notify",
+      "threat": "#malformed-input",
+      "control": "#http-timeout",
+      "description": "WEBHOOK_TIMEOUT is passed explicitly, so a hostile endpoint cannot hold the worker open indefinitely",
+      "location": {
+        "file": "app/notify.py",
+        "line": 5,
+        "parent_symbol": "send_webhook",
+        "origin_file": ".guardlink/annotations/app/notify.py.gal",
+        "origin_line": 4
+      }
+    },
+    {
+      "asset": "#notify",
+      "threat": "#malformed-input",
+      "control": "#http-timeout",
+      "description": "Explicit timeout on the outbound GET as well",
+      "location": {
+        "file": "app/notify.py",
+        "line": 10,
+        "parent_symbol": "fetch_exchange_rate",
+        "origin_file": ".guardlink/annotations/app/notify.py.gal",
+        "origin_line": 9
+      }
+    }
+  ],
+  "exposures": [
+    {
+      "asset": "#auth",
+      "threat": "#timing",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-208"
+      ],
+      "description": "candidate == record['password_hash'] is a plain string compare that short-circuits on the first differing byte, unlike verify_token which uses compare_digest",
+      "location": {
+        "file": "app/auth.py",
+        "line": 36,
+        "parent_symbol": "check_login",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 17
+      }
+    },
+    {
+      "asset": "#config",
+      "threat": "#weak-secret",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-1188"
+      ],
+      "description": "EXPENSE_SECRET falls back to the literal 'dev-secret-change-me'; with it unset, every session token is forgeable by anyone who has read this file",
+      "location": {
+        "file": "app/config.py",
+        "line": 3,
+        "parent_symbol": "SECRET_KEY",
+        "origin_file": ".guardlink/annotations/app/config.py.gal",
+        "origin_line": 2
+      }
+    },
+    {
+      "asset": "#db",
+      "threat": "#sqli",
+      "severity": "critical",
+      "external_refs": [
+        "cwe:CWE-89"
+      ],
+      "description": "user_id and category are interpolated into the SELECT with %-formatting; category comes straight from the ?category= query string",
+      "location": {
+        "file": "app/db.py",
+        "line": 9,
+        "parent_symbol": "find_expenses",
+        "origin_file": ".guardlink/annotations/app/db.py.gal",
+        "origin_line": 2
+      }
+    },
+    {
+      "asset": "#api",
+      "threat": "#cred-stuffing",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-307"
+      ],
+      "description": "POST /login has no rate limit, no lockout and no delay; an attacker can try passwords as fast as the service answers",
+      "location": {
+        "file": "app/main.py",
+        "line": 13,
+        "parent_symbol": "login",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 8
+      }
+    },
+    {
+      "asset": "#api",
+      "threat": "#malformed-input",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-248"
+      ],
+      "description": "body['username'] and body['password'] are indexed directly after get_json(force=True), so a request missing either raises KeyError and returns a 500",
+      "location": {
+        "file": "app/main.py",
+        "line": 13,
+        "parent_symbol": "login",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 9
+      }
+    },
+    {
+      "asset": "#api",
+      "threat": "#malformed-input",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-248"
+      ],
+      "description": "body['amount'] and body['note'] are indexed directly; a request missing either is a 500",
+      "location": {
+        "file": "app/main.py",
+        "line": 31,
+        "parent_symbol": "add_expense",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 21
+      }
+    },
+    {
+      "asset": "#api",
+      "threat": "#ssrf",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-918"
+      ],
+      "description": "body['webhook'] is handed to notify.send_webhook with no validation, so an authenticated user chooses what host the server calls",
+      "location": {
+        "file": "app/main.py",
+        "line": 31,
+        "parent_symbol": "add_expense",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 19
+      }
+    },
+    {
+      "asset": "#api",
+      "threat": "#path-traversal",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "<name> from the URL goes to storage.read_receipt unmodified; the route does no containment check of its own",
+      "location": {
+        "file": "app/main.py",
+        "line": 43,
+        "parent_symbol": "get_receipt",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 26
+      }
+    },
+    {
+      "asset": "#notify",
+      "threat": "#ssrf",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-918"
+      ],
+      "description": "url is body['webhook'] from POST /expenses, POSTed unvalidated — no scheme check, no host allowlist, so 169.254.169.254 and http://localhost/ are both reachable",
+      "location": {
+        "file": "app/notify.py",
+        "line": 5,
+        "parent_symbol": "send_webhook",
+        "origin_file": ".guardlink/annotations/app/notify.py.gal",
+        "origin_line": 2
+      }
+    },
+    {
+      "asset": "#receipts",
+      "threat": "#path-traversal",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "filename is joined onto the upload root with no normalisation or containment check; os.path.join also discards the prefix entirely if filename is absolute",
+      "location": {
+        "file": "app/storage.py",
+        "line": 5,
+        "parent_symbol": "receipt_path",
+        "origin_file": ".guardlink/annotations/app/storage.py.gal",
+        "origin_line": 2
+      }
+    },
+    {
+      "asset": "#receipts",
+      "threat": "#path-traversal",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "Same unchecked join as the read path, but writing: a traversing filename creates directories and a file outside the upload root",
+      "location": {
+        "file": "app/storage.py",
+        "line": 16,
+        "parent_symbol": "save_receipt",
+        "origin_file": ".guardlink/annotations/app/storage.py.gal",
+        "origin_line": 13
+      }
+    }
+  ],
+  "confirmed": [],
+  "acceptances": [],
+  "transfers": [],
+  "flows": [
+    {
+      "source": "#auth",
+      "target": "Client",
+      "mechanism": "token",
+      "description": "Signed session token returned to the caller",
+      "location": {
+        "file": "app/auth.py",
+        "line": 14,
+        "parent_symbol": "issue_token",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 9
+      }
+    },
+    {
+      "source": "#config",
+      "target": "#auth",
+      "mechanism": "SECRET_KEY",
+      "description": "Signing key read at import time",
+      "location": {
+        "file": "app/auth.py",
+        "line": 14,
+        "parent_symbol": "issue_token",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 8
+      }
+    },
+    {
+      "source": "Client",
+      "target": "#auth",
+      "mechanism": "token",
+      "description": "Untrusted token string from the Authorization header",
+      "location": {
+        "file": "app/auth.py",
+        "line": 22,
+        "parent_symbol": "verify_token",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 14
+      }
+    },
+    {
+      "source": "#db",
+      "target": "#auth",
+      "mechanism": "record",
+      "description": "Stored salt and password hash for the named user",
+      "location": {
+        "file": "app/auth.py",
+        "line": 36,
+        "parent_symbol": "check_login",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 19
+      }
+    },
+    {
+      "source": "EnvVars",
+      "target": "#config",
+      "mechanism": "os.environ.get",
+      "description": "Signing secret, database path and upload root all come from the environment",
+      "location": {
+        "file": "app/config.py",
+        "line": 3,
+        "parent_symbol": "SECRET_KEY",
+        "origin_file": ".guardlink/annotations/app/config.py.gal",
+        "origin_line": 4
+      }
+    },
+    {
+      "source": "#config",
+      "target": "#db",
+      "mechanism": "DB_PATH",
+      "description": "Database file location from the environment",
+      "location": {
+        "file": "app/db.py",
+        "line": 5,
+        "parent_symbol": "connect",
+        "origin_file": ".guardlink/annotations/app/db.py.gal",
+        "origin_line": 12
+      }
+    },
+    {
+      "source": "#api",
+      "target": "#db",
+      "mechanism": "find_expenses",
+      "description": "Category filter and the token's user id reach the SELECT",
+      "location": {
+        "file": "app/db.py",
+        "line": 9,
+        "parent_symbol": "find_expenses",
+        "origin_file": ".guardlink/annotations/app/db.py.gal",
+        "origin_line": 4
+      }
+    },
+    {
+      "source": "#api",
+      "target": "#db",
+      "mechanism": "insert_expense",
+      "description": "Amount and note from POST /expenses, with the user id from the token",
+      "location": {
+        "file": "app/db.py",
+        "line": 23,
+        "parent_symbol": "insert_expense",
+        "origin_file": ".guardlink/annotations/app/db.py.gal",
+        "origin_line": 9
+      }
+    },
+    {
+      "source": "#api",
+      "target": "#auth",
+      "mechanism": "verify_token",
+      "description": "Token handed to signature and expiry checking",
+      "location": {
+        "file": "app/main.py",
+        "line": 8,
+        "parent_symbol": "current_user",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 3
+      }
+    },
+    {
+      "source": "Client",
+      "target": "#api",
+      "mechanism": "Authorization",
+      "description": "Bearer token arrives on every authenticated route",
+      "location": {
+        "file": "app/main.py",
+        "line": 8,
+        "parent_symbol": "current_user",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 2
+      }
+    },
+    {
+      "source": "Client",
+      "target": "#api",
+      "mechanism": "login",
+      "description": "Username and password submitted as JSON",
+      "location": {
+        "file": "app/main.py",
+        "line": 13,
+        "parent_symbol": "login",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 12
+      }
+    },
+    {
+      "source": "Client",
+      "target": "#api",
+      "mechanism": "category",
+      "description": "?category= query parameter, unvalidated, passed straight through",
+      "location": {
+        "file": "app/main.py",
+        "line": 22,
+        "parent_symbol": "list_expenses",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 16
+      }
+    },
+    {
+      "source": "Client",
+      "target": "#api",
+      "mechanism": "webhook",
+      "description": "Caller-chosen destination URL for the expense event",
+      "location": {
+        "file": "app/main.py",
+        "line": 31,
+        "parent_symbol": "add_expense",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 23
+      }
+    },
+    {
+      "source": "Client",
+      "target": "#api",
+      "mechanism": "receipt_name",
+      "description": "Path segment naming the receipt to return",
+      "location": {
+        "file": "app/main.py",
+        "line": 43,
+        "parent_symbol": "get_receipt",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 28
+      }
+    },
+    {
+      "source": "#db",
+      "target": "#api",
+      "mechanism": "user_record",
+      "description": "Id, salt and password hash for the submitted username",
+      "location": {
+        "file": "app/main.py",
+        "line": 51,
+        "parent_symbol": "_lookup_user",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 32
+      }
+    },
+    {
+      "source": "#api",
+      "target": "#notify",
+      "mechanism": "send_webhook",
+      "description": "Caller-supplied URL plus the user id and amount of the new expense",
+      "location": {
+        "file": "app/notify.py",
+        "line": 5,
+        "parent_symbol": "send_webhook",
+        "origin_file": ".guardlink/annotations/app/notify.py.gal",
+        "origin_line": 5
+      }
+    },
+    {
+      "source": "#notify",
+      "target": "ExternalHost",
+      "mechanism": "requests.post",
+      "description": "Expense event leaves the trust boundary to a destination the requester chose",
+      "location": {
+        "file": "app/notify.py",
+        "line": 5,
+        "parent_symbol": "send_webhook",
+        "origin_file": ".guardlink/annotations/app/notify.py.gal",
+        "origin_line": 6
+      }
+    },
+    {
+      "source": "#notify",
+      "target": "ExternalHost",
+      "mechanism": "requests.get",
+      "description": "Currency code interpolated into the exchangerate.host query string",
+      "location": {
+        "file": "app/notify.py",
+        "line": 10,
+        "parent_symbol": "fetch_exchange_rate",
+        "origin_file": ".guardlink/annotations/app/notify.py.gal",
+        "origin_line": 10
+      }
+    },
+    {
+      "source": "#api",
+      "target": "#receipts",
+      "mechanism": "read_receipt",
+      "description": "Request-supplied receipt name and the token's user id",
+      "location": {
+        "file": "app/storage.py",
+        "line": 10,
+        "parent_symbol": "read_receipt",
+        "origin_file": ".guardlink/annotations/app/storage.py.gal",
+        "origin_line": 7
+      }
+    },
+    {
+      "source": "Disk",
+      "target": "#receipts",
+      "mechanism": "open",
+      "description": "Whole file read into memory and returned to the caller",
+      "location": {
+        "file": "app/storage.py",
+        "line": 10,
+        "parent_symbol": "read_receipt",
+        "origin_file": ".guardlink/annotations/app/storage.py.gal",
+        "origin_line": 8
+      }
+    },
+    {
+      "source": "#receipts",
+      "target": "Disk",
+      "mechanism": "open",
+      "description": "Caller-supplied bytes written to a caller-influenced path",
+      "location": {
+        "file": "app/storage.py",
+        "line": 16,
+        "parent_symbol": "save_receipt",
+        "origin_file": ".guardlink/annotations/app/storage.py.gal",
+        "origin_line": 15
+      }
+    }
+  ],
+  "boundaries": [
+    {
+      "asset_a": "#api",
+      "asset_b": "#db",
+      "id": "data-boundary",
+      "description": "Request-derived values become SQL here",
+      "location": {
+        "file": "app/db.py",
+        "line": 5,
+        "parent_symbol": "connect",
+        "origin_file": ".guardlink/annotations/app/db.py.gal",
+        "origin_line": 13
+      }
+    },
+    {
+      "asset_a": "Client",
+      "asset_b": "#api",
+      "id": "http-boundary",
+      "description": "Everything past this point has been authenticated; everything before it is untrusted",
+      "location": {
+        "file": "app/main.py",
+        "line": 8,
+        "parent_symbol": "current_user",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 4
+      }
+    },
+    {
+      "asset_a": "#receipts",
+      "asset_b": "Disk",
+      "id": "fs-boundary",
+      "description": "Request-derived data becomes a filesystem path here",
+      "location": {
+        "file": "app/storage.py",
+        "line": 10,
+        "parent_symbol": "read_receipt",
+        "origin_file": ".guardlink/annotations/app/storage.py.gal",
+        "origin_line": 9
+      }
+    }
+  ],
+  "validations": [],
+  "audits": [
+    {
+      "asset": "#auth",
+      "description": "Use hmac.compare_digest here too. Low severity because both sides are PBKDF2 outputs an attacker cannot steer byte by byte, but the fix is one line and the file already imports hmac",
+      "location": {
+        "file": "app/auth.py",
+        "line": 36,
+        "parent_symbol": "check_login",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 18
+      }
+    },
+    {
+      "asset": "#config",
+      "description": "is_production() exists but nothing calls it. Refuse to boot when ENV=production and EXPENSE_SECRET is unset, or drop the default entirely and fail closed",
+      "location": {
+        "file": "app/config.py",
+        "line": 3,
+        "parent_symbol": "SECRET_KEY",
+        "origin_file": ".guardlink/annotations/app/config.py.gal",
+        "origin_line": 3
+      }
+    },
+    {
+      "asset": "#config",
+      "description": "Dead helper: is_production() has no callers. Either wire it to a boot-time refusal when the secret is defaulted, or delete it — an unused safety check reads as a control that is not there",
+      "location": {
+        "file": "app/config.py",
+        "line": 9,
+        "parent_symbol": "is_production",
+        "origin_file": ".guardlink/annotations/app/config.py.gal",
+        "origin_line": 8
+      }
+    },
+    {
+      "asset": "#db",
+      "description": "find_expenses is the only unparameterised query in the project — rewrite with ? placeholders, as insert_expense already does",
+      "location": {
+        "file": "app/db.py",
+        "line": 9,
+        "parent_symbol": "find_expenses",
+        "origin_file": ".guardlink/annotations/app/db.py.gal",
+        "origin_line": 3
+      }
+    },
+    {
+      "asset": "#api",
+      "description": "Add per-IP and per-username rate limiting on /login, and read the body with .get() so a malformed request is a 400 rather than a 500",
+      "location": {
+        "file": "app/main.py",
+        "line": 13,
+        "parent_symbol": "login",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 10
+      }
+    },
+    {
+      "asset": "#api",
+      "description": "Validate the webhook URL at the route, not only in notify: require https, resolve the host and reject private ranges, or accept only a pre-registered webhook id",
+      "location": {
+        "file": "app/main.py",
+        "line": 31,
+        "parent_symbol": "add_expense",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 20
+      }
+    },
+    {
+      "asset": "#notify",
+      "description": "Needs an allowlist of registered webhook hosts, or a resolved-IP check rejecting loopback, link-local and RFC1918, before the request is made",
+      "location": {
+        "file": "app/notify.py",
+        "line": 5,
+        "parent_symbol": "send_webhook",
+        "origin_file": ".guardlink/annotations/app/notify.py.gal",
+        "origin_line": 3
+      }
+    },
+    {
+      "asset": "#receipts",
+      "description": "Resolve the joined path and require it to stay under UPLOAD_ROOT (os.path.realpath + commonpath), or reject any filename that is not a bare basename",
+      "location": {
+        "file": "app/storage.py",
+        "line": 5,
+        "parent_symbol": "receipt_path",
+        "origin_file": ".guardlink/annotations/app/storage.py.gal",
+        "origin_line": 3
+      }
+    },
+    {
+      "asset": "#receipts",
+      "description": "No caller today, so this is latent rather than live. Containment must land before an upload route is wired to it",
+      "location": {
+        "file": "app/storage.py",
+        "line": 16,
+        "parent_symbol": "save_receipt",
+        "origin_file": ".guardlink/annotations/app/storage.py.gal",
+        "origin_line": 14
+      }
+    }
+  ],
+  "ownership": [],
+  "data_handling": [
+    {
+      "classification": "secrets",
+      "asset": "#auth",
+      "description": "Receives the plaintext password and the per-user salt",
+      "location": {
+        "file": "app/auth.py",
+        "line": 9,
+        "parent_symbol": "hash_password",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 3
+      }
+    },
+    {
+      "classification": "secrets",
+      "asset": "#config",
+      "description": "Holds the token signing key for the process lifetime",
+      "location": {
+        "file": "app/config.py",
+        "line": 3,
+        "parent_symbol": "SECRET_KEY",
+        "origin_file": ".guardlink/annotations/app/config.py.gal",
+        "origin_line": 5
+      }
+    },
+    {
+      "classification": "financial",
+      "asset": "#db",
+      "description": "Stores expense amounts and free-text notes per user",
+      "location": {
+        "file": "app/db.py",
+        "line": 23,
+        "parent_symbol": "insert_expense",
+        "origin_file": ".guardlink/annotations/app/db.py.gal",
+        "origin_line": 10
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#api",
+      "description": "Usernames and passwords cross this route",
+      "location": {
+        "file": "app/main.py",
+        "line": 13,
+        "parent_symbol": "login",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 13
+      }
+    },
+    {
+      "classification": "financial",
+      "asset": "#api",
+      "description": "Expense amounts and notes",
+      "location": {
+        "file": "app/main.py",
+        "line": 31,
+        "parent_symbol": "add_expense",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 24
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#db",
+      "description": "Usernames, salts and password hashes",
+      "location": {
+        "file": "app/main.py",
+        "line": 51,
+        "parent_symbol": "_lookup_user",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 33
+      }
+    },
+    {
+      "classification": "financial",
+      "asset": "#notify",
+      "description": "Payload carries the expense amount and the user id",
+      "location": {
+        "file": "app/notify.py",
+        "line": 5,
+        "parent_symbol": "send_webhook",
+        "origin_file": ".guardlink/annotations/app/notify.py.gal",
+        "origin_line": 7
+      }
+    },
+    {
+      "classification": "financial",
+      "asset": "#receipts",
+      "description": "Receipt images and PDFs backing expense claims",
+      "location": {
+        "file": "app/storage.py",
+        "line": 10,
+        "parent_symbol": "read_receipt",
+        "origin_file": ".guardlink/annotations/app/storage.py.gal",
+        "origin_line": 10
+      }
+    }
+  ],
+  "assumptions": [
+    {
+      "asset": "#auth",
+      "description": "Assumes SECRET_KEY is a real secret. The signature is only as strong as config.py's fallback allows — see the #weak-secret exposure there",
+      "location": {
+        "file": "app/auth.py",
+        "line": 14,
+        "parent_symbol": "issue_token",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 7
+      }
+    },
+    {
+      "asset": "#receipts",
+      "description": "Assumes callers pass a bare filename. GET /receipts/<name> is the only caller today and Flask's default converter does not match a slash, which narrows but does not close this — '..' still matches, and save_receipt has no such caller constraint at all",
+      "location": {
+        "file": "app/storage.py",
+        "line": 5,
+        "parent_symbol": "receipt_path",
+        "origin_file": ".guardlink/annotations/app/storage.py.gal",
+        "origin_line": 4
+      }
+    }
+  ],
+  "shields": [],
+  "features": [
+    {
+      "feature": "Expense Tracking",
+      "description": "Login, expense list and create, receipt download",
+      "location": {
+        "file": "app/main.py",
+        "line": 8,
+        "parent_symbol": "current_user",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 5
+      }
+    }
+  ],
+  "comments": [
+    {
+      "description": "Empty package marker. Scanned, genuinely nothing here — recorded so an empty answer is a fact rather than a gap",
+      "location": {
+        "file": "app/__init__.py",
+        "line": 1,
+        "parent_symbol": "app",
+        "origin_file": ".guardlink/annotations/app/__init__.py.gal",
+        "origin_line": 2
+      }
+    },
+    {
+      "description": "200,000 iterations is at the low end of current guidance but is a real, deliberate cost factor — not a placeholder",
+      "location": {
+        "file": "app/auth.py",
+        "line": 9,
+        "parent_symbol": "hash_password",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 4
+      }
+    },
+    {
+      "description": "Fixed 1-hour TTL, no refresh and no revocation list: a leaked token stays valid for its full hour",
+      "location": {
+        "file": "app/auth.py",
+        "line": 14,
+        "parent_symbol": "issue_token",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 10
+      }
+    },
+    {
+      "description": "rsplit(':', 2) with a ValueError guard means a malformed token returns None rather than raising. int(expires) could still raise, but only for input that already passed the signature check, so it is not reachable by an attacker without the key",
+      "location": {
+        "file": "app/auth.py",
+        "line": 22,
+        "parent_symbol": "verify_token",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 15
+      }
+    },
+    {
+      "description": "The username argument is accepted and never used; the comparison is entirely on the derived hash",
+      "location": {
+        "file": "app/auth.py",
+        "line": 36,
+        "parent_symbol": "check_login",
+        "origin_file": ".guardlink/annotations/app/auth.py.gal",
+        "origin_line": 20
+      }
+    },
+    {
+      "description": "DB_PATH and UPLOAD_ROOT are environment-controlled too; both are operator-supplied rather than request-supplied, so they are configuration trust, not input trust",
+      "location": {
+        "file": "app/config.py",
+        "line": 3,
+        "parent_symbol": "SECRET_KEY",
+        "origin_file": ".guardlink/annotations/app/config.py.gal",
+        "origin_line": 6
+      }
+    },
+    {
+      "description": "Compares ENV to the exact string 'production', so 'Production' or 'prod' both read as non-production",
+      "location": {
+        "file": "app/config.py",
+        "line": 9,
+        "parent_symbol": "is_production",
+        "origin_file": ".guardlink/annotations/app/config.py.gal",
+        "origin_line": 9
+      }
+    },
+    {
+      "description": "A fresh connection per call with no pool and no busy timeout; correctness rather than security, but it is the reason every query opens and closes its own handle",
+      "location": {
+        "file": "app/db.py",
+        "line": 5,
+        "parent_symbol": "connect",
+        "origin_file": ".guardlink/annotations/app/db.py.gal",
+        "origin_line": 14
+      }
+    },
+    {
+      "description": "WARNING for anyone reading the model rather than this file: the exposure above does NOT appear in `guardlink lookup unmitigated`, and `cwe:CWE-89` reports it as status mitigated, open 0. The @mitigates on insert_expense below names the same asset and the same threat, and the join is (asset, threat) only — the recorded symbol anchors are not consulted. The injection here is live and unfixed",
+      "location": {
+        "file": "app/db.py",
+        "line": 9,
+        "parent_symbol": "find_expenses",
+        "origin_file": ".guardlink/annotations/app/db.py.gal",
+        "origin_line": 6
+      }
+    },
+    {
+      "description": "insert_expense here and _lookup_user in main.py both bind parameters correctly; this one function is the outlier",
+      "location": {
+        "file": "app/db.py",
+        "line": 9,
+        "parent_symbol": "find_expenses",
+        "origin_file": ".guardlink/annotations/app/db.py.gal",
+        "origin_line": 5
+      }
+    },
+    {
+      "description": "removeprefix('Bearer ') leaves a malformed header as a garbage token rather than raising; verify_token returns None for it, so the route 401s",
+      "location": {
+        "file": "app/main.py",
+        "line": 8,
+        "parent_symbol": "current_user",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 6
+      }
+    },
+    {
+      "description": "A single generic 'invalid credentials' 401 covers both unknown-user and wrong-password, so the response does not reveal which. Written first as @mitigates #api against #malformed-input using #auth-required, which nothing rejected even though the control and the threat have nothing to do with each other",
+      "location": {
+        "file": "app/main.py",
+        "line": 13,
+        "parent_symbol": "login",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 11
+      }
+    },
+    {
+      "description": "Results are scoped by the user id from the verified token rather than by a request parameter, so one user cannot list another's expenses",
+      "location": {
+        "file": "app/main.py",
+        "line": 22,
+        "parent_symbol": "list_expenses",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 17
+      }
+    },
+    {
+      "description": "Route 401s before reaching the database, so the injectable category filter is not anonymously reachable. Deliberately NOT written as @mitigates: authentication narrows who can exploit find_expenses, it does not fix it, and recording it as a mitigation cleared a live critical exposure out of the unmitigated list",
+      "location": {
+        "file": "app/main.py",
+        "line": 22,
+        "parent_symbol": "list_expenses",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 15
+      }
+    },
+    {
+      "description": "401 before any work, so the webhook and write paths need a valid token first. Same reasoning as list_expenses: a reachability narrowing, not a mitigation",
+      "location": {
+        "file": "app/main.py",
+        "line": 31,
+        "parent_symbol": "add_expense",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 22
+      }
+    },
+    {
+      "description": "Flask's default <name> converter does not match a slash, so the reachable traversal here is limited to '..' segments; it is a narrowing of the storage.py exposure, not a fix for it",
+      "location": {
+        "file": "app/main.py",
+        "line": 43,
+        "parent_symbol": "get_receipt",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 29
+      }
+    },
+    {
+      "description": "Returns None for an unknown user, and login() answers identically for None and for a wrong password, so the route does not confirm which usernames exist",
+      "location": {
+        "file": "app/main.py",
+        "line": 51,
+        "parent_symbol": "_lookup_user",
+        "origin_file": ".guardlink/annotations/app/main.py.gal",
+        "origin_line": 34
+      }
+    },
+    {
+      "description": "No route calls this today. The currency value is f-stringed into the URL, so it becomes request-controlled the moment one does — worth quoting before that happens",
+      "location": {
+        "file": "app/notify.py",
+        "line": 10,
+        "parent_symbol": "fetch_exchange_rate",
+        "origin_file": ".guardlink/annotations/app/notify.py.gal",
+        "origin_line": 11
+      }
+    },
+    {
+      "description": "user_id is a path segment too, but it comes from a verified token rather than from the request, so it is not attacker-chosen",
+      "location": {
+        "file": "app/storage.py",
+        "line": 5,
+        "parent_symbol": "receipt_path",
+        "origin_file": ".guardlink/annotations/app/storage.py.gal",
+        "origin_line": 5
+      }
+    },
+    {
+      "description": "Reads the whole file with no size cap; a large receipt is a memory spike per request",
+      "location": {
+        "file": "app/storage.py",
+        "line": 10,
+        "parent_symbol": "read_receipt",
+        "origin_file": ".guardlink/annotations/app/storage.py.gal",
+        "origin_line": 11
+      }
+    }
+  ],
+  "coverage": {
+    "total_symbols": 0,
+    "annotated_symbols": 105,
+    "coverage_percent": 100,
+    "unannotated_critical": []
+  },
+  "external_refs": []
+}

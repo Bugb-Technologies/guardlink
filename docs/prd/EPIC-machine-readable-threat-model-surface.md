@@ -95,36 +95,125 @@ two authors; there is one.
 
 ### 3.3 Confirmed — defects
 
+> **Status: 58 logged · 40 fixed · 1 won't-fix (D20) · 17 open (D22, D38–D46, D51–D56, D58) · 1 partial (D42).**
+>
+> **D47, D49, D50 fixed and D42 half-fixed 2026-08-10 (§3.8).** D42's remaining
+> half is BLOCKED on a decision, not on work: the wire reshape needs a
+> `schema_version` bump. D58 was found by the probe built for D50, not by
+> reading.
+>
+> **D48 and D57 fixed 2026-08-10 (§3.6).** D57 reported two raw pair joins; the
+> audit for those two found **eleven more**, and had to be run twice because the
+> first sweep searched for one syntax. **D36 is only now closed** — see §3.6 for
+> the evidence and for what "closed" does and does not mean.
+>
+> D36–D46 were all found in one session by running the real stdio server against a
+> repo that is not guardlink — `/tmp/expense-api`, a 175-line Python/Flask service —
+> as a cold agent following only the generated docs. **D36 and D37 are fixed**; the
+> remaining nine are papercuts, none of which blocks release. D47 was found while
+> fixing D36, by a test that asserted a property rather than a value.
+>
+> **Verification pass 2026-08-10 (§3.5).** All eleven open rows were re-verified by
+> reproduction against a clean build and a freshly spawned stdio server. **All eleven
+> still reproduce — none closed.** Two changed shape and both got worse: D41 is not
+> "adding a new line duplicates the header" but "anything short of an exact whole-block
+> match does, including re-submitting a line already present verbatim", which
+> falsifies the tool's own idempotence promise; D42 is not incoherent arithmetic but
+> three unrelated fields presented as a ratio, which the TUI renders as
+> `Coverage: 105/0 symbols (100%)`. D46's question is answered: the D33 mechanism does
+> **not** catch it, on two independent counts, so it is a mechanism extension and not
+> a one-line fix. Severity moved on four rows: D41 Low→Med, D42 Low→Med, D44 Low→Med,
+> D47 Low→Med. **Nine new defects (D48–D56) were found in the same pass**, one of them
+> the most serious thing in this ledger: D48, in which a documented, hash-verified
+> `migrate` round-trip silently destroys every symbol anchor in the repo and leaves
+> `reanchor` reporting all-clear.
+>
+> **D34 and D35 are both corpus defects, not coverage defects.** 763 tests, five phases
+> of measurement and a full defect sweep all ran against this repo, driving the server
+> in-process — and neither bug is visible from here. D34 needs a repo where file count
+> and annotation count are decoupled; D35 needs the server launched as a process. Both
+> were found in minutes by pointing the real stdio server at a repo that is not
+> guardlink. Coverage measures how much of the code you ran, not how much of the input
+> space you ran it over, and the tests added with these fixes bring their own corpus
+> rather than borrowing this one.
+> Every row below was re-verified against the code on 2026-08-10, not against its own
+> description text. The `Sev` column is the status of record; a `(sha)` names the commit
+> that fixed it, established with `git log -S` against the fixing code rather than from
+> the commit subject. Rows D1–D15, D18, D21 and D26 were fixed across Phases 1–5 but had
+> never had their severity updated, so this table previously read as 21 open defects when
+> 2 were open. A ledger that misreports its own state is worse than no ledger.
+>
+> D30-D32 were found afterwards, by the `no-unused-vars` cleanup. Each is an unused
+> identifier that turned out to be a dropped behaviour rather than dead weight, so each
+> is still in the code behind a narrow `eslint-disable` naming its row. **D32 is data
+> loss and is the most serious thing still open in this table.**
+
 | ID | Sev | Defect | Evidence |
 |---|---|---|---|
-| D1 | High | `annotated_files` double-counts in external mode — both the `.gal` path and each logical source are added | `parse-project.ts:104-110`; `unannotated_files` filters `.guardlink/` at :137, `annotated_files` does not |
-| D2 | High | `source_files: files.length` counts `.gal` as source (measured: 7 → 9, +28.6%). **The original claim that this makes `coverage_percent` non-comparable is REFUTED** — see D14; that field has never carried a value | `parse-project.ts`, `DEFAULT_INCLUDE` contains `**/*.[gG][aA][lL]` |
-| D3 | High | The external-mode `.gal` path convention exists **only inside an LLM prompt string**, as an example — no constant, no resolver, no validator | `src/agents/prompts.ts:54-55`, sole occurrences |
-| D4 | **High** | `DEFAULT_EXCLUDE` drops `**/tests/**`, `**/test/**` — a `.gal` at the **documented** convention path under `test/` is silently dropped. Measured: annotation vanished, no diagnostic, no count change. Under external-default this is silent data loss triggered by following the documentation | `parse-project.ts:61` `DEFAULT_EXCLUDE` |
-| D5 | High | MCP model cache is root-keyed with no file-change invalidation; `lookup`/`status` serve a stale model for a whole session | `src/mcp/server.ts:64-81`; only `parse`, `validate`, `sarif`, `review_*` invalidate |
-| D6 | Low | Server version hardcoded `'1.4.3'`; `package.json` is `1.4.5` | `src/mcp/server.ts:89` |
-| D7 | Med | `matchRef` does bidirectional substring matching at ≥3 chars — `#auth` matches `#author-service`, with no signal to the caller | `src/mcp/lookup.ts:444-446` |
-| D8 | Low | `lookupAsset` distinguishes not-found from declared-but-empty; `lookupThreat` returns bare `count: 0` | `lookup.ts:225` vs `:291` |
-| D9 | Med | The three MCP resources use `cachedRoot \|\| '.'` and take no root param — in a linked workspace they can silently answer for the wrong repo | `src/mcp/server.ts` resource handlers |
-| D10 | High | External mode suppresses agent instruction files and moves `.mcp.json` inside `.guardlink/`, where MCP clients do not auto-discover it | `src/init/index.ts:173,185-186` |
-| D11 | **High** | `guardlink_clear` mutates annotations on disk and does **not** call `invalidateCache()`. Every subsequent `status`/`lookup`/`report` in that session reports annotations that no longer exist | `server.ts:476-505`; no invalidate between :400 and :540 |
-| D12 | **High** | Unknown `lookup` query forms do not error — they fall through to `lookupFuzzy`, and `matchRef`'s reverse-substring rule matches the query string itself. `owner of #cli`, `assumptions for #cli`, `comments for #cli` all return byte-identical `count: 1` payloads containing none of the requested data | `lookup.ts:446`; measured |
-| D13 | **High** | `.find()` substring precedence silently drops exact matches. `lookup("threat dos")` returns `#redos` — `#redos` is declared at `definitions.ts:36`, `#dos` at `:39`, and `"redos".includes("dos")` short-circuits the exact match. `lookup("asset cli")` merges all 9 of `#llm-client`'s exposures into `#cli` | `lookup.ts:293,444`; reproduces on committed definitions |
-| D14 | Med | `coverage_percent` is dead — hardcoded `0` and never computed for a single repo. Three consumers display 0% today | `parse-project.ts:194`; consumers at `dashboard/data.ts:95`, `analyze/index.ts:407`, `tui/commands.ts:506`; only real assignment is `workspace/merge.ts:478` (multi-repo path) |
-| D15 | Med | The MCP model cache is **process-global**, not per-server — four module-level `let`s shared by every `createServer()` in a process. Two servers in one process share one `cachedRoot`, so server B's resources can answer for server A's repo. Superset of D9. Latent under stdio (one server per process), live under any multi-server host | `server.ts:64-66`; found by the GL-104 two-repo test, not by inspection |
-| D16 | **High** | `guardlink validate` silently rewrites 7 tracked files — it runs `syncAgentFiles` as a side effect, modifying `CLAUDE.md`, `AGENTS.md`, `.clinerules`, `.cursor/rules/guardlink.mdc`, `.gemini/GEMINI.md`, `.github/copilot-instructions.md`, `.windsurfrules`. A command that reads as read-only leaves a dirty tree, making it unusable as a CI check | observed during Phase 1 verification; needs a `--check` / read-only mode |
-| D17 | Med | `guardlink_dashboard` writes `threat-dashboard.html` into its own scan set (`.html` is in `DEFAULT_INCLUDE`, `parse-project.ts:52`). It yields zero annotations, but it does change `source_files` and `unannotated_files`. The MCP cache was masking the divergence from a fresh CLI run | fixed incidentally by A3's invalidation; the scan-set inclusion itself remains |
-| D18 | **High** | *(regression, introduced by A1 — fixed in 5959e8a)* Any threat or control resolvable **only by substring** is silently dropped entirely. `threat denial` → `count: 0` where Phase 0 measured `#dos` | `lookup.ts:411,418,430` |
-| D19 | **High** | **The documented cross-repo tag syntax does not parse.** `ASSET_REF` (`parse-line.ts:22`) offers `#[a-zA-Z0-9_-]+`, a quoted form, or `[A-Za-z_]\w*(\.[A-Za-z_]\w*)*` — the `#` alternative excludes dots and the dotted alternative excludes `#` and hyphens, so `#auth-lib.token-verify` matches `#auth-lib` and the remainder fails the `$` anchor. `THREAT_REF` (`:26`) has no dotted alternative at all. Cross-repo tags parse **only when quoted**, and **never in threat or control position**. Two documented examples are unwritable: `parse-project.ts:385`'s own canonical `#auth-lib.token-verify`, and both rules emitted by `guardlink_workspace_info` (`server.ts:859,861`) — the tool whose purpose is teaching this syntax | reproduced independently; parser grammar decision required |
-| D20 | Med | **Name collision on `external_refs`.** `model.external_refs` (built by `detectExternalRefs`, `parse-project.ts:393`) holds cross-repo sibling tags. `threat.external_refs` (built from `EXT_REF`, `parse-line.ts:28`) holds `cwe:` / `owasp:` identifiers. Two unrelated concepts under one field name, now with adjacent query surfaces — GL-203's `external refs` form returns the former, GL-204 will query the latter | risk of silent wrong answers at the CXG bridge |
-| D21 | Med | *(fixed in ed1da5e)* `replaceOrAppend` preserved the previous sync's trailing newline while `wrapMarkers` emitted a fresh one — every sync appended a blank line to every markdown agent file. Measured at `f022d5b`: `CLAUDE.md` 54 trailing newlines, `AGENTS.md` 53, `.clinerules` 44, accumulated silently across the repo's history | found by the D16-interaction test |
-| D22 | Med | **Templates embedding GAL syntax pollute the model.** Template literals live inside `.ts` files, so once the comment prefix is stripped their example annotations parse as *real* ones. The GL-402 README template injected `#api`, `#sqli` and `cwe:CWE-89` into this repo's own model, surfacing as a GL-204 test failure. Mitigated case-by-case with `@shield:begin/end`; the class recurs for any future template | `init/templates.ts`; same pattern already used in `agents/prompts.ts` |
-| D23 | Med | *(fixed at the emission boundary in a921afa)* **Parse order is unstable across processes.** `fast-glob` returns files in completion order under concurrency — stable within a process, not between two — so anything durable that inherits parse order churns. `computeAnnotationHash` was immune (it sorts before hashing), which is why the hash held while the prose moved. Still unreproducible and out of scope: `report --diagram-only`, and the dashboard HTML (D25) | `parse-project.ts` glob walk |
-| D24 | **High** | `guardlink init --force` **silently destroys a populated `definitions` file.** Observed during Phase 4: it overwrote 38 declarations with a 9-item template, plus `config.json`, with no warning and no prompt. Recovered via `git checkout` — a repo where definitions were not yet committed would have lost them outright | `init/index.ts`; needs a confirmation prompt or a refusal when definitions are non-empty |
-| D25 | Med | The dashboard embeds a wall-clock timestamp (`generate.ts:40`), so `docs/examples/threat-dashboard.html` — which is **committed** — churns on every regeneration. Same class as the GL-302/F1 volatile-field problem, different file | out of scope in Phase 4 |
-| D26 | Med | *(fixed in f71950c)* **`.guardlink/model.json` carried a top-level `generated_at`.** The `.mmd` headers had volatile fields stripped in `a921afa`; `model.json` did not. It is the artifact GL-304 most deliberately commits — justified precisely so a model change shows up in PR review | verified fixed: two `guardlink artifacts .` runs now byte-identical |
-| D27 | **BLOCKER** | **Agent instruction files never state where annotations go.** `agentInstructions(project)` takes no mode parameter, so no agent file can name it. Verified on a fresh default-init repo: `config.json` says `annotation_mode: external`, while `CLAUDE.md` contains **zero** occurrences of `.gal`, `annotations/`, `sidecar` or `@source` (its one "external" is "external API calls"). `.guardlink/README.md` states it correctly — 6, 4 and 2 occurrences — but that is the cold-start path, not the file an agent reads every turn. Under the new default an agent reads inline syntax with no placement guidance and writes inline; the repo silently goes mixed | **gates GL-507's default flip**; fix is GL-403 territory: thread mode into `agentInstructions` plus a short placement section |
-| D28 | Med | Committed artifacts go stale silently. `validate . --artifacts` on the current committed state reports 5 STALE and exits 1 — Phase 5 added annotated source without regenerating. The pre-commit hook ships uninstalled in `docs/hooks/` by design (correct: tooling should not silently install a hook that rewrites files), so nothing catches it. CI needs `validate --artifacts` as a required check, or the artifacts are decoration | measured on `376df26` |
+| D1 | ~~High~~ **FIXED (4b49ece)** | `annotated_files` double-counts in external mode — both the `.gal` path and each logical source are added | `parse-project.ts:104-110`; `unannotated_files` filters `.guardlink/` at :137, `annotated_files` does not |
+| D2 | ~~High~~ **FIXED (4b49ece)** | `source_files: files.length` counts `.gal` as source (measured: 7 → 9, +28.6%). **The original claim that this makes `coverage_percent` non-comparable is REFUTED** — see D14; that field has never carried a value | `parse-project.ts`, `DEFAULT_INCLUDE` contains `**/*.[gG][aA][lL]` |
+| D3 | ~~High~~ **FIXED (4b49ece)** | The external-mode `.gal` path convention exists **only inside an LLM prompt string**, as an example — no constant, no resolver, no validator | `src/agents/prompts.ts:54-55`, sole occurrences |
+| D4 | ~~**High**~~ **FIXED (4b49ece)** | `DEFAULT_EXCLUDE` drops `**/tests/**`, `**/test/**` — a `.gal` at the **documented** convention path under `test/` is silently dropped. Measured: annotation vanished, no diagnostic, no count change. Under external-default this is silent data loss triggered by following the documentation | `parse-project.ts:61` `DEFAULT_EXCLUDE` |
+| D5 | ~~High~~ **FIXED (8e594d8)** | MCP model cache is root-keyed with no file-change invalidation; `lookup`/`status` serve a stale model for a whole session | `src/mcp/server.ts:64-81`; only `parse`, `validate`, `sarif`, `review_*` invalidate |
+| D6 | ~~Low~~ **FIXED (9f94853)** | Server version hardcoded `'1.4.3'`; `package.json` is `1.4.5` | `src/mcp/server.ts:89` |
+| D7 | ~~Med~~ **FIXED (77c3c67)** | `matchRef` does bidirectional substring matching at ≥3 chars — `#auth` matches `#author-service`, with no signal to the caller | `src/mcp/lookup.ts:444-446` |
+| D8 | ~~Low~~ **FIXED (77c3c67)** | `lookupAsset` distinguishes not-found from declared-but-empty; `lookupThreat` returns bare `count: 0` | `lookup.ts:225` vs `:291` |
+| D9 | ~~Med~~ **FIXED (2bf5853)** | The three MCP resources use `cachedRoot \|\| '.'` and take no root param — in a linked workspace they can silently answer for the wrong repo | `src/mcp/server.ts` resource handlers |
+| D10 | ~~High~~ **FIXED (576f0de)** | External mode suppresses agent instruction files and moves `.mcp.json` inside `.guardlink/`, where MCP clients do not auto-discover it | `src/init/index.ts:173,185-186` |
+| D11 | ~~**High**~~ **FIXED (5eb8163)** | `guardlink_clear` mutates annotations on disk and does **not** call `invalidateCache()`. Every subsequent `status`/`lookup`/`report` in that session reports annotations that no longer exist | `server.ts:476-505`; no invalidate between :400 and :540 |
+| D12 | ~~**High**~~ **FIXED (f790d1f)** | Unknown `lookup` query forms do not error — they fall through to `lookupFuzzy`, and `matchRef`'s reverse-substring rule matches the query string itself. `owner of #cli`, `assumptions for #cli`, `comments for #cli` all return byte-identical `count: 1` payloads containing none of the requested data | `lookup.ts:446`; measured |
+| D13 | ~~**High**~~ **FIXED (5959e8a)** | `.find()` substring precedence silently drops exact matches. `lookup("threat dos")` returns `#redos` — `#redos` is declared at `definitions.ts:36`, `#dos` at `:39`, and `"redos".includes("dos")` short-circuits the exact match. `lookup("asset cli")` merges all 9 of `#llm-client`'s exposures into `#cli` | `lookup.ts:293,444`; reproduces on committed definitions |
+| D14 | ~~Med~~ **FIXED (4b49ece)** | `coverage_percent` is dead — hardcoded `0` and never computed for a single repo. Three consumers display 0% today | `parse-project.ts:194`; consumers at `dashboard/data.ts:95`, `analyze/index.ts:407`, `tui/commands.ts:506`; only real assignment is `workspace/merge.ts:478` (multi-repo path) |
+| D15 | ~~Med~~ **FIXED (2bf5853)** | The MCP model cache is **process-global**, not per-server — four module-level `let`s shared by every `createServer()` in a process. Two servers in one process share one `cachedRoot`, so server B's resources can answer for server A's repo. Superset of D9. Latent under stdio (one server per process), live under any multi-server host | `server.ts:64-66`; found by the GL-104 two-repo test, not by inspection |
+| D16 | ~~High~~ **FIXED (dcf4650)** | `guardlink validate` silently rewrites 7 tracked files — it runs `syncAgentFiles` as a side effect, modifying `CLAUDE.md`, `AGENTS.md`, `.clinerules`, `.cursor/rules/guardlink.mdc`, `.gemini/GEMINI.md`, `.github/copilot-instructions.md`, `.windsurfrules`. A command that reads as read-only leaves a dirty tree, making it unusable as a CI check | observed during Phase 1 verification; needs a `--check` / read-only mode |
+| D17 | ~~Med~~ **FIXED (096c291)** | `guardlink_dashboard` writes `threat-dashboard.html` into its own scan set (`.html` is in `DEFAULT_INCLUDE`, `parse-project.ts:52`). It yields zero annotations, but it does change `source_files` and `unannotated_files`. The MCP cache was masking the divergence from a fresh CLI run | fixed incidentally by A3's invalidation; the scan-set inclusion itself remains |
+| D18 | ~~**High**~~ **FIXED (5959e8a)** | *(regression introduced by the D13 fix, corrected in the same commit)* Any threat or control resolvable **only by substring** is silently dropped entirely. `threat denial` → `count: 0` where Phase 0 measured `#dos` | `lookup.ts:411,418,430` |
+| D19 | ~~High~~ **FIXED (c863da9)** | **The documented cross-repo tag syntax does not parse.** `ASSET_REF` (`parse-line.ts:22`) offers `#[a-zA-Z0-9_-]+`, a quoted form, or `[A-Za-z_]\w*(\.[A-Za-z_]\w*)*` — the `#` alternative excludes dots and the dotted alternative excludes `#` and hyphens, so `#auth-lib.token-verify` matches `#auth-lib` and the remainder fails the `$` anchor. `THREAT_REF` (`:26`) has no dotted alternative at all. Cross-repo tags parse **only when quoted**, and **never in threat or control position**. Two documented examples are unwritable: `parse-project.ts:385`'s own canonical `#auth-lib.token-verify`, and both rules emitted by `guardlink_workspace_info` (`server.ts:859,861`) — the tool whose purpose is teaching this syntax | reproduced independently; parser grammar decision required |
+| D20 | ~~Med~~ **WON'T FIX** | **Name collision on `external_refs`.** `model.external_refs` (built by `detectExternalRefs`, `parse-project.ts`) holds cross-repo sibling tags. `threat.external_refs` (built from `EXT_REFS_OPT`, `parse-line.ts`) holds `cwe:` / `owasp:` identifiers. Two unrelated concepts under one field name. **Closed as won't-fix, not deferred.** The reachable harm was already removed in Phase 2b: the query form was renamed to `cross-repo refs`, the dangerous bare `refs` alias was dropped, and each form's description names the other — so the collision is no longer reachable by accident. What remains is a naming smell in a type definition. Verified against the code: `external_refs` appears in **19 files** across parser, workspace, dashboard, report, SARIF, diff, TUI and MCP. **Correction to the stated reasoning:** the risk is *not* that a rename through `annotation-hash.ts` endangers the `guardlink migrate` invariant — the hash is computed over field *values* (`refs(t.external_refs)`), so a correct rename is hash-neutral, and every typed access would fail compilation if incomplete. The real exposure is that **`external_refs` crosses a serialization boundary**: it is written into report JSON (`workspace/metadata.ts:218`) and `.guardlink/model.json`, and read back at `workspace/merge.ts:48` through `const model: ThreatModel = JSON.parse(raw)` — an unchecked assertion. After a rename, every pre-rename report file would silently read `undefined` at `merge.ts:574` (`r.model.external_refs?.length || 0`), degrading cross-repo ref counting with no error and no compile failure. That is a stronger reason for won't-fix than the hash one, and it is the thing that would actually bite. **If `schema_version` ever bumps for another reason, the rename rides along then** — the migration would have a version gate to hang off. **Note for whoever does it:** `ALL_ROW_ARRAYS` in `mcp/subgraph.ts:450` names `assets`, `threats` and `controls` as string literals (the rest derive from `SELECTABLE_KINDS`); any field rename must be reflected there by hand, because nothing type-checks those strings against the model | 19 files verified 2026-08-10; unchecked `JSON.parse` assertion at `workspace/merge.ts:48` **Correction to my own reasoning (post-sweep):** I justified won't-fix partly on the annotation hash being at risk. That is wrong — the hash is computed over field *values* (`refs(t.external_refs)`), so a correct rename is hash-neutral, and `computeAnnotationHash` takes a typed `ThreatModel`, so an incomplete rename fails compilation rather than silently dropping a field. The real exposure is the **serialization boundary**: `workspace/metadata.ts:218` writes `external_refs` into report JSON, and `workspace/merge.ts:48` reads it back with an unchecked `JSON.parse(raw) as ThreatModel`. After a rename, every pre-rename report file reads `undefined` at `merge.ts:574` and cross-repo ref counting silently degrades — no error, no compile failure, no test failure. Worse than the hash concern precisely because nothing catches it. Won't-fix stands, on better grounds. |
+| D21 | ~~Med~~ **FIXED (ed1da5e)** | `replaceOrAppend` preserved the previous sync's trailing newline while `wrapMarkers` emitted a fresh one — every sync appended a blank line to every markdown agent file. Measured at `f022d5b`: `CLAUDE.md` 54 trailing newlines, `AGENTS.md` 53, `.clinerules` 44, accumulated silently across the repo's history | found by the D16-interaction test |
+| D22 | **Med — OPEN, REPRODUCES** | **Templates embedding GAL syntax pollute the model.** Template literals live inside `.ts` files, so once the comment prefix is stripped their example annotations parse as *real* ones. The GL-402 README template injected `#api`, `#sqli` and `cwe:CWE-89` into this repo's own model, surfacing as a GL-204 test failure. Mitigated case-by-case with `@shield:begin/end`; the class recurs for any future template. **D29 does NOT subsume this — verified.** D29 splits lines that FAIL to parse into `malformed-annotation` and `prose-like`. D22 is about lines that parse SUCCESSFULLY: an unshielded ` * @exposes #api to #sqli …` inside a template literal yields 1 real annotation and **0 diagnostics**, so there is no diagnostic for D29 to tier. Orthogonal mechanisms. **What remains:** nothing detects an unshielded example at authoring time. A systematic fix would be a lint rule or a parser-level "inside a string literal" check; both need a TS AST pass the parser deliberately does not do (it is line-based across 11 languages). Current mitigation is `@shield:begin/end` plus `tests/readme.test.ts` and `tests/agent-file-placement.test.ts`, which assert this repo's own model declares no `#api`/`#sqli`/`#prepared-stmts` | `init/templates.ts`; same pattern already used in `agents/prompts.ts`; mechanism re-verified 2026-08-10 |
+| D23 | ~~Med~~ **FIXED (see commit)** | **Parse order is unstable across processes.** `fast-glob` returns files in completion order under concurrency — stable within a process, not between two — so anything durable that inherits parse order churns. `computeAnnotationHash` was immune (it sorts before hashing), which is why the hash held while the prose moved. Fixed at the artifact boundary (`a921afa`), for the dashboard (`096c291`, which also disproved the "unreproducible" claim on that path) and now for `report` — `generateMermaid` and `generateReport` canonicalise inside the generator, so CLI, TUI and MCP all get it without a call site having to remember. Measured: `report --diagram-only` was 2 distinct hashes across 3 processes, now 1. **Nothing durable is non-reproducible anymore.** Audited the rest at the same time: SARIF is byte-identical across processes; `parse --format json` still differs, by its `generated_at` alone, and that is correct — parse output is not an emission boundary and the parser stays fenced. The full `threat-model.md` differs only by its two `Generated: <iso>` lines, which are deliberate in a git-ignored, rebuilt-on-demand human report and are not D25's tracked-file class | 3-process test; `--diagram-only` output order changes once, noted in CHANGELOG |
+| D24 | ~~High~~ **FIXED (35f2597)** | `guardlink init --force` **silently destroys a populated `definitions` file.** Observed during Phase 4: it overwrote 38 declarations with a 9-item template, plus `config.json`, with no warning and no prompt. Recovered via `git checkout` — a repo where definitions were not yet committed would have lost them outright | `init/index.ts`; needs a confirmation prompt or a refusal when definitions are non-empty |
+| D25 | ~~Med~~ **FIXED (096c291)** | The dashboard was non-reproducible across processes. **My stated cause was wrong:** the `new Date()` at `generate.ts:40` was *dead code* — computed, never rendered. The real causes were (a) the dashboard path never went through `canonicalizeModelOrder`, so it inherited fast-glob completion order, and (b) the model's own `generated_at` embedded verbatim in the page's JSON blob | verified: three separate processes now byte-identical |
+| D26 | ~~Med~~ **FIXED (f71950c)** | **`.guardlink/model.json` carried a top-level `generated_at`.** The `.mmd` headers had volatile fields stripped in `a921afa`; `model.json` did not. It is the artifact GL-304 most deliberately commits — justified precisely so a model change shows up in PR review | verified fixed: two `guardlink artifacts .` runs now byte-identical |
+| D27 | ~~BLOCKER~~ **FIXED (45295b2)** | **Agent instruction files never state where annotations go.** `agentInstructions(project)` takes no mode parameter, so no agent file can name it. Verified on a fresh default-init repo: `config.json` says `annotation_mode: external`, while `CLAUDE.md` contains **zero** occurrences of `.gal`, `annotations/`, `sidecar` or `@source` (its one "external" is "external API calls"). `.guardlink/README.md` states it correctly — 6, 4 and 2 occurrences — but that is the cold-start path, not the file an agent reads every turn. Under the new default an agent reads inline syntax with no placement guidance and writes inline; the repo silently goes mixed | **gates GL-507's default flip**; fix is GL-403 territory: thread mode into `agentInstructions` plus a short placement section |
+| D28 | ~~Med~~ **FIXED (958d59c)** | No CI gate on artifact drift. **Two of my claims were wrong:** CI already existed (build + test + validate + status on an 18/20/22 matrix), and my "verified it exits 1 on stale, 0 on current" was true for those two states but the gate was **blind to deletion** — `checkArtifactDrift` enumerated the `.mmd` files present on disk, so `rm dataflow.mmd` reported "artifacts are current" and exited 0. Found by testing the gate rather than trusting the PRD. Fixed by deriving the expected set from the model | verified: deleted `.mmd` → exit 1, deleted `model.json` → exit 1 |
+| D29 | ~~High~~ **FIXED (3d9f965)** | **Any comment line beginning with a GuardLink verb is a live annotation** — not just templates (D22 was the narrow case). Verified: `@feature flag rollout is described below` and `@exposes was renamed in v1.2` both emitted `Malformed … annotation` diagnostics, and diagnostics fail `validate`. So writing *prose about GuardLink* in your own codebase broke your own `validate`. **Resolved with a two-tier split on structural evidence** — a line carrying a `#ref`, a `--` delimiter, or one of *that verb's own* grammar keywords is a malformed annotation (error, fails validate); a line with none is reported as prose-like (warning, does not fail). **My ruling specified one global keyword list; measurement corrected it to per-verb** — `to` is structural in `@exposes` but not in `@feature`, and the global list still errored on 3 of 10 realistic prose lines, including the exact line that broke this repo during the sweep. Per-verb takes that to 1 of 10; the survivor (`@transfers … from …`, a keyword `@transfers` genuinely owns) is real ambiguity with `@shield` as the deterministic override. A bare verb with nothing after it is an error, not prose | verified independently across 8 cases; `ParseDiagnostic` gained a machine-readable `code` |
+
+| D30 | ~~Med~~ **FIXED (see commit)** | **`launchAgentInline` accepted an `autoYes` option and never read it.** All three call sites passed `{ autoYes: true }` — `cli/index.ts`, `tui/commands.ts` twice — and nothing in the body touched it. **Determined VESTIGIAL, not a hang**, from the code rather than assumed: `buildInlineArgs` already passes each agent's own skip-confirmation flag unconditionally on every inline launch — `--dangerously-skip-permissions` (claude-code), `--dangerously-bypass-approvals-and-sandbox` (codex), `--approval-mode yolo` (gemini) — and the inline path spawns with no readline and no interactive prompt of its own. There was no confirmation left for the option to suppress, and no caller ever passed `false`, so removing it changes nothing observable. Parameter and all three call sites removed | verified against `buildInlineArgs` and the spawn path; 2 tests pin that the flags stay unconditional |
+| D31 | ~~Med~~ **FIXED (see commit)** | **`launchAgent` discarded the agent's process exit code.** `launchAgentForeground` returns `{ exitCode, error }`; the caller checked only `error`, so a terminal agent exiting NON-ZERO without a spawn error came back `launched: true` and rendered as "✓ session ended". A failed run looked like a successful one. **Intent determined from callers before changing behaviour:** `launched` is also read at `cli/index.ts:833` and `tui/commands.ts:1412` as `result.launched && agent.app` → "launched with project", which is start semantics for IDE agents that have no exit status at all. Redefining `launched` to mean "succeeded" would have made those sites wrong. So `launched` keeps meaning *we started it* and `exitCode` is surfaced alongside; the four "session ended" renders now branch on it and the CLI sets `process.exitCode = 1` | 5 tests, including a real non-zero spawn (`false` → exitCode 1, no error) |
+| D32 | ~~High~~ **FIXED (see commit)** | **`guardlink link --remove` truncated agent files at the workspace marker.** `cleanupRemovedRepo` computed `endIdx` — the end of the workspace block, exactly as its own comment intends — then wrote `content.slice(0, markerIdx).trimEnd() + '\n'`, discarding everything from the marker to EOF. Any section a user wrote after the workspace block was destroyed. The insert path in the same file (`slice(0, markerIdx) + block + slice(endIdx)`) has always been correct: this was a line that was never finished, not a design choice. Fixed by splicing head and tail, with the empty-head case handled separately — when the block is first in the file, `head + '\n' + tail` would emit a leading blank line. **Audit of the same shape elsewhere: clean.** The only other marker-splice sites are `link.ts:729` (insert) and `init/index.ts:474` (`replaceOrAppend`), both of which preserve their tail; every other file rewriter (`clear.ts`, `apply-annotations.ts`, `migrate-mode.ts`, `reanchor.ts`) is line-array based and cannot drop a tail by construction | 7 tests over six file shapes, all byte-exact; found by the no-unused-vars cleanup |
+| D33 | ~~High~~ **FIXED (see commit)** | **The MCP server shipped actively false guidance.** `instructions` arrives at initialize, before any tool call, so it is the first thing every connected agent reads. It told them a `.gal` under `test/` is "silently dropped — do not put one there until GL-503 lands". GL-503 landed in `4b49ece`; the claim steered agents away from a directory that works. **Root cause: the GL-401 test PINNED it** (`expect(text).toMatch(/silently dropped/)`) — an assertion that was correct when written and became a stale-claim *enforcer* the moment the defect was fixed, so the text could not be corrected without a test failing. **Two more stale claims found in the same audit:** the `guardlink_graph` paragraph still recommended "depth 1-2 with direction in or out", which contradicts the shipped defaults (depth 2 / both) and predates `detail`, and it named neither `detail` nor `completeness`; and the 400-word budget test measured only the mode this repo happens to be in — external was 426 words and null 403, both over, unmeasured. All three fixed. `.guardlink/README.md` and the synced agent block were already correct and are covered by their own tests. **Mechanism, not one more corrected string:** `tests/instructions-claims.test.ts` pairs each behavioural claim with a probe that runs the real code (a `.gal` under `test/` is actually written and parsed; every envelope field named is asserted present on a real envelope; the recommended graph defaults are compared against `traverseGraph`'s own), plus a general guard rejecting any *expiring* phrasing — `GL-\d+`, "until … lands", "known gap", "not yet", "for now" — because a claim gated on unlanded work is false the day it ships and has no alarm attached | audited 2026-08-10; 11 probes; the word budget now measured in all three modes |
+| D34 | High — FIXED (see commit) | **`guardlink_graph` returned the entire `unannotated_files` list.** `selectSubgraph` returns `{...model, <filtered arrays>}`; the spread preserved `unannotated_files` untouched while every relation array was filtered. (`annotated_files` was already filtered — the leak was one field, not two.) GL-205 measured this exact problem for `guardlink_parse` and dropped the field by default; `guardlink_graph` shipped two commits later and reintroduced it via the spread. Invisible on this repo (23 rows, 0.8%), which is why five phases never surfaced it. **Fixed as GL-205's ruling, not a second policy:** `selectSubgraph` filters `unannotated_files` through the same file set `annotated_files` already used — always `[]`, because a subgraph is built from annotation locations and an unannotated file contributes no node and no edge — and `withoutFileInventory` drops the key at the graph emission boundary, replacing it with the same `_omitted` marker `guardlink_parse` emits, carrying the whole-repo count so a sparse repo cannot read as clean. `annotated_files` kept: filtered, proportionate (45 rows / 1.2 KB against 8094 / 654.8 KB), and it answers "where do I go to read this" | measured, both repos, detail=full: specter-v1 unresolved **687.4 KB → 1.2 KB** (−99.8%), specter-v1 resolved (`#ai-gateway`, 3 nodes) **709.5 KB → 23.4 KB** (−96.7%), guardlink unresolved 1.8 KB → 1.2 KB, guardlink resolved (`#cli`, 18 nodes) 90.5 KB → 89.9 KB. `tests/graph-sparse-repo.test.ts` builds its own corpus — two repos differing only in unannotated file count — and fails 7/9 against the pre-fix code |
+| D35 | Low — FIXED (see commit) | **The `guardlink-mcp` bin was a no-op.** `package.json` declares it as `./dist/mcp/index.js`, but that module only *exported* `startStdioServer` — no shebang, no main guard. Executing it loaded the module and exited. Low impact because `init` writes `guardlink mcp` (the CLI subcommand, which works) into `.mcp.json`, so no generated config pointed at the dead entry. **Wired up rather than removed:** `guardlink-mcp` is the conventional name a client reaches for (`npx -y guardlink-mcp`) and it is already published in 1.4.5, so deleting it would break a hand-written config a user had every reason to write; both entry points call the same function, so there is no second implementation to drift. Startup errors go to stderr — stdout is the JSON-RPC channel | `tests/mcp-bin.test.ts` launches the module as a process and requires a JSON-RPC `initialize` response. The pre-existing tests all drove `createServer()` in-process, which is exactly why the one path an outside user types first was the one nobody exercised |
+| D36 | ~~High~~ **FIXED (see commit)** | **A mitigation on one symbol cleared an exposure on another.** `expense-api` carried `@exposes #db to #sqli [critical]` at `db.py:9` (`find_expenses`, a `%`-formatted SELECT) and `@mitigates #db against #sqli using #prepared-stmts` at `db.py:23` (`insert_expense`, correctly bound). Both true. The join was `(asset, threat)` only, so `unmitigated` omitted the critical injection, `guardlink_context` returned `open_exposures: []`, and `guardlink_lookup("cwe:CWE-89")` — the scanner-triage path — answered `status: "mitigated"`, `totals.open: 0` for the vulnerable line. **THE RULE, decided before any code was written:** a mitigation covers an exposure on the same (asset, threat) UNLESS the two are in the same file, both carry a symbol anchor, and those anchors differ. Cross-file always covers; unanchored always covers; only-one-side-anchored always covers. **Rejected: symbol equality.** Measured on this repo simulated as migrated to external (61 `@source` blocks), it moves 16 unmitigated to 22, and all six newly-flagged are cross-file controls that genuinely cover — `#glob-filtering` in `parse-project.ts` really does run upstream of `parse-file.ts`; `#key-redaction` in `tui/config.ts` really does cover `tui/index.ts`. A 6-of-6 false-positive rate on the class it adds. **No new syntax was needed:** omitting `symbol:` from a `@source` header already means "whole asset". **Not closed:** a cross-file mitigation still blanket-covers; that needs a call graph and is out of scope, stated in the module doc rather than implied away | **Eight** copies of the key existed, not four — `validate.ts` ×2, `diff/engine.ts`, `workspace/merge.ts`, `mcp/context.ts`, `mcp/lookup.ts` ×3 — and four did not normalise `#`, so `diff` and `validate` could disagree on one model. The eighth (`lookup("unmitigated")`) was found by a test asserting it agreed with `findUnmitigatedExposures`; it did not. Migration impact measured: **0 of 74 exposures change on guardlink, 0 of 61 on specter-v1, 2 of 11 on expense-api** — inline annotations never carry `parent_symbol`, so the rule is inert in every inline repo. `tests/coverage-symbol-scope.test.ts`, 16 assertions, own corpus |
+
+| D37 | ~~High~~ **FIXED (see commit)** | **Every pure-external repo reported `mixed`.** `@asset`, `@threat` and `@control` are structurally inline-only: they live in `.guardlink/definitions.*` and there is no `@source` block for "this asset exists", so a declaration can never acquire an `origin_file`. `detectAnnotationMode` counted them as inline evidence — measured on expense-api, `inline 21 / external 84`, with all 21 being the definitions file and nothing else. `mixed` is the alarm state, and under the external default it fired on every correctly configured new project. Detection now asks only the relationship verbs, the only ones with a genuine choice of home. **Audited for anything else structurally inline-only: nothing.** Every other verb — including `@feature`, `@comment` and `@shield`, which carry no ref — round-trips through a sidecar, verified against the expense-api corpus where all three were written externally. **The first half of the original report did not reproduce:** `root: /tmp/expense-api` with `mode: inline` was the stale in-session MCP server, which had been started before the rebuild and was flagged as such at the time. `buildEnvelope` was always correct on a fresh process; recorded here so nobody hunts it | `detect` after the fix: expense-api `external` (0/84), guardlink `inline` (342/0), constructed genuinely-mixed repo `mixed` (1/1). `tests/annotation-mode-detect.test.ts` pins that `external` became reachable WITHOUT `mixed` becoming unreachable |
+
+| D38 | **Medium — OPEN, REPRODUCES** | **`init`'s "Next steps" tells you to annotate source files regardless of mode.** External is the default. `init` printed "2. Add annotations to your source files (or ask your coding agent to do it)"; the `.guardlink/README.md` it wrote in the same run says "annotations live in `.gal` sidecars … NOT in source files". A cold agent that acts on the terminal output rather than opening the README produces the mixed repo the README exists to prevent. One-line fix: make the step mode-aware, as the README and `CLAUDE.md` writers already are | observed on `guardlink init` in `/tmp/expense-api` |
+| D39 | **Medium — OPEN, REPRODUCES** | **`guardlink_annotate_apply` validates syntax but not references, while its description implies both.** It says "Every line is re-parsed before anything touches disk; malformed input is rejected with the reason". `@mitigates #api against #xss-by-render using #octet-stream` — a threat id defined nowhere — was written with `"ok": true, "errors": []`. Only a later `guardlink validate` reported it, and only as a *warning* (`valid: true`, exit 0), so an invented reference survives the write path, the validate path and CI. The writing tool is exactly where a dangling ref is cheapest to catch: it holds the model and the line at the same moment | reproduced; `guardlink_validate` then reported "Dangling reference: #xss-by-render is never defined" as warning, `valid: true` |
+| D40 | **Low — OPEN, REPRODUCES** | **`guardlink_annotate_apply` reports `status: "written"` on a dry run.** With `dry_run: true` the result is `{"ok": true, "status": "written", "linesWritten": 5}` and nothing is written. A caller branching on `status === "written"` cannot tell a preview from a commit — the didn't-run-versus-did-run confusion this epic keeps eliminating elsewhere | observed on the first dry-run call against `/tmp/expense-api` |
+| D41 | ~~Low~~ **Med — OPEN, REPRODUCES DIFFERENTLY (wider than logged)** | **`guardlink_annotate_apply` duplicates the `@source` header for any write that is not an exact whole-block match.** The original row said "adding one new line"; the trigger is wider. Measured 2026-08-10 on `app/db.py.gal`, anchor `line:9 symbol:find_expenses`, 5 lines in the existing block: submitting **one line already present verbatim** → header count 1→2; submitting one genuinely new line → 2→3; submitting **all 5 existing lines** → `status: "unchanged"`, `linesWritten: 0`, count stays 1. So idempotence holds only for the exact whole-block case, and the tool description's "Idempotent: re-applying the same block is a no-op, not a duplicate" is false under the natural reading of "the same block" (= the same anchor). Raised to Med: incremental annotation is the workflow the tool is marketed for, every such call corrupts the sidecar, `status: "written"` gives no signal, and nothing downstream diagnoses a duplicate anchor — `validate` passes it clean. Model output is unaffected; the damage is file hygiene and unbounded sidecar growth | re-verified 2026-08-10 by reproduction; boundary measured in three calls |
+| D42 | ~~Low~~ ~~Med~~ **PARTLY FIXED — consumers corrected; wire reshape BLOCKED on a schema bump** | **Three unrelated fields are served as if they were a ratio.** The original row called the arithmetic incoherent. It is not — the parser is coherent and documents itself at `types/index.ts:403-421`: `total_symbols` is deliberately never computed ("symbol-level coverage is not computed"), `annotated_symbols` counts *annotations* ("named for symbols historically"), and `coverage_percent` is *file* coverage ("do not derive it from this"). Each is correct alone. The defect is that they ship together in one `coverage` object whose names invite the ratio reading, and **the doc comments explaining that do not travel over the wire**. A consumer that believes the names is what breaks: `tui/commands.ts:508` prints `${annotated_symbols}/${total_symbols} symbols (${pct}%)`, reproduced verbatim as **`Coverage: 105/0 symbols (100%)`**. Raised to Med because a second consumer gets it wrong in a worse direction — see D48. Fix is naming or payload shape, not arithmetic: drop `total_symbols` from the wire format or rename the trio | re-verified 2026-08-10: `guardlink_status` on `expense-api` → `{total_symbols: 0, annotated_symbols: 105, coverage_percent: 100}`; TUI render reproduced by calling `cmdScan` directly. **FIXED (consumer half):** the contract now exists as code — `describeCoverage(model)` in `parser/coverage.ts` returns `{kind: 'file', annotatedFiles, sourceFiles, percent, annotations}`, naming the numerator, the denominator and the unit so nothing has to infer a denominator. The TUI now prints `Coverage: 8/8 files annotated (100%) · 105 annotations parsed`. `parse-project`, the TUI and `merge` all divide through one `fileCoveragePercent` helper. **NOT fixed (wire half) — STOPPED, needs your call:** `coverage` ships inside `schema_version: 1.0.0` and `guardlink merge` cross-checks that version across repos, so renaming the fields, dropping `total_symbols`, or replacing the object all break the emitted schema. Recommendation recorded in §3.7 |
+| D43 | **Low — OPEN, REPRODUCES** | **The project name is never read into the model.** `config.json` says `"project": "expense-api"`; `guardlink status .` prints `GuardLink Status: unknown` and `model.json` carries `"project": "unknown"`. Reproduces in **this** repo too (`GuardLink Status: unknown`), so it is not an external-mode or Python issue — `parseProject`'s `project = 'unknown'` default is simply never overridden by the CLI | `guardlink status .` in both repos |
+| D44 | ~~Low~~ **Med — OPEN, REPRODUCES** | **`init` appends its block to an existing `.gitignore` but does not create one.** A repo with no `.gitignore` — `expense-api`, and any fresh project — gets none, so `guardlink dashboard` leaves `threat-dashboard.html` both untracked and unignored, and `guardlink init` has already listed the four generated names it wants ignored. Verified the append path works when a `.gitignore` is present | reproduced in a scratch repo with and without a pre-existing `.gitignore` |
+| D45 | **Low — OPEN, REPRODUCES** | **`.guardlink/README.md` points at a path `init` does not write.** It says "The complete reference is `.guardlink/GUARDLINK_REFERENCE.md`"; `init` writes `docs/GUARDLINK_REFERENCE.md`. The sentence immediately following is "Read it before inventing syntax", so the one broken pointer in the document is the one aimed at preventing invented syntax | `ls .guardlink/GUARDLINK_REFERENCE.md` → not found, after a clean `init` |
+| D46 | **Low — OPEN, REPRODUCES** | **The `guardlink_graph` tool description hard-codes facts about *this* repo.** It reads "`#path-traversal` alone is declared on 10 assets here, so crossing threats would make depth 2 reach most of the graph" — served verbatim to an agent working on `expense-api`, where `#path-traversal` is declared on 2 assets and the sentence is simply false. The reasoning is sound and worth keeping; the *measurement* should be described as the observation that motivated the rule, not as a fact about the caller's repo. Same class as D33 (stale claims in `instructions`), different surface. **The D33 mechanism does not catch this, on two independent counts — so it is a mechanism extension, not a one-line fix.** (1) *Wrong surface:* `tests/instructions-claims.test.ts` only ever evaluates `forMode(mode) = buildServerInstructions(...)`; no test in the suite reads an MCP tool description, so all 22 descriptions are unguarded. (2) *Wrong pattern class:* `EXPIRING_PHRASINGS` matches futurity — `GL-\d+`, `until … lands`, `known gap`, `not yet`, `for now`, `silently dropped`. None matches a hard-coded measurement about the serving repo; pointing the existing list at tool descriptions would still pass D46. The extension needs both: widen the surface to every tool description, and add a pattern class for self-referential measurements (a numeral near `here` / `in this repo`) | re-verified 2026-08-10: description served verbatim from the live schema while connected to `/tmp/expense-api`, where `guardlink_lookup("threat path-traversal")` returns 3 exposure records across **2** distinct assets (`#api`, `#receipts`), not 10 |
+
+| D47 | ~~Low~~ ~~Med~~ **FIXED** | **Coverage does not resolve a dotted asset path to its `#id`.** `@exposes #db to #sqli` and `@mitigates Svc.Db against #sqli` name the same asset — `guardlink_graph`'s `canonicaliser` resolves both to one node — but `coverage.ts` normalises only the leading `#` and case, so the mitigation does not cover the exposure. Predates D36; found by a D36 test that asserted the property and was written expecting it to pass. **Deliberately not fixed here:** teaching coverage to alias would ADD coverage, which is the direction that hides vulnerabilities, and it deserves its own measurement rather than a ride-along in a commit whose whole point is that the opposite direction is dangerous too. **Survived the D36 coverage unification unchanged** — the predicate was unified across eight join sites and this alias gap is orthogonal to all of them. **Raised to Med** on re-assessment: the direct effect is a false positive, which is the safe direction, but the CI effect is not. `guardlink diff` shares the predicate, so *rewriting an existing hash-form mitigation into its dotted form* — a pure refactor that changes no risk — reports `newUnmitigated > 0` and reads as a regression. A gate that fires on a no-op refactor is a gate teams switch off | re-verified 2026-08-10 at user level, not just in the pinning test: a scratch repo declaring `@asset Svc.Db (#db)`, exposed via `#db` and mitigated via `Svc.Db`, gives `guardlink validate` → `1 unmitigated: #db → #sqli`, while `guardlink_graph(from: "Svc.Db")` resolves it to `canonical: "db"`, `matched_via: "exact"`. Also pinned in `tests/coverage-symbol-scope.test.ts`. **FIXED:** `guardlink_graph`'s `canonicaliser` MOVED (not copied — D57's lesson) from `mcp/subgraph.ts` to `parser/canonical-ref.ts`, which is what let coverage reach it without inverting the layering; `subgraph.ts` re-exports it so its callers are untouched. **Delta measured before landing: ZERO exposures change state on any real corpus** — expense-api 11→11, guardlink 16→16, specter-v1 1→1 — so there is no aggregate to justify and no individual case to defend. The resolver is built from DECLARED assets only, two keys each (id, dotted path), and an unknown ref falls through to its bare form, so refs collapse only where the model itself says they are one asset. A new test pins that an UNDECLARED dotted path still covers nothing. Also restores what `dashboard/diagrams.ts` gave up in the D57 sweep: the attack surface now aliases again AND agrees with validate |
+
+| D48 | ~~HIGH~~ **FIXED (see §3.6)** | **A `migrate` round-trip destroys every symbol anchor, and the hash that certifies the round-trip cannot see it.** On `expense-api` — born external, never migrated — `migrate --to inline` then `--to external` returns the model to its starting `annotation_hash`, and prints `✓ annotation_hash unchanged` both ways. It is telling the truth about the model and hiding a total loss of anchoring: **21 `symbol:` anchors → 0.** Every `@source file:app/config.py line:3 symbol:SECRET_KEY` comes back as `@source file:app/config.py line:3`. The consequence is not cosmetic, because `reanchor` is built on exactly that field: on the original corpus it reports **4 drifted blocks** (1 `symbol_gone`, 3 `moved`, "3 of 4 can be re-anchored automatically"); on the round-tripped copy it reports **"✓ Every anchored @source block still points at its symbol."** Same repo, same hash, same annotations — drift detection went from four actionable findings to a green check, silently. `symbol` is also the field D36 made load-bearing when it moved coverage from (asset, threat) pairs to sites. **The deeper defect is that `annotation_hash` is the advertised safety net for this operation and does not cover the anchor**, so the one signal a careful user would check is the one that cannot fire. Blocks any recommendation of `migrate` as a safe operation | reproduced 2026-08-10 on a copy of `/tmp/expense-api`; `grep -rho 'symbol:[a-z_]*' .guardlink/annotations/ \| wc -l` → 21 before, 0 after; `reanchor` output quoted above; blocks are also reordered and blank-line-padded, so the round trip is a whole-file diff on every sidecar. **FIXED:** the anchoring got its own hash (`anchor_hash`, `parser/annotation-hash.ts`) rather than being folded into `annotation_hash`, which would have broken GL-101's inline/external identity and GL-507 with it. `migrate --to inline` now refuses BEFORE writing when anchors would be lost, names every one of them, and requires `--allow-anchor-loss`. `reanchor` no longer reports success on a repo with zero anchors |
+| D49 | ~~Medium~~ **FIXED** | **A merged workspace always reports 0% coverage.** `workspace/merge.ts:474-481` sums `total_symbols` across repos and recomputes `coverage_percent = annotated/total`, falling back to `0` when total is `0`. `total_symbols` is *always* `0` (D42), so the fallback is the only branch that ever runs. Two repos each reporting `coverage_percent: 89` merge into a workspace reporting **`coverage_percent: 0`**. This is D14 exactly — "a hardcoded 0 that three consumers rendered as 0% on fully annotated projects" — reintroduced on the workspace path, which D14's fix never reached. Worse than D42 because the workspace dashboard is the org-level view: it tells a whole organisation it has no threat-model coverage when it has 89%. Fix is to aggregate *file* coverage, the one that is actually computed | reproduced 2026-08-10: two copies of `expense-api` linked with `link-project`, `report --format json` each (both `coverage_percent: 89`), `merge --json` → `{total_symbols: 0, annotated_symbols: 210, coverage_percent: 0}`. **FIXED:** `merge` now computes the same file coverage the parser does, over the file counts it already aggregates, through the shared `fileCoveragePercent`. Two repos at 89% now merge to **89%** (16/18 files). No schema change — the emitted field shape is unchanged and pinned by a test |
+| D50 | ~~Medium~~ **FIXED (5c… see below)** | **The no-MCP fallback command in every generated repo does not exist.** `guardlink parse . --format json` → `error: unknown option '--format'`, exit 1. `--format` is a flag on `report`, not on `parse`. It ships from `init/templates.ts` at three sites (`:243`, `:816`, `:941`) into **`CLAUDE.md:21`** — "Without MCP, the same answers come from …" — and **`.guardlink/README.md:32` and `:182`** of every initialised repo, verified in both `expense-api` and a fresh `go` project. It is precisely the instruction aimed at an agent that has no MCP, i.e. the reader least able to recover from it. Correct forms already exist: bare `guardlink parse .` prints the model as JSON to stdout, and `guardlink report --format json` works | reproduced 2026-08-10 in `/tmp/expense-api` and a freshly `init`-ed project. **FIXED:** all three sites corrected — `guardlink parse .` already prints the model as JSON to stdout, so the flag was the only thing wrong in two of them. The third was worse than a wrong flag: it sat under "the annotations declared in that file" and `parse` emits the WHOLE model, so fixing the flag alone would have left a command that runs and answers a different question. It now shows a `jq` filter that genuinely narrows to one file, and says plainly what `guardlink_context` still gives that a filter cannot. **A second defect of the same class was found by the new probe, not by reading:** `guardlink suggest <file>` in `docs/GUARDLINK_REFERENCE.md` — no such subcommand has ever existed; `guardlink_suggest` is MCP-only and is correctly listed two lines below. Removed. Guarded by `tests/generated-commands.test.ts` |
+| D51 | Medium — OPEN | **`guardlink_annotate_apply` writes annotations for files that do not exist, and `validate` calls the result healthy.** `{"file": "app/typo_in_filename.py", …}` returns `ok: true, status: "written", errors: []` and creates `.guardlink/annotations/app/typo_in_filename.py.gal`. The phantom enters the model — annotations 105→106, exposures 11→12, files scanned 8→9 — so a single filename typo injects a critical exposure attributed to a file that is not in the repo. `guardlink validate` then prints **"Validation passed"**. The same server answers correctly on the read side: `guardlink_context` on that path returns `status: "not_found"` with the hint "Nothing exists at `app/typo_in_filename.py`". So the path check exists and is wired to the tool that cannot cause harm, not the one that can. Only `reanchor` catches it, as `[file_gone]` — a command CLAUDE.md does not tell you to run before finishing, unlike `validate`. Third leg of the same write-path gap as D39 (references unchecked) and D41 (anchors duplicated) | reproduced 2026-08-10 on a copy of `/tmp/expense-api` |
+| D52 | Low — OPEN | **The SARIF driver reports a hardcoded, wrong version.** `src/analyzer/sarif.ts:265` emits `version: '1.4.3'`; `package.json` is `1.4.5`. Single hardcoded occurrence in `src/`, and `getPackageVersion()` already exists in `mcp/freshness.ts`. SARIF driver version is what GitHub Advanced Security attributes findings to, so every uploaded run is filed against a version that is not the one that produced it — and it will drift further with each release. Same family as D33/D46: a fact about the tool, written down instead of read | reproduced 2026-08-10: `guardlink sarif .` on `/tmp/expense-api` |
+| D53 | Low — OPEN | **`validate` cannot tell a cross-repo tag from a typo, though it holds everything needed to.** In a repo linked by `link-project`, `@flows #notify -> #billing.db via https` produces `⚠ Dangling reference: #billing.db is never defined` — byte-identical to the message for a genuine misspelling. `guardlink_workspace_info` in the same repo states the correct rule — "External refs resolve during workspace merge, not local validation" — and `workspace.yaml` names `billing` with `tag_prefix: #billing.`, so validate can see the prefix belongs to a declared sibling. `merge` gets this right and says so precisely: "Tag `#billing.db` referenced in expense-api but not defined in any repo (prefix suggests repo `billing` but no definition found)". Validate should defer, not accuse | reproduced 2026-08-10 in a two-repo workspace under `/tmp/ws` |
+| D54 | Low — OPEN | **Merge tag-collision warnings double-count every id.** `merge` reports each collision twice, once bare and once `#`-prefixed — `Tag "api" defined in expense-api (owner) and also in: billing` immediately followed by `Tag "#api" …`. Seven colliding tags produced fourteen warnings. Cosmetic, but it is the `#tag-collision` surface, and doubling the noise on the one output a workspace owner reads to decide whether a merge is safe is the wrong direction | reproduced 2026-08-10 merging two repos under `/tmp/ws` |
+| D55 | Low — OPEN | **A repo with no annotations at all passes `validate` with a green check.** `guardlink validate` on a git repo containing one unannotated source file and no `.guardlink/` prints "✓ All annotations valid, no unmitigated exposures", exit 0. Vacuously true, and the MCP surface is careful about exactly this distinction — `guardlink_context` separates `scanned_without_annotations` from `not_scanned`, and the server instructions warn "do not read them as the same thing". The CLI makes no such distinction, so an unmodelled repo and a clean one are indistinguishable at the command the docs tell you to finish with. `unannotated` reports it correctly, which is where the signal already lives | reproduced 2026-08-10 in `/tmp/emptyrepo` |
+| D56 | Low — OPEN, **UNVERIFIED — needs a TTY** | **`guardlink ask` and `guardlink translate` fail confusingly when not attached to a terminal.** `guardlink ask "what are the biggest risks"` prints "Launching Claude Code…", then "Warning: no stdin data received in 3s", then `Error: Input must be provided either through stdin or as a prompt argument when using --print`, exits 1 — while having built the prompt correctly ("✓ Prompt copied to clipboard (1,768 chars)"). The error claims no prompt was supplied when one was supplied as an argument; the prompt appears not to be piped to the spawned agent. **Logged at low confidence:** both commands announce "Claude Code will take over this terminal" and may be TTY-only by design, and this pass had no TTY. Verify interactively before acting. Contrast `threat-report`, which fails cleanly and helpfully with "No AI provider configured" and three ways to fix it | observed 2026-08-10 in a non-interactive shell; **not** a confirmed defect |
+| D57 | ~~High~~ **FIXED (see §3.6)** | **The D36 coverage fix missed two join sites, both in the pentest/CXG path.** `src/analyze/index.ts:415` and `:450` still filter exposures on the raw `${asset}::${threat}` pair — no site check, and no `#` normalisation either. These feed `serializeModelCompact` and the `guardlink translate` / analyze prompt, so the generated CXG template-authoring prompt lists **9** unmitigated candidates against the fixed predicate's **11**, omitting the critical `#db → #sqli` at `app/db.py:9`. That is the exact suppression D36 was raised to stop, surviving in the one place it matters most: the prompt that tells an agent which threats are worth writing exploits for. Found in a generated prompt pasted by accident, not by the eight-site audit | verified: `findUnmitigatedExposures` returns 11, the analyze path returned 9, and the critical injection was absent from the compact serialisation. **FIXED:** thirteen sites routed through the canonical predicate — the two reported, six more found by a `${asset}::${threat}` shape sweep, and five found only by a second sweep for the nested-`.some()` shape, which has no `::` in it. Guarded by `tests/coverage-single-implementation.test.ts` |
+
+| D58 | Low — OPEN | **The TUI reports "All security-relevant symbols are annotated!" on every repo, always.** `cmdScan` branches on `coverage.unannotated_critical.length === 0`, and `unannotated_critical` is never populated — `parse-project.ts:284` sets it to `[]` and nothing else writes it. So the green line is unconditional and carries no information, on a repo with full annotations and on one with none. Same vacuous-green family as D48's `reanchor` check ("✓ Every anchored @source block still points at its symbol" on a repo with zero anchors) and D55's `validate` on an unannotated repo. Either populate the field or delete the claim; a third option is to say what it actually knows, which is file coverage | found 2026-08-10 while fixing D42 in the same function; noted in a code comment at `tui/commands.ts` rather than fixed, as out of scope |
 
 **Line-reference drift** found in Phase 0 verification (cosmetic, behaviour confirmed in
 every case): `parse-project.ts` 104-110 → 108-113 and 137 → 141; `cli/index.ts` 419-427 →
@@ -203,6 +292,246 @@ because they render legibly, and those are exactly what GL-301 fans out from. Th
 defect does not transfer to text consumed by an agent. *(Adjacent: the dashboard still
 loads `d3.v7.min.js` from CDN — leftover from that removal, out of scope, worth a
 separate ticket.)*
+
+---
+
+### 3.5 Verification pass — 2026-08-10
+
+Every open row re-verified by **reproduction against a clean `rm -rf dist && npm run build`
+and a stdio server spawned per call from the `guardlink-mcp` bin**, never an in-session
+server. Baseline: guardlink **1.4.5**, protocol `2024-11-05`, **22 tools**, instructions
+**441 words / 3040 chars**. Corpus: `/tmp/expense-api` @ `0a8cb92`, now preserved at
+`tests/fixtures/expense-api/` (`f42fe28`).
+
+**Result: 11 re-verified, 11 still reproduce, 0 closed.** Two changed shape (D41, D42) and
+both were worse than logged. Four moved up in severity (D41, D42, D44, D47); none moved
+down. Nine new defects logged (D48–D56).
+
+Two corrections to my own earlier work, both caught by reproducing rather than recalling:
+
+- **The first D39 re-test was invalid.** I reused `#xss-by-render` from the original report
+  as an "undefined" id. It is declared in this corpus at `.guardlink/definitions.py:46`, so
+  the absence of a dangling warning proved nothing. Re-run with two genuinely invented ids
+  (`#totally-invented-threat`, `#unicorn-control`), D39 reproduces exactly as written.
+- **The `@comment` at `app/db.py.gal` anchor `line:9` is now false.** It warns that the
+  `#db → #sqli` exposure "does NOT appear in `guardlink lookup unmitigated`" because the
+  join is `(asset, threat)` only. That was true when the annotating agent wrote it and
+  D36 fixed it: `guardlink_status` now lists `#db → #sqli [critical] app/db.py:9` among the
+  unmitigated. The corpus carries a stale warning about a bug that no longer exists —
+  which is itself the D33/D46 class, occurring in annotation prose rather than in tool text.
+
+#### The stale-server trap — not a defect, but nothing can detect it
+
+Reproduced deliberately. A client connected to a stdio MCP server, a real edit to
+`src/mcp/server.ts` inserting a sentinel into the `guardlink_graph` description, a real
+`npm run build` completing while the connection stayed open:
+
+| observable | before rebuild | after rebuild | fresh server, same `dist/` |
+|---|---|---|---|
+| sentinel in `guardlink_graph` description | absent | **absent** | **present** |
+| `serverInfo.version` | 1.4.5 | 1.4.5 | — |
+| envelope `guardlink_version` | 1.4.5 | 1.4.5 | — |
+| envelope `annotation_hash` | `sha256-v1:81168ffb…` | identical | — |
+| `tool_count` | 22 | 22 | — |
+
+**Nothing moves.** `guardlink_version` comes from `package.json`, which a rebuild does not
+change; `annotation_hash` covers the *target repo's annotations*, which are orthogonal to
+the server's own code. The only field that differs is `generated_at`, which changes on
+every call regardless and therefore carries no signal. A client cannot distinguish a
+current server from one running arbitrarily old code.
+
+**Ruling: an operational fact of stdio MCP, not a GuardLink bug** — the client spawns the
+server at connect time and Node resolves modules once; no MCP mechanism asks a server to
+notice that its own bytes changed, and a server running old code could not know new code
+exists. **But GuardLink is the only party that can make it observable, and it already owns
+this idiom.** The `annotation_hash` block in `CLAUDE.md` exists precisely so a reader can
+tell stale context from fresh; leaving the server itself unverifiable is inconsistent with
+that. Cheap and self-contained: `stat` the entry module at startup, re-`stat` per request,
+and when the mtime has moved add `server_stale: true` to the envelope with a reconnect
+hint. That is detectable from inside a stale process — the old code can see the new file.
+
+**Where it should live:** the mechanism as an enhancement row against the freshness
+envelope (`src/mcp/freshness.ts`); the operational fact in the contributor docs next to the
+build instructions, because it is a development-loop hazard rather than a user-facing one.
+It is recorded here because it **produced a false defect report** during the D36/D37 work —
+half of D37 was an artefact of testing a rebuilt tree through a server still running the
+old one, and that cost is the argument for the envelope flag.
+
+#### Fixture isolation
+
+`tests/fixtures/expense-api/` does **not** perturb this repo's model: `guardlink status .`
+is identical before and after the copy (83 files, 385 annotations, 16 assets, 15 threats),
+and `validate` and `unannotated` show no fixture paths. Three independent guards, any one
+sufficient: `tests` in this repo's `config.json` `exclude`; `**/tests/**` in
+`DEFAULT_EXCLUDE` (`parse-project.ts:95`); and this repo's `include` being
+`**/*.{ts,tsx,js,jsx}` against a fixture whose annotations live in `.py` and `.gal`. The
+third is the one that would break first — a future fixture carrying `.ts` annotations rests
+on the other two. Git history is preserved as `expense-api-git-history.bundle`, not a
+nested `.git/`: nested, it stages as a gitlink (mode `160000`, one line, zero files), so the
+fixture would have committed empty while `git status` read as clean.
+
+#### Watch item, deliberately not logged
+
+Two stdio MCP calls hung indefinitely — `guardlink_lookup` against a scratch repo, and
+`guardlink_status` against a mid-migration copy — both under shell command substitution.
+Neither reproduced on retry (3 attempts each), the CLI was fast on the same repos in the
+same state, and the likeliest explanation is the test harness rather than the server. Not
+a ledger row until it reproduces; noted so a third sighting is recognised as a pattern
+instead of a fluke.
+
+---
+
+### 3.5b The MCP query set is a file now
+
+"The nine-query set" was cited across roughly eight sessions as a committed
+regression suite. It never was — it came from one Phase 1 verification run and
+was reconstructed from memory on each reference. Every reconstruction was
+plausible and none was identical, which is the worst property a baseline can
+have: "no drift" was a judgement by whoever ran it rather than something anyone
+could check.
+
+`scripts/query-set.mjs` + `tests/fixtures/query-set-baseline.txt`, gated in CI.
+
+- **Fresh stdio server per corpus**, spawned from the `guardlink-mcp` entry
+  point. A connected agent keeps a stale server across a rebuild and nothing in
+  the envelope reveals it — that trap produced a false defect report during
+  D36/D37, so never reusing a server is the only defence.
+- **Both corpora, every run.** This repo (TypeScript, inline, file count tracks
+  annotation count) and `tests/fixtures/expense-api` (Python, born external,
+  the two decoupled). The single-corpus habit hid D34 and D36, and let D57's
+  eleven extra sites survive an audit that only looked here.
+- **13 queries.** The 11 cited, plus `graph from cli depth 2` and `context` on a
+  missing file — those two cover D34/D35, D47 and D51, none of which the
+  original set would have caught.
+- **Deterministic and diffable.** Timestamps, absolute paths and git SHAs are
+  normalised out; two runs are byte-identical, so drift is a `diff -u`.
+- ~0.3 s, so CI was cheap. The first version took 60 s of wall clock for 0.4 s of
+  work — uncleared per-query timeouts held the event loop open — which would
+  have read as "the query set is slow" rather than "the script has a bug".
+
+It already earns its keep as a two-corpus check: `cwe:CWE-89` reports
+`declared=false` on this repo and `declared=true` on the fixture, and
+`asset cli` is an `exact` match here and a `substring` match there resolving to
+`client`. Both are correct, and neither is visible from one corpus.
+
+### 3.6 D57 and D48 — fixed 2026-08-10
+
+#### D57: thirteen sites, and an audit that had to be run twice
+
+D57 reported two raw pair joins in `analyze/index.ts`. Auditing for those two
+found eleven more. The audit method is the finding:
+
+| sweep | searched for | found |
+|---|---|---|
+| 1 | `` `${…asset…}::${…threat…}` `` | `mcp/server.ts` (the `guardlink://unmitigated` resource), `report/report.ts`, `report/mermaid.ts`, `analyzer/sarif.ts`, `dashboard/data.ts`, `dashboard/diagrams.ts` |
+| 2 | `.asset === … && .threat === …` | `agents/prompts.ts` ×3, `init/templates.ts`, `analyze/tools.ts` |
+
+**Sweep 1 was not enough, and believing it was would have shipped the bug.**
+After fixing the two reported sites and all six from sweep 1, the CXG prompt —
+the artifact D57 was found in — *still* said 9 and still omitted the critical.
+Five copies were written as a nested `.some()` over `===` with no `::` anywhere
+in them. One of those built the CXG candidate list; another was
+`init/templates.ts`, which writes the "Open Exposures" block into every repo's
+CLAUDE.md, so a repo's own agent instructions disagreed with `guardlink
+validate` run in that same repo.
+
+Measured on expense-api: all thirteen said **9** where the predicate says **11**.
+The two they dropped were `#auth → #timing` and `#db → #sqli [critical]`, the
+repo's only critical. It was absent from SARIF (so it never becomes a GitHub
+Advanced Security alert), from the markdown report — whose headline read
+`Unmitigated exposures | 9 (0 critical, …)` — from the mermaid diagram entirely,
+and from the CXG prompt.
+
+Acceptance semantics were preserved where they legitimately differ: the prompt
+and CLAUDE.md builders ask `isMitigated`, not `isCovered`, so an `@accepts` still
+shows as needing attention. Only the site and `#`-normalisation dimensions moved.
+`dashboard/diagrams.ts` gives up its local alias resolution as a consequence,
+which is the safe direction and turns D47 into one known limit in one predicate
+instead of that diagram silently disagreeing with every other surface. A private
+`normalizeRef` in `dashboard/data.ts` died with the pair set — it stripped `#`
+but did not case-fold, so even the normaliser had been reimplemented, weaker.
+
+**The guard: `tests/coverage-single-implementation.test.ts`.** A test, not a lint
+rule, for three reasons: the justification for each legitimate survivor lives in
+one reviewable allowlist rather than scattered across `eslint-disable` comments;
+the failure message can name the function to call instead; and it runs wherever
+the suite runs, which is more places and more often than `npm run lint`.
+
+**Would it have caught D57?** Yes — verified by reintroducing the original code,
+which fails the guard naming all three lines. But the honest answer is narrower
+than it looks: the guard as first written would have caught only the two reported
+sites and sweep 1's six. It needed a second rule to see the five that mattered
+most, and its own dead-entry check caught a blind spot in the first draft of its
+regex. **The rule list is empirical, not exhaustive.** A twenty-second copy in a
+third syntax needs a third rule, and that is stated in the test rather than
+implied away.
+
+#### D36: closed now, and only now
+
+D36 should not have been considered closed before this. The predicate was
+correct; the claim that every surface used it was false, by eleven. It is closed
+now on this evidence: thirteen surfaces measured against `findUnmitigatedExposures`
+on expense-api, all returning 11 and all carrying the critical; this repo's own
+model unchanged at 16 across every surface; and a guard that fails on a
+fourteenth implementation in either known syntax.
+
+What "closed" still does not mean is unchanged from `parser/coverage.ts`'s own
+doc-block: a cross-file mitigation still blanket-covers every site on its asset
+and threat. Closing that needs a call graph. D36 fixed the class where the model
+already holds the evidence, and no more.
+
+#### D48: the recommendation, and the two options rejected
+
+**Chosen: hash the anchoring separately, and refuse the lossy direction before
+writing.** The two are one change — the refusal is driven by the hash rather than
+by a hardcoded check for `symbol`, so a future field that migration can drop is
+covered by the same mechanism instead of needing its own special case. Writing
+`if (to === 'inline' && hasSymbols)` would have been the same mistake as thirteen
+copies of a predicate: a special case the next field is not covered by.
+
+*Rejected — preserve anchors across the round trip.* This needs the symbol to
+survive a representation that has nowhere to put it. The only ways are a new
+inline marker, which is **an annotation-syntax change and therefore not mine to
+make**, or deriving the symbol from the enclosing declaration on the way back.
+Derivation is worse than it looks, and `migrate-mode.ts:146` is right to refuse
+it: `coverage.ts` documents that **omitting `symbol:` is how an author says "this
+covers the whole asset"**, so deriving one would silently convert asset-level
+mitigations into site-scoped ones and *change coverage* — the same
+silently-moves-the-answer hazard as D36, in the opposite direction. It also adds
+a permanent staleness vector to inline mode (a renamed function leaves the
+comment behind) to fix a round-trip that few repos perform.
+
+*Rejected as insufficient alone — refuse and nothing else.* Refusal is half the
+answer and it is in the fix, but on its own it hardcodes one field and fixes the
+instance rather than the class. It also leaves anyone who already round-tripped
+with no way to see what they lost.
+
+**Both hashes stay honest because they answer different questions.**
+
+| | question | across modes |
+|---|---|---|
+| `annotation_hash` | what do the annotations SAY? | invariant, by design (GL-101) |
+| `anchor_hash` | where are they ANCHORED? | mode-dependent, by nature |
+
+Folding anchors into `annotation_hash` would make every mode migration look like
+a model change and break GL-507's gate. Leaving them unhashed makes their
+destruction invisible. Neither is necessary: they are separate hashes.
+
+**Verified.** `migrate --to inline` on the corpus refuses with exit 1, names all
+21 anchors, and writes nothing — 21 still on disk afterwards. With
+`--allow-anchor-loss` it proceeds, and `reanchor` on the result now says "No
+anchored @source blocks to check" instead of "✓ Every anchored @source block
+still points at its symbol", which was a green light produced by the absence of
+the thing being checked. GL-507's inline→external→inline round trip is still
+byte-identical, and `annotation_hash` is still identical across inline and
+external authoring of the same model (`sha256-v1:75db3c7f…` both ways).
+
+**A caught mistake, recorded because the first version shipped the wrong shape.**
+The check was initially placed *after* `migrateAnnotationMode` wrote to disk. It
+reported the loss accurately and then advised re-running with a flag, which
+could not undo it — a correct diagnosis attached to useless advice. The loss is
+knowable before any write, so the refusal moved ahead of it. The post-migration
+comparison stays as a second, cheaper check for a loss nobody predicted.
 
 ---
 
@@ -450,6 +779,28 @@ Implementation is a grouping over `location.file`. Works unchanged in both modes
       specified value of the feature, not overhead. The figure that matters is the
       practical one: 4.6 KB instead of 68 KB, a 14× saving on the question the tool
       exists to answer.*
+- [ ] **`neighbour_detail` — NOT IMPLEMENTED. Measured saving 0.0%; recommended against.**
+      The ruling was to mirror GL-202's `detail` on the neighbourhood: drop `description`,
+      compact `location` to `file:line`, reusing `summariseGraphPayload`'s transform.
+      *The premise about where the bytes are is correct* — measured across the same five
+      files (`.guardlink/definitions.ts`, `agents/prompts.ts`, `mcp/server.ts`,
+      `parser/parse-line.ts`, `cli/index.ts`), the neighbourhood is **52.2%** of the
+      response and skews to **67.0%** on lightly-annotated `parse-line.ts`, confirming the
+      shape of the ruling's 58.1% / 76%.
+      *The mechanism cannot act on them.* `lookup`'s asset projection already strips both
+      fields before they reach `relationships`: of **408 neighbourhood rows across the five
+      files, 0 carry `description` and 0 carry `location`**. Rows are already
+      `{"threat":"#path-traversal","severity":"high"}`. Applying the transform is byte-for-
+      byte identical output on every one of the five files — 71,746 B before and after.
+      The neighbourhood is expensive because of row *count* (408 rows), not row *content*.
+      *What would work, measured on the same five files:* collapsing each already-compact
+      row to its string form (`"#path-traversal [high]"`, `"#sqli via #prepared-stmts"`)
+      saves **33.3%** overall and **45.1%** on `parse-line.ts` — the file that skews
+      hardest — and is lossless. Serialising just the neighbourhood unindented saves 15.9%.
+      Neither is the ruling's transform, so neither was implemented; both are available
+      to rule on. A row *cap* would also work and is **not** recommended: it reintroduces
+      the silent-partial-answer path that the GL-202 completeness work removed, and would
+      need the same "what was omitted" reporting to be safe.
 
 ### GL-202 — `guardlink_graph(...)` — subgraph selector *(closes G2, G3)*
 **As** P4 about to change an asset, **I want** the transitive neighbourhood and paths
@@ -467,7 +818,15 @@ the filtered model — no second renderer.
 - [ ] `path from X to Y` returns ordered hops, or an explicit no-path result.
 - [ ] `format: 'mermaid'` output renders in a standard Mermaid viewer.
 - [ ] `kinds[]` filters which relation types are included.
-- [ ] **Defaults must sit in the affordable regime.** Measured on the Phase 2b
+- [ ] **RESOLVED (720a510, 39371bc).** The cost is per-node payload, not depth:
+      `description` + `location` are 48.7% of a depth-2 response. Ruling: keep
+      `depth=2, direction='both'`; add `detail: 'summary' | 'full'`, default summary
+      (ids, kinds, edges, severity, compact `file:line`). Measured saving 36–40% —
+      short of the 48.7% my ruling implied, because the ruling itself chose to keep
+      `file:line`, which costs back ~12pp. That was the right trade: an agent that knows
+      an exposure exists but not where it was declared cannot go read it. Topology is
+      identical between modes, pinned by 26 tests.
+- [ ] ~~Defaults must sit in the affordable regime.~~ Measured on the Phase 2b
       implementation (model content 61,914 B on this repo): `depth=1/both` 6.6 KB (11%),
       `depth=2/out` 20.6 KB (34%), **`depth=2/both` 46.4 KB (77%)**, `depth=3/both`
       exceeds a full dump. The shipped defaults are `depth=2, direction='both'`
@@ -477,7 +836,17 @@ the filtered model — no second renderer.
       and enforce a byte budget using the existing `truncated` flag. Recommended: the
       third — depth ≥ 2 is the tool's whole value, so cap output rather than cripple the
       default.
-- [ ] The `truncated` flag must mean one thing. Observed: `#llm-client d1 out` reports
+- [ ] **RESOLVED (39371bc).** Replaced the boolean with three states: `complete`
+      (frontier exhausted, nothing more to find), `depth_limited` (complete for the
+      requested depth, but unexplored nodes remain — with a count), `truncated` (nodes
+      dropped to fit a limit; result INCOMPLETE). Root cause: the old flag tested
+      `frontier.length > 0` — a question about what the result already *contains*, not
+      what is *missing* from it. The boolean was removed rather than aliased, because a
+      faithful alias would have to reproduce the wrong answer on the very case that
+      motivated the change. Verified: `#llm-client` d1-out and d2-out both now report
+      `complete` (were `true`/`false` for identical results); `#cli` d20 reports
+      `complete`, not `truncated`, because the clamp cost nothing.
+- [ ] ~~The `truncated` flag must mean one thing.~~ Observed: `#llm-client d1 out` reports
       `trunc=true` while `d2 out` reports `trunc=false` with an identical 4 nodes /
       6 edges. If depth 1 truncated, its result was incomplete; the flag currently
       conflates "budget hit" with "frontier saturated."

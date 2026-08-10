@@ -8,7 +8,10 @@ export type { ParseProjectOptions } from './parse-project.js';
 // §9.7 — the cited-and-precise test lives in one place so a consumer cannot read
 // an imprecise entitlement as an effective one by omission.
 export { canEntitlementDemote, entitlementDemotionBlockers } from './parse-project.js';
-export { parseLine } from './parse-line.js';
+// MERGE: main's line dropped D19's cross-repo tag exports. Both kept — they are
+// additive and `crossRepoTag` is what stops generated docs hand-writing the
+// grammar (D19).
+export { parseLine, crossRepoTag, CROSS_REPO_TAG_PATTERN } from './parse-line.js';
 export { normalizeName, resolveSeverity, unescapeDescription } from './normalize.js';
 export { stripCommentPrefix, commentStyleForExt } from './comment-strip.js';
 export { findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles } from './validate.js';
@@ -19,6 +22,7 @@ export type { ClearAnnotationsOptions, ClearAnnotationsResult } from './clear.js
 export { listFeatures, filterByFeature, getFeatureSummaries } from './feature-filter.js';
 export type { FeatureSummary } from './feature-filter.js';
 export { computeAnnotationHash, canonicalAnnotationRecords, ANNOTATION_HASH_VERSION } from './annotation-hash.js';
+export { computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, ANCHOR_HASH_VERSION } from './annotation-hash.js';
 export { applyAnnotations } from './apply-annotations.js';
 export type { ApplyAnnotationsOptions, ApplyAnnotationsResult } from './apply-annotations.js';
 export { findAnchorDrift, applyReanchor } from './reanchor.js';

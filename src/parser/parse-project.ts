@@ -17,7 +17,7 @@
 import fg from 'fast-glob';
 import { isAbsolute, relative } from 'node:path';
 import type {
-  Annotation, ThreatModel, ParseResult, ParseDiagnostic,
+  Annotation, ThreatModel, ParseDiagnostic,
   AssetAnnotation, ThreatAnnotation, ControlAnnotation, ActorAnnotation,
   MitigatesAnnotation, ExposesAnnotation, ConfirmedAnnotation, AcceptsAnnotation,
   EntitlesAnnotation, TransfersAnnotation, FlowsAnnotation, BoundaryAnnotation,
@@ -32,6 +32,7 @@ import { parseFile } from './parse-file.js';
 import { extractCitation } from './citation.js';
 import { loadWorkspaceConfig } from '../workspace/index.js';
 import { ANNOTATIONS_DIR } from './gal-path.js';
+import { fileCoveragePercent } from './coverage.js';
 
 /** A standalone annotation sidecar, not a source file. */
 const isGalPath = (p: string): boolean => /\.gal$/i.test(p);
@@ -63,6 +64,36 @@ export const DEFAULT_INCLUDE = [
   '**/*.[gG][aA][lL]',
 ];
 
+/**
+ * Files GuardLink itself writes. Never scan input.
+ *
+ * D17: the `.html` glob is in DEFAULT_INCLUDE, so `guardlink dashboard` wrote
+ * `threat-dashboard.html` straight into its own scan set. It yields zero
+ * annotations, but it does move `source_files` and `unannotated_files` — the
+ * tool measuring the repo was measuring its own output. Measured here:
+ * `docs/examples/threat-dashboard.html` was one of 23 `unannotated_files`.
+ *
+ * Excluded by name rather than by dropping `.html` from DEFAULT_INCLUDE.
+ * Dropping the extension would silently stop parsing annotations in
+ * server-rendered templates (Django, Jinja, ERB, Handlebars), which carry them
+ * in `<!-- -->` comments perfectly well — a silent-loss-by-convention fix in the
+ * same family as D4, traded for a narrower problem. The generated names are
+ * fixed and few, so naming them costs nothing and loses nothing.
+ *
+ * Matched by basename anywhere in the tree, because these are written wherever
+ * `-o` points, not only at the root.
+ *
+ * This is the same list `.gitignore` gets on init — see GITIGNORE_ENTRY in
+ * init/templates.ts, which is built from it. One list, so a new output format
+ * cannot be added to one and forgotten in the other.
+ */
+export const GENERATED_OUTPUT_FILES = [
+  'threat-dashboard.html',
+  'threat-model.md',
+  'threat-model.json',
+  'guardlink.sarif.json',
+];
+
 export const DEFAULT_EXCLUDE = [
   '**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**',
   '**/__pycache__/**', '**/target/**', '**/vendor/**', '**/.next/**',
@@ -71,6 +102,8 @@ export const DEFAULT_EXCLUDE = [
   // otherwise walk these: .bravos holds agent rollback backups of annotated source, so
   // re-parsing them double-counts every exposure in the original; .bugb is siete's session store.
   '**/.bravos/**', '**/.bugb/**',
+  // D17 — our own generated outputs.
+  ...GENERATED_OUTPUT_FILES.map(f => `**/${f}`),
 ];
 
 /**
@@ -252,9 +285,7 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
       // consumers rendered as "0%" on fully annotated projects. Meaningful only
       // because GL-502 made both sides of the ratio exclude sidecars, so the
       // number no longer moves when a repo changes annotation mode.
-      coverage_percent: fileCount > 0
-        ? Math.round((annotatedFiles.length / fileCount) * 100)
-        : 0,
+      coverage_percent: fileCoveragePercent(annotatedFiles.length, fileCount),
       unannotated_critical: [],
     },
   };
@@ -530,6 +561,14 @@ export function entitlementDemotionBlockers(
  *   - The tag is not defined locally (not in this repo's assets/threats/controls)
  *
  * Requires workspace.yaml to be present — returns [] if not in a workspace.
+ *
+ * D19: that example is now writable. Until the tag grammar was fixed,
+ * `#auth-lib.token-verify` did not parse unquoted anywhere, and never parsed at
+ * all in threat or control position — while this function has always scanned
+ * threat and control positions for exactly these tags. The grammar was the only
+ * layer that disagreed. `tests/cross-repo-tags.test.ts` pins the six cases and
+ * runs every example this codebase emits through the parser, so an example can
+ * no longer describe syntax that does not exist.
  */
 function detectExternalRefs(model: ThreatModel, root: string): ExternalRef[] {
   const config = loadWorkspaceConfig(root);

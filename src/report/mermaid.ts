@@ -39,6 +39,8 @@
  */
 
 import type { ThreatModel } from '../types/index.js';
+import { canonicalizeModelOrder } from '../parser/canonical-order.js';
+import { buildCoverageIndex } from '../parser/coverage.js';
 
 /** Sanitize for Mermaid node IDs */
 function nid(name: string): string {
@@ -61,20 +63,34 @@ function trunc(s: string, max = 30): string {
   return s.length <= max ? s : s.slice(0, max - 1) + '…';
 }
 
-export function generateMermaid(model: ThreatModel): string {
+/**
+ * D23 — canonicalise at the emission boundary, not in the parser.
+ *
+ * `parseProject` walks with fast-glob, which returns files in completion order
+ * under concurrency: stable within a process, not between two. Anything durable
+ * that inherits that order churns. a921afa fixed it for artifacts and 096c291
+ * for the dashboard; `report --diagram-only` was the last output that did not.
+ * Measured before this: three runs in three processes produced two distinct
+ * sha256 hashes, differing by whole node blocks.
+ *
+ * Applied here rather than at the call site so every caller — CLI, TUI, MCP —
+ * gets it without having to remember. Sorting a sorted model is a no-op, so
+ * `generateReport` canonicalising before it calls this costs nothing.
+ */
+export function generateMermaid(rawModel: ThreatModel): string {
+  const model = canonicalizeModelOrder(rawModel);
   const lines: string[] = [];
 
   // ── Build mitigation coverage map ──
-  const mitigatedPairs = new Set<string>();
-  const acceptedPairs = new Set<string>();
-  for (const m of model.mitigations) mitigatedPairs.add(`${m.asset}::${m.threat}`);
-  for (const a of model.acceptances) acceptedPairs.add(`${a.asset}::${a.threat}`);
+  // D57: raw pair set. The diagram simply omitted #db → #sqli on expense-api —
+  // the threat did not appear at all, so the picture of the system was missing
+  // its only critical.
+  const coverage = buildCoverageIndex(model);
 
   const unmitigatedAssets = new Set<string>();
   const unmitigatedExposures: { asset: string; threat: string; severity?: string }[] = [];
   for (const e of model.exposures) {
-    const key = `${e.asset}::${e.threat}`;
-    if (!mitigatedPairs.has(key) && !acceptedPairs.has(key)) {
+    if (!coverage.isCovered(e)) {
       unmitigatedAssets.add(e.asset);
       unmitigatedExposures.push({ asset: e.asset, threat: e.threat, severity: e.severity });
     }

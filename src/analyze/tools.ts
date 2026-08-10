@@ -22,6 +22,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { ToolDefinition, ToolExecutor } from './llm.js';
 import type { ThreatModel } from '../types/index.js';
+import { buildCoverageIndex } from '../parser/coverage.js';
 
 // ─── Tool definitions ────────────────────────────────────────────────
 
@@ -183,14 +184,26 @@ function validateFinding(
       return JSON.stringify({ exists: false });
     }
     case 'is_unmitigated': {
+      // D57: this is the "is it already handled?" question the LLM tool loop
+      // asks, and it answered by matching mitigations against the QUERY rather
+      // than against the matched exposures — so a mitigation anywhere on the
+      // asset/threat pair answered for every site of it. Now the coverage
+      // question is asked per matched exposure, which is what makes the answer
+      // site-aware and `#`-normalised like every other surface.
+      //
       // Entitlements are deliberately NOT consulted here. @entitles carries no
       // export or suppression semantics (design §3.2): an entitled exposure is
       // still unmitigated, still probed, still reported. Only downstream triage
       // may soften the recommendation. Do not add it to this check.
-      const exposed = model.exposures.some(e => matchAsset(e.asset) && matchThreat(e.threat));
-      const mitigated = model.mitigations.some(m => matchAsset(m.asset) && matchThreat(m.threat));
-      const accepted = model.acceptances.some(a => matchAsset(a.asset) && matchThreat(a.threat));
-      return JSON.stringify({ exposed, mitigated, accepted, unmitigated: exposed && !mitigated && !accepted });
+      const matching = model.exposures.filter(e => matchAsset(e.asset) && matchThreat(e.threat));
+      const coverage = buildCoverageIndex(model);
+      const exposed = matching.length > 0;
+      return JSON.stringify({
+        exposed,
+        mitigated: matching.some(e => coverage.isMitigated(e)),
+        accepted: matching.some(e => coverage.isAccepted(e)),
+        unmitigated: matching.some(e => !coverage.isCovered(e)),
+      });
     }
     default:
       return `Unknown check type: ${check}. Use: exposure_exists, mitigation_exists, is_unmitigated`;

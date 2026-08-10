@@ -23,8 +23,9 @@
 
 import { isAbsolute, relative, resolve as resolvePath } from 'node:path';
 import { lookup, type LookupResult } from './lookup.js';
+import { buildCoverageIndex } from '../parser/coverage.js';
 import type {
-  ThreatModel, SourceLocation, DataClassification,
+  ThreatModel, SourceLocation,
 } from '../types/index.js';
 
 /**
@@ -295,11 +296,15 @@ export function fileContext(model: ThreatModel, input: FileContextInput): FileCo
   });
 
   // ── Open exposures declared here ──────────────────────────────────
-  const covered = new Set<string>();
-  for (const m of model.mitigations) covered.add(`${m.asset}::${m.threat}`);
-  for (const a of model.acceptances) covered.add(`${a.asset}::${a.threat}`);
+  // D36. The exposure rows here carry their own location, so an exposure on one
+  // symbol is no longer answered for by a mitigation on another in the same file.
+  // This is the tool CLAUDE.md tells an agent to call before editing a file, so
+  // an open_exposures of [] on a file with a live injection was the worst
+  // instance of the defect.
+  const coverage = buildCoverageIndex(model);
   const open_exposures = scoped
-    .filter(r => r.verb === 'exposes' && !covered.has(`${r.row.asset}::${r.row.threat}`))
+    .filter(r => r.verb === 'exposes'
+      && !coverage.isCovered(r.row as unknown as { asset: string; threat: string; location: SourceLocation }))
     .map(r => projectRow(r.verb, r.row));
 
   const counts: Record<string, number> = {};

@@ -22,8 +22,8 @@ import type {
   ThreatModelMitigation, ThreatModelExposure, ThreatModelConfirmed, ThreatModelAcceptance,
   ThreatModelEntitlement,
   ThreatModelFlow, ThreatModelBoundary, ThreatModelTransfer,
-  Severity, SourceLocation,
 } from '../types/index.js';
+import { findUnmitigatedExposures, normalizeRef } from '../parser/coverage.js';
 import { citationMatchesFile } from '../parser/citation.js';
 
 // ─── Delta types ─────────────────────────────────────────────────────
@@ -116,11 +116,17 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
   const beforeUnmitigated = computeUnmitigated(before);
   const afterUnmitigated = computeUnmitigated(after);
 
-  const beforeKeys = new Set(beforeUnmitigated.map(e => exposureKey(e)));
-  const afterKeys = new Set(afterUnmitigated.map(e => exposureKey(e)));
+  // D36. The risk delta is keyed BY SITE, not by (asset, threat). Once coverage
+  // can differ between two exposures on the same pair — one function fixed, its
+  // neighbour not — a pair-keyed comparison collapses them and reports "no
+  // change" for a state change it cannot see. `exposureKey` keeps its pair
+  // identity for the exposures diff itself, where re-anchoring an annotation
+  // should not read as a remove plus an add.
+  const beforeKeys = new Set(beforeUnmitigated.map(e => unmitigatedKey(e)));
+  const afterKeys = new Set(afterUnmitigated.map(e => unmitigatedKey(e)));
 
-  const newUnmitigatedExposures = afterUnmitigated.filter(e => !beforeKeys.has(exposureKey(e)));
-  const resolvedExposures = beforeUnmitigated.filter(e => !afterKeys.has(exposureKey(e)));
+  const newUnmitigatedExposures = afterUnmitigated.filter(e => !beforeKeys.has(unmitigatedKey(e)));
+  const resolvedExposures = beforeUnmitigated.filter(e => !afterKeys.has(unmitigatedKey(e)));
 
   const staleEntitlements = findStaleEntitlements(after, options.changedFiles);
 
@@ -264,6 +270,17 @@ function exposureKey(e: ThreatModelExposure): string {
   return `${e.asset}::${e.threat}`;
 }
 
+/**
+ * Site identity for the unmitigated delta (D36). Uses the symbol anchor when
+ * there is one and the file:line when there is not, so the key is stable under
+ * inline authoring — where no symbol exists — and under external authoring
+ * alike.
+ */
+function unmitigatedKey(e: ThreatModelExposure): string {
+  const site = e.location.parent_symbol ?? `${e.location.file}:${e.location.line}`;
+  return `${normalizeRef(e.asset)}::${normalizeRef(e.threat)}::${e.location.file}::${site}`;
+}
+
 function acceptanceKey(a: ThreatModelAcceptance): string {
   return `${a.asset}::${a.threat}`;
 }
@@ -337,9 +354,11 @@ function flowChanged(a: ThreatModelFlow, b: ThreatModelFlow): string | null {
 
 // ─── Unmitigated exposure computation ────────────────────────────────
 
+/**
+ * D36. Was a local `${asset}::${threat}` set that also did not normalise the
+ * leading `#`, so `diff` and `validate` could disagree about what was covered on
+ * the same model. Both now answer from one predicate.
+ */
 function computeUnmitigated(model: ThreatModel): ThreatModelExposure[] {
-  const covered = new Set<string>();
-  for (const m of model.mitigations) covered.add(`${m.asset}::${m.threat}`);
-  for (const a of model.acceptances) covered.add(`${a.asset}::${a.threat}`);
-  return model.exposures.filter(e => !covered.has(`${e.asset}::${e.threat}`));
+  return findUnmitigatedExposures(model);
 }

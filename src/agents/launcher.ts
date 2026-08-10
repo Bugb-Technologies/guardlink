@@ -200,13 +200,12 @@ export async function launchAgentInline(
   prompt: string,
   cwd: string,
   onChunk?: (text: string) => void,
-  opts?: { autoYes?: boolean }
 ): Promise<InlineResult> {
   if (!agent.cmd) {
     return { content: '', error: `${agent.name} is not a terminal agent — cannot run inline` };
   }
 
-  let cmd = agent.cmd;
+  const cmd = agent.cmd;
   let args = buildInlineArgs(agent.id, prompt);
   if (!args) {
     return { content: '', error: `Inline mode not supported for ${agent.name}` };
@@ -289,9 +288,27 @@ export async function launchAgentInline(
 // ─── Unified agent launch ────────────────────────────────────────────
 
 export interface LaunchResult {
+  /**
+   * We successfully STARTED the agent — not that it succeeded.
+   *
+   * D31: the distinction matters because IDE agents have no exit status at all
+   * (`launched with project` is the only claim that can be made about opening an
+   * app), so this field cannot be redefined to mean "it worked" without making
+   * those call sites wrong. Terminal agents get `exitCode` for that.
+   */
   launched: boolean;
   clipboardCopied: boolean;
   error?: string;
+  /**
+   * The terminal agent's process exit status; null for IDE and clipboard agents,
+   * and for a spawn that failed before the process ran (`error` carries that).
+   *
+   * D31: this used to be discarded. `launchAgentForeground` has always returned
+   * it, and the caller checked only `error`, so an agent that exited NON-ZERO
+   * without a spawn error was rendered as "✓ session ended". A failed run looked
+   * like a successful one.
+   */
+  exitCode?: number | null;
 }
 
 /**
@@ -320,9 +337,9 @@ export function launchAgent(agent: AgentEntry, prompt: string, cwd: string): Lau
   if (agent.cmd) {
     const { exitCode, error } = launchAgentForeground(agent, cwd);
     if (error) {
-      return { launched: false, clipboardCopied, error };
+      return { launched: false, clipboardCopied, error, exitCode };
     }
-    return { launched: true, clipboardCopied };
+    return { launched: true, clipboardCopied, exitCode };
   }
 
   // Step 4: IDE agent — open app

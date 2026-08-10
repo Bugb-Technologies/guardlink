@@ -1,0 +1,22 @@
+{
+  "version": "1.1.0",
+  "project": "expense-api",
+  "language": "python",
+  "annotation_mode": "external",
+  "definitions": "definitions.py",
+  "include": [
+    "**/*.py"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    ".git",
+    "__pycache__",
+    "target",
+    "vendor",
+    ".next",
+    ".bravos",
+    ".bugb"
+  ]
+}

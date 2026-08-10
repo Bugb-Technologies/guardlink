@@ -14,6 +14,9 @@ import { writeFileSync } from 'node:fs';
 import { resolve, basename, dirname, join } from 'node:path';
 import type { WorkspaceConfig, WorkspaceRepo } from './types.js';
 import { serializeWorkspaceYaml, loadWorkspaceConfig } from './metadata.js';
+// D19/D33: cross-repo tags in emitted guidance are BUILT from the parser's tag
+// grammar, never typed as strings.
+import { crossRepoTag } from '../parser/index.js';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -294,14 +297,34 @@ function cleanupRemovedRepo(repoPath: string, repoName: string, result: LinkResu
     const markerIdx = content.indexOf(agent.marker);
     if (markerIdx === -1) continue;
 
-    // Remove from marker to next ## or end of file
+    // Remove from marker to next ## or end of file.
+    //
+    // `endIdx` lands ON the newline preceding the next heading, because the
+    // pattern begins with `\n`. So `tail` either starts with that newline or is
+    // empty, and the head supplies its own — which is why the head is trimmed
+    // and given exactly one.
     const afterMarker = content.slice(markerIdx);
     const nextSectionMatch = afterMarker.match(/\n## (?!Workspace Context)/);
     const endIdx = nextSectionMatch
       ? markerIdx + (nextSectionMatch.index ?? afterMarker.length)
       : content.length;
 
-    content = content.slice(0, markerIdx).trimEnd() + '\n';
+    const head = content.slice(0, markerIdx).trimEnd();
+    const tail = content.slice(endIdx);
+
+    // D32 — this used to be `head + '\n'`, dropping `tail` entirely, so every
+    // section a user wrote after the workspace block was destroyed by
+    // `link --remove`. The insert path two functions down has always spliced
+    // correctly (`slice(0, markerIdx) + block + slice(endIdx)`); only the remove
+    // path was left unfinished.
+    //
+    // The empty-head case is why this is not a one-line splice: when the
+    // workspace block is the first thing in the file, `head + '\n' + tail` would
+    // emit a leading blank line, so the tail's own separator is dropped instead.
+    content = head === ''
+      ? tail.replace(/^\n+/, '')
+      : head + '\n' + tail;
+
     writeFileSync(filePath, content);
     result.agentFilesUpdated.push(`${repoName}/${agent.path} (cleaned)`);
   }
@@ -314,7 +337,7 @@ function cleanupRemovedRepo(repoPath: string, repoName: string, result: LinkResu
 function discoverWorkspaceReposForRemoval(
   existingRepoPath: string,
   config: WorkspaceConfig,
-  removingRepoName: string,
+  _removingRepoName: string,
 ): DiscoveredRepo[] {
   const discovered: DiscoveredRepo[] = [];
   const found = new Set<string>();
@@ -660,7 +683,11 @@ export function buildWorkspaceContextBlock(
   lines.push(`- **Reference sibling repos:** You may reference assets/threats/controls from: ${siblingNames}.`);
   lines.push(`  Use their tag prefix, e.g. \`#${siblings[0]?.name || 'other-service'}.<component>\`.`);
   lines.push('- **Cross-service data flows:** If this code calls or is called by another service, document it:');
-  lines.push(`  \`@flows #request from #${config.this_repo}.handler to #${siblings[0]?.name || 'other-service'}.endpoint\``);
+  // D19/D33: built from the parser's own tag grammar, and the verb form is the
+  // one that exists. This emitted `@flows X from A to B` — the same invented
+  // form D19 corrected in guardlink_workspace_info — from a second emitter that
+  // writes into every linked repo's agent files. `@flows A -> B` is the grammar.
+  lines.push(`  \`@flows ${crossRepoTag(config.this_repo, 'handler')} -> ${crossRepoTag(siblings[0]?.name || 'other-service', 'endpoint')} -- "what crosses"\``);
   lines.push('- **Do not redefine** assets that belong to another repo. Reference them by tag.');
   lines.push('- **External refs are OK:** Tags referencing sibling repos will show as "external refs"');
   lines.push('  during local validation but resolve during workspace merge.');

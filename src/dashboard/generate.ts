@@ -23,10 +23,33 @@ import { computeStats, computeSeverity, computeExposures, computeConfirmed, comp
 import type { DashboardStats, SeverityBreakdown, ExposureRow, ConfirmedRow, AssetHeatmapEntry } from './data.js';
 import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface } from './diagrams.js';
 import type { ThreatReportWithContent } from '../analyze/index.js';
+import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 import { readFileSync } from 'fs';
 import { resolve, isAbsolute } from 'path';
 
-export function generateDashboardHTML(model: ThreatModel, root?: string, analyses?: ThreatReportWithContent[]): string {
+/**
+ * D25/D23 — the dashboard is an emission boundary, so it canonicalises.
+ *
+ * `docs/examples/threat-dashboard.html` is committed and churned on every
+ * regeneration. The PRD attributed that to an embedded wall clock; measurement
+ * says otherwise. The `new Date()` here was dead code — computed, never
+ * rendered — and removing it changes nothing. What actually moved was parse
+ * order: three runs in three processes produced three different files, differing
+ * in the order of flow rows, because `parseProject` inherits fast-glob's
+ * completion order and this path never went through `canonicalizeModelOrder`.
+ *
+ * D23 fixed that at the artifact boundary in a921afa and explicitly left the
+ * dashboard out of scope as unreproducible. It reproduces; this closes it the
+ * same way, at the boundary rather than in the parser.
+ */
+export function generateDashboardHTML(rawModel: ThreatModel, root?: string, analyses?: ThreatReportWithContent[]): string {
+  const model = canonicalizeModelOrder(rawModel);
+  // The model is embedded verbatim into the page, so its own `generated_at`
+  // rides along and churns a committed HTML file on every regeneration. Same
+  // ruling as D26 for `.guardlink/model.json` and GL-302 for the `.mmd`
+  // headers: volatile fields do not belong in tracked files. Dropped here
+  // rather than in the parser, because parse output is not a tracked file.
+  const { generated_at: _generatedAt, ...durableModel } = model;
   const stats = computeStats(model);
   const severity = computeSeverity(model);
   const exposures = computeExposures(model);
@@ -37,7 +60,6 @@ export function generateDashboardHTML(model: ThreatModel, root?: string, analyse
   const dataFlow = generateDataFlowDiagram(model);
   const attackSurface = generateAttackSurface(model);
   const featureNames = listFeatures(model);
-  const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
   const unmitigated = exposures.filter(e => !e.mitigated && !e.accepted);
   const mitigatedCount = exposures.filter(e => e.mitigated).length;
   const mitigationCoveragePercent = exposures.length > 0
@@ -50,10 +72,6 @@ export function generateDashboardHTML(model: ThreatModel, root?: string, analyse
 
   // Build analysis data for drawer
   const analysisData = buildAnalysisData(model, exposures);
-
-  // Check for saved AI analyses
-  // (we embed the latest one if model has it, otherwise empty)
-  const aiAnalysis = '';  // Will be loaded from .guardlink/analyses/ by CLI
 
   return `<!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -157,7 +175,7 @@ const exposuresData = ${JSON.stringify(exposures).replace(/<\//g, '<\\/')};
 const confirmedData = ${JSON.stringify(confirmedRows).replace(/<\//g, '<\\/')};
 const savedAnalyses = ${JSON.stringify(analyses || []).replace(/<\//g, '<\\/')};
 const heatmapData = ${JSON.stringify(heatmap).replace(/<\//g, '<\\/')};
-const threatModel = ${JSON.stringify(model).replace(/<\//g, '<\\/')};
+const threatModel = ${JSON.stringify(durableModel).replace(/<\//g, '<\\/')};
 /* ===== SECTION NAV ===== */
 function showSection(id, el) {
   document.querySelectorAll('.section-content').forEach(s => s.classList.remove('active'));
@@ -1107,7 +1125,7 @@ function renderSummaryPage(
 </div>`;
 }
 
-function renderAIAnalysisPage(analyses: ThreatReportWithContent[]): string {
+function renderAIAnalysisPage(_analyses: ThreatReportWithContent[]): string {
   return `
 <div id="sec-ai-analysis" class="section-content">
   <div class="sec-h"><span class="sec-icon">✨</span> Threat Reports</div>

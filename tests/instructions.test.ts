@@ -43,11 +43,49 @@ describe('GL-401 — instructions arrive at initialize', () => {
     expect(instructions.length).toBeGreaterThan(500);
   });
 
-  it('stays under 400 words', () => {
+  it('stays under 460 words — in EVERY mode', () => {
     // Orientation delivered before the agent has context to rank detail against.
     // Length costs attention exactly when it is scarcest.
+    //
+    // D33: this used to measure only the mode this repo happens to be in.
+    // External mode was 426 words and null 403, both over budget, unmeasured
+    // because the assertion ran on one variant of a text that has three.
+    //
+    // Raised from 400 to 460 deliberately, and recorded rather than quietly
+    // adjusted. The write path — guardlink_annotate_apply — was absent from
+    // both this text and the generated README, so a cold agent on a foreign
+    // repo concluded it should hand-write .gal files and did. That is
+    // first-order orientation. External mode had one word of headroom at 400,
+    // and by then every substantive claim in the text was pinned by a probe in
+    // instructions-claims.test.ts, so the only way to fit under the old number
+    // was to delete a verified claim. Paying for new guidance by removing
+    // checked guidance is the wrong trade. 460 leaves external at 441 and the
+    // constraint genuinely binding.
+    //
+    // Raised again 460 -> 500 on the PR #16 merge, for the same reason and
+    // recorded the same way. @actor and @entitles arrived with a propose/accept
+    // workflow a cold agent cannot infer: that an entitlement is a human
+    // governance decision like @accepts, that it is proposed with a citation
+    // rather than written, and that it is the wrong tool for ownership questions
+    // (IDOR, tenant isolation). That is ~43 words of first-order orientation for
+    // a subsystem that did not exist at the last raise, and it put external at
+    // 484, with mixed and null at 471.
+    //
+    // The alternative was deleting text to fit, and every substantive claim here
+    // is pinned by a probe in instructions-claims.test.ts — so the only things
+    // that COULD be cut are the verified ones. Paying for new guidance by
+    // removing checked guidance was the wrong trade at 400 and is still the
+    // wrong trade at 460. 500 leaves external 16 words of headroom, about what
+    // 460 left it, so the constraint still binds.
+    const LIMIT = 500;
     const words = instructions.trim().split(/\s+/).length;
-    expect(words, `${words} words`).toBeLessThan(400);
+    expect(words, `${words} words`).toBeLessThan(LIMIT);
+
+    for (const mode of ['inline', 'external', 'mixed', null] as const) {
+      const n = buildServerInstructions({ mode, definitionsPath: '.guardlink/definitions.ts' })
+        .trim().split(/\s+/).length;
+      expect(n, `mode=${mode}: ${n} words`).toBeLessThan(LIMIT);
+    }
   });
 
   it('every tool it names actually exists', () => {
@@ -102,15 +140,18 @@ describe('GL-401 — annotation mode in the instructions', () => {
     expect(text).toContain('.guardlink/definitions.ts');
   });
 
-  it('names external mode, its path convention, and the gap that loses data', () => {
+  it('names external mode and its path convention', () => {
     const text = buildServerInstructions({ mode: 'external', definitionsPath: '.guardlink/definitions.ts' });
     expect(text).toMatch(/EXTERNALLY/);
     expect(text).toMatch(/\.guardlink\/annotations/);
     expect(text).toMatch(/@source file:/);
-    // D4: documenting a convention that silently drops data without saying so
-    // would be worse than not documenting it.
-    expect(text).toMatch(/silently dropped/);
-    expect(text).toMatch(/test\/|tests\//);
+    // D33: this used to assert `/silently dropped/`, pinning a D4 warning that
+    // GL-503 made false. The assertion was correct when written and became a
+    // stale-claim ENFORCER the moment the defect was fixed — the text could not
+    // be corrected without a test failing. Behavioural claims are now checked by
+    // executing them: see tests/instructions-claims.test.ts.
+    expect(text).not.toMatch(/silently dropped/);
+    expect(text).toMatch(/test\/, vendor\/ and dist\//);
   });
 
   it('an unrecorded mode is admitted, not guessed', () => {

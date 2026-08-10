@@ -16,18 +16,18 @@
  * @handles secrets on #tui -- "Displays LLM config including masked API keys"
  */
 
-import { createInterface, type Interface } from 'node:readline';
+import { createInterface } from 'node:readline';
 import { resolve, basename } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { parseProject } from '../parser/index.js';
-import { C, computeGrade, gradeColored, severityText } from './format.js';
+import { C, computeGrade, gradeColored } from './format.js';
 import { computeSeverity } from '../dashboard/data.js';
 import { resolveLLMConfig, loadTuiConfig } from './config.js';
 import { InputBox, type CommandEntry } from './input.js';
 import gradient from 'gradient-string';
 import {
   type TuiContext,
-  refreshModel,
+
   cmdHelp,
   cmdStatus,
   cmdExposures,
@@ -72,8 +72,6 @@ const COMMANDS = [
   '/workspace', '/link', '/merge',
   '/quit',
 ];
-
-const ANALYZE_FRAMEWORKS = ['stride', 'dread', 'pasta', 'attacker', 'rapid', 'general'];
 
 const ASCII_LOGO = `
  ██████  ██    ██  █████  ██████  ██████  ██      ██ ███    ██ ██   ██ 
@@ -133,7 +131,6 @@ function printBanner(ctx: TuiContext): void {
   const title = ` GuardLink v${version} `;
   const topDashes = W - 3 - title.length;  // 3 = ┌─ (2) + ┐ (1)
   const topBorder = C.teal('┌─') + C.bold(title) + C.teal('─'.repeat(Math.max(0, topDashes)) + '┐');
-  const midBorder = C.teal('├' + '─'.repeat(LW + 2) + '┼' + '─'.repeat(RW + 2) + '┤');
   const botBorder = C.teal('└' + '─'.repeat(W - 2) + '┘');
 
   // Row helper: │ left(LW) │ right(RW) │
@@ -391,7 +388,7 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
         case '/link':     await cmdLink(args, ctx); break;
         case '/merge':    await cmdMerge(args, ctx); break;
         case '/feature':  cmdFeature(args, ctx); break;
-        default:
+        default: {
           // Fuzzy match
           const matches = COMMANDS.filter(c => c.startsWith(cmd));
           if (matches.length === 1) {
@@ -402,6 +399,8 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
           } else {
             console.log(C.warn(`  Unknown command: ${cmd}. Type /help.`));
           }
+          break;
+        }
       }
     } catch (err: any) {
       console.log(C.error(`  Error: ${err.message}`));

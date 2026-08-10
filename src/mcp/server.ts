@@ -54,12 +54,14 @@
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor } from '../parser/index.js';
+// MERGE: main added the entitlement validators and the proposal module; ours
+// kept `crossRepoTag` (D19). Union — main's list had dropped crossRepoTag only
+// because it branched before D19 landed.
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
 import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
-import { getReviewableExposures, applyReviewAction, type ReviewableExposure } from '../review/index.js';
+import { getReviewableExposures, applyReviewAction } from '../review/index.js';
 import {
   proposeEntitlement, listProposals, checkEntitlementProvenance, PROPOSALS_FILE,
   type ProposalStatus,
@@ -67,13 +69,13 @@ import {
 import { generateSarif } from '../analyzer/index.js';
 import { generateReport } from '../report/index.js';
 import { generateDashboardHTML, generateThreatGraph } from '../dashboard/index.js';
-import { diffModels, parseAtRef, formatDiffMarkdown } from '../diff/index.js';
-import { lookup, type LookupQuery } from './lookup.js';
+import { diffModels, parseAtRef } from '../diff/index.js';
+import { lookup } from './lookup.js';
 import { fileContext, normalizeContextPath } from './context.js';
-import { selectSubgraph, traverseGraph, findPath } from './subgraph.js';
+import { selectSubgraph, traverseGraph, findPath, summariseGraphPayload, withoutFileInventory } from './subgraph.js';
 import { buildServerInstructions, readConfiguredMode } from './instructions.js';
 import { suggestAnnotations } from './suggest.js';
-import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModel, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
+import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
 import { loadWorkspaceConfig } from '../workspace/index.js';
@@ -435,19 +437,20 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_graph',
-    'Blast radius: the neighbourhood around an asset, or the path between two. Traversal walks the ASSET plane only — @flows (directed), @boundary (undirected, crossable either way) and @transfers (directed). It does NOT hop through shared threats: #path-traversal alone is declared on 10 assets here, so crossing threats would make depth 2 reach most of the graph and depth would stop meaning anything. Threats and controls are still returned for every asset in the neighbourhood, they just are not transited through. Returns a filtered ThreatModel, so the result is a model like any other. Use format: "mermaid" for a diagram, or path_to for a route between two assets.',
+    'Blast radius: the neighbourhood around an asset, or the path between two. Traversal walks the ASSET plane only — @flows (directed), @boundary (undirected, crossable either way) and @transfers (directed). It does NOT hop through shared threats: #path-traversal alone is declared on 10 assets here, so crossing threats would make depth 2 reach most of the graph and depth would stop meaning anything. Threats and controls are still returned for every asset in the neighbourhood, they just are not transited through. Returns a filtered ThreatModel, so the result is a model like any other — minus unannotated_files, which is a whole-repo file inventory rather than subgraph data and is omitted here for the same reason guardlink_parse omits it; guardlink_unannotated owns that list. Use format: "mermaid" for a diagram, or path_to for a route between two assets.',
     {
       root: z.string().describe('Project root directory').default('.'),
       from: z.string().describe('Asset to start from. Resolved exactly as "asset X" is — same tiers, same ambiguity reporting. Later hops match canonical identity only, never fuzzily.'),
       path_to: z.string().describe('If set, return the shortest path from `from` to this asset instead of a neighbourhood. Directed edges are followed forwards; boundaries either way. An unresolvable endpoint and a genuinely disconnected pair are reported differently.').optional(),
-      depth: z.number().describe('Hops from `from`. 0 is the asset alone, 1 matches what "asset X" reports. Clamped to 10.').default(2),
+      depth: z.number().describe('Hops from `from`. 0 is the asset alone, 1 matches what "asset X" reports. Clamped to 10. Check `traversal.completeness` on the result: "complete" means there is nothing more to find at any depth, "depth_limited" means raising this would return more (and `frontier_unexplored` names what is immediately beyond), "truncated" means the depth-10 ceiling cut it short and the result is INCOMPLETE.').default(2),
       direction: z.enum(['in', 'out', 'both']).describe('Which way directed edges are followed. Boundaries are undirected and are crossed in every direction regardless.').default('both'),
       kinds: z.array(z.string()).describe('Relation arrays to keep in the returned model. Filters the OUTPUT, not the traversal — excluding "flows" still walks flows, it just omits them from the result. Assets, threats and controls are always kept as the node vocabulary.').optional(),
       format: z.enum(['json', 'mermaid']).describe('json returns the filtered ThreatModel plus traversal detail; mermaid renders it with the same generator the dashboard uses.').default('json'),
+      detail: z.enum(['summary', 'full']).describe('How much per-node detail to return. summary (default) drops `description` prose and compacts `location` to an `at: "file:line"` string — measured at roughly 40% of the payload, and the graph is the same graph either way: identical nodes, identical edges. full returns the complete records and is the only mode whose `model` is a valid ThreatModel.').default('summary'),
       feature: z.string().describe('Restrict to one feature before traversing.').optional(),
       file: z.string().describe('Restrict to annotations declared in one file before traversing.').optional(),
     },
-    async ({ root, from, path_to, depth, direction, kinds, format, feature, file }) => {
+    async ({ root, from, path_to, depth, direction, kinds, format, detail, feature, file }) => {
       const { model } = await getModel(root);
 
       if (path_to) {
@@ -469,8 +472,16 @@ export function createServer(): McpServer {
         };
       }
 
+      // detail is applied AFTER selection, so it cannot change which nodes or
+      // edges came back — only how much is said about each.
+      const payload = detail === 'full'
+        ? { traversal, model: sub }
+        : summariseGraphPayload({ traversal, model: sub });
+
+      // D34. Both detail modes, because the leak was in the model the two share.
       return {
-        content: [{ type: 'text', text: JSON.stringify({ traversal, model: sub }, null, 2) }],
+        content: [{ type: 'text', text: JSON.stringify(
+          withoutFileInventory(payload, model.unannotated_files.length), null, 2) }],
       };
     },
   );
@@ -1056,6 +1067,16 @@ export function createServer(): McpServer {
 
       const siblings = config.repos.filter(r => r.name !== config.this_repo);
 
+      // D19: every example here is BUILT from the parser's own tag grammar
+      // rather than typed as a string. Both rules this tool used to emit were
+      // hand-written and neither parsed — the `#a.b` form was unwritable
+      // unquoted, and the @flows example used a `from … to …` syntax the
+      // grammar has never had. The tool whose job is teaching this syntax was
+      // teaching syntax that fails.
+      const sibling = siblings[0]?.name || 'sibling';
+      const ours = crossRepoTag(config.this_repo, 'component');
+      const theirs = crossRepoTag(sibling, 'endpoint');
+
       return {
         content: [{ type: 'text', text: JSON.stringify({
           workspace: config.workspace,
@@ -1068,10 +1089,12 @@ export function createServer(): McpServer {
           })),
           total_repos: config.repos.length,
           cross_repo_annotation_rules: [
-            `Use #${config.this_repo}.<component> for assets defined in this repo`,
-            `Reference sibling assets/threats/controls by their tag prefix (e.g. #${siblings[0]?.name || 'sibling'}.<component>)`,
+            `Use ${ours} for assets defined in this repo`,
+            `Reference sibling assets, threats and controls by their tag prefix (e.g. ${theirs})`,
             'Do not redefine assets that belong to another repo — reference by tag',
-            'Cross-repo @flows are encouraged: @flows #data from #this.component to #sibling.endpoint',
+            `Cross-repo @flows are encouraged: @flows ${ours} -> ${theirs} -- "what crosses"`,
+            `Threats and controls take the same qualified form: @exposes ${ours} to ${crossRepoTag(sibling, 'injection')} [high] -- "why"`,
+            'Qualified tags need no quoting. Quote a reference only if it contains spaces.',
             'External refs resolve during workspace merge, not local validation',
           ],
         }, null, 2) }],
@@ -1120,11 +1143,11 @@ export function createServer(): McpServer {
     { description: 'List of unmitigated exposures — assets exposed to threats with no @mitigates or @accepts' },
     async (root: string) => {
       const { model } = await getModel(root);
-      const covered = new Set<string>();
-      for (const m of model.mitigations) covered.add(`${m.asset}::${m.threat}`);
-      for (const a of model.acceptances) covered.add(`${a.asset}::${a.threat}`);
-      const unmitigated = model.exposures
-        .filter(e => !covered.has(`${e.asset}::${e.threat}`))
+      // D57: a raw pair set here disagreed with guardlink_status and validate,
+      // which route through the canonical predicate. Same server, same model,
+      // two different answers to "what is unmitigated" depending on whether the
+      // client read the resource or called the tool.
+      const unmitigated = findUnmitigatedExposures(model)
         .map(e => ({ asset: e.asset, threat: e.threat, severity: e.severity, file: e.location.file, line: e.location.line }));
       return {
         contents: [{ uri: 'guardlink://unmitigated', mimeType: 'application/json', text: JSON.stringify(unmitigated, null, 2) }],

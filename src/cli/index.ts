@@ -44,12 +44,12 @@ import { Command } from 'commander';
 import { resolve, basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { ensurePromptMd } from '../init/migrate.js';
 import { generateReport, generateMermaid } from '../report/index.js';
-import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getCurrentRef, getChangedFiles } from '../diff/index.js';
+import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getChangedFiles } from '../diff/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { emitArtifacts, checkArtifactDrift } from '../artifacts/emit.js';
 import { startStdioServer } from '../mcp/index.js';
@@ -143,9 +143,10 @@ program
   .option('--mode <mode>', 'Where annotations live: external (default, .gal sidecars under .guardlink/annotations/) or inline (comments in source)', 'external')
   .option('--no-root-files', 'Write nothing outside .guardlink/ — no root .mcp.json, no agent instruction files, no docs/')
   .option('--skip-agent-files', 'Only create .guardlink/, skip agent file updates')
-  .option('--force', 'Overwrite existing GuardLink config and instructions')
+  .option('--force', 'Re-scaffold config and agent instructions — never overwrites an authored definitions file')
+  .option('--reset', 'DESTRUCTIVE: also overwrite the definitions file and a customised config.json with the empty template')
   .option('--dry-run', 'Show what would be created without writing files')
-  .action(async (dir: string, opts: { project?: string; agent?: string; mode?: string; rootFiles?: boolean; skipAgentFiles?: boolean; force?: boolean; dryRun?: boolean }) => {
+  .action(async (dir: string, opts: { project?: string; agent?: string; mode?: string; rootFiles?: boolean; skipAgentFiles?: boolean; force?: boolean; reset?: boolean; dryRun?: boolean }) => {
     const root = resolve(dir);
 
     // Show detection results first
@@ -157,7 +158,7 @@ program
       console.log(`Found:    ${existingAgentFiles.map(f => f.path).join(', ')}`);
     }
 
-    if (info.alreadyInitialized && !opts.force) {
+    if (info.alreadyInitialized && !opts.force && !opts.reset) {
       console.log(`\n.guardlink/ already exists. Use --force to reinitialize.`);
     }
 
@@ -187,6 +188,7 @@ program
       rootFiles: opts.rootFiles !== false,
       skipAgentFiles: opts.skipAgentFiles,
       force: opts.force,
+      reset: opts.reset,
       dryRun: opts.dryRun,
       agentIds,
     });
@@ -201,6 +203,17 @@ program
     }
     for (const f of result.skipped) {
       console.log(`${prefix}Skipped:  ${f}`);
+    }
+
+    // D24: an overwrite was asked for and refused. Say so loudly — the whole
+    // point of the guard is that the user finds out now, not from git later.
+    if (result.preserved.length > 0) {
+      console.log('');
+      for (const f of result.preserved) {
+        console.log(`${prefix}Preserved: ${f}`);
+      }
+      console.log(`\n--force does not overwrite authored content. Your threat model is intact.`);
+      console.log(`Re-run with --reset only if you intend to discard the declarations above.`);
     }
 
     if (!opts.dryRun && (result.created.length > 0 || result.updated.length > 0)) {
@@ -249,7 +262,8 @@ program
   .option('-p, --project <n>', 'Project name', 'unknown')
   .option('--not-annotated', 'List source files with no GuardLink annotations')
   .option('--feature <names>', 'Filter status to specific feature(s) (comma-separated)')
-  .action(async (dir: string, opts: { project: string; notAnnotated?: boolean; feature?: string }) => {
+  .option('--sync', 'Also refresh agent instruction files (this used to happen unasked — see D16)')
+  .action(async (dir: string, opts: { project: string; notAnnotated?: boolean; feature?: string; sync?: boolean }) => {
     const root = resolve(dir);
     let { model, diagnostics } = await parseProject({ root, project: opts.project });
 
@@ -267,8 +281,9 @@ program
       printUnannotatedFiles(model);
     }
 
-    // Auto-sync agent instruction files with updated model
-    if (model.annotations_parsed > 0) {
+    // D16: syncing is opt-in. `status` reads; it does not rewrite seven tracked
+    // files on the way past.
+    if (opts.sync && model.annotations_parsed > 0) {
       const syncResult = syncAgentFiles({ root, model });
       if (syncResult.updated.length > 0) {
         console.error(`↻ Synced ${syncResult.updated.length} agent instruction file(s)`);
@@ -285,7 +300,8 @@ program
   .option('-p, --project <n>', 'Project name', 'unknown')
   .option('--strict', 'Also fail on unmitigated exposures (for CI gates)')
   .option('--artifacts', 'Also check .guardlink/graph/ artifacts against the current model; exits non-zero on drift')
-  .action(async (dir: string, opts: { project: string; strict?: boolean; artifacts?: boolean }) => {
+  .option('--sync', 'Also refresh agent instruction files (this used to happen unasked — see D16)')
+  .action(async (dir: string, opts: { project: string; strict?: boolean; artifacts?: boolean; sync?: boolean }) => {
     const root = resolve(dir);
     const { model, diagnostics } = await parseProject({ root, project: opts.project });
 
@@ -350,8 +366,12 @@ program
       console.error(`\nValidation passed with ${unmitigated.length} unmitigated exposure(s).`);
     }
 
-    // Auto-sync agent instruction files with updated model
-    if (model.annotations_parsed > 0) {
+    // D16: `validate` is a check, and a check that rewrites CLAUDE.md,
+    // AGENTS.md, .clinerules, .cursor/rules/guardlink.mdc, .gemini/GEMINI.md,
+    // .github/copilot-instructions.md and .windsurfrules on its way past cannot
+    // be a CI gate — it dirties the tree it was asked to inspect. Syncing is now
+    // opt-in here and the job of `guardlink sync` everywhere else.
+    if (opts.sync && model.annotations_parsed > 0) {
       const syncResult = syncAgentFiles({ root, model });
       if (syncResult.updated.length > 0) {
         console.error(`↻ Synced ${syncResult.updated.length} agent instruction file(s)`);
@@ -486,7 +506,8 @@ program
   .requiredOption('--to <mode>', 'Target mode: external (.gal sidecars) or inline (source comments)')
   .option('-p, --project <n>', 'Project name', 'unknown')
   .option('--dry-run', 'Report what would move without writing anything')
-  .action(async (dir: string, opts: { to: string; project: string; dryRun?: boolean }) => {
+  .option('--allow-anchor-loss', 'Proceed even when the migration discards symbol anchors (D48)')
+  .action(async (dir: string, opts: { to: string; project: string; dryRun?: boolean; allowAnchorLoss?: boolean }) => {
     const root = resolve(dir);
     if (opts.to !== 'inline' && opts.to !== 'external') {
       console.error(`Invalid --to "${opts.to}". Use "inline" or "external".`);
@@ -495,6 +516,34 @@ program
 
     const before = await parseProject({ root, project: opts.project });
     const hashBefore = computeAnnotationHash(before.model);
+
+    // D48 — refuse BEFORE writing, not after.
+    //
+    // Going to inline mode discards every symbol anchor: inline annotations have
+    // nowhere to record one, and `serialiseGal` is right to refuse to invent one
+    // on the way back, so the loss is total and irreversible. That is knowable
+    // up front — it does not need the migration to run first — and checking
+    // afterwards would mean reporting a loss already on disk while telling the
+    // user to "re-run with a flag", which cannot undo it.
+    //
+    // `annotation_hash` cannot see this: it excludes `parent_symbol` on purpose,
+    // because that exclusion is what makes inline and external hash identically.
+    // The anchoring gets its own hash instead. See parser/annotation-hash.ts.
+    const anchorsAtRisk = opts.to === 'inline' ? countAnchors(before.model) : 0;
+    if (anchorsAtRisk > 0 && !opts.allowAnchorLoss) {
+      console.error(`✗ This migration would discard ${anchorsAtRisk} symbol anchor(s), and inline mode cannot hold them.\n`);
+      for (const a of canonicalAnchorRecords(before.model).slice(0, 20)) {
+        console.error(`    ${a.split(String.fromCharCode(1)).slice(1).join(':')}`);
+      }
+      if (anchorsAtRisk > 20) console.error(`    … and ${anchorsAtRisk - 20} more`);
+      console.error('\n  `guardlink reanchor` uses these to detect drift. Without them it has');
+      console.error('  nothing to check and reports success — a green light produced by the');
+      console.error('  absence of the thing it checks.');
+      console.error('\n  annotation_hash will NOT move, so the model is genuinely unchanged.');
+      console.error('  The anchoring is not the model, and this is the loss that hash cannot see.');
+      console.error('\n  Re-run with --allow-anchor-loss to proceed. Nothing has been written.');
+      process.exit(1);
+    }
 
     const result = migrateAnnotationMode({ root, to: opts.to, model: before.model, dryRun: opts.dryRun });
 
@@ -526,6 +575,36 @@ program
     }
     console.error(`\n✓ annotation_hash unchanged: ${hashAfter}`);
 
+    // D48. The gate above is real and it is not enough. `annotation_hash`
+    // excludes `parent_symbol` by design — that exclusion is what makes inline
+    // and external authoring hash identically — so it cannot see a migration
+    // that discards every symbol anchor in the repo. On the expense-api corpus
+    // an external → inline → external round trip took 21 anchors to 0 and
+    // printed this same ✓ both ways, truthfully.
+    //
+    // So the anchoring is checked with its own hash, and a loss is reported
+    // rather than prevented. Prevented is wrong: inline mode genuinely has
+    // nowhere to keep an anchor, and `serialiseGal` is right to refuse to
+    // invent one on the way back. What was missing was anyone saying so.
+    // The same question asked again, after the fact. The pre-check above knows
+    // that `--to inline` loses anchors; this one catches a loss nobody
+    // predicted, including in the `--to external` direction, and it generalises
+    // to any future field the anchor hash learns to cover.
+    const anchorsBefore = countAnchors(before.model);
+    const anchorsAfter = countAnchors(after.model);
+    const lost = lostAnchors(before.model, after.model);
+    if (lost.length > 0) {
+      console.error(`\n⚠ anchor_hash CHANGED — ${lost.length} symbol anchor(s) discarded (${anchorsBefore} → ${anchorsAfter}):`);
+      for (const a of lost.slice(0, 20)) console.error(`    ${a}`);
+      if (lost.length > 20) console.error(`    … and ${lost.length - 20} more`);
+      console.error('  This is already on disk. `guardlink reanchor` has nothing left to check.');
+      console.error('  They cannot be reconstructed — recover them with git, not by migrating back.');
+      if (!opts.allowAnchorLoss) process.exit(1);
+      console.error('  Proceeding: --allow-anchor-loss was given.');
+    } else if (anchorsAfter > 0) {
+      console.error(`✓ anchor_hash unchanged: ${computeAnchorHash(after.model)} (${anchorsAfter} anchors)`);
+    }
+
     if (!opts.dryRun) {
       const configPath = join(root, '.guardlink', 'config.json');
       if (existsSync(configPath)) {
@@ -552,7 +631,20 @@ program
     const drifts = findAnchorDrift(root, model);
 
     if (drifts.length === 0) {
-      console.error('✓ Every anchored @source block still points at its symbol.');
+      // D48. "Every anchored block is fine" is vacuously true when there are no
+      // anchored blocks, and that green check is exactly what a repo looks like
+      // after a migration has destroyed its anchors. A drift detector must not
+      // report success for the absence of the thing it detects drift in.
+      const anchors = countAnchors(model);
+      if (anchors === 0) {
+        console.error('No anchored @source blocks to check.');
+        console.error('  Nothing here carries `symbol:`, so there is no drift to detect.');
+        console.error('  Inline repos never have anchors. If this repo is external and you');
+        console.error('  expected some, they may have been discarded by a mode migration —');
+        console.error('  see `guardlink migrate --help` (D48).');
+      } else {
+        console.error(`✓ All ${anchors} anchored @source block(s) still point at their symbol.`);
+      }
       process.exit(0);
     }
 
@@ -796,7 +888,6 @@ ${userMessage}
         analysisPrompt,
         root,
         (text) => process.stdout.write(text),
-        { autoYes: true },
       );
 
       if (result.error) {
@@ -1000,7 +1091,13 @@ program
 
     if (agent.cmd && result.launched) {
       // Agent exited — suggest next step
-      console.log(`\n✓ ${agent.name} session ended.`);
+      // D31 — a non-zero exit is a failed run, not a finished one.
+      if (result.exitCode != null && result.exitCode !== 0) {
+        console.error(`\n✗ ${agent.name} exited with code ${result.exitCode}.`);
+        process.exitCode = 1;
+      } else {
+        console.log(`\n✓ ${agent.name} session ended.`);
+      }
       console.log('  Run: guardlink parse  to update the threat model.');
     } else if (agent.app && result.launched) {
       console.log(`✓ ${agent.name} launched with project: ${project}`);
@@ -1097,7 +1194,13 @@ program
     }
 
     if (agent.cmd && result.launched) {
-      console.log(`\n✓ ${agent.name} session ended.`);
+      // D31 — a non-zero exit is a failed run, not a finished one.
+      if (result.exitCode != null && result.exitCode !== 0) {
+        console.error(`\n✗ ${agent.name} exited with code ${result.exitCode}.`);
+        process.exitCode = 1;
+      } else {
+        console.log(`\n✓ ${agent.name} session ended.`);
+      }
       console.log('  Expected output location: .guardlink/cxg-templates/');
       console.log('  Note: Templates are generated only, not executed.');
     } else if (agent.app && result.launched) {
@@ -1189,7 +1292,13 @@ program
     }
 
     if (agent.cmd && result.launched) {
-      console.log(`\n✓ ${agent.name} session ended.`);
+      // D31 — a non-zero exit is a failed run, not a finished one.
+      if (result.exitCode != null && result.exitCode !== 0) {
+        console.error(`\n✗ ${agent.name} exited with code ${result.exitCode}.`);
+        process.exitCode = 1;
+      } else {
+        console.log(`\n✓ ${agent.name} session ended.`);
+      }
     } else if (agent.app && result.launched) {
       console.log(`✓ ${agent.name} launched with project: ${project}`);
       console.log('\nPaste (Cmd+V) the prompt in the AI chat panel.');
@@ -1961,7 +2070,6 @@ program
       console.error('');
 
       if (result.linked.length > 0 || result.updated.length > 0) {
-        const total = result.linked.length + result.updated.length;
         console.error(`✓ ${result.linked.length} repo(s) added, ${result.updated.length} existing repo(s) updated`);
         if (result.agentFilesUpdated.length > 0) {
           console.error(`  ↻ Updated ${result.agentFilesUpdated.length} agent instruction file(s)`);
@@ -2481,10 +2589,28 @@ if (process.argv.length <= 2) {
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function printDiagnostics(diagnostics: ParseDiagnostic[]) {
-  for (const d of diagnostics) {
+  // D29: prose-like lines get their own heading. Mixed into the error list they
+  // read as failures, which is what made writing documentation about GuardLink
+  // inside a GuardLink repo feel like breaking it.
+  const prose = diagnostics.filter(d => d.code === 'prose-like');
+  const rest = diagnostics.filter(d => d.code !== 'prose-like');
+
+  for (const d of rest) {
     console.error(`${diagnosticIcon(d.level)} ${d.file}:${d.line}: ${d.message}`);
     if (d.raw) console.error(`  → ${d.raw}`);
   }
+
+  if (prose.length > 0) {
+    console.error(`\nLines that look like prose, not annotations (${prose.length}) — these do not fail validation:`);
+    for (const d of prose) {
+      console.error(`  ${d.file}:${d.line}: ${d.raw ?? ''}`);
+    }
+    console.error(`  Each begins with a GuardLink verb but carries no #reference, no \`--\` delimiter,`);
+    console.error(`  and none of that verb's grammar keywords, so it was read as prose and not parsed.`);
+    console.error(`  If one IS an annotation, it is missing its arguments. If it is documentation,`);
+    console.error(`  wrap it in @shield:begin / @shield:end.`);
+  }
+
   if (diagnostics.length > 0) {
     const fatals = diagnostics.filter(d => d.level === 'fatal').length;
     const errors = diagnostics.filter(d => d.level === 'error').length;

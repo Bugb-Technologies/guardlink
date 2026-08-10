@@ -21,10 +21,11 @@ import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from 
 import { join, relative } from 'node:path';
 import type { ThreatModel } from '../types/index.js';
 import { type AnalysisFramework, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage } from './prompts.js';
-import { type LLMConfig, buildConfig, chatCompletion } from './llm.js';
+import { type LLMConfig, chatCompletion } from './llm.js';
 import { GUARDLINK_TOOLS, createToolExecutor } from './tools.js';
 import { formatConfidence, redactEvidence } from './format.js';
 import { loadProjectConfig } from '../agents/config.js';
+import { findUnmitigatedExposures } from '../parser/coverage.js';
 
 export { type AnalysisFramework, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage } from './prompts.js';
 export { type LLMConfig, type LLMProvider, buildConfig, autoDetectConfig } from './llm.js';
@@ -422,11 +423,10 @@ export function serializeModel(model: ThreatModel): string {
     unannotated_critical: model.coverage.unannotated_critical,
   };
 
-  // Unmitigated exposures summary
-  const mitigatedSet = new Set<string>();
-  for (const m of model.mitigations) mitigatedSet.add(`${m.asset}::${m.threat}`);
-  for (const a of model.acceptances) mitigatedSet.add(`${a.asset}::${a.threat}`);
-  const unmitigated = model.exposures.filter(e => !mitigatedSet.has(`${e.asset}::${e.threat}`));
+  // Unmitigated exposures summary. D57: this was a raw `${asset}::${threat}`
+  // pair set that also skipped `#` normalisation, so it under-reported against
+  // every other surface — on expense-api it dropped the critical #db → #sqli.
+  const unmitigated = findUnmitigatedExposures(model);
   if (unmitigated.length) {
     compact.unmitigated_exposures = unmitigated.map(e => ({
       asset: e.asset, threat: e.threat, severity: e.severity,
@@ -457,11 +457,12 @@ export function serializeModel(model: ThreatModel): string {
  * for full detail if needed.
  */
 export function serializeModelCompact(model: ThreatModel): string {
-  // Compute unmitigated set
-  const covered = new Set<string>();
-  for (const m of model.mitigations) covered.add(`${m.asset}::${m.threat}`);
-  for (const a of model.acceptances) covered.add(`${a.asset}::${a.threat}`);
-  const unmitigated = model.exposures.filter(e => !covered.has(`${e.asset}::${e.threat}`));
+  // D57: this is the list the CXG bridge and `guardlink translate` hand an agent
+  // as "threats worth writing exploits for". It was a raw pair set, so a
+  // same-file mitigation on a different symbol suppressed the exposure here
+  // while `validate` reported it — the exact suppression D36 was raised to stop,
+  // surviving on the one path where a missed critical becomes an unwritten test.
+  const unmitigated = findUnmitigatedExposures(model);
 
   const cap = (s: string | undefined, n = 80) =>
     s && s.length > n ? s.slice(0, n - 1) + '…' : s;
