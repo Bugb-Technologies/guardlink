@@ -11,15 +11,20 @@
  *     relationships by (asset, threat) or (source, target) composite keys
  *   - Delta categories: added, removed, modified (severity/description changed)
  *   - Risk delta: tracks net change in unmitigated exposure count
+ *
+ * @comment -- "Pure model-vs-model comparator; no I/O. Entitlement staleness is the one thing it cannot derive from the two models, so the changed-file list is passed in by the caller (see getChangedFiles in git.ts)"
+ * @flows ThreatModel -> #diff via diffModels -- "Before/after models compared into a structured delta"
  */
 
 import type {
   ThreatModel,
-  ThreatModelAsset, ThreatModelThreat, ThreatModelControl,
+  ThreatModelAsset, ThreatModelThreat, ThreatModelControl, ThreatModelActor,
   ThreatModelMitigation, ThreatModelExposure, ThreatModelConfirmed, ThreatModelAcceptance,
+  ThreatModelEntitlement,
   ThreatModelFlow, ThreatModelBoundary, ThreatModelTransfer,
 } from '../types/index.js';
 import { findUnmitigatedExposures, normalizeRef } from '../parser/coverage.js';
+import { citationMatchesFile } from '../parser/citation.js';
 
 // ─── Delta types ─────────────────────────────────────────────────────
 
@@ -40,10 +45,12 @@ export interface ThreatModelDiff {
   assets: Change<ThreatModelAsset>[];
   threats: Change<ThreatModelThreat>[];
   controls: Change<ThreatModelControl>[];
+  actors: Change<ThreatModelActor>[];
   mitigations: Change<ThreatModelMitigation>[];
   exposures: Change<ThreatModelExposure>[];
   confirmed: Change<ThreatModelConfirmed>[];
   acceptances: Change<ThreatModelAcceptance>[];
+  entitlements: Change<ThreatModelEntitlement>[];
   flows: Change<ThreatModelFlow>[];
   boundaries: Change<ThreatModelBoundary>[];
   transfers: Change<ThreatModelTransfer>[];
@@ -53,6 +60,28 @@ export interface ThreatModelDiff {
 
   /** Risk-relevant: previously unmitigated exposures now resolved */
   resolvedExposures: ThreatModelExposure[];
+
+  /**
+   * Entitlements whose cited authorization code changed in this delta (§3.7).
+   * Reported as *stale* — the claim survives, but the code it was reviewed
+   * against did not, so it needs a fresh human look. Empty unless the caller
+   * supplied `changedFiles`.
+   */
+  staleEntitlements: StaleEntitlement[];
+}
+
+export interface StaleEntitlement {
+  entitlement: ThreatModelEntitlement;
+  /** The changed file that the entitlement's citation points at */
+  citedFile: string;
+}
+
+export interface DiffOptions {
+  /**
+   * Files that changed between the two revisions, repo-relative (e.g. from
+   * `git diff --name-only <ref>`). Used only to compute `staleEntitlements`.
+   */
+  changedFiles?: Iterable<string>;
 }
 
 export interface DiffSummary {
@@ -63,14 +92,18 @@ export interface DiffSummary {
   newUnmitigated: number;
   resolvedUnmitigated: number;
   riskDelta: 'increased' | 'decreased' | 'unchanged';
+  /** Entitlements whose cited authorization code changed */
+  staleEntitlements: number;
 }
 
 // ─── Diff computation ────────────────────────────────────────────────
 
-export function diffModels(before: ThreatModel, after: ThreatModel): ThreatModelDiff {
+export function diffModels(before: ThreatModel, after: ThreatModel, options: DiffOptions = {}): ThreatModelDiff {
   const assets = diffByKey(before.assets, after.assets, assetKey, assetChanged);
   const threats = diffByKey(before.threats, after.threats, threatKey, threatChanged);
   const controls = diffByKey(before.controls, after.controls, controlKey, controlChanged);
+  const actors = diffByKey(before.actors || [], after.actors || [], actorKey, actorChanged);
+  const entitlements = diffByKey(before.entitlements || [], after.entitlements || [], entitlementKey, entitlementChanged);
   const mitigations = diffByKey(before.mitigations, after.mitigations, mitigationKey);
   const exposures = diffByKey(before.exposures, after.exposures, exposureKey, exposureChanged);
   const confirmed = diffByKey(before.confirmed || [], after.confirmed || [], (c: ThreatModelConfirmed) => `${c.asset}::${c.threat}`, (a: ThreatModelConfirmed, b: ThreatModelConfirmed) => a.severity !== b.severity || a.description !== b.description ? `severity/description changed` : null);
@@ -95,7 +128,9 @@ export function diffModels(before: ThreatModel, after: ThreatModel): ThreatModel
   const newUnmitigatedExposures = afterUnmitigated.filter(e => !beforeKeys.has(unmitigatedKey(e)));
   const resolvedExposures = beforeUnmitigated.filter(e => !afterKeys.has(unmitigatedKey(e)));
 
-  const allChanges = [assets, threats, controls, mitigations, exposures, confirmed, acceptances, flows, boundaries, transfers];
+  const staleEntitlements = findStaleEntitlements(after, options.changedFiles);
+
+  const allChanges = [assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances, entitlements, flows, boundaries, transfers];
   const totalChanges = allChanges.reduce((sum, c) => sum + c.length, 0);
   const added = allChanges.reduce((sum, c) => sum + c.filter(x => x.kind === 'added').length, 0);
   const removed = allChanges.reduce((sum, c) => sum + c.filter(x => x.kind === 'removed').length, 0);
@@ -106,11 +141,41 @@ export function diffModels(before: ThreatModel, after: ThreatModel): ThreatModel
     : 'unchanged';
 
   return {
-    summary: { totalChanges, added, removed, modified, newUnmitigated: newUnmitigatedExposures.length, resolvedUnmitigated: resolvedExposures.length, riskDelta },
-    assets, threats, controls, mitigations, exposures, confirmed, acceptances, flows, boundaries, transfers,
+    summary: {
+      totalChanges, added, removed, modified,
+      newUnmitigated: newUnmitigatedExposures.length,
+      resolvedUnmitigated: resolvedExposures.length,
+      riskDelta,
+      staleEntitlements: staleEntitlements.length,
+    },
+    assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances, entitlements, flows, boundaries, transfers,
     newUnmitigatedExposures,
     resolvedExposures,
+    staleEntitlements,
   };
+}
+
+// ─── Entitlement staleness (§3.7) ────────────────────────────────────
+
+/**
+ * An entitlement is a claim about purpose, reviewable only through the authz
+ * code it cites. When that code changes the claim is *stale*, not removed —
+ * it still stands, but the basis a reviewer accepted it on has moved.
+ *
+ * Uncited (inert) entitlements are skipped: they have no basis to go stale.
+ */
+function findStaleEntitlements(after: ThreatModel, changedFiles?: Iterable<string>): StaleEntitlement[] {
+  if (!changedFiles) return [];
+  const changed = [...changedFiles];
+  if (changed.length === 0) return [];
+
+  const stale: StaleEntitlement[] = [];
+  for (const en of after.entitlements || []) {
+    if (!en.citation) continue;
+    const hit = changed.find(f => citationMatchesFile(en.citation!, f));
+    if (hit) stale.push({ entitlement: en, citedFile: hit });
+  }
+  return stale;
 }
 
 // ─── Generic key-based diff ──────────────────────────────────────────
@@ -163,6 +228,38 @@ function threatKey(t: ThreatModelThreat): string {
 
 function controlKey(c: ThreatModelControl): string {
   return c.id || c.canonical_name;
+}
+
+function actorKey(a: ThreatModelActor): string {
+  return a.id || a.canonical_name;
+}
+
+/**
+ * The entitlement's identity is the join it makes: `(actor, asset, threat)`
+ * (§9.7). What a reader of a diff needs to know is which `(asset, threat)` pairs
+ * this actor is now claimed to be entitled on, so retargeting either half is a
+ * withdrawn claim plus a new one — reporting that as a modification would let a
+ * claim move onto a different pair while the diff said "description changed".
+ *
+ * Capability is deliberately *not* in the key, though §9.7 lists it among the
+ * identifying fields: it is no longer the join (§9.3), and §9.8 asks for a
+ * capability edit on one triple to read as a modification, which is only
+ * possible if it is compared rather than keyed. It is compared in
+ * entitlementChanged below, so no edit to it goes unreported either way.
+ *
+ * An imprecise claim has no join to be identified by, so it falls back to the
+ * capability — the only thing left that distinguishes it. Without that fallback
+ * every loose claim by one actor keys the same, and diffByKey keeps one entry per
+ * key: the diff would silently drop claims it collided with, and §9.3 requires
+ * the loose form to be harmless rather than invisible.
+ */
+function entitlementKey(e: ThreatModelEntitlement): string {
+  const join = `${normalizeActorRef(e.actor)}::${e.asset || ''}::${e.threat || ''}`;
+  return e.asset && e.threat ? join : `${join}::${e.canonical_capability}`;
+}
+
+function normalizeActorRef(ref: string): string {
+  return ref.startsWith('#') ? ref.slice(1) : ref;
 }
 
 function mitigationKey(m: ThreatModelMitigation): string {
@@ -219,6 +316,27 @@ function threatChanged(a: ThreatModelThreat, b: ThreatModelThreat): string | nul
 function controlChanged(a: ThreatModelControl, b: ThreatModelControl): string | null {
   if (a.description !== b.description) return 'description changed';
   return null;
+}
+
+function actorChanged(a: ThreatModelActor, b: ThreatModelActor): string | null {
+  if (a.description !== b.description) return 'description changed';
+  return null;
+}
+
+function entitlementChanged(a: ThreatModelEntitlement, b: ThreatModelEntitlement): string | null {
+  const changes: string[] = [];
+  // Asset and threat are the key, so they cannot differ here. Capability can:
+  // it is the justification a reviewer accepted, and rewriting it on a claim that
+  // still demotes the same pair is a change to what was agreed to (§9.3).
+  // Compared as written, not canonicalised: a reviewer reads the capability, so a
+  // rewrite that normalises to the same label is still a change to what they read.
+  if (a.capability !== b.capability) changes.push(`capability: ${a.capability} → ${b.capability}`);
+  if (a.citation?.raw !== b.citation?.raw) changes.push(`citation: ${a.citation?.raw || 'none'} → ${b.citation?.raw || 'none'}`);
+  // Surfaced explicitly: an entitlement that loses its citation stops having any
+  // effect on triage, and one that gains a citation starts having one (§3.4).
+  if (a.inert !== b.inert) changes.push(b.inert ? 'became inert (citation lost)' : 'no longer inert (citation added)');
+  if (a.description !== b.description) changes.push('description changed');
+  return changes.length > 0 ? changes.join('; ') : null;
 }
 
 function exposureChanged(a: ThreatModelExposure, b: ThreatModelExposure): string | null {

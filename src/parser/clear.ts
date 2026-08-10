@@ -9,6 +9,8 @@
  * @exposes #parser to #path-traversal [high] cwe:CWE-22 -- "Glob patterns determine which files are modified"
  * @mitigates #parser against #path-traversal using #glob-filtering -- "DEFAULT_EXCLUDE blocks sensitive dirs; cwd constrains scope"
  * @audit #parser -- "Destructive operation requires explicit user confirmation via dryRun flag"
+ * @comment -- "No @entitles here on purpose: #local-dev is genuinely entitled to the #arbitrary-write effect (clear exists to rewrite these files), but that pair already carries @mitigates, so it is never an open finding and the claim would demote nothing. Recorded and withdrawn in .guardlink/entitlement-proposals.json — an entitlement on a covered pair is decoration"
+ * @comment -- "#mcp-agent is granted nothing. It can only preview a clear (dry_run defaults to true at src/mcp/server.ts:505), and a preview writes nothing, so it answers no exposure — an entitlement that joins no finding is decoration. Nor is it entitled to clear-annotations: no code makes an MCP caller obtain the confirmation its tool description asks for, so granting it would be the over-grant §2 forbids"
  * @flows ProjectRoot -> #parser via fast-glob -- "File discovery path"
  * @flows #parser -> SourceFiles via writeFile -- "Modified file write path"
  * @handles internal on #parser -- "Operates on project source files only"
@@ -22,8 +24,8 @@ import { isStandaloneAnnotationFile, stripCommentPrefix } from './comment-strip.
 // ─── Known GuardLink verbs ──────────────────────────────────────────
 
 const GUARDLINK_VERBS = new Set([
-  'asset', 'threat', 'control',
-  'mitigates', 'exposes', 'confirmed', 'accepts', 'transfers', 'flows', 'boundary',
+  'asset', 'threat', 'control', 'actor',
+  'mitigates', 'exposes', 'confirmed', 'accepts', 'entitles', 'transfers', 'flows', 'boundary',
   'validates', 'audit', 'owns', 'handles', 'assumes',
   'comment', 'source', 'shield', 'shield:begin', 'shield:end',
   // v1 compat

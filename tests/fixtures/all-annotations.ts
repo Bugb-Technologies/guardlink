@@ -10,10 +10,16 @@
 // @control Rate_Limiting (#rate-limit) -- "Token bucket at 100 req/min"
 // @control RBAC (#rbac) -- "Role-based access control"
 
+// @actor Tenant_Admin (#tenant-admin) -- "Administers one tenant's configuration"
+// @actor Tenant_Member (#tenant-member) -- "Reads and writes within its own tenant"
+
 // @mitigates App.Auth.Login against #sqli using #prepared-stmts -- "Login uses parameterized query"
 // @exposes App.Auth.Login to #bac [P1] cwe:CWE-639 -- "No ownership check on profile access"
 // @confirmed #bac on App.Auth.Login [high] cwe:CWE-639 -- "Pen test: IDOR on GET /users/{id} reproduced"
 // @accepts #cred-stuff on App.Auth.Login -- "Rate limiting is sufficient"
+
+// @entitles #tenant-admin to rotate-signing-key on App.Auth.Login -- "By design: key rotation is tenant admin scope. Authz: src/authz/scopes.ts:88"
+// @entitles #tenant-member to read-own-profile -- "Uncited on purpose — this one parses as inert"
 
 // @transfers #sqli from App.Auth.Login to External.PaymentGateway -- "Payment provider handles their own SQL"
 // @flows App.Auth.Login -> Infrastructure.Database.Primary via TLS/5432 -- "PostgreSQL over TLS"

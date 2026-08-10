@@ -380,6 +380,22 @@ Names a security control, defense mechanism, or mitigation strategy that is impl
 // @control RBAC (#rbac) -- "Role-based access control with principle of least privilege"
 ```
 
+#### `@actor` — Declare a Principal
+
+```
+@actor <name> [(#id)] [-- "<description>"]
+```
+
+Names a principal in the system's authorization model — a **role**, not a person. Actors are the subjects of `@entitles` (§3.2), which is what makes the question *"is the caller already entitled to this effect?"* answerable from the model instead of by inference.
+
+```go
+// @actor Namespace_Admin (#ns-admin) -- "Administers one namespace's configuration"
+// @actor Namespace_Writer (#ns-writer) -- "Starts and signals workflows in its namespace"
+// @actor Cluster_Operator (#cluster-op) -- "Manages cluster-wide settings and endpoints"
+```
+
+`@actor` is *not* `@owns`: `@owns` names the team responsible for reviewing an asset, while `@actor` names authority that code enforces. An actor id declared twice is an error, matching `@asset`/`@threat`/`@control`.
+
 ### 3.2. Relationship Annotations
 
 These annotations connect assets, threats, and controls into a graph.
@@ -462,6 +478,33 @@ get '/health' do
   { status: 'ok', version: APP_VERSION }.to_json
 end
 ```
+
+#### `@entitles` — Capability Held by Design
+
+```
+@entitles <actor> to <capability> [on <asset>] [against <threat>] [-- "<description>"]
+```
+
+Declares that an actor is **legitimately entitled** to a capability — that the privilege required to trigger an effect is a privilege that already grants that effect by design. This is the field a triage step reads to answer *"is the measured caller already allowed to do this?"*.
+
+```go
+// @entitles #ns-admin to configure-archival-destination on #archival-fs
+//     -- "By design: the archival URI is namespace configuration.
+//         Authz: ScopeCluster/AccessAdmin at common/api/metadata.go:189"
+```
+
+`<capability>` is a single normalised identifier (§2.10), never prose. It is **not** the join key: nothing on the finding side records a capability, so the join is `(actor, asset, threat)` — the capability is the justification a reviewer reads and a label for grouping claims.
+
+Both `on <asset>` and `against <threat>` are syntactically optional but jointly load-bearing: a claim missing either half joins no finding and therefore **cannot demote one**. Consumers should treat such a claim as ineffective, and `guardlink validate` warns about it, exactly as it warns about an uncited claim.
+
+Four constraints define what this annotation is, and they are as much a part of the syntax as the grammar:
+
+1. **It never gates testing — only reporting.** Unlike `@mitigates` and `@accepts`, `@entitles` has **no export semantics**. The exposure is probed exactly as before, it is not removed from the SARIF export (§6), and a reader of the SARIF cannot tell an entitlement exists. Only the downstream *recommendation* changes. A suppression that also prevents verification is how a threat model becomes confidently wrong.
+2. **A demotion must stay visible, with its citation.** A consumer that closes a finding on entitlement grounds must say so and say why — *"closed because #ns-admin is entitled to configure-archival-destination, per common/api/metadata.go:189"*. The failure mode that matters here is an **over-grant**, and the only way one gets caught is a human reading that sentence and disagreeing with it. A finding that silently disappears cannot be argued with.
+3. **No citation, no effect.** An `@entitles` whose description does not point at the authorization code that grants it is **inert**: parsed, carried in the model, exported, and ignored by triage. The citation is what makes the claim reviewable in the pull request that adds it, and what lets `guardlink diff` (§7) report the entitlement as *stale* when that file changes.
+4. **It cannot answer an ownership question.** For two peers at the same privilege — tenant A's admin against tenant B's namespace — *both* are entitled to the capability; the question is whether either is entitled to **this object**. An IDOR is right capability, wrong object. For ownership-class threats (IDOR, tenant isolation, CWE-639/862/863-shaped classes) the entitled-principal question is **not applicable**, and an entitlement must never demote them. Ownership stays measured, and is deliberately absent from this grammar.
+
+Because an entitlement is a statement about *purpose*, it cannot be probed, measured, or derived from the code — which is exactly why it is written down rather than computed. It is also the one annotation whose error mode is a silent false negative, so an under-grant (extra noise) is tolerable while an over-grant (a real escalation closed as by-design) is not. Tooling should have an agent **propose** entitlements with citations and a human accept them.
 
 #### `@transfers` — Delegate Risk Responsibility
 
@@ -731,6 +774,29 @@ Parsing all annotations in a codebase produces a **ThreatModel** — a typed dat
     }
   ],
 
+  "actors": [
+    {
+      "name": "Namespace_Admin",
+      "canonical_name": "namespace_admin",
+      "id": "ns-admin",
+      "description": "Administers one namespace's configuration",
+      "location": { "file": ".guardlink/definitions.ts", "line": 22, "parent_symbol": null }
+    }
+  ],
+
+  "entitlements": [
+    {
+      "actor": "#ns-admin",
+      "capability": "configure-archival-destination",
+      "canonical_capability": "configure_archival_destination",
+      "asset": "#archival-fs",
+      "description": "By design: the archival URI is namespace configuration. Authz: ScopeCluster/AccessAdmin at common/api/metadata.go:189",
+      "citation": { "file": "common/api/metadata.go", "line": 189, "raw": "common/api/metadata.go:189" },
+      "inert": false,
+      "location": { "file": "common/archiver/filestore/archiver.go", "line": 61, "parent_symbol": null }
+    }
+  ],
+
   "acceptances": [],
   "transfers": [],
   "flows": [],
@@ -805,6 +871,9 @@ GuardLink annotations map naturally to SARIF 2.1.0 (Static Analysis Results Inte
 | `@audit` | `result` with `level: "note"`, `kind: "review"` |
 | `@mitigates` | `result` with `level: "none"`, `kind: "pass"` (suppresses matching `@exposes`) |
 | `@handles` (secrets/pii) | `result` with `level: "note"` for data flow tracking |
+| `@actor` / `@entitles` | **Not exported.** No result, no suppression, no property on any result |
+
+`@entitles` is deliberately absent from this mapping. Two annotations already remove an exposure from the export (`@mitigates`, `@accepts`), and an exposure hidden from the export cannot be tested. Entitlement is a claim about *purpose* that no probe can verify, so it must never be the third such mechanism: a conforming exporter MUST produce byte-identical SARIF for a model with entitlements and the same model without them. Only the downstream *recommendation* may change (§3.2).
 
 ### 6.2. Severity Mapping
 
@@ -916,7 +985,11 @@ When comparing threat models between two git refs (e.g., a feature branch vs. `m
 | `NEW_RISK` | New `@exposes` that is mitigated or accepted | **Warn** |
 | `IMPROVED` | New `@mitigates` or `@control` reducing exposure | **Pass** |
 | `ACCEPTED` | New `@accepts` acknowledging a known risk | **Pass** (with note) |
-| `INFO` | Changes to `@flows`, `@boundary`, `@owns`, `@handles`, `@assumes` | **Pass** |
+| `INFO` | Changes to `@flows`, `@boundary`, `@owns`, `@handles`, `@assumes`, `@actor` | **Pass** |
+| `STALE_ENTITLEMENT` | An `@entitles` is unchanged, but the authorization code its description cites changed | **Warn** |
+
+An entitlement whose cited file changed is reported as **stale**, not as removed: the claim still stands, but the basis a reviewer accepted it on has moved, so it needs a fresh look. Because the entitlement itself did not change, this is reported even when the delta is otherwise empty. An uncited (inert) entitlement has no basis and cannot go stale.
+
 
 **Design rationale:** Adding `@exposes` is classified as `NEW_EXPOSURE`, not as a regression. Documenting a vulnerability is a positive act of transparency — the vulnerability existed before the annotation did. CI should surface new exposures for review but should not punish developers for declaring them. True regressions are defensive actions — removing a mitigation, escalating a severity, or revoking an acceptance — where the security posture demonstrably worsened.
 

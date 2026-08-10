@@ -73,6 +73,8 @@ export function filterByFeature(model: ThreatModel, featureNames: string[]): Thr
     assets: inFeature(model.assets),
     threats: inFeature(model.threats),
     controls: inFeature(model.controls),
+    actors: inFeature(model.actors || []),
+    entitlements: inFeature(model.entitlements || []),
     mitigations: inFeature(model.mitigations),
     exposures: inFeature(model.exposures),
     confirmed: inFeature(model.confirmed),
@@ -117,6 +119,7 @@ export function getFeatureSummaries(model: ThreatModel): FeatureSummary[] {
       name,
       files: [...new Set(model.features.filter(f => f.feature.toLowerCase() === name.toLowerCase()).map(f => f.location.file))],
       annotations: filtered.assets.length + filtered.threats.length + filtered.controls.length +
+        (filtered.actors?.length || 0) + (filtered.entitlements?.length || 0) +
         filtered.mitigations.length + filtered.exposures.length + filtered.confirmed.length +
         filtered.acceptances.length + filtered.transfers.length + filtered.flows.length +
         filtered.boundaries.length + filtered.validations.length + filtered.audits.length +

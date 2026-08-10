@@ -61,7 +61,23 @@ describe('GL-401 — instructions arrive at initialize', () => {
     // was to delete a verified claim. Paying for new guidance by removing
     // checked guidance is the wrong trade. 460 leaves external at 441 and the
     // constraint genuinely binding.
-    const LIMIT = 460;
+    //
+    // Raised again 460 -> 500 on the PR #16 merge, for the same reason and
+    // recorded the same way. @actor and @entitles arrived with a propose/accept
+    // workflow a cold agent cannot infer: that an entitlement is a human
+    // governance decision like @accepts, that it is proposed with a citation
+    // rather than written, and that it is the wrong tool for ownership questions
+    // (IDOR, tenant isolation). That is ~43 words of first-order orientation for
+    // a subsystem that did not exist at the last raise, and it put external at
+    // 484, with mixed and null at 471.
+    //
+    // The alternative was deleting text to fit, and every substantive claim here
+    // is pinned by a probe in instructions-claims.test.ts — so the only things
+    // that COULD be cut are the verified ones. Paying for new guidance by
+    // removing checked guidance was the wrong trade at 400 and is still the
+    // wrong trade at 460. 500 leaves external 16 words of headroom, about what
+    // 460 left it, so the constraint still binds.
+    const LIMIT = 500;
     const words = instructions.trim().split(/\s+/).length;
     expect(words, `${words} words`).toBeLessThan(LIMIT);
 

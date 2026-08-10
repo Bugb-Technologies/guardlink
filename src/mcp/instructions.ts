@@ -97,8 +97,12 @@ WRITING ANNOTATIONS
 
 ${modeParagraph(ctx.mode, ctx.definitionsPath)}
 Definitions — @asset, @threat, @control with #ids — live in ${ctx.definitionsPath}. Reuse
-existing ids; never redefine one. Never write @accepts: risk acceptance is a human
-governance decision. Found a risk with no control? @exposes plus @audit.
+existing ids; never redefine one. Never write @accepts or @entitles: both are human
+governance decisions. Found a risk with no control? @exposes plus @audit. An
+entitlement claims a privilege was always allowed this, so an over-grant hides a
+real escalation: propose it (guardlink_entitlement_propose) citing authz code as
+file:line, and a human's acceptance writes it. Never for ownership questions (IDOR,
+tenant isolation), where both peers hold the capability.
 
 Write with guardlink_annotate_apply, not by hand: pass the source path, not the .gal.
 @source is synthesised — never send one. Do send symbol:, which reanchor needs after a

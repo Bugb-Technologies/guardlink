@@ -29,6 +29,7 @@
  * @comment -- "Pure function; no I/O; deterministic across machines and annotation modes"
  * @assumes #parser -- "location.file is the logical source path in both inline and external mode (parse-file.ts resolves @source before the model is assembled)"
  * @comment -- "Excludes line, origin_file, origin_line and parent_symbol so inline and external authoring of the same model hash identically"
+ * @comment -- "v2 adds @actor and @entitles records. Before that a migration could drop or rewrite every entitlement in a repo and the hash gate would still report the model unchanged — a silent all-clear, which is the failure mode the entitlement design exists to prevent (actor-entitlement design §2)"
  */
 
 import { createHash } from 'node:crypto';
@@ -38,7 +39,7 @@ import type { ThreatModel, SourceLocation } from '../types/index.js';
  * Bump when the set of hashed fields changes. Two hashes are only comparable at
  * the same algorithm version, so it is part of the emitted string.
  */
-export const ANNOTATION_HASH_VERSION = 1;
+export const ANNOTATION_HASH_VERSION = 2;
 
 // Control characters, so that a description containing a pipe, a newline or any
 // other printable byte cannot forge a boundary. Without a real field separator
@@ -72,6 +73,13 @@ function everyLocation(model: ThreatModel): SourceLocation[] {
     ...model.acceptances, ...model.transfers, ...model.flows,
     ...model.boundaries, ...model.validations, ...model.audits,
     ...model.ownership, ...model.data_handling, ...model.assumptions,
+    // MERGE: @actor and @entitles are anchored like any other annotation, so
+    // they belong here too. `canonicalAnnotationRecords` gained them in v2;
+    // this list is the D48 anchor hash and is separate, so it had to be told
+    // as well. Without them a `@source … symbol:x` block holding only
+    // entitlement rows contributed no anchor, and `migrate --to inline` would
+    // have discarded it without counting it in what it refuses over.
+    ...(model.actors || []), ...(model.entitlements || []),
     ...model.shields, ...model.features, ...model.comments,
   ].map(r => r.location).filter(Boolean);
 }
@@ -124,6 +132,15 @@ export function canonicalAnnotationRecords(model: ThreatModel): string[] {
   }
   for (const d of model.data_handling) {
     out.push(record('handles', s(d.classification), s(d.asset), s(d.description), f(d.location.file)));
+  }
+  for (const ac of model.actors || []) {
+    out.push(record('actor', s(ac.id), s(ac.canonical_name), s(ac.description), f(ac.location.file)));
+  }
+  // An entitlement is hashed on its authored fields only. `inert` and `imprecise`
+  // are derived (from citation, asset and threat) and `citation` is derived from
+  // the description, so hashing them would double-count rather than detect more.
+  for (const en of model.entitlements || []) {
+    out.push(record('entitles', s(en.actor), s(en.canonical_capability), s(en.asset), s(en.threat), s(en.description), f(en.location.file)));
   }
   for (const a of model.assumptions) {
     out.push(record('assumes', s(a.asset), s(a.description), f(a.location.file)));

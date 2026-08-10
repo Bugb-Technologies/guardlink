@@ -400,6 +400,7 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
   const seenAssetIds = new Set<string>();
   const seenThreatIds = new Set<string>();
   const seenControlIds = new Set<string>();
+  const seenActorIds = new Set<string>();
 
   const combined: ThreatModel = {
     version: REPORT_SCHEMA_VERSION,
@@ -412,6 +413,8 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     assets: [],
     threats: [],
     controls: [],
+    actors: [],
+    entitlements: [],
     mitigations: [],
     exposures: [],
     confirmed: [],
@@ -452,12 +455,19 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
       if (c.id) seenControlIds.add(c.id);
       combined.controls.push({ ...c, location: prefixLocation(c.location, repo) });
     }
+    // The actor verb is a definition, so it dedups by tag ID like the three above.
+    for (const ac of m.actors || []) {
+      if (ac.id && seenActorIds.has(ac.id)) continue;
+      if (ac.id) seenActorIds.add(ac.id);
+      combined.actors!.push({ ...ac, location: prefixLocation(ac.location, repo) });
+    }
 
     // Relationships: keep all (no dedup — cross-repo relationships are valuable)
     combined.mitigations.push(...prefixAll(m.mitigations, repo));
     combined.exposures.push(...prefixAll(m.exposures, repo));
     combined.confirmed.push(...prefixAll(m.confirmed || [], repo));
     combined.acceptances.push(...prefixAll(m.acceptances, repo));
+    combined.entitlements!.push(...prefixAll(m.entitlements || [], repo));
     combined.transfers.push(...prefixAll(m.transfers, repo));
     combined.flows.push(...prefixAll(m.flows, repo));
     combined.boundaries.push(...prefixAll(m.boundaries, repo));
@@ -684,7 +694,8 @@ function emptyMergedReport(workspace: string, statuses: RepoStatus[]): MergedRep
       version: REPORT_SCHEMA_VERSION, project: workspace,
       generated_at: new Date().toISOString(), source_files: 0,
       annotations_parsed: 0, annotated_files: [], unannotated_files: [],
-      assets: [], threats: [], controls: [], mitigations: [], exposures: [],
+      assets: [], threats: [], controls: [], actors: [], entitlements: [],
+      mitigations: [], exposures: [],
       confirmed: [], acceptances: [], transfers: [], flows: [], boundaries: [],
       validations: [], audits: [], ownership: [], data_handling: [],
       assumptions: [], shields: [], features: [], comments: [],

@@ -1,8 +1,8 @@
 {
   "version": "1.1.0",
-  "project": "unknown",
-  "source_files": 84,
-  "annotations_parsed": 386,
+  "project": "guardlink",
+  "source_files": 86,
+  "annotations_parsed": 438,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -20,6 +20,8 @@
     "src/dashboard/diagrams.ts",
     "src/dashboard/generate.ts",
     "src/dashboard/index.ts",
+    "src/diff/engine.ts",
+    "src/diff/format.ts",
     "src/diff/git.ts",
     "src/diff/index.ts",
     "src/init/detect.ts",
@@ -40,6 +42,7 @@
     "src/parser/apply-annotations.ts",
     "src/parser/canonical-order.ts",
     "src/parser/canonical-ref.ts",
+    "src/parser/citation.ts",
     "src/parser/clear.ts",
     "src/parser/coverage.ts",
     "src/parser/feature-filter.ts",
@@ -54,6 +57,7 @@
     "src/report/index.ts",
     "src/report/report.ts",
     "src/report/sequence.ts",
+    "src/review/entitlements.ts",
     "src/review/index.ts",
     "src/tui/commands.ts",
     "src/tui/config.ts",
@@ -79,8 +83,6 @@
     "examples/github-action.yml",
     "src/analyze/format.ts",
     "src/dashboard/data.ts",
-    "src/diff/engine.ts",
-    "src/diff/format.ts",
     "src/index.ts",
     "src/init/picker.ts",
     "src/parser/comment-strip.ts",
@@ -617,6 +619,59 @@
       }
     }
   ],
+  "actors": [
+    {
+      "name": "Local_Developer",
+      "canonical_name": "local_developer",
+      "id": "local-dev",
+      "description": "Runs the guardlink binary from a shell on the project; already holds write access to the same working tree guardlink edits, and has an interactive TTY that can answer a confirmation prompt",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 69
+      }
+    },
+    {
+      "name": "MCP_Agent",
+      "canonical_name": "mcp_agent",
+      "id": "mcp-agent",
+      "description": "AI coding agent calling guardlink tools over stdio through the MCP server; acts only with the tool set src/mcp/server.ts exposes, not with the operator's shell",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 70
+      }
+    },
+    {
+      "name": "CI_Runner",
+      "canonical_name": "ci_runner",
+      "id": "ci-runner",
+      "description": "GitHub Actions job invoking the built CLI (see .github/workflows/ci.yml); has no TTY, so it cannot answer a confirmation prompt, and is deliberately granted no entitlement",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 71
+      }
+    }
+  ],
+  "entitlements": [
+    {
+      "actor": "#mcp-agent",
+      "capability": "read-threat-model",
+      "canonical_capability": "read_threat_model",
+      "asset": "#mcp",
+      "threat": "#data-exposure",
+      "description": "By design: guardlink mcp exists to hand a connected coding agent the threat model — that disclosure is the product, not a leak. No privilege gain either: the agent already reads the annotated source these records are parsed from, so the assembled model tells it nothing it could not derive itself. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:23",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 23,
+        "raw": "src/mcp/index.ts:23"
+      },
+      "inert": false,
+      "imprecise": false,
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 52
+      }
+    }
+  ],
   "mitigations": [
     {
       "asset": "#agent-launcher",
@@ -705,7 +760,7 @@
       "description": "join() constrains reads to .guardlink/",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 762
+        "line": 776
       }
     },
     {
@@ -775,7 +830,7 @@
       "description": "resolve() canonicalizes paths; cwd-relative by design",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 28
+        "line": 30
       }
     },
     {
@@ -785,7 +840,7 @@
       "description": "Output paths resolved relative to project root",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 30
+        "line": 32
       }
     },
     {
@@ -795,7 +850,7 @@
       "description": "maskKey() redacts keys in show output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 32
+        "line": 34
       }
     },
     {
@@ -879,6 +934,16 @@
       }
     },
     {
+      "asset": "#diff",
+      "threat": "#cmd-injection",
+      "control": "#input-sanitize",
+      "description": "rev-parse --verify must resolve ref to a single revision before it reaches the diff command; a shell metacharacter makes rev-parse fail, so the function returns [] instead of running the second command",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 92
+      }
+    },
+    {
       "asset": "#init",
       "threat": "#path-traversal",
       "control": "#path-validation",
@@ -915,7 +980,7 @@
       "description": "callers pass join(root, ...) constrained paths",
       "location": {
         "file": "src/init/index.ts",
-        "line": 487
+        "line": 492
       }
     },
     {
@@ -945,7 +1010,7 @@
       "description": "Patterns are simple and bounded",
       "location": {
         "file": "src/mcp/lookup.ts",
-        "line": 18
+        "line": 20
       }
     },
     {
@@ -955,7 +1020,7 @@
       "description": "Zod schema validates root; resolve() canonicalizes",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 27
+        "line": 33
       }
     },
     {
@@ -965,7 +1030,7 @@
       "description": "Output paths resolved relative to validated root",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 29
+        "line": 35
       }
     },
     {
@@ -975,7 +1040,17 @@
       "description": "Keys from env only; never logged or returned",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 33
+        "line": 39
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "The proposal artifact path is fixed, and its target file must resolve inside the project root — a proposal never writes to source",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 43
       }
     },
     {
@@ -1025,7 +1100,7 @@
       "description": "Target is always resolveGalPath(root, file); the caller cannot choose the path, and a file escaping root is rejected",
       "location": {
         "file": "src/parser/apply-annotations.ts",
-        "line": 16
+        "line": 18
       }
     },
     {
@@ -1035,7 +1110,17 @@
       "description": "Every line is re-parsed with parseLine before write; anything that does not parse, or parses as @accepts, is rejected",
       "location": {
         "file": "src/parser/apply-annotations.ts",
-        "line": 18
+        "line": 20
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#redos",
+      "control": "#regex-anchoring",
+      "description": "Tokenizes on whitespace first, then matches each path segment with an anchored, quantifier-free-nesting pattern — no backtracking over the whole description",
+      "location": {
+        "file": "src/parser/citation.ts",
+        "line": 17
       }
     },
     {
@@ -1122,10 +1207,70 @@
       "asset": "#cli",
       "threat": "#arbitrary-write",
       "control": "#path-validation",
+      "description": "Target must resolve inside the project root and name an existing file with the anchor line in range",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 28
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#insecure-deser",
+      "control": "#config-validation",
+      "description": "parseLedger validates shape field by field and drops nothing silently — a malformed ledger is an error, not a partial read; `inert` is recomputed from the citation rather than trusted from the file",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 30
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#insecure-deser",
+      "control": "#resource-limits",
+      "description": "Ledger reads are capped at MAX_LEDGER_BYTES",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 31
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "control": "#input-sanitize",
+      "description": "oneLine() collapses newlines/CR/tabs before escapeDesc, and every built line is re-parsed with parseLine before it is written",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 33
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#cmd-injection",
+      "control": "#param-commands",
+      "description": "execFileSync with a fixed argv and no shell; nothing user-supplied reaches the command",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 851
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
       "description": "Only modifies files already in the parsed project",
       "location": {
         "file": "src/review/index.ts",
         "line": 11
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "Anchor line must exist in the file, and callers resolve the path against the parsed project root",
+      "location": {
+        "file": "src/review/index.ts",
+        "line": 239
       }
     },
     {
@@ -1454,7 +1599,7 @@
       "description": "Exposes threat model findings to SARIF consumers",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 16
+        "line": 24
       }
     },
     {
@@ -1480,7 +1625,7 @@
       "description": "User-supplied dir argument resolved via path.resolve",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 27
+        "line": 29
       }
     },
     {
@@ -1493,7 +1638,7 @@
       "description": "init/report/sarif/dashboard write files to user-specified paths",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 29
+        "line": 31
       }
     },
     {
@@ -1506,7 +1651,7 @@
       "description": "API keys handled in config set/show commands",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 31
+        "line": 33
       }
     },
     {
@@ -1519,7 +1664,7 @@
       "description": "Agent launcher spawns child processes",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 33
+        "line": 35
       }
     },
     {
@@ -1607,6 +1752,19 @@
       "external_refs": [
         "cwe:CWE-78"
       ],
+      "description": "ref is interpolated into an execSync git command",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 91
+      }
+    },
+    {
+      "asset": "#diff",
+      "threat": "#cmd-injection",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-78"
+      ],
       "description": "git.ts uses execSync with ref argument",
       "location": {
         "file": "src/diff/index.ts",
@@ -1675,7 +1833,7 @@
       "description": "Creates directories for agent-file writes",
       "location": {
         "file": "src/init/index.ts",
-        "line": 486
+        "line": 491
       }
     },
     {
@@ -1740,7 +1898,7 @@
       "description": "Regex patterns applied to query strings",
       "location": {
         "file": "src/mcp/lookup.ts",
-        "line": 17
+        "line": 19
       }
     },
     {
@@ -1753,7 +1911,7 @@
       "description": "Tool arguments include 'root' directory path from external client",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 26
+        "line": 32
       }
     },
     {
@@ -1766,7 +1924,7 @@
       "description": "report, dashboard, sarif tools write files",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 28
+        "line": 34
       }
     },
     {
@@ -1779,7 +1937,7 @@
       "description": "annotate and threat_report tools pass user prompts to LLM",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 30
+        "line": 36
       }
     },
     {
@@ -1792,7 +1950,7 @@
       "description": "threat_report tool uses API keys from environment",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 32
+        "line": 38
       }
     },
     {
@@ -1805,7 +1963,20 @@
       "description": "Resources expose full threat model to MCP clients",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 34
+        "line": 40
+      }
+    },
+    {
+      "asset": "#mcp",
+      "threat": "#arbitrary-write",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "guardlink_entitlement_propose writes a client-supplied claim into .guardlink/entitlement-proposals.json",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 42
       }
     },
     {
@@ -1883,7 +2054,7 @@
       "description": "Writes annotation sidecars from tool input",
       "location": {
         "file": "src/parser/apply-annotations.ts",
-        "line": 15
+        "line": 17
       }
     },
     {
@@ -1896,7 +2067,7 @@
       "description": "Annotation lines arrive as caller-supplied text",
       "location": {
         "file": "src/parser/apply-annotations.ts",
-        "line": 17
+        "line": 19
       }
     },
     {
@@ -2043,6 +2214,45 @@
     {
       "asset": "#cli",
       "threat": "#arbitrary-write",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "Accepting a proposal writes an @entitles line into a source file named by the proposal",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 27
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#insecure-deser",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-502"
+      ],
+      "description": "JSON.parse of .guardlink/entitlement-proposals.json, which an agent or another repo may have written",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 29
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-74"
+      ],
+      "description": "Agent-supplied rationale and human decision notes are interpolated into annotation text, where a newline would forge a second annotation",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 32
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
       "severity": "medium",
       "external_refs": [
         "cwe:CWE-73"
@@ -2051,6 +2261,19 @@
       "location": {
         "file": "src/review/index.ts",
         "line": 10
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "Writes annotation lines into a caller-supplied file path",
+      "location": {
+        "file": "src/review/index.ts",
+        "line": 238
       }
     },
     {
@@ -2322,7 +2545,7 @@
       "description": "Reads CXG scan results for dashboard and report context",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 689
+        "line": 703
       }
     },
     {
@@ -2392,7 +2615,7 @@
       "description": "Model input",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 20
+        "line": 29
       }
     },
     {
@@ -2402,7 +2625,7 @@
       "description": "SARIF output",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 21
+        "line": 30
       }
     },
     {
@@ -2432,7 +2655,7 @@
       "description": "CLI argument input path",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 35
+        "line": 37
       }
     },
     {
@@ -2442,7 +2665,7 @@
       "description": "Report/config output path",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 36
+        "line": 38
       }
     },
     {
@@ -2452,7 +2675,7 @@
       "description": "Version string read from package.json",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 108
+        "line": 116
       }
     },
     {
@@ -2506,6 +2729,16 @@
       }
     },
     {
+      "source": "ThreatModel",
+      "target": "#diff",
+      "mechanism": "diffModels",
+      "description": "Before/after models compared into a structured delta",
+      "location": {
+        "file": "src/diff/engine.ts",
+        "line": 16
+      }
+    },
+    {
       "source": "GitRef",
       "target": "#diff",
       "mechanism": "execSync",
@@ -2533,6 +2766,26 @@
       "location": {
         "file": "src/diff/git.ts",
         "line": 14
+      }
+    },
+    {
+      "source": "GitRef",
+      "target": "#diff",
+      "mechanism": "execSync",
+      "description": "Ref input to git diff --name-only",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 93
+      }
+    },
+    {
+      "source": "#diff",
+      "target": "ChangedFileList",
+      "mechanism": "return",
+      "description": "Repo-relative paths used for entitlement staleness",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 94
       }
     },
     {
@@ -2672,7 +2925,7 @@
       "description": "Query input path",
       "location": {
         "file": "src/mcp/lookup.ts",
-        "line": 19
+        "line": 21
       }
     },
     {
@@ -2682,7 +2935,7 @@
       "description": "Tool invocation input",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 36
+        "line": 45
       }
     },
     {
@@ -2692,7 +2945,7 @@
       "description": "Report/dashboard output",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 37
+        "line": 46
       }
     },
     {
@@ -2702,7 +2955,7 @@
       "description": "LLM API call path",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 38
+        "line": 47
       }
     },
     {
@@ -2712,7 +2965,7 @@
       "description": "Threat model data output",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 39
+        "line": 48
       }
     },
     {
@@ -2772,7 +3025,7 @@
       "description": "Structured annotation write path",
       "location": {
         "file": "src/parser/apply-annotations.ts",
-        "line": 19
+        "line": 21
       }
     },
     {
@@ -2782,7 +3035,7 @@
       "description": "Sidecar append",
       "location": {
         "file": "src/parser/apply-annotations.ts",
-        "line": 20
+        "line": 22
       }
     },
     {
@@ -2802,7 +3055,7 @@
       "description": "File discovery path",
       "location": {
         "file": "src/parser/clear.ts",
-        "line": 12
+        "line": 14
       }
     },
     {
@@ -2812,7 +3065,7 @@
       "description": "Modified file write path",
       "location": {
         "file": "src/parser/clear.ts",
-        "line": 13
+        "line": 15
       }
     },
     {
@@ -2946,6 +3199,56 @@
       }
     },
     {
+      "source": "AgentProposal",
+      "target": "#cli",
+      "mechanism": "proposeEntitlement",
+      "description": "Agent-side proposal input",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 34
+      }
+    },
+    {
+      "source": "#cli",
+      "target": "ProposalLedger",
+      "mechanism": "writeFile",
+      "description": "Proposal artifact output",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 35
+      }
+    },
+    {
+      "source": "ProposalLedger",
+      "target": "#cli",
+      "mechanism": "readFile",
+      "description": "Proposal artifact input",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 36
+      }
+    },
+    {
+      "source": "#cli",
+      "target": "SourceFiles",
+      "mechanism": "applyProposalDecision",
+      "description": "Accepted entitlement lands as an @entitles annotation",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 37
+      }
+    },
+    {
+      "source": "GitConfig",
+      "target": "#cli",
+      "mechanism": "execFileSync",
+      "description": "Reads the local git identity to attribute a decision",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 852
+      }
+    },
+    {
       "source": "ThreatModel",
       "target": "#cli",
       "mechanism": "getReviewableExposures",
@@ -2963,6 +3266,16 @@
       "location": {
         "file": "src/review/index.ts",
         "line": 14
+      }
+    },
+    {
+      "source": "#cli",
+      "target": "SourceFiles",
+      "mechanism": "writeFile",
+      "description": "Annotation insertion output",
+      "location": {
+        "file": "src/review/index.ts",
+        "line": 240
       }
     },
     {
@@ -3174,7 +3487,7 @@
       "description": "Trust boundary at CLI argument parsing",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 37
+        "line": 39
       }
     },
     {
@@ -3204,7 +3517,7 @@
       "description": "Trust boundary at tool argument parsing",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 40
+        "line": 49
       }
     },
     {
@@ -3214,7 +3527,7 @@
       "description": "Trust boundary between parser and disk I/O",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 12
+        "line": 14
       }
     },
     {
@@ -3293,7 +3606,7 @@
       "description": "SARIF output intentionally reveals security findings for CI/CD integration",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 17
+        "line": 25
       }
     },
     {
@@ -3301,7 +3614,7 @@
       "description": "Child process spawning delegated to agents/launcher.ts with explicit args",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 34
+        "line": 36
       }
     },
     {
@@ -3341,7 +3654,7 @@
       "description": "User prompts passed to LLM; model context is read-only",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 31
+        "line": 37
       }
     },
     {
@@ -3349,7 +3662,7 @@
       "description": "Threat model data intentionally exposed to connected agents",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 35
+        "line": 41
       }
     },
     {
@@ -3382,6 +3695,14 @@
       "location": {
         "file": "src/parser/parse-file.ts",
         "line": 8
+      }
+    },
+    {
+      "asset": "#cli",
+      "description": "Every acceptance records who accepted, when, and where the annotation landed; an inert or ownership-class acceptance records the acknowledgement that was required to make it",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 39
       }
     },
     {
@@ -3452,7 +3773,7 @@
       "description": "Processes pentest scan output (JSON/SARIF)",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 690
+        "line": 704
       }
     },
     {
@@ -3470,7 +3791,7 @@
       "description": "Processes API keys via config commands",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 38
+        "line": 40
       }
     },
     {
@@ -3497,7 +3818,7 @@
       "description": "Processes project annotations and threat model data",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 41
+        "line": 50
       }
     },
     {
@@ -3506,7 +3827,16 @@
       "description": "Operates on project source files only",
       "location": {
         "file": "src/parser/clear.ts",
-        "line": 14
+        "line": 16
+      }
+    },
+    {
+      "classification": "internal",
+      "asset": "#cli",
+      "description": "Processes actor/capability claims, authz citations, and the name of the accepting human",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 38
       }
     },
     {
@@ -3561,91 +3891,117 @@
       "reason": "Example annotation block for reference, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 208
+        "line": 210
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 221
+        "line": 223
       }
     },
     {
       "reason": "Description examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 228
+        "line": 230
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 238
+        "line": 240
       }
     },
     {
       "reason": "Flow examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 245
+        "line": 247
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 254
+        "line": 256
       }
     },
     {
       "reason": "Boundary examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 261
+        "line": 263
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 267
+        "line": 269
+      }
+    },
+    {
+      "reason": "Actor example, excluded from parsing",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 330
+      }
+    },
+    {
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 332
+      }
+    },
+    {
+      "reason": "Entitlement example, excluded from parsing",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 349
+      }
+    },
+    {
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 352
       }
     },
     {
       "reason": "@accepts alternative examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 326
+        "line": 367
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 336
+        "line": 377
       }
     },
     {
       "reason": "Definition syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 363
+        "line": 404
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 367
+        "line": 408
       }
     },
     {
       "reason": "Relationship syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 372
+        "line": 413
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 387
+        "line": 429
       }
     },
     {
@@ -3678,13 +4034,13 @@
       "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 764
+        "line": 831
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1059
+        "line": 1126
       }
     }
   ],
@@ -3702,7 +4058,7 @@
       "description": "Model Context Protocol server for AI agent tooling",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 42
+        "line": 51
       }
     }
   ],
@@ -3719,6 +4075,13 @@
       "location": {
         "file": "src/agents/index.ts",
         "line": 8
+      }
+    },
+    {
+      "description": "The @entitles section instructs agents to file a proposal rather than write the annotation: the rule itself is enforced in src/review/entitlements.ts (an @entitles with no accepted proposal is a validation error), because a prompt is guidance and this claim needs a gate (actor-entitlement design §3.6)",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 18
       }
     },
     {
@@ -3753,14 +4116,21 @@
       "description": "Pure function: transforms ThreatModel to SARIF JSON; no I/O",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 18
+        "line": 26
+      }
+    },
+    {
+      "description": "@entitles has no export semantics by design: SARIF for a model with entitlements is byte-identical to one without, so an entitlement can never hide an exposure from the pentest export (actor-entitlement design §3.2)",
+      "location": {
+        "file": "src/analyzer/sarif.ts",
+        "line": 27
       }
     },
     {
       "description": "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} derived from the asset's inbound @flows route so downstream HTTP consumers (e.g. cert-x-gen) can target the endpoint; emitted verbatim from the annotation, no base path assumed",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 19
+        "line": 28
       }
     },
     {
@@ -3782,6 +4152,20 @@
       "location": {
         "file": "src/dashboard/index.ts",
         "line": 7
+      }
+    },
+    {
+      "description": "Pure model-vs-model comparator; no I/O. Entitlement staleness is the one thing it cannot derive from the two models, so the changed-file list is passed in by the caller (see getChangedFiles in git.ts)",
+      "location": {
+        "file": "src/diff/engine.ts",
+        "line": 15
+      }
+    },
+    {
+      "description": "Pure string formatting; no I/O. Stale entitlements print even when the delta is otherwise empty — a claim whose cited authz code moved is exactly the thing that must not disappear quietly (actor-entitlement design §3.3)",
+      "location": {
+        "file": "src/diff/format.ts",
+        "line": 4
       }
     },
     {
@@ -3837,7 +4221,21 @@
       "description": "Pure function; no I/O; operates on in-memory ThreatModel",
       "location": {
         "file": "src/mcp/lookup.ts",
-        "line": 20
+        "line": 22
+      }
+    },
+    {
+      "description": "No guardlink_entitlement_accept tool exists on purpose: proposing is an agent's job, granting authority is not (actor-entitlement design §3.6)",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 44
+      }
+    },
+    {
+      "description": "Entitlement accepted by zippon on 2026-08-10 via guardlink entitle (proposal ent-mcp_agent.mcp.data_exposure).",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 53
       }
     },
     {
@@ -3869,6 +4267,13 @@
       }
     },
     {
+      "description": "v2 adds @actor and @entitles records. Before that a migration could drop or rewrite every entitlement in a repo and the hash gate would still report the model unchanged — a silent all-clear, which is the failure mode the entitlement design exists to prevent (actor-entitlement design §2)",
+      "location": {
+        "file": "src/parser/annotation-hash.ts",
+        "line": 32
+      }
+    },
+    {
       "description": "Pure function; mixed is a real answer, not an error — a repo mid-migration is genuinely both",
       "location": {
         "file": "src/parser/annotation-mode.ts",
@@ -3879,7 +4284,7 @@
       "description": "Idempotent by construction: an identical @source block is detected and skipped rather than duplicated",
       "location": {
         "file": "src/parser/apply-annotations.ts",
-        "line": 21
+        "line": 23
       }
     },
     {
@@ -3894,6 +4299,27 @@
       "location": {
         "file": "src/parser/canonical-ref.ts",
         "line": 37
+      }
+    },
+    {
+      "description": "Pure function over annotation text; no I/O, no filesystem check — a citation is a claim about where authz lives, and verifying the path exists is a reviewer's job (§3.4)",
+      "location": {
+        "file": "src/parser/citation.ts",
+        "line": 16
+      }
+    },
+    {
+      "description": "No @entitles here on purpose: #local-dev is genuinely entitled to the #arbitrary-write effect (clear exists to rewrite these files), but that pair already carries @mitigates, so it is never an open finding and the claim would demote nothing. Recorded and withdrawn in .guardlink/entitlement-proposals.json — an entitlement on a covered pair is decoration",
+      "location": {
+        "file": "src/parser/clear.ts",
+        "line": 12
+      }
+    },
+    {
+      "description": "#mcp-agent is granted nothing. It can only preview a clear (dry_run defaults to true at src/mcp/server.ts:505), and a preview writes nothing, so it answers no exposure — an entitlement that joins no finding is decoration. Nor is it entitled to clear-annotations: no code makes an MCP caller obtain the confirmation its tool description asks for, so granting it would be the over-grant §2 forbids",
+      "location": {
+        "file": "src/parser/clear.ts",
+        "line": 13
       }
     },
     {
@@ -3946,10 +4372,38 @@
       }
     },
     {
+      "description": "@entitles capability is a single-token identifier by grammar, so prose in that position is a parse error rather than a label nothing can group or compare (actor-entitlement design §3.1)",
+      "location": {
+        "file": "src/parser/parse-line.ts",
+        "line": 8
+      }
+    },
+    {
+      "description": "@entitles takes optional `on <asset>` and `against <threat>` clauses because the join is the (actor, asset, threat) triple, not the capability — a capability-keyed join would demote every threat on the asset including one discovered later (actor-entitlement design §9.3)",
+      "location": {
+        "file": "src/parser/parse-line.ts",
+        "line": 9
+      }
+    },
+    {
       "description": "Scans standalone .gal files in addition to comment-based source annotations",
       "location": {
         "file": "src/parser/parse-project.ts",
         "line": 11
+      }
+    },
+    {
+      "description": "Every @entitles gets its citation resolved at assembly time and carries inert:true when uncited, so no consumer can read an uncited privilege claim as an effective one by forgetting to check (actor-entitlement design §3.4)",
+      "location": {
+        "file": "src/parser/parse-project.ts",
+        "line": 12
+      }
+    },
+    {
+      "description": "Same reasoning for imprecise:true when the claim omits `on <asset>` or `against <threat>`, plus canEntitlementDemote/entitlementDemotionBlockers so the cited-and-precise test is written once here rather than re-derived by every consumer — a consumer that checks only !inert would demote on an entitlement that joins nothing (actor-entitlement design §9.7)",
+      "location": {
+        "file": "src/parser/parse-project.ts",
+        "line": 13
       }
     },
     {
@@ -3964,6 +4418,13 @@
       "location": {
         "file": "src/parser/validate.ts",
         "line": 8
+      }
+    },
+    {
+      "description": "findUndeclaredActors / findInertEntitlements implement the two mechanical @entitles checks from docs/prd/actor-entitlement-design.md §3.7 — both typo-class; entitlement intent is not machine-checkable",
+      "location": {
+        "file": "src/parser/validate.ts",
+        "line": 9
       }
     },
     {
@@ -4002,6 +4463,27 @@
       }
     },
     {
+      "description": "There is no MCP accept tool and no agent-callable accept path: the only writer of an accepted entitlement is a human at `guardlink entitle`, which is why the CLI is the surface and this module refuses a decision with no name on it",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 40
+      }
+    },
+    {
+      "description": "Writes `against <threat>` as well as `on <asset>`, because the join is the triple (design §9.3): a claim missing either clause matches no finding and demotes nothing. Omitting the threat here made acceptance produce a DEAD annotation — the proposal ledger carried it, the written line did not, so the only sanctioned way to create an entitlement produced one that could never work. Observed on a real repository before this fix, not hypothesised.",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 502
+      }
+    },
+    {
+      "description": "Shared by exposure review (@accepts/@audit) and entitlement acceptance (@entitles) so both writers place annotations by the same rules",
+      "location": {
+        "file": "src/review/index.ts",
+        "line": 237
+      }
+    },
+    {
       "description": "Raw mode enables full keystroke control for command palette",
       "location": {
         "file": "src/tui/input.ts",
@@ -4025,8 +4507,8 @@
   ],
   "coverage": {
     "total_symbols": 0,
-    "annotated_symbols": 386,
-    "coverage_percent": 73,
+    "annotated_symbols": 438,
+    "coverage_percent": 76,
     "unannotated_critical": []
   },
   "external_refs": []

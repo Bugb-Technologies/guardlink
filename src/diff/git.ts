@@ -81,6 +81,29 @@ export async function parseAtRef(root: string, ref: string, project: string): Pr
 }
 
 /**
+ * List files that changed between `ref` and the working tree, repo-relative.
+ *
+ * Feeds `diffModels({ changedFiles })` so an @entitles whose cited authorization
+ * code moved is reported as stale (actor-entitlement design §3.7). Returns [] on
+ * any git failure — staleness is advisory, and a diff that cannot resolve the ref
+ * should still report the rest of the delta.
+ *
+ * @exposes #diff to #cmd-injection [high] cwe:CWE-78 -- "ref is interpolated into an execSync git command"
+ * @mitigates #diff against #cmd-injection using #input-sanitize -- "rev-parse --verify must resolve ref to a single revision before it reaches the diff command; a shell metacharacter makes rev-parse fail, so the function returns [] instead of running the second command"
+ * @flows GitRef -> #diff via execSync -- "Ref input to git diff --name-only"
+ * @flows #diff -> ChangedFileList via return -- "Repo-relative paths used for entitlement staleness"
+ */
+export function getChangedFiles(root: string, ref: string): string[] {
+  try {
+    execSync(`git rev-parse --verify ${ref}`, { cwd: root, stdio: 'pipe' });
+    const raw = execSync(`git diff --name-only ${ref} --`, { cwd: root, encoding: 'utf-8' });
+    return raw.trim().split('\n').map(f => f.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Get the current HEAD commit hash (short).
  */
 export function getCurrentRef(root: string): string {

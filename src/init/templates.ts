@@ -157,11 +157,14 @@ export function referenceDocContent(project: ProjectInfo): string {
 DEFINE   @asset <Component.Path> (#id) -- "description"
          @threat <Name> (#id) [severity] cwe:CWE-NNN -- "description"
          @control <Name> (#id) -- "description"
+         @actor <Name> (#id) -- "a principal in the authz model — a role, not a person"
 
 RELATE   @mitigates <Asset> against <#threat> using <#control> -- "how"
          @exposes <Asset> to <#threat> [severity] cwe:CWE-NNN -- "what's wrong"
          @accepts <#threat> on <Asset> -- "HUMAN-ONLY — AI agents must use @audit instead"
          @transfers <#threat> from <Source> to <Target> -- "who handles it"
+         @entitles <#actor> to <capability> on <Asset> against <#threat> -- "by design + authz file:line"
+                   ^ PROPOSED via \`guardlink entitle --propose\`, written only when a human accepts
 
 FLOW     @flows <Source> -> <Target> via <mechanism> -- "details"
          @boundary <AssetA> | <AssetB> (#id) -- "trust boundary"
@@ -197,6 +200,7 @@ Append after severity: \`cwe:CWE-89\`, \`owasp:A03:2021\`, \`capec:CAPEC-66\`, \
 3. **Read definitions before adding.** Check for existing IDs first — avoid duplicates.
 4. **Every \`@exposes\` needs a response.** Match with \`@mitigates\` (fix exists) or \`@audit\` (flag for human review). AI agents must NEVER write \`@accepts\` — that is a human-only governance decision. Use \`@audit\` instead.
 5. **Use the full verb set.** \`@flows\` for data movement, \`@handles\` for data classification, \`@boundary\` for trust boundaries.
+6. **\`@entitles\` is proposed, never written.** An over-grant closes a real privilege escalation as by-design, so an agent files a proposal (\`guardlink entitle --propose\` / \`guardlink_entitlement_propose\`) and a human accepts it — acceptance is what writes the annotation, under their name. An \`@entitles\` in source with no accepted proposal is a validation error. The rationale must cite the authz code as \`file:line\`, or the claim is **inert** — parsed but ignored. It never hides a finding and never gates testing; it only changes what triage recommends. Never propose one for an ownership question (IDOR, tenant isolation).
 
 ## When Writing Code
 
@@ -204,6 +208,7 @@ Append after severity: \`cwe:CWE-89\`, \`owasp:A03:2021\`, \`capec:CAPEC-66\`, \
 |-----------|------------|
 | Writing new endpoint/handler | \`@exposes\` + \`@mitigates\` (or \`@audit\`) + \`@flows\` + \`@comment\` — tell the complete story |
 | New service/component | \`@asset\` in definitions, then reference in source |
+| New role / permission tier | \`@actor\` in definitions, then \`guardlink entitle --propose\` per capability held by design |
 | Security gap exists | \`@exposes Asset to #threat\` + \`@audit Asset\` |
 | Risk with no fix yet | \`@audit Asset\` + \`@comment\` explaining potential controls. NEVER \`@accepts\`. |
 | Implementing a fix | \`@mitigates Asset against #threat using #control\` |
@@ -220,6 +225,8 @@ guardlink report .              # Generate threat-model.md
 guardlink status .              # Coverage summary
 guardlink feature list          # List all @feature tags
 guardlink feature show "<name>" # Show model for a feature (quote names with spaces)
+guardlink entitle --propose     # File an @entitles proposal (writes nothing to source)
+guardlink entitle               # Human review of proposals: accept / reject / defer
 \`\`\`
 
 ## MCP Tools
@@ -230,6 +237,7 @@ When connected via \`.mcp.json\`, use:
 - \`guardlink_suggest\` — get annotation suggestions for a file
 - \`guardlink_validate\` — check for syntax errors
 - \`guardlink_status\` — coverage stats
+- \`guardlink_entitlement_propose\` / \`guardlink_entitlement_list\` — propose an \`@entitles\` claim and see what happened to it. There is no accept tool: a human accepts, with \`guardlink entitle\`.
 `;
 }
 
@@ -284,9 +292,10 @@ the same change.** This includes: new endpoints, authentication/authorization lo
 3. **Use \`@confirmed\` for verified exploits.** When a pentest, CXG scan, or manual reproduction proves a threat is exploitable, mark it with \`@confirmed #threat on Asset [severity] -- "evidence"\`. This is distinct from \`@exposes\` (theoretical) — \`@confirmed\` means real, verified, not a false positive. Include severity based on actual observed impact.
 4. Do not delete or mangle existing annotations. Treat them as part of the code. Edit only when intentionally changing the threat model.
 5. Definitions (\`@asset\`, \`@threat\`, \`@control\` with \`(#id)\`) live in \`.guardlink/definitions${project.definitionsExt}\`. Reuse existing \`#id\`s — never redefine. If you need a new asset or threat, add the definition there first, then reference it in source files.
-6. Source files use relationship verbs only: \`@mitigates\`, \`@exposes\`, \`@confirmed\`, \`@flows\`, \`@handles\`, \`@boundary\`, \`@comment\`, \`@validates\`, \`@audit\`, \`@owns\`, \`@assumes\`, \`@transfers\`, \`@feature\`.
+6. Source files use relationship verbs only: \`@mitigates\`, \`@exposes\`, \`@confirmed\`, \`@flows\`, \`@handles\`, \`@boundary\`, \`@comment\`, \`@validates\`, \`@audit\`, \`@owns\`, \`@assumes\`, \`@transfers\`, \`@feature\`. (\`@actor\` is a definition — it belongs in the definitions file with \`@asset\`/\`@threat\`/\`@control\`. \`@entitles\` is proposed, not written — see rule 9.)
 7. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note. Never write a lone \`@exposes\` without follow-up.
 8. Avoid \`@shield\` unless a human explicitly asks to hide code from AI — it creates blind spots.
+9. **NEVER write \`@entitles\` into source — propose it.** \`@entitles\` says a privilege is *supposed* to have this effect, so an over-grant closes a real privilege escalation as by-design. That makes it the second claim you may not make on a human's behalf, alongside \`@accepts\`. File it with \`guardlink entitle --propose\` (or \`guardlink_entitlement_propose\`) and a human's acceptance is what writes the annotation, under their name; an \`@entitles\` in source with no accepted proposal is a validation error. The rationale must cite the authz code as \`file:line\` or the claim is inert — parsed and then ignored. It never suppresses a finding and never gates testing; it only changes what triage recommends. Never propose one for an ownership question (IDOR, tenant isolation) — both peers hold the capability, so it cannot say whose object it was. When unsure which role the code actually requires, write \`@comment\` describing what you saw instead: under-granting costs noise, over-granting hides a real bug.
 
 ### Workflow (while coding)
 
@@ -322,7 +331,15 @@ the same change.** This includes: new endpoints, authentication/authorization lo
 @confirmed #sqli on App.API [critical] cwe:CWE-89 -- "Pentest verified: raw SQL injection via email param"
 @feature "SSO Login" -- "Single sign-on authentication flow"
 @owns security-team for App.API -- "Team responsible for reviews"
+@actor Namespace_Admin (#ns-admin) -- "Administers one namespace's configuration"   (definitions file)
 @comment -- "Rate limit: 100 req/15min via express-rate-limit"
+\`\`\`
+
+\`@entitles\` is absent from that list on purpose — you propose it, you do not write it:
+
+\`\`\`bash
+guardlink entitle --propose --actor '#ns-admin' --capability configure-archival-destination \\
+  --asset '#archival-fs' --rationale "By design: the archival URI is namespace configuration. Authz: common/api/metadata.go:189"
 \`\`\`
 `.trimStart();
 }
@@ -366,13 +383,31 @@ export function buildModelContext(model: ThreatModel, freshness?: ModelContextFr
   const assetIds = ordered.assets.filter(a => a.id).map(a => `#${a.id} (${a.path})`);
   const threatIds = ordered.threats.filter(t => t.id).map(t => `#${t.id} (${t.name})${t.severity ? ` [${t.severity}]` : ''}`);
   const controlIds = ordered.controls.filter(c => c.id).map(c => `#${c.id} (${c.name})`);
+  // Read from `ordered`, not `model`: this block is written to tracked files, so
+  // it inherits the same canonical-order requirement as every other relation.
+  const actorIds = (ordered.actors || []).filter(a => a.id).map(a => `#${a.id} (${a.name})`);
 
-  if (assetIds.length + threatIds.length + controlIds.length > 0) {
+  if (assetIds.length + threatIds.length + controlIds.length + actorIds.length > 0) {
     sections.push('### Current Definitions (REUSE these IDs — do NOT redefine)\n');
     sections.push('_Full records with descriptions and locations: \`guardlink_lookup("asset <id>")\`, or read \`.guardlink/definitions.*\`._\n');
     if (assetIds.length) sections.push(`**Assets:** ${assetIds.join(', ')}`);
     if (threatIds.length) sections.push(`**Threats:** ${threatIds.join(', ')}`);
     if (controlIds.length) sections.push(`**Controls:** ${controlIds.join(', ')}`);
+    if (actorIds.length) sections.push(`**Actors:** ${actorIds.join(', ')}`);
+  }
+
+  // Entitlements — carried into agent context because an agent that cannot see
+  // which capabilities are already granted by design will keep re-filing them
+  // as exposures. Inert claims are marked so nothing reads them as effective.
+  const entitlements = ordered.entitlements || [];
+  if (entitlements.length > 0) {
+    sections.push('\n### Entitlements (capabilities held by design — never a reason to skip testing)\n');
+    const lines = entitlements.slice(0, 25).map(en =>
+      `- ${en.actor} entitled to \`${en.canonical_capability}\`${en.asset ? ` on ${en.asset}` : ''}` +
+      (en.citation ? ` — cites ${en.citation.raw}` : ' — **uncited, inert**')
+    );
+    sections.push(lines.join('\n'));
+    if (entitlements.length > 25) sections.push(`- ... and ${entitlements.length - 25} more`);
   }
 
   // Open exposures (unmitigated).
@@ -436,6 +471,8 @@ export function buildModelContext(model: ThreatModel, freshness?: ModelContextFr
     `${ordered.exposures.length} exposures`,
     `${(ordered.confirmed || []).length} confirmed`,
     `${ordered.mitigations.length} mitigations`,
+    ...((ordered.actors || []).length > 0 ? [`${ordered.actors!.length} actors`] : []),
+    ...((ordered.entitlements || []).length > 0 ? [`${ordered.entitlements!.length} entitlements`] : []),
     `${ordered.flows.length} flows`,
     ...(uniqueFeatures.size > 0 ? [`${uniqueFeatures.size} features`] : []),
   ].join(', ');
@@ -537,10 +574,11 @@ Every time you write or modify code that touches security-relevant behavior, you
 ## Key Rules
 - ANNOTATE NEW CODE. When you add a function or endpoint that handles user input, accesses data, or crosses a trust boundary — add @exposes, @mitigates, @flows, @handles, or at minimum @comment. This is not optional.
 - NEVER write @accepts — that is a human-only governance decision. For risks with no mitigation: write @exposes + @audit + @comment suggesting potential controls.
+- NEVER write @entitles either — propose it with \`guardlink entitle --propose\` and a human's acceptance writes it, under their name. It claims a privilege is *supposed* to have this effect, so an over-grant closes a real escalation as by-design. Cite the authz code as file:line or the claim is inert. Never propose one for an ownership question (IDOR, tenant isolation).
 - Use @confirmed for verified exploits. When pentest/scanning/manual reproduction proves a threat is exploitable: @confirmed #threat on Asset [severity] -- "evidence". Distinct from @exposes (theoretical) — @confirmed means real, verified, no false positives.
 - Preserve existing annotations — do not delete or mangle them.
 - Definitions (@asset, @threat, @control with (#id)) live in .guardlink/definitions${project.definitionsExt}. Reuse IDs — never redefine. Add new definitions there first, then reference in source files.
-- Source files use relationship verbs: @mitigates, @exposes, @confirmed, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers, @feature.
+- Source files use relationship verbs: @mitigates, @exposes, @confirmed, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers, @feature. (@actor is a definition — it lives with @asset/@threat/@control. @entitles is proposed, not written.)
 - Write coupled annotation blocks: risk + control (or audit) + data flow + context note.
 - Avoid @shield unless a human explicitly asks to hide code from AI.
 

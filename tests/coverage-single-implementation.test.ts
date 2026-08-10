@@ -122,6 +122,11 @@ const ALLOWED: { file: string; snippet: string; why: string }[] = [
     snippet: 'e.asset === r.asset && e.threat === r.threat && e.location.file === r.file && e.location.line === r.line',
     why: 'exact record identity — matches on file and line too, to find the one exposure row a TUI action refers to; not a coverage join',
   },
+  {
+    file: 'src/diff/engine.ts',
+    snippet: '`${normalizeActorRef(e.actor)}::${e.asset || \'\'}::${e.threat || \'\'}`',
+    why: 'entitlementKey (PR #16) — record identity for the entitlement diff, keyed on the (actor, asset, threat) join so a capability edit reads as a modification rather than an add+remove. Reviewed on merge: it answers "is this the same claim as before", not "is this exposure covered". @entitles carries no coverage semantics at all (design §3.2 — an entitled exposure is still unmitigated), so routing it through the predicate would be wrong, not merely unnecessary',
+  },
 ];
 
 function walk(dir: string, out: string[] = []): string[] {
