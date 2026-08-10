@@ -173,10 +173,11 @@ program
     console.log('');
 
     // Run init
+    const mode = resolveAnnotationMode(opts.mode);
     const result = initProject({
       root,
       project: opts.project,
-      mode: resolveAnnotationMode(opts.mode),
+      mode,
       // Commander sets rootFiles=false for --no-root-files, true otherwise.
       rootFiles: opts.rootFiles !== false,
       skipAgentFiles: opts.skipAgentFiles,
@@ -210,9 +211,17 @@ program
     }
 
     if (!opts.dryRun && (result.created.length > 0 || result.updated.length > 0)) {
+      // D38: step 2 said "Add annotations to your source files" regardless of
+      // mode, while the `.guardlink/README.md` written by this same command says
+      // annotations do NOT go in source files under the default. One command
+      // contradicting itself inside one screen of output, and the terminal is
+      // the half a cold agent acts on. Both halves now come from the mode.
+      const external = mode === 'external';
       console.log(`\n✓ GuardLink initialized. Next steps:`);
       console.log(`  1. Review .guardlink/definitions${info.definitionsExt} — remove threats/controls not relevant to your project`);
-      console.log(`  2. Add annotations to your source files (or ask your coding agent to do it)`);
+      console.log(external
+        ? `  2. Add annotations in .guardlink/annotations/<source path>.gal sidecars — NOT in source files (or ask your coding agent to do it)`
+        : `  2. Add annotations in source-file comments (or ask your coding agent to do it)`);
       console.log(`  3. Run: guardlink validate .`);
     }
   });
