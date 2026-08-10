@@ -122,6 +122,29 @@ both is a mixed repo, and that is the failure this section exists to prevent.`;
  * docs/GUARDLINK_REFERENCE.md — the single source of truth for annotation syntax.
  * All agent instruction files point here instead of duplicating the full reference.
  */
+/**
+ * Where `init` puts the annotation reference, as one rule both writers use.
+ *
+ * D45: `.guardlink/README.md` said "The complete reference is
+ * `.guardlink/GUARDLINK_REFERENCE.md`" while `init` had written
+ * `docs/GUARDLINK_REFERENCE.md`. The two disagreed because they were keyed off
+ * different things — the README chose by ANNOTATION MODE, `init` writes by
+ * `rootFiles` — and annotation mode has nothing to do with where a document
+ * goes. Under the default (external mode, root files allowed) the two axes
+ * disagree, which is every fresh repo.
+ *
+ * The sentence after the broken pointer is "Read it before inventing syntax",
+ * so the one wrong link in the document was the one aimed at a reader about to
+ * guess at syntax.
+ */
+export const REFERENCE_DOC_IN_GUARDLINK = '.guardlink/GUARDLINK_REFERENCE.md';
+export const REFERENCE_DOC_IN_DOCS = 'docs/GUARDLINK_REFERENCE.md';
+
+/** `--no-root-files` keeps everything inside `.guardlink/`; otherwise `docs/`. */
+export function referenceDocPath(rootFiles: boolean): string {
+  return rootFiles ? REFERENCE_DOC_IN_DOCS : REFERENCE_DOC_IN_GUARDLINK;
+}
+
 export function referenceDocContent(project: ProjectInfo): string {
   return `# GuardLink — Annotation Reference
 
@@ -746,6 +769,12 @@ export interface ReadmeContext {
   model: ThreatModel | null;
   annotationHash: string | null;
   mcpAtRoot: boolean;
+  /**
+   * Where the reference doc actually is (D45). Supplied by the caller from
+   * `referenceDocPath()`, or observed from disk when the caller did not write
+   * it — never inferred from annotation mode, which is what got this wrong.
+   */
+  referencePath: string;
 }
 
 /**
@@ -766,7 +795,7 @@ export function guardlinkReadmeContent(project: ProjectInfo, ctx: ReadmeContext)
   const defs = `definitions${project.definitionsExt}`;
   const m = ctx.model;
   const external = ctx.mode === 'external';
-  const referencePath = external ? '.guardlink/GUARDLINK_REFERENCE.md' : 'docs/GUARDLINK_REFERENCE.md';
+  const referencePath = ctx.referencePath;
 
   const modeLine = ctx.mode === null
     ? 'Not recorded. Check the `mode` field on any MCP response, which is observed from the annotations themselves.'

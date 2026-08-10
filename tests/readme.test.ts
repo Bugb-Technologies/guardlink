@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initProject, syncAgentFiles } from '../src/init/index.js';
 import { parseProject } from '../src/parser/parse-project.js';
-import { guardlinkReadmeContent } from '../src/init/templates.js';
+import { referenceDocPath, guardlinkReadmeContent } from '../src/init/templates.js';
 import { detectProject } from '../src/init/detect.js';
 import { parseLine } from '../src/parser/parse-line.js';
 
@@ -123,7 +123,12 @@ describe('GL-402 — sync regenerates it without drift', () => {
 
 describe('GL-402 — content an agent needs', () => {
   const project = { name: 'demo', language: 'typescript', definitionsExt: '.ts' } as ReturnType<typeof detectProject>;
-  const base = { model: null, annotationHash: null, modeSource: 'config' as const };
+  // D45: `referencePath` is supplied by the caller from `referenceDocPath(rootFiles)`.
+  // It is NOT derived from annotation mode — that conflation was the defect.
+  const base = {
+    model: null, annotationHash: null, modeSource: 'config' as const,
+    referencePath: referenceDocPath(true),
+  };
 
   const inline = () => guardlinkReadmeContent(project, { ...base, mode: 'inline', mcpAtRoot: true });
   const external = () => guardlinkReadmeContent(project, { ...base, mode: 'external', mcpAtRoot: false });
@@ -225,7 +230,12 @@ describe('GL-402 — content an agent needs', () => {
 
 describe('GL-402/F2 — an agent can EXTEND the model from this file alone', () => {
   const project = { name: 'demo', language: 'typescript', definitionsExt: '.ts' } as ReturnType<typeof detectProject>;
-  const base = { model: null, annotationHash: null, modeSource: 'config' as const };
+  // D45: `referencePath` is supplied by the caller from `referenceDocPath(rootFiles)`.
+  // It is NOT derived from annotation mode — that conflation was the defect.
+  const base = {
+    model: null, annotationHash: null, modeSource: 'config' as const,
+    referencePath: referenceDocPath(true),
+  };
   const inline = () => guardlinkReadmeContent(project, { ...base, mode: 'inline', mcpAtRoot: true });
   const external = () => guardlinkReadmeContent(project, { ...base, mode: 'external', mcpAtRoot: false });
 
@@ -289,9 +299,26 @@ describe('GL-402/F2 — an agent can EXTEND the model from this file alone', () 
     }
   });
 
-  it('names GUARDLINK_REFERENCE.md, at the right path for the mode', () => {
-    expect(inline()).toContain('docs/GUARDLINK_REFERENCE.md');
-    expect(external()).toContain('.guardlink/GUARDLINK_REFERENCE.md');
+  it('names GUARDLINK_REFERENCE.md at the path init actually wrote it to', () => {
+    // D45: this used to assert the path varied by annotation MODE — inline to
+    // docs/, external to .guardlink/. That was the defect, asserted as the
+    // contract. The path varies by `rootFiles`, and under the default
+    // (external mode, root files allowed) the mode rule pointed at a file init
+    // had not written. Both modes now say whatever the caller resolved.
+    const withRootFiles = referenceDocPath(true);
+    const guardlinkOnly = referenceDocPath(false);
+    expect(withRootFiles).toBe('docs/GUARDLINK_REFERENCE.md');
+    expect(guardlinkOnly).toBe('.guardlink/GUARDLINK_REFERENCE.md');
+
+    // Mode does not move it.
+    expect(inline()).toContain(withRootFiles);
+    expect(external()).toContain(withRootFiles);
+
+    // The footprint does.
+    const zeroFootprint = guardlinkReadmeContent(project, {
+      ...base, mode: 'external', mcpAtRoot: false, referencePath: guardlinkOnly,
+    });
+    expect(zeroFootprint).toContain(guardlinkOnly);
   });
 
   it('D22: the grammar examples do not register as real annotations', async () => {
