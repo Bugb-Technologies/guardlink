@@ -1,8 +1,8 @@
 {
   "version": "1.1.0",
   "project": "guardlink",
-  "source_files": 86,
-  "annotations_parsed": 438,
+  "source_files": 87,
+  "annotations_parsed": 442,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -16,6 +16,7 @@
     "src/analyzer/index.ts",
     "src/analyzer/sarif.ts",
     "src/artifacts/emit.ts",
+    "src/ci/index.ts",
     "src/cli/index.ts",
     "src/dashboard/diagrams.ts",
     "src/dashboard/generate.ts",
@@ -830,7 +831,7 @@
       "description": "resolve() canonicalizes paths; cwd-relative by design",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 30
+        "line": 31
       }
     },
     {
@@ -840,7 +841,7 @@
       "description": "Output paths resolved relative to project root",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 32
+        "line": 33
       }
     },
     {
@@ -850,7 +851,7 @@
       "description": "maskKey() redacts keys in show output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 34
+        "line": 35
       }
     },
     {
@@ -1625,7 +1626,7 @@
       "description": "User-supplied dir argument resolved via path.resolve",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 29
+        "line": 30
       }
     },
     {
@@ -1638,7 +1639,7 @@
       "description": "init/report/sarif/dashboard write files to user-specified paths",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 31
+        "line": 32
       }
     },
     {
@@ -1651,7 +1652,7 @@
       "description": "API keys handled in config set/show commands",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 33
+        "line": 34
       }
     },
     {
@@ -1664,7 +1665,7 @@
       "description": "Agent launcher spawns child processes",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 35
+        "line": 36
       }
     },
     {
@@ -2649,13 +2650,33 @@
       }
     },
     {
+      "source": "ThreatModel",
+      "target": "#cli",
+      "mechanism": "runCiChecks",
+      "description": "Parsed model checked for uncovered exposures",
+      "location": {
+        "file": "src/ci/index.ts",
+        "line": 29
+      }
+    },
+    {
+      "source": "SourceFiles",
+      "target": "#cli",
+      "mechanism": "findAnchorDrift",
+      "description": "Recorded anchors compared against current source",
+      "location": {
+        "file": "src/ci/index.ts",
+        "line": 30
+      }
+    },
+    {
       "source": "UserArgs",
       "target": "#cli",
       "mechanism": "process.argv",
       "description": "CLI argument input path",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 37
+        "line": 38
       }
     },
     {
@@ -2665,7 +2686,7 @@
       "description": "Report/config output path",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 38
+        "line": 39
       }
     },
     {
@@ -2675,7 +2696,7 @@
       "description": "Version string read from package.json",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 116
+        "line": 118
       }
     },
     {
@@ -3487,7 +3508,7 @@
       "description": "Trust boundary at CLI argument parsing",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 39
+        "line": 40
       }
     },
     {
@@ -3614,7 +3635,7 @@
       "description": "Child process spawning delegated to agents/launcher.ts with explicit args",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 36
+        "line": 37
       }
     },
     {
@@ -3791,7 +3812,7 @@
       "description": "Processes API keys via config commands",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 40
+        "line": 41
       }
     },
     {
@@ -4138,6 +4159,20 @@
       "location": {
         "file": "src/artifacts/emit.ts",
         "line": 31
+      }
+    },
+    {
+      "description": "Exit code is a pure function of (strict, exposures, drift) and lives in the summary, so JSON consumers see the same verdict the shell got",
+      "location": {
+        "file": "src/ci/index.ts",
+        "line": 31
+      }
+    },
+    {
+      "description": "Exposures and drift are serialized as the types the parser already produces — no renamed fields, so guardlink.ci/v1 cannot drift from the model it reports",
+      "location": {
+        "file": "src/ci/index.ts",
+        "line": 32
       }
     },
     {
@@ -4507,7 +4542,7 @@
   ],
   "coverage": {
     "total_symbols": 0,
-    "annotated_symbols": 438,
+    "annotated_symbols": 442,
     "coverage_percent": 76,
     "unannotated_critical": []
   },
