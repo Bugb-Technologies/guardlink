@@ -16,12 +16,30 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const cli = join(repoRoot, 'src', 'cli', 'index.ts');
+
+/**
+ * This repo's own tsx, by absolute path, rather than `npx tsx`.
+ *
+ * Every run below sets `cwd` to a temp fixture OUTSIDE the repo, and npx
+ * resolves against the child's cwd: it walks up from /tmp, finds no
+ * node_modules, and downloads tsx from the registry into ~/.npm/_npx even
+ * though the devDependency is installed right here. Serially that was one
+ * silent download; concurrently it was four npx processes racing to populate
+ * the same cache directory, which shredded it mid-extract (`spawn sh ENOENT`
+ * on a half-written esbuild) and failed thirteen tests with npm's output in
+ * place of the CLI's.
+ *
+ * Resolving from `import.meta.url` pins it to the repo regardless of where the
+ * child runs, and drops the npx layer — and with it the network — entirely.
+ */
+const tsx = createRequire(import.meta.url).resolve('tsx/cli');
 
 interface Run { status: number; stdout: string; stderr: string }
 
@@ -34,7 +52,7 @@ interface Run { status: number; stdout: string; stderr: string }
  */
 function guardlink(cwd: string, ...args: string[]): Promise<Run> {
   return new Promise(resolve => {
-    execFile('npx', ['tsx', cli, ...args], { cwd, encoding: 'utf-8' }, (err, stdout, stderr) => {
+    execFile(process.execPath, [tsx, cli, ...args], { cwd, encoding: 'utf-8' }, (err, stdout, stderr) => {
       const code = (err as { code?: number | string } | null)?.code;
       resolve({ status: typeof code === 'number' ? code : err ? 1 : 0, stdout, stderr });
     });
@@ -44,10 +62,10 @@ function guardlink(cwd: string, ...args: string[]): Promise<Run> {
 /**
  * Every distinct invocation a describe asserts on, run once and all at once.
  *
- * `npx tsx` costs ~1s per launch locally and GitHub's shared runners spawn
- * roughly 5x slower, so seventeen serial spawns under vitest's 5000ms default
- * timeout left this file one runner hiccup from red — which is how it first
- * failed on CI while passing everywhere else. `ci` reports and never repairs,
+ * A tsx launch costs ~1s locally and GitHub's shared runners spawn roughly 5x
+ * slower, so seventeen serial spawns under vitest's 5000ms default timeout
+ * left this file one runner hiccup from red — which is how it first failed on
+ * CI while passing everywhere else. `ci` reports and never repairs,
  * so these runs are read-only and independent: Promise.all collapses a
  * describe's spawns into roughly one launch of wall time, and the `it` blocks
  * assert against the captured Run instead of launching their own. The global
