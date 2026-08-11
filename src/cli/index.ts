@@ -8,6 +8,7 @@
  *   guardlink parse [dir]             Parse annotations, output ThreatModel JSON
  *   guardlink status [dir]            Show annotation coverage summary
  *   guardlink validate [dir]          Check for syntax errors and dangling refs
+ *   guardlink ci [dir]                Advisory CI checks — unmitigated exposures + anchor drift
  *   guardlink report [dir]            Generate markdown + JSON threat model report
  *   guardlink diff [ref]              Compare threat model against a git ref
  *   guardlink sarif [dir]             Export SARIF 2.1.0 for GitHub / VS Code
@@ -46,6 +47,7 @@ import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
+import { runCiChecks, formatCiReport } from '../ci/index.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { ensurePromptMd } from '../init/migrate.js';
 import { generateReport, generateMermaid } from '../report/index.js';
@@ -417,6 +419,37 @@ program
 
     // Exit 1 on errors always; also on unmitigated if --strict, or on artifact drift
     process.exit(errorCount > 0 || artifactDrift || (opts.strict && hasUnmitigated) ? 1 : 0);
+  });
+
+// ─── ci ──────────────────────────────────────────────────────────────
+
+program
+  .command('ci')
+  .description('Advisory CI checks — unmitigated exposures and drifted @source anchors (exit 0 unless --strict)')
+  .argument('[dir]', 'Project directory to scan', '.')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('-f, --format <fmt>', 'Output format: text (default) or json', 'text')
+  .option('--strict', 'Exit 1 when either check finds anything. Off by default — these are warnings, not a gate')
+  .action(async (dir: string, opts: { project: string; format: string; strict?: boolean }) => {
+    const root = resolve(dir);
+
+    if (opts.format !== 'text' && opts.format !== 'json') {
+      console.error(`Unknown --format '${opts.format}'. Use text or json.`);
+      process.exit(1);
+    }
+
+    const { model } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    const report = runCiChecks(root, model, { strict: opts.strict });
+
+    if (opts.format === 'json') {
+      console.log(JSON.stringify(report, null, 2));
+      console.error(`GuardLink CI: ${report.summary.exposures} unmitigated exposure(s), ${report.summary.drift} drifted anchor(s)`);
+    } else {
+      console.error(formatCiReport(report));
+    }
+
+    // Advisory by default: 0 even with findings. `--strict` is the only path to 1.
+    process.exit(report.summary.exit_code);
   });
 
 // ─── report ──────────────────────────────────────────────────────────
