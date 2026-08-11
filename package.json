@@ -46,7 +46,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/postbuild-chmod.mjs",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
