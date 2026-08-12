@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 **The major version is scoped to two things: the TypeScript type surface and the threat-model JSON schema.** No command was removed, no flag was removed, and no output format changed except the threat model's own `coverage` block. **If you use the `guardlink` CLI or the MCP server, upgrading from 1.4.5 needs no migration** — for you this release is additive.
 
-Programmatic consumers are the reason for the major. Four exported shapes changed, and the breakage reaches code that never imports any of their names — see BREAKING below.
+Programmatic consumers are the reason for the major. Eight exported shapes changed, and the breakage reaches code that never imports any of their names — see BREAKING below. Most of it is narrow: four of the eight break only code that *constructs* our types, such as a test fixture or an adapter. Two reach ordinary reading code — the `coverage` reshape, and the widened `AnnotationVerb` union under an exhaustive `switch`.
 
 Two things a CLI user will nonetheless notice, both described in full further down: merging reports produced by different GuardLink versions now prints a schema-mismatch warning, and externally-anchored projects may see exposures in `unmitigated` that were previously being hidden by a mitigation on a different symbol.
 
@@ -35,7 +35,26 @@ Two things a CLI user will nonetheless notice, both described in full further do
 
 - **`UnannotatedSymbol` is deleted.** It existed only to type `coverage.unannotated_critical`. **What you observe:** `TS2305: Module '"guardlink"' has no exported member 'UnannotatedSymbol'`.
 
-- **`DiagnosticCode` widened from 2 members to 12.** **What you observe:** nothing, if you produce or ignore diagnostics. If you consume them in an exhaustive `switch` with a `never` fallthrough, that assertion no longer compiles — `TS2322: Type '"unknown-verb" | "duplicate-id" | … ' is not assignable to type 'never'`. Add a default branch, or handle the new codes listed under *Added*.
+- **`AnnotationVerb` gained `'actor'` and `'entitles'`.** The union behind `Annotation['verb']` widened from 20 members to 22, because `@actor` and `@entitles` are new verbs — see *Added*.
+
+  **What you observe:** nothing, if you read `verb` or compare it against a literal. If you `switch` over it exhaustively with an `assertNever`-style `never` default, that default no longer compiles:
+
+  ```
+  error TS2322: Type '"actor" | "entitles"' is not assignable to type 'never'.
+  ```
+
+  Add a default branch, or handle the two new verbs. This is the one breaking change that reaches ordinary reading code rather than only code that constructs our types: `Annotation` has been exported since 1.x, and an exhaustive switch over a verb union is the natural way to write a renderer or a linter over it.
+
+- **Three returned interfaces gained required fields.** `InitResult` gained `preserved: string[]`; `DiffSummary` gained `staleEntitlements: number`; `ThreatModelDiff` gained `actors: Change<ThreatModelActor>[]`, `entitlements: Change<ThreatModelEntitlement>[]` and `staleEntitlements: StaleEntitlement[]` — note that the last is the list, while `DiffSummary.staleEntitlements` is its count.
+
+  **What you observe:** nothing, if you call `initProject` or `diffModels` and read the result — that is what these types are for, and reading is unaffected. If you *construct* one of them — a test fixture, a mock, an adapter that adapts some other tool's output into our shape — the object literal is now incomplete:
+
+  ```
+  error TS2741: Property 'preserved' is missing in type '{ … }' but required in type 'InitResult'.
+  error TS2739: Type '{ … }' is missing the following properties from type 'ThreatModelDiff': actors, entitlements
+  ```
+
+  Add the fields — `[]` for every list and `0` for the count are the correct empty values. They are required rather than optional because they are always populated on a real result, and an optional field would push a `?? []` into every consumer that reads them.
 
 - **`REPORT_SCHEMA_VERSION` moved `1.0.0` → `1.1.0`, and mixed-version merges now warn.**
 
@@ -129,13 +148,19 @@ Two things a CLI user will nonetheless notice, both described in full further do
 
   Only warnings can be switched off this way. Listing an error-level code is accepted and ignored — quieting noise is a preference, silencing a broken annotation is not.
 
-- **Ten new machine-readable diagnostic codes, twelve in total.** `ParseDiagnostic.code` previously existed on two kinds while roughly seven were emitted without one, so a consumer wanting to treat a dangling reference differently from risk-acceptance hygiene had nothing to match on but the message text. Now every kind carries one: `unknown-verb`, `duplicate-id`, `dangling-ref`, `undeclared-actor`, `inert-entitlement`, `imprecise-entitlement`, `accepted-without-audit`, `off-convention-gal`, `stray-gal-source` and `entitlement-provenance` join `malformed-annotation` and `prose-like`.
+- **`DiagnosticCode` is now an exported type, with twelve members.** A code was carried on two diagnostic kinds while roughly seven were emitted without one, and the type itself was never exported — so a consumer wanting to treat a dangling reference differently from risk-acceptance hygiene had nothing to match on but the message text, and no name to match it against. Now every kind carries a code: `unknown-verb`, `duplicate-id`, `dangling-ref`, `undeclared-actor`, `inert-entitlement`, `imprecise-entitlement`, `accepted-without-audit`, `off-convention-gal`, `stray-gal-source` and `entitlement-provenance` join `malformed-annotation` and `prose-like`. `ParseDiagnostic` gains `code?: DiagnosticCode`.
+
+  **This is additive, not breaking.** Neither `DiagnosticCode` nor `ParseDiagnostic.code` appears in 1.4.5's published `.d.ts`, so no 1.4.5 consumer can have been switching over the type or reading the field. If you adopt the type now and `switch` over it exhaustively, give the switch a default branch — the set will grow again as new diagnostics are added, and a `never` assertion over it is a compile error waiting for the next release.
 
 - **`guardlink parse --no-pretty`.** `--pretty` defaulted to true with no counterpart, so the compact branch was unreachable and `--no-pretty` was rejected as an unknown option. It now emits the model on one line.
 
 - **`guardlink-mcp --help` and `--version`.** The binary previously ignored every argument and waited for JSON-RPC on stdin, so `guardlink-mcp --version` hung instead of answering. Both now print and exit without opening a transport; the no-flag invocation still starts the server exactly as before.
 
-- **The published package now contains `src/`.** The tarball already shipped 152 source maps that could not resolve to anything, because the `.ts` files they point at were not published. Shipping the source makes go-to-definition in an editor land on the original TypeScript rather than the generated `.d.ts`. Cost: 308 → 384 files, 607 kB → 936 kB packed.
+- **The published package now contains `src/`, and its source maps finally resolve.** 1.4.5 already shipped 112 source maps that pointed at nothing, because the `.ts` files they name were not published — every map in the tarball was dead weight. 2.0.0 publishes the 76 source files alongside the 152 maps, so a stack trace from inside `guardlink` resolves to the original TypeScript and go-to-definition lands on the source rather than the generated `.d.ts`.
+
+  This is deliberate, and the reason is what the tool is. A security tool asks to be trusted with a threat model; shipping the source it was built from means a consumer can audit what they installed without cloning the repo or trusting a build they did not run. Provenance attestation says the tarball came from this commit — the source in it says what that commit does.
+
+  Cost: 228 → 384 files, 405.8 kB → 962.5 kB packed (1.9 MB → 4.1 MB unpacked). Nothing about the runtime changes: `dist/` is what `main`, `exports` and both `bin` entries resolve to, exactly as before.
 
 ### Changed
 
