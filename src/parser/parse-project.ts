@@ -33,6 +33,7 @@ import { extractCitation } from './citation.js';
 import { loadWorkspaceConfig } from '../workspace/index.js';
 import { ANNOTATIONS_DIR } from './gal-path.js';
 import { fileCoveragePercent } from './coverage.js';
+import { readDisabledDiagnostics } from './annotation-mode.js';
 
 /** A standalone annotation sidecar, not a source file. */
 const isGalPath = (p: string): boolean => /\.gal$/i.test(p);
@@ -234,7 +235,14 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   // Detect cross-repo tag references (requires workspace.yaml)
   model.external_refs = detectExternalRefs(model, root);
 
-  return { model, diagnostics: allDiagnostics };
+  // Warning-level diagnostics a project has switched off in config.json.
+  // Errors are never suppressible — see readDisabledDiagnostics.
+  const disabled = readDisabledDiagnostics(root);
+  const diagnostics = disabled.size === 0
+    ? allDiagnostics
+    : allDiagnostics.filter(d => !(d.level === 'warning' && d.code && disabled.has(d.code)));
+
+  return { model, diagnostics };
 }
 
 function normalizeLocationPath(locationFile: string, physicalFile: string, root: string): string {

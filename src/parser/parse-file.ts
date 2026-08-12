@@ -122,5 +122,58 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
     }
   }
 
-  return { annotations, diagnostics, files_parsed: 1 };
+  return { annotations, diagnostics: collapseUnknownVerbs(diagnostics), files_parsed: 1 };
+}
+
+/**
+ * Collapse repeated `unknown-verb` warnings to one per distinct token per file.
+ *
+ * **Per file, not per project, and not globally.** Two alternatives were on the
+ * table and both lose something this does not:
+ *
+ * - *One diagnostic for the whole run, with a total count.* Collapses hardest —
+ *   1,340 lines to one — but it has to drop `file` and `line` to do it, and
+ *   every consumer downstream is anchored on that pair: the CLI prints
+ *   `file:line`, editors make it clickable, SARIF requires a
+ *   `physicalLocation`. A warning with nowhere to point is a warning you cannot
+ *   act on.
+ * - *No collapsing.* What shipped first. One genuine `@flow` typo repeated
+ *   across a file produced one warning per line, and a house convention
+ *   produced 1,340.
+ *
+ * Per (file, token) keeps the anchor, keeps the fix local — you correct
+ * `@flow` in this file by looking at one place — and still tells a developer
+ * with the same typo in three files about all three. Output is bounded by
+ * distinct tokens × files touched rather than by total lines.
+ *
+ * The first occurrence keeps the line, because that is where you start reading.
+ * The count rides in the message so nothing is silently hidden.
+ */
+function collapseUnknownVerbs(diagnostics: ParseDiagnostic[]): ParseDiagnostic[] {
+  const firstByToken = new Map<string, ParseDiagnostic>();
+  const countByToken = new Map<string, number>();
+
+  for (const d of diagnostics) {
+    if (d.code !== 'unknown-verb') continue;
+    const token = d.message.match(/^Unknown annotation verb (\S+)/)?.[1] ?? d.message;
+    countByToken.set(token, (countByToken.get(token) ?? 0) + 1);
+    if (!firstByToken.has(token)) firstByToken.set(token, d);
+  }
+  if (firstByToken.size === 0) return diagnostics;
+
+  const kept = new Set(firstByToken.values());
+  const out: ParseDiagnostic[] = [];
+  for (const d of diagnostics) {
+    if (d.code === 'unknown-verb' && !kept.has(d)) continue;
+    if (d.code === 'unknown-verb') {
+      const token = d.message.match(/^Unknown annotation verb (\S+)/)?.[1] ?? d.message;
+      const n = countByToken.get(token) ?? 1;
+      out.push(n > 1
+        ? { ...d, message: `${d.message} (${n} occurrences in this file; first at line ${d.line})` }
+        : d);
+      continue;
+    }
+    out.push(d);
+  }
+  return out;
 }

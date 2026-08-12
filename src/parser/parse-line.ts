@@ -471,7 +471,38 @@ export function parseLine(
     };
   }
 
-  // Not a GuardLink annotation (could be @param, @returns, etc.)
+  // Not a GuardLink annotation (could be @param, @returns, etc.).
+  //
+  // Silence is right for @param — it is a JSDoc tag, not a broken GuardLink
+  // one — but it was also right for @flow and @migitates, which is the whole
+  // problem: a one-character slip produced neither an annotation nor a word.
+  // The README shipped @flow twice and nothing ever said so.
+  //
+  // The discriminator is edit distance. A token within one edit of a known
+  // verb is a typo of that verb far more often than it is an unrelated tag;
+  // @param is 4 edits from `owns`, its nearest neighbour, so it stays silent.
+  // Warning, never error: this is a guess about intent, and a guess does not
+  // get to fail a build.
+  if (verbMatch) {
+    const suggestion = nearestVerb(verbMatch[1]);
+    if (suggestion) {
+      return {
+        annotation: null,
+        diagnostic: {
+          level: 'warning',
+          code: 'unknown-verb',
+          message: `Unknown annotation verb @${verbMatch[1]} — did you mean @${suggestion}? `
+            + `Unrecognised verbs are discarded silently, so this line contributes nothing to the model.`,
+          file: location.file,
+          line: location.line,
+          raw: trimmed,
+        },
+        isContinuation: false,
+        sourceDirective: null,
+      };
+    }
+  }
+
   return { annotation: null, diagnostic: null, isContinuation: false, sourceDirective: null };
 }
 
@@ -506,6 +537,144 @@ const KNOWN_VERBS: ReadonlySet<string> = new Set([
  * A verb with no entry has no keywords: `@audit <asset> -- "why"` is a ref and
  * a delimiter, both of which are already covered as evidence.
  */
+/**
+ * A token carrying a namespace separator before the verb: `g.comment`, `gl:exposes`.
+ *
+ * Matched before any distance test. A dialect is a decision; a typo is a slip,
+ * and the two do not deserve the same message.
+ */
+const NAMESPACED_TOKEN = /^[A-Za-z][\w-]*[.:][A-Za-z]/;
+
+/**
+ * Documentation tag vocabularies, excluded from distance testing entirely.
+ *
+ * JSDoc/TSDoc/Closure, Doxygen, phpDoc, and the Epydoc-style `@`-tags that
+ * Python docstring conventions inherited. These are not GuardLink verbs and
+ * never will be, so no edit distance to one of them is evidence of anything.
+ *
+ * Measured against juice-shop, bkeeper, ghostfolio and specter-v1, this list
+ * suppressed **zero** warnings that the distance rule had not already declined
+ * to raise. It is here so that silence on `@param` is a stated guarantee rather
+ * than a consequence of `param` sitting four edits from `threat` — a margin
+ * that a future verb could close without anyone noticing.
+ */
+const DOC_TAGS: ReadonlySet<string> = new Set([
+  // JSDoc / TSDoc / Closure
+  'abstract', 'access', 'alias', 'alpha', 'async', 'augments', 'author', 'beta', 'borrows',
+  'callback', 'category', 'categorydescription', 'class', 'classdesc', 'constant', 'constructor',
+  'constructs', 'copyright', 'decorator', 'default', 'defaultvalue', 'deprecated', 'desc',
+  'description', 'enum', 'event', 'eventproperty', 'example', 'experimental', 'exports', 'extends',
+  'external', 'file', 'fileoverview', 'fires', 'func', 'function', 'generator', 'global', 'group',
+  'groupdescription', 'hideconstructor', 'host', 'ignore', 'implements', 'inheritdoc', 'inner',
+  'instance', 'interface', 'internal', 'kind', 'label', 'lends', 'license', 'link', 'linkcode',
+  'linkplain', 'listens', 'member', 'memberof', 'method', 'mixes', 'mixin', 'module', 'name',
+  'namespace', 'override', 'overload', 'package', 'packagedocumentation', 'param', 'private',
+  'privateremarks', 'prop', 'property', 'protected', 'public', 'readonly', 'remarks', 'requires',
+  'return', 'returns', 'satisfies', 'sealed', 'see', 'since', 'static', 'summary', 'template',
+  'this', 'throws', 'todo', 'tutorial', 'type', 'typedef', 'var', 'version', 'virtual', 'yield',
+  'yields',
+  // Doxygen
+  'addtogroup', 'anchor', 'arg', 'attention', 'brief', 'bug', 'cite', 'code', 'cond', 'copybrief',
+  'copydetails', 'copydoc', 'date', 'def', 'defgroup', 'details', 'dot', 'em', 'endcode', 'endcond',
+  'enddot', 'endif', 'endverbatim', 'headerfile', 'image', 'if', 'ingroup', 'invariant', 'li',
+  'mainpage', 'msc', 'note', 'page', 'post', 'pre', 'ref', 'relates', 'retval', 'sa', 'section',
+  'struct', 'subsection', 'tparam', 'union', 'verbatim', 'warning', 'xrefitem',
+  // phpDoc
+  'api', 'filesource', 'property-read', 'property-write', 'source', 'subpackage', 'uses', 'used-by',
+  // Epydoc / Python docstring conventions
+  'change', 'contact', 'cvar', 'ivar', 'newfield', 'organization', 'permission', 'postcondition',
+  'precondition', 'raise', 'raises', 'rtype', 'sort', 'status', 'undocumented',
+]);
+
+/**
+ * Levenshtein distance, bounded — returns `max + 1` as soon as it can prove the
+ * real distance exceeds `max`, so the common case (nothing close) exits early.
+ */
+function editDistance(a: string, b: string, max: number): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(
+        prev[j] + 1,
+        cur[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+      if (cur[j] < rowMin) rowMin = cur[j];
+    }
+    if (rowMin > max) return max + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/**
+ * The known verb an unrecognised `@token` was probably meant to be, or null.
+ *
+ * The threshold is length-scaled, and it is scaled because a flat one does not
+ * work in either direction. Measured against the real cases:
+ *
+ *   `@flow`      → flows      distance 1
+ *   `@migitates` → mitigates  distance 2  (g and t are swapped but NOT
+ *                                          adjacent, so this is two
+ *                                          substitutions — a Damerau
+ *                                          transposition does not help)
+ *   `@author`    → actor      distance 2  but `@author` is a JSDoc tag
+ *   `@param`     → threat     distance 4  nowhere near anything
+ *
+ * (Backticked above so these lines do not begin with `@` and trip the very
+ * check they describe — this file is parsed by GuardLink like any other.)
+ *
+ * A flat 1 misses @migitates. A flat 2 claims @author. Allowing 2 only from 8
+ * characters up keeps the relative edit rate under ~25%, which admits the long
+ * genuine typos (@migitates, @vaildates) and excludes the short coincidences.
+ *
+ * Only ever a warning. This is an inference about what someone meant, and an
+ * inference does not get to fail a build.
+ */
+function nearestVerb(token: string): string | null {
+  if (!/^[a-z]/.test(token)) return null;
+
+  // Trailing punctuation means the verb is being *named* in a sentence, not
+  // used: "@comment, @shield and @feature carry no ref" is a real line in this
+  // codebase. Strip it, and if what is left is a known verb, this is prose
+  // about GuardLink and there is nothing to suggest. A genuine typo survives
+  // the strip — `@flowss,` still resolves to `flows`.
+  const bare = token.replace(/[,.;:!?)\]}]+$/, '');
+  if (KNOWN_VERBS.has(bare)) return null;
+  token = bare;
+  if (!token) return null;
+
+  // A namespace separator before the verb means the author is writing a
+  // deliberate dialect, not fumbling a spelling. Measured: `@g.comment` in a
+  // 693-file codebase accounted for 1,340 of 1,365 warnings across four
+  // corpora, and `g.comment` is exactly two deletions from `comment`, so the
+  // length-scaled tier admits it. An author who writes the same prefix 1,340
+  // times has not made 1,340 typos.
+  if (NAMESPACED_TOKEN.test(token)) return null;
+
+  // Documentation vocabularies are excluded outright rather than left to
+  // survive on edit distance. On the corpora measured this removed nothing the
+  // distance rule had not already kept silent — the point is that silence on
+  // `@param` becomes a property of the design instead of an accident of how
+  // far `param` happens to sit from `threat`.
+  if (DOC_TAGS.has(token)) return null;
+
+  const max = token.length >= 8 ? 2 : 1;
+  let best: string | null = null;
+  let bestDistance = max + 1;
+  for (const verb of KNOWN_VERBS) {
+    const d = editDistance(token, verb, max);
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = verb;
+    }
+  }
+  return bestDistance <= max ? best : null;
+}
+
 const VERB_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
   exposes: ['to'],
   mitigates: ['against', 'using', 'with'],
