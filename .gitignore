@@ -29,3 +29,8 @@ pnpm-lock.yaml
 
 # Debug / internal
 _debug.ts
+
+# Packing artifacts. `npm pack` / `npm pack --dry-run` write the tarball into
+# the repo root, and a stray guardlink-<version>.tgz committed alongside the
+# source is both noise and a stale copy of a published artifact.
+*.tgz
