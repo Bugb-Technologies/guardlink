@@ -20,6 +20,7 @@ import { createInterface } from 'node:readline';
 import { resolve, basename } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { parseProject } from '../parser/index.js';
+import { getPackageVersion } from '../version.js';
 import { C, computeGrade, gradeColored } from './format.js';
 import { computeSeverity } from '../dashboard/data.js';
 import { resolveLLMConfig, loadTuiConfig } from './config.js';
@@ -118,7 +119,7 @@ const PALETTE_COMMANDS: CommandEntry[] = [
 
 function printBanner(ctx: TuiContext): void {
   console.log(gradient(['#00ff41', '#00d4ff'])(ASCII_LOGO));
-  const version = getVersion();
+  const version = getPackageVersion();
   const LW = 34;  // left column inner width
   const RW = 34;  // right column inner width
   // Total visible box width: │ _(LW)_ │ _(RW)_ │ = LW+RW+7
@@ -275,24 +276,6 @@ function printBanner(ctx: TuiContext): void {
   console.log('');
 }
 
-function getVersion(): string {
-  try {
-    // Try relative to this file
-    const dir = new URL('.', import.meta.url).pathname;
-    const pkgPath = resolve(dir, '../../package.json');
-    if (existsSync(pkgPath)) {
-      return JSON.parse(readFileSync(pkgPath, 'utf-8')).version || '0.0.0';
-    }
-  } catch { /* ignore */ }
-  try {
-    // Try from cwd
-    const cwdPkg = resolve(process.cwd(), 'node_modules/guardlink/package.json');
-    if (existsSync(cwdPkg)) {
-      return JSON.parse(readFileSync(cwdPkg, 'utf-8')).version || '0.0.0';
-    }
-  } catch { /* ignore */ }
-  return '0.0.0';
-}
 
 // ─── Compact command list (shown on bare "/") ───────────────────────
 
