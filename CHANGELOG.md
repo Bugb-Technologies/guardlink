@@ -5,171 +5,191 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## \[Unreleased\]
 
+## \[2.0.0\] — 2026-08-12
+
+**The major version is scoped to two things: the TypeScript type surface and the threat-model JSON schema.** No command was removed, no flag was removed, and no output format changed except the threat model's own `coverage` block. **If you use the `guardlink` CLI or the MCP server, upgrading from 1.4.5 needs no migration** — for you this release is additive.
+
+Programmatic consumers are the reason for the major. Four exported shapes changed, and the breakage reaches code that never imports any of their names — see BREAKING below.
+
+Two things a CLI user will nonetheless notice, both described in full further down: merging reports produced by different GuardLink versions now prints a schema-mismatch warning, and externally-anchored projects may see exposures in `unmitigated` that were previously being hidden by a mitigation on a different symbol.
+
+### BREAKING
+
+- **The `coverage` block lost two fields and renamed a third.**
+
+  ```jsonc
+  // before
+  "coverage": { "total_symbols": 0, "annotated_symbols": 105,
+                "coverage_percent": 100, "unannotated_critical": [] }
+  // after
+  "coverage": { "annotation_count": 105, "coverage_percent": 100 }
+  ```
+
+  **What you observe.** Reading `coverage.total_symbols` or `coverage.unannotated_critical` from `guardlink parse`, `guardlink report --format json`, `.guardlink/model.json`, the `guardlink://model` resource, or the `guardlink_parse` / `guardlink_status` MCP tools now yields `undefined`. Reading `coverage.annotated_symbols` yields `undefined`; the number moved to `coverage.annotation_count`. In TypeScript you get `TS2339: Property 'total_symbols' does not exist on type 'CoverageStats'` — and you do **not** have to import `CoverageStats` to hit it: reading the field off a `parseProject` result fails through every one of the seven published subpaths, and hand-constructing a `ThreatModel` fails with `TS2352`.
+
+  A consumer that only calls functions — `parseProject`, `generateReport`, `diffModels`, `generateSarif` — and never touches `.coverage` compiles and runs unchanged.
+
+  **Why they are gone rather than deprecated.** `total_symbols` was always `0` and `unannotated_critical` was always `[]`. They were constants in a schema presented as public, so nothing downstream could tell *not computed* from *computed, and the answer is zero*. Absent says the first; `0` and `[]` said the second, and three separate consumers believed them — one dashboard rendered "0% coverage" on a fully annotated project, and a merged workspace reported 0% when both its repos reported 89%. GuardLink does no per-symbol parsing, so these fields were never going to be filled in. `annotated_symbols` is now `annotation_count` because the old name is what invited the division in the first place.
+
+  **Migration.** Use `annotation_count` for the annotation total, and `coverage_percent` for coverage — noting that it counts *files*, not symbols and not annotations. The model version moves `1.1.0` → `1.2.0` to mark the change.
+
+- **`UnannotatedSymbol` is deleted.** It existed only to type `coverage.unannotated_critical`. **What you observe:** `TS2305: Module '"guardlink"' has no exported member 'UnannotatedSymbol'`.
+
+- **`DiagnosticCode` widened from 2 members to 12.** **What you observe:** nothing, if you produce or ignore diagnostics. If you consume them in an exhaustive `switch` with a `never` fallthrough, that assertion no longer compiles — `TS2322: Type '"unknown-verb" | "duplicate-id" | … ' is not assignable to type 'never'`. Add a default branch, or handle the new codes listed under *Added*.
+
+- **`REPORT_SCHEMA_VERSION` moved `1.0.0` → `1.1.0`, and mixed-version merges now warn.**
+
+  **What you observe, as a CLI user:** merging reports written by different GuardLink versions prints a line that never appeared before.
+
+  ```
+  ⚠ Reports use different schema versions: 1.0.0, 1.1.0. Results may be inconsistent.
+  ```
+
+  It is advisory. The merge still succeeds and still exits 0. Regenerate the older reports with `guardlink report` to clear it.
+
+  **What you observe, in TypeScript:** the constant's type is the string literal, so `const v: '1.0.0' = REPORT_SCHEMA_VERSION` stops compiling.
+
+  The bump is not cosmetic. The mismatch check compares this value across the reports being merged; leaving it at `1.0.0` would have made the `coverage` reshape invisible to the one mechanism built to notice exactly that.
+
+- **`guardlink_graph` replaced `traversal.truncated` with `traversal.completeness`.**
+
+  **What you observe:** the boolean `traversal.truncated` is absent from the MCP response. In its place, `traversal.completeness` is one of `complete` (nothing more to find at any depth), `depth_limited` (correct for the depth you asked for — raise `depth` for more) or `truncated` (the depth-10 ceiling cut it short; **the result is incomplete** and raising `depth` will not help). When it is not `complete`, a new `frontier_unexplored: { count, nodes }` names what lies one hop past the boundary.
+
+  The boolean conflated "I stopped because a limit was hit" with "I stopped because there was nothing left to reach": one asset reported `truncated: true` at depth 1 and `false` at depth 2 on an identical 4 nodes and 6 edges. It was removed rather than aliased, because a faithful alias would have to keep reproducing the wrong answer, and a familiar name with changed meaning is worse than a missing one.
+
 ### Added
 
-- **`@actor` and `@entitles` — the principal and the capability held by design.** Two new verbs answer the one question the threat model had no field for: *is the caller already entitled to this effect?* `@actor Namespace_Admin (#ns-admin)` declares a principal in the authorization model (a role, not a person — distinct from `@owns`, which names a responsible team), and `@entitles #ns-admin to configure-archival-destination on #archival-fs -- "... Authz: common/api/metadata.go:189"` records that the privilege required to trigger an effect is a privilege that already grants that effect. Design: [`docs/prd/actor-entitlement-design.md`](docs/prd/actor-entitlement-design.md); spec: `docs/SPEC.md` §3.1, §3.2.
+- **`guardlink ci` — advisory CI checks in one command.** Runs the two checks GuardLink already performs, against one parse of the model, and reports both: unmitigated exposures, and `@source` anchors that have drifted off the symbol they name.
 
-  An entitlement is the only annotation whose error mode is a silent false negative, so three constraints are enforced rather than documented:
+  ```
+  guardlink ci [dir] [-p <project>] [-f text|json] [--strict]
+  ```
 
-  - **It never gates testing — only reporting.** Unlike `@mitigates` and `@accepts`, `@entitles` has *no export semantics*: the exposure stays unmitigated, stays in the SARIF, and stays testable. A regression test asserts the SARIF for a model with entitlements is byte-identical to the same model without them.
-  - **No citation, no effect.** An `@entitles` whose description carries no `file:line` pointer to the authorization code is **inert** — parsed and carried in the model so a reviewer can see the claim, but flagged by `guardlink validate` and ignored by consumers. `guardlink diff` reports an entitlement whose cited file changed as **stale** (not removed), even when the delta is otherwise empty.
-  - **It cannot answer an ownership question.** For IDOR / tenant-isolation classes both peers hold the capability, so entitlement cannot say *whose object it was*. Ownership stays measured and is deliberately absent from the grammar.
+  **Advisory by default: exit 0 even with findings.** A repo that has just adopted GuardLink has unmitigated exposures by construction, and a gate that fails the build the day the annotations land is a gate that gets deleted the week after. `--strict` is the single opt-in and exits 1 if either check found anything.
 
-  `<capability>` must be a single normalised identifier — prose there is a parse error, since it is the join key downstream consumers match on. `guardlink validate` errors on an `@entitles` naming an undeclared actor and on a duplicate actor id. Surfaced through `guardlink status`, `report` (Entitlements section + Roles & Access), the dashboard, `guardlink diff`, `guardlink sync`, and MCP (`guardlink_lookup "actors"` / `"entitlements [for #actor]"`, `guardlink_status`). Purely additive: a model with no `@actor`/`@entitles` parses and exports exactly as before.
-- **`guardlink migrate --to external|inline` (GL-507).** Moves a project's annotations
-  between source comments and `.guardlink/annotations/*.gal` sidecars. Annotation text is
-  moved verbatim, never re-serialised from parsed objects, and only annotation lines are
-  removed from source — surrounding comment structure is left exactly as it was, so the
-  round trip reproduces the original file rather than an equivalent one. Every run
-  re-parses and compares `annotation_hash` before and after, and **exits non-zero if it
-  moved**: the hash excludes line, `origin_file` and `parent_symbol` — exactly the fields a
-  migration may change — so a moved hash means the threat model itself changed. Measured on
-  this repo at 311 annotations across 61 files: hash identical in both directions, and
-  `inline → external → inline` byte-identical to `HEAD`. `--dry-run` reports without
-  writing. Existing repos are never migrated implicitly; nothing but this command moves an
-  annotation.
-- **`guardlink reanchor` and MCP `guardlink_reanchor` (GL-505).** Finds `@source` blocks
-  whose recorded `file:line` no longer holds the symbol they name — the drift external
-  annotations accumulate after a refactor. Reports four distinct kinds (`moved`,
-  `symbol_gone`, `file_gone`, `line_gone`) and proposes a corrected line only where the
-  symbol was actually found elsewhere. `--apply` moves those; a renamed or deleted symbol is
-  always left for a human, because there is no correct line to move it to.
-- **MCP `guardlink_annotate_apply` (GL-504).** Writes a validated `@source` block into a
-  file's sidecar — into `.guardlink/`, never into source — after re-parsing every line with
-  the real parser. Idempotent, returns a diff, invalidates the parse cache, and **refuses
-  `@accepts`**: accepting a risk is a human governance decision, and a tool that can write
-  one lets an agent close a finding by declaring it acceptable.
+  `--format json` emits a stable document under the schema id `guardlink.ci/v1`:
+
+  ```jsonc
+  { "schema": "guardlink.ci/v1",
+    "exposures": [ /* the parser's own exposure records, unrenamed */ ],
+    "drift":     [ /* anchor drift records */ ],
+    "summary": { "exposures": 15, "drift": 0, "anchors": 0,
+                 "by_severity": { "critical": 0, "high": 3, "medium": 6, "low": 6, "unset": 0 },
+                 "by_kind":     { "moved": 0, "symbol_gone": 0, "file_gone": 0, "line_gone": 0 },
+                 "strict": false, "exit_code": 0 } }
+  ```
+
+  The exit code is a pure function of (`strict`, exposures, drift) and is carried in the summary, so a JSON consumer sees the same verdict the shell got. No new detection logic was written: both checks call the same predicates `validate` and `reanchor` use, so `ci` cannot disagree with them about the same model. It reports and never repairs — applying a re-anchor is deliberately not reachable from here.
+
+- **`@actor` and `@entitles` — the principal, and the capability held by design.** Two verbs answer the question the model had no field for: *is the caller already entitled to this effect?* `@actor Namespace_Admin (#ns-admin)` declares a principal in the authorization model — a role, not a person, and distinct from `@owns`, which names a responsible team. `@entitles #ns-admin to configure-archival-destination on #archival-fs -- "… Authz: common/api/metadata.go:189"` records that the privilege required to trigger an effect is a privilege that already grants it.
+
+  An entitlement is the only annotation whose failure mode is a silent false negative, so three constraints are enforced rather than documented:
+
+  - **It never gates testing, only reporting.** Unlike `@mitigates` and `@accepts`, `@entitles` has no export semantics: the exposure stays unmitigated, stays in the SARIF, stays testable. A regression test asserts that SARIF for a model with entitlements is byte-identical to the same model without them.
+  - **No citation, no effect.** An entitlement whose description carries no `file:line` pointer to the authorization code is **inert** — parsed and carried so a reviewer can see the claim, flagged by `guardlink validate`, and ignored by consumers. `guardlink diff` reports an entitlement whose cited file changed as **stale** rather than removed.
+  - **It cannot answer an ownership question.** For IDOR and tenant-isolation classes both peers hold the capability, so an entitlement cannot say *whose object it was*. Ownership stays measured and is deliberately absent from the grammar.
+
+  `<capability>` must be a single normalised identifier — prose there is a parse error, because it is the join key consumers match on. Surfaced through `guardlink status`, `report`, the dashboard, `guardlink diff`, `guardlink sync`, and MCP. Purely additive: a model with neither verb parses and exports exactly as before.
+
+- **`guardlink entitle` and a proposal ledger.** An agent proposes; a human accepts. `guardlink entitle --propose --actor … --capability … --file … --line … --rationale …` writes only to `.guardlink/entitlement-proposals.json` and never to source. Acceptance is what writes the annotation, under the name of the person who accepted. An `@entitles` in source with no accepted proposal behind it is a validation error. Also available to agents as `guardlink_entitlement_propose` / `guardlink_entitlement_list`; accepting is not.
+
+- **`guardlink migrate --to external|inline`.** Moves a project's annotations between source comments and `.guardlink/annotations/*.gal` sidecars. Annotation text is moved verbatim rather than re-serialised from parsed objects, and only annotation lines leave the source file, so the round trip reproduces the original file rather than an equivalent one. Every run re-parses and compares the model's content hash before and after and **exits non-zero if it moved** — the hash excludes exactly the fields a migration may legitimately change, so a moved hash means the threat model itself changed. `--dry-run` reports without writing. Nothing but this command ever moves an annotation; existing repos are never migrated implicitly.
+
+- **`guardlink reanchor`, and MCP `guardlink_reanchor`.** Finds `@source` blocks whose recorded `file:line` no longer holds the symbol they name — the drift external annotations accumulate after a refactor. Reports four distinct kinds (`moved`, `symbol_gone`, `file_gone`, `line_gone`) and proposes a corrected line only where the symbol was found elsewhere. `--apply` moves those; a renamed or deleted symbol is always left to a human, because there is no correct line to move it to.
+
+- **MCP `guardlink_annotate_apply`.** Writes a validated `@source` block into a file's sidecar — into `.guardlink/`, never into source — after re-parsing every line with the real parser. Idempotent, returns a diff, invalidates the parse cache, and **refuses `@accepts` and `@entitles`**: both are human governance decisions, and a tool that can write one lets an agent close a finding by declaring it acceptable.
+
+- **A freshness envelope on every MCP tool result.** Each response now carries a second content block naming the model it was computed from, so an agent can tell a cached answer from a current one without asking:
+
+  ```json
+  { "guardlink": { "annotation_hash": "sha256-v2:69d3fe…", "git_sha": "95dab747…",
+                   "generated_at": "2026-08-12T16:10:33.393Z", "mode": "inline",
+                   "root": "/path/to/repo", "guardlink_version": "2.0.0" } }
+  ```
+
+  The same hash appears in the auto-synced block of every agent instruction file, so a block that disagrees with a live tool result is provably out of date. The envelope is applied at tool registration rather than at each return statement, so it covers error branches too.
+
+- **A codified path convention for `.gal` sidecars.** A sidecar belongs at `.guardlink/annotations/<source path>.gal` — the source path mirrored, with `.gal` appended. `guardlink validate` warns about a sidecar that sits somewhere else, and about an on-convention sidecar carrying `@source` blocks for files other than the one it is named for, which parses fine and is a maintenance trap. Both are warnings, never refusals: an off-convention file still contributes every annotation it carries, because silently dropping a developer's work over a directory choice would be worse than the inconsistency.
+
+- **A warning for an unknown `@verb` that is close to a real one.** `@flow` and `@migitates` previously produced neither an annotation nor a diagnostic — the line simply vanished from the model, and the README itself shipped `@flow` twice. Near misses now warn and name the suggestion:
+
+  ```
+  ⚠ app/a.ts:2: Unknown annotation verb @flow — did you mean @flows? …
+  ```
+
+  **It cannot fail a build.** `parse`, `validate`, `validate --strict`, `ci` and `ci --strict` all exit 0 on a file whose only problem is one `@flow`. Only error-level diagnostics reach SARIF, so it cannot surface in GitHub Advanced Security either.
+
+  Three rules keep it quiet in codebases that use `@`-tags for something else. A token carrying a namespace separator before the verb (`@g.comment`, `@gl:exposes`) is treated as a deliberate dialect, not a typo. A 170-entry list of JSDoc, TSDoc, Doxygen, phpDoc and Epydoc tags is excluded by name, so silence on `@param` is a property of the design rather than an accident of spelling distance. Repeats collapse to one diagnostic per distinct token per file, carrying an occurrence count, so a file with forty of the same typo reports once and still tells you where to start. Measured across four unrelated codebases totalling 13,609 source files: **zero false positives**.
+
+  Switch it off per project in `.guardlink/config.json` if it still does not suit you:
+
+  ```json
+  { "diagnostics": { "unknown-verb": false } }
+  ```
+
+  Only warnings can be switched off this way. Listing an error-level code is accepted and ignored — quieting noise is a preference, silencing a broken annotation is not.
+
+- **Ten new machine-readable diagnostic codes, twelve in total.** `ParseDiagnostic.code` previously existed on two kinds while roughly seven were emitted without one, so a consumer wanting to treat a dangling reference differently from risk-acceptance hygiene had nothing to match on but the message text. Now every kind carries one: `unknown-verb`, `duplicate-id`, `dangling-ref`, `undeclared-actor`, `inert-entitlement`, `imprecise-entitlement`, `accepted-without-audit`, `off-convention-gal`, `stray-gal-source` and `entitlement-provenance` join `malformed-annotation` and `prose-like`.
+
+- **`guardlink parse --no-pretty`.** `--pretty` defaulted to true with no counterpart, so the compact branch was unreachable and `--no-pretty` was rejected as an unknown option. It now emits the model on one line.
+
+- **`guardlink-mcp --help` and `--version`.** The binary previously ignored every argument and waited for JSON-RPC on stdin, so `guardlink-mcp --version` hung instead of answering. Both now print and exit without opening a transport; the no-flag invocation still starts the server exactly as before.
+
+- **The published package now contains `src/`.** The tarball already shipped 152 source maps that could not resolve to anything, because the `.ts` files they point at were not published. Shipping the source makes go-to-definition in an editor land on the original TypeScript rather than the generated `.d.ts`. Cost: 308 → 384 files, 607 kB → 936 kB packed.
 
 ### Changed
 
-- **BEHAVIOUR CHANGE — coverage is decided per site, not per (asset, threat) pair (D36).**
-  A `@mitigates` no longer clears an `@exposes` when the two are anchored to *different
-  symbols in the same file*. Everything else is unchanged: a mitigation in a different file
-  still covers the whole asset, an unanchored mitigation still covers the whole asset, and a
-  same-symbol pair still covers.
+- **BEHAVIOUR CHANGE — coverage is decided per site, not per (asset, threat) pair.** A `@mitigates` no longer clears an `@exposes` when the two are anchored to *different symbols in the same file*. Everything else is unchanged: a mitigation in a different file still covers the whole asset, an unanchored mitigation still covers the whole asset, and a same-symbol pair still covers.
 
-  **Why.** A correct mitigation on one function was answering for a live vulnerability on
-  another. Reproduced on a Python service with a `%`-formatted `SELECT` in `find_expenses`
-  and a correctly bound `INSERT` in `insert_expense` twelve lines below it: `unmitigated`
-  omitted the critical injection, `guardlink_context` reported `open_exposures: []` for the
-  file, and `guardlink_lookup("cwe:CWE-89")` — the scanner-triage path — answered
-  `status: "mitigated"`, `open: 0` for the vulnerable line. A deterministic scanner asking
-  GuardLink about a true positive was told it was handled.
+  **Why.** A correct mitigation on one function was answering for a live vulnerability on another. Reproduced on a Python service with a `%`-formatted `SELECT` in one function and a correctly bound `INSERT` twelve lines below it: the critical injection was missing from `unmitigated`, `guardlink_context` reported no open exposures for the file, and the scanner-triage path answered `status: "mitigated"` for the vulnerable line. A deterministic scanner asking GuardLink about a true positive was told it was handled.
 
-  **What you will see change.** For **inline projects, nothing at all.** `parent_symbol` is
-  captured only from `@source` blocks (`parse-file.ts`), so inline annotations carry no
-  anchor and the rule cannot engage. Measured: **0 of 74 exposures change state on this
-  repo, 0 of 61 on a second inline repo of 8,142 files, and 2 of 11 on the external repo
-  where the defect was found** — the critical injection, and a non-constant-time password
-  comparison that had been hidden the same way. If you author externally with symbol anchors
-  and you have a mitigation and an exposure on the same asset and threat in one file at
-  different symbols, that exposure will now appear in `unmitigated`. It was always there; it
-  was not being reported.
+  **What you will see.** For **inline projects, nothing at all** — inline annotations carry no symbol anchor, so the rule cannot engage. Measured: 0 of 74 exposures change state on this repo, 0 of 61 on a second inline repo of 8,142 files, and 2 of 11 on the external repo where the defect was found. If you author externally with symbol anchors, and you have a mitigation and an exposure on the same asset and threat in one file at different symbols, that exposure will now appear in `unmitigated`. It was always there; it was not being reported.
 
-  **How to say "this covers the whole asset".** Omit `symbol:` from the mitigation's
-  `@source` header. An unanchored statement is an asset-level statement and is never
-  narrowed. No new syntax was added, and none is needed.
+  **How to say "this covers the whole asset".** Omit `symbol:` from the mitigation's `@source` header. An unanchored statement is an asset-level statement and is never narrowed. No new syntax was added, and none is needed.
 
-  **What this does not fix.** A cross-file mitigation still blanket-covers its asset and
-  threat. Knowing whether a control actually reaches a site needs a call graph, which
-  GuardLink does not have. The rule closes the class where the model already holds the
-  evidence — the author's own anchors — and no more.
+  **What this does not fix.** A cross-file mitigation still blanket-covers its asset and threat. Knowing whether a control actually reaches a site needs a call graph, which GuardLink does not have. The rule closes the class where the model already holds the evidence — the author's own anchors — and no more.
 
-  Coverage now lives in one predicate (`src/parser/coverage.ts`) called by every surface
-  that answers the question. There were **eight** independent copies of the
-  `asset::threat` key, four of which did not normalise a leading `#`, so `guardlink diff`
-  and `guardlink validate` could disagree about what was covered on one and the same model.
-  The eighth — `lookup("unmitigated")`, the one an agent reads most often — was found by a
-  test asserting it agreed with `findUnmitigatedExposures`. It did not.
+- **`guardlink report` output is deterministic across processes.** The report and Mermaid generators canonicalise the model at the emission boundary. Before: three `report --diagram-only` runs in three processes produced two distinct hashes, differing by whole node blocks, because the file walk returns completion order under concurrency. After: byte-identical. **This changes `report --diagram-only` output** — nodes and edges come out in a deterministic order rather than glob order, so a diff against a previously captured diagram shows reordering once. Nothing is added or removed. The full markdown report is unchanged apart from its two `Generated:` lines.
 
-- **The MCP envelope no longer reports every external project as `mixed` (D37).**
-  `@asset`, `@threat` and `@control` are structurally inline-only — they live in
-  `.guardlink/definitions.*` and there is no `@source` block for "this asset exists", so a
-  declaration can never carry an `origin_file`. Mode detection counted them as inline
-  evidence, so a correctly configured pure-external repo reported `mixed`: measured on the
-  test project, `inline 21 / external 84`, with all 21 being the definitions file and
-  nothing else. `mixed` is the alarm state — it means mid-migration, needs attention — and
-  under the external default it was firing on every new project. Detection now asks only the
-  relationship verbs, which are the only ones with a genuine choice of home. `mixed` remains
-  reachable and still fires on a genuinely mixed repo.
+- **`init --mode` and `init --no-root-files` are separate flags, and the default annotation mode is `external`.** `--mode external` previously meant two unrelated things at once — annotations live in sidecars, *and* init writes nothing outside `.guardlink/` — so asking for the first silently cost you the root `.mcp.json`, every agent instruction file, and `docs/`, which are the things that make an agent aware GuardLink exists. `--mode inline|external` now decides only where annotations live; `--no-root-files` decides only the footprint and reproduces the old external behaviour. **Existing projects keep their recorded mode** — `init` does not rewrite an existing `config.json` without `--force`.
 
+- **`.guardlink/model.json` and `.guardlink/graph/` are tracked in git.** A fresh clone has the threat model without running anything, and model changes appear in review. `.gitattributes` marks them as generated. Exports that are rebuilt on demand — `threat-model.json`, `guardlink.sarif.json`, `threat-dashboard.html` — remain ignored.
 
-- **`guardlink report` output is now deterministic across processes (D23).** `generateMermaid`
-  and `generateReport` canonicalise the model at the emission boundary, the same place and for
-  the same reason as the artifact fix in `a921afa` and the dashboard fix in `096c291`.
-  `parseProject` walks with fast-glob, which returns files in completion order under
-  concurrency — stable within a process, not between two — so anything that inherited that
-  order churned. Measured before: three `report --diagram-only` runs in three processes
-  produced two distinct sha256 hashes, differing by whole node blocks. After: byte-identical.
-  **This changes `report --diagram-only` output** — nodes and edges are emitted in a
-  deterministic order rather than glob order, so a diff against a previously captured diagram
-  will show reordering once. Nothing is added or removed. The parser is untouched: parse output
-  order is observable behaviour and stays fenced.
-  The full markdown report remains byte-identical apart from its two `Generated: <iso>` lines.
-  `threat-model.md` is git-ignored and rebuilt on demand, so a clock there is deliberate and is
-  not the tracked-file class D25/D26 ruled on.
+- **The dashboard lost two sections.** The force-directed *Risk Topology* graph grew unreadably dense on large codebases; the three Mermaid views (Threat Graph, Data Flow, Attack Surface) remain, and the Threat Graph still auto-filters to high/critical with an *All severities* toggle. The *Pentest Findings* page and its detail drawers are also gone, and the dashboard no longer embeds raw scan JSON. Pentest ingestion itself is unchanged — scan results still flow into `guardlink threat-report` as context, and evidence redaction still applies at load time.
 
-- **`init --mode` and `init --no-root-files` are now separate flags (GL-506), and the
-  default annotation mode is `external`.** `--mode external` previously meant two unrelated
-  things at once — annotations go in sidecars, *and* init writes nothing outside
-  `.guardlink/` — so asking for the first silently cost you the root `.mcp.json`, every
-  agent instruction file, and `docs/`, which are the things that make an agent aware
-  GuardLink exists. `--mode inline|external` now only decides where annotations live;
-  `--no-root-files` only decides the footprint and reproduces the old external behaviour.
-  The new default is external annotations *with* root files. **Existing projects keep their
-  recorded mode** — `init` does not rewrite an existing `config.json` without `--force`.
+- **The package version is resolved in one place.** Four separate implementations of "read `package.json` at runtime" had accumulated, with two different failure fallbacks. All version-reporting surfaces now agree by construction: `guardlink --version`, `guardlink-mcp --version`, the TUI header, the MCP `serverInfo`, the artifact manifest, SARIF `tool.driver.version`, and the report's metadata.
 
 ### Fixed
 
-- **`@shield` regions are no longer broken by migration.** `@shield:begin`/`@shield:end`
-  delimit a region of source text and mean nothing outside the file whose lines they
-  bracket, so they never migrate, and annotations *inside* a shielded region are never
-  extracted. Both were found by the hash gate on this repo: externalising the markers
-  unshielded the examples in `src/init/templates.ts`, and extracting from inside the region
-  turned 38 documentation examples into real records.
+- **`guardlink merge` reported `"annotation_count": null` for any report written by an older GuardLink.** Merge reads report JSON from disk, so a 2.x binary meets a 1.4.5 repo's output there; the older field name read as `undefined`, arithmetic on it produced `NaN`, and `NaN` serialises to `null`. A workspace dashboard reported a null annotation count silently, exit 0, no warning. Reports are now normalised as they are read, and the older field name is carried across rather than replaced with a zero — an old repo keeps its real count.
 
-### Decisions
+- **The TUI reported `v0.0.0` on any install path containing a space.** One of the four version lookups resolved its own location through a URL, which percent-encodes, so the probe missed `package.json` and the fallback chain bottomed out. `guardlink --version` beside it reported the truth, which is why it went unnoticed.
 
-- **GL-303 — two diagram generator sets are kept, not unified.** `report --diagram-only`
-  uses `src/report/mermaid.ts`, which renders a top-down DFD with actor/process/data-store
-  shapes and keeps controls in the report's table rather than in the graph.
-  `src/dashboard/diagrams.ts` renders left-to-right with controls as nodes, and is the set
-  the emitted `.guardlink/graph/*.mmd` artifacts come from. These are different projections
-  for different consumers, not a duplicated implementation. **The GL-303 decision itself
-  changes nothing about `report --diagram-only`'s content**; its node ORDER did change, once,
-  under D23 above. The precedent of 5ca53eb (removing the D3 topology view) does not apply:
-  that was removed for being both redundant *and* illegible at scale, and neither is true
-  here — the report generator has an explicit compact mode above 15 unmitigated exposures.
-- **GL-304 — derived artifacts are committed.** `.guardlink/model.json` and
-  `.guardlink/graph/` are tracked so a fresh clone has the threat model without running
-  anything and model changes appear in review. `.gitattributes` marks them
-  `linguist-generated`. Machine exports that are rebuilt on demand
-  (`threat-model.json`, `guardlink.sarif.json`, `threat-dashboard.html`) remain ignored.
+- **SARIF reported `1.4.3` as the tool version**, regardless of the installed version.
 
-### Removed
+- **`guardlink report --format <unrecognised>` wrote nothing and exited 0**, which is indistinguishable from success. It now names the valid values and exits 1.
 
-- **BREAKING (MCP response shape): `traversal.truncated` is gone from
-  `guardlink_graph`, replaced by `traversal.completeness`.** The boolean conflated "I
-  stopped because a limit was hit" with "I stopped because there was nothing left to
-  reach". Measured: `#llm-client` at depth 1 `out` reported `truncated: true` while depth 2
-  `out` reported `false`, on an identical 4 nodes / 6 edges. It was in fact testing *did the
-  last hop add any nodes* — a question about what the result already contains, not about
-  what is missing from it.
+- **`guardlink tui --model` was parsed and never read.** It now applies for the session, as `--provider` and `--api-key` already did.
 
-  `completeness` is one of `complete` (nothing more to find at any depth — a saturated sink
-  reports this), `depth_limited` (correct for the depth you asked for; raising `depth`
-  returns more) or `truncated` (the depth-10 ceiling cut it short — **the result is
-  incomplete** and raising `depth` will not help). When it is not `complete`, a new
-  `frontier_unexplored: { count, nodes }` names what lies one hop past the boundary; a blast
-  radius that does not say what it omitted is the failure this surface exists to eliminate.
+- **`guardlink status` printed `unknown` as the project name in every repo**, including ones whose `.guardlink/config.json` held the name three lines away. Nothing read it, and it is the first command anyone runs after `init`. `guardlink sync` and `guardlink entitle` were the last two commands still not consulting it and now do.
 
-  Removed rather than kept as a deprecated alias, deliberately. Nothing outside
-  `subgraph.ts` read it — not the CLI, not the TUI, not a single test — and any faithful
-  alias would have to reproduce the *wrong* answer, since `completeness !== 'complete'`
-  disagrees with the old flag on exactly the case that motivated the change. A familiar name
-  with changed semantics is worse than a removed one.
-- **Risk Topology graph removed from the dashboard Diagrams page.** The force-directed D3 view (`generateTopologyData`, the `Risk Topology` tab, and its client-side renderer/inspector) grew unreadably dense on large codebases — a hairball that obscured more than it showed. The three Mermaid views (Threat Graph, Data Flow, Attack Surface) remain, and the Threat Graph still auto-filters to high/critical with an *All severities* toggle. `generateTopologyData` and the `DiagramTopology*` types are gone from `src/dashboard/diagrams.js`.
-- **Pentest Findings page removed from the dashboard.** The sidebar entry, the findings/templates page, and the finding + template detail drawers are gone; `generateDashboardHTML` no longer takes a `pentestData` argument and the dashboard no longer embeds raw scan JSON. Pentest ingestion itself is unchanged — CXG scan results in `.guardlink/pentest-findings/` still flow into `guardlink threat-report` / AI analyses as `<pentest_findings>` context, and evidence redaction still applies at load time.
+- **`guardlink-mcp` did not run.** The binary was declared but the module only exported its starter — no shebang, no entry guard — so piping an `initialize` request at it produced no response at all. The build also now preserves the executable bit on both binaries, without which a fresh install produced a `guardlink-mcp` that could not be executed.
+
+- **The `guardlink entitle --propose` example in the generated agent files did not run.** `CLAUDE.md`, `AGENTS.md`, `.gemini/GEMINI.md` and `.github/copilot-instructions.md` are read by coding agents at runtime, and all four carried a worked example missing two required flags, so an agent following it verbatim got an error instead of a proposal.
+
+- **`init` wrote a `.guardlink/README.md` whose reference pointer did not exist.** The README chose the path by annotation mode while `init` wrote it by footprint, and under the default those two disagree — which is every fresh repo. The sentence after the broken link is "Read it before inventing syntax", so the one dead pointer in the document was the one aimed at a reader about to guess.
+
+- **`init` did not create `.gitignore` when a project had none**, only appended to an existing one — so a fresh repo got no entry at all, and `guardlink dashboard` left `threat-dashboard.html` both untracked and unignored in exactly the repos least likely to notice.
+
+- **`init`'s "Next steps" contradicted the README it wrote in the same run.** Step 2 said "add annotations to your source files" regardless of mode, while the README written beside it says, under the default, that annotations do not go in source files. Step 2 now follows the resolved mode.
+
+- **The MCP write path accepted what it promised to reject.** `guardlink_annotate_apply` documented that malformed input is rejected with a reason, then accepted an undeclared `#reference` and a source file that does not exist, each with `ok: true` and no errors — so an invented reference survived the write, the validation and CI. References are now checked against the model's declared ids, using the same rule the dangling-reference check uses.
+
+- **The MCP envelope reported every external project as `mixed`.** Asset, threat and control declarations are structurally inline-only, and counting them as inline evidence meant a correctly configured pure-external repo reported the alarm state. Detection now asks only the relationship verbs, which are the only ones with a genuine choice of home. `mixed` still fires on a genuinely mixed repo.
+
+- **`@shield` regions survive migration.** The markers delimit a region of source text and mean nothing outside the file whose lines they bracket, so they no longer migrate, and annotations inside a shielded region are no longer extracted. Both were caught by the hash gate: externalising the markers unshielded this repo's own documentation examples, and extracting from inside the region turned 38 examples into real records.
+
+- **`guardlink_context` told agents the `.gal` path convention was not codified.** It is. The tool now states the convention an agent can act on.
 
 ## \[1.4.5\] — 2026-07-21
 
