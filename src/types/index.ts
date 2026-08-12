@@ -511,13 +511,14 @@ export interface ThreatModelComment {
 
 export interface CoverageStats {
   /**
-   * Symbol-level coverage is not computed — this is 0 for a single repo.
-   * Populating it needs per-symbol parsing, which GuardLink does not do.
-   * `coverage_percent` is FILE coverage; do not derive it from this.
+   * Annotations parsed across the project.
+   *
+   * Was `annotated_symbols` through model version 1.1.0. It never counted
+   * symbols — GuardLink does no per-symbol parsing — and the name is what led
+   * three consumers to divide it by a denominator that did not exist. Renamed
+   * with the 1.2.0 model bump.
    */
-  total_symbols: number;
-  /** Annotations parsed. Named for symbols historically; it counts annotations. */
-  annotated_symbols: number;
+  annotation_count: number;
   /**
    * Percentage of scanned source files carrying at least one annotation.
    *
@@ -527,15 +528,14 @@ export interface CoverageStats {
    * because GL-502 made both sides of the ratio mode-invariant.
    */
   coverage_percent: number;
-  unannotated_critical: UnannotatedSymbol[];
 }
 
-export interface UnannotatedSymbol {
-  file: string;
-  line: number;
-  kind: string;
-  name: string;
-}
+// `total_symbols` (permanently 0) and `unannotated_critical` (permanently [])
+// were removed in model version 1.2.0 along with the `UnannotatedSymbol` type
+// that existed only to describe the latter. Both were hardcoded constants in a
+// schema presented as public, so a consumer could not distinguish "not
+// computed" from "computed, and it is zero". Absent says the first; 0 said the
+// second. Per-symbol coverage would need a real implementation, not a field.
 
 // ─── Parse Diagnostics ───────────────────────────────────────────────
 

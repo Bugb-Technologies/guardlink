@@ -250,7 +250,7 @@ function getAnnotationId(ann: Annotation): string | undefined {
 
 function assembleModel(annotations: Annotation[], fileCount: number, project: string, annotatedFiles: string[], unannotatedFiles: string[]): ThreatModel {
   const model: ThreatModel = {
-    version: '1.1.0',
+    version: '1.2.0',
     project,
     generated_at: new Date().toISOString(),
     source_files: fileCount,
@@ -278,15 +278,12 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
     features: [],
     comments: [],
     coverage: {
-      // Symbol-level coverage would need per-symbol parsing; not computed.
-      total_symbols: 0,
-      annotated_symbols: annotations.length,
+      annotation_count: annotations.length,
       // D14 — file coverage, actually computed. This was a hardcoded 0 that three
       // consumers rendered as "0%" on fully annotated projects. Meaningful only
       // because GL-502 made both sides of the ratio exclude sidecars, so the
       // number no longer moves when a repo changes annotation mode.
       coverage_percent: fileCoveragePercent(annotatedFiles.length, fileCount),
-      unannotated_critical: [],
     },
   };
 

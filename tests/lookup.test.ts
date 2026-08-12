@@ -14,7 +14,7 @@ function emptyModel(overrides: Partial<ThreatModel> = {}): ThreatModel {
     flows: [], boundaries: [], validations: [], audits: [], ownership: [],
     data_handling: [], assumptions: [], shields: [], features: [], comments: [],
     confirmed: [],
-    coverage: { total_symbols: 0, annotated_symbols: 0, coverage_percent: 0, unannotated_critical: [] },
+    coverage: { annotation_count: 0, coverage_percent: 0 },
     ...overrides,
   };
 }

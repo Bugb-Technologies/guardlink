@@ -384,7 +384,7 @@ export function cmdStatus(ctx: TuiContext): void {
 
   console.log(`  ${C.dim('Assets:')} ${stats.assets}  ${C.dim('Threats:')} ${stats.threats}  ${C.dim('Controls:')} ${stats.controls}`);
   console.log(`  ${C.dim('Flows:')} ${stats.flows}  ${C.dim('Boundaries:')} ${stats.boundaries}  ${C.dim('Annotations:')} ${stats.annotations}`);
-  console.log(`  ${C.dim('Coverage:')} ${stats.coverageAnnotated}/${stats.coverageTotal} symbols (${stats.coveragePercent}%)`);
+  console.log(`  ${C.dim('Coverage:')} ${m.annotated_files.length}/${m.source_files} files annotated (${stats.coveragePercent}%)`);
   console.log(`  ${C.dim('Files:')} ${m.annotated_files.length} annotated, ${m.unannotated_files.length} not annotated of ${m.source_files} scanned`);
   if (m.unannotated_files.length > 0) {
     console.log(`  ${C.dim('Run')} /unannotated ${C.dim('to list files without annotations')}`);
@@ -531,22 +531,11 @@ export function cmdScan(ctx: TuiContext): void {
   console.log(`  ${C.bold('Coverage:')} ${cov.annotatedFiles}/${cov.sourceFiles} files annotated (${cov.percent}%)`);
   console.log(`  ${C.dim(`${cov.annotations} annotations parsed`)}`);
 
-  // NOTE: `unannotated_critical` is never populated (parse-project.ts:284 sets
-  // it to []), so the green branch below is unconditional. Same vacuous-green
-  // family as D48's reanchor check. Logged, not fixed here — out of scope.
-  const unannotated = ctx.model.coverage.unannotated_critical || [];
-  if (unannotated.length === 0) {
-    console.log(C.green('  All security-relevant symbols are annotated!'));
-  } else {
-    console.log(C.warn(`  ${unannotated.length} unannotated symbol(s):`));
-    console.log('');
-    const show = unannotated.slice(0, 25);
-    for (const u of show) {
-      console.log(`    ${C.dim(fileLink(u.file, u.line, ctx.root))}  ${u.kind} ${C.bold(u.name)}`);
-    }
-    if (unannotated.length > 25) {
-      console.log(C.dim(`    ... and ${unannotated.length - 25} more`));
-    }
+  // The `unannotated_critical` branch that used to live here was
+  // unconditionally green: the field was hardcoded [] and is gone as of model
+  // version 1.2.0. Unannotated FILES are real and already have /unannotated.
+  if (ctx.model.unannotated_files.length > 0) {
+    console.log(C.warn(`  ${ctx.model.unannotated_files.length} file(s) carry no annotations — /unannotated to list them`));
   }
   console.log('');
 }
