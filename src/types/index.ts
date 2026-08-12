@@ -511,13 +511,14 @@ export interface ThreatModelComment {
 
 export interface CoverageStats {
   /**
-   * Symbol-level coverage is not computed — this is 0 for a single repo.
-   * Populating it needs per-symbol parsing, which GuardLink does not do.
-   * `coverage_percent` is FILE coverage; do not derive it from this.
+   * Annotations parsed across the project.
+   *
+   * Was `annotated_symbols` through model version 1.1.0. It never counted
+   * symbols — GuardLink does no per-symbol parsing — and the name is what led
+   * three consumers to divide it by a denominator that did not exist. Renamed
+   * with the 1.2.0 model bump.
    */
-  total_symbols: number;
-  /** Annotations parsed. Named for symbols historically; it counts annotations. */
-  annotated_symbols: number;
+  annotation_count: number;
   /**
    * Percentage of scanned source files carrying at least one annotation.
    *
@@ -527,15 +528,14 @@ export interface CoverageStats {
    * because GL-502 made both sides of the ratio mode-invariant.
    */
   coverage_percent: number;
-  unannotated_critical: UnannotatedSymbol[];
 }
 
-export interface UnannotatedSymbol {
-  file: string;
-  line: number;
-  kind: string;
-  name: string;
-}
+// `total_symbols` (permanently 0) and `unannotated_critical` (permanently [])
+// were removed in model version 1.2.0 along with the `UnannotatedSymbol` type
+// that existed only to describe the latter. Both were hardcoded constants in a
+// schema presented as public, so a consumer could not distinguish "not
+// computed" from "computed, and it is zero". Absent says the first; 0 said the
+// second. Per-symbol coverage would need a real implementation, not a field.
 
 // ─── Parse Diagnostics ───────────────────────────────────────────────
 
@@ -555,15 +555,31 @@ export interface UnannotatedSymbol {
  *   Consumers seeing a fatal MUST abort rather than render partial
  *   results.
  *
- * TODO(fatal-tier): the `'fatal'` value is reserved vocabulary as of
- * v1.5.1. No code path currently emits a fatal diagnostic. Before the
- * first emission lands (likely v1.6), audit every `d.level === 'error'`
- * filter in the codebase — most of them should become
- * `d.level === 'error' || d.level === 'fatal'` so fatals don't
- * silently bypass the existing exit-1 / abort logic. Known sites at
- * the time of writing: src/cli/index.ts (8 occurrences),
- * src/tui/commands.ts (2), src/mcp/server.ts (1). See bug #6 in the
- * v1.5.1 punch list.
+ * `'fatal'` is reserved vocabulary: it is declared here and nothing in
+ * `src/` emits it. That is deliberate, and it carries a trap for whoever
+ * emits the first one.
+ *
+ * Every gate in this codebase tests `d.level === 'error'` exactly. None
+ * of them tests for `'fatal'`. A diagnostic that is more severe than an
+ * error would therefore pass straight through the checks an error fails
+ * — `guardlink parse` and `guardlink validate` would exit 0 on a model
+ * they had just declared unsafe to consume. The tier is inert today
+ * precisely because nothing emits it, so this is latent, not live.
+ *
+ * The invariant to restore before the first emission: **anything that
+ * blocks on `'error'` must also block on `'fatal'`.** The filters, by
+ * file — verified at the 2.0.0 freeze, treat as a starting point rather
+ * than a closed list:
+ *
+ *     src/cli/index.ts        9
+ *     src/tui/commands.ts     3
+ *     src/workspace/merge.ts  2
+ *     src/types/index.ts      2   (this doc block)
+ *     src/mcp/server.ts       1
+ *
+ * Deleting the `'fatal'` member instead is a legitimate resolution — it
+ * has never been used, and a tier no consumer can receive is not a tier.
+ * See docs/prd/BACKLOG.md.
  */
 /**
  * Machine-readable diagnostic kinds.
@@ -573,10 +589,33 @@ export interface UnannotatedSymbol {
  * breaks when the text is reworded.
  */
 export type DiagnosticCode =
+  // ── Parse-time (src/parser/parse-line.ts, parse-project.ts) ──
   /** Line starts with a known verb, carries structural evidence, and failed to parse. */
   | 'malformed-annotation'
   /** Line starts with a known verb but has no structural evidence — prose about GuardLink. */
-  | 'prose-like';
+  | 'prose-like'
+  /** Line starts with an unknown `@verb` that is one or two edits from a known one. */
+  | 'unknown-verb'
+  /** Two definitions claim the same `(#id)`. */
+  | 'duplicate-id'
+  // ── Validation-time (src/parser/validate.ts) ──
+  /** A `#id` reference resolves to no definition. */
+  | 'dangling-ref'
+  /** `@entitles` names an actor never declared with `@actor`. */
+  | 'undeclared-actor'
+  /** `@entitles` cites no authz code, so it can never demote a finding. */
+  | 'inert-entitlement'
+  /** `@entitles` cites authz code too imprecisely to be checked. */
+  | 'imprecise-entitlement'
+  /** `@accepts` with no paired `@audit` — acceptance without a traceable review. */
+  | 'accepted-without-audit'
+  /** A `.gal` sidecar sits somewhere other than its conventional path. */
+  | 'off-convention-gal'
+  /** An on-convention `.gal` sidecar carries `@source` blocks for other files. */
+  | 'stray-gal-source'
+  // ── Governance (src/review/entitlements.ts) ──
+  /** An `@entitles` in source with no accepted proposal behind it. */
+  | 'entitlement-provenance';
 
 export interface ParseDiagnostic {
   level: 'error' | 'warning' | 'fatal';

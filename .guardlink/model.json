@@ -1,8 +1,8 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "project": "guardlink",
   "source_files": 87,
-  "annotations_parsed": 442,
+  "annotations_parsed": 441,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -761,7 +761,7 @@
       "description": "join() constrains reads to .guardlink/",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 776
+        "line": 775
       }
     },
     {
@@ -1251,7 +1251,7 @@
       "description": "execFileSync with a fixed argv and no shell; nothing user-supplied reaches the command",
       "location": {
         "file": "src/review/entitlements.ts",
-        "line": 851
+        "line": 852
       }
     },
     {
@@ -2546,7 +2546,7 @@
       "description": "Reads CXG scan results for dashboard and report context",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 703
+        "line": 702
       }
     },
     {
@@ -2687,16 +2687,6 @@
       "location": {
         "file": "src/cli/index.ts",
         "line": 39
-      }
-    },
-    {
-      "source": "PackageJson",
-      "target": "#cli",
-      "mechanism": "readFileSync",
-      "description": "Version string read from package.json",
-      "location": {
-        "file": "src/cli/index.ts",
-        "line": 118
       }
     },
     {
@@ -3266,7 +3256,7 @@
       "description": "Reads the local git identity to attribute a decision",
       "location": {
         "file": "src/review/entitlements.ts",
-        "line": 852
+        "line": 853
       }
     },
     {
@@ -3794,7 +3784,7 @@
       "description": "Processes pentest scan output (JSON/SARIF)",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 704
+        "line": 703
       }
     },
     {
@@ -4055,13 +4045,13 @@
       "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 831
+        "line": 833
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1126
+        "line": 1128
       }
     }
   ],
@@ -4541,10 +4531,8 @@
     }
   ],
   "coverage": {
-    "total_symbols": 0,
-    "annotated_symbols": 442,
-    "coverage_percent": 76,
-    "unannotated_critical": []
+    "annotation_count": 441,
+    "coverage_percent": 76
   },
   "external_refs": []
 }

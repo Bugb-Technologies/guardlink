@@ -521,15 +521,6 @@ function emitScope(model: ThreatModel, lines: string[]): void {
   if (unannotatedCount > 0) {
     lines.push(`- **${unannotatedCount}** files have no annotations`);
   }
-  if (model.coverage.unannotated_critical.length > 0) {
-    lines.push(`- **${model.coverage.unannotated_critical.length}** unannotated security-critical symbols detected:`);
-    for (const sym of model.coverage.unannotated_critical.slice(0, 10)) {
-      lines.push(`  - \`${sym.name}\` (${sym.kind}) at ${sym.file}:${sym.line}`);
-    }
-    if (model.coverage.unannotated_critical.length > 10) {
-      lines.push(`  - ... and ${model.coverage.unannotated_critical.length - 10} more`);
-    }
-  }
   lines.push('');
 }
 

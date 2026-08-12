@@ -108,6 +108,13 @@ export function resolveConfig(
   root: string,
   flags?: { provider?: string; model?: string; apiKey?: string },
 ): LLMConfig | null {
+  // GUARDLINK_LLM_MODEL is the session-level model override, the sibling of
+  // GUARDLINK_LLM_KEY and GUARDLINK_LLM_PROVIDER. `tui --model` forwards
+  // through it. Folded in here so it applies at every tier below rather than
+  // only the one that happens to win; an explicit flag still outranks it.
+  const modelOverride = flags?.model || process.env.GUARDLINK_LLM_MODEL;
+  if (modelOverride !== flags?.model) flags = { ...flags, model: modelOverride };
+
   // 1. Explicit flags
   if (flags?.apiKey && flags?.provider) {
     const provider = flags.provider as LLMProvider;

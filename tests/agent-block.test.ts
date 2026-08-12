@@ -88,7 +88,7 @@ describe('GL-403 — weakness 2: truncated lists name their retrieval', () => {
       flows: Array.from({ length: counts.flows }, (_, i) => ({ source: `#s${i}`, target: '#t', location: loc })),
       boundaries: [], validations: [], audits: [], ownership: [], data_handling: [],
       assumptions: [], shields: [], features: [], comments: [],
-      coverage: { total_symbols: 0, annotated_symbols: 0, coverage_percent: 0, unannotated_critical: [] },
+      coverage: { annotation_count: 0, coverage_percent: 0 },
     } as ThreatModel;
   }
 

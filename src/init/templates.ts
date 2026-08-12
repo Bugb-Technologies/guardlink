@@ -339,7 +339,9 @@ the same change.** This includes: new endpoints, authentication/authorization lo
 
 \`\`\`bash
 guardlink entitle --propose --actor '#ns-admin' --capability configure-archival-destination \\
-  --asset '#archival-fs' --rationale "By design: the archival URI is namespace configuration. Authz: common/api/metadata.go:189"
+  --asset '#archival-fs' --threat '#path-traversal' \\
+  --file common/archiver/filestore/archiver.go --line 61 \\
+  --rationale "By design: the archival URI is namespace configuration. Authz: common/api/metadata.go:189"
 \`\`\`
 `.trimStart();
 }

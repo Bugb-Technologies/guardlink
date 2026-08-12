@@ -69,7 +69,7 @@
 
 import type {
   ThreatModel, ThreatModelExposure, ThreatModelMitigation, ThreatModelAcceptance,
-  SourceLocation,
+  SourceLocation, CoverageStats,
 } from '../types/index.js';
 import { canonicaliser } from './canonical-ref.js';
 
@@ -203,12 +203,12 @@ export function findAcceptedExposures(model: ThreatModel): ThreatModelExposure[]
 /**
  * D42/D49 — the coverage numbers, described rather than inferred.
  *
- * `CoverageStats` holds three fields whose names invite a reading the data does
- * not support: `total_symbols` is never computed and is permanently 0,
- * `annotated_symbols` counts ANNOTATIONS not symbols, and `coverage_percent` is
- * FILE coverage and has no arithmetic relationship to either. `types/index.ts`
- * documents all three correctly — and those doc comments do not travel with the
- * JSON, so every consumer that believed the field names got it wrong:
+ * `CoverageStats` used to hold three fields whose names invited a reading the
+ * data did not support: `total_symbols` was never computed and was permanently
+ * 0, `annotated_symbols` counted ANNOTATIONS not symbols, and `coverage_percent`
+ * is FILE coverage with no arithmetic relationship to either. `types/index.ts`
+ * documented all three correctly — and those doc comments do not travel with
+ * the JSON, so every consumer that believed the field names got it wrong:
  *
  *   tui/commands.ts   printed `Coverage: 105/0 symbols (100%)`
  *   workspace/merge.ts recomputed percent as annotated/total, and since total is
@@ -217,10 +217,13 @@ export function findAcceptedExposures(model: ThreatModel): ThreatModelExposure[]
  *
  * A contract expressed only where the consumer cannot see it is not a contract.
  * This is that contract as a function: it names the numerator, the denominator
- * and the unit, so nothing downstream has to infer a denominator. Reshaping the
- * wire format is the better fix and is a separate, versioned change — `coverage`
- * ships inside `schema_version: 1.0.0`, which `guardlink merge` cross-checks
- * across repos, so it cannot move without a bump.
+ * and the unit, so nothing downstream has to infer a denominator.
+ *
+ * Model version 1.2.0 has since done the reshaping this paragraph used to
+ * defer: `total_symbols` and `unannotated_critical` are gone rather than
+ * shipped as fabricated constants, and `annotated_symbols` is now
+ * `annotation_count`. This function stays, because naming the numerator, the
+ * denominator and the unit is still worth doing at the point of render.
  */
 export interface CoverageDescription {
   /** The only coverage GuardLink actually computes. */
@@ -247,6 +250,67 @@ export function describeCoverage(model: ThreatModel): CoverageDescription {
     annotatedFiles,
     sourceFiles,
     percent: fileCoveragePercent(annotatedFiles, sourceFiles),
-    annotations: model.coverage.annotated_symbols,
+    annotations: annotationCount(model),
   };
+}
+
+// ─── Reading a model that predates the 1.2.0 coverage reshape ────────
+
+/**
+ * The pre-1.2.0 `coverage` block, as it still exists in report JSON on disk.
+ *
+ * Model version 1.1.0 spelled the annotation count `annotated_symbols` and
+ * shipped two permanently-constant fields beside it. A 1.5.0 binary reading a
+ * 1.4.5 repo's `threat-model.json` gets this shape, and nothing about the JSON
+ * announces which it is — `version` is on the model, and no consumer reads it.
+ */
+interface LegacyCoverage {
+  annotated_symbols?: unknown;
+  total_symbols?: unknown;
+  unannotated_critical?: unknown;
+}
+
+/**
+ * The annotation count from any model, whichever coverage shape it carries.
+ *
+ * Reads the current field, then the 1.1.0 spelling, then falls back to the
+ * count of annotations the model itself reports. Only a model carrying none of
+ * the three yields 0 — which is the one case where 0 is the truth rather than
+ * a fabrication.
+ *
+ * This exists because `+= undefined` is `NaN` and `JSON.stringify(NaN)` is
+ * `null`: merging one pre-1.2.0 report produced `"annotation_count": null` in
+ * the workspace output, silently, exit 0. Coalescing to 0 at the arithmetic
+ * would have stopped the NaN by inventing a zero for a repo that had a real
+ * count — swapping a loud wrong number for a quiet one.
+ */
+export function annotationCount(model: Pick<ThreatModel, 'coverage' | 'annotations_parsed'>): number {
+  const coverage = (model.coverage ?? {}) as CoverageStats & LegacyCoverage;
+  if (typeof coverage.annotation_count === 'number' && Number.isFinite(coverage.annotation_count)) {
+    return coverage.annotation_count;
+  }
+  if (typeof coverage.annotated_symbols === 'number' && Number.isFinite(coverage.annotated_symbols)) {
+    return coverage.annotated_symbols;
+  }
+  return Number.isFinite(model.annotations_parsed) ? model.annotations_parsed : 0;
+}
+
+/**
+ * Rewrite a model's `coverage` into the current shape, in place.
+ *
+ * Applied at the one point where a model arrives from disk rather than from
+ * the parser (`loadReportJson`), so every downstream consumer — combine,
+ * totals, both dashboards, the diff markdown — sees one shape and none of them
+ * needs to know the old one existed.
+ */
+export function normalizeCoverage<T extends ThreatModel>(model: T): T {
+  const count = annotationCount(model);
+  const percent = model.coverage?.coverage_percent;
+  model.coverage = {
+    annotation_count: count,
+    coverage_percent: typeof percent === 'number' && Number.isFinite(percent)
+      ? percent
+      : fileCoveragePercent((model.annotated_files ?? []).length, model.source_files ?? 0),
+  };
+  return model;
 }

@@ -4,7 +4,7 @@
  */
 
 import type { ThreatModel } from '../types/index.js';
-import { buildCoverageIndex } from '../parser/coverage.js';
+import { buildCoverageIndex, annotationCount } from '../parser/coverage.js';
 
 // D57: a private `normalizeRef` lived here — it stripped `#` but, unlike the
 // canonical one in parser/coverage.ts, did not case-fold. Even the normaliser
@@ -34,7 +34,6 @@ export interface DashboardStats {
   comments: number;
   coveragePercent: number;
   coverageAnnotated: number;
-  coverageTotal: number;
 }
 
 export interface SeverityBreakdown {
@@ -99,8 +98,7 @@ export function computeStats(model: ThreatModel): DashboardStats {
     shields: model.shields.length,
     comments: model.comments.length,
     coveragePercent: model.coverage.coverage_percent,
-    coverageAnnotated: model.coverage.annotated_symbols,
-    coverageTotal: model.coverage.total_symbols,
+    coverageAnnotated: annotationCount(model),
   };
 }
 

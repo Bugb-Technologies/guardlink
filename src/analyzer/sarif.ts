@@ -34,6 +34,7 @@ import { createHash } from 'node:crypto';
 
 import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
+import { getPackageVersion } from '../version.js';
 
 // ─── SARIF 2.1.0 types (subset) ─────────────────────────────────────
 
@@ -271,7 +272,7 @@ export function generateSarif(
       tool: {
         driver: {
           name: 'GuardLink',
-          version: '1.4.3',
+          version: getPackageVersion(),
           informationUri: 'https://guardlink.bugb.io',
           rules: RULES,
         },

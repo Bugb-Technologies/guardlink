@@ -33,6 +33,7 @@ import { extractCitation } from './citation.js';
 import { loadWorkspaceConfig } from '../workspace/index.js';
 import { ANNOTATIONS_DIR } from './gal-path.js';
 import { fileCoveragePercent } from './coverage.js';
+import { readDisabledDiagnostics } from './annotation-mode.js';
 
 /** A standalone annotation sidecar, not a source file. */
 const isGalPath = (p: string): boolean => /\.gal$/i.test(p);
@@ -198,6 +199,7 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
         const prev = idMap.get(id)!;
         allDiagnostics.push({
           level: 'error',
+          code: 'duplicate-id',
           message: `Duplicate identifier #${id} (first defined at ${prev.location.file}:${prev.location.line})`,
           file: ann.location.file,
           line: ann.location.line,
@@ -234,7 +236,14 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   // Detect cross-repo tag references (requires workspace.yaml)
   model.external_refs = detectExternalRefs(model, root);
 
-  return { model, diagnostics: allDiagnostics };
+  // Warning-level diagnostics a project has switched off in config.json.
+  // Errors are never suppressible — see readDisabledDiagnostics.
+  const disabled = readDisabledDiagnostics(root);
+  const diagnostics = disabled.size === 0
+    ? allDiagnostics
+    : allDiagnostics.filter(d => !(d.level === 'warning' && d.code && disabled.has(d.code)));
+
+  return { model, diagnostics };
 }
 
 function normalizeLocationPath(locationFile: string, physicalFile: string, root: string): string {
@@ -250,7 +259,7 @@ function getAnnotationId(ann: Annotation): string | undefined {
 
 function assembleModel(annotations: Annotation[], fileCount: number, project: string, annotatedFiles: string[], unannotatedFiles: string[]): ThreatModel {
   const model: ThreatModel = {
-    version: '1.1.0',
+    version: '1.2.0',
     project,
     generated_at: new Date().toISOString(),
     source_files: fileCount,
@@ -278,15 +287,12 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
     features: [],
     comments: [],
     coverage: {
-      // Symbol-level coverage would need per-symbol parsing; not computed.
-      total_symbols: 0,
-      annotated_symbols: annotations.length,
+      annotation_count: annotations.length,
       // D14 — file coverage, actually computed. This was a hardcoded 0 that three
       // consumers rendered as "0%" on fully annotated projects. Meaningful only
       // because GL-502 made both sides of the ratio exclude sidecars, so the
       // number no longer moves when a repo changes annotation mode.
       coverage_percent: fileCoveragePercent(annotatedFiles.length, fileCount),
-      unannotated_critical: [],
     },
   };
 

@@ -178,9 +178,11 @@ type ModelCache = ReturnType<typeof createModelCache>;
 /**
  * Register a tool whose result always carries the envelope.
  *
- * Wrapping at registration rather than editing 18 return statements is what makes
- * "all 18 tools" true by construction instead of by inspection — including the
- * error branches inside handlers, which are the returns most likely to be missed.
+ * Wrapping at registration rather than editing every return statement is what
+ * makes "all 24 tools" true by construction instead of by inspection —
+ * including the error branches inside handlers, which are the returns most
+ * likely to be missed. The count is deliberately not restated per-tool below;
+ * it was written as 18 and was 24 by the time anyone read it again.
  */
 function registerTool(
   server: McpServer,
@@ -406,7 +408,7 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_context',
-    'Everything GuardLink knows about one file: the annotations declared there, the assets they name with each asset\'s depth-1 neighbourhood, open exposures and @confirmed findings, controls the file upholds, and its @assumes/@handles/@owns. Call this when you open or are about to edit a file. Accepts the source path or, in external mode, the .gal path that annotates it. An empty result is explicit about WHY: `scanned_without_annotations` means the file is genuinely clean, `not_scanned` means the parser never read it, `not_found` means nothing is there — do not read them as the same answer. Does not tell you where to write a NEW annotation; the .gal path convention is not yet codified in code (GL-501), so only origin_file for annotations that already exist is reported.',
+    'Everything GuardLink knows about one file: the annotations declared there, the assets they name with each asset\'s depth-1 neighbourhood, open exposures and @confirmed findings, controls the file upholds, and its @assumes/@handles/@owns. Call this when you open or are about to edit a file. Accepts the source path or, in external mode, the .gal path that annotates it. An empty result is explicit about WHY: `scanned_without_annotations` means the file is genuinely clean, `not_scanned` means the parser never read it, `not_found` means nothing is there — do not read them as the same answer. Reports origin_file for annotations that already exist, not a destination for a new one. In external mode a new sidecar goes at `.guardlink/annotations/<source path>.gal` — the source path mirrored, with .gal appended.',
     {
       root: z.string().describe('Project root directory').default('.'),
       file: z.string().describe('File to describe. Absolute, relative or ./-prefixed; resolved against root. In external mode the .gal path resolves to the source file it annotates.'),

@@ -26,7 +26,7 @@ import type {
   MergeWarning, MergeWarningCode, RepoStatus,
 } from './types.js';
 import { REPORT_SCHEMA_VERSION } from './metadata.js';
-import { buildCoverageIndex, fileCoveragePercent } from '../parser/coverage.js';
+import { buildCoverageIndex, fileCoveragePercent, annotationCount, normalizeCoverage } from '../parser/coverage.js';
 
 // ─── Report Loading ──────────────────────────────────────────────────
 
@@ -46,7 +46,11 @@ interface LoadedReport {
  */
 export async function loadReportJson(filePath: string): Promise<LoadedReport> {
   const raw = await readFile(filePath, 'utf-8');
-  const model: ThreatModel = JSON.parse(raw);
+  // The one place a model arrives from disk instead of from the parser, so the
+  // one place that has to cope with a report an older GuardLink wrote. Coverage
+  // is reshaped here rather than defended against at each of the six consumers
+  // downstream; see normalizeCoverage for why 0 was the wrong coalesce.
+  const model: ThreatModel = normalizeCoverage(JSON.parse(raw));
 
   // Determine repo name: prefer metadata.repo, fall back to project, then filename
   const repo = model.metadata?.repo
@@ -430,7 +434,7 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     shields: [],
     features: [],
     comments: [],
-    coverage: { total_symbols: 0, annotated_symbols: 0, coverage_percent: 0, unannotated_critical: [] },
+    coverage: { annotation_count: 0, coverage_percent: 0 },
   };
 
   for (const { repo, model: m } of reports) {
@@ -480,15 +484,13 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     combined.features.push(...prefixAll(m.features || [], repo));
     combined.comments.push(...prefixAll(m.comments, repo));
 
-    // Aggregate coverage. `total_symbols` is summed only to keep the emitted
-    // field shape stable for `schema_version: 1.0.0` consumers; every repo
-    // reports 0 for it, so the sum is 0. It is not a denominator.
-    combined.coverage.total_symbols += m.coverage.total_symbols;
-    combined.coverage.annotated_symbols += m.coverage.annotated_symbols;
+    // Aggregate coverage. Only the annotation count is additive; the percent
+    // is recomputed below from the combined file totals.
+    combined.coverage.annotation_count += annotationCount(m);
   }
 
   // D49: this recomputed percent as annotated_symbols / total_symbols. Since
-  // total_symbols is never populated, the `: 0` fallback was the ONLY branch
+  // total_symbols was never populated, the `: 0` fallback was the ONLY branch
   // that ever ran — two repos each reporting 89% merged to a workspace
   // reporting 0%, which is D14 ("a hardcoded 0 rendered as 0% on fully
   // annotated projects") reappearing on the path D14's fix never reached.
@@ -699,7 +701,7 @@ function emptyMergedReport(workspace: string, statuses: RepoStatus[]): MergedRep
       confirmed: [], acceptances: [], transfers: [], flows: [], boundaries: [],
       validations: [], audits: [], ownership: [], data_handling: [],
       assumptions: [], shields: [], features: [], comments: [],
-      coverage: { total_symbols: 0, annotated_symbols: 0, coverage_percent: 0, unannotated_critical: [] },
+      coverage: { annotation_count: 0, coverage_percent: 0 },
     },
   };
 }

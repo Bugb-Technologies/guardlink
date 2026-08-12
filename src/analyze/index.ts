@@ -25,7 +25,7 @@ import { type LLMConfig, chatCompletion } from './llm.js';
 import { GUARDLINK_TOOLS, createToolExecutor } from './tools.js';
 import { formatConfidence, redactEvidence } from './format.js';
 import { loadProjectConfig } from '../agents/config.js';
-import { findUnmitigatedExposures } from '../parser/coverage.js';
+import { findUnmitigatedExposures, annotationCount } from '../parser/coverage.js';
 
 export { type AnalysisFramework, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage } from './prompts.js';
 export { type LLMConfig, type LLMProvider, buildConfig, autoDetectConfig } from './llm.js';
@@ -415,12 +415,11 @@ export function serializeModel(model: ThreatModel): string {
     file: v.location.file, line: v.location.line,
   }));
 
-  // Coverage summary — include unannotated critical symbols so LLM sees gaps
+  // Coverage summary. The annotation count plus FILE coverage — the two
+  // quantities the model actually computes. `percent` is files, not annotations.
   compact.coverage = {
-    total_symbols: model.coverage.total_symbols,
-    annotated: model.coverage.annotated_symbols,
+    annotation_count: annotationCount(model),
     percent: model.coverage.coverage_percent,
-    unannotated_critical: model.coverage.unannotated_critical,
   };
 
   // Unmitigated exposures summary. D57: this was a raw `${asset}::${threat}`

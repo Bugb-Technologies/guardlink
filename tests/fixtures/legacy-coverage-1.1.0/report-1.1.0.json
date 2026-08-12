@@ -1,6 +1,7 @@
 {
-  "version": "1.2.0",
-  "project": "expense-api",
+  "_comment": "FROZEN at model schema 1.1.0 \u2014 do NOT regenerate. This is a genuine artifact emitted by GuardLink 1.4.5; see README.md in this directory.",
+  "version": "1.1.0",
+  "project": "unknown",
   "source_files": 8,
   "annotations_parsed": 105,
   "annotated_files": [
@@ -21,7 +22,7 @@
         "API"
       ],
       "id": "api",
-      "description": "Flask HTTP surface — login, expense list/create, receipt download",
+      "description": "Flask HTTP surface \u2014 login, expense list/create, receipt download",
       "location": {
         "file": ".guardlink/definitions.py",
         "line": 31
@@ -274,8 +275,6 @@
       }
     }
   ],
-  "actors": [],
-  "entitlements": [],
   "mitigations": [
     {
       "asset": "#auth",
@@ -531,7 +530,7 @@
       "external_refs": [
         "cwe:CWE-918"
       ],
-      "description": "url is body['webhook'] from POST /expenses, POSTed unvalidated — no scheme check, no host allowlist, so 169.254.169.254 and http://localhost/ are both reachable",
+      "description": "url is body['webhook'] from POST /expenses, POSTed unvalidated \u2014 no scheme check, no host allowlist, so 169.254.169.254 and http://localhost/ are both reachable",
       "location": {
         "file": "app/notify.py",
         "line": 5,
@@ -918,7 +917,7 @@
     },
     {
       "asset": "#config",
-      "description": "Dead helper: is_production() has no callers. Either wire it to a boot-time refusal when the secret is defaulted, or delete it — an unused safety check reads as a control that is not there",
+      "description": "Dead helper: is_production() has no callers. Either wire it to a boot-time refusal when the secret is defaulted, or delete it \u2014 an unused safety check reads as a control that is not there",
       "location": {
         "file": "app/config.py",
         "line": 9,
@@ -929,7 +928,7 @@
     },
     {
       "asset": "#db",
-      "description": "find_expenses is the only unparameterised query in the project — rewrite with ? placeholders, as insert_expense already does",
+      "description": "find_expenses is the only unparameterised query in the project \u2014 rewrite with ? placeholders, as insert_expense already does",
       "location": {
         "file": "app/db.py",
         "line": 9,
@@ -1096,7 +1095,7 @@
   "assumptions": [
     {
       "asset": "#auth",
-      "description": "Assumes SECRET_KEY is a real secret. The signature is only as strong as config.py's fallback allows — see the #weak-secret exposure there",
+      "description": "Assumes SECRET_KEY is a real secret. The signature is only as strong as config.py's fallback allows \u2014 see the #weak-secret exposure there",
       "location": {
         "file": "app/auth.py",
         "line": 14,
@@ -1107,7 +1106,7 @@
     },
     {
       "asset": "#receipts",
-      "description": "Assumes callers pass a bare filename. GET /receipts/<name> is the only caller today and Flask's default converter does not match a slash, which narrows but does not close this — '..' still matches, and save_receipt has no such caller constraint at all",
+      "description": "Assumes callers pass a bare filename. GET /receipts/<name> is the only caller today and Flask's default converter does not match a slash, which narrows but does not close this \u2014 '..' still matches, and save_receipt has no such caller constraint at all",
       "location": {
         "file": "app/storage.py",
         "line": 5,
@@ -1133,7 +1132,7 @@
   ],
   "comments": [
     {
-      "description": "Empty package marker. Scanned, genuinely nothing here — recorded so an empty answer is a fact rather than a gap",
+      "description": "Empty package marker. Scanned, genuinely nothing here \u2014 recorded so an empty answer is a fact rather than a gap",
       "location": {
         "file": "app/__init__.py",
         "line": 1,
@@ -1143,7 +1142,7 @@
       }
     },
     {
-      "description": "200,000 iterations is at the low end of current guidance but is a real, deliberate cost factor — not a placeholder",
+      "description": "200,000 iterations is at the low end of current guidance but is a real, deliberate cost factor \u2014 not a placeholder",
       "location": {
         "file": "app/auth.py",
         "line": 9,
@@ -1213,7 +1212,7 @@
       }
     },
     {
-      "description": "WARNING for anyone reading the model rather than this file: the exposure above does NOT appear in `guardlink lookup unmitigated`, and `cwe:CWE-89` reports it as status mitigated, open 0. The @mitigates on insert_expense below names the same asset and the same threat, and the join is (asset, threat) only — the recorded symbol anchors are not consulted. The injection here is live and unfixed",
+      "description": "WARNING for anyone reading the model rather than this file: the exposure above does NOT appear in `guardlink lookup unmitigated`, and `cwe:CWE-89` reports it as status mitigated, open 0. The @mitigates on insert_expense below names the same asset and the same threat, and the join is (asset, threat) only \u2014 the recorded symbol anchors are not consulted. The injection here is live and unfixed",
       "location": {
         "file": "app/db.py",
         "line": 9,
@@ -1303,7 +1302,7 @@
       }
     },
     {
-      "description": "No route calls this today. The currency value is f-stringed into the URL, so it becomes request-controlled the moment one does — worth quoting before that happens",
+      "description": "No route calls this today. The currency value is f-stringed into the URL, so it becomes request-controlled the moment one does \u2014 worth quoting before that happens",
       "location": {
         "file": "app/notify.py",
         "line": 10,
@@ -1334,8 +1333,14 @@
     }
   ],
   "coverage": {
-    "annotation_count": 105,
-    "coverage_percent": 100
+    "total_symbols": 0,
+    "annotated_symbols": 105,
+    "coverage_percent": 100,
+    "unannotated_critical": []
   },
-  "external_refs": []
+  "external_refs": [],
+  "metadata": {
+    "schema_version": "1.0.0",
+    "repo": "expense-api"
+  }
 }

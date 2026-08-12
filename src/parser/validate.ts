@@ -41,6 +41,7 @@ export function findDanglingRefs(model: ThreatModel): ParseDiagnostic[] {
       if (!definedIds.has(id)) {
         diagnostics.push({
           level: 'warning',
+          code: 'dangling-ref',
           message: `Dangling reference: #${id} is never defined`,
           file: loc.file,
           line: loc.line,
@@ -137,6 +138,7 @@ export function findUndeclaredActors(model: ThreatModel): ParseDiagnostic[] {
     if (declared.has(bare) || declared.has(normalizeName(bare))) continue;
     diagnostics.push({
       level: 'error',
+      code: 'undeclared-actor',
       message: `@entitles names actor ${en.actor} which is never declared with @actor`,
       file: en.location.file,
       line: en.location.line,
@@ -160,6 +162,7 @@ export function findInertEntitlements(model: ThreatModel): ParseDiagnostic[] {
     if (!en.inert) continue;
     diagnostics.push({
       level: 'warning',
+      code: 'inert-entitlement',
       message: `@entitles ${en.actor} to ${en.capability} cites no authorization code — inert, will not demote any finding. Add a file:line pointer to the authz check in the description.`,
       file: en.location.file,
       line: en.location.line,
@@ -191,6 +194,7 @@ export function findImpreciseEntitlements(model: ThreatModel): ParseDiagnostic[]
       .join(' and ');
     diagnostics.push({
       level: 'warning',
+      code: 'imprecise-entitlement',
       message:
         `@entitles ${en.actor} to ${en.capability} is missing ${needs}, so it joins no finding `
         + 'and will not demote anything. Triage matches on (actor, asset, threat).',
@@ -221,6 +225,7 @@ export function findAcceptedWithoutAudit(model: ThreatModel): ParseDiagnostic[] 
     if (!auditedAssets.has(assetNorm)) {
       diagnostics.push({
         level: 'warning',
+        code: 'accepted-without-audit',
         message: `@accepts ${acc.threat} on ${acc.asset} without @audit — risk acceptance should be paired with @audit for traceability`,
         file: acc.location.file,
         line: acc.location.line,
@@ -260,6 +265,7 @@ export function findOffConventionGalFiles(model: ThreatModel): ParseDiagnostic[]
       if (strays.length > 0) {
         diagnostics.push({
           level: 'warning',
+          code: 'stray-gal-source',
           message: `\`${origin}\` is the sidecar for \`${expected}\` but carries @source blocks for `
             + `${strays.join(', ')}. Those belong in their own sidecars: `
             + `${strays.map(s => galPathFor(s)).join(', ')}. `
@@ -272,6 +278,7 @@ export function findOffConventionGalFiles(model: ThreatModel): ParseDiagnostic[]
     }
     diagnostics.push({
       level: 'warning',
+      code: 'off-convention-gal',
       message: offConventionMessage(origin, [...sources].sort()),
       file: origin,
       line: 1,

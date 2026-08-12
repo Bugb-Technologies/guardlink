@@ -818,6 +818,7 @@ export function findUnacceptedEntitlements(
     if (accepted.has(entitlementKey(en.actor, en.capability, en.asset, en.threat))) continue;
     diagnostics.push({
       level: 'error',
+      code: 'entitlement-provenance',
       message:
         `@entitles ${en.actor} to ${en.capability} has no accepted proposal behind it. ` +
         `An entitlement is drafted by an agent and accepted by a named human (design §3.6): ` +

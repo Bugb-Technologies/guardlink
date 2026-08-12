@@ -13,26 +13,20 @@ import { execSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { computeAnnotationHash } from '../parser/annotation-hash.js';
+import { getPackageVersion } from '../version.js';
 import type { ThreatModel, ReportMetadata } from '../types/index.js';
 import type { WorkspaceConfig } from './types.js';
 
-/** Current report JSON schema version */
-export const REPORT_SCHEMA_VERSION = '1.0.0';
-
 /**
- * Get the guardlink package version at runtime.
- * Falls back to 'unknown' if not determinable.
+ * Current report JSON schema version.
+ *
+ * 1.1.0 — model version 1.2.0 reshaped `coverage`: `annotated_symbols` became
+ * `annotation_count`, and the two permanently-constant fields beside it were
+ * removed. `detectSchemaMismatch` compares this string across the reports being
+ * merged, so leaving it at 1.0.0 made a mixed-version merge undetectable by the
+ * one mechanism built to detect exactly that.
  */
-function getGuardlinkVersion(): string {
-  try {
-    // Walk up from this file to find package.json
-    const pkgPath = new URL('../../package.json', import.meta.url);
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-    return pkg.version || 'unknown';
-  } catch {
-    return 'unknown';
-  }
-}
+export const REPORT_SCHEMA_VERSION = '1.1.0';
 
 /**
  * Read HEAD straight out of `.git`.
@@ -203,7 +197,7 @@ export function populateMetadata(model: ThreatModel, root: string): ThreatModel 
 
   const metadata: ReportMetadata = {
     schema_version: REPORT_SCHEMA_VERSION,
-    guardlink_version: getGuardlinkVersion(),
+    guardlink_version: getPackageVersion(),
     repo: workspace?.this_repo || model.project,
     commit_sha: getCommitSha(root),
     branch: getBranch(root),

@@ -120,6 +120,41 @@ export function readConfiguredMode(root: string): AnnotationMode | null {
  * an explicit `--project` still wins. Same shape as `readConfiguredMode` above,
  * deliberately — one way to ask config.json a question.
  */
+/**
+ * Diagnostic codes a project has switched off, from `.guardlink/config.json`:
+ *
+ * ```json
+ * { "diagnostics": { "unknown-verb": false } }
+ * ```
+ *
+ * **Only warnings can be switched off.** A code listed here suppresses
+ * `level: 'warning'` diagnostics and nothing else — an error still fails
+ * `validate` and still reaches SARIF. Silencing a warning is a taste decision
+ * about noise; silencing an error is a decision to ship a broken annotation,
+ * and configuration should not be able to make the second one look like the
+ * first. The filter enforces this at the point of use, not here.
+ *
+ * The generic shape is deliberate: `unknown-verb` is the code that needed a
+ * switch first, but "this diagnostic is not useful in my codebase" is not
+ * unique to it, and a second single-purpose boolean would be worse than one
+ * map. Anyone the tier bites can turn it off without downgrading.
+ *
+ * Returns an empty set when absent or unreadable — the tier is on by default,
+ * and an unparseable config must not silently disable diagnostics.
+ */
+export function readDisabledDiagnostics(root: string): ReadonlySet<string> {
+  try {
+    const config = JSON.parse(readFileSync(join(root, '.guardlink', 'config.json'), 'utf-8'));
+    const map = config.diagnostics;
+    if (!map || typeof map !== 'object') return new Set();
+    return new Set(Object.entries(map)
+      .filter(([, enabled]) => enabled === false)
+      .map(([code]) => code));
+  } catch {
+    return new Set();
+  }
+}
+
 export function readConfiguredProject(root: string): string | null {
   try {
     const config = JSON.parse(readFileSync(join(root, '.guardlink', 'config.json'), 'utf-8'));

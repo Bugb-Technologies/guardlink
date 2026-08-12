@@ -18,6 +18,7 @@ import { createServer } from './server.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { getPackageVersion } from '../version.js';
 
 /**
  * Start the MCP server on stdio transport.
@@ -54,7 +55,49 @@ function isEntryPoint(): boolean {
   }
 }
 
-if (isEntryPoint()) {
+/**
+ * `--help` / `--version`, handled before the transport opens.
+ *
+ * A bin that answers neither is a bin you cannot identify once it is installed:
+ * `guardlink-mcp --version` used to hang, because every argument was ignored
+ * and the process sat waiting for JSON-RPC on a stdin nobody was writing to.
+ *
+ * These write to STDOUT and exit without connecting a transport — which is safe
+ * precisely because no transport exists yet. Once `startStdioServer()` runs,
+ * stdout belongs to the JSON-RPC channel and nothing else may touch it.
+ *
+ * Returns true if it handled the invocation and the server must not start.
+ */
+function handleCliArgs(argv: string[]): boolean {
+  if (argv.includes('--version') || argv.includes('-V')) {
+    console.log(getPackageVersion());
+    return true;
+  }
+  if (argv.includes('--help') || argv.includes('-h')) {
+    console.log(`guardlink-mcp ${getPackageVersion()}
+
+  GuardLink's threat model as an MCP server over stdio. Started by an MCP
+  client (Claude Code, Cursor, …), not usually by hand — it speaks JSON-RPC on
+  stdin/stdout and produces no output on its own.
+
+Usage
+  guardlink-mcp              Serve on stdio
+  guardlink-mcp --help       Show this message
+  guardlink-mcp --version    Print the version
+
+  Identical to \`guardlink mcp\`; both call the same server.
+
+Client configuration
+  {"mcpServers": {"guardlink": {"command": "guardlink-mcp"}}}
+
+  Tools and resources are discovered over the protocol — run \`guardlink gal\`
+  or see https://guardlink.bugb.io for the annotation language itself.`);
+    return true;
+  }
+  return false;
+}
+
+if (isEntryPoint() && !handleCliArgs(process.argv.slice(2))) {
   startStdioServer().catch((err: unknown) => {
     // stderr, never stdout: stdout is the JSON-RPC channel and a stray line
     // there corrupts the transport for the client that is reading it.

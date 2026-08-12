@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        attack-surface.mmd
-%% annotation_hash: sha256-v1:81168ffb1ea44c87c243a36fcb00eeb910cc9b425a8873de9b680913ec1d2f83
-%% generator:       guardlink@1.4.5
+%% annotation_hash: sha256-v2:81168ffb1ea44c87c243a36fcb00eeb910cc9b425a8873de9b680913ec1d2f83
+%% generator:       guardlink@1.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
 %% annotation_hash above differs from what `guardlink status .` reports, the
@@ -17,25 +17,25 @@ graph TB
     E2["⚠️ Credential_Stuffing"]:::sev_med
     E3["⚠️ Malformed_Input_Crash ×2"]:::sev_low
   end
+  subgraph A_auth["Expense.Auth · ⚠ 1 open"]
+    direction TB
+    E4["⚠️ Timing_Disclosure"]:::sev_low
+  end
   subgraph A_config["Expense.Config · ⚠ 1 open"]
     direction TB
-    E4["⚠️ Weak_Default_Secret"]:::sev_high
+    E5["⚠️ Weak_Default_Secret"]:::sev_high
+  end
+  subgraph A_db["Expense.DB · ⚠ 1 open"]
+    direction TB
+    E6["⚠️ SQL_Injection"]:::sev_crit
   end
   subgraph A_notify["Expense.Notify · ⚠ 1 open"]
     direction TB
-    E5["⚠️ Server_Side_Request_Forgery"]:::sev_high
+    E7["⚠️ Server_Side_Request_Forgery"]:::sev_high
   end
   subgraph A_receipts["Expense.Storage · ⚠ 1 open"]
     direction TB
-    E6["⚠️ Path_Traversal ×2"]:::sev_high
-  end
-  subgraph A_auth["Expense.Auth · ✅ 100% covered"]
-    direction TB
-    E7["✅ Timing_Disclosure"]:::sev_low
-  end
-  subgraph A_db["Expense.DB · ✅ 100% covered"]
-    direction TB
-    E8["✅ SQL_Injection"]:::sev_crit
+    E8["⚠️ Path_Traversal ×2"]:::sev_high
   end
   classDef sev_crit fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.4px
   classDef sev_high fill:#402019,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.2px
