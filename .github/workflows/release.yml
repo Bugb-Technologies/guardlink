@@ -15,16 +15,14 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # Node 24 ships with npm 11.x, which satisfies the >=11.5.1
-          # requirement for OIDC trusted publishing. Node 22's bundled
-          # npm 10.x would need an upgrade, but `npm install -g npm@latest`
-          # corrupts npm's own node_modules mid-upgrade (see v1.4.2 release
-          # failure, MODULE_NOT_FOUND on promise-retry).
+          # Pinned to 24 because its bundled npm 11.x already satisfies the
+          # >=11.5.1 requirement for OIDC trusted publishing, so no global
+          # npm upgrade is needed here. Do not add one: `npm install -g
+          # npm@latest` corrupts npm's own node_modules mid-upgrade and is
+          # what broke the v1.4.2 release (MODULE_NOT_FOUND on promise-retry).
+          # Node 22 would need that upgrade; 24 is how we avoid it.
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-
-      - name: Install latest npm (trusted publishing requires >=11.5.1)
-        run: npm install -g npm@latest
 
       - run: npm ci
       - run: npm run build
