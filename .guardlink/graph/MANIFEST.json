@@ -1,37 +1,37 @@
 {
   "schema_version": 1,
-  "annotation_hash": "sha256-v2:66c22c9b8df9d397dee561e4597a2996a988710083661a591990844e6133ff9f",
-  "generator": "guardlink@1.4.5",
+  "annotation_hash": "sha256-v2:69d3feaf23e67dd0d5d86273517b07c34d91b9a61c038e0ebea8fc9f7b395f1c",
+  "generator": "guardlink@2.0.0",
   "artifacts": [
     {
       "path": ".guardlink/graph/threat-graph.mmd",
       "bytes": 8306,
-      "annotation_hash": "sha256-v2:66c22c9b8df9d397dee561e4597a2996a988710083661a591990844e6133ff9f"
+      "annotation_hash": "sha256-v2:69d3feaf23e67dd0d5d86273517b07c34d91b9a61c038e0ebea8fc9f7b395f1c"
     },
     {
       "path": ".guardlink/graph/dataflow.mmd",
       "bytes": 9315,
-      "annotation_hash": "sha256-v2:66c22c9b8df9d397dee561e4597a2996a988710083661a591990844e6133ff9f"
+      "annotation_hash": "sha256-v2:69d3feaf23e67dd0d5d86273517b07c34d91b9a61c038e0ebea8fc9f7b395f1c"
     },
     {
       "path": ".guardlink/graph/attack-surface.mmd",
       "bytes": 4366,
-      "annotation_hash": "sha256-v2:66c22c9b8df9d397dee561e4597a2996a988710083661a591990844e6133ff9f"
+      "annotation_hash": "sha256-v2:69d3feaf23e67dd0d5d86273517b07c34d91b9a61c038e0ebea8fc9f7b395f1c"
     },
     {
       "path": ".guardlink/graph/by-feature/dashboard.mmd",
       "bytes": 1413,
-      "annotation_hash": "sha256-v2:66c22c9b8df9d397dee561e4597a2996a988710083661a591990844e6133ff9f"
+      "annotation_hash": "sha256-v2:69d3feaf23e67dd0d5d86273517b07c34d91b9a61c038e0ebea8fc9f7b395f1c"
     },
     {
       "path": ".guardlink/graph/by-feature/mcp-integration.mmd",
       "bytes": 1813,
-      "annotation_hash": "sha256-v2:66c22c9b8df9d397dee561e4597a2996a988710083661a591990844e6133ff9f"
+      "annotation_hash": "sha256-v2:69d3feaf23e67dd0d5d86273517b07c34d91b9a61c038e0ebea8fc9f7b395f1c"
     },
     {
       "path": ".guardlink/model.json",
-      "bytes": 123317,
-      "annotation_hash": "sha256-v2:66c22c9b8df9d397dee561e4597a2996a988710083661a591990844e6133ff9f"
+      "bytes": 123011,
+      "annotation_hash": "sha256-v2:69d3feaf23e67dd0d5d86273517b07c34d91b9a61c038e0ebea8fc9f7b395f1c"
     }
   ]
 }

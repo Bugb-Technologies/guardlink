@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v2:66c22c9b8df9d397dee561e4597a2996a988710083661a591990844e6133ff9f
-%% generator:       guardlink@1.4.5
+%% annotation_hash: sha256-v2:69d3feaf23e67dd0d5d86273517b07c34d91b9a61c038e0ebea8fc9f7b395f1c
+%% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
 %% annotation_hash above differs from what `guardlink status .` reports, the
@@ -67,7 +67,6 @@ graph LR
   dashboard["🧩 GuardLink.Dashboard · internal"]
   sourcefiles["🧩 SourceFiles"]
   userargs["👤 UserArgs"]
-  packagejson["🧩 PackageJson"]
   html["🧩 HTML"]
   gitref["🧩 GitRef"]
   tempdir["🧩 TempDir"]
@@ -90,6 +89,7 @@ graph LR
   commands["🧩 Commands"]
   rawstdin["🧩 RawStdin"]
   terminal["🧩 Terminal"]
+  packagejson["🧩 PackageJson"]
   workspace_link["🧩 Workspace.Link"]
   reportjson["🧩 ReportJSON"]
   merge_engine["🧩 Workspace.Merge"]
@@ -131,7 +131,6 @@ graph LR
   sourcefiles -- "📡 findAnchorDrift" --> cli
   userargs -- "📡 process.argv" --> cli
   cli -- "🗄️ writeFile" --> filesystem
-  packagejson -- "🗄️ readFileSync" --> cli
   threatmodel -- "📡 generateThreatGraph" --> dashboard
   threatmodel -- "📡 computeStats" --> dashboard
   sourcefiles -- "🗄️ readFileSync" --> dashboard
@@ -197,6 +196,7 @@ graph LR
   tui -- "📡 dispatch" --> commands
   rawstdin -- "📡 process.stdin" --> tui
   tui -- "📡 process.stdout" --> terminal
+  packagejson -- "🗄️ readFileSync" --> cli
   userargs -- "📡 linkProject" --> workspace_link
   workspace_link -- "📡 updateAgentWorkspaceContext" --> agentfiles
   reportjson -- "📡 mergeReports" --> merge_engine
