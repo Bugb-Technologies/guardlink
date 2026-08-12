@@ -226,6 +226,7 @@ program
   .option('-p, --project <name>', 'Project name (default: the name in .guardlink/config.json)')
   .option('-o, --output <file>', 'Write JSON to file instead of stdout')
   .option('--pretty', 'Pretty-print JSON output', true)
+  .option('--no-pretty', 'Emit compact JSON on one line')
   .action(async (dir: string, opts: { project: string; output?: string; pretty: boolean }) => {
     const root = resolve(dir);
     const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
@@ -447,6 +448,15 @@ program
   .option('--feature <names>', 'Filter report to specific feature(s) (comma-separated)')
   .action(async (dir: string, opts: { project: string; output?: string; format: string; diagramOnly?: boolean; json?: boolean; feature?: string }) => {
     const root = resolve(dir);
+
+    // Validate --format before doing any work. An unrecognised value used to
+    // leave both wantMd and wantJson false, so the command wrote nothing and
+    // still exited 0 — indistinguishable from success. Matches `migrate --to`.
+    if (opts.format !== 'md' && opts.format !== 'json' && opts.format !== 'both') {
+      console.error(`Invalid --format "${opts.format}". Use "md", "json", or "both".`);
+      process.exit(1);
+    }
+
     let { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
 
     // Apply feature filter if specified
@@ -504,7 +514,7 @@ program
 
     if (wantMd) {
       const report = generateReport(enrichedModel);
-      const mdFile = opts.output || (opts.format === 'md' ? 'threat-model.md' : 'threat-model.md');
+      const mdFile = opts.output || 'threat-model.md';
       await writeFile(resolve(root, mdFile), report + '\n');
       console.error(`✓ Wrote threat model report to ${mdFile}`);
     }
@@ -1408,7 +1418,7 @@ program
     const root = resolve(dir);
 
     // Parse the current model
-    const { model } = await parseProject({ root, project: basename(root) });
+    const { model } = await parseProject({ root, project: readConfiguredProject(root) ?? basename(root) });
 
     if (model.annotations_parsed === 0) {
       console.log('No annotations found. Run: guardlink annotate  to add annotations first.');
@@ -1562,7 +1572,7 @@ program
   .command('entitle')
   .description('Review proposed entitlements (@entitles) — accept, reject, or defer. Only acceptance writes to source, under the name of the human who accepted.')
   .argument('[dir]', 'Project directory to scan', '.')
-  .option('-p, --project <n>', 'Project name', 'unknown')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--list', 'List proposals without prompting')
   .option('--status <states>', 'Filter by status: proposed,accepted,rejected,deferred')
   .option('--propose', 'File a proposal instead of reviewing (needs --actor, --capability, --rationale, --file, --line)')
@@ -1582,13 +1592,16 @@ program
   .option('--acknowledge-inert', 'Accept a proposal that cites no authz code, acknowledging the annotation will be inert (§3.4)')
   .option('--acknowledge-ownership', 'Accept a proposal the ownership-class check warned about, having read the warning (§3.5)')
   .action(async (dir: string, opts: {
-    project: string; list?: boolean; status?: string; propose?: boolean;
+    project?: string; list?: boolean; status?: string; propose?: boolean;
     actor?: string; capability?: string; asset?: string; threat?: string;
     rationale?: string; file?: string; line?: string; proposedBy: string;
     accept?: string; reject?: string; defer?: string;
     by?: string; note?: string; acknowledgeInert?: boolean; acknowledgeOwnership?: boolean;
   }) => {
     const root = resolve(dir);
+    // Same resolution as every other command: flag, then .guardlink/config.json.
+    // Used to hardcode 'unknown', which then travelled into the parsed model.
+    const project = opts.project ?? readConfiguredProject(root) ?? undefined;
 
     // ── propose (agent-side; writes only the artifact) ──
     if (opts.propose) {
@@ -1600,7 +1613,7 @@ program
         return;
       }
       try {
-        const { model } = await parseProject({ root, project: opts.project });
+        const { model } = await parseProject({ root, project });
         const result = await proposeEntitlement(root, {
           actor: opts.actor!,
           capability: opts.capability!,
@@ -1653,7 +1666,7 @@ program
         });
         if (status === 'accepted') {
           console.error(`✓ Accepted ${decisionId} — recorded for ${by}; ${result.linesInserted} line(s) written to ${result.targetFile}`);
-          await syncAfterEntitlement(root, opts.project);
+          await syncAfterEntitlement(root, project);
         } else {
           console.error(`✓ Recorded ${status} for ${decisionId} by ${by}. Source untouched.`);
         }
@@ -1802,7 +1815,7 @@ program
     if (results.length > 0) {
       console.error(summarizeDecisions(results));
       if (results.some(r => r.linesInserted > 0)) {
-        await syncAfterEntitlement(root, opts.project);
+        await syncAfterEntitlement(root, project);
       }
     }
   });
@@ -1814,7 +1827,7 @@ program
  * principal that does not exist can never be joined downstream, so it is worth saying
  * immediately rather than at the next `guardlink validate`.
  */
-async function syncAfterEntitlement(root: string, project: string): Promise<void> {
+async function syncAfterEntitlement(root: string, project: string | undefined): Promise<void> {
   try {
     const { model } = await parseProject({ root, project });
     for (const d of findUndeclaredActors(model)) {
@@ -2369,6 +2382,7 @@ program
     // Pass session-level LLM config to TUI via environment
     if (opts.apiKey) process.env.GUARDLINK_LLM_KEY = opts.apiKey;
     if (opts.provider) process.env.GUARDLINK_LLM_PROVIDER = opts.provider;
+    if (opts.model) process.env.GUARDLINK_LLM_MODEL = opts.model;
     const { startTui } = await import('../tui/index.js');
     await startTui(dir);
   });

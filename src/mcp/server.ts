@@ -178,9 +178,11 @@ type ModelCache = ReturnType<typeof createModelCache>;
 /**
  * Register a tool whose result always carries the envelope.
  *
- * Wrapping at registration rather than editing 18 return statements is what makes
- * "all 18 tools" true by construction instead of by inspection — including the
- * error branches inside handlers, which are the returns most likely to be missed.
+ * Wrapping at registration rather than editing every return statement is what
+ * makes "all 24 tools" true by construction instead of by inspection —
+ * including the error branches inside handlers, which are the returns most
+ * likely to be missed. The count is deliberately not restated per-tool below;
+ * it was written as 18 and was 24 by the time anyone read it again.
  */
 function registerTool(
   server: McpServer,
