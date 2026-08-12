@@ -576,7 +576,29 @@ export type DiagnosticCode =
   /** Line starts with a known verb, carries structural evidence, and failed to parse. */
   | 'malformed-annotation'
   /** Line starts with a known verb but has no structural evidence — prose about GuardLink. */
-  | 'prose-like';
+  | 'prose-like'
+  /** Line starts with an unknown `@verb` that is one or two edits from a known one. */
+  | 'unknown-verb'
+  /** Two definitions claim the same `(#id)`. */
+  | 'duplicate-id'
+  // ── Validation-time (src/parser/validate.ts) ──
+  /** A `#id` reference resolves to no definition. */
+  | 'dangling-ref'
+  /** `@entitles` names an actor never declared with `@actor`. */
+  | 'undeclared-actor'
+  /** `@entitles` cites no authz code, so it can never demote a finding. */
+  | 'inert-entitlement'
+  /** `@entitles` cites authz code too imprecisely to be checked. */
+  | 'imprecise-entitlement'
+  /** `@accepts` with no paired `@audit` — acceptance without a traceable review. */
+  | 'accepted-without-audit'
+  /** A `.gal` sidecar sits somewhere other than its conventional path. */
+  | 'off-convention-gal'
+  /** An on-convention `.gal` sidecar carries `@source` blocks for other files. */
+  | 'stray-gal-source'
+  // ── Governance (src/review/entitlements.ts) ──
+  /** An `@entitles` in source with no accepted proposal behind it. */
+  | 'entitlement-provenance';
 
 export interface ParseDiagnostic {
   level: 'error' | 'warning' | 'fatal';
@@ -589,6 +611,7 @@ export interface ParseDiagnostic {
 }
 
 export interface ParseResult {
+  // ── Parse-time (src/parser/parse-line.ts, parse-project.ts) ──
   annotations: Annotation[];
   diagnostics: ParseDiagnostic[];
   files_parsed: number;

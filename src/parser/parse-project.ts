@@ -199,6 +199,7 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
         const prev = idMap.get(id)!;
         allDiagnostics.push({
           level: 'error',
+          code: 'duplicate-id',
           message: `Duplicate identifier #${id} (first defined at ${prev.location.file}:${prev.location.line})`,
           file: ann.location.file,
           line: ann.location.line,
