@@ -143,6 +143,45 @@ workspace owner reads to decide whether a merge is safe.
 
 ## Blocked / expensive
 
+### Reserved `'fatal'` diagnostic tier bypasses every gate · **Small, latent**
+
+`ParseDiagnostic.level` declares `'error' | 'warning' | 'fatal'`. Nothing in
+`src/` emits `'fatal'`, and every gate in the codebase tests
+`d.level === 'error'` exactly — none tests for `'fatal'`.
+
+So the *most* severe tier is the one that blocks nothing. The first code path to
+emit a fatal would sail through `guardlink parse` and `guardlink validate`, both
+of which would exit 0 on a model the parser had just declared unsafe to consume.
+It is latent rather than live only because nothing emits it.
+
+Two honest resolutions, and the choice is a judgement call:
+
+1. **Wire it up.** Every site that blocks on `'error'` must also block on
+   `'fatal'`. Counted at the 2.0.0 freeze — a starting point, not a closed list:
+
+   | File | `d.level === 'error'` sites |
+   |---|---|
+   | `src/cli/index.ts` | 9 |
+   | `src/tui/commands.ts` | 3 |
+   | `src/workspace/merge.ts` | 2 |
+   | `src/types/index.ts` | 2 (doc block) |
+   | `src/mcp/server.ts` | 1 |
+
+   Do this **before** the first emitter lands, not alongside it — otherwise the
+   first fatal ships through a gate that ignores it.
+
+2. **Delete the member.** `'fatal'` has never been emitted and no consumer has
+   ever received one, so removing it costs nothing today and removes the trap.
+   A tier no consumer can receive is not a tier. This is a type-surface change
+   and wants a major, which 2.0.0 would have been the moment for.
+
+Note the second option gets cheaper the earlier it is taken and more expensive
+once anything depends on the vocabulary.
+
+*Recorded at the 2.0.0 surface freeze, replacing an inline `TODO` in
+`src/types/index.ts` that cited a version that never shipped.*
+
+
 ### D42 — coverage fields invite a ratio reading · **PARTIAL, blocked on a decision**
 
 `total_symbols` (never computed), `annotated_symbols` (counts *annotations*), and

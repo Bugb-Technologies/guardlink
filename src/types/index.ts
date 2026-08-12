@@ -555,15 +555,31 @@ export interface CoverageStats {
  *   Consumers seeing a fatal MUST abort rather than render partial
  *   results.
  *
- * TODO(fatal-tier): the `'fatal'` value is reserved vocabulary as of
- * v1.5.1. No code path currently emits a fatal diagnostic. Before the
- * first emission lands (likely v1.6), audit every `d.level === 'error'`
- * filter in the codebase — most of them should become
- * `d.level === 'error' || d.level === 'fatal'` so fatals don't
- * silently bypass the existing exit-1 / abort logic. Known sites at
- * the time of writing: src/cli/index.ts (8 occurrences),
- * src/tui/commands.ts (2), src/mcp/server.ts (1). See bug #6 in the
- * v1.5.1 punch list.
+ * `'fatal'` is reserved vocabulary: it is declared here and nothing in
+ * `src/` emits it. That is deliberate, and it carries a trap for whoever
+ * emits the first one.
+ *
+ * Every gate in this codebase tests `d.level === 'error'` exactly. None
+ * of them tests for `'fatal'`. A diagnostic that is more severe than an
+ * error would therefore pass straight through the checks an error fails
+ * — `guardlink parse` and `guardlink validate` would exit 0 on a model
+ * they had just declared unsafe to consume. The tier is inert today
+ * precisely because nothing emits it, so this is latent, not live.
+ *
+ * The invariant to restore before the first emission: **anything that
+ * blocks on `'error'` must also block on `'fatal'`.** The filters, by
+ * file — verified at the 2.0.0 freeze, treat as a starting point rather
+ * than a closed list:
+ *
+ *     src/cli/index.ts        9
+ *     src/tui/commands.ts     3
+ *     src/workspace/merge.ts  2
+ *     src/types/index.ts      2   (this doc block)
+ *     src/mcp/server.ts       1
+ *
+ * Deleting the `'fatal'` member instead is a legitimate resolution — it
+ * has never been used, and a tier no consumer can receive is not a tier.
+ * See docs/prd/BACKLOG.md.
  */
 /**
  * Machine-readable diagnostic kinds.
@@ -573,6 +589,7 @@ export interface CoverageStats {
  * breaks when the text is reworded.
  */
 export type DiagnosticCode =
+  // ── Parse-time (src/parser/parse-line.ts, parse-project.ts) ──
   /** Line starts with a known verb, carries structural evidence, and failed to parse. */
   | 'malformed-annotation'
   /** Line starts with a known verb but has no structural evidence — prose about GuardLink. */
@@ -611,7 +628,6 @@ export interface ParseDiagnostic {
 }
 
 export interface ParseResult {
-  // ── Parse-time (src/parser/parse-line.ts, parse-project.ts) ──
   annotations: Annotation[];
   diagnostics: ParseDiagnostic[];
   files_parsed: number;
