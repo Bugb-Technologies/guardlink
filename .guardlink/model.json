@@ -2,7 +2,7 @@
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 87,
-  "annotations_parsed": 441,
+  "annotations_parsed": 462,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -18,6 +18,7 @@
     "src/artifacts/emit.ts",
     "src/ci/index.ts",
     "src/cli/index.ts",
+    "src/dashboard/data.ts",
     "src/dashboard/diagrams.ts",
     "src/dashboard/generate.ts",
     "src/dashboard/index.ts",
@@ -56,6 +57,7 @@
     "src/parser/reanchor.ts",
     "src/parser/validate.ts",
     "src/report/index.ts",
+    "src/report/mermaid.ts",
     "src/report/report.ts",
     "src/report/sequence.ts",
     "src/review/entitlements.ts",
@@ -83,14 +85,12 @@
     "examples/ci/workspace-merge.yml",
     "examples/github-action.yml",
     "src/analyze/format.ts",
-    "src/dashboard/data.ts",
     "src/index.ts",
     "src/init/picker.ts",
     "src/parser/comment-strip.ts",
     "src/parser/format.ts",
     "src/parser/index.ts",
     "src/parser/normalize.ts",
-    "src/report/mermaid.ts",
     "src/tui/format.ts",
     "src/types/index.ts"
   ],
@@ -898,6 +898,26 @@
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
+      "description": "Feature scope names come from @feature annotations and the --feature flag; every one is rendered through esc()",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 18
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Caller passes the result through esc() before interpolation",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 1761
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
       "description": "esc() function encodes all interpolated values",
       "location": {
         "file": "src/dashboard/index.ts",
@@ -1202,6 +1222,26 @@
       "location": {
         "file": "src/parser/validate.ts",
         "line": 7
+      }
+    },
+    {
+      "asset": "#report",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "The name is quote-escaped before it enters the YAML frontmatter scalar, so it cannot close the string and append Mermaid directives or an init block into a diagram a viewer renders as HTML",
+      "location": {
+        "file": "src/report/mermaid.ts",
+        "line": 106
+      }
+    },
+    {
+      "asset": "#report",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Quote-escaped before entering the YAML frontmatter scalar, and the `:` that would terminate a Note label is stripped below — a feature name is model data, not markup",
+      "location": {
+        "file": "src/report/sequence.ts",
+        "line": 49
       }
     },
     {
@@ -2732,6 +2772,16 @@
     {
       "source": "ThreatModel",
       "target": "#dashboard",
+      "mechanism": "featureScope",
+      "description": "Reads the narrowing marker that decides whether the page declares itself partial",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 1744
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#dashboard",
       "mechanism": "generateDashboardHTML",
       "description": "Model to HTML transformation",
       "location": {
@@ -3180,13 +3230,33 @@
       }
     },
     {
+      "source": "FeatureName",
+      "target": "#report",
+      "mechanism": "filtered_by_features",
+      "description": "A @feature name written in source reaches the diagram title",
+      "location": {
+        "file": "src/report/mermaid.ts",
+        "line": 105
+      }
+    },
+    {
+      "source": "FeatureName",
+      "target": "#report",
+      "mechanism": "filtered_by_features",
+      "description": "@feature names reach the title, every heading and the footer",
+      "location": {
+        "file": "src/report/report.ts",
+        "line": 9
+      }
+    },
+    {
       "source": "ThreatModel",
       "target": "#report",
       "mechanism": "generateReport",
       "description": "Model input",
       "location": {
         "file": "src/report/report.ts",
-        "line": 8
+        "line": 11
       }
     },
     {
@@ -3196,7 +3266,7 @@
       "description": "Report output",
       "location": {
         "file": "src/report/report.ts",
-        "line": 9
+        "line": 12
       }
     },
     {
@@ -3206,7 +3276,17 @@
       "description": "Sequence diagram generation",
       "location": {
         "file": "src/report/sequence.ts",
-        "line": 7
+        "line": 8
+      }
+    },
+    {
+      "source": "FeatureName",
+      "target": "#report",
+      "mechanism": "filtered_by_features",
+      "description": "A @feature name written in source reaches the sequence diagram title",
+      "location": {
+        "file": "src/report/sequence.ts",
+        "line": 48
       }
     },
     {
@@ -4019,13 +4099,13 @@
       "reason": "graph/README example content, excluded from parsing",
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 330
+        "line": 372
       }
     },
     {
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 399
+        "line": 441
       }
     },
     {
@@ -4152,6 +4232,20 @@
       }
     },
     {
+      "description": "by-feature/*.mmd declare themselves partial in the header: a narrowed diagram that does not say it is narrowed reads as a complete one that is missing things",
+      "location": {
+        "file": "src/artifacts/emit.ts",
+        "line": 32
+      }
+    },
+    {
+      "description": "annotation_hash stays project-wide on per-feature files — it records the state the view was cut from, which is what keeps `validate --artifacts` a single comparison for every artifact",
+      "location": {
+        "file": "src/artifacts/emit.ts",
+        "line": 33
+      }
+    },
+    {
       "description": "Exit code is a pure function of (strict, exposures, drift) and lives in the summary, so JSON consumers see the same verdict the shell got",
       "location": {
         "file": "src/ci/index.ts",
@@ -4166,10 +4260,31 @@
       }
     },
     {
+      "description": "Stats mirror the model's own scope: on a --feature model these are the feature's numbers, and the dashboard suppresses the ones that only mean something project-wide",
+      "location": {
+        "file": "src/dashboard/data.ts",
+        "line": 88
+      }
+    },
+    {
       "description": "Alias map collapses #id / name / path-joined ref forms so all three diagrams agree on identity",
       "location": {
         "file": "src/dashboard/diagrams.ts",
         "line": 16
+      }
+    },
+    {
+      "description": "A model narrowed with --feature carries filtered_by_features. The page then declares itself a slice in the title, the top bar and a banner, and suppresses the project-wide measures (file coverage, unannotated files) that a slice cannot answer",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 19
+      }
+    },
+    {
+      "description": "Typed structurally so the dashboard compiles whether or not ThreatModel declares the optional field yet",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 1745
       }
     },
     {
@@ -4365,7 +4480,35 @@
       "description": "Pure filtering utility; no I/O",
       "location": {
         "file": "src/parser/feature-filter.ts",
-        "line": 9
+        "line": 15
+      }
+    },
+    {
+      "description": "Relations are file-scoped, definitions are reference-scoped. Filtering definitions by file emptied the asset heatmap, dropped every threat severity and rendered diagrams as bare ids — the same failure selectSubgraph avoids by always keeping the node vocabulary",
+      "location": {
+        "file": "src/parser/feature-filter.ts",
+        "line": 16
+      }
+    },
+    {
+      "description": "Exclusion list for the annotation counter; external_refs is derived from annotations, not an annotation",
+      "location": {
+        "file": "src/parser/feature-filter.ts",
+        "line": 30
+      }
+    },
+    {
+      "description": "Derives annotation totals from the model's own shape so a newly added collection is counted the day it lands",
+      "location": {
+        "file": "src/parser/feature-filter.ts",
+        "line": 52
+      }
+    },
+    {
+      "description": "Filtered models must never report project-wide totals — a reader acts on the numbers beside the contents",
+      "location": {
+        "file": "src/parser/feature-filter.ts",
+        "line": 100
       }
     },
     {
@@ -4467,6 +4610,13 @@
       }
     },
     {
+      "description": "@feature names are single-line by construction (parse-line.ts), so there is no newline to break the scalar; the quote is the only delimiter that needs escaping",
+      "location": {
+        "file": "src/report/mermaid.ts",
+        "line": 107
+      }
+    },
+    {
       "description": "Pure function: transforms ThreatModel to markdown string",
       "location": {
         "file": "src/report/report.ts",
@@ -4481,10 +4631,31 @@
       }
     },
     {
+      "description": "A model narrowed by --feature carries filtered_by_features, and every heading, caption and empty-state sentence here is scoped from it: a report that reads as project-wide while describing one feature is a wrong answer about what is and is not covered, not a cosmetic problem",
+      "location": {
+        "file": "src/report/report.ts",
+        "line": 8
+      }
+    },
+    {
+      "description": "Feature names are model data and land in markdown text, never in HTML or a shell — the markdown consumer escapes; the two Mermaid titles that do need escaping carry their own @mitigates",
+      "location": {
+        "file": "src/report/report.ts",
+        "line": 10
+      }
+    },
+    {
       "description": "Pure function: transforms ThreatModel flows to Mermaid sequence diagram",
       "location": {
         "file": "src/report/sequence.ts",
         "line": 6
+      }
+    },
+    {
+      "description": "Titles itself from filtered_by_features when the model is a --feature slice: a sequence of three participants reads as the system's interactions unless the picture says which slice it is",
+      "location": {
+        "file": "src/report/sequence.ts",
+        "line": 7
       }
     },
     {
@@ -4531,8 +4702,8 @@
     }
   ],
   "coverage": {
-    "annotation_count": 441,
-    "coverage_percent": 76
+    "annotation_count": 462,
+    "coverage_percent": 78
   },
   "external_refs": []
 }

@@ -288,6 +288,10 @@ export interface ThreatModel {
   /** User-provided project description / threat model prompt (from .guardlink/prompt.md) */
   prompt?: string;
 
+  /** Feature names this model was narrowed to, when it is the result of
+   *  filterByFeature. Absent on an unfiltered model. */
+  filtered_by_features?: string[];
+
   assets: ThreatModelAsset[];
   threats: ThreatModelThreat[];
   controls: ThreatModelControl[];

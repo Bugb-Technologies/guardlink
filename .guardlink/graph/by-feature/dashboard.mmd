@@ -1,20 +1,33 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
-%% artifact:        by-feature/dashboard.mmd (@feature "Dashboard")
-%% annotation_hash: sha256-v2:69d3feaf23e67dd0d5d86273517b07c34d91b9a61c038e0ebea8fc9f7b395f1c
+%% artifact:        by-feature/dashboard.mmd
+%% scope:           PARTIAL — @feature "Dashboard" only, not the whole model
+%% annotation_hash: sha256-v2:05e06e265ed77333a5e44246a4c2c616f8b8504891e5d143cb6e4f4492042e6b
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
 %% annotation_hash above differs from what `guardlink status .` reports, the
 %% diagram is STALE — regenerate rather than trusting it.
+%% ---
+%% NARROWED VIEW. The edges below are the relations annotated in files
+%% tagged @feature "Dashboard"; the nodes are the assets, threats and
+%% controls those relations reference, resolved from their definitions
+%% wherever those are declared. A node missing from this file is one this
+%% feature does not touch — it is NOT missing from the threat model. For
+%% that, read ../threat-graph.mmd.
+%% annotation_hash above is the hash of the WHOLE project's annotations —
+%% the state this view was cut from — not of the narrowing. It is shared by
+%% every artifact in the same emission on purpose: it is what makes one
+%% `guardlink validate . --artifacts` check answer for all of them, and it
+%% lets this file be lined up against model.json from the same run.
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
 graph LR
-  dashboard["🔷 dashboard [INTERNAL]"]
-  xss["⚪ xss"]:::threat
-  path_traversal["⚪ path-traversal"]:::threat
-  output_encoding["🛡️ output-encoding"]:::control
-  path_validation["🛡️ path-validation"]:::control
+  dashboard["🔷 GuardLink.Dashboard [INTERNAL]"]
+  xss["🟠 Cross_Site_Scripting (cwe:CWE-79)"]:::threat
+  path_traversal["🟠 Path_Traversal (cwe:CWE-22)"]:::threat
+  output_encoding["🛡️ Output_Encoding"]:::control
+  path_validation["🛡️ Path_Validation"]:::control
   dashboard -. exposes .-> xss
   dashboard -. exposes .-> path_traversal
   output_encoding -- mitigates --> xss

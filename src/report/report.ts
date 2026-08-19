@@ -5,15 +5,102 @@
  *
  * @comment -- "Pure function: transforms ThreatModel to markdown string"
  * @comment -- "No file I/O; caller (CLI/MCP) handles write"
+ * @comment -- "A model narrowed by --feature carries filtered_by_features, and every heading, caption and empty-state sentence here is scoped from it: a report that reads as project-wide while describing one feature is a wrong answer about what is and is not covered, not a cosmetic problem"
+ * @flows FeatureName -> #report via filtered_by_features -- "@feature names reach the title, every heading and the footer"
+ * @comment -- "Feature names are model data and land in markdown text, never in HTML or a shell — the markdown consumer escapes; the two Mermaid titles that do need escaping carry their own @mitigates"
  * @flows ThreatModel -> #report via generateReport -- "Model input"
  * @flows #report -> Markdown via return -- "Report output"
  */
 
-import type { ThreatModel, ThreatModelExposure, Severity } from '../types/index.js';
+import type { ThreatModel, ThreatModelExposure, ThreatModelEntitlement, Severity } from '../types/index.js';
 import { generateMermaid } from './mermaid.js';
 import { generateSequenceDiagram } from './sequence.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
-import { findUnmitigatedExposures } from '../parser/coverage.js';
+import { findUnmitigatedExposures, normalizeRef } from '../parser/coverage.js';
+import { normalizeName } from '../parser/normalize.js';
+import { entitlementDemotionBlockers } from '../parser/parse-project.js';
+
+// ═══════════════════════════════════════════════════════════════════════
+// Feature slice — is this document the project, or one slice of it?
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * `filterByFeature` sets `filtered_by_features` on the model it returns; a
+ * whole-project model does not carry the field.
+ *
+ * Read structurally rather than off `ThreatModel` so this renderer compiles and
+ * behaves identically whether or not the field is declared on the type, and so
+ * a hand-built model or a report JSON written before the field existed takes
+ * the unfiltered path rather than throwing.
+ */
+type PossiblyFiltered = ThreatModel & { filtered_by_features?: string[] };
+
+/** What the document is about, decided once and consulted by every emitter. */
+interface Slice {
+  /** True when the model describes one or more features, not the project. */
+  readonly active: boolean;
+  /** The feature names, as the caller spelled them. */
+  readonly names: string[];
+  /** `"Dashboard"` / `"Dashboard", "Login"` — quoted so an odd name is visible. */
+  readonly quoted: string;
+  /** Appended to every `##` heading so a mid-document screenshot still says so. */
+  readonly headingSuffix: string;
+  /** Sentence subject: `the "Dashboard" feature` / `this project`. */
+  readonly noun: string;
+}
+
+/**
+ * The document's scope.
+ *
+ * The failure this exists to stop: `report . --feature "Dashboard"` printed
+ * `Files scanned: 87 | Annotations: 442` (the project) directly above
+ * `| Assets | 1 |` (the feature), and said nowhere that it was filtered. Every
+ * count in between was read as project-wide.
+ */
+function sliceOf(model: ThreatModel): Slice {
+  const raw = (model as PossiblyFiltered).filtered_by_features;
+  const names = Array.isArray(raw)
+    ? raw.filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
+    : [];
+  const quoted = names.map(n => `"${n}"`).join(', ');
+  return {
+    active: names.length > 0,
+    names,
+    quoted,
+    headingSuffix: names.length === 0
+      ? ''
+      : ` — feature${names.length > 1 ? 's' : ''} ${quoted}`,
+    noun: names.length === 0
+      ? 'this project'
+      : `the ${quoted} feature${names.length > 1 ? 's' : ''}`,
+  };
+}
+
+/**
+ * A top-level heading, carrying the slice.
+ *
+ * Repeated on every section on purpose. One banner at the top is invisible to
+ * the reader who lands mid-document from a link, scrolls past it, or screenshots
+ * a single table — which is the normal way a table from this report travels.
+ */
+function h2(title: string, slice: Slice): string {
+  return `## ${title}${slice.headingSuffix}`;
+}
+
+/**
+ * An empty-state sentence, scoped.
+ *
+ * `_No trust boundaries defined._` printed under a feature heading is a claim
+ * about the project that a filtered model cannot support — the boundaries may
+ * all be annotated one directory away. Under a filter the sentence names the
+ * scope and says how to check; unfiltered it returns `whole` verbatim, so the
+ * normal report is byte-for-byte what it was.
+ */
+function nothingFound(what: string, slice: Slice, whole: string): string {
+  return slice.active
+    ? `_No ${what} in ${slice.noun}. This is a filtered view — run \`guardlink report\` without \`--feature\` before concluding the project has none._`
+    : whole;
+}
 
 /**
  * D23 — canonicalise at the emission boundary. See generateMermaid for the why;
@@ -22,6 +109,7 @@ import { findUnmitigatedExposures } from '../parser/coverage.js';
  */
 export function generateReport(rawModel: ThreatModel): string {
   const model = canonicalizeModelOrder(rawModel);
+  const slice = sliceOf(model);
   const lines: string[] = [];
 
   // ── Pre-compute shared data ──
@@ -33,10 +121,29 @@ export function generateReport(rawModel: ThreatModel): string {
   const hasAI = detectAI(model);
 
   // ── Header ──
-  lines.push(`# Threat Model Report — ${model.project}`);
+  // The slice goes in the title, not only in a banner: the title is what a link
+  // preview, a PDF header and a file name carry.
+  lines.push(slice.active
+    ? `# Threat Model Report — ${model.project} — feature slice ${slice.quoted}`
+    : `# Threat Model Report — ${model.project}`);
   lines.push('');
   lines.push(`> Generated: ${model.generated_at}  `);
-  lines.push(`> Files scanned: ${model.source_files} | Annotations: ${model.annotations_parsed}`);
+  if (slice.active) {
+    lines.push(`> **⚠ FEATURE SLICE — filtered to ${slice.quoted}**`);
+    lines.push('>');
+    lines.push(`> This is **not** a threat model of \`${model.project}\`. Every count, table and diagram`);
+    lines.push(`> below describes only ${slice.noun}; anything annotated elsewhere in the repository is`);
+    lines.push('> absent, including exposures. Sections marked _project-wide_ are the exceptions and');
+    lines.push('> say so in their heading.');
+    lines.push('>');
+    lines.push(`> Run \`guardlink report\` without \`--feature\` for the whole project.`);
+    lines.push('');
+    // Relabelled, not just re-valued. `filterByFeature` scopes these two counts
+    // to the feature, so "Files scanned" would still read as the repo walk.
+    lines.push(`> Files in slice: ${model.source_files} | Annotations in slice: ${model.annotations_parsed}`);
+  } else {
+    lines.push(`> Files scanned: ${model.source_files} | Annotations: ${model.annotations_parsed}`);
+  }
   if (model.metadata?.guardlink_version) {
     lines.push(`> GuardLink version: ${model.metadata.guardlink_version}`);
   }
@@ -48,21 +155,21 @@ export function generateReport(rawModel: ThreatModel): string {
   // ══════════════════════════════════════════════════════════════════════
   // SECTION 1: Application Overview
   // ══════════════════════════════════════════════════════════════════════
-  lines.push('## Application Overview');
+  lines.push(h2('Application Overview', slice));
   lines.push('');
   emitApplicationOverview(model, unmitigated, severityCounts, hasAI, lines);
 
   // ══════════════════════════════════════════════════════════════════════
   // SECTION 2: Scope
   // ══════════════════════════════════════════════════════════════════════
-  lines.push('## Scope of This Threat Model');
+  lines.push(h2('Scope of This Threat Model', slice));
   lines.push('');
   emitScope(model, lines);
 
   // ══════════════════════════════════════════════════════════════════════
   // SECTION 3: Architecture
   // ══════════════════════════════════════════════════════════════════════
-  lines.push('## Architecture');
+  lines.push(h2('Architecture', slice));
   lines.push('');
   emitArchitecture(model, lines);
 
@@ -70,7 +177,7 @@ export function generateReport(rawModel: ThreatModel): string {
   // SECTION 4: Key Flows & Sequence
   // ══════════════════════════════════════════════════════════════════════
   if (model.flows.length > 0) {
-    lines.push('## Key Flows & Sequence');
+    lines.push(h2('Key Flows & Sequence', slice));
     lines.push('');
     emitKeyFlows(model, lines);
   }
@@ -79,7 +186,7 @@ export function generateReport(rawModel: ThreatModel): string {
   // SECTION 5: Data Inventory
   // ══════════════════════════════════════════════════════════════════════
   if (model.data_handling.length > 0 || model.assets.length > 0) {
-    lines.push('## Data Inventory');
+    lines.push(h2('Data Inventory', slice));
     lines.push('');
     emitDataInventory(model, hasAI, lines);
   }
@@ -87,28 +194,28 @@ export function generateReport(rawModel: ThreatModel): string {
   // ══════════════════════════════════════════════════════════════════════
   // SECTION 6: Roles & Access
   // ══════════════════════════════════════════════════════════════════════
-  lines.push('## Roles & Access');
+  lines.push(h2('Roles & Access', slice));
   lines.push('');
   emitRolesAccess(model, lines);
 
   // ══════════════════════════════════════════════════════════════════════
   // SECTION 7: Dependencies
   // ══════════════════════════════════════════════════════════════════════
-  lines.push('## Dependencies');
+  lines.push(h2('Dependencies', slice));
   lines.push('');
   emitDependencies(model, lines);
 
   // ══════════════════════════════════════════════════════════════════════
   // SECTION 8: Secrets, Keys & Credential Management
   // ══════════════════════════════════════════════════════════════════════
-  lines.push('## Secrets, Keys & Credential Management');
+  lines.push(h2('Secrets, Keys & Credential Management', slice));
   lines.push('');
   emitSecretsManagement(model, lines);
 
   // ══════════════════════════════════════════════════════════════════════
   // SECTION 9: Logging, Monitoring & Audit
   // ══════════════════════════════════════════════════════════════════════
-  lines.push('## Logging, Monitoring & Audit');
+  lines.push(h2('Logging, Monitoring & Audit', slice));
   lines.push('');
   emitLoggingAudit(model, lines);
 
@@ -116,7 +223,7 @@ export function generateReport(rawModel: ThreatModel): string {
   // SECTION 10: AI/ML System Details (conditional)
   // ══════════════════════════════════════════════════════════════════════
   if (hasAI) {
-    lines.push('## AI/ML System Details');
+    lines.push(h2('AI/ML System Details', slice));
     lines.push('');
     emitAIDetails(model, lines);
   }
@@ -126,11 +233,18 @@ export function generateReport(rawModel: ThreatModel): string {
   // ══════════════════════════════════════════════════════════════════════
 
   // ── Executive Summary ──
-  lines.push('## Executive Summary');
+  lines.push(h2('Executive Summary', slice));
   lines.push('');
+  if (slice.active) {
+    lines.push(`Counts below are **scoped to ${slice.quoted}**, not to \`${model.project}\`.`);
+    lines.push('');
+  }
 
   lines.push(`| Metric | Count |`);
   lines.push(`|--------|-------|`);
+  // Inside the table, because this table is the part of the report that travels
+  // on its own — pasted into a ticket, screenshotted into a review.
+  if (slice.active) lines.push(`| **Scope** | **feature${slice.names.length > 1 ? 's' : ''} ${slice.quoted}** |`);
   lines.push(`| Assets | ${model.assets.length} |`);
   lines.push(`| Threats defined | ${model.threats.length} |`);
   lines.push(`| Controls defined | ${model.controls.length} |`);
@@ -151,7 +265,7 @@ export function generateReport(rawModel: ThreatModel): string {
   lines.push('');
 
   // ── Threat Model Diagram ──
-  lines.push('## Threat Model Diagram');
+  lines.push(h2('Threat Model Diagram', slice));
   lines.push('');
   lines.push('```mermaid');
   lines.push(generateMermaid(model));
@@ -160,9 +274,13 @@ export function generateReport(rawModel: ThreatModel): string {
 
   // ── Unmitigated Exposures ──
   if (unmitigated.length > 0) {
-    lines.push('## Unmitigated Exposures');
+    lines.push(h2('Unmitigated Exposures', slice));
     lines.push('');
     lines.push('These exposures have no matching `@mitigates` or `@accepts` and require attention.');
+    if (slice.active) {
+      lines.push('');
+      lines.push(`Only exposures annotated in ${slice.noun} are listed — this is not the project's open-finding count.`);
+    }
     lines.push('');
     lines.push('| Severity | Asset | Threat | Description | Location |');
     lines.push('|----------|-------|--------|-------------|----------|');
@@ -177,7 +295,7 @@ export function generateReport(rawModel: ThreatModel): string {
 
   // ── Confirmed Exploitable ──
   if ((model.confirmed || []).length > 0) {
-    lines.push('## 🔴 Confirmed Exploitable');
+    lines.push(h2('🔴 Confirmed Exploitable', slice));
     lines.push('');
     lines.push('These threats have been verified through testing — **not false positives**. Immediate remediation required.');
     lines.push('');
@@ -193,7 +311,7 @@ export function generateReport(rawModel: ThreatModel): string {
 
   // ── Accepted Risks ──
   if (model.acceptances.length > 0) {
-    lines.push('## Accepted Risks');
+    lines.push(h2('Accepted Risks', slice));
     lines.push('');
     lines.push('| Asset | Threat | Rationale | Location |');
     lines.push('|-------|--------|-----------|----------|');
@@ -206,7 +324,7 @@ export function generateReport(rawModel: ThreatModel): string {
 
   // ── Active Mitigations ──
   if (model.mitigations.length > 0) {
-    lines.push('## Active Mitigations');
+    lines.push(h2('Active Mitigations', slice));
     lines.push('');
     lines.push('| Asset | Threat | Control | Description | Location |');
     lines.push('|-------|--------|---------|-------------|----------|');
@@ -220,7 +338,7 @@ export function generateReport(rawModel: ThreatModel): string {
 
   // ── Trust Boundaries ──
   if (model.boundaries.length > 0) {
-    lines.push('## Trust Boundaries');
+    lines.push(h2('Trust Boundaries', slice));
     lines.push('');
     lines.push('| Side A | Side B | Boundary ID | Description | Location |');
     lines.push('|--------|--------|-------------|-------------|----------|');
@@ -234,7 +352,7 @@ export function generateReport(rawModel: ThreatModel): string {
 
   // ── Data Flows ──
   if (model.flows.length > 0) {
-    lines.push('## Data Flows');
+    lines.push(h2('Data Flows', slice));
     lines.push('');
     lines.push('| Source | Target | Mechanism | Description |');
     lines.push('|--------|--------|-----------|-------------|');
@@ -248,7 +366,7 @@ export function generateReport(rawModel: ThreatModel): string {
 
   // ── Data Handling ──
   if (model.data_handling.length > 0) {
-    lines.push('## Data Classification');
+    lines.push(h2('Data Classification', slice));
     lines.push('');
     lines.push('| Asset | Classification | Description |');
     lines.push('|-------|---------------|-------------|');
@@ -261,7 +379,7 @@ export function generateReport(rawModel: ThreatModel): string {
 
   // ── Risk Transfers ──
   if (model.transfers.length > 0) {
-    lines.push('## Risk Transfers');
+    lines.push(h2('Risk Transfers', slice));
     lines.push('');
     lines.push('| Source | Threat | Target | Description | Location |');
     lines.push('|--------|--------|--------|-------------|----------|');
@@ -274,7 +392,7 @@ export function generateReport(rawModel: ThreatModel): string {
 
   // ── Validations ──
   if (model.validations.length > 0) {
-    lines.push('## Validations');
+    lines.push(h2('Validations', slice));
     lines.push('');
     lines.push('| Control | Asset | Description | Location |');
     lines.push('|---------|-------|-------------|----------|');
@@ -287,7 +405,7 @@ export function generateReport(rawModel: ThreatModel): string {
 
   // ── Ownership ──
   if (model.ownership.length > 0) {
-    lines.push('## Ownership');
+    lines.push(h2('Ownership', slice));
     lines.push('');
     for (const o of model.ownership) {
       const desc = o.description ? ` — ${o.description}` : '';
@@ -298,7 +416,7 @@ export function generateReport(rawModel: ThreatModel): string {
 
   // ── Audit Items ──
   if (model.audits.length > 0) {
-    lines.push('## Audit Items');
+    lines.push(h2('Audit Items', slice));
     lines.push('');
     for (const a of model.audits) {
       const desc = a.description || 'Needs review';
@@ -312,38 +430,54 @@ export function generateReport(rawModel: ThreatModel): string {
   // an over-grant is the failure mode that matters, and the only way it gets
   // caught is a human reading the sentence and disagreeing with it.
   if ((model.entitlements || []).length > 0) {
-    lines.push('## Entitlements');
+    lines.push(h2('Entitlements', slice));
     lines.push('');
     lines.push('Capabilities that a principal is claimed to hold **by design**. An entitlement never');
     lines.push('suppresses a finding and never gates testing — it only changes what downstream triage');
     lines.push('recommends. Each claim must cite the authorization code that grants it; an uncited');
     lines.push('claim is inert and has no effect.');
+    if (slice.active) {
+      lines.push('');
+      lines.push(`Only claims written in ${slice.noun} are listed. A principal may hold further`);
+      lines.push('entitlements declared under another feature.');
+    }
     lines.push('');
+    lines.push('| Actor | Capability | On asset | Against threat | Citation | Effect |');
+    lines.push('|-------|------------|----------|----------------|----------|--------|');
+    for (const en of model.entitlements!) {
+      // Both halves of the join get their own column, so two claims differing
+      // only by threat cannot render identically (§9.3), and a missing half is
+      // an empty cell rather than an absent clause a reader has to notice.
+      const cite = en.citation ? `\`${en.citation.raw}\`` : '**none**';
+      lines.push(`| ${en.actor} | \`${en.capability}\` | ${en.asset || '—'} | ${en.threat || '—'} | ${cite} | ${demotionEffect(en)} |`);
+    }
+    lines.push('');
+
+    // Spelled out per claim underneath, with the description, because the table
+    // is the index and the sentence is what a reviewer disagrees with (§3.3).
     for (const en of model.entitlements!) {
       const scope = `${en.asset ? ` on ${en.asset}` : ''}${en.threat ? ` against ${en.threat}` : ''}`;
-      // Both halves of the join are shown, and a claim missing either is called
-      // ineffective here rather than left looking operative (§9.3).
-      const missing = [!en.asset && 'on <asset>', !en.threat && 'against <threat>']
-        .filter(Boolean).join(' and ');
-      const cite = en.citation
-        ? `cites \`${en.citation.raw}\``
-        : '**uncited — inert**';
-      const gap = missing ? ` — **ineffective: missing ${missing}**` : '';
+      const cite = en.citation ? `cites \`${en.citation.raw}\`` : '**uncited — inert**';
+      const blockers = entitlementDemotionBlockers(en);
+      const gap = blockers.length > 0 ? ` — **${demotionEffect(en)}**` : '';
       const desc = en.description ? ` — ${en.description}` : '';
       lines.push(`- **${en.actor}** entitled to \`${en.capability}\`${scope} — ${cite}${gap}${desc} (${en.location.file}:${en.location.line})`);
     }
     lines.push('');
 
-    const inert = model.entitlements!.filter(e => e.inert).length;
-    if (inert > 0) {
-      lines.push(`⚠ ${inert} entitlement(s) cite no authorization code and are therefore inert.`);
+    // Counted from the shared predicate rather than from `inert` alone: a cited
+    // claim that names no threat is equally unable to demote, and reporting only
+    // the uncited ones understates how many claims do nothing.
+    const ineffective = model.entitlements!.filter(e => entitlementDemotionBlockers(e).length > 0).length;
+    if (ineffective > 0) {
+      lines.push(`⚠ ${ineffective} of ${model.entitlements!.length} entitlement(s) cannot demote any finding — uncited, or missing a half of the \`(actor, asset, threat)\` join.`);
       lines.push('');
     }
   }
 
   // ── Assumptions ──
   if (model.assumptions.length > 0) {
-    lines.push('## Assumptions');
+    lines.push(h2('Assumptions', slice));
     lines.push('');
     lines.push('These are unverified assumptions that should be periodically reviewed.');
     lines.push('');
@@ -356,7 +490,7 @@ export function generateReport(rawModel: ThreatModel): string {
 
   // ── Shielded Regions ──
   if (model.shields.length > 0) {
-    lines.push('## Shielded Regions');
+    lines.push(h2('Shielded Regions', slice));
     lines.push('');
     lines.push('Code regions where annotations are intentionally suppressed via `@shield`.');
     lines.push('');
@@ -377,9 +511,15 @@ export function generateReport(rawModel: ThreatModel): string {
       }
       uniqueFeatures.get(key)!.files.add(f.location.file);
     }
-    lines.push('## Feature Tags');
+    // Under a filter this table lists only the feature(s) selected — it is a
+    // record of the filter, not of the project's feature inventory, and saying
+    // "annotations are tagged with the following features" would read as the
+    // latter.
+    lines.push(h2('Feature Tags', slice));
     lines.push('');
-    lines.push('Annotations are tagged with the following features via `@feature`.');
+    lines.push(slice.active
+      ? `This report was filtered to the feature(s) below. \`guardlink features\` lists every feature in \`${model.project}\`.`
+      : 'Annotations are tagged with the following features via `@feature`.');
     lines.push('');
     lines.push('| Feature | Files | Description |');
     lines.push('|---------|-------|-------------|');
@@ -392,7 +532,7 @@ export function generateReport(rawModel: ThreatModel): string {
 
   // ── Developer Comments ──
   if (model.comments.length > 0) {
-    lines.push('## Developer Comments');
+    lines.push(h2('Developer Comments', slice));
     lines.push('');
     lines.push('Security-relevant notes left by developers via `@comment`.');
     lines.push('');
@@ -405,9 +545,23 @@ export function generateReport(rawModel: ThreatModel): string {
 
   // ── Footer ──
   lines.push('---');
-  lines.push(`*Generated from security annotations on ${model.generated_at}.*`);
+  lines.push(slice.active
+    ? `*Generated from security annotations on ${model.generated_at}, filtered to feature${slice.names.length > 1 ? 's' : ''} ${slice.quoted} — not a whole-project threat model.*`
+    : `*Generated from security annotations on ${model.generated_at}.*`);
 
   return lines.join('\n');
+}
+
+/**
+ * Whether this claim is allowed to demote a finding, in the words a reviewer
+ * needs. Delegates the decision to `entitlementDemotionBlockers` (§9.7) rather
+ * than re-deriving it: a renderer that checked only `inert` would print
+ * "can demote" on a cited claim that names no threat and therefore joins nothing.
+ */
+function demotionEffect(en: ThreatModelEntitlement): string {
+  const reasons = entitlementDemotionBlockers(en).map(b =>
+    b === 'uncited' ? 'no citation' : b === 'no-asset' ? 'no asset' : 'no threat');
+  return reasons.length === 0 ? 'can demote' : `cannot demote: ${reasons.join(', ')}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -421,8 +575,22 @@ function emitApplicationOverview(
   hasAI: boolean,
   lines: string[],
 ): void {
+  const slice = sliceOf(model);
+
   // If user provided a project description via .guardlink/prompt.md, use it
   if (model.prompt) {
+    // `.guardlink/prompt.md` is prose about the repository. It does not narrow
+    // with `--feature` and cannot be made to, so under a filter it is fenced off
+    // and labelled rather than left to read as a description of the feature —
+    // a project-level narrative under a feature heading is the exact confusion
+    // this report was reworked to remove.
+    if (slice.active) {
+      lines.push(`### Project Description — project-wide`);
+      lines.push('');
+      lines.push(`> The text below is \`.guardlink/prompt.md\`. It describes **all of ${model.project}** and is`);
+      lines.push(`> reproduced unfiltered; it is not a description of ${slice.noun}.`);
+      lines.push('');
+    }
     lines.push(model.prompt);
     lines.push('');
   } else {
@@ -434,8 +602,12 @@ function emitApplicationOverview(
       topLevelGroups.get(group)!.push(a.path.slice(1).join('.') || a.path[0]);
     }
 
-    lines.push(`**${model.project}** is composed of **${model.assets.length} assets** across **${model.source_files} source files** ` +
-      `with **${model.annotations_parsed} security annotations**.`);
+    lines.push(slice.active
+      ? `The ${slice.quoted} slice of **${model.project}** touches **${model.assets.length} assets** across ` +
+        `**${model.source_files} source files** with **${model.annotations_parsed} security annotations**. ` +
+        'Assets are those its annotations reference; they may also be used by other features.'
+      : `**${model.project}** is composed of **${model.assets.length} assets** across **${model.source_files} source files** ` +
+        `with **${model.annotations_parsed} security annotations**.`);
     lines.push('');
 
     if (topLevelGroups.size > 0) {
@@ -449,18 +621,33 @@ function emitApplicationOverview(
   }
 
   // Risk posture summary — always shown
+  //
+  // Coverage is measured as exposures answered, not as annotations counted. The
+  // old formula was (mitigations + acceptances) / exposures, which counts the
+  // wrong things on both sides: two `@mitigates` for one exposure, or a
+  // `@mitigates` on a pair nothing exposes, each inflate it. Real output from
+  // this repo under `--feature "Dashboard"`: `150% addressed (3 mitigated, 0
+  // accepted)` against 2 exposures. `findUnmitigatedExposures` is the same
+  // predicate the findings table and the diagram use, so the three now agree.
   const totalExposures = model.exposures.length;
   const mitigatedCount = model.mitigations.length;
   const acceptedCount = model.acceptances.length;
-  const coveragePct = totalExposures > 0
-    ? Math.round(((mitigatedCount + acceptedCount) / totalExposures) * 100)
-    : 100;
+  const addressed = totalExposures - unmitigated.length;
+  const coverageCell = totalExposures === 0
+    ? (slice.active
+      ? `— (no \`@exposes\` in ${slice.noun})`
+      : '— (no `@exposes` recorded)')
+    : `${Math.round((addressed / totalExposures) * 100)}% addressed ` +
+      `(${addressed} of ${totalExposures} exposures answered by ${mitigatedCount} \`@mitigates\`, ${acceptedCount} \`@accepts\`)`;
 
-  lines.push('**Risk posture at a glance:**');
+  lines.push(slice.active
+    ? `**Risk posture at a glance** — ${slice.quoted} only:`
+    : '**Risk posture at a glance:**');
   lines.push('');
   lines.push(`| Indicator | Value |`);
   lines.push(`|-----------|-------|`);
-  lines.push(`| Exposure coverage | ${coveragePct}% addressed (${mitigatedCount} mitigated, ${acceptedCount} accepted) |`);
+  if (slice.active) lines.push(`| **Scope** | **feature${slice.names.length > 1 ? 's' : ''} ${slice.quoted}** |`);
+  lines.push(`| Exposure coverage | ${coverageCell} |`);
   lines.push(`| Unmitigated exposures | ${unmitigated.length} (${severityCounts.critical} critical, ${severityCounts.high} high, ${severityCounts.medium} medium, ${severityCounts.low} low) |`);
   lines.push(`| Trust boundaries | ${model.boundaries.length} |`);
   lines.push(`| Data flows tracked | ${model.flows.length} |`);
@@ -469,14 +656,34 @@ function emitApplicationOverview(
 }
 
 function emitScope(model: ThreatModel, lines: string[]): void {
+  const slice = sliceOf(model);
   // Scope intro — summarize what's modeled based on annotations
   const annotatedCount = model.annotated_files.length;
   const totalFiles = model.source_files;
   const assetCount = model.assets.length;
   const threatCount = model.threats.length;
-  lines.push(`This threat model covers **${assetCount} assets** and **${threatCount} threat categories** ` +
-    `derived from **${model.annotations_parsed} annotations** across **${annotatedCount}** of **${totalFiles}** source files.`);
+  // The single worst line in the filtered report was this one: it read
+  // "covers **1 assets** and **2 threat categories** derived from **442
+  // annotations** across **1** of **87** source files" — the first two numbers
+  // from the feature, the last three from the repository, in one sentence.
+  lines.push(slice.active
+    ? `This is a **feature slice**, not the project's threat model. It covers **${assetCount} asset(s)** and ` +
+      `**${threatCount} threat categor(ies)** derived from **${model.annotations_parsed} annotation(s)** in the ` +
+      `**${annotatedCount}** file(s) tagged ${slice.quoted}. Everything outside those files is excluded.`
+    : `This threat model covers **${assetCount} assets** and **${threatCount} threat categories** ` +
+      `derived from **${model.annotations_parsed} annotations** across **${annotatedCount}** of **${totalFiles}** source files.`);
   lines.push('');
+
+  if (slice.active) {
+    lines.push('### Files in This Slice');
+    lines.push('');
+    if (model.annotated_files.length > 0) {
+      for (const f of model.annotated_files) lines.push(`- \`${f}\``);
+    } else {
+      lines.push(`_No file carries \`@feature ${slice.quoted}\` — this slice is empty. Check the spelling with \`guardlink features\`._`);
+    }
+    lines.push('');
+  }
 
   // What's in scope: annotated files / assets / threat categories
   const threatCategories = [...new Set(model.threats.map(t => t.canonical_name || t.name))];
@@ -491,7 +698,8 @@ function emitScope(model: ThreatModel, lines: string[]): void {
       lines.push(`- ${name}${desc}`);
     }
   } else {
-    lines.push('_No explicit assets defined. Consider adding `@asset` definitions._');
+    lines.push(nothingFound('assets referenced', slice,
+      '_No explicit assets defined. Consider adding `@asset` definitions._'));
   }
   lines.push('');
 
@@ -507,11 +715,29 @@ function emitScope(model: ThreatModel, lines: string[]): void {
       lines.push(`- **${cat}** (${sev})`);
     }
   } else {
-    lines.push('_No explicit threats defined._');
+    lines.push(nothingFound('threats referenced', slice, '_No explicit threats defined._'));
   }
   lines.push('');
 
   // Coverage gaps
+  //
+  // Annotation coverage is a property of the repository walk, not of the model,
+  // so a filtered model cannot answer it: `filterByFeature` scopes
+  // `source_files` and empties `unannotated_files`, which turned this into
+  // "**1** of **87** files have security annotations (1%)" followed by "**21**
+  // files have no annotations" — three numbers from three different scopes,
+  // arithmetically impossible together. Refused rather than recomputed: there is
+  // no honest feature-scoped coverage number, since a feature has no denominator.
+  if (sliceOf(model).active) {
+    lines.push('### Coverage — project-wide');
+    lines.push('');
+    lines.push('_Not available in a feature slice. Annotation coverage is measured against every source');
+    lines.push('file in the repository, and a feature has no such denominator — run `guardlink report`');
+    lines.push('without `--feature`, or `guardlink status .`, for project coverage._');
+    lines.push('');
+    return;
+  }
+
   lines.push('### Coverage');
   lines.push('');
   const covAnnotated = model.annotated_files.length;
@@ -525,9 +751,15 @@ function emitScope(model: ThreatModel, lines: string[]): void {
 }
 
 function emitArchitecture(model: ThreatModel, lines: string[]): void {
+  const slice = sliceOf(model);
   // ── Components ──
   lines.push('### Components');
   lines.push('');
+  if (slice.active) {
+    lines.push(`Components referenced by ${slice.noun}. An asset listed here is defined project-wide and`);
+    lines.push('may carry exposures under other features that this slice does not show.');
+    lines.push('');
+  }
   if (model.assets.length > 0) {
     lines.push('| Component | ID | Description | Defined At |');
     lines.push('|-----------|-----|-------------|------------|');
@@ -538,7 +770,7 @@ function emitArchitecture(model: ThreatModel, lines: string[]): void {
       lines.push(`| ${name} | ${id} | ${desc} | ${a.location.file}:${a.location.line} |`);
     }
   } else {
-    lines.push('_No components defined via `@asset`._');
+    lines.push(nothingFound('components referenced', slice, '_No components defined via `@asset`._'));
   }
   lines.push('');
 
@@ -588,7 +820,8 @@ function emitArchitecture(model: ThreatModel, lines: string[]): void {
       lines.push(`- **${ep}**${mechanisms ? `: ${mechanisms}` : ''}`);
     }
   } else {
-    lines.push('_No explicit entrypoints identified. Add `@flows` from external sources to assets._');
+    lines.push(nothingFound('entrypoints identified', slice,
+      '_No explicit entrypoints identified. Add `@flows` from external sources to assets._'));
   }
   lines.push('');
 
@@ -623,7 +856,9 @@ function emitArchitecture(model: ThreatModel, lines: string[]): void {
   }
 
   // ── Multi-tenancy ──
-  lines.push('### Multi-tenancy');
+  // Tenant isolation is a whole-system property; "none found" computed from one
+  // feature's annotations is not evidence about the application.
+  lines.push(slice.active ? '### Multi-tenancy — as seen from this slice' : '### Multi-tenancy');
   lines.push('');
   const tenantAnnotations = [
     ...model.comments.filter(c => /tenant|multi.?tenant|isolat/i.test(c.description || '')),
@@ -634,12 +869,13 @@ function emitArchitecture(model: ThreatModel, lines: string[]): void {
       lines.push(`- ${a.description} (${a.location.file}:${a.location.line})`);
     }
   } else {
-    lines.push('_No multi-tenancy annotations found. If this is a multi-tenant application, consider adding `@comment` or `@boundary` annotations describing tenant isolation._');
+    lines.push(nothingFound('multi-tenancy annotations', slice,
+      '_No multi-tenancy annotations found. If this is a multi-tenant application, consider adding `@comment` or `@boundary` annotations describing tenant isolation._'));
   }
   lines.push('');
 
   // ── Compliance ──
-  lines.push('### Compliance');
+  lines.push(slice.active ? '### Compliance — as seen from this slice' : '### Compliance');
   lines.push('');
   const complianceAnnotations = [
     ...model.comments.filter(c => /complian|gdpr|hipaa|soc|pci|iso|fedramp|ccpa/i.test(c.description || '')),
@@ -658,7 +894,7 @@ function emitArchitecture(model: ThreatModel, lines: string[]): void {
   if (hasPHI) lines.push('- Handles **PHI** — consider HIPAA compliance requirements');
   if (hasFinancial) lines.push('- Handles **Financial data** — consider PCI-DSS compliance requirements');
   if (complianceAnnotations.length === 0 && !hasPII && !hasPHI && !hasFinancial) {
-    lines.push('_No compliance-related annotations found._');
+    lines.push(nothingFound('compliance-related annotations', slice, '_No compliance-related annotations found._'));
   }
   lines.push('');
 }
@@ -695,6 +931,7 @@ function emitKeyFlows(model: ThreatModel, lines: string[]): void {
 }
 
 function emitDataInventory(model: ThreatModel, hasAI: boolean, lines: string[]): void {
+  const slice = sliceOf(model);
   // ── Data Types ──
   if (model.data_handling.length > 0) {
     lines.push('### Data Types');
@@ -740,7 +977,7 @@ function emitDataInventory(model: ThreatModel, hasAI: boolean, lines: string[]):
     }
     lines.push('');
   } else {
-    lines.push('_No data flow volume data available._');
+    lines.push(nothingFound('data flows recorded', slice, '_No data flow volume data available._'));
     lines.push('');
   }
 
@@ -795,27 +1032,59 @@ function emitDataInventory(model: ThreatModel, hasAI: boolean, lines: string[]):
 }
 
 function emitRolesAccess(model: ThreatModel, lines: string[]): void {
+  const slice = sliceOf(model);
   // ── Declared principals ──
   // Unlike the inferred actors further down, these are written down: @actor is
   // the authorization model as the maintainers state it, and each entitlement
   // is a claim that some capability is a principal's by design.
   const declared = model.actors || [];
+  const entitlements = model.entitlements || [];
   if (declared.length > 0) {
     lines.push('### Declared Principals');
     lines.push('');
+    if (slice.active) {
+      lines.push(`Principals reached by ${slice.noun} — resolved from the entitlements written in its files,`);
+      lines.push('so a principal the project declares but this feature never names is absent.');
+      lines.push('');
+    }
     for (const ac of declared) {
       const ref = ac.id ? `#${ac.id}` : ac.canonical_name;
-      const held = (model.entitlements || []).filter(en =>
-        (en.actor.startsWith('#') ? en.actor.slice(1) : en.actor) === (ac.id || ac.canonical_name)
-      );
+      // Matched through the same normalisation the parser's undeclared-actor
+      // check uses. A literal `===` against `ac.id || ac.canonical_name` missed
+      // `@entitles Payments_Admin` against `canonical_name: payments_admin`,
+      // and the entitlement then vanished from its principal here while
+      // surviving the filter — the actor is kept by a case-insensitive match.
+      const held = entitlements.filter(en => actorMatches(en.actor, ac.id, ac.canonical_name, ac.name));
       const desc = ac.description ? ` — ${ac.description}` : '';
       lines.push(`- **${ac.name}** (\`${ref}\`)${desc}`);
       for (const en of held) {
-        const scope = `${en.asset ? ` on ${en.asset}` : ''}${en.threat ? ` against ${en.threat}` : ''}`;
-        const cite = en.citation ? ` [cites \`${en.citation.raw}\`]` : ' [uncited — inert]';
-        lines.push(`  - entitled to \`${en.capability}\`${scope}${cite}`);
+        // Both halves of the join, always, and the effect spelled out. A claim
+        // reading "entitled to `refund` on #pay [cites authz.ts:9]" looks fully
+        // operative while naming no threat, which is precisely the claim that
+        // must never demote anything (§9.3).
+        const scope = `${en.asset ? ` on ${en.asset}` : ' on <no asset>'}${en.threat ? ` against ${en.threat}` : ' against <no threat>'}`;
+        const cite = en.citation ? ` [cites \`${en.citation.raw}\`]` : ' [uncited]';
+        lines.push(`  - entitled to \`${en.capability}\`${scope}${cite} — **${demotionEffect(en)}**`);
+      }
+      if (held.length === 0) {
+        lines.push('  - _no entitlements recorded_');
       }
     }
+    lines.push('');
+  } else if (entitlements.length > 0) {
+    // Entitlements whose actor is never declared with `@actor` — an error the
+    // parser reports, but the report used to drop them from this section
+    // silently and show them only further down.
+    lines.push('### Declared Principals');
+    lines.push('');
+    lines.push('_Entitlements are recorded but no `@actor` declares the principals they name — see the');
+    lines.push('Entitlements section, and `guardlink validate .` for the undeclared-actor errors._');
+    lines.push('');
+  } else if (slice.active) {
+    lines.push('### Declared Principals');
+    lines.push('');
+    lines.push(`_No \`@actor\` or \`@entitles\` annotations in ${slice.noun}. The project may declare principals`);
+    lines.push('under other features — this view resolves them from this slice\'s annotations only._');
     lines.push('');
   }
 
@@ -872,14 +1141,44 @@ function emitRolesAccess(model: ThreatModel, lines: string[]): void {
       lines.push(`- ${b.description || b.id} (${b.asset_a} ↔ ${b.asset_b})`);
     }
   } else if (boundaryCount > 0) {
-    lines.push(`${boundaryCount} trust boundaries defined, but none explicitly mention tenant isolation. If this is multi-tenant, verify that cross-tenant data access is prevented at each boundary.`);
+    lines.push(`${boundaryCount} trust boundaries defined${slice.active ? ` in ${slice.noun}` : ''}, but none explicitly mention tenant isolation. If this is multi-tenant, verify that cross-tenant data access is prevented at each boundary.`);
   } else {
-    lines.push('_No trust boundaries defined. If multi-tenant, add `@boundary` annotations to document tenant isolation._');
+    lines.push(nothingFound('trust boundaries', slice,
+      '_No trust boundaries defined. If multi-tenant, add `@boundary` annotations to document tenant isolation._'));
   }
   lines.push('');
 }
 
+/**
+ * Does an `@entitles` actor reference name this `@actor`?
+ *
+ * Same rule as the parser's undeclared-actor check: strip `#`, compare
+ * case-insensitively, and try the §2.10-normalised form too, so `#pay-admin`,
+ * `pay_admin` and `Payments_Admin` all reach the declaration they were written
+ * against.
+ */
+function actorMatches(ref: string, id: string | undefined, canonicalName: string, name: string): boolean {
+  const bare = normalizeRef(ref);
+  const forms = new Set<string>();
+  for (const candidate of [id, canonicalName, name]) {
+    if (!candidate) continue;
+    forms.add(candidate.toLowerCase());
+    forms.add(normalizeName(candidate));
+  }
+  return forms.has(bare) || forms.has(normalizeName(bare));
+}
+
 function emitDependencies(model: ThreatModel, lines: string[]): void {
+  const slice = sliceOf(model);
+  // The dependency inventory is inherently a project question, but everything
+  // here is derived from `@flows`/`@transfers`, which the filter scopes. Under a
+  // filter it answers "what does this feature reach", which is a different and
+  // much smaller question than "what does the project depend on".
+  if (slice.active) {
+    lines.push(`Only dependencies reached by ${slice.noun}. This is **not** the project's dependency`);
+    lines.push('inventory — anything reached solely from another feature is absent.');
+    lines.push('');
+  }
   // Build asset ID set that matches both "#id" and "id" forms used in flows
   const assetIds = new Set<string>();
   for (const a of model.assets) {
@@ -906,7 +1205,8 @@ function emitDependencies(model: ThreatModel, lines: string[]): void {
       lines.push(`- ${dep}`);
     }
   } else {
-    lines.push('_No internal service dependencies detected from flows._');
+    lines.push(nothingFound('internal service dependencies detected from flows', slice,
+      '_No internal service dependencies detected from flows._'));
   }
   lines.push('');
 
@@ -959,7 +1259,8 @@ function emitDependencies(model: ThreatModel, lines: string[]): void {
       lines.push('');
     }
   } else {
-    lines.push('_No external dependencies detected from flows or transfers._');
+    lines.push(nothingFound('external dependencies detected from flows or transfers', slice,
+      '_No external dependencies detected from flows or transfers._'));
     lines.push('');
   }
 
@@ -975,6 +1276,7 @@ function emitDependencies(model: ThreatModel, lines: string[]): void {
 }
 
 function emitSecretsManagement(model: ThreatModel, lines: string[]): void {
+  const slice = sliceOf(model);
   // ── Secret Inventory ──
   const secretHandling = model.data_handling.filter(h => h.classification === 'secrets');
   const keyExposures = model.exposures.filter(e =>
@@ -999,7 +1301,8 @@ function emitSecretsManagement(model: ThreatModel, lines: string[]): void {
     }
     lines.push('');
   } else {
-    lines.push('_No assets classified as `secrets` via `@handles`. Consider adding `@handles secrets on <asset>` annotations._');
+    lines.push(nothingFound('assets classified as `secrets` via `@handles`', slice,
+      '_No assets classified as `secrets` via `@handles`. Consider adding `@handles secrets on <asset>` annotations._'));
     lines.push('');
   }
 
@@ -1023,7 +1326,8 @@ function emitSecretsManagement(model: ThreatModel, lines: string[]): void {
     lines.push('');
   }
   if (keyExposures.length === 0 && keyMitigations.length === 0) {
-    lines.push('_No credential-related exposures or mitigations found._');
+    lines.push(nothingFound('credential-related exposures or mitigations', slice,
+      '_No credential-related exposures or mitigations found._'));
     lines.push('');
   }
 
@@ -1035,12 +1339,14 @@ function emitSecretsManagement(model: ThreatModel, lines: string[]): void {
       lines.push(`- ${c.description} (${c.location.file}:${c.location.line})`);
     }
   } else {
-    lines.push('_No rotation strategy documented. Consider adding `@comment` annotations describing key rotation policies._');
+    lines.push(nothingFound('documented rotation strategy', slice,
+      '_No rotation strategy documented. Consider adding `@comment` annotations describing key rotation policies._'));
   }
   lines.push('');
 }
 
 function emitLoggingAudit(model: ThreatModel, lines: string[]): void {
+  const slice = sliceOf(model);
   // ── What's Logged ──
   const loggingComments = model.comments.filter(c =>
     /log|audit|trace|monitor|alert|metric|observ/i.test(c.description || ''),
@@ -1053,7 +1359,8 @@ function emitLoggingAudit(model: ThreatModel, lines: string[]): void {
       lines.push(`- ${c.description} (${c.location.file}:${c.location.line})`);
     }
   } else {
-    lines.push('_No logging-related annotations found. Consider documenting what security events are logged._');
+    lines.push(nothingFound('logging-related annotations', slice,
+      '_No logging-related annotations found. Consider documenting what security events are logged._'));
   }
   lines.push('');
 
@@ -1070,7 +1377,8 @@ function emitLoggingAudit(model: ThreatModel, lines: string[]): void {
       lines.push(`- ... and ${model.audits.length - 10} more (see Audit Items section)`);
     }
   } else {
-    lines.push('_No `@audit` items. Consider flagging security-critical code paths for review._');
+    lines.push(nothingFound('`@audit` items', slice,
+      '_No `@audit` items. Consider flagging security-critical code paths for review._'));
   }
   lines.push('');
 
@@ -1085,12 +1393,14 @@ function emitLoggingAudit(model: ThreatModel, lines: string[]): void {
       lines.push(`- ${c.description} (${c.location.file}:${c.location.line})`);
     }
   } else {
-    lines.push('_No alerting annotations found. Consider documenting alerting strategies via `@comment`._');
+    lines.push(nothingFound('alerting annotations', slice,
+      '_No alerting annotations found. Consider documenting alerting strategies via `@comment`._'));
   }
   lines.push('');
 }
 
 function emitAIDetails(model: ThreatModel, lines: string[]): void {
+  const slice = sliceOf(model);
   // ── Model Inventory ──
   const aiAssets = model.assets.filter(a => isAIRelated(a.id || a.path.join('.')));
   const aiExposures = model.exposures.filter(e =>
@@ -1124,7 +1434,7 @@ function emitAIDetails(model: ThreatModel, lines: string[]): void {
       lines.push(`- **${m.control || 'control'}** on ${m.asset} against ${m.threat}${m.description ? ` — ${m.description}` : ''}`);
     }
   } else {
-    lines.push('_No AI-specific mitigations found._');
+    lines.push(nothingFound('AI-specific mitigations', slice, '_No AI-specific mitigations found._'));
   }
   lines.push('');
 
@@ -1153,7 +1463,8 @@ function emitAIDetails(model: ThreatModel, lines: string[]): void {
       lines.push('');
     }
   } else {
-    lines.push('_No prompt injection exposures or mitigations documented._');
+    lines.push(nothingFound('prompt injection exposures or mitigations', slice,
+      '_No prompt injection exposures or mitigations documented._'));
     lines.push('');
   }
 
@@ -1165,7 +1476,8 @@ function emitAIDetails(model: ThreatModel, lines: string[]): void {
       lines.push(`- ${c.description} (${c.location.file}:${c.location.line})`);
     }
   } else {
-    lines.push('_No AI data retention notes found. Consider documenting prompt logging, training data handling, and model output storage._');
+    lines.push(nothingFound('AI data retention notes', slice,
+      '_No AI data retention notes found. Consider documenting prompt logging, training data handling, and model output storage._'));
   }
   lines.push('');
 }
@@ -1295,9 +1607,18 @@ function buildFlowChains(flows: ThreatModel['flows']): ThreatModel['flows'][] {
     if (chain.length > 0) chains.push(chain);
   }
 
-  // Add any isolated flows not in chains
-  const chainedFlows = new Set(chains.flat().map(f => `${f.source}::${f.target}`));
-  const isolated = flows.filter(f => !chainedFlows.has(`${f.source}::${f.target}`));
+  // Add any isolated flows not in chains.
+  //
+  // Keyed on the flow itself, not on `source::target`. Two `@flows` between the
+  // same pair — different mechanisms, which is the normal way one component
+  // reads two things from another — collapsed to one key, so the second was
+  // treated as already-chained and never printed anywhere in Flow Details.
+  // Measured on this repo: `--feature "Dashboard"` has 4 flows and the section
+  // narrated 3, silently dropping `ThreatModel -> #dashboard via featureScope`.
+  // Losing one of a feature's four flows is the prose version of a diagram that
+  // drops the feature's only edge.
+  const chainedFlows = new Set(chains.flat());
+  const isolated = flows.filter(f => !chainedFlows.has(f));
   for (const f of isolated) {
     chains.push([f]);
   }
