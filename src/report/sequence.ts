@@ -4,10 +4,22 @@
  * the step-by-step interactions between system participants.
  *
  * @comment -- "Pure function: transforms ThreatModel flows to Mermaid sequence diagram"
+ * @comment -- "Titles itself from filtered_by_features when the model is a --feature slice: a sequence of three participants reads as the system's interactions unless the picture says which slice it is"
  * @flows ThreatModel -> #report via generateSequenceDiagram -- "Sequence diagram generation"
  */
 
 import type { ThreatModel } from '../types/index.js';
+
+/**
+ * Feature names this model was narrowed to, or `[]`. Read structurally so an
+ * unfiltered model — or one built before the field existed — takes the original
+ * path unchanged.
+ */
+function filteredFeatures(model: ThreatModel): string[] {
+  const raw = (model as ThreatModel & { filtered_by_features?: string[] }).filtered_by_features;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((n): n is string => typeof n === 'string' && n.trim().length > 0);
+}
 
 /** Sanitize participant name for Mermaid sequence diagrams */
 function participantId(name: string): string {
@@ -32,10 +44,27 @@ function trunc(s: string, max = 40): string {
 
 export function generateSequenceDiagram(model: ThreatModel): string {
   const lines: string[] = [];
+
+  // @flows FeatureName -> #report via filtered_by_features -- "A @feature name written in source reaches the sequence diagram title"
+  // @mitigates #report against #xss using #output-encoding -- "Quote-escaped before entering the YAML frontmatter scalar, and the `:` that would terminate a Note label is stripped below — a feature name is model data, not markup"
+  const features = filteredFeatures(model);
+  if (features.length > 0) {
+    lines.push('---');
+    lines.push(`title: "Feature slice — ${features.map(f => f.replace(/"/g, "'")).join(', ')} (not the whole project)"`);
+    lines.push('---');
+  }
+
   lines.push('sequenceDiagram');
 
   if (model.flows.length === 0) {
-    lines.push('  Note over System: No data flows annotated');
+    // `Note over System` referenced a participant that was never declared, which
+    // Mermaid rejects — the "nothing to show" case rendered as a parse error.
+    // Declaring it first makes the empty answer readable, and under a filter it
+    // says which slice is empty rather than implying the project has no flows.
+    lines.push('  participant System');
+    lines.push(features.length > 0
+      ? `  Note over System: No @flows in feature ${features.map(f => f.replace(/:/g, ' ')).join(', ')}`
+      : '  Note over System: No data flows annotated');
     return lines.join('\n');
   }
 

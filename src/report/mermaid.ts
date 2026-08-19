@@ -42,6 +42,19 @@ import type { ThreatModel } from '../types/index.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
 
+/**
+ * Feature names this model was narrowed to by `filterByFeature`, or `[]`.
+ *
+ * Read structurally so this compiles and behaves the same whether or not the
+ * optional field is declared on `ThreatModel`, and so any model without it —
+ * every unfiltered one — takes the original path exactly.
+ */
+function filteredFeatures(model: ThreatModel): string[] {
+  const raw = (model as ThreatModel & { filtered_by_features?: string[] }).filtered_by_features;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((n): n is string => typeof n === 'string' && n.trim().length > 0);
+}
+
 /** Sanitize for Mermaid node IDs */
 function nid(name: string): string {
   return name.replace(/[^a-zA-Z0-9_]/g, '_');
@@ -80,6 +93,24 @@ function trunc(s: string, max = 30): string {
 export function generateMermaid(rawModel: ThreatModel): string {
   const model = canonicalizeModelOrder(rawModel);
   const lines: string[] = [];
+
+  // ── Say what this a picture of ──
+  // A diagram travels further than the document around it — it is the thing that
+  // gets screenshotted into a ticket. Four nodes with no title read as "the
+  // system"; four nodes titled `feature slice "Dashboard"` read as a slice.
+  // Mermaid frontmatter, so the title renders rather than sitting in a `%%`
+  // comment nobody sees. Emitted only for a filtered model, so unfiltered output
+  // (and its cross-process hash, D23) is untouched.
+  //
+  // @flows FeatureName -> #report via filtered_by_features -- "A @feature name written in source reaches the diagram title"
+  // @mitigates #report against #xss using #output-encoding -- "The name is quote-escaped before it enters the YAML frontmatter scalar, so it cannot close the string and append Mermaid directives or an init block into a diagram a viewer renders as HTML"
+  // @comment -- "@feature names are single-line by construction (parse-line.ts), so there is no newline to break the scalar; the quote is the only delimiter that needs escaping"
+  const features = filteredFeatures(model);
+  if (features.length > 0) {
+    lines.push('---');
+    lines.push(`title: "Feature slice — ${features.map(f => f.replace(/"/g, "'")).join(', ')} (not the whole project)"`);
+    lines.push('---');
+  }
 
   // ── Build mitigation coverage map ──
   // D57: raw pair set. The diagram simply omitted #db → #sqli on expense-api —
@@ -180,6 +211,20 @@ export function generateMermaid(rawModel: ThreatModel): string {
       emitNode(asset, lines, dataClasses, unmitigatedAssets, isCompact ? assetExposureCounts : undefined);
       emittedNodes.add(asset);
     }
+  }
+
+  // ── Nothing to draw ──
+  // A bare `graph TD` with no nodes is a Mermaid parse error, and a fenced block
+  // that fails to render is indistinguishable from a broken tool — the reader
+  // learns nothing, including that the answer was "empty". `--feature` with a
+  // name no file carries is the realistic way to reach this: it selects zero of
+  // everything.
+  if (emittedNodes.size === 0) {
+    const why = features.length > 0
+      ? `No annotated components in feature ${features.map(f => `'${f}'`).join(', ')}`
+      : 'No annotated components — nothing to diagram';
+    lines.push(`  _empty["${esc(why)}"]`);
+    lines.push(`  style _empty fill:none,stroke:#999,stroke-dasharray:3 3,color:#666`);
   }
 
   lines.push('');
