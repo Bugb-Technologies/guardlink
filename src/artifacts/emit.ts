@@ -29,6 +29,8 @@
  * @flows ThreatModel -> #dashboard via emitArtifacts -- "Model rendered to disk artifacts"
  * @flows #dashboard -> FileSystem via writeFileSync -- "Artifact write path"
  * @comment -- "Artifacts carry a provenance header so a stale one is detectable rather than merely wrong"
+ * @comment -- "by-feature/*.mmd declare themselves partial in the header: a narrowed diagram that does not say it is narrowed reads as a complete one that is missing things"
+ * @comment -- "annotation_hash stays project-wide on per-feature files — it records the state the view was cut from, which is what keeps `validate --artifacts` a single comparison for every artifact"
  */
 
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
@@ -96,11 +98,31 @@ export function featureSlug(name: string): string {
  *
  * Mermaid treats `%%` as a comment, so this survives into any viewer without
  * affecting the render — the reader sees provenance, the parser sees nothing.
+ *
+ * ── `feature`: what a by-feature file has to say about itself ─────────
+ *
+ * A `.mmd` in a repo looks like source; a NARROWED `.mmd` in a repo looks like
+ * the source of truth for something it deliberately leaves out. Two claims the
+ * header therefore has to make out loud, because the diagram cannot:
+ *
+ *   1. It is partial. A node that is absent from `by-feature/checkout.mmd` is
+ *      absent from that feature's relations, not from the project.
+ *   2. `annotation_hash` is the WHOLE PROJECT's hash, not a hash of the
+ *      narrowed content. Kept deliberately — see the note in the emitted text.
+ *      A per-feature hash would churn less but would be a weaker claim (current
+ *      w.r.t. a slice) and would split one drift gate into one per artifact,
+ *      since `checkArtifactDrift` compares every file against a single expected
+ *      hash. Left project-wide, and now stated rather than left to be inferred
+ *      from a value that happens to be identical in every file.
  */
-export function mermaidHeader(name: string, p: ArtifactProvenance): string {
+export function mermaidHeader(name: string, p: ArtifactProvenance, feature?: string): string {
   return [
     `%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .`,
     `%% artifact:        ${name}`,
+    ...(feature ? [`%% scope:           PARTIAL — @feature "${feature}" only, not the whole model`] : []),
+    // Kept a bare `hash` value on its own line: `readArtifactHash` and the CI
+    // gate both match `^%% annotation_hash:\s*(\S+)\s*$`, so anything appended
+    // here would be read as part of the hash. Commentary goes below.
     `%% annotation_hash: ${p.annotation_hash}`,
     `%% generator:       ${p.generator}`,
     // NOT a bare `%%`: a line containing exactly that is read as the start of a
@@ -109,6 +131,20 @@ export function mermaidHeader(name: string, p: ArtifactProvenance): string {
     `%% This diagram is derived from the annotations in this repository. If`,
     `%% annotation_hash above differs from what \`guardlink status .\` reports, the`,
     `%% diagram is STALE — regenerate rather than trusting it.`,
+    ...(feature ? [
+      `%% ---`,
+      `%% NARROWED VIEW. The edges below are the relations annotated in files`,
+      `%% tagged @feature "${feature}"; the nodes are the assets, threats and`,
+      `%% controls those relations reference, resolved from their definitions`,
+      `%% wherever those are declared. A node missing from this file is one this`,
+      `%% feature does not touch — it is NOT missing from the threat model. For`,
+      `%% that, read ../threat-graph.mmd.`,
+      `%% annotation_hash above is the hash of the WHOLE project's annotations —`,
+      `%% the state this view was cut from — not of the narrowing. It is shared by`,
+      `%% every artifact in the same emission on purpose: it is what makes one`,
+      `%% \`guardlink validate . --artifacts\` check answer for all of them, and it`,
+      `%% lets this file be lined up against model.json from the same run.`,
+    ] : []),
     `%% When it was generated and at which commit: ask git. Those move for reasons`,
     `%% unrelated to the diagram, so they are reported at emission time, not stored.`,
     '',
@@ -192,13 +228,19 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
   // Per-feature graphs. Near-free — filterByFeature already exists and each is a
   // fraction of the whole — and the hedge against a model dense enough that the
   // top-level graph stops being legible.
+  //
+  // The narrowed model keeps the definitions its relations reference even though
+  // `.guardlink/definitions.*` carries no @feature tag. Without that these files
+  // rendered every node as a bare id with unknown severity — `xss["⚪ xss"]`
+  // instead of `xss["🟠 Cross_Site_Scripting (cwe:CWE-79)"]` — which reads as a
+  // model that lost its vocabulary, not as a view that was narrowed.
   const features = listFeatures(ordered);
   const expectedFeatureFiles = new Set(features.map(f => `${featureSlug(f)}.mmd`));
   for (const feature of features) {
     const name = `${featureSlug(feature)}.mmd`;
     const body = generateThreatGraph(filterByFeature(ordered, [feature]), { showAll: true });
     write(join(byFeatureDir, name), `.guardlink/graph/by-feature/${name}`,
-      mermaidHeader(`by-feature/${name} (@feature "${feature}")`, provenance) + body);
+      mermaidHeader(`by-feature/${name}`, provenance, feature) + body);
   }
 
   // A renamed or deleted @feature must not leave its diagram behind claiming to
@@ -344,7 +386,7 @@ guardlink artifacts .
 | \`threat-graph.mmd\` | Assets, the threats they are exposed to, and the controls that mitigate them. |
 | \`dataflow.mmd\` | \`@flows\` between components, with trust boundaries. |
 | \`attack-surface.mmd\` | Entry points and what an attacker reaches from them. |
-| \`by-feature/<name>.mmd\` | The threat graph narrowed to one \`@feature\`. |
+| \`by-feature/<name>.mmd\` | The threat graph narrowed to one \`@feature\`. **Partial by construction** — a node it does not show is one that feature does not touch, not one the project lacks. Its \`annotation_hash\` is the whole project's, the state the view was cut from. |
 | \`MANIFEST.json\` | Per-artifact size and the annotation hash each was built from. |
 | \`../model.json\` | The whole parsed threat model, canonically ordered. |
 

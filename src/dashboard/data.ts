@@ -74,6 +74,19 @@ export interface AssetHeatmapEntry {
   riskLevel: 'critical' | 'high' | 'medium' | 'low' | 'none';
 }
 
+/**
+ * Counts, straight off the model — which means they describe whatever the model
+ * describes. On a model narrowed by `--feature` that is one feature, and three
+ * of these fields change meaning rather than value: `annotations`, `sourceFiles`
+ * and `coveragePercent` come from `annotations_parsed`, `source_files` and
+ * `coverage`, all of which the filter rescopes. Only `coveragePercent` is
+ * rendered, and `renderCodePage`/the top bar withhold it on a slice, because
+ * "annotated files over source files" measures a repository and a slice's
+ * answer to it is 100% by construction. Nothing to fix here; the caller decides
+ * what a number is allowed to claim.
+ *
+ * @comment -- "Stats mirror the model's own scope: on a --feature model these are the feature's numbers, and the dashboard suppresses the ones that only mean something project-wide"
+ */
 export function computeStats(model: ThreatModel): DashboardStats {
   return {
     annotations: model.annotations_parsed,

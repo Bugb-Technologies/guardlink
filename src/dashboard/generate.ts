@@ -15,6 +15,8 @@
  * @mitigates #dashboard against #xss using #output-encoding -- "Serialized model data escapes closing script tags before embedding in <script>"
  * @handles internal on #dashboard -- "Processes and displays threat model data"
  * @feature "Dashboard" -- "Interactive HTML threat model dashboard"
+ * @mitigates #dashboard against #xss using #output-encoding -- "Feature scope names come from @feature annotations and the --feature flag; every one is rendered through esc()"
+ * @comment -- "A model narrowed with --feature carries filtered_by_features. The page then declares itself a slice in the title, the top bar and a banner, and suppresses the project-wide measures (file coverage, unannotated files) that a slice cannot answer"
  */
 
 import type { ThreatModel } from '../types/index.js';
@@ -44,6 +46,10 @@ import { resolve, isAbsolute } from 'path';
  */
 export function generateDashboardHTML(rawModel: ThreatModel, root?: string, analyses?: ThreatReportWithContent[]): string {
   const model = canonicalizeModelOrder(rawModel);
+  // Read from rawModel: canonicalisation reorders, it does not add fields, and
+  // reading the marker off the input keeps this independent of what the
+  // canonicaliser chooses to carry through.
+  const scope = featureScope(rawModel);
   // The model is embedded verbatim into the page, so its own `generated_at`
   // rides along and churns a committed HTML file on every regeneration. Same
   // ruling as D26 for `.guardlink/model.json` and GL-302 for the `.mmd`
@@ -66,6 +72,10 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
     ? Math.round((mitigatedCount / exposures.length) * 100)
     : 0;
   const riskScore = computeRiskGrade(severity, unmitigated.length, exposures.length, confirmedRows.length);
+  // Files actually carrying one of the scoped @feature tags. `annotated_files`
+  // is not the same thing: definitions the feature references live in
+  // `.guardlink/definitions.*`, which carries no tag.
+  const scopeFiles = scope ? new Set(model.features.map(f => f.location.file)).size : 0;
 
   // Build file annotations data for code browser + drawer
   const fileAnnotations = buildFileAnnotations(model, root);
@@ -78,7 +88,7 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GuardLink — ${esc(model.project)} Threat Model</title>
+<title>GuardLink — ${esc(model.project)} Threat Model${scope ? ` — PARTIAL: ${scope.length > 1 ? 'features' : 'feature'} ${esc(scopeLabel(scope))}` : ''}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -87,7 +97,7 @@ ${CSS_CONTENT}
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
-<body>
+<body${scope ? ' class="scoped"' : ''}>
 
 <!-- ═══════════ TOP NAV ═══════════ -->
 <div class="topnav">
@@ -95,17 +105,27 @@ ${CSS_CONTENT}
     <div class="logo">TS</div>
     <h1>${esc(model.project)}</h1>
     <span class="badge">Threat Model</span>
+${scope ? `    <span class="badge badge-scope" title="This page was generated with --feature and covers only part of the threat model">◑ Feature slice — ${esc(scope.join(', '))}</span>` : ''}
   </div>
   <div class="topnav-right">
     <div class="topnav-metrics">
       <div class="tn-stat"><span class="tn-k">Assets</span> <span class="tn-v blue">${stats.assets}</span></div>
       <div class="tn-stat"><span class="tn-k">Open</span> <span class="tn-v red">${unmitigated.length}</span></div>
       <div class="tn-stat"><span class="tn-k">Controls</span> <span class="tn-v green">${stats.controls}</span></div>
-      <div class="tn-stat"><span class="tn-k">Coverage</span> <span class="tn-v ${stats.coveragePercent >= 70 ? 'green' : stats.coveragePercent >= 40 ? 'yellow' : 'red'}">${stats.coveragePercent}%</span></div>
+${scope
+    // `stats.coveragePercent` is annotated-files-over-source-files for the
+    // REPOSITORY. On a feature slice that number is either the project's (the
+    // bug: a whole-project 76% sitting next to the feature's own 100%) or, once
+    // it is scoped, the feature's own files over themselves — 100% by
+    // construction, and a green badge that means nothing. Neither is worth
+    // showing, so a slice reports the one coverage it can defend: how much of
+    // its own exposure set is mitigated.
+    ? `      <div class="tn-stat" title="Exposures mitigated within this feature. Project file coverage is not shown on a slice."><span class="tn-k">Mitigated</span> <span class="tn-v ${mitigationCoveragePercent >= 70 ? 'green' : mitigationCoveragePercent >= 40 ? 'yellow' : 'red'}">${mitigationCoveragePercent}%</span></div>`
+    : `      <div class="tn-stat"><span class="tn-k">Coverage</span> <span class="tn-v ${stats.coveragePercent >= 70 ? 'green' : stats.coveragePercent >= 40 ? 'yellow' : 'red'}">${stats.coveragePercent}%</span></div>`}
     </div>
 ${featureNames.length > 0 ? `    <div class="feature-filter-wrap">
-      <select id="featureFilter" class="feature-filter-select" onchange="applyFeatureFilter(this.value)" title="Filter by feature">
-        <option value="">All Features</option>
+      <select id="featureFilter" class="feature-filter-select" onchange="applyFeatureFilter(this.value)" title="${scope ? 'Narrow further within this slice — the page already excludes everything outside it' : 'Filter by feature'}">
+        <option value="">${scope ? 'All in this slice' : 'All Features'}</option>
 ${featureNames.map(f => `        <option value="${esc(f)}">${esc(f)}</option>`).join('\n')}
       </select>
     </div>` : ''}
@@ -114,6 +134,13 @@ ${featureNames.map(f => `        <option value="${esc(f)}">${esc(f)}</option>`).
     </button>
   </div>
 </div>
+
+<!-- Generation-time scope banner. Static, always visible, never dismissible:
+     a screenshot of this page must not be mistakable for the whole model. -->
+${scope ? `<div id="scope-banner" class="scope-banner" role="note">
+  <span class="scope-banner-tag">Partial threat model</span>
+  <span class="scope-banner-text">Narrowed to ${scope.length > 1 ? 'features' : 'feature'} ${esc(scopeLabel(scope))} — the ${scopeFiles} file(s) tagged <code>@feature</code>, plus the definitions they reference. <strong>Every count, chart, table and diagram below describes ${scope.length > 1 ? 'these features' : 'this feature'} only, not the whole project.</strong> Project-wide file coverage and unannotated files are omitted, because a slice cannot answer them. Regenerate without <code>--feature</code> for the full model.</span>
+</div>` : ''}
 
 <!-- Feature filter banner -->
 <div id="feature-banner" class="feature-banner">
@@ -146,13 +173,13 @@ ${featureNames.map(f => `        <option value="${esc(f)}">${esc(f)}</option>`).
 <!-- ═══════════ MAIN ═══════════ -->
 <div class="main">
 
-${renderSummaryPage(stats, severity, riskScore, unmitigated, exposures, model, mitigatedCount, mitigationCoveragePercent)}
-${renderAIAnalysisPage(analyses || [])}
-${renderThreatsPage(exposures, confirmedRows, model)}
-${renderDiagramsPage(threatGraph, threatGraphFull, dataFlow, attackSurface)}
-${renderCodePage(fileAnnotations, model)}
-${renderDataPage(model)}
-${renderAssetsPage(heatmap)}
+${renderSummaryPage(stats, severity, riskScore, unmitigated, exposures, model, mitigatedCount, mitigationCoveragePercent, scope, scopeFiles)}
+${renderAIAnalysisPage(analyses || [], scope)}
+${renderThreatsPage(exposures, confirmedRows, model, scope)}
+${renderDiagramsPage(threatGraph, threatGraphFull, dataFlow, attackSurface, scope)}
+${renderCodePage(fileAnnotations, model, scope, scopeFiles)}
+${renderDataPage(model, scope)}
+${renderAssetsPage(heatmap, scope)}
 
 </div><!-- /main -->
 </div><!-- /layout -->
@@ -585,7 +612,9 @@ function _updateStatsForFilter(featureFiles) {
     if (!label || !val) return;
     var lbl = label.textContent.trim();
     if (lbl === 'Open') val.textContent = visOpen.length;
-    if (lbl === 'Coverage') {
+    // 'Mitigated' is the label a feature-scoped page uses for this tile; the
+    // value written here is the mitigation percentage either way.
+    if (lbl === 'Coverage' || lbl === 'Mitigated') {
       val.textContent = mitPct + '%';
       val.className = 'tn-v ' + (mitPct >= 70 ? 'green' : mitPct >= 40 ? 'yellow' : 'red');
     }
@@ -656,7 +685,9 @@ function _restoreFullStats() {
     if (!label || !val) return;
     var lbl = label.textContent.trim();
     if (lbl === 'Open') val.textContent = allOpen.length;
-    if (lbl === 'Coverage') {
+    // 'Mitigated' is the label a feature-scoped page uses for this tile; the
+    // value written here is the mitigation percentage either way.
+    if (lbl === 'Coverage' || lbl === 'Mitigated') {
       val.textContent = mitPct + '%';
       val.className = 'tn-v ' + (mitPct >= 70 ? 'green' : mitPct >= 40 ? 'yellow' : 'red');
     }
@@ -1030,11 +1061,13 @@ function renderSummaryPage(
   stats: DashboardStats, severity: SeverityBreakdown,
   risk: { grade: string; label: string; summary: string },
   unmitigated: ExposureRow[], exposures: ExposureRow[], model: ThreatModel,
-  mitigatedCount: number, mitigationCoveragePercent: number
+  mitigatedCount: number, mitigationCoveragePercent: number,
+  scope: string[] | null, scopeFiles: number
 ): string {
   return `
 <div id="sec-summary" class="section-content active">
-  <div class="sec-h"><span class="sec-icon">◆</span> Executive Summary</div>
+  <div class="sec-h"><span class="sec-icon">◆</span> Executive Summary${scope ? ` <span class="scope-tag">feature ${esc(scopeLabel(scope))}</span>` : ''}</div>
+${scope ? `  <p class="scope-note">Every number on this page counts annotations from the ${scopeFiles} file(s) tagged <code>@feature ${esc(scopeLabel(scope))}</code>. The risk grade below grades ${scope.length > 1 ? 'these features' : 'this feature'} — it is <strong>not</strong> the project's grade.</p>` : ''}
 
   <!-- Risk Grade -->
   <div class="risk-banner risk-${risk.grade.toLowerCase()}">
@@ -1068,7 +1101,7 @@ function renderSummaryPage(
   <div class="summary-panels">
   <!-- Coverage Bar -->
   <div class="panel">
-  <div class="sub-h">Threat Mitigation Coverage</div>
+  <div class="sub-h">Threat Mitigation Coverage${scope ? ' <span class="scope-tag">this feature</span>' : ''}</div>
   <div class="panel-row">
     <span class="coverage-pct ${mitigationCoveragePercent >= 70 ? 'good' : mitigationCoveragePercent >= 40 ? 'warn' : 'bad'}">${mitigationCoveragePercent}%</span>
     <span class="panel-muted">${mitigatedCount} of ${exposures.length} exposures mitigated</span>
@@ -1078,7 +1111,7 @@ function renderSummaryPage(
 
   <!-- Severity Breakdown -->
   <div class="panel">
-  <div class="sub-h">Severity Breakdown</div>
+  <div class="sub-h">Severity Breakdown${scope ? ' <span class="scope-tag">this feature</span>' : ''}</div>
   <div class="severity-chart">
     ${severityBar('Critical', severity.critical, stats.exposures, 'crit')}
     ${severityBar('High', severity.high, stats.exposures, 'high')}
@@ -1121,14 +1154,22 @@ function renderSummaryPage(
     </tr>`).join('')}
     </tbody>
   </table>
+  </div>` : scope ? `
+  <div class="panel">
+  <div class="sub-h">Data Flows</div>
+  <p class="empty-state">No <code>@flows</code> annotations in the files tagged ${esc(scopeLabel(scope))}. The project may have flows elsewhere; this slice does not show them.</p>
   </div>` : ''}
 </div>`;
 }
 
-function renderAIAnalysisPage(_analyses: ThreatReportWithContent[]): string {
+// Threat reports are whole-project documents loaded from `.guardlink/reports/`.
+// `--feature` narrows the model, not the reports, so a slice must say so rather
+// than let a project-wide report read as the feature's analysis.
+function renderAIAnalysisPage(_analyses: ThreatReportWithContent[], scope: string[] | null): string {
   return `
 <div id="sec-ai-analysis" class="section-content">
   <div class="sec-h"><span class="sec-icon">✨</span> Threat Reports</div>
+${scope ? `  <p class="scope-note">⚠ These reports are <strong>whole-project</strong> documents. Unlike the rest of this page they are not narrowed to ${esc(scopeLabel(scope))}, and they may discuss assets outside it.</p>` : ''}
   <div class="panel ai-analysis-panel">
   <div class="ai-analysis-controls">
     <label for="report-selector" class="report-selector-label">Select Report:</label>
@@ -1139,14 +1180,19 @@ function renderAIAnalysisPage(_analyses: ThreatReportWithContent[]): string {
 </div>`;
 }
 
-function renderThreatsPage(exposures: ExposureRow[], confirmed: ConfirmedRow[], model: ThreatModel): string {
+function renderThreatsPage(exposures: ExposureRow[], confirmed: ConfirmedRow[], model: ThreatModel, scope: string[] | null): string {
   const open = exposures.filter(e => !e.mitigated && !e.accepted);
   const mitigated = exposures.filter(e => e.mitigated);
   const accepted = exposures.filter(e => e.accepted);
+  // Scope wording is carried in a note, not in the `.sub-h` headings: the
+  // client-side feature filter rewrites those headings by textContent, which
+  // would flatten any markup added to them.
+  const within = scope ? ` in ${scope.length > 1 ? 'features' : 'feature'} ${esc(scopeLabel(scope))}` : '';
 
   return `
 <div id="sec-threats" class="section-content">
   <div class="sec-h"><span class="sec-icon">⚠</span> Threats &amp; Exposures</div>
+${scope ? `  <p class="scope-note">Only exposures annotated in the files tagged ${esc(scopeLabel(scope))}. Exposures elsewhere in the project are not listed here and are not counted below.</p>` : ''}
 
   ${confirmed.length > 0 ? `
   <div class="sub-h sub-h-critical">🔴 Confirmed Exploitable (${confirmed.length})</div>
@@ -1180,7 +1226,7 @@ function renderThreatsPage(exposures: ExposureRow[], confirmed: ConfirmedRow[], 
       <td class="loc">${esc(e.file)}:${e.line}</td>
     </tr>`).join('')}
     </tbody>
-  </table>` : '<p class="empty-state">All exposed threats are mitigated or accepted.</p>'}
+  </table>` : `<p class="empty-state">Every exposure${within} is mitigated or accepted.${scope ? ' Open threats outside this slice are not shown.' : ''}</p>`}
 
   <div class="sub-h sub-h-ok">Mitigated Threats (${mitigated.length})</div>
   ${mitigated.length > 0 ? `
@@ -1196,7 +1242,7 @@ function renderThreatsPage(exposures: ExposureRow[], confirmed: ConfirmedRow[], 
       <td class="loc">${esc(e.file)}:${e.line}</td>
     </tr>`).join('')}
     </tbody>
-  </table>` : '<p class="empty-state">No mitigations found.</p>'}
+  </table>` : `<p class="empty-state">No <code>@mitigates</code> annotations${within}.${scope ? ' Controls declared elsewhere in the project are not shown.' : ''}</p>`}
 
   ${accepted.length > 0 ? `
   <div class="sub-h sub-h-neutral">Accepted Risks (${accepted.length})</div>
@@ -1249,7 +1295,7 @@ function renderThreatsPage(exposures: ExposureRow[], confirmed: ConfirmedRow[], 
 </div>`;
 }
 
-function renderDiagramsPage(threatGraph: string, threatGraphFull: string, dataFlow: string, attackSurface: string): string {
+function renderDiagramsPage(threatGraph: string, threatGraphFull: string, dataFlow: string, attackSurface: string, scope: string[] | null): string {
   const tabs = [];
   const panels = [];
   const diagramActions = `
@@ -1313,15 +1359,18 @@ ${diagramActions}
 
   if (tabs.length === 0) {
     return `<div id="sec-diagrams" class="section-content">
-      <div class="sec-h"><span class="sec-icon">◉</span> Diagrams</div>
-      <p class="empty-state">No diagram data — add @exposes, @flows, or @mitigates annotations.</p>
+      <div class="sec-h"><span class="sec-icon">◉</span> Diagrams${scope ? ` <span class="scope-tag">feature ${esc(scopeLabel(scope))}</span>` : ''}</div>
+      <p class="empty-state">${scope
+        ? `Nothing to draw for ${esc(scopeLabel(scope))} — the files tagged with ${scope.length > 1 ? 'these features' : 'this feature'} carry no <code>@exposes</code>, <code>@flows</code> or <code>@mitigates</code>. The project's own diagrams are not shown on a slice; regenerate without <code>--feature</code> to see them.`
+        : 'No diagram data — add @exposes, @flows, or @mitigates annotations.'}</p>
     </div>`;
   }
 
   return `
 <div id="sec-diagrams" class="section-content">
-  <div class="sec-h"><span class="sec-icon">◉</span> Diagrams</div>
+  <div class="sec-h"><span class="sec-icon">◉</span> Diagrams${scope ? ` <span class="scope-tag">feature ${esc(scopeLabel(scope))}</span>` : ''}</div>
   <p class="diagram-hint">Interactive diagrams generated from annotations. Scroll to zoom, drag to pan, double-click to reset the view.</p>
+${scope ? `  <p class="scope-note">These are <strong>narrowed</strong> diagrams: the edges are this feature's relations, and the nodes are the assets, threats and controls those relations reference. A node the feature never touches is absent — an absent node does not mean the project lacks it. The same narrowed graph is written to <code>.guardlink/graph/by-feature/</code>.</p>` : ''}
   <div class="diagram-tabs">
     ${tabs.map((t, i) => `<button class="diagram-tab${i === 0 ? ' active' : ''}" onclick="switchDiagramTab('${t.id}', this)">${t.icon} ${t.label}</button>`).join('')}
   </div>
@@ -1329,15 +1378,33 @@ ${diagramActions}
 </div>`;
 }
 
-function renderCodePage(fileAnnotations: FileAnnotationGroup[], model: ThreatModel): string {
+/**
+ * Code browser, and the two project-wide measures a feature slice must not show.
+ *
+ * File coverage is a property of the REPOSITORY — annotated files over source
+ * files. Rendered on a slice it was the loudest wrong number on the page:
+ * `guardlink dashboard . --feature "Dashboard"` printed the project's "1 of 22
+ * files have GuardLink annotations" behind a red 5% bar, under a heading every
+ * other number on the page had scoped to one feature, above a list of 21
+ * unannotated files that had nothing to do with it.
+ *
+ * Scoping the measure does not rescue it. A feature's own files over themselves
+ * is 100% by construction, and an empty `unannotated_files` would fire the
+ * "✓ All source files have annotations" branch — a green all-clear asserting
+ * something no slice can know. Both are withheld and named as withheld, with
+ * the command that does answer them.
+ */
+function renderCodePage(fileAnnotations: FileAnnotationGroup[], model: ThreatModel, scope: string[] | null, scopeFiles: number): string {
   const unannotated = model.unannotated_files || [];
   const annotatedCount = model.annotated_files?.length || fileAnnotations.length;
   const totalFiles = annotatedCount + unannotated.length;
   return `
 <div id="sec-code" class="section-content">
-  <div class="sec-h"><span class="sec-icon">&lt;/&gt;</span> Code &amp; Annotations</div>
+  <div class="sec-h"><span class="sec-icon">&lt;/&gt;</span> Code &amp; Annotations${scope ? ` <span class="scope-tag">feature ${esc(scopeLabel(scope))}</span>` : ''}</div>
   <p style="color:var(--muted);font-size:.78rem;margin-bottom:.8rem">
-    Every file with GuardLink annotations. Click any annotation to see details.
+    ${scope
+      ? `Files tagged ${esc(scopeLabel(scope))}, plus the definition file(s) holding the assets, threats and controls they reference. Click any annotation to see details.`
+      : 'Every file with GuardLink annotations. Click any annotation to see details.'}
   </p>
   ${fileAnnotations.length > 0 ? fileAnnotations.map((f, fi) => `
   <div class="file-card" data-ff="${esc(f.file)}">
@@ -1362,8 +1429,22 @@ function renderCodePage(fileAnnotations: FileAnnotationGroup[], model: ThreatMod
         ).join('')}</div>` : ''}
       </div>`).join('')}
     </div>
-  </div>`).join('') : '<p class="empty-state">No annotations found.</p>'}
+  </div>`).join('') : `<p class="empty-state">${scope ? `No annotations in the files tagged ${esc(scopeLabel(scope))}.` : 'No annotations found.'}</p>`}
 
+  ${scope ? `
+  <!-- File coverage and the unannotated list measure the repository; a slice
+       cannot answer either. See the note above renderCodePage. -->
+  <div class="sub-h" style="margin-top:1.5rem">Files in this slice</div>
+  <div style="display:flex;align-items:center;gap:.8rem;margin-bottom:.3rem">
+    <span style="font-size:.88rem;font-weight:600">${scopeFiles} tagged file(s)</span>
+    <span style="color:var(--muted);font-size:.82rem">carry ${esc(scopeLabel(scope))}${fileAnnotations.length > scopeFiles ? ` — ${fileAnnotations.length - scopeFiles} further file(s) appear above because this feature references definitions declared in them` : ''}</span>
+  </div>
+  <p style="color:var(--muted);font-size:.78rem;margin-top:.5rem">
+    <strong>Project file coverage and the unannotated-file list are not shown on a feature slice.</strong>
+    Both measure the repository — how much of it is annotated at all — and a slice has no view of the files outside it.
+    Run <code>guardlink dashboard .</code> without <code>--feature</code>, or <code>guardlink status .</code>, for those numbers.
+  </p>
+  ` : `
   <!-- File Coverage Summary -->
   <div class="sub-h" style="margin-top:1.5rem">File Coverage</div>
   <div style="display:flex;align-items:center;gap:.8rem;margin-bottom:.3rem">
@@ -1380,13 +1461,14 @@ function renderCodePage(fileAnnotations: FileAnnotationGroup[], model: ThreatMod
   <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:1rem">
     ${unannotated.map(f => `<div style="font-family:var(--font-mono);font-size:.78rem;padding:.3rem .6rem;background:var(--surface2);border-left:3px solid var(--yellow);border-radius:2px">${esc(f)}</div>`).join('')}
   </div>` : `<p style="color:var(--green);font-size:.82rem;margin-top:.5rem">✓ All source files have annotations.</p>`}
+  `}
 </div>`;
 }
 
-function renderDataPage(model: ThreatModel): string {
+function renderDataPage(model: ThreatModel, scope: string[] | null): string {
   return `
 <div id="sec-data" class="section-content">
-  <div class="sec-h"><span class="sec-icon">🔒</span> Data &amp; Boundaries</div>
+  <div class="sec-h"><span class="sec-icon">🔒</span> Data &amp; Boundaries${scope ? ` <span class="scope-tag">feature ${esc(scopeLabel(scope))}</span>` : ''}</div>
 
   ${model.boundaries.length > 0 ? `
   <div class="sub-h">Trust Boundaries</div>
@@ -1528,15 +1610,17 @@ function renderDataPage(model: ThreatModel): string {
     && model.validations.length === 0 && model.ownership.length === 0 && model.audits.length === 0
     && model.assumptions.length === 0 && model.shields.length === 0
     && (model.entitlements || []).length === 0
-    ? '<p class="empty-state">No data classifications, trust boundaries, or lifecycle annotations found.</p>' : ''}
+    ? `<p class="empty-state">${scope
+        ? `No trust boundaries, data classifications or lifecycle annotations in the files tagged ${esc(scopeLabel(scope))}. The project may declare them elsewhere — this slice does not show them.`
+        : 'No data classifications, trust boundaries, or lifecycle annotations found.'}</p>` : ''}
 </div>`;
 }
 
-function renderAssetsPage(heatmap: AssetHeatmapEntry[]): string {
+function renderAssetsPage(heatmap: AssetHeatmapEntry[], scope: string[] | null): string {
   return `
 <div id="sec-assets" class="section-content">
-  <div class="sec-h"><span class="sec-icon">🗺</span> Asset Risk Heatmap</div>
-  <p style="color:var(--muted);font-size:.78rem;margin-bottom:.8rem">Assets sorted by risk level. Unmitigated exposures increase risk. Click an asset for details.</p>
+  <div class="sec-h"><span class="sec-icon">🗺</span> Asset Risk Heatmap${scope ? ` <span class="scope-tag">feature ${esc(scopeLabel(scope))}</span>` : ''}</div>
+  <p style="color:var(--muted);font-size:.78rem;margin-bottom:.8rem">Assets sorted by risk level. Unmitigated exposures increase risk. Click an asset for details.${scope ? ` Only assets ${esc(scopeLabel(scope))} touches appear, and each tile counts only that feature's exposures, mitigations and flows — an asset shown here as low-risk may carry open threats elsewhere in the project.` : ''}</p>
   ${heatmap.length > 0 ? `
   <div class="heatmap">
     ${heatmap.map((a, i) => `
@@ -1549,7 +1633,7 @@ function renderAssetsPage(heatmap: AssetHeatmapEntry[]): string {
       </div>
       ${a.dataHandling.length > 0 ? `<div class="heatmap-data">${a.dataHandling.map(d => `<span class="data-badge">${esc(d)}</span>`).join('')}</div>` : ''}
     </div>`).join('')}
-  </div>` : '<p class="empty-state">No assets found.</p>'}
+  </div>` : `<p class="empty-state">${scope ? `No assets are referenced by the files tagged ${esc(scopeLabel(scope))}.` : 'No assets found.'}</p>`}
 </div>`;
 }
 
@@ -1646,6 +1730,38 @@ function buildAnalysisData(model: ThreatModel, exposures: ExposureRow[]) {
 
 function esc(s: string): string {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
+ * The feature names this model was narrowed to, or null for a whole project.
+ *
+ * `filtered_by_features` is set by `filterByFeature` and is absent on every
+ * unfiltered model — including models produced before the field existed. It is
+ * therefore read structurally and validated rather than trusted: anything that
+ * is not a non-empty array of non-empty strings means "not a slice", and the
+ * page renders exactly as it always has.
+ *
+ * @flows ThreatModel -> #dashboard via featureScope -- "Reads the narrowing marker that decides whether the page declares itself partial"
+ * @comment -- "Typed structurally so the dashboard compiles whether or not ThreatModel declares the optional field yet"
+ */
+function featureScope(model: ThreatModel): string[] | null {
+  const raw = (model as ThreatModel & { filtered_by_features?: unknown }).filtered_by_features;
+  if (!Array.isArray(raw)) return null;
+  const names = raw.filter((n): n is string => typeof n === 'string' && n.trim().length > 0);
+  return names.length > 0 ? names : null;
+}
+
+/**
+ * Feature names for prose, quoted and comma-joined.
+ *
+ * The result is HTML-escaped at every use site — feature names come from
+ * `@feature` annotations in source and from the `--feature` flag, so they are
+ * model data like any other and must not reach the page unencoded.
+ *
+ * @mitigates #dashboard against #xss using #output-encoding -- "Caller passes the result through esc() before interpolation"
+ */
+function scopeLabel(scope: string[]): string {
+  return scope.map(f => `"${f}"`).join(', ');
 }
 
 function statCard(value: number, label: string, variant = ''): string {
@@ -1968,8 +2084,51 @@ code {
 }
 .feature-banner-clear:hover { background: rgba(255,255,255,.28); }
 
+/* ── Generation-time scope (--feature) ── */
+.badge-scope {
+  background: var(--sev-med-bg);
+  color: var(--text);
+  border-color: color-mix(in oklab, var(--sev-med) 55%, transparent);
+  text-transform: none; letter-spacing: .2px; font-size: .68rem;
+}
+.scope-banner {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 9px 16px;
+  background: color-mix(in oklab, var(--sev-med) 22%, var(--surface));
+  border-bottom: 2px solid var(--sev-med);
+  font-size: .78rem; line-height: 1.45;
+  color: var(--text);
+}
+.scope-banner-tag {
+  flex: none;
+  background: var(--sev-med); color: #fff;
+  border-radius: 999px; padding: 2px 10px;
+  font-size: .64rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .6px;
+  white-space: nowrap;
+}
+.scope-banner code, .scope-note code { font-family: var(--font-mono); font-size: .92em; }
+.scope-note {
+  border-left: 3px solid var(--sev-med);
+  background: color-mix(in oklab, var(--sev-med) 10%, transparent);
+  padding: .5rem .7rem; margin-bottom: .8rem;
+  font-size: .78rem; line-height: 1.5; color: var(--muted);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.scope-tag {
+  display: inline-block; vertical-align: middle;
+  background: var(--sev-med-bg); color: var(--muted);
+  border: 1px solid color-mix(in oklab, var(--sev-med) 40%, transparent);
+  border-radius: 999px; padding: 1px 8px; margin-left: .4rem;
+  font-size: .62rem; font-weight: 600; letter-spacing: .3px;
+  text-transform: none;
+}
+
 /* ── Layout ── */
 .layout { display: flex; height: calc(100vh - 54px); position: relative; }
+/* The scope banner sits above .layout, so the viewport-height calculation has
+   to account for it or the page grows a second scrollbar. */
+body.scoped .layout { height: calc(100vh - 54px - 46px); }
 .sidebar {
   width: var(--sidebar-w); min-width: var(--sidebar-w);
   background: var(--surface);
