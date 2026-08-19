@@ -13,7 +13,7 @@ guardlink artifacts .
 | `threat-graph.mmd` | Assets, the threats they are exposed to, and the controls that mitigate them. |
 | `dataflow.mmd` | `@flows` between components, with trust boundaries. |
 | `attack-surface.mmd` | Entry points and what an attacker reaches from them. |
-| `by-feature/<name>.mmd` | The threat graph narrowed to one `@feature`. |
+| `by-feature/<name>.mmd` | The threat graph narrowed to one `@feature`. **Partial by construction** — a node it does not show is one that feature does not touch, not one the project lacks. Its `annotation_hash` is the whole project's, the state the view was cut from. |
 | `MANIFEST.json` | Per-artifact size and the annotation hash each was built from. |
 | `../model.json` | The whole parsed threat model, canonically ordered. |
 

@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v2:69d3feaf23e67dd0d5d86273517b07c34d91b9a61c038e0ebea8fc9f7b395f1c
+%% annotation_hash: sha256-v2:05e06e265ed77333a5e44246a4c2c616f8b8504891e5d143cb6e4f4492042e6b
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -35,6 +35,7 @@ graph LR
   dashboard["🔷 GuardLink.Dashboard [INTERNAL]"]
   init["🔷 GuardLink.Init [INTERNAL]"]
   suggest["🔷 GuardLink.Suggest"]
+  report["🔷 GuardLink.Report"]
   merge_engine["🔷 Workspace.Merge"]
   workspace_config["🔷 Workspace.Config"]
   api_key_exposure["🟠 API_Key_Exposure (cwe:CWE-798)"]:::threat
@@ -162,6 +163,7 @@ graph LR
   resource_limits -. protects .-> parser
   prefix_ownership -- mitigates --> tag_collision
   prefix_ownership -. protects .-> parser
+  output_encoding -. protects .-> report
   config_validation -- mitigates --> insecure_deser
   config_validation -. protects .-> cli
   resource_limits -- mitigates --> insecure_deser
