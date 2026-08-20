@@ -73,7 +73,7 @@ describe('generateSarif — codegraph_reachability from @flows', () => {
 });
 
 /**
- * Threat-id minting (docs/prd/threat-id-design.md §3 + §5). Stability is the contract downstream
+ * Threat-id minting. Stability is the contract downstream
  * tools depend on, so these tests pin exactly what does and does not move the id.
  */
 describe('generateSarif — threat id (partialFingerprints + properties.threatId)', () => {

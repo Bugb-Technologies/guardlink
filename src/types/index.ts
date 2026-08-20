@@ -583,7 +583,6 @@ export interface CoverageStats {
  *
  * Deleting the `'fatal'` member instead is a legitimate resolution — it
  * has never been used, and a tier no consumer can receive is not a tier.
- * See docs/prd/BACKLOG.md.
  */
 /**
  * Machine-readable diagnostic kinds.
