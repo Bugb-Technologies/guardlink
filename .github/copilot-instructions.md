@@ -42,17 +42,21 @@ both is a mixed repo, and that is the failure this section exists to prevent.
 ### What you owe it back
 
 **When you write or change code that touches security-relevant behavior, add the annotations in
-the same change.** This includes: new endpoints, authentication/authorization logic, data validation, database queries, file I/O, external API calls, crypto operations, process spawning, user input handling, and configuration parsing. Do NOT annotate pure business logic, formatting utilities, UI components, or helper functions that never touch security boundaries.
+the same change.** This includes: new endpoints, authentication/authorization logic, data validation, database queries, file I/O, external API calls, crypto operations, process spawning, user input handling, and configuration parsing. Do NOT annotate code that never touches a security boundary — formatters, UI components, pure helpers. Business logic that makes an authorization or ownership decision **is** in scope: an IDOR or a missing tenant check lives in business logic, not in the parsing layer.
 
 ### Key Rules
 
 1. **Annotate new code.** When you add a function, endpoint, or module that handles user input, accesses data, crosses a trust boundary, or could fail in a security-relevant way — add `@exposes`, `@mitigates`, `@flows`, `@handles`, or at minimum `@comment` annotations. This is not optional.
 2. **NEVER write `@accepts`.** That is a human-only governance decision. When you find a risk with no mitigation in code, write `@exposes` to document the risk + `@audit` to flag it for human review + `@comment` to suggest potential controls.
-3. **Use `@confirmed` for verified exploits.** When a pentest, CXG scan, or manual reproduction proves a threat is exploitable, mark it with `@confirmed #threat on Asset [severity] -- "evidence"`. This is distinct from `@exposes` (theoretical) — `@confirmed` means real, verified, not a false positive. Include severity based on actual observed impact.
+3. **Use `@confirmed` for verified exploits.** When a pentest, CXG scan, or manual reproduction proves a threat is exploitable, mark it with `@confirmed #threat on Asset [severity] -- "evidence"`. This is distinct from `@exposes` (theoretical) — `@confirmed` means real, verified, not a false positive. Include severity based on actual observed impact. **Without that evidence in hand, `@exposes` stands and you do not promote it** — reading the code is not reproduction. To get evidence, `bugb intake "<brief>"` turns a description into a test plan and prints a PLAN_ID; an operator approves it, never you.
 4. Do not delete or mangle existing annotations. Treat them as part of the code. Edit only when intentionally changing the threat model.
 5. Definitions (`@asset`, `@threat`, `@control` with `(#id)`) live in `.guardlink/definitions.ts`. Reuse existing `#id`s — never redefine. If you need a new asset or threat, add the definition there first, then reference it in source files.
-6. Source files use relationship verbs only: `@mitigates`, `@exposes`, `@confirmed`, `@flows`, `@handles`, `@boundary`, `@comment`, `@validates`, `@audit`, `@owns`, `@assumes`, `@transfers`, `@feature`. (`@actor` is a definition — it belongs in the definitions file with `@asset`/`@threat`/`@control`. `@entitles` is proposed, not written — see rule 9.)
-7. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note. Never write a lone `@exposes` without follow-up.
+6. Source files use relationship verbs only: `@mitigates`, `@exposes`, `@confirmed`, `@flows`, `@handles`, `@boundary`, `@comment`, `@validates`, `@audit`, `@owns`, `@assumes`, `@transfers`, `@feature`. (`@actor` is a definition — it belongs in the definitions file with `@asset`/`@threat`/`@control`. `@entitles` is proposed, not written — see rule 9.) Four of those are permitted everywhere and written almost nowhere, because nothing tells you *when*. Their triggers:
+   - **You wrote or changed a test that pins a control** → `@validates #control for Asset -- "what the test proves"`, on the test. Control first, asset second, joined by `for`.
+   - **The code trusts a caller, library, or platform to hold a property it never checks itself** → `@assumes Asset -- "what must hold, and what breaks if it does not"`. One asset, and the whole assumption lives in the description.
+   - **Responsibility for a threat lands on a vendor, an upstream service, or another team's component** → `@transfers #threat from Source to Target`. Both ends must be assets that already exist in the definitions file — a vendor needs an `External.*` asset declared first, and a bare company name will not parse.
+   - **You know the team accountable for an asset** → `@owns team-id for Asset`. The owner is a bare token: `platform-security` parses, `"Platform Security"` and `#platform-security` do not. If you do not know the team, skip it rather than guessing.
+7. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note — plus `@boundary` when that flow crosses a trust change, and `@handles` when the asset touches classified data. Never write a lone `@exposes` without follow-up.
 8. Avoid `@shield` unless a human explicitly asks to hide code from AI — it creates blind spots.
 9. **NEVER write `@entitles` into source — propose it.** `@entitles` says a privilege is *supposed* to have this effect, so an over-grant closes a real privilege escalation as by-design. That makes it the second claim you may not make on a human's behalf, alongside `@accepts`. File it with `guardlink entitle --propose` (or `guardlink_entitlement_propose`) and a human's acceptance is what writes the annotation, under their name; an `@entitles` in source with no accepted proposal is a validation error. The rationale must cite the authz code as `file:line` or the claim is inert — parsed and then ignored. It never suppresses a finding and never gates testing; it only changes what triage recommends. Never propose one for an ownership question (IDOR, tenant isolation) — both peers hold the capability, so it cannot say whose object it was. When unsure which role the code actually requires, write `@comment` describing what you saw instead: under-granting costs noise, over-granting hides a real bug.
 
@@ -86,7 +90,8 @@ the same change.** This includes: new endpoints, authentication/authorization lo
 @boundary between #api and #db (#data-boundary) -- "App → DB trust change"
 @handles pii on App.API -- "Processes email and session token"
 @validates #prepared-stmts for App.API -- "sqlInjectionTest.ts ensures placeholders used"
-@audit App.API -- "Token rotation logic needs crypto review"
+@assumes App.API -- "Caller has already authenticated; this function never re-checks the session"
+@transfers #ddos from App.API to External.Cloudflare -- "Rate limiting lives at the edge, not in app code"
 @confirmed #sqli on App.API [critical] cwe:CWE-89 -- "Pentest verified: raw SQL injection via email param"
 @feature "SSO Login" -- "Single sign-on authentication flow"
 @owns security-team for App.API -- "Team responsible for reviews"
