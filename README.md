@@ -8,11 +8,18 @@
 [![Node.js 18+](https://img.shields.io/badge/node-18%2B-green.svg)](https://nodejs.org)
 [![Spec: CC-BY-4.0](https://img.shields.io/badge/spec-CC--BY--4.0-orange.svg)](docs/SPEC.md)
 
+**[Documentation](https://docs.bugb.io/guardlink/)** ·
+[Install](https://docs.bugb.io/guardlink/get-started/installation/) ·
+[GAL reference](https://docs.bugb.io/guardlink/reference/gal/) ·
+[CLI reference](https://docs.bugb.io/guardlink/reference/cli/) ·
+[Specification](docs/SPEC.md)
+
 </div>
 
 **Security annotations that live in your code. Your threat model updates when your code changes.**
 
-> **This repository is secured by GuardLink.** Run `guardlink status .` to see 272 annotations across 12 assets, 13 threats, and 10 controls — maintained by AI agents, validated in CI.
+> **This repository is secured by GuardLink.** Its own threat model is maintained
+> by AI agents and validated in CI. Run `guardlink status .` in a clone to read it.
 
 ```javascript
 // @asset PaymentService (#payments) -- "Handles card transactions"
@@ -37,65 +44,64 @@ app.get('/receipts/:id', async (req, res) => {
 npm install -g guardlink
 ```
 
-Requires Node.js 18+.
+Requires Node.js 18+. To install from a clone: `npm run build && npm link`.
 
-### Manual Installation
-
-To install from source:
+## Quick start
 
 ```bash
-# 1. Build the project
-npm run build
-
-# 2. Link globally
-npm link
+guardlink init            # definitions, config, and agent integration
+guardlink annotate        # launch your coding agent to add annotations
+guardlink validate .      # syntax errors, dangling refs, duplicate ids
+guardlink status .        # what the model now holds
 ```
 
-To uninstall: `npm unlink -g guardlink`
+`status` on this repository:
 
-## Quick Start
-
-```bash
-# Initialize in your project (detects your AI agent automatically)
-guardlink init
-
-# Let AI annotate your project - Launch a coding agent to add annotations
-guardlink annotate [prompt] [--mode inline|external]
-
-# Let your AI coding agent annotate, or write annotations manually
-# Then validate
-guardlink validate .
-
-# See your security posture
-guardlink status .
+```text
+GuardLink Status: guardlink
+────────────────────────────────────────
+Files scanned:    87
+  Files annotated:    66
+  Files unannotated:  21
+Annotations:      441
+────────────────────────────────────────
+Assets:           16
+Threats:          15
+Controls:         12
+Actors:           3
+Mitigations:      68
+Exposures:        80
 ```
 
-```
-Assets:        3    Mitigations:  4
-Threats:       8    Exposures:    6  (3 unmitigated)
-Controls:      5    Coverage:     62%
-```
+Truncated. The block continues with acceptances, entitlements, transfers, flows,
+boundaries, validations, audits, ownership, data handling, assumptions,
+features, comments, and shields. Every number moves as the code does.
 
-```bash
-# Generate a full threat model report
-guardlink report .
+From there, [Annotate an existing codebase](https://docs.bugb.io/guardlink/guides/annotate-an-existing-codebase/)
+is the walkthrough.
 
-# Interactive HTML dashboard
-guardlink dashboard .
+## Documentation
 
-# AI threat analysis (STRIDE, DREAD, PASTA, etc.)
-guardlink threat-report stride --claude-code
+Full documentation is at **<https://docs.bugb.io/guardlink/>**. The reference
+sections there are generated against the released package and every command is
+verified by running it, which is why they are not duplicated here.
 
-# Interactive TUI with slash commands
-guardlink
-```
+| | |
+| --- | --- |
+| Install GuardLink | <https://docs.bugb.io/guardlink/get-started/installation/> |
+| Annotate an existing codebase | <https://docs.bugb.io/guardlink/guides/annotate-an-existing-codebase/> |
+| Wire up the MCP server | <https://docs.bugb.io/guardlink/guides/wire-up-the-mcp-server/> |
+| Review and accept risk | <https://docs.bugb.io/guardlink/guides/review-and-accept-risk/> |
+| Link repositories into a workspace | <https://docs.bugb.io/guardlink/guides/link-repositories-into-a-workspace/> |
+| Use GuardLink as a library | <https://docs.bugb.io/guardlink/guides/use-guardlink-as-a-library/> |
+| Every GAL verb | <https://docs.bugb.io/guardlink/reference/gal/> |
+| Every command and flag | <https://docs.bugb.io/guardlink/reference/cli/> |
+| Every MCP tool | <https://docs.bugb.io/guardlink/reference/mcp/> |
+| Library API | <https://docs.bugb.io/guardlink/reference/api/> |
 
----
-
-## DEMO video
+## Demo
 
 [![Watch the video](https://img.youtube.com/vi/a8wq7dAYtto/0.jpg)](https://www.youtube.com/watch?v=a8wq7dAYtto)
-
 
 ---
 
@@ -109,7 +115,7 @@ GuardLink fixes this at three levels:
 
 **2. AI agents maintain it.** GuardLink integrates with AI coding agents through MCP and behavioral directives. When your agent writes a route handler, it adds `@exposes` and `@mitigates` annotations automatically. The threat model maintains itself because the thing writing the code also writes the security context.
 
-**3. CI enforces it.** `guardlink validate` fails on syntax errors. `guardlink diff --fail-on-new` blocks PRs that introduce unmitigated exposures. `guardlink sarif` exports to GitHub's Security tab. The threat model becomes a quality gate, not a checkbox.
+**3. CI enforces it.** `guardlink validate` fails on syntax errors. `guardlink ci --strict` fails on unmitigated exposures and drifted anchors. `guardlink diff --fail-on-new` blocks PRs that introduce new unmitigated exposures. `guardlink sarif` exports to GitHub's Security tab. The threat model becomes a quality gate, not a checkbox.
 
 ```
 Developer writes code
@@ -123,21 +129,28 @@ Team reviews security posture in the diff
 Threat model is always current, always enforced
 ```
 
+Ready-made workflows are in [`examples/`](examples/): a single-repo GitHub Action
+and a two-workflow multi-repo setup with its own
+[step-by-step guide](examples/ci/README.md).
+
 ---
 
-## AI Agent Integration
-
-GuardLink ships an MCP server and behavioral directives for AI coding agents. After `guardlink init`, your agent treats security annotations like type safety — adding them by default when writing security-relevant code.
+## AI agent integration
 
 `guardlink init` detects your agent and configures two things:
 
-**MCP server** — tools to read the threat model, validate annotations, suggest annotations, and query threats by keyword. The agent can ask "what threats affect #api?" before writing code that touches the API.
+**MCP server.** Tools to read the threat model, validate annotations, suggest
+annotations, and query threats by keyword. The agent can ask "what threats affect
+#api?" before writing code that touches the API. Writing an `@accepts` or an
+`@entitles` is deliberately not among them: those are decisions a person makes
+under their own name.
 
-**Behavioral directive** — a rule injected into your agent's instruction file (CLAUDE.md, .cursorrules, etc.) that says: *when writing code that handles routes, auth, database access, file I/O, or external services, add GuardLink annotations.*
+**Behavioral directive.** A rule injected into your agent's instruction file
+(CLAUDE.md, .cursorrules, and the rest) that says: *when writing code that
+handles routes, auth, database access, file I/O, or external services, add
+GuardLink annotations.*
 
-### Supported Agents
-
-| Agent | Config File | MCP Support |
+| Agent | Config file | MCP support |
 |-------|------------|-------------|
 | Claude Code | `CLAUDE.md` + `.mcp.json` | ✅ Full |
 | Cursor | `.cursorrules` + `.cursor/mcp.json` | ✅ Full |
@@ -146,261 +159,12 @@ GuardLink ships an MCP server and behavioral directives for AI coding agents. Af
 | Codex | `AGENTS.md` | Directive only |
 | GitHub Copilot | `.github/copilot-instructions.md` | Directive only |
 
-### MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `guardlink_parse` | Full threat model as JSON |
-| `guardlink_validate` | Check for errors and dangling references |
-| `guardlink_status` | Coverage summary |
-| `guardlink_suggest` | Suggest annotations for a code snippet |
-| `guardlink_lookup` | Query threats, controls, flows by keyword |
-| `guardlink_threat_report` | AI threat report (STRIDE, DREAD, etc.) |
-| `guardlink_annotate` | Build annotation prompt for the agent, with inline or `.gal` mode |
-| `guardlink_report` | Generate markdown report |
-| `guardlink_dashboard` | Generate HTML dashboard |
-| `guardlink_sarif` | Export SARIF 2.1.0 |
-| `guardlink_diff` | Compare threat model against a git ref |
-| `guardlink_workspace_info` | Workspace config, sibling repos, tag prefixes for cross-repo annotations |
-
-**Resources:** `guardlink://model`, `guardlink://definitions`, `guardlink://config`
+Every tool the server exposes, with its input schema, is at
+[docs.bugb.io/guardlink/reference/mcp/](https://docs.bugb.io/guardlink/reference/mcp/).
 
 ---
 
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `guardlink init [dir]` | Initialize project with definitions, config, and agent integration |
-| `guardlink annotate [prompt] [--mode inline\|external]` | Launch a coding agent to add inline annotations or associated `.gal` files |
-| `guardlink parse [dir]` | Parse all annotations, output ThreatModel JSON |
-| `guardlink status [dir]` | Coverage summary: assets, threats, mitigations, exposures |
-| `guardlink validate [dir]` | Check for syntax errors, dangling refs, duplicate IDs |
-| `guardlink validate --strict` | Also fail on unmitigated exposures |
-| `guardlink scan [dir]` | Find unannotated security-relevant functions |
-| `guardlink report [dir]` | Markdown threat model with Mermaid architecture diagram |
-| `guardlink dashboard [dir]` | Interactive HTML threat model dashboard |
-| `guardlink diff --from <ref>` | Compare threat models between git refs |
-| `guardlink diff --fail-on-new` | Exit 1 if new unmitigated exposures found |
-| `guardlink sarif [dir]` | Export unmitigated exposures as SARIF 2.1.0 |
-| `guardlink threat-report [fw]` | AI threat report (stride/dread/pasta/attacker/rapid/general) |
-| `guardlink threat-reports` | List saved AI threat reports |
-| `guardlink translate [prompt]` | Generate CERT-X-GEN pentest templates from threat model findings |
-| `guardlink ask <query>` | Ask a natural-language question about the threat model and codebase |
-| `guardlink review [dir]` | Interactive governance review — accept, remediate, or skip unmitigated exposures |
-| `guardlink review --list` | List reviewable exposures without prompting |
-| `guardlink entitle [dir]` | Review proposed `@entitles` claims — accept (writes the annotation, under your name), reject, or defer |
-| `guardlink entitle --propose` | File an entitlement proposal into `.guardlink/entitlement-proposals.json`; writes nothing to source |
-| `guardlink entitle --list` | List entitlement proposals and the decisions taken on them |
-| `guardlink clear [dir]` | Remove all annotations from source files (with `--dry-run` preview) |
-| `guardlink sync [dir]` | Sync agent instruction files with current threat model |
-| `guardlink unannotated [dir]` | List source files with no annotations |
-| `guardlink link-project <repos...>` | Link repos into a shared workspace for cross-repo threat modeling |
-| `guardlink link-project --add <repo>` | Add a repo to an existing workspace |
-| `guardlink link-project --remove <name>` | Remove a repo from a workspace |
-| `guardlink merge <files...>` | Merge per-repo report JSONs into a unified workspace dashboard |
-| `guardlink report --format json` | Generate report JSON with metadata (repo, workspace, commit SHA) |
-| `guardlink config` | Set AI provider and API key |
-| `guardlink mcp` | Start MCP server for AI agent integration |
-
----
-
-## Annotation Reference
-
-GuardLink annotations can live in source comments in any language or in standalone `.gal` files. The parser supports `//`, `#`, `--`, `/* */`, `""" """`, and 25+ comment styles for inline annotations, plus raw GAL lines for externalized files.
-
-> In standalone `.gal` files, drop the host-language comment prefix. `// @exposes ...` becomes `@exposes ...`. Keep definitions in `.guardlink/definitions.*`; use `.gal` files for externalized relationship annotations. Use `@source file:<path> line:<n> [symbol:<name>]` to point the following annotations at the real code location.
-
-### Definitions (shared, in `.guardlink/definitions.js`)
-
-```javascript
-// @asset App.API (#api) -- "Express REST API serving mobile and web clients"
-// @threat SQL_Injection (#sqli) [critical] cwe:CWE-89 -- "Unsanitized input reaches SQL query"
-// @control Parameterized_Queries (#prepared-stmts) -- "All queries use bound parameters"
-```
-
-### Relationships (in source files, next to the code)
-
-```python
-# @mitigates #api against #sqli using #prepared-stmts -- "All queries parameterized"
-# @exposes #api to #xss [P1] cwe:CWE-79 -- "User bio rendered without escaping"
-# @accepts #info-disclosure on #api -- "Health endpoint is intentionally public"
-# @transfers #sqli from #api to #database -- "DB handles untrusted input"
-```
-
-### Externalized relationships (in `.gal` files)
-
-```text
-@source file:src/auth/login.ts line:42 symbol:authenticate
-@exposes #api to #xss [P1] cwe:CWE-79 -- "User bio rendered without escaping"
-@audit #api -- "Review sanitization before release"
-@comment -- "Same GAL syntax as inline comments, but without // or # prefixes"
-```
-
-### Data Flow & Architecture
-
-```go
-// @flow #api -> #database via "PostgreSQL wire protocol"
-// @boundary #api <-> #cdn -- "TLS termination point"
-// @handles pii on #api -- "Processes user email and address"
-// @handles secrets on #auth -- "Manages JWT signing keys"
-```
-
-### Operational
-
-```rust
-// @audit #api by "PenTest Corp" on 2025-03-15 -- "Annual penetration test"
-// @validates #input-validation on #api using "Jest integration tests"
-// @assumes #api -- "Rate limiting handled by API gateway"
-// @owns #api by "backend-team"
-```
-
-### Entitlement
-
-Answers "is the caller already allowed to do this?" — the question that makes a
-finding *by design* rather than a vulnerability. It never hides a finding and never
-gates testing; without a `file:line` citation to the authorization code it is inert.
-
-```go
-// @actor Namespace_Admin (#ns-admin) -- "Administers one namespace's configuration"
-// @entitles #ns-admin to configure-archival-destination on #archival-fs against #path-traversal
-//     -- "By design: the archival URI is namespace config. Authz: common/api/metadata.go:189"
-```
-
-### All Annotation Types
-
-| Verb | Purpose | Example |
-|------|---------|---------|
-| `@asset` | Define a component | `@asset UserService (#users)` |
-| `@threat` | Define a threat | `@threat XSS (#xss) [high] cwe:CWE-79` |
-| `@control` | Define a security control | `@control WAF (#waf)` |
-| `@actor` | Define a principal in the authz model (a role) | `@actor Namespace_Admin (#ns-admin)` |
-| `@mitigates` | Control protects asset against threat | `@mitigates #api against #sqli using #prepared-stmts` |
-| `@exposes` | Asset vulnerable to threat | `@exposes #api to #xss [P1]` |
-| `@confirmed` | Threat verified exploitable (pentest/scan) | `@confirmed #sqli on #api [critical] -- "Verified in pen test"` |
-| `@feature` | Tag code with a product feature name | `@feature "SSO Login" -- "Single sign-on authentication flow"` |
-| `@accepts` | Risk acknowledged | `@accepts #dos on #api -- "By design"` |
-| `@transfers` | Risk moved between assets | `@transfers #sqli from #api to #db` |
-| `@entitles` | Capability an actor holds **by design** (must cite the authz code; never suppresses a finding) | `@entitles #ns-admin to configure-archival on #fs against #path-traversal -- "Authz: api/metadata.go:189"` |
-| `@flow` | Data flow between assets | `@flow #api -> #db via "SQL"` |
-| `@boundary` | Trust boundary | `@boundary #api <-> #external` |
-| `@handles` | Data classification | `@handles pii on #users` |
-| `@audit` | Security audit record | `@audit #api by "Firm" on 2025-01-01` |
-| `@validates` | Control verification | `@validates #auth on #api using "tests"` |
-| `@assumes` | Security assumption | `@assumes #api -- "Behind VPN"` |
-| `@owns` | Component ownership | `@owns #api by "team-backend"` |
-| `@shield` | AI exclusion zone | `@shield #api requires #auth-check` |
-
-Severity: `[critical]`/`[P0]`, `[high]`/`[P1]`, `[medium]`/`[P2]`, `[low]`/`[P3]`. External refs: `cwe:CWE-89`, `capec:CAPEC-66`, `owasp:A03`.
-
----
-
-## CI Integration
-
-### GitHub Actions
-
-```yaml
-name: GuardLink
-on: [pull_request]
-
-jobs:
-  guardlink:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-
-      - uses: actions/setup-node@v4
-        with: { node-version: '20' }
-
-      - run: npm install -g guardlink
-
-      - name: Validate annotations
-        run: guardlink validate .
-
-      - name: Threat model diff
-        run: guardlink diff --from origin/main --to HEAD
-
-      - name: Export SARIF
-        run: guardlink sarif . -o guardlink.sarif
-
-      - uses: github/codeql-action/upload-sarif@v3
-        with: { sarif_file: guardlink.sarif }
-```
-
-See [`examples/github-action.yml`](examples/github-action.yml) for a full example with PR comments and SARIF upload.
-
-### Multi-Repo CI
-
-For workspace setups, GuardLink provides two additional workflow templates: a per-repo workflow that generates report JSON artifacts on every push, and a workspace merge workflow that runs weekly to combine all repos into a unified dashboard. See the [CI setup guide](examples/ci/README.md) for step-by-step instructions.
-
-### What CI Catches
-
-- **New route, no annotations:** `guardlink diff` shows "+1 endpoint, 0 mitigations" — the team sees the gap.
-- **Agent annotated properly:** diff shows "+1 asset, +2 mitigations, +1 exposure (IDOR)" — team reviews.
-- **Control removed:** diff shows "-1 mitigation, +1 unmitigated exposure" — `--fail-on-new` blocks the PR.
-
-### SARIF
-
-`guardlink sarif` exports unmitigated exposures and `@confirmed` findings as SARIF 2.1.0. Upload to GitHub Advanced Security: unmitigated `@exposes` appear as warnings or errors by severity; `@confirmed` exploitable findings appear as errors.
-
-### Pentest Integration
-
-GuardLink bridges threat modeling and penetration testing in both directions.
-
-**From threat model to pentest templates** — `guardlink translate` reads your `@exposes` annotations and generates CERT-X-GEN (CXG) pentest template stubs targeting the specific threats you've documented. Run it with any agent backend:
-
-```bash
-guardlink translate --claude-code
-guardlink translate "focus on injection paths" --clipboard
-```
-
-**From pentest results back to the threat model** — Drop CXG scan result JSON files into `.guardlink/pentest-findings/`. GuardLink reads them automatically and:
-- Injects findings as empirical evidence in `guardlink threat-report` and AI analyses
-- Teaches agents to cross-reference scan results against `@exposes` annotations
-
-**Marking verified findings** — When a pentest or scan proves a threat is exploitable, add `@confirmed` to close the loop:
-
-```typescript
-// @confirmed #sqli on App.API [critical] cwe:CWE-89 -- "CXG scan 2026-04: time-based blind SQLi on /login confirmed"
-```
-
-`@confirmed` is distinct from `@exposes` (hypothesis) — it means real, verified, not a false positive.
-
-**Handling evidence safely** — Pentest finding JSON files in `.guardlink/pentest-findings/` and generated templates in `.guardlink/cxg-templates/` often contain live tokens, JWTs, credential payloads, and other replay-enabling material captured from successful exploits. Before running scans against any system you care about, add these directories to your repository's ignore file. GuardLink also supports opt-in surgical redaction (`guardlink config set redact-evidence true`) for enterprise users whose compliance posture requires no cleartext credentials at rest. See [docs/handling-evidence.md](docs/handling-evidence.md) for the full operational guide.
-
----
-
-## Multi-Repo Workspaces
-
-In microservices architectures, a single repo only has part of the security picture. `PaymentService` is defined in `repo-payments`, exposed in `repo-gateway`, mitigated in `repo-auth-lib`. GuardLink workspaces link these repos so the threat model spans service boundaries.
-
-```bash
-# Link three repos into a workspace
-guardlink link-project ./payment-svc ./auth-lib ./api-gateway \
-  --workspace acme-platform
-
-# Each repo gets .guardlink/workspace.yaml + agent files updated with cross-repo context
-# Agents now know about sibling services and use tag prefixes like #payment-svc.refund
-
-# Generate per-repo JSON reports (in each repo or in CI)
-guardlink report --format json -o guardlink-report.json
-
-# Merge all reports into a unified dashboard
-guardlink merge payment-svc.json auth-lib.json api-gateway.json \
-  -o dashboard.html --json merged.json
-
-# Week-over-week diff for security leads
-guardlink merge *.json --diff-against last-week.json --json merged.json
-```
-
-Annotations reference sibling repos by tag prefix — `@flows #request from #api-gateway.router to #payment-svc.refund` — and these references resolve during merge. `guardlink validate` flags them as external refs locally, but they're expected and won't block CI.
-
-For automated weekly dashboards, see the [CI setup guide](examples/ci/README.md). Full workspace documentation: [docs/WORKSPACE.md](docs/WORKSPACE.md).
-
----
-
-## Real-World Results
+## Real-world results
 
 We tested GuardLink + Claude Code on [vuln-node.js-express.js-app](https://github.com/SirAppSec/vuln-node.js-express.js-app), a deliberately vulnerable Express.js application with 37 documented vulnerability types.
 
@@ -413,7 +177,7 @@ We tested GuardLink + Claude Code on [vuln-node.js-express.js-app](https://githu
 - Architecture: 8 assets, 3 data flows, Mermaid diagram with risk heat map
 - Cost: ~$0.50 in Haiku tokens
 
-A scanner gives you a list of findings. GuardLink gives you a threat model — assets, threats, controls, data flows, trust boundaries, and the relationships between them. Every exposure traceable to a line of code. Every mitigation documented next to the control it implements. And because it's all in code comments, it updates when the code changes.
+A scanner gives you a list of findings. GuardLink gives you a threat model: assets, threats, controls, data flows, trust boundaries, and the relationships between them. Every exposure traceable to a line of code. Every mitigation documented next to the control it implements. And because it's all in code comments, it updates when the code changes.
 
 ---
 
@@ -433,6 +197,10 @@ const diff = diffModels(oldModel, newModel);
 const sarif = generateSarif(model, '.');
 ```
 
+Seven entry points: `guardlink`, and `guardlink/{parser,init,report,diff,analyzer,mcp}`.
+Every exported symbol is documented at
+[docs.bugb.io/guardlink/reference/api/](https://docs.bugb.io/guardlink/reference/api/).
+
 ---
 
 ## Specification
@@ -443,7 +211,7 @@ Anyone can build conformant parsers, analyzers, or integrations. This CLI is the
 
 | Level | Name | Capabilities |
 |-------|------|-------------|
-| L1 | Parser | Parse all 16 annotation types, produce ThreatModel JSON |
+| L1 | Parser | Parse every annotation type in §3, produce ThreatModel JSON |
 | L2 | Analyzer | Coverage stats, unmitigated detection, dangling ref detection |
 | L3 | CI/CD | Threat model diffs, change classification, SARIF export |
 | L4 | AI-Integrated | MCP server, suggestion engine, agent behavioral directives |
@@ -454,7 +222,7 @@ This implementation is **Level 4** conformant.
 
 ## Heritage
 
-GuardLink builds on the annotation grammar created by [ThreatSpec](https://github.com/threatspec/threatspec) (2015–2020) by Fraser Scott — the first tool to propose continuous threat modeling through code annotations. The core verbs (`@mitigates`, `@exposes`, `@transfers`, `@accepts`) originate from that work.
+GuardLink builds on the annotation grammar created by [ThreatSpec](https://github.com/threatspec/threatspec) (2015–2020) by Fraser Scott, the first tool to propose continuous threat modeling through code annotations. The core verbs (`@mitigates`, `@exposes`, `@transfers`, `@accepts`) originate from that work.
 
 We extend the specification with severity levels, external references (CWE/CAPEC/OWASP), data flow and trust boundary annotations, data classification, a structured JSON schema, SARIF export, MCP integration for AI agents, and CI/CD enforcement tooling. ThreatSpec had the right idea. Our contribution is making it work in a world where AI writes most of the code.
 
@@ -466,7 +234,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT — see [LICENSE](LICENSE). The GuardLink specification is published under CC-BY-4.0.
+MIT, see [LICENSE](LICENSE). The GuardLink specification is published under CC-BY-4.0.
 
 ---
 

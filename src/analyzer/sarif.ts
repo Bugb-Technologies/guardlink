@@ -304,7 +304,7 @@ function normalizeThreatRef(ref: string): string {
  * Accepted limitation: two genuinely distinct weaknesses at the IDENTICAL (asset, threat, file) now
  * collapse to one id. This is intended — the threat id is the coarse, stable identity; siete keeps
  * its text-based ExposureKey as the fine-grained fallback to disambiguate when one threat_id maps to
- * more than one exposure (see docs/prd/threat-id-design.md §3).
+ * more than one exposure.
  *
  * guardlink is the sole authority for this algorithm: cxg and siete carry and compare the string but
  * never recompute it. It is stable across re-runs and line drift (line is not part of the identity),

@@ -29,7 +29,9 @@ Before starting, make sure you've linked your repos locally:
 guardlink link-project ./svc-a ./svc-b ./svc-c --workspace my-platform
 ```
 
-This creates `.guardlink/workspace.yaml` in each repo. See [docs/WORKSPACE.md](../../docs/WORKSPACE.md) for details.
+This creates `.guardlink/workspace.yaml` in each repo. See
+[Link repositories into a workspace](https://docs.bugb.io/guardlink/guides/link-repositories-into-a-workspace/)
+for details.
 
 ---
 
