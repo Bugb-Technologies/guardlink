@@ -25,17 +25,18 @@ Do not create `.gal` sidecars under `.guardlink/annotations/` in this mode; a re
 both is a mixed repo, and that is the failure this section exists to prevent.
 
 ## Core Requirement
-Every time you write or modify code that touches security-relevant behavior, you MUST add GuardLink annotations in the same change. This includes: new endpoints, auth logic, data validation, database queries, file I/O, external API calls, crypto, process spawning, user input handling, config parsing. Do NOT annotate pure business logic, formatting utilities, UI components, or helpers that never touch security boundaries.
+Every time you write or modify code that touches security-relevant behavior, you MUST add GuardLink annotations in the same change. This includes: new endpoints, auth logic, data validation, database queries, file I/O, external API calls, crypto, process spawning, user input handling, config parsing. Do NOT annotate code that never touches a security boundary — formatters, UI components, pure helpers. Business logic that makes an authorization or ownership decision IS in scope: an IDOR or a missing tenant check lives in business logic.
 
 ## Key Rules
 - ANNOTATE NEW CODE. When you add a function or endpoint that handles user input, accesses data, or crosses a trust boundary — add @exposes, @mitigates, @flows, @handles, or at minimum @comment. This is not optional.
 - NEVER write @accepts — that is a human-only governance decision. For risks with no mitigation: write @exposes + @audit + @comment suggesting potential controls.
 - NEVER write @entitles either — propose it with `guardlink entitle --propose` and a human's acceptance writes it, under their name. It claims a privilege is *supposed* to have this effect, so an over-grant closes a real escalation as by-design. Cite the authz code as file:line or the claim is inert. Never propose one for an ownership question (IDOR, tenant isolation).
-- Use @confirmed for verified exploits. When pentest/scanning/manual reproduction proves a threat is exploitable: @confirmed #threat on Asset [severity] -- "evidence". Distinct from @exposes (theoretical) — @confirmed means real, verified, no false positives.
+- Use @confirmed for verified exploits. When pentest/scanning/manual reproduction proves a threat is exploitable: @confirmed #threat on Asset [severity] -- "evidence". Distinct from @exposes (theoretical) — @confirmed means real, verified, no false positives. Without evidence in hand, @exposes stands and you do not promote it — reading the code is not reproduction. To get evidence: `bugb intake "<brief>"` builds a plan an operator approves, never you.
 - Preserve existing annotations — do not delete or mangle them.
 - Definitions (@asset, @threat, @control with (#id)) live in .guardlink/definitions.ts. Reuse IDs — never redefine. Add new definitions there first, then reference in source files.
 - Source files use relationship verbs: @mitigates, @exposes, @confirmed, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers, @feature. (@actor is a definition — it lives with @asset/@threat/@control. @entitles is proposed, not written.)
-- Write coupled annotation blocks: risk + control (or audit) + data flow + context note.
+- Triggers for the four verbs everyone forgets: wrote a test that pins a control → @validates #control for Asset. Code trusts a caller/library/platform to hold a property it never checks → @assumes Asset -- "what must hold". A threat becomes a vendor's or another team's responsibility → @transfers #threat from Source to Target (both ends must be declared assets; a vendor needs an External.* asset first). You know the accountable team → @owns team-id for Asset (bare token — no quotes, no #).
+- Write coupled annotation blocks: risk + control (or audit) + data flow + context note — plus @boundary when that flow crosses a trust change, and @handles when the asset touches classified data.
 - Avoid @shield unless a human explicitly asks to hide code from AI.
 
 ## Workflow
@@ -52,7 +53,8 @@ Every time you write or modify code that touches security-relevant behavior, you
 - @boundary between #api and #db (#data-boundary) -- "Trust change"
 - @handles pii on App.API -- "Processes email, token"
 - @validates #prepared-stmts for App.API -- "CI test ensures placeholders"
-- @audit App.API -- "Token rotation review"
+- @assumes App.API -- "Caller already authenticated; this never re-checks the session"
+- @transfers #ddos from App.API to External.Cloudflare -- "Rate limiting lives at the edge"
 - @confirmed #sqli on App.API [critical] cwe:CWE-89 -- "Pentest verified: raw SQL injection via email param"
 - @feature "SSO Login" -- "Single sign-on authentication flow"
 - @owns security-team for App.API -- "Team responsible"
