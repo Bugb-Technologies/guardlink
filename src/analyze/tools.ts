@@ -10,8 +10,9 @@
  * @mitigates #llm-client against #ssrf using #input-sanitize -- "CVE ID validated with strict regex; URL hardcoded to NVD"
  * @exposes #llm-client to #path-traversal [medium] cwe:CWE-22 -- "searchCodebase reads files from project root"
  * @mitigates #llm-client against #path-traversal using #glob-filtering -- "skipDirs excludes sensitive directories; relative() bounds output"
- * @exposes #llm-client to #dos [low] cwe:CWE-400 -- "searchCodebase reads many files; bounded by maxResults"
- * @mitigates #llm-client against #dos using #resource-limits -- "maxResults caps output; stat.size < 500KB filter"
+ * @exposes #llm-client to #dos [low] cwe:CWE-400 -- "searchCodebase reads many files; the LLM now sets max_results itself"
+ * @mitigates #llm-client against #dos using #resource-limits -- "clampMaxResults bounds the caller's limit to [1, HARD_MAX_RESULTS] and turns a non-numeric argument into the default rather than NaN; stat.size < 500KB filter"
+ * @comment -- "The old `parseInt(args.max_results || '20', 10)` yielded NaN on a malformed argument, and `results.length >= NaN` is false forever — so the bound vanished and the walk covered the whole tree. Clamping is what makes the limit a limit"
  * @flows LLMToolCall -> #llm-client via createToolExecutor -- "Tool invocation input"
  * @flows #llm-client -> NVD via fetch -- "CVE lookup API call"
  * @flows ProjectFiles -> #llm-client via readFileSync -- "Codebase search reads"
@@ -25,6 +26,57 @@ import type { ThreatModel } from '../types/index.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
 
 // ─── Tool definitions ────────────────────────────────────────────────
+
+/**
+ * Result ceilings for `search_codebase`.
+ *
+ * `max_results` was read by the executor but never declared in the schema, so
+ * the model could not set it and every search returned exactly 20 rows — with
+ * no signal that more existed. `file_glob` had the same shape of bug AND a
+ * second one: it was applied as `entry.endsWith(glob)`, so the natural thing to
+ * pass (`*.ts`) matched nothing at all, silently, and read as "no matches in
+ * this codebase".
+ */
+const DEFAULT_MAX_RESULTS = 50;
+const HARD_MAX_RESULTS = 500;
+
+/**
+ * Clamp a caller-supplied limit into range.
+ *
+ * The old expression was `parseInt(args.max_results || '20', 10)`, which turns a
+ * non-numeric argument into NaN — and `results.length >= NaN` is false forever,
+ * so a malformed limit removed the bound entirely and walked the whole tree.
+ */
+function clampMaxResults(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : parseInt(String(raw ?? ''), 10);
+  if (!Number.isFinite(n)) return DEFAULT_MAX_RESULTS;
+  return Math.max(1, Math.min(Math.floor(n), HARD_MAX_RESULTS));
+}
+
+/**
+ * Compile `file_glob` into basename matchers.
+ *
+ * Three spellings reach the same place because a model will use all three:
+ * `ts` and `.ts` are extension suffixes, and anything containing `*` or `?` is
+ * a glob over the basename. Comma-separated for several at once.
+ */
+function compileFileGlob(fileGlob?: string): RegExp[] | null {
+  if (!fileGlob || !fileGlob.trim()) return null;
+  const patterns = fileGlob.split(',').map(p => p.trim()).filter(Boolean);
+  if (!patterns.length) return null;
+
+  return patterns.map(p => {
+    if (/[*?]/.test(p)) {
+      // Escape regex metacharacters, then restore the two glob wildcards.
+      const body = p.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replaceAll('*', '[^/]*')
+        .replaceAll('?', '[^/]');
+      return new RegExp(`^${body}$`, 'i');
+    }
+    const ext = p.startsWith('.') ? p : `.${p}`;
+    return new RegExp(`${ext.replace(/[.+^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+  });
+}
 
 export const GUARDLINK_TOOLS: ToolDefinition[] = [
   {
@@ -55,11 +107,21 @@ export const GUARDLINK_TOOLS: ToolDefinition[] = [
   },
   {
     name: 'search_codebase',
-    description: 'Search project source files for a pattern (case-insensitive substring match). Returns matching lines with file paths and line numbers. Use this to verify code-level claims during threat analysis.',
+    description: `Search project source files for a pattern (case-insensitive substring match). Returns matching lines with file paths and line numbers, and reports whether the result set was truncated. Use this to verify code-level claims during threat analysis.`,
     parameters: {
       type: 'object',
       properties: {
         pattern: { type: 'string', description: 'Search pattern (substring, case-insensitive)' },
+        file_glob: {
+          type: 'string',
+          description: `Restrict the search to matching filenames. Comma-separated. Accepts extensions ("ts", ".ts"), globs against the basename ("*.test.ts", "auth*.py"), or several at once ("ts,tsx"). Omit to search every source file.`,
+        },
+        max_results: {
+          type: 'integer',
+          description: `Maximum matching lines to return. Default ${DEFAULT_MAX_RESULTS}, capped at ${HARD_MAX_RESULTS}. Raise it when a broad pattern is expected to match widely — a truncated result set reports truncated: true, and reasoning over it as if it were complete is the failure this exists to prevent.`,
+          minimum: 1,
+          maximum: HARD_MAX_RESULTS,
+        },
       },
       required: ['pattern'],
       additionalProperties: false,
@@ -81,7 +143,7 @@ export function createToolExecutor(root: string, model: ThreatModel | null): Too
       case 'validate_finding':
         return validateFinding(model, args.asset, args.threat, args.check);
       case 'search_codebase':
-        return searchCodebase(root, args.pattern, args.file_glob, parseInt(args.max_results || '20', 10));
+        return searchCodebase(root, args.pattern, args.file_glob, clampMaxResults(args.max_results));
       default:
         return `Unknown tool: ${name}`;
     }
@@ -215,24 +277,27 @@ function searchCodebase(
   root: string,
   pattern: string,
   fileGlob?: string,
-  maxResults = 20,
+  maxResults = DEFAULT_MAX_RESULTS,
 ): string {
   if (!pattern) return 'No search pattern provided';
 
   const results: { file: string; line: number; text: string }[] = [];
   const pat = pattern.toLowerCase();
-  const ext = fileGlob ? fileGlob.toLowerCase() : null;
+  const globs = compileFileGlob(fileGlob);
+  // Whether the walk stopped early. A caller that cannot tell a complete result
+  // set from a capped one will read "3 matches" as "3 matches exist".
+  let truncated = false;
 
   // Walk source files (skip node_modules, .git, dist, etc.)
   const skipDirs = new Set(['node_modules', '.git', 'dist', 'build', '.guardlink', '__pycache__', '.next', 'vendor', 'target', '.bravos', '.bugb']);
 
   function walk(dir: string) {
-    if (results.length >= maxResults) return;
+    if (results.length >= maxResults) { truncated = true; return; }
     let entries: string[];
     try { entries = readdirSync(dir); } catch { return; }
 
     for (const entry of entries) {
-      if (results.length >= maxResults) return;
+      if (results.length >= maxResults) { truncated = true; return; }
       const full = join(dir, entry);
       let stat;
       try { stat = statSync(full); } catch { continue; }
@@ -240,7 +305,7 @@ function searchCodebase(
       if (stat.isDirectory()) {
         if (!skipDirs.has(entry) && !entry.startsWith('.')) walk(full);
       } else if (stat.isFile()) {
-        if (ext && !entry.toLowerCase().endsWith(ext)) continue;
+        if (globs && !globs.some(g => g.test(entry))) continue;
         // Skip binary / large files
         if (stat.size > 500_000) continue;
         if (/\.(png|jpg|gif|ico|woff|ttf|eot|svg|mp[34]|zip|tar|gz|lock|map)$/i.test(entry)) continue;
@@ -264,6 +329,22 @@ function searchCodebase(
 
   walk(root);
 
-  if (!results.length) return `No matches found for "${pattern}"`;
-  return JSON.stringify(results);
+  if (!results.length) {
+    return JSON.stringify({
+      matches: [],
+      truncated: false,
+      note: globs
+        ? `No matches for "${pattern}" in files matching "${fileGlob}". The filter may be excluding the files you want — retry without file_glob to confirm.`
+        : `No matches found for "${pattern}".`,
+    });
+  }
+
+  return JSON.stringify({
+    matches: results,
+    count: results.length,
+    truncated,
+    ...(truncated
+      ? { note: `Stopped at the max_results limit of ${maxResults}. More matches exist — this result set is INCOMPLETE. Raise max_results (up to ${HARD_MAX_RESULTS}) or narrow the pattern before concluding anything about coverage.` }
+      : {}),
+  });
 }
