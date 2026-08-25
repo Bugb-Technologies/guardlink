@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v2:05e06e265ed77333a5e44246a4c2c616f8b8504891e5d143cb6e4f4492042e6b
+%% annotation_hash: sha256-v2:7a2573e68b44d78050c824aebf64d74479082ef8ac560912015dc802ffa78e54
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -56,10 +56,10 @@ graph LR
   key_redaction["🛡️ Key_Redaction"]:::control
   path_validation["🛡️ Path_Validation"]:::control
   param_commands["🛡️ Parameterized_Commands"]:::control
+  resource_limits["🛡️ Resource_Limits"]:::control
   config_validation["🛡️ Config_Validation"]:::control
   input_sanitize["🛡️ Input_Sanitization"]:::control
   glob_filtering["🛡️ Glob_Pattern_Filtering"]:::control
-  resource_limits["🛡️ Resource_Limits"]:::control
   output_encoding["🛡️ Output_Encoding"]:::control
   regex_anchoring["🛡️ Regex_Anchoring"]:::control
   prefix_ownership["🛡️ Prefix_Ownership"]:::control
@@ -125,6 +125,8 @@ graph LR
   param_commands -- mitigates --> child_proc_injection
   param_commands -. protects .-> agent_launcher
   param_commands -- mitigates --> cmd_injection
+  resource_limits -- mitigates --> dos
+  resource_limits -. protects .-> agent_launcher
   path_validation -. protects .-> llm_client
   config_validation -- mitigates --> ssrf
   config_validation -. protects .-> llm_client
@@ -133,7 +135,6 @@ graph LR
   input_sanitize -. protects .-> llm_client
   glob_filtering -- mitigates --> path_traversal
   glob_filtering -. protects .-> llm_client
-  resource_limits -- mitigates --> dos
   resource_limits -. protects .-> llm_client
   path_validation -. protects .-> dashboard
   path_validation -. protects .-> cli
