@@ -43,6 +43,42 @@ function readIfExists(path: string, maxChars = 5000): string {
 import { ANNOTATIONS_DIR, galPathFor } from '../parser/gal-path.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
 
+/**
+ * How much of the live model each prompt builder shows the agent.
+ *
+ * These were scattered `.slice(0, 30)` literals. The numbers were the problem,
+ * not the slicing: the annotate prompt asks the agent to EXTEND the flow graph
+ * without duplicating it, then showed it 30 of this repo's 110 flows — 27%, in
+ * parser file order rather than by relevance. An agent cannot avoid duplicating
+ * an edge it was never shown, and a flow it fails to extend is a hop missing
+ * from the graph, which `findPath` then reports as "no directed path" — a false
+ * clean rather than a coverage gap.
+ *
+ * So the model state the agent is asked to reason about is uncapped, and the
+ * ceiling that remains is a byte budget on the assembled context rather than an
+ * arbitrary row count. On a repo large enough for that budget to bite, the fix
+ * is to scope the run (`--feature`, or a subgraph) rather than to hand the agent
+ * an arbitrary prefix of the graph and let it believe it saw everything.
+ */
+/**
+ * @exposes #agent-launcher to #dos [low] cwe:CWE-400 -- "Prompt size now scales with model size: uncapped flow and exposure rows mean a large repo assembles a large prompt"
+ * @mitigates #agent-launcher against #dos using #resource-limits -- "renderRows caps the assembled context at PROMPT_CONTEXT_BUDGET_CHARS and reports how many rows it dropped"
+ * @comment -- "Row counts are uncapped on purpose and the byte budget is the only ceiling: a truncated flow graph made the agent duplicate edges it was never shown, and a missing hop reads as findPath's 'no directed path' — a false clean rather than a coverage gap"
+ */
+const PROMPT_CONTEXT_BUDGET_CHARS = 120_000;
+
+/** Render rows, keeping every one that fits the budget and saying so when some do not. */
+function renderRows(rows: string[], budget = PROMPT_CONTEXT_BUDGET_CHARS): { text: string; omitted: number } {
+  const kept: string[] = [];
+  let used = 0;
+  for (const row of rows) {
+    if (used + row.length + 1 > budget) break;
+    kept.push(row);
+    used += row.length + 1;
+  }
+  return { text: kept.join('\n'), omitted: rows.length - kept.length };
+}
+
 export type AnnotationMode = 'inline' | 'external';
 
 function annotationModeLabel(mode: AnnotationMode): string {
@@ -128,13 +164,18 @@ export function buildAnnotatePrompt(
       existingIds = `\n\nExisting defined IDs (REUSE these — do NOT redefine):\n${sections.join('\n')}`;
     }
 
-    // Include existing flows so agent understands the current flow graph
+    // Include existing flows so agent understands the current flow graph.
+    // The WHOLE graph: this is the one input that lets the agent extend a data
+    // path instead of restating it, and a prefix of it cannot do that job.
     if (model.flows.length > 0) {
-      const flowLines = model.flows.slice(0, 30).map(f =>
+      const { text, omitted } = renderRows(model.flows.map(f =>
         `  ${f.source} -> ${f.target}${f.mechanism ? ` via ${f.mechanism}` : ''} (${f.location.file}:${f.location.line})`
-      );
-      existingFlows = `\n\nExisting data flows (extend these, don't duplicate):\n${flowLines.join('\n')}`;
-      if (model.flows.length > 30) existingFlows += `\n  ... and ${model.flows.length - 30} more`;
+      ));
+      existingFlows = `\n\nExisting data flows (all ${model.flows.length}; extend these, don't duplicate):\n${text}`;
+      if (omitted > 0) {
+        existingFlows += `\n  ... ${omitted} more omitted for size — this view is INCOMPLETE.`
+          + `\n  Call guardlink_parse or guardlink_graph before adding a @flows, or re-run scoped to one --feature.`;
+      }
     }
 
     // Include unmitigated exposures so agent knows what still needs attention
@@ -144,11 +185,13 @@ export function buildAnnotatePrompt(
     const annotateCoverage = buildCoverageIndex(model);
     const unmitigatedExposures = model.exposures.filter(e => !annotateCoverage.isMitigated(e));
     if (unmitigatedExposures.length > 0) {
-      const expLines = unmitigatedExposures.slice(0, 20).map(e =>
+      const { text, omitted } = renderRows(unmitigatedExposures.map(e =>
         `  ${e.asset} exposed to ${e.threat} [${e.severity || 'unrated'}] (${e.location.file}:${e.location.line})`
-      );
-      existingExposures = `\n\nOpen exposures (no mitigation in code — add @mitigates if a control exists, or @audit to flag for human review):\n${expLines.join('\n')}`;
-      if (unmitigatedExposures.length > 20) existingExposures += `\n  ... and ${unmitigatedExposures.length - 20} more`;
+      ));
+      existingExposures = `\n\nOpen exposures (all ${unmitigatedExposures.length}; no mitigation in code — add @mitigates if a control exists, or @audit to flag for human review):\n${text}`;
+      if (omitted > 0) {
+        existingExposures += `\n  ... ${omitted} more omitted for size — this view is INCOMPLETE. Call guardlink_parse for the full set.`;
+      }
     }
   }
 
@@ -159,7 +202,7 @@ This run MUST produce annotations as ${annotationModeLabel(annotationMode)}.
 This is NOT a vulnerability scanner. You are building a living threat model embedded in the code itself.
 Annotations capture what COULD go wrong, what controls exist, and how data moves — not just confirmed bugs.
 
-${refDoc ? '## GuardLink Annotation Language Reference\n\n' + refDoc.slice(0, 4000) + '\n\n' : ''}## Current State
+${refDoc ? '## GuardLink Annotation Language Reference\n\n' + refDoc + '\n\n' : ''}## Current State
 ${modelSummary}${existingIds}${existingFlows}${existingExposures}
 
 ## Your Task
@@ -542,12 +585,15 @@ export function buildTranslatePrompt(
 
     modelSummary = `Current model: ${model.annotations_parsed} annotations, ${model.exposures.length} exposures, ${(model.confirmed || []).length} confirmed, ${unmitigated.length} unmitigated exposures, ${model.assets.length} assets, ${model.threats.length} threats.`;
     if (unmitigated.length > 0) {
-      const lines = unmitigated.slice(0, 40).map((e) =>
+      // Uncapped for the reason the D57 note above gives: this list decides
+      // which threats get an exploit written, so a row dropped here is a
+      // critical that silently never gets a test.
+      const { text, omitted } = renderRows(unmitigated.map((e) =>
         `- ${e.asset} -> ${e.threat} [${e.severity || 'unrated'}] (${e.location.file}:${e.location.line})`
-      );
-      candidateExposures = `\n\nUnmitigated exposure candidates:\n${lines.join('\n')}`;
-      if (unmitigated.length > 40) {
-        candidateExposures += `\n- ... and ${unmitigated.length - 40} more`;
+      ));
+      candidateExposures = `\n\nUnmitigated exposure candidates (all ${unmitigated.length}):\n${text}`;
+      if (omitted > 0) {
+        candidateExposures += `\n- ... ${omitted} more omitted for size — this candidate list is INCOMPLETE.`;
       }
     }
   }
@@ -878,9 +924,12 @@ export function buildAskPrompt(
   if (model) {
     modelSummary = `Current model: ${model.annotations_parsed} annotations, ${model.exposures.length} exposures, ${(model.confirmed || []).length} confirmed, ${model.mitigations.length} mitigations, ${model.assets.length} assets, ${model.threats.length} threats, ${model.flows.length} flows.`;
 
-    const assetIds = model.assets.filter(a => a.id).slice(0, 30).map(a => `#${a.id}`);
-    const threatIds = model.threats.filter(t => t.id).slice(0, 30).map(t => `#${t.id}`);
-    const controlIds = model.controls.filter(c => c.id).slice(0, 30).map(c => `#${c.id}`);
+    // Uncapped: a partial id list reads as the complete vocabulary, and an
+    // answer that says "no such asset" because the id sat at position 31 is
+    // wrong in the one way this prompt exists to prevent.
+    const assetIds = model.assets.filter(a => a.id).map(a => `#${a.id}`);
+    const threatIds = model.threats.filter(t => t.id).map(t => `#${t.id}`);
+    const controlIds = model.controls.filter(c => c.id).map(c => `#${c.id}`);
     const idLines: string[] = [];
     if (assetIds.length) idLines.push(`Assets: ${assetIds.join(', ')}`);
     if (threatIds.length) idLines.push(`Threats: ${threatIds.join(', ')}`);
@@ -891,12 +940,12 @@ export function buildAskPrompt(
     const askCoverage = buildCoverageIndex(model);
     const unmitigated = model.exposures.filter((e) => !askCoverage.isMitigated(e));
     if (unmitigated.length > 0) {
-      const lines = unmitigated.slice(0, 25).map((e) =>
+      const { text, omitted } = renderRows(unmitigated.map((e) =>
         `- ${e.asset} -> ${e.threat} [${e.severity || 'unrated'}] (${e.location.file}:${e.location.line})`
-      );
-      exposureSummary = `\n\nOpen unmitigated exposures:\n${lines.join('\n')}`;
-      if (unmitigated.length > 25) {
-        exposureSummary += `\n- ... and ${unmitigated.length - 25} more`;
+      ));
+      exposureSummary = `\n\nOpen unmitigated exposures (all ${unmitigated.length}):\n${text}`;
+      if (omitted > 0) {
+        exposureSummary += `\n- ... ${omitted} more omitted for size — this view is INCOMPLETE.`;
       }
     }
   }

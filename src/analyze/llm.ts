@@ -31,6 +31,11 @@ export interface ToolParameter {
   type: string;
   description?: string;
   enum?: string[];
+  /** JSON Schema numeric bounds. Providers surface these to the model, so a
+   *  bounded parameter is far likelier to arrive in range — but they are a hint
+   *  to the model, never a guarantee to the executor, which still validates. */
+  minimum?: number;
+  maximum?: number;
 }
 
 export interface ToolDefinition {

@@ -2,7 +2,7 @@
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 87,
-  "annotations_parsed": 462,
+  "annotations_parsed": 466,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -735,6 +735,16 @@
       }
     },
     {
+      "asset": "#agent-launcher",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "renderRows caps the assembled context at PROMPT_CONTEXT_BUDGET_CHARS and reports how many rows it dropped",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 65
+      }
+    },
+    {
       "asset": "#llm-client",
       "threat": "#path-traversal",
       "control": "#path-validation",
@@ -808,7 +818,7 @@
       "asset": "#llm-client",
       "threat": "#dos",
       "control": "#resource-limits",
-      "description": "maxResults caps output; stat.size < 500KB filter",
+      "description": "clampMaxResults bounds the caller's limit to [1, HARD_MAX_RESULTS] and turns a non-numeric argument into the default rather than NaN; stat.size < 500KB filter",
       "location": {
         "file": "src/analyze/tools.ts",
         "line": 14
@@ -1514,6 +1524,19 @@
       }
     },
     {
+      "asset": "#agent-launcher",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "Prompt size now scales with model size: uncapped flow and exposure rows mean a large repo assembles a large prompt",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 64
+      }
+    },
+    {
       "asset": "#llm-client",
       "threat": "#path-traversal",
       "severity": "medium",
@@ -1624,7 +1647,7 @@
       "external_refs": [
         "cwe:CWE-400"
       ],
-      "description": "searchCodebase reads many files; bounded by maxResults",
+      "description": "searchCodebase reads many files; the LLM now sets max_results itself",
       "location": {
         "file": "src/analyze/tools.ts",
         "line": 13
@@ -2626,7 +2649,7 @@
       "description": "Tool invocation input",
       "location": {
         "file": "src/analyze/tools.ts",
-        "line": 15
+        "line": 16
       }
     },
     {
@@ -2636,7 +2659,7 @@
       "description": "CVE lookup API call",
       "location": {
         "file": "src/analyze/tools.ts",
-        "line": 16
+        "line": 17
       }
     },
     {
@@ -2646,7 +2669,7 @@
       "description": "Codebase search reads",
       "location": {
         "file": "src/analyze/tools.ts",
-        "line": 17
+        "line": 18
       }
     },
     {
@@ -3568,7 +3591,7 @@
       "description": "Trust boundary at external API",
       "location": {
         "file": "src/analyze/tools.ts",
-        "line": 18
+        "line": 19
       }
     },
     {
@@ -3982,117 +4005,117 @@
       "reason": "Example annotation block for reference, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 210
+        "line": 253
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 223
+        "line": 266
       }
     },
     {
       "reason": "Description examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 230
+        "line": 273
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 240
+        "line": 283
       }
     },
     {
       "reason": "Flow examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 247
+        "line": 290
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 256
+        "line": 299
       }
     },
     {
       "reason": "Boundary examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 263
+        "line": 306
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 269
+        "line": 312
       }
     },
     {
       "reason": "Actor example, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 330
+        "line": 373
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 332
+        "line": 375
       }
     },
     {
       "reason": "Entitlement example, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 349
+        "line": 392
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 352
+        "line": 395
       }
     },
     {
       "reason": "@accepts alternative examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 367
+        "line": 410
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 377
+        "line": 420
       }
     },
     {
       "reason": "Definition syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 404
+        "line": 447
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 408
+        "line": 451
       }
     },
     {
       "reason": "Relationship syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 413
+        "line": 456
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 429
+        "line": 472
       }
     },
     {
@@ -4125,13 +4148,13 @@
       "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 833
+        "line": 840
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1128
+        "line": 1135
       }
     }
   ],
@@ -4176,6 +4199,13 @@
       }
     },
     {
+      "description": "Row counts are uncapped on purpose and the byte budget is the only ceiling: a truncated flow graph made the agent duplicate edges it was never shown, and a missing hop reads as findPath's 'no directed path' — a false clean rather than a coverage gap",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 66
+      }
+    },
+    {
       "description": "Prompt templates are static; no user input interpolation in system prompts",
       "location": {
         "file": "src/analyze/prompts.ts",
@@ -4187,6 +4217,13 @@
       "location": {
         "file": "src/analyze/prompts.ts",
         "line": 8
+      }
+    },
+    {
+      "description": "The old `parseInt(args.max_results || '20', 10)` yielded NaN on a malformed argument, and `results.length >= NaN` is false forever — so the bound vanished and the walk covered the whole tree. Clamping is what makes the limit a limit",
+      "location": {
+        "file": "src/analyze/tools.ts",
+        "line": 15
       }
     },
     {
@@ -4702,7 +4739,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 462,
+    "annotation_count": 466,
     "coverage_percent": 78
   },
   "external_refs": []
