@@ -42,6 +42,7 @@ import {
   cmdValidate,
   cmdDiff,
   cmdSarif,
+  cmdPaths,
   cmdModel,
   cmdThreatReport,
   cmdThreatReports,
@@ -357,6 +358,7 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
         case '/validate': await cmdValidate(ctx); break;
         case '/diff':     await cmdDiff(args, ctx); break;
         case '/sarif':    await cmdSarif(args, ctx); break;
+        case '/paths':    await cmdPaths(args, ctx); break;
         case '/model':    await cmdModel(ctx); break;
         case '/threat-report':  await cmdThreatReport(args, ctx); break;
         case '/threat-reports': cmdThreatReports(ctx); break;
