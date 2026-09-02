@@ -43,6 +43,24 @@ describe('paths is documented on every surface', () => {
     expect(read('src/tui/commands.ts')).toMatch(/'\/paths/);
   });
 
+  // The TUI keeps four independent registries — dispatch, the COMMANDS array
+  // behind tab-completion, the slash menu, and a second help table. A command
+  // routed but absent from COMMANDS cannot be tab-completed to, and one absent
+  // from the menu is invisible to anyone discovering the TUI by browsing it.
+  it('is tab-completable — present in the TUI COMMANDS array', () => {
+    const src = read('src/tui/index.ts');
+    const arr = src.slice(src.indexOf('const COMMANDS = ['));
+    expect(arr.slice(0, arr.indexOf(']'))).toMatch(/'\/paths'/);
+  });
+
+  it('is offered in the TUI slash-command menu', () => {
+    expect(read('src/tui/index.ts')).toMatch(/\{ command: '\/paths',/);
+  });
+
+  it('is listed in the TUI help table in index.ts', () => {
+    expect(read('src/tui/index.ts')).toMatch(/\['\/paths/);
+  });
+
   it('is registered as an MCP tool, the surface agents actually call', () => {
     expect(read('src/mcp/server.ts')).toMatch(/'guardlink_paths'/);
   });
