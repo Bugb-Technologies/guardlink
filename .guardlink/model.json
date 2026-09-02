@@ -1,8 +1,8 @@
 {
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 87,
-  "annotations_parsed": 466,
+  "source_files": 90,
+  "annotations_parsed": 471,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -56,6 +56,8 @@
     "src/parser/parse-project.ts",
     "src/parser/reanchor.ts",
     "src/parser/validate.ts",
+    "src/paths/format.ts",
+    "src/paths/index.ts",
     "src/report/index.ts",
     "src/report/mermaid.ts",
     "src/report/report.ts",
@@ -92,7 +94,8 @@
     "src/parser/index.ts",
     "src/parser/normalize.ts",
     "src/tui/format.ts",
-    "src/types/index.ts"
+    "src/types/index.ts",
+    "tmp/guardlink-paper/build_guardlink_ieee.py"
   ],
   "assets": [
     {
@@ -3253,6 +3256,16 @@
       }
     },
     {
+      "source": "ThreatModel",
+      "target": "#parser",
+      "mechanism": "findUnmitigatedPaths",
+      "description": "Reads flows, assets, mitigations and boundaries from the parsed model",
+      "location": {
+        "file": "src/paths/index.ts",
+        "line": 17
+      }
+    },
+    {
       "source": "FeatureName",
       "target": "#report",
       "mechanism": "filtered_by_features",
@@ -4148,13 +4161,13 @@
       "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 840
+        "line": 841
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1135
+        "line": 1137
       }
     }
   ],
@@ -4633,6 +4646,27 @@
       }
     },
     {
+      "description": "Pure string formatting; no I/O. Every hop prints its file:line because a path that cannot be walked in an editor is an assertion rather than a finding, and the empty case states which kind of empty it is — no undefended route in the annotated graph is not the same claim as no undefended route in the code",
+      "location": {
+        "file": "src/paths/format.ts",
+        "line": 4
+      }
+    },
+    {
+      "description": "Pure analyzer: no file I/O, no user input, no network. Operates only on an already-parsed ThreatModel, which is why it needs no @exposes of its own",
+      "location": {
+        "file": "src/paths/index.ts",
+        "line": 18
+      }
+    },
+    {
+      "description": "Walks flow edges only. @boundary edges are undirected and used for crossing detection, and @transfers moves responsibility rather than data, so neither is a hop a path may take",
+      "location": {
+        "file": "src/paths/index.ts",
+        "line": 19
+      }
+    },
+    {
       "description": "Report generation is pure transformation; no I/O in this module",
       "location": {
         "file": "src/report/index.ts",
@@ -4717,6 +4751,13 @@
       }
     },
     {
+      "description": "Derived query over @flows and @mitigates; every hop it prints is an existing annotation location, so a finding here cannot cite a line that was never written",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 1041
+      }
+    },
+    {
       "description": "Raw mode enables full keystroke control for command palette",
       "location": {
         "file": "src/tui/input.ts",
@@ -4739,7 +4780,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 466,
+    "annotation_count": 471,
     "coverage_percent": 78
   },
   "external_refs": []
