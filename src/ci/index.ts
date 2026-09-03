@@ -30,7 +30,7 @@
  * @flows ThreatModel -> #cli via runCiChecks -- "Parsed model checked for uncovered exposures"
  * @flows SourceFiles -> #cli via findAnchorDrift -- "Recorded anchors compared against current source"
  * @flows LedgerFile -> #cli via readLedger -- "Recorded claim hashes, read only"
- * @comment -- "Exit code is a pure function of (strict, exposures, drift) and lives in the summary, so JSON consumers see the same verdict the shell got"
+ * @comment -- "Exit code is a pure function of (strict, exposures, drift, demotable stale) and lives in the summary, so JSON consumers see the same verdict the shell got"
  * @comment -- "Exposures and drift are serialized as the types the parser already produces — no renamed fields, so guardlink.ci/v1 cannot drift from the model it reports"
  * @comment -- "The third check reads .guardlink/verified.json and never writes it; a corrupt ledger is reported once and treated as absent"
  */
@@ -100,7 +100,7 @@ export interface CiReport {
 }
 
 export interface CiOptions {
-  /** Opt in to a non-zero exit when either check finds anything. */
+  /** Opt in to a non-zero exit when an exposure, a drifted anchor, or a stale mitigation or acceptance is found. */
   strict?: boolean;
 }
 
@@ -147,8 +147,8 @@ function countByKind(drift: AnchorDrift[]): DriftKindCounts {
 }
 
 /**
- * Run both checks and describe the result. The only place the exit code is
- * decided — one flag, one predicate.
+ * Run all three checks and describe the result. The only place the exit code
+ * is decided — one flag, one predicate.
  */
 export function runCiChecks(root: string, model: ThreatModel, opts: CiOptions = {}): CiReport {
   const exposures = findUnmitigatedExposures(model);
@@ -217,12 +217,12 @@ export function formatCiReport(report: CiReport): string {
     : `Anchor drift: ${summary.drift}${kindBreakdown(summary.by_kind)}`
       + ` of ${summary.anchors} anchor(s)`);
 
-  const verbs = Object.entries(summary.stale_by_verb).filter(([, n]) => n > 0).map(([v, n]) => `${v} ${n}`);
   if (summary.ledger === 'absent') {
     out.push('Stale claims: none recorded — run `guardlink verify --all` to start tracking');
   } else if (summary.ledger === 'corrupt') {
     out.push(`Stale claims: ledger unreadable (${LEDGER_FILE}) — see guardlink validate`);
   } else {
+    const verbs = Object.entries(summary.stale_by_verb).filter(([, n]) => (n ?? 0) > 0).map(([v, n]) => `${v} ${n}`);
     out.push(`Stale claims: ${summary.stale}${verbs.length > 0 ? ` (${verbs.join(', ')})` : ''}`
       + ` of ${summary.stale + summary.verified} recorded claim(s); unverified ${summary.unverified}; orphans ${summary.orphans}`);
   }

@@ -64,6 +64,7 @@ describe('guardlink ci — stale claims', () => {
     r.noLedgerJson = await guardlink(root, 'ci', '.', '--format', 'json');
     await guardlink(root, 'verify', '.', '--by', 'alice');
     r.clean = await guardlink(root, 'ci', '.');
+    r.cleanJson = await guardlink(root, 'ci', '.', '--format', 'json');
     await writeFile(join(root, 'src', 'api.ts'), SOURCE.replace('return email;', 'return email.trim();'));
     ledgerBefore = await readFile(join(root, '.guardlink', 'verified.json'), 'utf-8');
     r.stale = await guardlink(root, 'ci', '.');
@@ -90,6 +91,7 @@ describe('guardlink ci — stale claims', () => {
   it('every claim verified: the all-clear line mentions stale claims', () => {
     expect(r.clean.status).toBe(0);
     expect(r.clean.stderr).toMatch(/No stale claims/);
+    expect(JSON.parse(r.cleanJson.stdout).summary).toMatchObject({ verified: 2, stale: 0 });
   });
 
   it('after an edit: stale claims listed, mitigation first, advisory exit 0, strict exit 1', () => {
@@ -101,13 +103,14 @@ describe('guardlink ci — stale claims', () => {
     // to the `login` symbol beneath them. Asserting `scope: 'symbol'` here
     // would pin a value the parser has never produced for this fixture.
     expect(r.stale.stderr).toMatch(/src\/api\.ts:3\s+@mitigates #api against #sqli using #prepared-stmts\s+\(whole file, verified \d{4}-\d{2}-\d{2} by human:alice\)/);
+    expect(r.stale.stderr).toMatch(/Stale claims: 2 \(mitigates 1, exposes 1\) of 2 recorded claim\(s\); unverified 0; orphans 0/);
     expect(r.stale.stderr).toMatch(/Advisory/);
     expect(r.staleStrict.status).toBe(1);
     const json = JSON.parse(r.staleJson.stdout);
     expect(json.schema).toBe('guardlink.ci/v1');
     expect(json.stale[0].verb).toBe('mitigates');
     expect(json.stale[0]).toMatchObject({ file: 'src/api.ts', line: 3, scope: 'file', symbol: null, verified_by: 'human:alice' });
-    expect(json.summary).toMatchObject({ stale: 2, unverified: 0, orphans: 0, demotable_stale: 1, ledger: 'present', stale_by_verb: { mitigates: 1, exposes: 1 } });
+    expect(json.summary).toMatchObject({ stale: 2, verified: 0, unverified: 0, orphans: 0, demotable_stale: 1, ledger: 'present', stale_by_verb: { mitigates: 1, exposes: 1 } });
   });
 
   it('ci never writes the ledger', () => {
@@ -118,6 +121,10 @@ describe('guardlink ci — stale claims', () => {
     expect(r.corrupt.status).toBe(0);
     expect(r.corrupt.stderr).toMatch(/verified\.json/);
     expect(r.corrupt.stderr).toMatch(/unreadable/);
+    // formatCiReport's own corrupt branch already satisfies both regexes above;
+    // this pins the CLI's separate once-only diagnostic line specifically.
+    expect(r.corrupt.stderr).toMatch(/^✗ .*verified\.json/m);
+    expect((r.corrupt.stderr.match(/^✗ /gm) ?? []).length).toBe(1);
     expect(JSON.parse(r.corruptJson.stdout).summary.ledger).toBe('corrupt');
   });
 });
