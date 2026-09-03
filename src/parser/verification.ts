@@ -56,6 +56,8 @@ export interface VerificationReport {
   ledger: LedgerStatus;
   claims: ClaimRecord[];
   orphans: LedgerEntry[];
+  /** The ledger names a hash version other than the current one — every claim above is unverified because of it, not because it changed. */
+  hash_version_mismatch: boolean;
   summary: {
     verified: number;
     stale: number;
@@ -103,7 +105,7 @@ export function classifyClaims(model: ThreatModel, read: LedgerRead): Verificati
     }
   }
 
-  return { ledger: read.status, claims, orphans, summary };
+  return { ledger: read.status, claims, orphans, hash_version_mismatch: versionMismatch, summary };
 }
 
 /** Keys of stale mitigates and accepts — what coverage.ts is told to disregard when demotion is on. */

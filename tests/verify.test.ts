@@ -102,6 +102,17 @@ describe('verify', () => {
     expect(none.unmatched).toEqual(['src/nope.ts']);
   });
 
+  it('overlapping targets do not double-count the same claim', async () => {
+    const root = await scaffold();
+    await bootstrap(root);
+    await breakLogin(root);
+    const plan = planVerification(await classify(root), {
+      kind: 'targets',
+      targets: [{ file: 'src/api.ts' }, { file: 'src/api.ts' }],
+    });
+    expect(plan.relock.length).toBe(2);
+  });
+
   it('a file:line target re-locks only the claim on that line', async () => {
     const root = await scaffold();
     await bootstrap(root);
@@ -142,6 +153,42 @@ describe('verify', () => {
     const rebuilt = applyVerification(readLedger(root).ledger, planVerification(report, { kind: 'default' }), IDENTITY);
     expect(rebuilt.anchor_hash_version).not.toBe(99);
     expect(rebuilt.entries.length).toBe(3);
+  });
+
+  it('--stale and a targets run refuse a version-mismatched ledger instead of a partial rebuild', async () => {
+    const root = await scaffold();
+    await bootstrap(root);
+    const old = readLedger(root).ledger!;
+    old.anchor_hash_version = 99;
+    writeLedger(root, old);
+    const report = await classify(root);
+    expect(report.hash_version_mismatch).toBe(true);
+
+    const stalePlan = planVerification(report, { kind: 'stale' });
+    expect(stalePlan).toEqual({ lock: [], relock: [], prune: [], skipped: [], unmatched: [], refused: 'hash-version-mismatch' });
+
+    const targetsPlan = planVerification(report, { kind: 'targets', targets: [{ file: 'src/api.ts' }] });
+    expect(targetsPlan).toEqual({ lock: [], relock: [], prune: [], skipped: [], unmatched: [], refused: 'hash-version-mismatch' });
+  });
+
+  it('a mismatched ledger counts the entry a whole-repository rebuild drops', async () => {
+    const root = await scaffold();
+    await bootstrap(root);
+    const old = readLedger(root).ledger!;
+    old.anchor_hash_version = 99;
+    writeLedger(root, old);
+    const report = await classify(root);
+    const unanchored = report.claims[0];
+    unanchored.anchor = null;
+
+    const plan = planVerification(report, { kind: 'default' });
+    expect(plan.refused).toBeUndefined();
+    expect(plan.prune.map(e => e.key)).toEqual([unanchored.key]);
+
+    const rebuilt = applyVerification(readLedger(root).ledger, plan, IDENTITY);
+    expect(rebuilt.entries.map(e => e.key).sort()).toEqual(
+      report.claims.filter(c => c.key !== unanchored.key).map(c => c.key).sort(),
+    );
   });
 
   it('identity helpers never throw', async () => {
