@@ -27,6 +27,32 @@ export type AnnotationVerb =
 
 // ─── Location ────────────────────────────────────────────────────────
 
+/** How much code an anchor covers. */
+export type AnchorScope = 'symbol' | 'block' | 'file';
+
+/**
+ * Why an anchor resolved to a wider scope than the comment's position implied.
+ * Absent on a clean symbol- or block-scope resolution.
+ */
+export type AnchorReason = 'no-grammar' | 'grammar-failed' | 'no-sibling' | 'import-sibling' | 'first-node';
+
+/**
+ * The code beneath an annotation, as the structure layer resolved it.
+ * Attached to every annotation location by `parseProject` (src/structure/attach.ts).
+ * Excluded from the annotation hash: it describes the code, not the claim.
+ */
+export interface Anchor {
+  scope: AnchorScope;
+  /** `name` field of the anchor node, else the nearest enclosing named node, else null. */
+  symbol: string | null;
+  /** 1-based, inclusive. For scope 'file' this is the whole file. */
+  start_line: number;
+  end_line: number;
+  /** `sha256-v1:<hex>` over the anchor's non-comment leaf tokens, in order. */
+  hash: string;
+  reason?: AnchorReason;
+}
+
 export interface SourceLocation {
   file: string;
   line: number;
@@ -34,6 +60,8 @@ export interface SourceLocation {
   parent_symbol?: string | null;
   origin_file?: string | null;
   origin_line?: number | null;
+  /** Populated by parseProject unless `anchors: false`. Null when the logical file could not be read. */
+  anchor?: Anchor | null;
 }
 
 // ─── Parsed Annotations ──────────────────────────────────────────────
@@ -616,6 +644,9 @@ export type DiagnosticCode =
   | 'off-convention-gal'
   /** An on-convention `.gal` sidecar carries `@source` blocks for other files. */
   | 'stray-gal-source'
+  // ── Verification ledger (src/parser/ledger.ts) ──
+  /** `.guardlink/verified.json` exists but does not parse or fails shape validation. */
+  | 'ledger-corrupt'
   // ── Governance (src/review/entitlements.ts) ──
   /** An `@entitles` in source with no accepted proposal behind it. */
   | 'entitlement-provenance';
