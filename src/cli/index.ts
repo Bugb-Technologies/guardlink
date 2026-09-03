@@ -67,6 +67,7 @@ import {
 import { populateMetadata, mergeReports, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace } from '../workspace/index.js';
 import type { MergedReport, LinkResult } from '../workspace/index.js';
 import type { ThreatModel, ParseDiagnostic } from '../types/index.js';
+import type { VerificationReport } from '../parser/index.js';
 import gradient from 'gradient-string';
 import { readConfiguredProject } from '../parser/annotation-mode.js';
 import { getPackageVersion } from '../version.js';
@@ -269,7 +270,8 @@ program
     }
 
     printDiagnostics(diagnostics);
-    printStatus(model);
+    // @flows LedgerFile -> #cli via readLedger -- "status reports verified/stale/unverified claim counts alongside annotation coverage"
+    printStatus(model, classifyClaims(model, readLedger(root)));
 
     if (opts.notAnnotated) {
       printUnannotatedFiles(model);
@@ -318,7 +320,14 @@ program
     // the file still parsed and every annotation in it counted.
     const galConventionDiags = findOffConventionGalFiles(model);
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags];
+    // A ledger that exists but cannot be read is an error: every surface that
+    // reads it is silently treating it as absent until someone fixes it.
+    // @flows LedgerFile -> #cli via readLedger -- "Read-only; a corrupt ledger becomes a validate error (ledger-corrupt) instead of being silently treated as absent"
+    // @comment -- "Closes the same blind spot ci's third check already closed (src/ci/index.ts) for the validate/CI-gate surface"
+    const ledgerRead = readLedger(root);
+    const ledgerDiags = ledgerRead.diagnostic ? [ledgerRead.diagnostic] : [];
+
+    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags];
 
     // Check for unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);
@@ -2769,13 +2778,24 @@ function printDiagnostics(diagnostics: ParseDiagnostic[]) {
   }
 }
 
-function printStatus(model: ThreatModel) {
+function printStatus(model: ThreatModel, verification?: VerificationReport) {
   console.log(`GuardLink Status: ${model.project}`);
   console.log(`${'─'.repeat(40)}`);
   console.log(`Files scanned:    ${model.source_files}`);
   console.log(`  Files annotated:    ${model.annotated_files.length}`);
   console.log(`  Files unannotated:  ${model.unannotated_files.length}`);
   console.log(`Annotations:      ${model.annotations_parsed}`);
+  // @comment -- "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own"
+  if (verification) {
+    const s = verification.summary;
+    if (verification.ledger === 'absent') {
+      console.log('Verified claims:  none recorded (run guardlink verify --all)');
+    } else if (verification.ledger === 'corrupt') {
+      console.log('Verified claims:  ledger unreadable (run guardlink validate)');
+    } else {
+      console.log(`Verified claims:  ${s.verified} / ${s.verified + s.stale + s.unverified} (stale ${s.stale}, unverified ${s.unverified})`);
+    }
+  }
   console.log(`${'─'.repeat(40)}`);
   console.log(`Assets:           ${model.assets.length}`);
   console.log(`Threats:          ${model.threats.length}`);
