@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { loadLanguage, parseWith, resetRuntimeForTests } from '../src/structure/runtime.js';
 
 describe('structure runtime', () => {
@@ -21,12 +24,39 @@ describe('structure runtime', () => {
     expect(r).toEqual({ ok: false, reason: 'no-grammar' });
   });
 
-  it('reports grammar-failed once, with one warning, when the file is unloadable', async () => {
+  it('no-grammar is silent for a language outside the table', async () => {
     const warn = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const r1 = await loadLanguage('__broken__');
-    const r2 = await loadLanguage('__broken__');
-    expect(r1).toEqual({ ok: false, reason: 'no-grammar' });
+    const r = await loadLanguage('swift');
+    expect(r).toEqual({ ok: false, reason: 'no-grammar' });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('reports grammar-failed once, with one warning, when the file is corrupt', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'guardlink-test-'));
+    writeFileSync(join(tmpDir, 'typescript.wasm'), Buffer.alloc(16)); // 16 bytes of garbage
+    const warn = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    resetRuntimeForTests({ grammarsDir: tmpDir });
+    const r1 = await loadLanguage('typescript');
+    const r2 = await loadLanguage('typescript');
+
+    expect(r1).toEqual({ ok: false, reason: 'grammar-failed' });
     expect(r2).toEqual(r1);
-    expect(warn).not.toHaveBeenCalled(); // no-grammar is silent by design
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain('typescript');
+  });
+
+  it('warns once when a language in GRAMMARS is missing from disk', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'guardlink-test-'));
+    const warn = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    resetRuntimeForTests({ grammarsDir: tmpDir });
+    const r1 = await loadLanguage('typescript');
+    const r2 = await loadLanguage('typescript');
+
+    expect(r1).toEqual({ ok: false, reason: 'grammar-failed' });
+    expect(r2).toEqual(r1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain('typescript');
   });
 });
