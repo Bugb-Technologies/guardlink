@@ -1,37 +1,37 @@
 {
   "schema_version": 1,
-  "annotation_hash": "sha256-v2:aba5ee9be2ee7cc0c32fd5036fdbb5567b880b2b6901d10f78ebb1f9947bc60e",
+  "annotation_hash": "sha256-v2:ca5da14c680e3fd77159fb31eed6b040a8fbf7477c1bdc433d8df15257388f64",
   "generator": "guardlink@2.0.0",
   "artifacts": [
     {
       "path": ".guardlink/graph/threat-graph.mmd",
       "bytes": 8473,
-      "annotation_hash": "sha256-v2:aba5ee9be2ee7cc0c32fd5036fdbb5567b880b2b6901d10f78ebb1f9947bc60e"
+      "annotation_hash": "sha256-v2:ca5da14c680e3fd77159fb31eed6b040a8fbf7477c1bdc433d8df15257388f64"
     },
     {
       "path": ".guardlink/graph/dataflow.mmd",
       "bytes": 9984,
-      "annotation_hash": "sha256-v2:aba5ee9be2ee7cc0c32fd5036fdbb5567b880b2b6901d10f78ebb1f9947bc60e"
+      "annotation_hash": "sha256-v2:ca5da14c680e3fd77159fb31eed6b040a8fbf7477c1bdc433d8df15257388f64"
     },
     {
       "path": ".guardlink/graph/attack-surface.mmd",
       "bytes": 4375,
-      "annotation_hash": "sha256-v2:aba5ee9be2ee7cc0c32fd5036fdbb5567b880b2b6901d10f78ebb1f9947bc60e"
+      "annotation_hash": "sha256-v2:ca5da14c680e3fd77159fb31eed6b040a8fbf7477c1bdc433d8df15257388f64"
     },
     {
       "path": ".guardlink/graph/by-feature/dashboard.mmd",
       "bytes": 2296,
-      "annotation_hash": "sha256-v2:aba5ee9be2ee7cc0c32fd5036fdbb5567b880b2b6901d10f78ebb1f9947bc60e"
+      "annotation_hash": "sha256-v2:ca5da14c680e3fd77159fb31eed6b040a8fbf7477c1bdc433d8df15257388f64"
     },
     {
       "path": ".guardlink/graph/by-feature/mcp-integration.mmd",
       "bytes": 2744,
-      "annotation_hash": "sha256-v2:aba5ee9be2ee7cc0c32fd5036fdbb5567b880b2b6901d10f78ebb1f9947bc60e"
+      "annotation_hash": "sha256-v2:ca5da14c680e3fd77159fb31eed6b040a8fbf7477c1bdc433d8df15257388f64"
     },
     {
       "path": ".guardlink/model.json",
-      "bytes": 275812,
-      "annotation_hash": "sha256-v2:aba5ee9be2ee7cc0c32fd5036fdbb5567b880b2b6901d10f78ebb1f9947bc60e"
+      "bytes": 142505,
+      "annotation_hash": "sha256-v2:ca5da14c680e3fd77159fb31eed6b040a8fbf7477c1bdc433d8df15257388f64"
     }
   ]
 }

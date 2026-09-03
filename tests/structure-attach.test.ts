@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { parseProject } from '../src/parser/parse-project.js';
 
 const DEFINITIONS = `/**
@@ -61,6 +61,35 @@ describe('anchors attached by parseProject', () => {
     await writeFile(join(root, 'src', 'api.ts'), SOURCE);
     const { model } = await parseProject({ root, project: 'test', anchors: false });
     expect(model.mitigations[0].location.anchor).toBeUndefined();
+  });
+
+  it('a pathologically deep file still anchors, rather than failing the whole parse', async () => {
+    // 30,000 nested parentheses. Recursing once per node threw RangeError out of
+    // parseStructure, which rejected parseProject — so one file like this failed
+    // validate, ci, status, MCP and the TUI on the entire repository.
+    const root = await scratch('attach-deep');
+    const depth = 30000;
+    await writeFile(join(root, 'src', 'api.ts'),
+      `/**\n * @audit #api -- "deep file"\n */\nconst x = ${'('.repeat(depth)}1${')'.repeat(depth)};\n`);
+    const { model } = await parseProject({ root, project: 'test' });
+    expect(model.audits).toHaveLength(1);
+    expect(model.audits[0].location.anchor).toBeTruthy();
+    expect(model.audits[0].location.anchor?.hash).toMatch(/^sha256-v1:/);
+  }, 60000);
+
+  it('a @source path that escapes the root is never opened', async () => {
+    // `@source file:` is author-supplied text and normalisation leaves `../`
+    // intact, so without a containment check attachAnchors would read and hash
+    // a file outside the scanned tree.
+    const root = await scratch('attach-escape');
+    await writeFile(join(root, '..', `outside-${basename(root)}.ts`), 'export function x() { return 1; }\n');
+    await mkdir(join(root, '.guardlink', 'annotations', 'src'), { recursive: true });
+    await writeFile(join(root, '.guardlink', 'annotations', 'src', 'api.ts.gal'),
+      `@source file:../outside-${basename(root)}.ts line:1 symbol:x\n@audit #api -- "escapes the root"\n`);
+    const { model } = await parseProject({ root, project: 'test' });
+    expect(model.audits).toHaveLength(1);
+    expect(model.audits[0].location.file).toBe(`../outside-${basename(root)}.ts`);
+    expect(model.audits[0].location.anchor).toBeNull();
   });
 
   it('a logical file that cannot be read yields a null anchor', async () => {

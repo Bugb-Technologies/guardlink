@@ -57,8 +57,14 @@ function commentAt(root: Node, lines: string[], line: number): Node | null {
   return n;
 }
 
-function fileAnchor(root: Node, lineCount: number, reason: AnchorReason): Anchor {
-  return { scope: 'file', symbol: null, start_line: 1, end_line: lineCount, hash: hashNode(root), reason };
+/**
+ * A file-scope anchor hashes the whole root, and every file-scope claim in a
+ * file hashes the SAME root. `fileHash` lets the caller supply one memoised
+ * computation for the file instead of re-walking the entire tree once per
+ * claim — a header with twenty annotations was twenty full-tree walks.
+ */
+function fileAnchor(root: Node, lineCount: number, reason: AnchorReason, fileHash?: () => string): Anchor {
+  return { scope: 'file', symbol: null, start_line: 1, end_line: lineCount, hash: fileHash ? fileHash() : hashNode(root), reason };
 }
 
 function symbolAnchor(node: Node, symbol: string | null, reason?: AnchorReason): Anchor {
@@ -83,9 +89,9 @@ function yamlPair(node: Node, afterRow: number): Node | null {
   return null;
 }
 
-export function resolveAnchor(root: Node, language: string, lines: string[], line: number): Anchor {
+export function resolveAnchor(root: Node, language: string, lines: string[], line: number, fileHash?: () => string): Anchor {
   const comment = commentAt(root, lines, line);
-  if (!comment) return fileAnchor(root, lines.length, 'no-sibling');
+  if (!comment) return fileAnchor(root, lines.length, 'no-sibling', fileHash);
 
   // Rule 2 — first-node: nothing but comments/shebang before it, and not inside a declaration.
   let prev = comment.previousNamedSibling;
@@ -94,23 +100,23 @@ export function resolveAnchor(root: Node, language: string, lines: string[], lin
     if (!SKIPPABLE.test(prev.type)) { onlySkippableBefore = false; break; }
     prev = prev.previousNamedSibling;
   }
-  if (onlySkippableBefore && enclosingNamed(comment) === null) return fileAnchor(root, lines.length, 'first-node');
+  if (onlySkippableBefore && enclosingNamed(comment) === null) return fileAnchor(root, lines.length, 'first-node', fileHash);
 
   // Rule 3 — no-sibling: a trailing comment binds to what encloses it.
   let cand = comment.nextNamedSibling;
   while (cand && SKIPPABLE.test(cand.type)) cand = cand.nextNamedSibling;
   if (!cand) {
     const enc = enclosingNamed(comment);
-    return enc ? symbolAnchor(enc, nameOf(enc), 'no-sibling') : fileAnchor(root, lines.length, 'no-sibling');
+    return enc ? symbolAnchor(enc, nameOf(enc), 'no-sibling') : fileAnchor(root, lines.length, 'no-sibling', fileHash);
   }
 
   // Rule 4 — import-sibling.
-  if (MODULE_HEADER.test(cand.type)) return fileAnchor(root, lines.length, 'import-sibling');
+  if (MODULE_HEADER.test(cand.type)) return fileAnchor(root, lines.length, 'import-sibling', fileHash);
 
   // Rule 5 — YAML block.
   if (language === 'yaml') {
     const pair = yamlPair(cand, comment.startPosition.row);
-    if (!pair) return fileAnchor(root, lines.length, 'no-sibling');
+    if (!pair) return fileAnchor(root, lines.length, 'no-sibling', fileHash);
     const key = pair.childForFieldName('key');
     // tree-sitter-yaml extends the last mapping pair in a block to column 0 of
     // the row after its content (it absorbs the trailing newline) when nothing

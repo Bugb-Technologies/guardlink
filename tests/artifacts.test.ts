@@ -86,7 +86,10 @@ describe('GL-301 — emission', () => {
   it('model.json is canonically ordered, so a diff means a real change', async () => {
     emitArtifacts({ root, model });
     const written = JSON.parse(await readFile(join(root, '.guardlink', 'model.json'), 'utf-8'));
-    expect(written.exposures).toEqual(canonicalizeModelOrder(model).exposures);
+    // Compared without `anchor`: the emitter strips it (see the F0 case below),
+    // so the in-memory model carries one and the artifact deliberately does not.
+    const withoutAnchors = (v: unknown) => JSON.parse(JSON.stringify(v, (k, x) => (k === 'anchor' ? undefined : x)));
+    expect(written.exposures).toEqual(withoutAnchors(canonicalizeModelOrder(model).exposures));
   });
 
   it('regenerating an unchanged model rewrites BYTE-IDENTICAL files', async () => {
@@ -339,6 +342,20 @@ describe('F0 — model.json is byte-stable across regenerations', () => {
     await new Promise(r => setTimeout(r, 5));
     emitArtifacts({ root, model });
     expect(await readFile(join(root, '.guardlink', 'model.json'), 'utf-8')).toBe(first);
+  });
+
+  it('carries no anchor, though the model handed in does', async () => {
+    // An anchor is a hash of the code beneath a claim, and the annotation hash
+    // excludes it — so the drift check cannot see one move. Written here, a few
+    // hundred of them would rot on the next code edit and make every `guardlink
+    // artifacts` run a large diff no check can explain. Anchors belong to
+    // .guardlink/verified.json, which records them on purpose.
+    expect(model.exposures[0].location.anchor).toBeTruthy();
+    emitArtifacts({ root, model });
+    const text = await readFile(join(root, '.guardlink', 'model.json'), 'utf-8');
+    expect(text).not.toContain('"anchor"');
+    // Stripped from the file, not from the model the caller still holds.
+    expect(model.exposures[0].location.anchor).toBeTruthy();
   });
 
   it('a real model change still changes it', async () => {

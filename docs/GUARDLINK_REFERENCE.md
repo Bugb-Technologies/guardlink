@@ -94,6 +94,7 @@ guardlink init [dir]                    # Initialize .guardlink/ and agent instr
 guardlink parse [dir]                   # Parse annotations → ThreatModel JSON
 guardlink status [dir]                  # Risk grade + coverage summary
 guardlink validate [dir] [--strict]     # Syntax errors, dangling refs, unmitigated exposures
+guardlink verify [dir] [targets...]     # Lock claims to the code beneath them → .guardlink/verified.json
 
 # Reports & Export
 guardlink report [dir]                  # Generate threat-model.md + optional JSON

@@ -260,9 +260,18 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
   // committing SPECIFICALLY so that "this PR added an exposure" shows up in
   // review. A permanent one-line diff on every commit would train reviewers to
   // skip the one file whose diffs were supposed to matter.
+  //
+  // `anchor` is stripped for a related but distinct reason. It is a content hash
+  // of the code beneath a claim, present on every one of the model's locations,
+  // and the annotation hash EXCLUDES it by design — so the drift check cannot
+  // see it move. Written here, several hundred hashes would rot on the next code
+  // edit and turn every `guardlink artifacts` run into a large diff that no
+  // check explains. Anchors belong to the ledger comparison (`.guardlink/
+  // verified.json`, which records them deliberately and is re-locked by
+  // `guardlink verify`), not to the durable artifact.
   const { generated_at, ...durableModel } = ordered;
   write(join(guardlinkDir, 'model.json'), '.guardlink/model.json',
-    JSON.stringify(durableModel, null, 2) + '\n');
+    JSON.stringify(durableModel, (key, value) => (key === 'anchor' ? undefined : value), 2) + '\n');
 
   // Committed, so content-derived only — same rule as the .mmd headers.
   const manifestBody = JSON.stringify({

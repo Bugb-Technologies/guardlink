@@ -416,7 +416,7 @@ program
 
 /**
  * @exposes #cli to #arbitrary-write [low] cwe:CWE-73 -- "The one command that writes .guardlink/verified.json"
- * @mitigates #cli against #arbitrary-write using #path-validation -- "Path is the constant LEDGER_FILE under the resolved root; targets only select claims, they are never written to"
+ * @mitigates #cli against #arbitrary-write using #path-validation -- "Path is the constant LEDGER_FILE under a root that must already carry .guardlink/; targets only select claims, they are never written to"
  * @flows UserInput -> #cli via verify -- "Targets, --by and mode flags"
  * @comment -- "Re-locking a stale claim is an assertion that the control still holds, so the default form never does it: --stale, --all or a named target is required, and each says so in its output"
  */
@@ -448,6 +448,16 @@ program
     const isDir = (p: string): boolean => { try { return statSync(resolve(p)).isDirectory(); } catch { return false; } };
     if (!isDir(dirArg)) { targets.unshift(dirArg); dir = '.'; }
     const root = resolve(dir);
+
+    // `verify src/mcp` reads as "verify the claims under src/mcp", but the
+    // positional-is-a-directory rule above turns it into a project root, and this
+    // is the one read-and-write command — so it would parse src/mcp as a project
+    // and drop a stray src/mcp/.guardlink/verified.json there. Checked before the
+    // ledger is read and before anything is written.
+    if (!existsSync(join(root, '.guardlink'))) {
+      console.error(`✗ ${root} is not a GuardLink project root (no .guardlink/ directory). Run it from the project root and pass files as targets.`);
+      process.exit(1);
+    }
 
     const read = readLedger(root);
     if (read.status === 'corrupt' && !opts.force) {
@@ -521,11 +531,11 @@ program
 
 program
   .command('ci')
-  .description('Advisory CI checks — unmitigated exposures and drifted @source anchors (exit 0 unless --strict)')
+  .description('Advisory CI checks — unmitigated exposures, drifted @source anchors, and stale claims (exit 0 unless --strict)')
   .argument('[dir]', 'Project directory to scan', '.')
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('-f, --format <fmt>', 'Output format: text (default) or json', 'text')
-  .option('--strict', 'Exit 1 when either check finds anything. Off by default — these are warnings, not a gate')
+  .option('--strict', 'Exit 1 when any check finds something to gate on. Off by default — these are warnings, not a gate')
   .action(async (dir: string, opts: { project: string; format: string; strict?: boolean }) => {
     const root = resolve(dir);
 

@@ -128,6 +128,20 @@ describe('guardlink verify — an unmatched target must not write', () => {
   });
 });
 
+describe('guardlink verify — a directory that is not a project root', () => {
+  it('refuses src/ rather than parsing it as a project and leaving a ledger there', async () => {
+    // The first positional is taken as the root when it is a directory, so
+    // `verify src` reads as "verify the claims under src" and would otherwise
+    // parse src as its own project and write src/.guardlink/verified.json.
+    const root = await scaffold();
+    const run = await guardlink(root, 'verify', 'src');
+    expect(run.status).toBe(1);
+    expect(run.stderr).toMatch(/not a GuardLink project root/);
+    expect(existsSync(join(root, 'src', '.guardlink'))).toBe(false);
+    expect(existsSync(join(root, '.guardlink', 'verified.json'))).toBe(false);
+  }, 30_000);
+});
+
 describe('guardlink verify — a corrupt ledger cannot be partially rebuilt', () => {
   it('--stale --force on a corrupt ledger is refused, not silently rebuilt empty', async () => {
     const root = await scaffold();

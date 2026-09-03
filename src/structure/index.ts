@@ -16,7 +16,7 @@ import type { Tree, Node } from 'web-tree-sitter';
 import type { Anchor, AnchorReason } from '../types/index.js';
 import { languageForExtension } from './grammars.js';
 import { loadLanguage, parseWith } from './runtime.js';
-import { hashPlainText } from './hash.js';
+import { hashNode, hashPlainText } from './hash.js';
 import { resolveAnchor, findNamed } from './anchor.js';
 
 export { ANCHOR_HASH_VERSION } from './hash.js';
@@ -47,13 +47,23 @@ export async function parseStructure(filePath: string, content: string): Promise
   if (!loaded.ok) return fileOnly(language, content, loaded.reason);
 
   let tree: Tree | null = parseWith(loaded.language, content);
-  let root: Node | null = tree.rootNode;
+  const rootNode: Node = tree.rootNode;
+  let root: Node | null = rootNode;
   const lines = content.split('\n');
+
+  // Every file-scope anchor in this file is the same hash of the same root, and
+  // a file header commonly carries a dozen claims. Computed at most once per
+  // FileStructure, on first demand — a file with no file-scope claim never pays
+  // for it at all. Safe to hold the value: the tree is immutable for the life of
+  // this object, and callers are refused after dispose().
+  let rootHash: string | null = null;
+  const fileHash = (): string => (rootHash ??= hashNode(rootNode));
+
   return {
     language,
     anchorForLine: (line) => {
       if (!root) throw new Error('FileStructure used after dispose()');
-      return resolveAnchor(root, language, lines, line);
+      return resolveAnchor(root, language, lines, line, fileHash);
     },
     symbolNamed: (name) => {
       if (!root) throw new Error('FileStructure used after dispose()');
