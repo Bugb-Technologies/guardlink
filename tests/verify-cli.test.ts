@@ -117,3 +117,24 @@ describe('guardlink verify', () => {
     expect(ledger.entries.length).toBe(2);
   });
 });
+
+describe('guardlink verify — an unmatched target must not write', () => {
+  it('exits 1 and writes nothing when the target names no claim', async () => {
+    const root = await scaffold();
+    const run = await guardlink(root, 'verify', 'src/nope.ts');
+    expect(run.status).toBe(1);
+    expect(run.stderr).toMatch(/no claim at src\/nope\.ts/);
+    expect(existsSync(join(root, '.guardlink', 'verified.json'))).toBe(false);
+  });
+});
+
+describe('guardlink verify — a corrupt ledger cannot be partially rebuilt', () => {
+  it('--stale --force on a corrupt ledger is refused, not silently rebuilt empty', async () => {
+    const root = await scaffold();
+    await writeFile(join(root, '.guardlink', 'verified.json'), '{broken');
+    const run = await guardlink(root, 'verify', '.', '--stale', '--force');
+    expect(run.status).toBe(1);
+    const content = await readFile(join(root, '.guardlink', 'verified.json'), 'utf-8');
+    expect(content).toBe('{broken');
+  });
+});

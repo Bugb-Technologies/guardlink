@@ -453,9 +453,21 @@ program
     const mode = targets.length > 0
       ? { kind: 'targets' as const, targets: targets.map(t => { const m = /^(.*?)(?::(\d+))?$/.exec(t)!; return m[2] ? { file: m[1], line: Number(m[2]) } : { file: m[1] }; }) }
       : opts.all ? { kind: 'all' as const } : opts.stale ? { kind: 'stale' as const } : { kind: 'default' as const };
+    // A corrupt ledger only reaches here with --force already given (the earlier guard
+    // exits otherwise); `stale`/`targets` still cannot partially rebuild it, matching the
+    // version-mismatch refusal below — only a whole-repository run may rebuild.
+    if (read.status === 'corrupt' && (mode.kind === 'stale' || mode.kind === 'targets')) {
+      console.error(`✗ ${LEDGER_FILE} could not be read. Rebuild it with \`guardlink verify --force\` (or \`--all --force\`) before re-locking individual claims.`);
+      process.exit(1);
+    }
     const plan = planVerification(report, mode);
     if (plan.refused === 'hash-version-mismatch') {
       console.error(`✗ ${LEDGER_FILE} was written at another anchor hash version. Run \`guardlink verify\` (or \`guardlink verify --all\`) to rebuild it before re-locking individual claims.`);
+      process.exit(1);
+    }
+    if (plan.unmatched.length > 0) {
+      for (const u of plan.unmatched) console.error(`   no claim at ${u}`);
+      console.error('✗ Nothing written: every target must name a file or file:line that carries a claim.');
       process.exit(1);
     }
 
@@ -488,7 +500,7 @@ program
     const verb = opts.dryRun ? 'Would lock' : 'Locked';
     console.error(`${verb} ${plan.lock.length} claim(s), re-locked ${plan.relock.length}, pruned ${plan.prune.length} orphan(s) as ${verified_by}${opts.dryRun ? ' (dry run — nothing written)' : ` → ${LEDGER_FILE}`}`);
     for (const c of plan.relock) console.error(`   re-locked  ${c.location.file}:${c.location.line}  @${c.verb} ${c.claim}`);
-    for (const s of plan.skipped) console.error(`   skipped    ${s.file}:${s.line}  (${s.reason}: the file could not be read)`);
+    for (const s of plan.skipped) console.error(`   skipped    ${s.file}:${s.line}  (${s.reason}: unreadable file or un-anchorable claim)`);
     for (const u of plan.unmatched) console.error(`   no claim at ${u}`);
     if (staleLeft.length > 0) {
       console.error(`${staleLeft.length} stale claim(s) left as they are — run \`guardlink verify --stale\`, or name the file, to re-lock them:`);
