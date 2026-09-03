@@ -1,7 +1,7 @@
 {
   "name": "guardlink",
   "version": "2.0.0",
-  "description": "GuardLink \u2014 Security annotations for code. Threat modeling that lives in your codebase.",
+  "description": "GuardLink — Security annotations for code. Threat modeling that lives in your codebase.",
   "type": "module",
   "bin": {
     "guardlink": "./dist/cli/index.js",
@@ -12,6 +12,7 @@
   "files": [
     "dist",
     "src",
+    "grammars",
     "LICENSE",
     "README.md",
     "CHANGELOG.md"
@@ -44,11 +45,17 @@
     "./mcp": {
       "import": "./dist/mcp/index.js",
       "types": "./dist/mcp/index.d.ts"
+    },
+    "./structure": {
+      "import": "./dist/structure/index.js",
+      "types": "./dist/structure/index.d.ts"
     }
   },
   "scripts": {
-    "build": "tsc && node scripts/postbuild-chmod.mjs",
+    "build": "tsx scripts/build-grammars.ts && tsc && node scripts/postbuild-chmod.mjs",
+    "build:grammars": "tsx scripts/build-grammars.ts",
     "dev": "tsc --watch",
+    "pretest": "tsx scripts/build-grammars.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src tests",
@@ -95,6 +102,7 @@
     "chalk": "^5.4.0",
     "commander": "^13.0.0",
     "fast-glob": "^3.3.0",
-    "gradient-string": "^3.0.0"
+    "gradient-string": "^3.0.0",
+    "web-tree-sitter": "0.27.0"
   }
 }
