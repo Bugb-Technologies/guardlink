@@ -1,0 +1,75 @@
+/**
+ * GuardLink structure layer — the one place that talks to web-tree-sitter.
+ *
+ * The runtime initialises once per process and each grammar loads once, both
+ * lazily: a repository with only TypeScript never pays for the Go grammar.
+ * A grammar file that is missing is `no-grammar` and silent — that is the
+ * designed fallback for Swift and Kotlin today. A grammar file that exists but
+ * fails to load is `grammar-failed` and warned once per language per process,
+ * because that is a packaging defect, not a fallback.
+ *
+ * @exposes #parser to #dos [low] cwe:CWE-400 -- "Grammar WASM is loaded into memory per language; a pathological source file costs one parse"
+ * @mitigates #parser against #dos using #resource-limits -- "One runtime init and one load per language per process; trees are parsed on demand and deleted by callers"
+ * @flows GrammarFile -> #parser via Language.load -- "Bundled WASM read from the package's grammars/ directory"
+ * @comment -- "Paths come only from grammarPath(language) over the package's own grammars/ directory; no caller-supplied path reaches Language.load"
+ */
+import { existsSync } from 'node:fs';
+import { Parser, Language } from 'web-tree-sitter';
+import type { Tree } from 'web-tree-sitter';
+import { GRAMMARS, grammarPath } from './grammars.js';
+
+export type LoadResult =
+  | { ok: true; language: Language }
+  | { ok: false; reason: 'no-grammar' | 'grammar-failed' };
+
+let initPromise: Promise<void> | null = null;
+const loads = new Map<string, Promise<LoadResult>>();
+const warned = new Set<string>();
+
+function init(): Promise<void> {
+  if (!initPromise) initPromise = Parser.init();
+  return initPromise;
+}
+
+function warnOnce(language: string, message: string): void {
+  if (warned.has(language)) return;
+  warned.add(language);
+  console.error(`⚠ GuardLink: ${message}`);
+}
+
+/** Load a grammar by language id. Cached for the life of the process. */
+export function loadLanguage(language: string): Promise<LoadResult> {
+  let pending = loads.get(language);
+  if (!pending) {
+    pending = (async (): Promise<LoadResult> => {
+      if (!(language in GRAMMARS)) return { ok: false, reason: 'no-grammar' };
+      const path = grammarPath(language);
+      if (!existsSync(path)) return { ok: false, reason: 'no-grammar' };
+      try {
+        await init();
+        return { ok: true, language: await Language.load(path) };
+      } catch (err) {
+        warnOnce(language, `grammar for ${language} failed to load from ${path}: ${(err as Error).message}. Falling back to file-scope anchors.`);
+        return { ok: false, reason: 'grammar-failed' };
+      }
+    })();
+    loads.set(language, pending);
+  }
+  return pending;
+}
+
+/** Parse source with an already-loaded grammar. The caller owns the tree and must `delete()` it. */
+export function parseWith(language: Language, source: string): Tree {
+  const parser = new Parser();
+  parser.setLanguage(language);
+  const tree = parser.parse(source);
+  parser.delete();
+  if (!tree) throw new Error('web-tree-sitter returned no tree');
+  return tree;
+}
+
+/** Drop caches so a test can observe first-load behaviour again. */
+export function resetRuntimeForTests(): void {
+  loads.clear();
+  warned.clear();
+}
