@@ -11,6 +11,8 @@
 
 export * from './types/index.js';
 export * from './parser/index.js';
+export { parseStructure, languageForExtension, ANCHOR_HASH_VERSION } from './structure/index.js';
+export type { FileStructure } from './structure/index.js';
 export { initProject, detectProject } from './init/index.js';
 export type { InitOptions, InitResult, ProjectInfo, AgentFile } from './init/index.js';
 export { generateReport, generateMermaid } from './report/index.js';

@@ -43,8 +43,8 @@
 
 import { Command } from 'commander';
 import { resolve, basename, join } from 'node:path';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { runCiChecks, formatCiReport } from '../ci/index.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
@@ -401,6 +401,99 @@ program
 
     // Exit 1 on errors always; also on unmitigated if --strict, or on artifact drift
     process.exit(errorCount > 0 || artifactDrift || (opts.strict && hasUnmitigated) ? 1 : 0);
+  });
+
+// ─── verify ──────────────────────────────────────────────────────────
+
+/**
+ * @exposes #cli to #arbitrary-write [low] cwe:CWE-73 -- "The one command that writes .guardlink/verified.json"
+ * @mitigates #cli against #arbitrary-write using #path-validation -- "Path is the constant LEDGER_FILE under the resolved root; targets only select claims, they are never written to"
+ * @flows UserInput -> #cli via verify -- "Targets, --by and mode flags"
+ * @comment -- "Re-locking a stale claim is an assertion that the control still holds, so the default form never does it: --stale, --all or a named target is required, and each says so in its output"
+ */
+program
+  .command('verify')
+  .description('Record that the code beneath each claim was checked — writes .guardlink/verified.json and nothing else')
+  .argument('[dir]', 'Project directory (default .). A file or file:line here is taken as a target.', '.')
+  .argument('[targets...]', 'file or file:line — lock unverified and re-lock stale claims there')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('-f, --format <fmt>', 'Output format: text (default) or json', 'text')
+  .option('--stale', 'Re-lock every stale claim (asserts each control still holds)')
+  .option('--all', 'Lock unverified and re-lock stale — adoption bootstrap, or a deliberate reset')
+  .option('--dry-run', 'Print what would change; write nothing')
+  .option('--by <name>', 'Verifier name (default: git user.name, then the OS user)')
+  .option('--force', 'Replace a ledger that failed to parse')
+  .action(async (dirArg: string, targetArgs: string[], opts: { project?: string; format: string; stale?: boolean; all?: boolean; dryRun?: boolean; by?: string; force?: boolean }) => {
+    if (opts.format !== 'text' && opts.format !== 'json') {
+      console.error(`Unknown --format '${opts.format}'. Use text or json.`);
+      process.exit(1);
+    }
+    if (opts.stale && opts.all) {
+      console.error('--stale and --all are exclusive: --all already re-locks stale claims.');
+      process.exit(1);
+    }
+
+    // A first positional that is not a directory is a target, and the root is cwd.
+    let dir = dirArg;
+    const targets = [...targetArgs];
+    const isDir = (p: string): boolean => { try { return statSync(resolve(p)).isDirectory(); } catch { return false; } };
+    if (!isDir(dirArg)) { targets.unshift(dirArg); dir = '.'; }
+    const root = resolve(dir);
+
+    const read = readLedger(root);
+    if (read.status === 'corrupt' && !opts.force) {
+      console.error(`✗ ${read.diagnostic!.message}`);
+      console.error('   Refusing to write over it. Re-run with --force to rebuild the ledger from the current code.');
+      process.exit(1);
+    }
+
+    const { model } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    const report = classifyClaims(model, read);
+
+    const mode = targets.length > 0
+      ? { kind: 'targets' as const, targets: targets.map(t => { const m = /^(.*?)(?::(\d+))?$/.exec(t)!; return m[2] ? { file: m[1], line: Number(m[2]) } : { file: m[1] }; }) }
+      : opts.all ? { kind: 'all' as const } : opts.stale ? { kind: 'stale' as const } : { kind: 'default' as const };
+    const plan = planVerification(report, mode);
+    if (plan.refused === 'hash-version-mismatch') {
+      console.error(`✗ ${LEDGER_FILE} was written at another anchor hash version. Run \`guardlink verify\` (or \`guardlink verify --all\`) to rebuild it before re-locking individual claims.`);
+      process.exit(1);
+    }
+
+    const verified_by = opts.by ? `human:${opts.by}` : defaultVerifier(root);
+    const identity = { verified_by, verified_at: nowIso(), commit: headCommit(root) };
+    const next = applyVerification(read.ledger, plan, identity);
+    if (!opts.dryRun) writeLedger(root, next);
+
+    const staleLeft = report.claims.filter(c => c.state === 'stale' && !plan.relock.includes(c));
+
+    if (opts.format === 'json') {
+      const brief = (c: { key: string; location: { file: string; line: number }; verb: string; claim: string }) =>
+        ({ key: c.key, file: c.location.file, line: c.location.line, verb: c.verb, claim: c.claim });
+      console.log(JSON.stringify({
+        schema: 'guardlink.verify/v1',
+        dry_run: opts.dryRun === true,
+        verified_by,
+        commit: identity.commit ?? null,
+        locked: plan.lock.map(brief),
+        relocked: plan.relock.map(brief),
+        pruned: plan.prune.map(e => ({ key: e.key, file: e.file, verb: e.verb, claim: e.claim })),
+        skipped: plan.skipped,
+        unmatched: plan.unmatched,
+        stale_remaining: staleLeft.map(brief),
+        ledger: LEDGER_FILE,
+      }, null, 2));
+      return;
+    }
+
+    const verb = opts.dryRun ? 'Would lock' : 'Locked';
+    console.error(`${verb} ${plan.lock.length} claim(s), re-locked ${plan.relock.length}, pruned ${plan.prune.length} orphan(s) as ${verified_by}${opts.dryRun ? ' (dry run — nothing written)' : ` → ${LEDGER_FILE}`}`);
+    for (const c of plan.relock) console.error(`   re-locked  ${c.location.file}:${c.location.line}  @${c.verb} ${c.claim}`);
+    for (const s of plan.skipped) console.error(`   skipped    ${s.file}:${s.line}  (${s.reason}: the file could not be read)`);
+    for (const u of plan.unmatched) console.error(`   no claim at ${u}`);
+    if (staleLeft.length > 0) {
+      console.error(`${staleLeft.length} stale claim(s) left as they are — run \`guardlink verify --stale\`, or name the file, to re-lock them:`);
+      for (const c of staleLeft) console.error(`   ${c.location.file}:${c.location.line}  @${c.verb} ${c.claim}`);
+    }
   });
 
 // ─── ci ──────────────────────────────────────────────────────────────
