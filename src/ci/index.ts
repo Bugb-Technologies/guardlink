@@ -1,14 +1,15 @@
 /**
- * GuardLink — `guardlink ci`, the advisory CI face over two checks that already exist.
+ * GuardLink — `guardlink ci`, the advisory CI face over three checks that already exist.
  *
- * There is no detection logic in this file and there must never be any. Both
- * questions it answers are answered elsewhere, by the one implementation the
+ * There is no detection logic in this file and there must never be any. Every
+ * question it answers is answered elsewhere, by the one implementation the
  * rest of the product uses:
  *
  *   unmitigated exposures → `findUnmitigatedExposures` (parser/coverage.ts, D36)
  *   drifted `@source`     → `findAnchorDrift`         (parser/reanchor.ts, GL-505)
+ *   stale claims          → `classifyClaims`             (parser/verification.ts)
  *
- * A second copy of either predicate would be a tool that disagrees with
+ * A second copy of any predicate would be a tool that disagrees with
  * `validate` about the same model, which is the defect D36 was written to end.
  *
  * ── Advisory, not blocking ──────────────────────────────────────────
@@ -28,14 +29,19 @@
  *
  * @flows ThreatModel -> #cli via runCiChecks -- "Parsed model checked for uncovered exposures"
  * @flows SourceFiles -> #cli via findAnchorDrift -- "Recorded anchors compared against current source"
+ * @flows LedgerFile -> #cli via readLedger -- "Recorded claim hashes, read only"
  * @comment -- "Exit code is a pure function of (strict, exposures, drift) and lives in the summary, so JSON consumers see the same verdict the shell got"
  * @comment -- "Exposures and drift are serialized as the types the parser already produces — no renamed fields, so guardlink.ci/v1 cannot drift from the model it reports"
+ * @comment -- "The third check reads .guardlink/verified.json and never writes it; a corrupt ledger is reported once and treated as absent"
  */
 
 import type { ThreatModel, ThreatModelExposure, Severity } from '../types/index.js';
 import { findUnmitigatedExposures } from '../parser/coverage.js';
 import { findAnchorDrift, type AnchorDrift } from '../parser/reanchor.js';
 import { countAnchors } from '../parser/annotation-hash.js';
+import { readLedger, LEDGER_FILE, type LedgerEntry, type LedgerStatus } from '../parser/ledger.js';
+import { classifyClaims, type ClaimRecord, type VerificationReport } from '../parser/verification.js';
+import type { ClaimVerb } from '../parser/claim-key.js';
 
 /** Schema identifier carried by every `--format json` payload. */
 export const CI_SCHEMA = 'guardlink.ci/v1';
@@ -61,6 +67,20 @@ export interface CiSummary {
   anchors: number;
   by_severity: SeverityCounts;
   by_kind: DriftKindCounts;
+  /** Stale claims — `stale.length`. */
+  stale: number;
+  /** Claims whose hash matches the ledger. Carried as a count only. */
+  verified: number;
+  /** Claims with no ledger entry. Never affects the exit code. */
+  unverified: number;
+  /** Ledger entries with no matching claim. */
+  orphans: number;
+  stale_by_verb: Partial<Record<ClaimVerb, number>>;
+  /** Stale mitigates + accepts — what `--strict` fails on. */
+  demotable_stale: number;
+  /** Whether stale mitigations were disregarded by coverage. Always false until demotion ships. */
+  demote_stale: boolean;
+  ledger: LedgerStatus;
   /** Whether `--strict` was in effect for this run. */
   strict: boolean;
   /** The exit code the command used. 0 unless `strict` and something was found. */
@@ -73,12 +93,45 @@ export interface CiReport {
   exposures: ThreatModelExposure[];
   /** `AnchorDrift` as `findAnchorDrift` produced it — same fields, same names. */
   drift: AnchorDrift[];
+  stale: CiClaim[];
+  unverified: CiClaim[];
+  orphans: LedgerEntry[];
   summary: CiSummary;
 }
 
 export interface CiOptions {
   /** Opt in to a non-zero exit when either check finds anything. */
   strict?: boolean;
+}
+
+/** A claim as `ci` reports it: no raw annotation text, no model record. */
+export interface CiClaim {
+  key: string;
+  file: string;
+  line: number;
+  verb: ClaimVerb;
+  claim: string;
+  scope: 'symbol' | 'block' | 'file' | null;
+  symbol: string | null;
+  hint?: ClaimRecord['hint'];
+  verified_by?: string;
+  verified_at?: string;
+}
+
+function toCiClaim(c: ClaimRecord): CiClaim {
+  const out: CiClaim = {
+    key: c.key, file: c.location.file, line: c.location.line, verb: c.verb, claim: c.claim,
+    scope: c.anchor?.scope ?? null, symbol: c.anchor?.symbol ?? null,
+  };
+  if (c.hint) out.hint = c.hint;
+  if (c.entry) { out.verified_by = c.entry.verified_by; out.verified_at = c.entry.verified_at; }
+  return out;
+}
+
+/** Demotable verbs first, then by file and line — the order a reviewer wants. */
+function byUrgency(a: ClaimRecord, b: ClaimRecord): number {
+  if (a.demotable !== b.demotable) return a.demotable ? -1 : 1;
+  return a.location.file.localeCompare(b.location.file) || a.location.line - b.location.line;
 }
 
 function countBySeverity(exposures: ThreatModelExposure[]): SeverityCounts {
@@ -100,19 +153,34 @@ function countByKind(drift: AnchorDrift[]): DriftKindCounts {
 export function runCiChecks(root: string, model: ThreatModel, opts: CiOptions = {}): CiReport {
   const exposures = findUnmitigatedExposures(model);
   const drift = findAnchorDrift(root, model);
+  const read = readLedger(root);
+  const verification: VerificationReport = classifyClaims(model, read);
+  const staleRecords = verification.claims.filter(c => c.state === 'stale').sort(byUrgency);
+  const unverifiedRecords = verification.claims.filter(c => c.state === 'unverified').sort(byUrgency);
   const strict = opts.strict === true;
-  const found = exposures.length > 0 || drift.length > 0;
+  const found = exposures.length > 0 || drift.length > 0 || verification.summary.demotable_stale > 0;
 
   return {
     schema: CI_SCHEMA,
     exposures,
     drift,
+    stale: staleRecords.map(toCiClaim),
+    unverified: unverifiedRecords.map(toCiClaim),
+    orphans: verification.orphans,
     summary: {
       exposures: exposures.length,
       drift: drift.length,
       anchors: countAnchors(model),
       by_severity: countBySeverity(exposures),
       by_kind: countByKind(drift),
+      stale: verification.summary.stale,
+      verified: verification.summary.verified,
+      unverified: verification.summary.unverified,
+      orphans: verification.summary.orphans,
+      stale_by_verb: verification.summary.stale_by_verb,
+      demotable_stale: verification.summary.demotable_stale,
+      demote_stale: false,
+      ledger: read.status,
       strict,
       exit_code: strict && found ? 1 : 0,
     },
@@ -149,6 +217,16 @@ export function formatCiReport(report: CiReport): string {
     : `Anchor drift: ${summary.drift}${kindBreakdown(summary.by_kind)}`
       + ` of ${summary.anchors} anchor(s)`);
 
+  const verbs = Object.entries(summary.stale_by_verb).filter(([, n]) => n > 0).map(([v, n]) => `${v} ${n}`);
+  if (summary.ledger === 'absent') {
+    out.push('Stale claims: none recorded — run `guardlink verify --all` to start tracking');
+  } else if (summary.ledger === 'corrupt') {
+    out.push(`Stale claims: ledger unreadable (${LEDGER_FILE}) — see guardlink validate`);
+  } else {
+    out.push(`Stale claims: ${summary.stale}${verbs.length > 0 ? ` (${verbs.join(', ')})` : ''}`
+      + ` of ${summary.stale + summary.verified} recorded claim(s); unverified ${summary.unverified}; orphans ${summary.orphans}`);
+  }
+
   if (exposures.length > 0) {
     out.push('', `⚠  ${exposures.length} unmitigated exposure(s):`);
     for (const e of exposures) {
@@ -164,8 +242,19 @@ export function formatCiReport(report: CiReport): string {
     }
   }
 
-  if (exposures.length === 0 && drift.length === 0) {
-    out.push('', '✓ No unmitigated exposures, no anchor drift.');
+  if (report.stale.length > 0) {
+    out.push('', `⚠  ${report.stale.length} stale claim(s) — the code beneath them changed since verification:`);
+    for (const c of report.stale) {
+      const who = c.verified_at && c.verified_by ? `, verified ${c.verified_at.slice(0, 10)} by ${c.verified_by}` : '';
+      const where = c.symbol ?? (c.scope === 'file' ? 'whole file' : 'block');
+      const hint = c.hint === 'symbol-renamed' ? ' [symbol renamed]' : '';
+      out.push(`   ${c.file}:${c.line}  @${c.verb} ${c.claim}  (${where}${who})${hint}`);
+    }
+  }
+
+  const clean = exposures.length === 0 && drift.length === 0 && report.stale.length === 0;
+  if (clean) {
+    out.push('', `✓ No unmitigated exposures, no anchor drift.${summary.ledger === 'present' ? ' No stale claims.' : ''}`);
   } else if (!summary.strict) {
     out.push('', 'Advisory — nothing here failed the build. Run with --strict to gate on it.');
   }

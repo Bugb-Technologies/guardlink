@@ -528,9 +528,13 @@ program
     const { model } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
     const report = runCiChecks(root, model, { strict: opts.strict });
 
+    if (report.summary.ledger === 'corrupt' && opts.format === 'text') {
+      console.error(`✗ ${readLedger(root).diagnostic!.message}`);
+    }
+
     if (opts.format === 'json') {
       console.log(JSON.stringify(report, null, 2));
-      console.error(`GuardLink CI: ${report.summary.exposures} unmitigated exposure(s), ${report.summary.drift} drifted anchor(s)`);
+      console.error(`GuardLink CI: ${report.summary.exposures} unmitigated exposure(s), ${report.summary.drift} drifted anchor(s), ${report.summary.stale} stale claim(s)`);
     } else {
       console.error(formatCiReport(report));
     }
