@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v2:7a2573e68b44d78050c824aebf64d74479082ef8ac560912015dc802ffa78e54
+%% annotation_hash: sha256-v2:aba5ee9be2ee7cc0c32fd5036fdbb5567b880b2b6901d10f78ebb1f9947bc60e
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -162,16 +162,17 @@ graph LR
   regex_anchoring -. protects .-> parser
   glob_filtering -. protects .-> parser
   resource_limits -. protects .-> parser
+  config_validation -- mitigates --> insecure_deser
+  config_validation -. protects .-> parser
   prefix_ownership -- mitigates --> tag_collision
   prefix_ownership -. protects .-> parser
+  param_commands -. protects .-> cli
   output_encoding -. protects .-> report
-  config_validation -- mitigates --> insecure_deser
   config_validation -. protects .-> cli
   resource_limits -- mitigates --> insecure_deser
   resource_limits -. protects .-> cli
   input_sanitize -- mitigates --> arbitrary_write
   input_sanitize -. protects .-> cli
-  param_commands -. protects .-> cli
   path_validation -. protects .-> tui
   key_redaction -. protects .-> tui
   resource_limits -. protects .-> tui

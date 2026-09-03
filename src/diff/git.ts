@@ -72,7 +72,8 @@ export async function parseAtRef(root: string, ref: string, project: string): Pr
     }
 
     // Parse the temp directory
-    const { model } = await parseProject({ root: tmpDir, project });
+    // Historical parse: anchors are never read from this model, so skip the structure pass.
+    const { model } = await parseProject({ root: tmpDir, project, anchors: false });
     return model;
   } finally {
     // Cleanup

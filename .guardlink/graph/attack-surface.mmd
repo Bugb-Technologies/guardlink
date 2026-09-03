@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        attack-surface.mmd
-%% annotation_hash: sha256-v2:7a2573e68b44d78050c824aebf64d74479082ef8ac560912015dc802ffa78e54
+%% annotation_hash: sha256-v2:aba5ee9be2ee7cc0c32fd5036fdbb5567b880b2b6901d10f78ebb1f9947bc60e
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -60,10 +60,10 @@ graph TB
   subgraph A_parser["GuardLink.Parser · ⚠ 1 open"]
     direction TB
     E32["✅ Arbitrary_File_Write ×3"]:::sev_high
-    E33["✅ Path_Traversal ×4"]:::sev_high
-    E34["✅ Denial_of_Service ×3"]:::sev_med
+    E33["✅ Path_Traversal ×5"]:::sev_high
+    E34["✅ Denial_of_Service ×5"]:::sev_med
     E35["✅ ReDoS"]:::sev_med
-    E36["✅ Insecure_Deserialization"]:::sev_low
+    E36["✅ Insecure_Deserialization ×2"]:::sev_low
     E37["⚠️ Sensitive_Data_Exposure"]:::sev_low
   end
   subgraph A_sarif["GuardLink.SARIF · ⚠ 1 open"]
@@ -78,9 +78,9 @@ graph TB
   end
   subgraph A_cli["GuardLink.CLI · ✅ 100% covered"]
     direction TB
-    E42["✅ Command_Injection"]:::sev_crit
+    E42["✅ Command_Injection ×2"]:::sev_crit
     E43["✅ Path_Traversal"]:::sev_high
-    E44["✅ Arbitrary_File_Write ×5"]:::sev_high
+    E44["✅ Arbitrary_File_Write ×7"]:::sev_high
     E45["✅ API_Key_Exposure"]:::sev_high
     E46["✅ Insecure_Deserialization"]:::sev_med
   end

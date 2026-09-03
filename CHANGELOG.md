@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## \[Unreleased\]
 
+### Added
+
+- **Stale claim detection — the first half.** A claim in a comment was never re-checked: remove the control beneath a `@mitigates` and the model kept reporting the exposure as covered. GuardLink now resolves every annotation to the declaration it sits on (tree-sitter, every language in the default include list), hashes that declaration's non-comment tokens, and records the hash in a committed ledger, `.guardlink/verified.json`, when a person or agent verifies the claim.
+
+  - `guardlink verify [dir] [file[:line]…] [--stale] [--all] [--dry-run] [--by <name>] [--force]` writes the ledger and nothing else. The default form locks unverified claims and prunes orphans; re-locking a stale claim takes `--stale`, `--all`, or a named target, because that is an assertion that the control still holds. The verifier is recorded as `human:<git user.name>`.
+  - `guardlink ci` gains a third check. Stale claims are listed, mitigations and acceptances first. Advisory by default; `--strict` exits 1 on a stale mitigation or acceptance and never on an unverified claim. JSON under `guardlink.ci/v1` gains `stale`, `unverified`, `orphans` and matching summary counts, additively.
+  - `guardlink status` adds one line: verified, stale and unverified counts.
+  - `guardlink validate` emits `ledger-corrupt` when the ledger exists and does not parse.
+  - Library: `classifyClaims`, `demotionSet`, `relationRecords`, `readLedger`, `writeLedger`, `planVerification`, `applyVerification` from `guardlink/parser`; `parseStructure` from the new `guardlink/structure` subpath. `SourceLocation` gains an optional `anchor`. `ParseProjectOptions.anchors` (default true) skips the structure pass.
+  - `guardlink verify` refuses to write when a target matches no claim, and refuses `--stale` or a file target on a ledger that is corrupt or was written at another anchor hash version; a whole-repository run rebuilds it.
+  - A claim whose grammar failed to load on this machine classifies as unverified, never stale, so a packaging defect cannot fail a `--strict` build.
+
+  Package size grows by about 25 MB of grammar WASM, fetched at build time from pinned npm packages. Swift, Kotlin and Dart resolve to file scope until a compatible WASM is placed by hand: the first two ship none, and Dart's only published WASM predates the runtime's linking format. Demotion (a stale mitigation counting as unmitigated), SARIF and report changes, the MCP `guardlink_verify` tool and the template changes follow in the second half. Design: `docs/superpowers/specs/2026-09-03-stale-claim-detection-design.md`.
+
 ## \[2.0.0\] — 2026-08-12
 
 **The major version is scoped to two things: the TypeScript type surface and the threat-model JSON schema.** No command was removed, no flag was removed, and no output format changed except the threat model's own `coverage` block. **If you use the `guardlink` CLI or the MCP server, upgrading from 1.4.5 needs no migration** — for you this release is additive.

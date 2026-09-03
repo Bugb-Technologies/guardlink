@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v2:7a2573e68b44d78050c824aebf64d74479082ef8ac560912015dc802ffa78e54
+%% annotation_hash: sha256-v2:aba5ee9be2ee7cc0c32fd5036fdbb5567b880b2b6901d10f78ebb1f9947bc60e
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -66,6 +66,7 @@ graph LR
   sariflog["🧩 SarifLog"]
   dashboard["🧩 GuardLink.Dashboard · internal"]
   sourcefiles["🧩 SourceFiles"]
+  ledgerfile["🧩 LedgerFile"]
   userargs["👤 UserArgs"]
   html["🧩 HTML"]
   gitref["🧩 GitRef"]
@@ -87,6 +88,7 @@ graph LR
   agentproposal["🧩 AgentProposal"]
   proposalledger["🧩 ProposalLedger"]
   gitconfig["🧩 GitConfig"]
+  grammarfile["🧩 GrammarFile"]
   commands["🧩 Commands"]
   rawstdin["🧩 RawStdin"]
   terminal["🧩 Terminal"]
@@ -130,8 +132,10 @@ graph LR
   dashboard -- "🗄️ writeFileSync" --> filesystem
   threatmodel -- "📡 runCiChecks" --> cli
   sourcefiles -- "📡 findAnchorDrift" --> cli
+  ledgerfile -- "📡 readLedger" --> cli
   userargs -- "📡 process.argv" --> cli
   cli -- "🗄️ writeFile" --> filesystem
+  userinput -- "📡 verify" --> cli
   threatmodel -- "📡 generateThreatGraph" --> dashboard
   threatmodel -- "📡 computeStats" --> dashboard
   sourcefiles -- "🗄️ readFileSync" --> dashboard
@@ -173,11 +177,16 @@ graph LR
   parser -- "🗄️ writeFile" --> sourcefiles
   threatmodel -- "📡 isCovered" --> parser
   sourcefile -- "📡 resolveGalPath" --> parser
+  ledgerfile -- "📡 readLedger" --> parser
+  cli -- "📡 writeLedger" --> ledgerfile
   threatmodel -- "📡 migrateAnnotationMode" --> parser
   filepath -- "🗄️ readFile" --> parser
   parser -- "📡 parseString" --> annotations
   parser -- "📡 assembleModel" --> threatmodel
   threatmodel -- "📡 findAnchorDrift" --> parser
+  threatmodel -- "📡 classifyClaims" --> parser
+  ledgerfile -- "📡 classifyClaims" --> parser
+  cli -- "📡 applyVerification" --> ledgerfile
   featurename -- "📡 filtered_by_features" --> report
   threatmodel -- "📡 generateReport" --> report
   report -- "📡 return" --> markdown
@@ -189,6 +198,9 @@ graph LR
   gitconfig -- "🗄️ execFileSync" --> cli
   threatmodel -- "📡 getReviewableExposures" --> cli
   cli -- "🗄️ writeFile" --> sourcefiles
+  sourcefiles -- "📡 attachAnchors" --> parser
+  sourcefile -- "📡 parseStructure" --> parser
+  grammarfile -- "📡 Language.load" --> parser
   userargs -- "📡 args" --> tui
   tui -- "🗄️ writeFile" --> filesystem
   tui -- "📡 launchAgent" --> agent_launcher
