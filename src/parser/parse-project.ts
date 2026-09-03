@@ -34,6 +34,7 @@ import { loadWorkspaceConfig } from '../workspace/index.js';
 import { ANNOTATIONS_DIR } from './gal-path.js';
 import { fileCoveragePercent } from './coverage.js';
 import { readDisabledDiagnostics } from './annotation-mode.js';
+import { attachAnchors } from '../structure/attach.js';
 
 /** A standalone annotation sidecar, not a source file. */
 const isGalPath = (p: string): boolean => /\.gal$/i.test(p);
@@ -47,6 +48,12 @@ export interface ParseProjectOptions {
   exclude?: string[];
   /** Project name for the ThreatModel */
   project?: string;
+  /**
+   * Attach a structure-layer `anchor` to every annotation location (default
+   * true). Set false for callers that only need the annotations — the diff
+   * engine's historical parses, for instance — to skip grammar loading.
+   */
+  anchors?: boolean;
 }
 
 export const DEFAULT_INCLUDE = [
@@ -119,6 +126,7 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     include = DEFAULT_INCLUDE,
     exclude = DEFAULT_EXCLUDE,
     project = 'unknown',
+    anchors = true,
   } = options;
 
   // Discover files (dot: true to include .guardlink/ definitions)
@@ -189,6 +197,11 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     allAnnotations.push(...result.annotations);
     allDiagnostics.push(...result.diagnostics);
   }
+
+  // The code beneath each claim (spec §5). Locations are already logical,
+  // root-relative paths, and assembleModel shares each location object by
+  // reference, so the anchor set here reaches every model record.
+  if (anchors) await attachAnchors(root, allAnnotations);
 
   // Check for duplicate identifiers
   const idMap = new Map<string, Annotation>();
