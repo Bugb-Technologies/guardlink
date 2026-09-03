@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadLanguage, parseWith, resetRuntimeForTests } from '../src/structure/runtime.js';
+import { grammarPath } from '../src/structure/grammars.js';
 
 describe('structure runtime', () => {
   afterEach(() => { resetRuntimeForTests(); vi.restoreAllMocks(); });
@@ -58,5 +59,26 @@ describe('structure runtime', () => {
     expect(r2).toEqual(r1);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]?.[0]).toContain('typescript');
+  });
+
+  it('loads a hand-placed WASM for a language outside GRAMMARS', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'guardlink-test-'));
+    copyFileSync(grammarPath('typescript'), join(tmpDir, 'swift.wasm'));
+
+    resetRuntimeForTests({ grammarsDir: tmpDir });
+    const r = await loadLanguage('swift');
+
+    expect(r.ok).toBe(true);
+  });
+
+  it('no-grammar, silently, when a language outside GRAMMARS has no hand-placed file', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'guardlink-test-'));
+    const warn = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    resetRuntimeForTests({ grammarsDir: tmpDir });
+    const r = await loadLanguage('swift');
+
+    expect(r).toEqual({ ok: false, reason: 'no-grammar' });
+    expect(warn).not.toHaveBeenCalled();
   });
 });

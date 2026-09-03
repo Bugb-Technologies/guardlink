@@ -96,6 +96,13 @@ describe('anchor resolution: TypeScript', () => {
     expect(after.anchorForLine(8).hash).toBe(h1);
     after.dispose();
   });
+
+  it('throws on use after dispose, and dispose itself is safe to call twice', async () => {
+    const s = await parseStructure('/x/a.ts', TS);
+    s.dispose();
+    expect(() => s.dispose()).not.toThrow();
+    expect(() => s.anchorForLine(8)).toThrow(/dispose/);
+  });
 });
 
 const PY = `import os
@@ -179,6 +186,16 @@ describe('anchor resolution: other languages', () => {
   it('Java: binds a block comment in a class body to the method', async () => {
     const s = await parseStructure('/x/A.java', JAVA);
     expect(s.anchorForLine(4)).toMatchObject({ scope: 'symbol', symbol: 'handler', start_line: 5, end_line: 5 });
+    s.dispose();
+  });
+  it('Java: symbolNamed resolves the method, not the enclosing class body', async () => {
+    const s = await parseStructure('/x/A.java', JAVA);
+    expect(s.symbolNamed('handler')).toMatchObject({ scope: 'symbol', symbol: 'handler', start_line: 5, end_line: 5 });
+    s.dispose();
+  });
+  it('Python: symbolNamed resolves the method, not the enclosing class block', async () => {
+    const s = await parseStructure('/x/a.py', PY);
+    expect(s.symbolNamed('run')).toMatchObject({ start_line: 10, end_line: 11 });
     s.dispose();
   });
   it('Bash: binds to the function beneath the comment', async () => {

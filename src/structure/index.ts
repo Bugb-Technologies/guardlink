@@ -12,9 +12,9 @@
  * @comment -- "Takes content, not a path to read: the parser owns file I/O and its path validation; this layer never opens a file"
  */
 import { extname } from 'node:path';
-import type { Tree } from 'web-tree-sitter';
+import type { Tree, Node } from 'web-tree-sitter';
 import type { Anchor, AnchorReason } from '../types/index.js';
-import { languageForExtension, GRAMMARS_UNAVAILABLE } from './grammars.js';
+import { languageForExtension } from './grammars.js';
 import { loadLanguage, parseWith } from './runtime.js';
 import { hashPlainText } from './hash.js';
 import { resolveAnchor, findNamed } from './anchor.js';
@@ -29,7 +29,7 @@ export interface FileStructure {
   anchorForLine(line: number): Anchor;
   /** External mode: resolve a `@source … symbol:<name>` by declaration name. */
   symbolNamed(name: string): Anchor | null;
-  /** Release the syntax tree. Safe to call twice. */
+  /** Release the syntax tree. Safe to call twice; anchorForLine and symbolNamed throw after this. */
   dispose(): void;
 }
 
@@ -43,21 +43,22 @@ function fileOnly(language: string | null, content: string, reason: AnchorReason
 export async function parseStructure(filePath: string, content: string): Promise<FileStructure> {
   const language = languageForExtension(extname(filePath));
   if (!language) return fileOnly(null, content, 'no-grammar');
-  if ((GRAMMARS_UNAVAILABLE as readonly string[]).includes(language)) {
-    // Still try: a hand-placed WASM makes the language symbol-scoped.
-    const attempt = await loadLanguage(language);
-    if (!attempt.ok) return fileOnly(language, content, 'no-grammar');
-  }
   const loaded = await loadLanguage(language);
   if (!loaded.ok) return fileOnly(language, content, loaded.reason);
 
   let tree: Tree | null = parseWith(loaded.language, content);
-  const root = tree.rootNode;
+  let root: Node | null = tree.rootNode;
   const lines = content.split('\n');
   return {
     language,
-    anchorForLine: (line) => resolveAnchor(root, language, lines, line),
-    symbolNamed: (name) => findNamed(root, name),
-    dispose: () => { if (tree) { tree.delete(); tree = null; } },
+    anchorForLine: (line) => {
+      if (!root) throw new Error('FileStructure used after dispose()');
+      return resolveAnchor(root, language, lines, line);
+    },
+    symbolNamed: (name) => {
+      if (!root) throw new Error('FileStructure used after dispose()');
+      return findNamed(root, name);
+    },
+    dispose: () => { if (tree) { tree.delete(); tree = null; } root = null; },
   };
 }

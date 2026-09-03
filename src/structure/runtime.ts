@@ -3,11 +3,15 @@
  *
  * The runtime initialises once per process and each grammar loads once, both
  * lazily: a repository with only TypeScript never pays for the Go grammar.
- * A language outside `GRAMMARS` (e.g. Swift, Kotlin) is `no-grammar` and silent
- * — that is the designed fallback. A language in `GRAMMARS` with no file on disk
- * is `grammar-failed` and warned once per language — that is a packaging defect.
- * A file that exists but fails to load is also `grammar-failed` and warned once,
- * because that is a runtime packaging defect, not a fallback.
+ * A language outside both `GRAMMARS` and `GRAMMARS_UNAVAILABLE` is `no-grammar`
+ * and silent — that is the designed fallback. A language in `GRAMMARS` with no
+ * file on disk is `grammar-failed` and warned once per language — that is a
+ * packaging defect. A language in `GRAMMARS_UNAVAILABLE` (Swift, Kotlin, Dart)
+ * has no pinned WASM to fetch, but a hand-placed file at `grammars/<language>.wasm`
+ * is still attempted — silent `no-grammar` when absent, `grammar-failed` and
+ * warned once if present but unloadable. A file that exists but fails to load is
+ * always `grammar-failed` and warned once, because that is a runtime packaging
+ * defect, not a fallback.
  *
  * @exposes #parser to #dos [low] cwe:CWE-400 -- "Grammar WASM is loaded into memory per language; a pathological source file costs one parse"
  * @mitigates #parser against #dos using #resource-limits -- "One runtime init and one load per language per process; trees are parsed on demand and deleted by callers"
@@ -18,7 +22,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Parser, Language } from 'web-tree-sitter';
 import type { Tree } from 'web-tree-sitter';
-import { GRAMMARS, GRAMMARS_DIR } from './grammars.js';
+import { GRAMMARS, GRAMMARS_UNAVAILABLE, GRAMMARS_DIR } from './grammars.js';
 
 export type LoadResult =
   | { ok: true; language: Language }
@@ -49,11 +53,18 @@ export function loadLanguage(language: string): Promise<LoadResult> {
   let pending = loads.get(language);
   if (!pending) {
     pending = (async (): Promise<LoadResult> => {
-      if (!(language in GRAMMARS)) return { ok: false, reason: 'no-grammar' };
       const path = resolveGrammarPath(language);
-      if (!existsSync(path)) {
-        warnOnce(language, `grammar file for ${language} is missing at ${path}; run npm run build:grammars. Falling back to file-scope anchors.`);
-        return { ok: false, reason: 'grammar-failed' };
+      if (language in GRAMMARS) {
+        if (!existsSync(path)) {
+          warnOnce(language, `grammar file for ${language} is missing at ${path}; run npm run build:grammars. Falling back to file-scope anchors.`);
+          return { ok: false, reason: 'grammar-failed' };
+        }
+      } else if ((GRAMMARS_UNAVAILABLE as readonly string[]).includes(language)) {
+        // No pinned WASM to fetch, but a hand-placed file makes this language
+        // symbol-scoped (spec §6.4). Absent, it is the designed silent fallback.
+        if (!existsSync(path)) return { ok: false, reason: 'no-grammar' };
+      } else {
+        return { ok: false, reason: 'no-grammar' };
       }
       try {
         await init();

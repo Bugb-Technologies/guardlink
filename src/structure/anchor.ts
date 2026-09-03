@@ -147,7 +147,7 @@ export function findNamed(root: Node, name: string): Anchor | null {
         const inner = target.childForFieldName(field);
         if (inner) { target = inner; break; }
       }
-      if (nameOf(target) === name) return symbolAnchor(target, name);
+      if (target.childForFieldName('name')?.text === name) return symbolAnchor(target, name);
       stack.push(child);
     }
   }
