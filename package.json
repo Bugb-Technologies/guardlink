@@ -49,6 +49,10 @@
     "./structure": {
       "import": "./dist/structure/index.js",
       "types": "./dist/structure/index.d.ts"
+    },
+    "./blame": {
+      "import": "./dist/blame/index.js",
+      "types": "./dist/blame/index.d.ts"
     }
   },
   "scripts": {

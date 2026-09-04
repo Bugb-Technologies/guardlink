@@ -22,5 +22,7 @@ export { generateSarif } from './analyzer/index.js';
 export type { SarifOptions } from './analyzer/index.js';
 export { runCiChecks, formatCiReport, CI_SCHEMA } from './ci/index.js';
 export type { CiReport, CiSummary, CiOptions } from './ci/index.js';
+export { computeBlame, attachBlame, buildBlamePayload, formatBlameText, readBlameConfig, DEFAULT_TOOL_RULES, BLAME_SCHEMA } from './blame/index.js';
+export type { BlamePayload, BlameEntry, BlameConfig, ToolRule, ExposureBlame, MitigationBlame, RecordBlame, CommitRef, AiAttribution, BlameSummary } from './blame/index.js';
 export { populateMetadata, loadWorkspaceConfig, REPORT_SCHEMA_VERSION, mergeReports, formatMergeSummary, diffMergedReports, formatDiffSummary } from './workspace/index.js';
 export type { WorkspaceConfig, WorkspaceRepo, MergedReport, MergeTotals, MergeDiffSummary, MergeOptions } from './workspace/index.js';

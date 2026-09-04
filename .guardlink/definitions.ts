@@ -24,6 +24,7 @@
 // @asset GuardLink.Report (#report) -- "Generates markdown threat model reports with Mermaid diagrams"
 // @asset GuardLink.SARIF (#sarif) -- "Exports findings as SARIF 2.1.0 JSON for security tooling"
 // @asset GuardLink.Suggest (#suggest) -- "Analyzes code patterns to suggest appropriate security annotations"
+// @asset GuardLink.Blame (#blame) -- "Maps annotated code spans to git history: authors, commits, AI co-author trailers"
 
 // ─── THREATS ──────────────────────────────────────────────────────────
 // Security threats that can impact the application
@@ -57,6 +58,7 @@
 // @control Regex_Anchoring (#regex-anchoring) -- "Using anchored regex patterns (^...$) to prevent backtracking"
 // @control Prefix_Ownership (#prefix-ownership) -- "Tag prefix determines owning repo, preventing cross-repo tag collisions"
 // @control YAML_Validation (#yaml-validation) -- "Schema validation for workspace.yaml configuration files"
+// @control Identity_Redaction (#identity-redaction) -- "Hashes or drops author emails before attribution leaves the machine"
 
 // ─── ACTORS ───────────────────────────────────────────────────────────
 // Principals in guardlink's own authorization model — roles, not people.
