@@ -115,6 +115,11 @@ GuardLink fixes this at three levels:
 
 **2. AI agents maintain it.** GuardLink integrates with AI coding agents through MCP and behavioral directives. When your agent writes a route handler, it adds `@exposes` and `@mitigates` annotations automatically. The threat model maintains itself because the thing writing the code also writes the security context.
 
+**Once annotated, the model answers questions nobody typed.** `guardlink paths` walks
+the `@flows` graph and reports routes running from an untrusted entry point to a sink
+with no control anywhere along them — derived from annotations already committed, with
+no LLM in the loop, so every hop cites a real `file:line`.
+
 **3. CI enforces it.** `guardlink validate` fails on syntax errors. `guardlink ci --strict` fails on unmitigated exposures and drifted anchors. `guardlink diff --fail-on-new` blocks PRs that introduce new unmitigated exposures. `guardlink sarif` exports to GitHub's Security tab. The threat model becomes a quality gate, not a checkbox.
 
 ```

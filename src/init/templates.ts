@@ -270,6 +270,7 @@ such as which risks a human has explicitly accepted.
 | change a shared component | \`guardlink_graph(from, depth, direction)\` — blast radius across data flows and trust boundaries |
 | act on a scanner finding | \`guardlink_lookup("cwe:CWE-89")\` — is this weakness class declared, and is it mitigated, accepted, open or confirmed |
 | finish a change | \`guardlink validate .\` then \`guardlink diff HEAD~1\` — did I make this worse |
+| ask where data reaches without a control | \`guardlink_paths(root)\` — undefended entry-to-sink routes, derived from \`@flows\`, no LLM |
 
 Without MCP, the same answers come from \`guardlink status .\`, \`guardlink parse .\`
 (the whole model as JSON on stdout) and \`guardlink diff HEAD~1\`.
@@ -311,8 +312,8 @@ the same change.** This includes: new endpoints, authentication/authorization lo
 
 ### Tools
 
-- **MCP** (Claude Code, Cursor): \`guardlink_context\`, \`guardlink_graph\`, \`guardlink_lookup\`, \`guardlink_diff\`, \`guardlink_validate\`, \`guardlink_status\`, \`guardlink_suggest\`.
-- **CLI** (always): \`guardlink status .\`, \`guardlink parse .\`, \`guardlink validate .\`, \`guardlink diff HEAD~1\`, \`guardlink report .\`.
+- **MCP** (Claude Code, Cursor): \`guardlink_context\`, \`guardlink_graph\`, \`guardlink_paths\`, \`guardlink_lookup\`, \`guardlink_diff\`, \`guardlink_validate\`, \`guardlink_status\`, \`guardlink_suggest\`.
+- **CLI** (always): \`guardlink status .\`, \`guardlink parse .\`, \`guardlink validate .\`, \`guardlink diff HEAD~1\`, \`guardlink paths .\`, \`guardlink report .\`.
 - \`guardlink_lookup\` answers a fixed set of named forms and **refuses anything else rather than
   guessing** — send it a bad query to get the list. Beyond \`asset\`/\`threat\`/\`control\`, it reaches
   every relation the model holds: \`owner of X\`, \`handles pii\`, \`assumptions for X\`, \`audits for X\`,
@@ -1029,6 +1030,7 @@ guardlink parse .                        # the whole model as JSON, on stdout
 guardlink validate .                     # syntax errors and dangling #id references
 guardlink report . --format md           # human-readable threat model report
 guardlink diff HEAD~1                    # what your change did to the model
+guardlink paths .                        # undefended routes from an entry point to a sink
 guardlink dashboard .                    # interactive HTML view
 \`\`\`
 

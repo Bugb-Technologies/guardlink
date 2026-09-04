@@ -100,6 +100,7 @@ guardlink report [dir]                  # Generate threat-model.md + optional JS
 guardlink dashboard [dir]               # Interactive HTML dashboard with Mermaid diagrams
 guardlink sarif [dir] [-o file]         # SARIF 2.1.0 for GitHub Advanced Security / VS Code
 guardlink diff [ref]                    # Compare threat model against a git ref (default: HEAD~1)
+guardlink paths [dir] [--all]           # Undefended source-to-sink routes, derived from @flows (no LLM)
 
 # AI-Powered Analysis
 guardlink threat-report <fw|prompt>     # AI threat report (see frameworks below)
@@ -192,6 +193,7 @@ Run `guardlink tui` for the interactive terminal interface:
 /report                  Generate markdown + JSON report
 /dashboard               Generate HTML dashboard + open browser
 /diff [ref]              Compare model vs git ref (default: HEAD~1)
+/paths [--all]           Undefended entry-to-sink routes through the flow graph
 /sarif [-o file]         Export SARIF 2.1.0
 /gal                     GAL annotation language guide
 /feature                 List all @feature tags

@@ -1,37 +1,37 @@
 {
   "schema_version": 1,
-  "annotation_hash": "sha256-v2:7a2573e68b44d78050c824aebf64d74479082ef8ac560912015dc802ffa78e54",
+  "annotation_hash": "sha256-v2:509a7e628719de730d7f7f2a1d34df3e7b06893e4072b404df08ba83e5e9c959",
   "generator": "guardlink@2.0.0",
   "artifacts": [
     {
       "path": ".guardlink/graph/threat-graph.mmd",
       "bytes": 8430,
-      "annotation_hash": "sha256-v2:7a2573e68b44d78050c824aebf64d74479082ef8ac560912015dc802ffa78e54"
+      "annotation_hash": "sha256-v2:509a7e628719de730d7f7f2a1d34df3e7b06893e4072b404df08ba83e5e9c959"
     },
     {
       "path": ".guardlink/graph/dataflow.mmd",
-      "bytes": 9456,
-      "annotation_hash": "sha256-v2:7a2573e68b44d78050c824aebf64d74479082ef8ac560912015dc802ffa78e54"
+      "bytes": 9512,
+      "annotation_hash": "sha256-v2:509a7e628719de730d7f7f2a1d34df3e7b06893e4072b404df08ba83e5e9c959"
     },
     {
       "path": ".guardlink/graph/attack-surface.mmd",
       "bytes": 4367,
-      "annotation_hash": "sha256-v2:7a2573e68b44d78050c824aebf64d74479082ef8ac560912015dc802ffa78e54"
+      "annotation_hash": "sha256-v2:509a7e628719de730d7f7f2a1d34df3e7b06893e4072b404df08ba83e5e9c959"
     },
     {
       "path": ".guardlink/graph/by-feature/dashboard.mmd",
       "bytes": 2296,
-      "annotation_hash": "sha256-v2:7a2573e68b44d78050c824aebf64d74479082ef8ac560912015dc802ffa78e54"
+      "annotation_hash": "sha256-v2:509a7e628719de730d7f7f2a1d34df3e7b06893e4072b404df08ba83e5e9c959"
     },
     {
       "path": ".guardlink/graph/by-feature/mcp-integration.mmd",
       "bytes": 2744,
-      "annotation_hash": "sha256-v2:7a2573e68b44d78050c824aebf64d74479082ef8ac560912015dc802ffa78e54"
+      "annotation_hash": "sha256-v2:509a7e628719de730d7f7f2a1d34df3e7b06893e4072b404df08ba83e5e9c959"
     },
     {
       "path": ".guardlink/model.json",
-      "bytes": 131062,
-      "annotation_hash": "sha256-v2:7a2573e68b44d78050c824aebf64d74479082ef8ac560912015dc802ffa78e54"
+      "bytes": 132741,
+      "annotation_hash": "sha256-v2:509a7e628719de730d7f7f2a1d34df3e7b06893e4072b404df08ba83e5e9c959"
     }
   ]
 }
