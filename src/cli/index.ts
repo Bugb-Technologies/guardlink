@@ -245,7 +245,9 @@ program
       console.log(json);
     }
 
-    process.exit(diagnostics.some(d => d.level === 'error') ? 1 : 0);
+    // Set the code and let the process end on its own: process.exit() would
+    // truncate the JSON above at the pipe buffer before stdout has flushed.
+    process.exitCode = diagnostics.some(d => d.level === 'error') ? 1 : 0;
   });
 
 // ─── status ──────────────────────────────────────────────────────────
@@ -559,7 +561,9 @@ program
     }
 
     // Advisory by default: 0 even with findings. `--strict` is the only path to 1.
-    process.exit(report.summary.exit_code);
+    // Set the code and let the process end on its own: process.exit() would
+    // truncate the JSON above at the pipe buffer before stdout has flushed.
+    process.exitCode = report.summary.exit_code;
   });
 
 // ─── report ──────────────────────────────────────────────────────────
@@ -901,9 +905,10 @@ program
       console.log(formatDiff(diff));
     }
 
-    // CI gate
+    // CI gate. Set the code and let the process end on its own: process.exit()
+    // would truncate the output above at the pipe buffer before stdout has flushed.
     if (opts.failOnNew && diff.newUnmitigatedExposures.length > 0) {
-      process.exit(1);
+      process.exitCode = 1;
     }
   });
 
