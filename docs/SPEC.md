@@ -842,6 +842,8 @@ Every annotation carries a source location:
 - `origin_file`: For externalized `.gal` annotations, the physical annotation file where the GAL line lives
 - `origin_line`: For externalized `.gal` annotations, the 1-indexed line in the `.gal` file where the annotation was declared
 
+Attribution (§5.4) blames the annotation line at `origin_file:origin_line` when present, and at `file:line` otherwise — for a sidecar claim, `line` is the `@source line:N` code line, not the annotation.
+
 ### 5.3. Graph Interpretation
 
 The threat model forms a directed graph:
@@ -1040,6 +1042,25 @@ A conforming instruction file should contain:
 3. The constraint that agents only add annotations and do not modify functional code, execute commands, change CI configuration, or modify secrets
 4. Examples in the project's primary language
 
+### 5.4. Attribution (optional `blame` field)
+
+A conforming tool MAY attach git attribution to `exposures[]`, `confirmed[]` and `mitigations[]` records on request (`guardlink parse --blame`). The field is computed from history at run time — never declared in source — and MUST be excluded from the annotation hash (§8.2.2) and from any committed model artifact, because it describes history, not the claim. AI attribution MUST come only from commit metadata (author identity, `Co-authored-by` / `Assisted-by` trailers); a commit with no such declaration is attributed to its human author.
+
+```json
+{
+  "kind": "exposure",
+  "status": "ok",
+  "granularity": "symbol",
+  "introduced_by": { "sha": "…", "date": "2026-01-01T10:00:00Z", "author": "human:Ann", "co_authors": [], "assisted_by": [{ "tool": "claude-code", "model": "Claude Opus 5 (1M context)", "raw": "…" }], "method": "log-L" },
+  "found_by": { "sha": "…", "date": "…", "author": "human:Ann", "co_authors": [], "assisted_by": [] },
+  "contributors": [{ "sha": "…", "date": "…", "author": "human:Ann", "co_authors": [], "assisted_by": [], "lines": 3 }],
+  "fixed_by": { "sha": "…", "date": "…", "author": "human:Bob", "co_authors": [], "assisted_by": [] },
+  "time_to_fix_days": 2
+}
+```
+
+A mitigation carries `{ "kind": "mitigation", "status", "granularity", "declared_by", "contributors" }`. `status` is one of `ok`, `no-git`, `shallow`, `uncommitted`, `no-anchor`, `file-missing`, `error`; `granularity` is the anchor scope (`symbol`, `block`, `file`) or `none`. `introduced_by.method` is `log-L` (line history), `file-add` (file-scope anchor) or `blame` (fallback when the file has uncommitted edits); `lower_bound: true` marks an introduction that may be older than reported. Identity strings use the ledger scheme: `human:<name|email|hash>` or `agent:<tool>`.
+
 ### 8.2. MCP Server Integration
 
 A conforming GuardLink tool may expose a Model Context Protocol (MCP) server with the following tool interface:
@@ -1051,6 +1072,7 @@ A conforming GuardLink tool may expose a Model Context Protocol (MCP) server wit
 | `guardlink_validate` | Check annotations for syntax errors and dangling references |
 | `guardlink_suggest` | Given a code diff, suggest appropriate annotations |
 | `guardlink_lookup` | Query the threat model for a specific asset, threat, or control |
+| `guardlink_blame` | Who introduced, declared and fixed each claim, and which AI co-authored those commits (§5.4); read-only |
 
 MCP integration enables real-time threat model awareness during coding sessions. Tools should support project-scoped MCP configuration (e.g., `.mcp.json` for Claude Code) so that the MCP server can be committed to the repository and automatically available to all developers.
 

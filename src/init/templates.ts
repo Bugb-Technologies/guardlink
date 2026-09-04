@@ -1032,6 +1032,7 @@ guardlink report . --format md           # human-readable threat model report
 guardlink diff HEAD~1                    # what your change did to the model
 guardlink paths .                        # undefended routes from an entry point to a sink
 guardlink dashboard .                    # interactive HTML view
+guardlink blame .                        # who introduced / declared / fixed each claim, and which AI co-authored it
 \`\`\`
 
 ## Asking questions with MCP
@@ -1046,6 +1047,7 @@ The MCP server exposes the model as tools. The ones worth knowing by name:
 | \`guardlink_validate\` | Before you finish. |
 | \`guardlink_diff(ref)\` | After a change — did I make this worse? |
 | \`guardlink_status\` | Cold start on an unfamiliar repo. |
+| \`guardlink_blame(file)\` | Who introduced this, and did an AI co-author it. Read from git; nothing written. |
 | \`guardlink_annotate_apply(file, line, annotations)\` | **You are writing annotations.** Prefer it over editing \`.gal\` files by hand. |
 
 ### Writing annotations with the MCP server

@@ -11,8 +11,8 @@ accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 510 annotations · 16 assets · 15 threats · 12 controls · 88 exposures · 123 flows
-Content hash: `sha256-v2:d87c67372ccc764e906cdaf802b5994abcee762996822cf0d6a615c756e1b030` — identical hash means identical model.
+Current model: 574 annotations · 17 assets · 15 threats · 13 controls · 97 exposures · 138 flows
+Content hash: `sha256-v2:f185cb0f2b7551e204d6a238e33edc80c5a752f5aacb897be2d164cb9679dce6` — identical hash means identical model.
 
 ---
 
@@ -177,6 +177,7 @@ guardlink report . --format md           # human-readable threat model report
 guardlink diff HEAD~1                    # what your change did to the model
 guardlink paths .                        # undefended routes from an entry point to a sink
 guardlink dashboard .                    # interactive HTML view
+guardlink blame .                        # who introduced / declared / fixed each claim, and which AI co-authored it
 ```
 
 ## Asking questions with MCP
@@ -191,6 +192,7 @@ The MCP server exposes the model as tools. The ones worth knowing by name:
 | `guardlink_validate` | Before you finish. |
 | `guardlink_diff(ref)` | After a change — did I make this worse? |
 | `guardlink_status` | Cold start on an unfamiliar repo. |
+| `guardlink_blame(file)` | Who introduced this, and did an AI co-author it. Read from git; nothing written. |
 | `guardlink_annotate_apply(file, line, annotations)` | **You are writing annotations.** Prefer it over editing `.gal` files by hand. |
 
 ### Writing annotations with the MCP server

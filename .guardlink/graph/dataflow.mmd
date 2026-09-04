@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v2:d87c67372ccc764e906cdaf802b5994abcee762996822cf0d6a615c756e1b030
+%% annotation_hash: sha256-v2:f185cb0f2b7551e204d6a238e33edc80c5a752f5aacb897be2d164cb9679dce6
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -26,7 +26,7 @@ graph LR
     nvd["🧩 NVD"]
   end
   subgraph Z5["🧱 GuardLink.CLI · Trust boundary at CLI argument parsing"]
-    cli["🧩 GuardLink.CLI · secrets, internal"]
+    cli["🧩 GuardLink.CLI · secrets, pii, internal"]
   end
   subgraph Z6["🧱 UserInput · Trust boundary at CLI argument parsing"]
     userinput["👤 UserInput"]
@@ -38,7 +38,7 @@ graph LR
     gitrepo["🧩 GitRepo"]
   end
   subgraph Z9["🧱 GuardLink.MCP · Trust boundary at MCP protocol"]
-    mcp["🧩 GuardLink.MCP · internal"]
+    mcp["🧩 GuardLink.MCP · internal, pii"]
   end
   subgraph Z10["🧱 MCPClient · Trust boundary at MCP protocol"]
     mcpclient["👤 MCPClient"]
@@ -50,7 +50,7 @@ graph LR
     filesystem["🧩 FileSystem"]
   end
   subgraph Z13["🧱 GuardLink.TUI · Trust boundary at interactive input"]
-    tui["👤 GuardLink.TUI · secrets"]
+    tui["👤 GuardLink.TUI · secrets, pii"]
   end
   envvars["🧩 EnvVars"]
   configfile["🧩 ConfigFile"]
@@ -64,7 +64,9 @@ graph LR
   llmtoolcall["🧩 LLMToolCall"]
   sarif["🧩 GuardLink.SARIF"]
   sariflog["🧩 SarifLog"]
-  dashboard["🧩 GuardLink.Dashboard · internal"]
+  dashboard["🧩 GuardLink.Dashboard · pii, internal"]
+  blame["🧩 GuardLink.Blame · pii"]
+  committrailers["🧩 CommitTrailers"]
   sourcefiles["🧩 SourceFiles"]
   ledgerfile["🧩 LedgerFile"]
   userargs["👤 UserArgs"]
@@ -83,7 +85,7 @@ graph LR
   sourcefile["🧩 SourceFile"]
   annotations["🧩 Annotations"]
   featurename["🧩 FeatureName"]
-  report["🧩 GuardLink.Report"]
+  report["🧩 GuardLink.Report · pii"]
   markdown["🧩 Markdown"]
   agentproposal["🧩 AgentProposal"]
   proposalledger["🧩 ProposalLedger"]
@@ -130,11 +132,20 @@ graph LR
   sarif -- "📡 return" --> sariflog
   threatmodel -- "📡 emitArtifacts" --> dashboard
   dashboard -- "🗄️ writeFileSync" --> filesystem
+  blame -- "📡 attachBlame" --> threatmodel
+  threatmodel -- "📡 computeBlame" --> blame
+  configfile -- "🗄️ readBlameConfig" --> blame
+  blame -- "📡 formatBlameText" --> cli
+  gitrepo -- "🗄️ execFileSync" --> blame
+  blame -- "🗄️ buildBlamePayload" --> cli
+  committrailers -- "📡 parseTrailerBlock" --> blame
   threatmodel -- "📡 runCiChecks" --> cli
   sourcefiles -- "📡 findAnchorDrift" --> cli
   ledgerfile -- "📡 readLedger" --> cli
   userargs -- "📡 process.argv" --> cli
   cli -- "🗄️ writeFile" --> filesystem
+  gitrepo -- "📡 attachBlame" --> cli
+  gitrepo -- "📡 computeBlame" --> cli
   userinput -- "📡 verify" --> cli
   threatmodel -- "📡 generateThreatGraph" --> dashboard
   threatmodel -- "📡 computeStats" --> dashboard
@@ -165,6 +176,7 @@ graph LR
   mcp -- "🗄️ writeFile" --> filesystem
   mcp -- "📡 generateThreatReport" --> llm_client
   mcp -- "📡 resource" --> mcpclient
+  gitrepo -- "📡 computeBlame" --> mcp
   threatmodel -- "📡 selectSubgraph" --> mcp
   filepath -- "🗄️ readFileSync" --> suggest
   suggest -- "📡 suggestAnnotations" --> suggestions
@@ -206,6 +218,7 @@ graph LR
   tui -- "🗄️ writeFile" --> filesystem
   tui -- "📡 launchAgent" --> agent_launcher
   tui -- "📡 chatCompletion" --> llm_client
+  gitrepo -- "📡 computeBlame" --> tui
   configfile -- "📡 loadProjectConfig" --> tui
   tui -- "📡 saveProjectConfig" --> configfile
   userinput -- "📡 readline" --> tui
