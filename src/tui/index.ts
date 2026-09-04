@@ -42,6 +42,7 @@ import {
   cmdValidate,
   cmdDiff,
   cmdSarif,
+  cmdPaths,
   cmdModel,
   cmdThreatReport,
   cmdThreatReports,
@@ -64,7 +65,7 @@ import {
 
 const COMMANDS = [
   '/help', '/gal', '/init', '/parse', '/run', '/status',
-  '/validate', '/diff', '/sarif',
+  '/validate', '/diff', '/sarif', '/paths',
   '/exposures', '/show', '/scan',
   '/assets', '/files', '/view',
   '/threat-report', '/threat-reports', '/annotate', '/model',
@@ -106,6 +107,7 @@ const PALETTE_COMMANDS: CommandEntry[] = [
   { command: '/dashboard',  label: 'HTML dashboard' },
   { command: '/diff',       label: 'Compare vs git ref' },
   { command: '/sarif',      label: 'Export SARIF 2.1.0' },
+  { command: '/paths',      label: 'Undefended entry-to-sink routes through the flow graph' },
   { command: '/workspace',  label: 'Show workspace config and linked repos' },
   { command: '/link',       label: 'Link repos into workspace (--add / --remove)' },
   { command: '/merge',      label: 'Merge report JSONs into unified dashboard' },
@@ -302,6 +304,7 @@ function printCommandList(): void {
     ['/dashboard',  'HTML dashboard'],
     ['/diff [ref]', 'Compare vs git ref'],
     ['/sarif',      'Export SARIF'],
+    ['/paths [--all]', 'Undefended entry-to-sink routes'],
     ['/workspace',  'Workspace config + linked repos'],
     ['/link',       'Link repos (--add / --remove)'],
     ['/merge',      'Merge report JSONs'],
@@ -357,6 +360,7 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
         case '/validate': await cmdValidate(ctx); break;
         case '/diff':     await cmdDiff(args, ctx); break;
         case '/sarif':    await cmdSarif(args, ctx); break;
+        case '/paths':    await cmdPaths(args, ctx); break;
         case '/model':    await cmdModel(ctx); break;
         case '/threat-report':  await cmdThreatReport(args, ctx); break;
         case '/threat-reports': cmdThreatReports(ctx); break;

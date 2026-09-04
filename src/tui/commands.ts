@@ -30,6 +30,8 @@ import { generateDashboardHTML } from '../dashboard/index.js';
 import { computeStats, computeSeverity, computeExposures } from '../dashboard/data.js';
 import { generateThreatReport, serializeModel, listThreatReports, loadThreatReportsForDashboard, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, buildProjectContext, extractCodeSnippets, type AnalysisFramework } from '../analyze/index.js';
 import { diffModels, formatDiff, parseAtRef, getChangedFiles } from '../diff/index.js';
+import { findUnmitigatedPaths, classifyEndpoints } from '../paths/index.js';
+import { formatPaths } from '../paths/format.js';
 import { generateSarif } from '../analyzer/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import type { ThreatModel, ThreatModelExposure } from '../types/index.js';
@@ -127,6 +129,7 @@ export function cmdHelp(): void {
     ['/dashboard',              'Generate HTML dashboard + open browser'],
     ['/diff [ref]',             'Compare model against a git ref (default: HEAD~1)'],
     ['/sarif [-o file]',        'Export SARIF 2.1.0 for GitHub / VS Code'],
+    ['/paths [--all]',           'Undefended entry-to-sink routes through the flow graph'],
     ['', ''],
     ['/workspace',              'Show workspace config and linked repos'],
     ['/link <repos...>',        'Link repos into a workspace (--add / --remove)'],
@@ -1025,6 +1028,46 @@ export async function cmdSarif(args: string, ctx: TuiContext): Promise<void> {
   console.log('');
 }
 
+
+// ─── /paths ──────────────────────────────────────────────────────────
+
+/**
+ * Undefended source-to-sink routes over the flow graph.
+ *
+ * Reads the parsed model only — no file writes, no agent, no network — which is
+ * why this handler has no @exposes of its own while its neighbours in this file
+ * do. `--all` widens the result to routes a control already covers.
+ *
+ * @comment -- "Derived query over @flows and @mitigates; every hop it prints is an existing annotation location, so a finding here cannot cite a line that was never written"
+ */
+export async function cmdPaths(args: string, ctx: TuiContext): Promise<void> {
+  const includeMitigated = /(?:^|\s)--all(?=\s|$)/.test(args);
+  const boundaryOnly = /(?:^|\s)--boundary-only(?=\s|$)/.test(args);
+
+  if (!ctx.model) {
+    console.log(C.dim('  Parsing annotations first...'));
+    try {
+      const { model } = await parseProject({ root: ctx.root, project: ctx.projectName });
+      ctx.model = model;
+    } catch (err: any) {
+      console.log(C.error(`  ✗ ${err.message}`));
+      return;
+    }
+  }
+
+  try {
+    const endpoints = classifyEndpoints(ctx.model);
+    let findings = findUnmitigatedPaths(ctx.model, { includeMitigated });
+    if (boundaryOnly) findings = findings.filter(f => f.crossesBoundary);
+
+    for (const line of formatPaths(findings, endpoints, { includeMitigated }).split('\n')) {
+      console.log(line ? `  ${line}` : '');
+    }
+  } catch (err: any) {
+    console.log(C.error(`  ✗ ${err.message}`));
+  }
+  console.log('');
+}
 
 // ─── /model ──────────────────────────────────────────────────────────
 

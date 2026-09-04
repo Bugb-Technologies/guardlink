@@ -70,6 +70,7 @@ import { generateSarif } from '../analyzer/index.js';
 import { generateReport } from '../report/index.js';
 import { generateDashboardHTML, generateThreatGraph } from '../dashboard/index.js';
 import { diffModels, parseAtRef } from '../diff/index.js';
+import { findUnmitigatedPaths, classifyEndpoints } from '../paths/index.js';
 import { lookup } from './lookup.js';
 import { fileContext, normalizeContextPath } from './context.js';
 import { selectSubgraph, traverseGraph, findPath, summariseGraphPayload, withoutFileInventory } from './subgraph.js';
@@ -788,6 +789,33 @@ export function createServer(): McpServer {
         const diff = diffModels(previous, current);
         return {
           content: [{ type: 'text', text: JSON.stringify(diff, null, 2) }],
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ error: err.message }) }],
+        };
+      }
+    },
+  );
+
+  // ── Tool: guardlink_paths ──
+  registerTool(
+    server, cache,
+    'guardlink_paths',
+    'Undefended routes through the flow graph: every path from a point where data enters the system to a point where it leaves, running through a declared asset with no control on it. Derived from @flows and @mitigates with no model in the loop, so every hop cites a real annotation location. Entry and exit are structural — an endpoint present in the graph but not declared as an @asset, with no inbound flow (entry) or no outbound flow (exit). Ask this instead of tracing reachability by reading source.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      include_mitigated: z.boolean().describe('Include routes a control already covers').default(false),
+      boundary_only: z.boolean().describe('Only routes that cross a declared @boundary').default(false),
+    },
+    async ({ root, include_mitigated, boundary_only }) => {
+      try {
+        const { model } = await getModel(root);
+        const endpoints = classifyEndpoints(model);
+        let findings = findUnmitigatedPaths(model, { includeMitigated: include_mitigated });
+        if (boundary_only) findings = findings.filter(f => f.crossesBoundary);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ endpoints, findings }, null, 2) }],
         };
       } catch (err: any) {
         return {

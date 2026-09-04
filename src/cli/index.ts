@@ -51,6 +51,8 @@ import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from
 import { ensurePromptMd } from '../init/migrate.js';
 import { generateReport, generateMermaid } from '../report/index.js';
 import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getChangedFiles } from '../diff/index.js';
+import { findUnmitigatedPaths, classifyEndpoints } from '../paths/index.js';
+import { formatPaths } from '../paths/format.js';
 import { generateSarif } from '../analyzer/index.js';
 import { emitArtifacts, checkArtifactDrift } from '../artifacts/emit.js';
 import { startStdioServer } from '../mcp/index.js';
@@ -910,6 +912,39 @@ program
     if (opts.failOnNew && diff.newUnmitigatedExposures.length > 0) {
       process.exitCode = 1;
     }
+  });
+
+// ─── paths ───────────────────────────────────────────────────────────
+
+program
+  .command('paths')
+  .description('Find source-to-sink flow paths with no control on them (derived from @flows, no LLM)')
+  .argument('[dir]', 'Project directory', '.')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('--all', 'Include paths a control already defends')
+  .option('--boundary-only', 'Only paths that cross a declared @boundary')
+  .option('--json', 'Output as JSON')
+  .option('--fail-on-found', 'Exit 1 if any path is reported (CI mode)')
+  .action(async (dir: string, opts: {
+    project?: string; all?: boolean; boundaryOnly?: boolean; json?: boolean; failOnFound?: boolean;
+  }) => {
+    const root = resolve(dir);
+    const { model } = await parseProject({
+      root,
+      project: opts.project ?? readConfiguredProject(root) ?? undefined,
+    });
+
+    const endpoints = classifyEndpoints(model);
+    let findings = findUnmitigatedPaths(model, { includeMitigated: opts.all });
+    if (opts.boundaryOnly) findings = findings.filter(f => f.crossesBoundary);
+
+    if (opts.json) {
+      console.log(JSON.stringify({ endpoints, findings }, null, 2));
+    } else {
+      console.log(formatPaths(findings, endpoints, { includeMitigated: opts.all }));
+    }
+
+    if (opts.failOnFound && findings.length > 0) process.exit(1);
   });
 
 // ─── sarif ───────────────────────────────────────────────────────────

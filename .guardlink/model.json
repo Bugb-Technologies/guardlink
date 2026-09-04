@@ -1,8 +1,8 @@
 {
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 99,
-  "annotations_parsed": 505,
+  "source_files": 100,
+  "annotations_parsed": 510,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -60,6 +60,8 @@
     "src/parser/validate.ts",
     "src/parser/verification.ts",
     "src/parser/verify.ts",
+    "src/paths/format.ts",
+    "src/paths/index.ts",
     "src/report/index.ts",
     "src/report/mermaid.ts",
     "src/report/report.ts",
@@ -103,8 +105,7 @@
     "src/parser/index.ts",
     "src/parser/normalize.ts",
     "src/tui/format.ts",
-    "src/types/index.ts",
-    "tmp/guardlink-paper/build_guardlink_ieee.py"
+    "src/types/index.ts"
   ],
   "assets": [
     {
@@ -883,7 +884,7 @@
       "description": "Path is the constant LEDGER_FILE under a root that must already carry .guardlink/; targets only select claims, they are never written to",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 419
+        "line": 423
       }
     },
     {
@@ -1823,7 +1824,7 @@
       "description": "The one command that writes .guardlink/verified.json",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 418
+        "line": 422
       }
     },
     {
@@ -2942,7 +2943,7 @@
       "description": "status reports verified/stale/unverified claim counts alongside annotation coverage",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 273
+        "line": 277
       }
     },
     {
@@ -2952,7 +2953,7 @@
       "description": "Read-only; a corrupt ledger becomes a validate error (ledger-corrupt) instead of being silently treated as absent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 325
+        "line": 329
       }
     },
     {
@@ -2962,7 +2963,7 @@
       "description": "Targets, --by and mode flags",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 420
+        "line": 424
       }
     },
     {
@@ -3513,6 +3514,16 @@
       "location": {
         "file": "src/parser/verify.ts",
         "line": 12
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#parser",
+      "mechanism": "findUnmitigatedPaths",
+      "description": "Reads flows, assets, mitigations and boundaries from the parsed model",
+      "location": {
+        "file": "src/paths/index.ts",
+        "line": 17
       }
     },
     {
@@ -4441,13 +4452,13 @@
       "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 840
+        "line": 841
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1135
+        "line": 1137
       }
     }
   ],
@@ -4600,21 +4611,21 @@
       "description": "Closes the same blind spot ci's third check already closed (src/ci/index.ts) for the validate/CI-gate surface",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 326
+        "line": 330
       }
     },
     {
       "description": "Re-locking a stale claim is an assertion that the control still holds, so the default form never does it: --stale, --all or a named target is required, and each says so in its output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 421
+        "line": 425
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2798
+        "line": 2838
       }
     },
     {
@@ -4975,6 +4986,27 @@
       }
     },
     {
+      "description": "Pure string formatting; no I/O. Every hop prints its file:line because a path that cannot be walked in an editor is an assertion rather than a finding, and the empty case states which kind of empty it is — no undefended route in the annotated graph is not the same claim as no undefended route in the code",
+      "location": {
+        "file": "src/paths/format.ts",
+        "line": 4
+      }
+    },
+    {
+      "description": "Pure analyzer: no file I/O, no user input, no network. Operates only on an already-parsed ThreatModel, which is why it needs no @exposes of its own",
+      "location": {
+        "file": "src/paths/index.ts",
+        "line": 18
+      }
+    },
+    {
+      "description": "Walks flow edges only. @boundary edges are undirected and used for crossing detection, and @transfers moves responsibility rather than data, so neither is a hop a path may take",
+      "location": {
+        "file": "src/paths/index.ts",
+        "line": 19
+      }
+    },
+    {
       "description": "Report generation is pure transformation; no I/O in this module",
       "location": {
         "file": "src/report/index.ts",
@@ -5101,6 +5133,13 @@
       }
     },
     {
+      "description": "Derived query over @flows and @mitigates; every hop it prints is an existing annotation location, so a finding here cannot cite a line that was never written",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 1041
+      }
+    },
+    {
       "description": "Raw mode enables full keystroke control for command palette",
       "location": {
         "file": "src/tui/input.ts",
@@ -5123,8 +5162,8 @@
     }
   ],
   "coverage": {
-    "annotation_count": 505,
-    "coverage_percent": 79
+    "annotation_count": 510,
+    "coverage_percent": 80
   },
   "external_refs": []
 }

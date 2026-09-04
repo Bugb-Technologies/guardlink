@@ -17,6 +17,7 @@ such as which risks a human has explicitly accepted.
 | change a shared component | `guardlink_graph(from, depth, direction)` — blast radius across data flows and trust boundaries |
 | act on a scanner finding | `guardlink_lookup("cwe:CWE-89")` — is this weakness class declared, and is it mitigated, accepted, open or confirmed |
 | finish a change | `guardlink validate .` then `guardlink diff HEAD~1` — did I make this worse |
+| ask where data reaches without a control | `guardlink_paths(root)` — undefended entry-to-sink routes, derived from `@flows`, no LLM |
 
 Without MCP, the same answers come from `guardlink status .`, `guardlink parse .`
 (the whole model as JSON on stdout) and `guardlink diff HEAD~1`.
@@ -70,8 +71,8 @@ the same change.** This includes: new endpoints, authentication/authorization lo
 
 ### Tools
 
-- **MCP** (Claude Code, Cursor): `guardlink_context`, `guardlink_graph`, `guardlink_lookup`, `guardlink_diff`, `guardlink_validate`, `guardlink_status`, `guardlink_suggest`.
-- **CLI** (always): `guardlink status .`, `guardlink parse .`, `guardlink validate .`, `guardlink diff HEAD~1`, `guardlink report .`.
+- **MCP** (Claude Code, Cursor): `guardlink_context`, `guardlink_graph`, `guardlink_paths`, `guardlink_lookup`, `guardlink_diff`, `guardlink_validate`, `guardlink_status`, `guardlink_suggest`.
+- **CLI** (always): `guardlink status .`, `guardlink parse .`, `guardlink validate .`, `guardlink diff HEAD~1`, `guardlink paths .`, `guardlink report .`.
 - `guardlink_lookup` answers a fixed set of named forms and **refuses anything else rather than
   guessing** — send it a bad query to get the list. Beyond `asset`/`threat`/`control`, it reaches
   every relation the model holds: `owner of X`, `handles pii`, `assumptions for X`, `audits for X`,
@@ -162,7 +163,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
 - #llm-client -> NVD via fetch
-- … and 102 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
+- … and 103 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
 
 ### Features (filter with `--feature`)
 
@@ -171,11 +172,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-505 annotations, 16 assets, 15 threats, 12 controls, 88 exposures, 0 confirmed, 80 mitigations, 3 actors, 1 entitlements, 122 flows, 2 features
+510 annotations, 16 assets, 15 threats, 12 controls, 88 exposures, 0 confirmed, 80 mitigations, 3 actors, 1 entitlements, 123 flows, 2 features
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v2:ca5da14c680e3fd77159fb31eed6b040a8fbf7477c1bdc433d8df15257388f64`
+- `annotation_hash`: `sha256-v2:d87c67372ccc764e906cdaf802b5994abcee762996822cf0d6a615c756e1b030`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.

@@ -11,8 +11,8 @@ accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 505 annotations · 16 assets · 15 threats · 12 controls · 88 exposures · 122 flows
-Content hash: `sha256-v2:ca5da14c680e3fd77159fb31eed6b040a8fbf7477c1bdc433d8df15257388f64` — identical hash means identical model.
+Current model: 510 annotations · 16 assets · 15 threats · 12 controls · 88 exposures · 123 flows
+Content hash: `sha256-v2:d87c67372ccc764e906cdaf802b5994abcee762996822cf0d6a615c756e1b030` — identical hash means identical model.
 
 ---
 
@@ -175,6 +175,7 @@ guardlink parse .                        # the whole model as JSON, on stdout
 guardlink validate .                     # syntax errors and dangling #id references
 guardlink report . --format md           # human-readable threat model report
 guardlink diff HEAD~1                    # what your change did to the model
+guardlink paths .                        # undefended routes from an entry point to a sink
 guardlink dashboard .                    # interactive HTML view
 ```
 
