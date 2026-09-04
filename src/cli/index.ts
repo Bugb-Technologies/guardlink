@@ -11,6 +11,7 @@
  *   guardlink ci [dir]                Advisory CI checks — unmitigated exposures + anchor drift
  *   guardlink report [dir]            Generate markdown + JSON threat model report
  *   guardlink diff [ref]              Compare threat model against a git ref
+ *   guardlink blame [dir]             Who introduced, declared and fixed each claim, and which AI co-authored it
  *   guardlink sarif [dir]             Export SARIF 2.1.0 for GitHub / VS Code
  *   guardlink threat-report <prompt>  AI-powered threat analysis (STRIDE, DREAD, PASTA, etc.)
  *   guardlink threat-reports          List saved AI threat reports
@@ -42,7 +43,7 @@
  */
 
 import { Command } from 'commander';
-import { resolve, basename, join } from 'node:path';
+import { resolve, basename, join, isAbsolute, relative } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
@@ -72,6 +73,7 @@ import type { ThreatModel, ParseDiagnostic } from '../types/index.js';
 import type { VerificationReport } from '../parser/index.js';
 import gradient from 'gradient-string';
 import { readConfiguredProject } from '../parser/annotation-mode.js';
+import { computeBlame, attachBlame, buildBlamePayload, formatBlameText, readBlameConfig, type BlamePayload, type IdentityMode } from '../blame/index.js';
 import { getPackageVersion } from '../version.js';
 
 const program = new Command();
@@ -230,12 +232,16 @@ program
   .option('-o, --output <file>', 'Write JSON to file instead of stdout')
   .option('--pretty', 'Pretty-print JSON output', true)
   .option('--no-pretty', 'Emit compact JSON on one line')
-  .action(async (dir: string, opts: { project: string; output?: string; pretty: boolean }) => {
+  .option('--blame', 'Attach git attribution to each exposure, confirmed and mitigation: who introduced, declared and fixed it, and which AI co-authored those commits')
+  .action(async (dir: string, opts: { project: string; output?: string; pretty: boolean; blame?: boolean }) => {
     const root = resolve(dir);
     const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
 
     // Print diagnostics to stderr
     printDiagnostics(diagnostics);
+
+    // @flows GitRepo -> #cli via attachBlame -- "Opt-in attribution; without --blame the JSON is byte-identical to before"
+    if (opts.blame) attachBlame(root, model);
 
     // Output model
     const json = JSON.stringify(model, null, opts.pretty ? 2 : 0);
@@ -262,7 +268,8 @@ program
   .option('--not-annotated', 'List source files with no GuardLink annotations')
   .option('--feature <names>', 'Filter status to specific feature(s) (comma-separated)')
   .option('--sync', 'Also refresh agent instruction files (this used to happen unasked — see D16)')
-  .action(async (dir: string, opts: { project: string; notAnnotated?: boolean; feature?: string; sync?: boolean }) => {
+  .option('--blame', 'Append who introduces and fixes exposures, per person and per AI tool (read from git, nothing written)')
+  .action(async (dir: string, opts: { project: string; notAnnotated?: boolean; feature?: string; sync?: boolean; blame?: boolean }) => {
     const root = resolve(dir);
     let { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
 
@@ -276,6 +283,8 @@ program
     printDiagnostics(diagnostics);
     // @flows LedgerFile -> #cli via readLedger -- "status reports verified/stale/unverified claim counts alongside annotation coverage"
     printStatus(model, classifyClaims(model, readLedger(root)));
+    // @flows GitRepo -> #cli via computeBlame -- "status --blame reads attribution without touching the model"
+    if (opts.blame) printBlameSummary(buildBlamePayload(model, computeBlame(root, model), root));
 
     if (opts.notAnnotated) {
       printUnannotatedFiles(model);
@@ -531,6 +540,48 @@ program
     }
   });
 
+// ─── blame ───────────────────────────────────────────────────────────
+
+/**
+ * Who introduced the code beneath each claim, who declared the claim, who
+ * declared its fix, and which AI tool each of those commits credited — read
+ * from git history at run time. Nothing is written, not even a trailer.
+ *
+ * @flows GitRepo -> #cli via computeBlame -- "Attribution read from blame, log -L and commit trailers"
+ * @handles pii on #cli -- "Author identities printed or emitted as JSON; --identity hash (or blame.identity in config.json) redacts emails"
+ * @comment -- "Always exits 0 once the model parsed: outside a git checkout every claim reads as unattributed, which is an answer, not a failure. Only an unknown --identity is an error"
+ */
+program
+  .command('blame')
+  .description('Who introduced, declared and fixed each claim, and which AI tool co-authored it — read from git, nothing written')
+  .argument('[dir]', 'Project directory to scan', '.')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('--file <path>', 'Only claims declared in, or anchored to, this file (root-relative)')
+  .option('--json', 'Emit the guardlink.blame/v1 payload instead of text')
+  .option('--identity <mode>', 'How people are shown: name (default), email, or hash (overrides blame.identity in config.json)')
+  .action(async (dir: string, opts: { project?: string; file?: string; json?: boolean; identity?: string }) => {
+    const root = resolve(dir);
+    if (opts.identity !== undefined && opts.identity !== 'name' && opts.identity !== 'email' && opts.identity !== 'hash') {
+      console.error(`Unknown --identity '${opts.identity}'. Use name, email or hash.`);
+      process.exitCode = 1;
+      return;
+    }
+    const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    const errors = diagnostics.filter(d => d.level === 'error');
+    if (errors.length > 0) printDiagnostics(errors);
+
+    const config = readBlameConfig(root);
+    if (opts.identity) config.identity = opts.identity as IdentityMode;
+    const file = opts.file ? (isAbsolute(opts.file) ? relative(root, opts.file) : opts.file) : undefined;
+    const payload = buildBlamePayload(model, computeBlame(root, model, { config, file }), root);
+    if (opts.json) console.log(JSON.stringify(payload, null, 2));
+    else process.stdout.write(formatBlameText(payload));
+    // Let the process end on its own: process.exit() would truncate the JSON
+    // above at the pipe buffer before stdout has flushed (a whole-repo payload
+    // is well over 64 KB), and the parse already succeeded, so the code is 0.
+    process.exitCode = 0;
+  });
+
 // ─── ci ──────────────────────────────────────────────────────────────
 
 program
@@ -580,7 +631,8 @@ program
   .option('--diagram-only', 'Output only the Mermaid diagram, no report wrapper')
   .option('--json', 'Also output threat-model.json alongside the report (legacy; prefer --format)')
   .option('--feature <names>', 'Filter report to specific feature(s) (comma-separated)')
-  .action(async (dir: string, opts: { project: string; output?: string; format: string; diagramOnly?: boolean; json?: boolean; feature?: string }) => {
+  .option('--blame', 'Add an Attribution section: who introduced and fixed each claim, per person and per AI tool (read from git)')
+  .action(async (dir: string, opts: { project: string; output?: string; format: string; diagramOnly?: boolean; json?: boolean; feature?: string; blame?: boolean }) => {
     const root = resolve(dir);
 
     // Validate --format before doing any work. An unrecognised value used to
@@ -604,6 +656,9 @@ program
     // affected annotations are skipped, the rest of the model still renders.
     const errors = diagnostics.filter(d => d.level === 'error');
     if (errors.length > 0) printDiagnostics(errors);
+
+    // @flows GitRepo -> #cli via attachBlame -- "report --blame attaches attribution before the metadata spread, so the shared records carry it"
+    if (opts.blame) attachBlame(root, model);
 
     // Enrich with provenance metadata (git SHA, branch, workspace, schema version)
     const enrichedModel = populateMetadata(model, root);
@@ -2155,7 +2210,8 @@ program
   .option('-o, --output <file>', 'Output file (default: threat-dashboard.html)')
   .option('--light', 'Default to light theme instead of dark')
   .option('--feature <names>', 'Filter dashboard to specific feature(s) (comma-separated)')
-  .action(async (dir: string, opts: { project: string; output?: string; light?: boolean; feature?: string }) => {
+  .option('--blame', 'Add an Attribution page: exposures introduced and fixed per person and per AI tool (read from git)')
+  .action(async (dir: string, opts: { project: string; output?: string; light?: boolean; feature?: string; blame?: boolean }) => {
     const root = resolve(dir);
     const project = detectProjectName(root, opts.project);
     let { model, diagnostics } = await parseProject({ root, project });
@@ -2174,6 +2230,9 @@ program
       console.error('No annotations found. Add GuardLink annotations first.');
       process.exit(1);
     }
+
+    // @flows GitRepo -> #cli via attachBlame -- "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard"
+    if (opts.blame) attachBlame(root, model);
 
     const analyses = loadThreatReportsForDashboard(root);
     let html = generateDashboardHTML(model, root, analyses);
@@ -2873,6 +2932,34 @@ function printStatus(model: ThreatModel, verification?: VerificationReport) {
   }
   console.log(`Comments:         ${model.comments.length}`);
   console.log(`Shields:          ${model.shields.length}`);
+}
+
+/**
+ * The short form of `guardlink blame` for `status --blame`: the top five
+ * people and AI tools by exposures introduced.
+ *
+ * @handles pii on #cli -- "Identity strings printed to the terminal"
+ * @comment -- "Prints only what the payload already holds; no I/O here"
+ */
+function printBlameSummary(payload: BlamePayload): void {
+  console.log(`${'─'.repeat(40)}`);
+  if (payload.status === 'no-git') {
+    console.log('Attribution:      not a git checkout — nothing to attribute');
+    return;
+  }
+  const note = payload.status === 'shallow' ? ' (shallow clone: introductions are lower bounds)' : '';
+  console.log(`Attribution:      ${payload.entries.length} claim(s) read from git${note}`);
+  console.log('By person:');
+  if (payload.summary.by_human.length === 0) console.log('  (no one attributed)');
+  for (const r of payload.summary.by_human.slice(0, 5)) {
+    console.log(`  ${r.identity.padEnd(34)} introduced ${r.introduced}, fixed ${r.fixed}, open ${r.open}`);
+  }
+  console.log('By AI tool:');
+  if (payload.summary.by_agent.length === 0) console.log('  (no AI tool credited on any attributed commit)');
+  for (const r of payload.summary.by_agent.slice(0, 5)) {
+    console.log(`  ${`${r.tool}${r.model ? ` (${r.model})` : ''}`.padEnd(34)} introduced ${r.introduced}, fixed ${r.fixed}, open ${r.open}`);
+  }
+  console.log('Run `guardlink blame .` for the full picture.');
 }
 
 function printUnannotatedFiles(model: ThreatModel) {

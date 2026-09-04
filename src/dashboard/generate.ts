@@ -21,8 +21,8 @@
 
 import type { ThreatModel } from '../types/index.js';
 import { listFeatures } from '../parser/feature-filter.js';
-import { computeStats, computeSeverity, computeExposures, computeConfirmed, computeAssetHeatmap } from './data.js';
-import type { DashboardStats, SeverityBreakdown, ExposureRow, ConfirmedRow, AssetHeatmapEntry } from './data.js';
+import { computeStats, computeSeverity, computeExposures, computeConfirmed, computeAssetHeatmap, computeAttribution } from './data.js';
+import type { DashboardStats, SeverityBreakdown, ExposureRow, ConfirmedRow, AssetHeatmapEntry, AttributionData } from './data.js';
 import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface } from './diagrams.js';
 import type { ThreatReportWithContent } from '../analyze/index.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
@@ -58,6 +58,9 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   const { generated_at: _generatedAt, ...durableModel } = model;
   const stats = computeStats(model);
   const severity = computeSeverity(model);
+  // Only a model that went through attachBlame (dashboard --blame) carries blame;
+  // null here means the page, its nav entry and its CSS hooks all stay out.
+  const attribution = computeAttribution(model);
   const exposures = computeExposures(model);
   const confirmedRows = computeConfirmed(model);
   const heatmap = computeAssetHeatmap(model);
@@ -163,6 +166,7 @@ ${scope ? `<div id="scope-banner" class="scope-banner" role="note">
     <div class="sep"></div>
     <a onclick="showSection('data',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2h8v2H4V2zm0 3h8v2H4V5zm0 3h8v2H4V8zm0 3h8v2H4v-2zm-2-9v12h12V2H2zm1 1h10v10H3V3z"/></svg></span> <span class="nav-text">Data &amp; Boundaries</span></a>
     <a onclick="showSection('assets',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3h14v10H1V3zm1 1v8h12V4H2zm2 2h8v1H4V6zm0 2h6v1H4V8z"/></svg></span> <span class="nav-text">Asset Heatmap</span></a>
+    ${attribution ? `<a onclick="showSection('attribution',this)"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a3 3 0 110 6 3 3 0 010-6zm-5 11c0-2.5 2.2-4 5-4s5 1.5 5 4v1H3v-1z"/></svg></span> <span class="nav-text">Attribution</span></a>` : ''}
   </div>
   <button id="sidebarToggle" onclick="toggleSidebar()" title="Collapse sidebar">
     <svg class="chevron-left" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M10 2L4 8l6 6V2z"/></svg>
@@ -180,6 +184,7 @@ ${renderDiagramsPage(threatGraph, threatGraphFull, dataFlow, attackSurface, scop
 ${renderCodePage(fileAnnotations, model, scope, scopeFiles)}
 ${renderDataPage(model, scope)}
 ${renderAssetsPage(heatmap, scope)}
+${attribution ? renderAttributionPage(attribution, scope) : ''}
 
 </div><!-- /main -->
 </div><!-- /layout -->
@@ -1637,6 +1642,75 @@ function renderAssetsPage(heatmap: AssetHeatmapEntry[], scope: string[] | null):
 </div>`;
 }
 
+/**
+ * The Attribution page (`guardlink dashboard --blame`): exposures introduced
+ * and fixed per person and per AI tool, then every attributed claim.
+ *
+ * @mitigates #dashboard against #xss using #output-encoding -- "Every identity, model name, sha, path and status goes through esc(); a co-author trailer is free text in a commit message and is the realistic vector"
+ * @handles pii on #dashboard -- "Author identities rendered into a page that is often committed; blame.identity=hash in config.json is the setting for a shared dashboard"
+ * @comment -- "Rendered only when computeAttribution is non-null, so a dashboard built without --blame is byte-for-byte unchanged"
+ */
+function renderAttributionPage(a: AttributionData, scope: string[] | null): string {
+  const bar = (n: number): string =>
+    `<div class="sev-track attr-track"><div class="sev-fill attr-fill" style="width:${a.maxIntroduced > 0 ? Math.round((n / a.maxIntroduced) * 100) : 0}%"></div></div>`;
+  const ai = (list: string[]): string =>
+    list.length > 0 ? `<div class="attr-ai">${list.map(s => `<span class="badge badge-blue">${esc(s)}</span>`).join(' ')}</div>` : '';
+  const who = (name: string, sha: string, list: string[] = []): string =>
+    name ? `<code title="${esc(sha)}">${esc(sha.slice(0, 8))}</code> ${esc(name)}${ai(list)}` : '—';
+  const num = (n: number | null): string => (n === null ? '—' : String(n));
+  const fixedCount = a.rows.filter(r => r.fixedBy !== '').length;
+
+  return `
+<div id="sec-attribution" class="section-content">
+  <div class="sec-h"><span class="sec-icon">👥</span> Attribution${scope ? ` <span class="scope-tag">feature ${esc(scopeLabel(scope))}</span>` : ''}</div>
+  <p style="color:var(--muted);font-size:.78rem;margin-bottom:.8rem">Who introduced the code beneath each claim, who declared it, who declared its fix, and which AI tool co-authored those commits — read from git history. AI credit is declared by commit trailers (<code>Co-Authored-By</code>, <code>Assisted-by</code>), never detected from code; a commit with no trailer stays human. "Introduced" credits the author, every human co-author and every AI on the introducing commit; "Touched" counts exposures whose span an identity still owns lines of, whoever introduced them.</p>
+  <div class="stats-grid">
+    ${statCard(a.rows.length, 'Claims read from git')}
+    ${statCard(a.humans.length, 'People credited')}
+    ${statCard(a.agents.length, 'AI tools credited')}
+    ${statCard(fixedCount, 'Fixed')}
+  </div>
+
+  <div class="sub-h">By person</div>
+  ${a.humans.length > 0 ? `
+  <table>
+    <thead><tr><th>Identity</th><th>Introduced</th><th class="attr-bar"></th><th>Fixed</th><th>Open</th><th title="Exposures whose span this identity currently owns lines of">Touched</th><th title="Lines of exposed spans currently owned">Lines</th><th>Median days to fix</th></tr></thead>
+    <tbody>
+    ${a.humans.map(r => `
+    <tr><td>${esc(r.identity)}</td><td>${r.introduced}</td><td class="attr-bar">${bar(r.introduced)}</td><td>${r.fixed}</td><td>${r.open}</td><td>${r.touched}</td><td>${r.lines}</td><td>${num(r.median_time_to_fix_days)}</td></tr>`).join('')}
+    </tbody>
+  </table>` : '<p class="empty-state">No one could be attributed.</p>'}
+
+  <div class="sub-h">By AI tool</div>
+  ${a.agents.length > 0 ? `
+  <table>
+    <thead><tr><th>Tool</th><th>Model</th><th>Introduced</th><th class="attr-bar"></th><th>Fixed</th><th>Open</th><th title="Exposures whose span this tool's commits currently own lines of">Touched</th><th title="Lines of exposed spans currently owned">Lines</th><th>Median days to fix</th></tr></thead>
+    <tbody>
+    ${a.agents.map(r => `
+    <tr><td><code>${esc(r.tool)}</code></td><td>${esc(r.model ?? '—')}</td><td>${r.introduced}</td><td class="attr-bar">${bar(r.introduced)}</td><td>${r.fixed}</td><td>${r.open}</td><td>${r.touched}</td><td>${r.lines}</td><td>${num(r.median_time_to_fix_days)}</td></tr>`).join('')}
+    </tbody>
+  </table>` : '<p class="empty-state">No AI tool is credited on any attributed commit.</p>'}
+
+  <div class="sub-h">Claims (${a.rows.length})</div>
+  <table>
+    <thead><tr><th>Claim</th><th>Location</th><th>Introduced by</th><th>Declared by</th><th>Fixed by</th><th>Days to fix</th><th>Status</th></tr></thead>
+    <tbody>
+    ${a.rows.map(r => `
+    <tr data-ff="${esc(r.file)}">
+      <td><code>${esc(r.verb)}</code> <code>${esc(r.asset)}</code> → <code>${esc(r.threat)}</code>${r.severity ? ` <span class="fc-sev ${sevClass(r.severity)}">${esc(r.severity)}</span>` : ''}</td>
+      <td class="loc">${esc(r.file)}:${r.line}</td>
+      <td>${who(r.introducedBy, r.introducedSha, r.introducedAi)}${r.lowerBound ? ' <span class="badge">lower bound</span>' : ''}</td>
+      <td>${who(r.declaredBy, r.declaredSha)}</td>
+      <td>${r.verb === 'mitigates' ? '—' : r.fixedBy ? who(r.fixedBy, r.fixedSha, r.fixedAi) : '<span class="badge badge-red">Open</span>'}</td>
+      <td>${num(r.timeToFix)}</td>
+      <td>${r.status === 'ok' ? '<span class="badge badge-green">ok</span>' : `<span class="badge">${esc(r.status)}</span>`}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>
+  ${a.degraded.length > 0 ? `<p style="color:var(--muted);font-size:.78rem;margin-top:.8rem">Not fully attributed: ${a.degraded.map(d => `<code>${esc(d.status)}</code> ×${d.count}`).join(', ')}. <code>no-git</code>: not a git checkout · <code>uncommitted</code>: the line or its span has changes git has not seen · <code>shallow</code>: history is truncated, so every introduction is a lower bound.</p>` : ''}
+</div>`;
+}
+
 // ─── Data builders ───────────────────────────────────────────────────
 
 interface FileAnnotation {
@@ -2348,6 +2422,10 @@ body.scoped .layout { height: calc(100vh - 54px - 46px); }
 .sev-fill-med  { background: linear-gradient(90deg, var(--sev-med), var(--text-dim)); }
 .sev-fill-low  { background: linear-gradient(90deg, var(--sev-low), var(--blue)); }
 .sev-fill-unset { background: var(--sev-unset); }
+.attr-track { height: 10px; }
+.attr-fill { background: linear-gradient(90deg, var(--accent), var(--blue)); }
+th.attr-bar, td.attr-bar { width: 22%; min-width: 120px; }
+.attr-ai { margin-top: 3px; display: flex; flex-wrap: wrap; gap: 3px; }
 .sev-count { width: 32px; font-size: 14px; font-weight: 700; font-family: var(--font-mono); color: var(--text); font-variant-numeric: tabular-nums; }
 
 /* ── Finding Cards ── */

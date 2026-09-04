@@ -41,6 +41,7 @@ import {
   cmdParse,
   cmdValidate,
   cmdDiff,
+  cmdBlame,
   cmdSarif,
   cmdPaths,
   cmdModel,
@@ -65,7 +66,7 @@ import {
 
 const COMMANDS = [
   '/help', '/gal', '/init', '/parse', '/run', '/status',
-  '/validate', '/diff', '/sarif', '/paths',
+  '/validate', '/diff', '/blame', '/sarif', '/paths',
   '/exposures', '/show', '/scan',
   '/assets', '/files', '/view',
   '/threat-report', '/threat-reports', '/annotate', '/model',
@@ -106,6 +107,7 @@ const PALETTE_COMMANDS: CommandEntry[] = [
   { command: '/report',     label: 'Generate markdown report' },
   { command: '/dashboard',  label: 'HTML dashboard' },
   { command: '/diff',       label: 'Compare vs git ref' },
+  { command: '/blame',      label: 'Who introduced / fixed each claim, and which AI (from git)' },
   { command: '/sarif',      label: 'Export SARIF 2.1.0' },
   { command: '/paths',      label: 'Undefended entry-to-sink routes through the flow graph' },
   { command: '/workspace',  label: 'Show workspace config and linked repos' },
@@ -292,6 +294,7 @@ function printCommandList(): void {
     ['/scan',       'Coverage scanner'],
     ['/assets',     'Asset tree'],
     ['/files',      'Annotated file tree'],
+    ['/blame [file]', 'Attribution from git'],
     ['/view <file>','File annotations + code'],
     ['/threat-report','AI threat report'],
     ['/threat-reports','List saved reports'],
@@ -359,6 +362,7 @@ async function dispatch(input: string, ctx: TuiContext): Promise<boolean> {
         case '/run':      await cmdParse(ctx); break;
         case '/validate': await cmdValidate(ctx); break;
         case '/diff':     await cmdDiff(args, ctx); break;
+        case '/blame':    await cmdBlame(args, ctx); break;
         case '/sarif':    await cmdSarif(args, ctx); break;
         case '/paths':    await cmdPaths(args, ctx); break;
         case '/model':    await cmdModel(ctx); break;

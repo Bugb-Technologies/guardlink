@@ -32,6 +32,7 @@ import { generateThreatReport, serializeModel, listThreatReports, loadThreatRepo
 import { diffModels, formatDiff, parseAtRef, getChangedFiles } from '../diff/index.js';
 import { findUnmitigatedPaths, classifyEndpoints } from '../paths/index.js';
 import { formatPaths } from '../paths/format.js';
+import { computeBlame, buildBlamePayload, formatBlameText } from '../blame/index.js';
 import { generateSarif } from '../analyzer/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import type { ThreatModel, ThreatModelExposure } from '../types/index.js';
@@ -115,6 +116,7 @@ export function cmdHelp(): void {
     ['/files',                  'Annotated file tree with exposure counts'],
     ['/view <file>',            'Show all annotations in a file with code context'],
     ['/unannotated',            'List source files with no annotations'],
+    ['/blame [file]',           'Who introduced, declared and fixed each claim, and which AI co-authored it (from git)'],
     ['', ''],
     ['/threat-report <fw>',    'AI threat report (stride|dread|pasta|attacker|rapid|general|custom)'],
     ['/threat-reports',         'List saved AI threat reports'],
@@ -976,6 +978,32 @@ export async function cmdDiff(args: string, ctx: TuiContext): Promise<void> {
     console.log('');
     // Indent each line
     for (const line of output.split('\n')) {
+      console.log(`  ${line}`);
+    }
+  } catch (err: any) {
+    console.log(C.error(`  ✗ ${err.message}`));
+  }
+  console.log('');
+}
+
+// ─── /blame ──────────────────────────────────────────────────────────
+
+/**
+ * Attribution for the current model, read from git. Prints the same text as
+ * `guardlink blame`, indented.
+ *
+ * @flows GitRepo -> #tui via computeBlame -- "Attribution read from blame, log -L and commit trailers"
+ * @handles pii on #tui -- "Author identities printed to the terminal in the configured identity mode"
+ * @comment -- "Non-mutating on purpose: ctx.model is reused by every later command, and /blame must not make /report carry attribution unasked"
+ */
+export async function cmdBlame(args: string, ctx: TuiContext): Promise<void> {
+  if (!ctx.model) await refreshModel(ctx);
+  const file = args.trim() || undefined;
+  console.log(C.dim(`  Reading git history${file ? ` for ${file}` : ''}...`));
+  try {
+    const payload = buildBlamePayload(ctx.model!, computeBlame(ctx.root, ctx.model!, { file }), ctx.root);
+    console.log('');
+    for (const line of formatBlameText(payload).trimEnd().split('\n')) {
       console.log(`  ${line}`);
     }
   } catch (err: any) {

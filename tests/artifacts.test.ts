@@ -358,6 +358,18 @@ describe('F0 — model.json is byte-stable across regenerations', () => {
     expect(model.exposures[0].location.anchor).toBeTruthy();
   });
 
+  it('carries no blame, though the model handed in does', async () => {
+    // Same ruling as anchor: attribution describes history, the annotation hash
+    // cannot see it, and it would move with every commit. `--blame` output is
+    // for the reader who asked; the committed artifact stays content-derived.
+    const blamed = structuredClone(model);
+    blamed.exposures[0].blame = { kind: 'exposure', status: 'no-git', granularity: 'none', introduced_by: null, found_by: null, contributors: [], fixed_by: null, time_to_fix_days: null };
+    emitArtifacts({ root, model: blamed });
+    const text = await readFile(join(root, '.guardlink', 'model.json'), 'utf-8');
+    expect(text).not.toContain('"blame"');
+    expect(blamed.exposures[0].blame).toBeTruthy();
+  });
+
   it('a real model change still changes it', async () => {
     emitArtifacts({ root, model });
     const before = await readFile(join(root, '.guardlink', 'model.json'), 'utf-8');

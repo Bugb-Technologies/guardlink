@@ -16,6 +16,8 @@ import type { ThreatModel, ThreatModelExposure, ThreatModelEntitlement, Severity
 import { generateMermaid } from './mermaid.js';
 import { generateSequenceDiagram } from './sequence.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
+import { entriesFromModel, summarise } from '../blame/summary.js';
+import type { CommitRef } from '../blame/types.js';
 import { findUnmitigatedExposures, normalizeRef } from '../parser/coverage.js';
 import { normalizeName } from '../parser/normalize.js';
 import { entitlementDemotionBlockers } from '../parser/parse-project.js';
@@ -542,6 +544,9 @@ export function generateReport(rawModel: ThreatModel): string {
     }
     lines.push('');
   }
+
+  // ── Attribution (only when records carry blame — `guardlink report --blame`) ──
+  lines.push(...renderAttribution(model, slice));
 
   // ── Footer ──
   lines.push('---');
@@ -1485,6 +1490,81 @@ function emitAIDetails(model: ThreatModel, lines: string[]): void {
 // ═══════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════
+
+/** A markdown table cell: pipes and line breaks cannot escape the cell. */
+function mdCell(s: string): string {
+  return s.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+/** `abcdef01 human:Ann +ai claude-code (Claude Opus 5)` for a commit ref, or `—`. */
+function whoCell(ref: CommitRef | null): string {
+  if (!ref) return '—';
+  const ai = ref.assisted_by.map(a => (a.model ? `${a.tool} (${a.model})` : a.tool));
+  const co = ref.co_authors.length > 0 ? ` +${ref.co_authors.join(', ')}` : '';
+  return mdCell(`\`${ref.sha.slice(0, 8)}\` ${ref.author}${co}${ai.length > 0 ? ` +ai ${ai.join(', ')}` : ''}`);
+}
+
+/**
+ * Attribution: who introduced the code beneath each claim, who declared it,
+ * who declared its fix, and which AI tool co-authored those commits. Rendered
+ * only when records carry `blame` (`guardlink report --blame`); otherwise the
+ * report is byte-for-byte what it was. Identities arrive already in the
+ * configured mode (name, email or hash), so nothing here decides what to show.
+ *
+ * @handles pii on #report -- "Author identities from git, in the configured identity mode"
+ * @comment -- "AI credit is what a commit declared in a trailer, never detected from code; a claim whose commits carry no trailer stays human. Every degraded status is listed so the reader never mistakes an unattributed claim for a clean one"
+ */
+function renderAttribution(model: ThreatModel, slice: Slice): string[] {
+  const entries = entriesFromModel(model);
+  if (entries.length === 0) return [];
+  const summary = summarise(entries);
+  const out: string[] = [];
+  out.push(h2('Attribution', slice), '');
+  out.push('Who introduced the code beneath each claim, who declared it, who declared its fix, and which AI tool co-authored those commits — read from git history. AI credit is declared by commit trailers (`Co-Authored-By`, `Assisted-by`), never detected from code; a commit with no trailer stays human. "Introduced" credits the author, every human co-author and every AI on the introducing commit; "Touched" counts exposures whose span an identity still owns lines of, whoever introduced them.', '');
+
+  out.push('### By person', '');
+  out.push('| Identity | Introduced | Fixed | Open | Touched | Lines | Median days to fix |');
+  out.push('|---|---|---|---|---|---|---|');
+  if (summary.by_human.length === 0) out.push('| _no one attributed_ | | | | | | |');
+  for (const r of summary.by_human) {
+    out.push(`| ${mdCell(r.identity)} | ${r.introduced} | ${r.fixed} | ${r.open} | ${r.touched} | ${r.lines} | ${r.median_time_to_fix_days ?? '—'} |`);
+  }
+  out.push('');
+
+  out.push('### By AI tool', '');
+  out.push('| Tool | Model | Introduced | Fixed | Open | Touched | Lines | Median days to fix |');
+  out.push('|---|---|---|---|---|---|---|---|');
+  if (summary.by_agent.length === 0) out.push('| _no AI tool credited on any attributed commit_ | | | | | | | |');
+  for (const r of summary.by_agent) {
+    out.push(`| ${mdCell(r.tool)} | ${mdCell(r.model ?? '—')} | ${r.introduced} | ${r.fixed} | ${r.open} | ${r.touched} | ${r.lines} | ${r.median_time_to_fix_days ?? '—'} |`);
+  }
+  out.push('');
+
+  out.push('### Claims', '');
+  out.push('| Claim | Location | Introduced by | Declared by | Fixed by | Days to fix | Status |');
+  out.push('|---|---|---|---|---|---|---|');
+  for (const e of entries) {
+    const claim = mdCell(`${e.verb} ${e.asset} → ${e.threat}${e.severity ? ` [${e.severity}]` : ''}`);
+    const loc = mdCell(`${e.file}:${e.line}`);
+    const status = e.blame.status + (e.blame.kind === 'exposure' && e.blame.introduced_by?.lower_bound ? ' (lower bound)' : '');
+    if (e.blame.kind === 'exposure') {
+      const b = e.blame;
+      out.push(`| ${claim} | ${loc} | ${whoCell(b.introduced_by)} | ${whoCell(b.found_by)} | ${b.fixed_by ? whoCell(b.fixed_by) : 'open'} | ${b.time_to_fix_days ?? '—'} | ${status} |`);
+    } else {
+      out.push(`| ${claim} | ${loc} | — | ${whoCell(e.blame.declared_by)} | — | — | ${status} |`);
+    }
+  }
+  out.push('');
+
+  const degraded = new Map<string, number>();
+  for (const e of entries) if (e.blame.status !== 'ok') degraded.set(e.blame.status, (degraded.get(e.blame.status) ?? 0) + 1);
+  if (degraded.size > 0) {
+    const parts = [...degraded].map(([s, n]) => `${s} ×${n}`).join(', ');
+    out.push(`${[...degraded.values()].reduce((a, b) => a + b, 0)} claim(s) could not be fully attributed: ${parts}. \`no-git\` means the directory is not a git checkout; \`uncommitted\` means the line or its span has changes git has not seen; \`shallow\` means history is truncated and every introduction is a lower bound.`);
+    out.push('');
+  }
+  return out;
+}
 
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;

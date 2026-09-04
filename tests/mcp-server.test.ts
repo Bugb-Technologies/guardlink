@@ -215,6 +215,7 @@ describe('MCP server — freshness envelope (GL-102)', () => {
     'guardlink_sync', 'guardlink_clear', 'guardlink_unannotated', 'guardlink_review_list',
     'guardlink_review_accept', 'guardlink_workspace_info',
     'guardlink_entitlement_propose', 'guardlink_entitlement_list',
+    'guardlink_blame',
   ];
 
   it('the server advertises exactly the known tool set', async () => {
@@ -262,6 +263,20 @@ describe('MCP server — freshness envelope (GL-102)', () => {
     expect(parsed).toHaveProperty('unmitigated');
     expect(parsed).not.toHaveProperty('guardlink');
     expect(parsed).not.toHaveProperty('annotation_hash');
+  });
+
+  it('guardlink_blame answers, and leaves the cached model without blame', async () => {
+    const result: any = await session.client.callTool({ name: 'guardlink_blame', arguments: { root, file: 'src/auth.ts' } });
+    const blame = JSON.parse(payload(result));
+    expect(blame.schema).toBe('guardlink.blame/v1');
+    // The fixture is a plain directory, not a checkout: an answer, not an error.
+    expect(blame.status).toBe('no-git');
+    expect(blame.entries.length).toBeGreaterThan(0);
+    expect(blame.entries[0].blame.status).toBe('no-git');
+    expect(blame.entries[0].key).toMatch(/^[0-9a-f]{64}:\d+$/);
+
+    const parsed: any = await session.client.callTool({ name: 'guardlink_parse', arguments: { root } });
+    expect(payload(parsed)).not.toContain('"blame"');
   });
 
   it('annotation_hash moves when an annotation changes, and not otherwise', async () => {

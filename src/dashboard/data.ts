@@ -5,6 +5,8 @@
 
 import type { ThreatModel } from '../types/index.js';
 import { buildCoverageIndex, annotationCount } from '../parser/coverage.js';
+import { entriesFromModel, summarise } from '../blame/summary.js';
+import type { AgentSummaryRow, CommitRef, HumanSummaryRow } from '../blame/types.js';
 
 // D57: a private `normalizeRef` lived here — it stripped `#` but, unlike the
 // canonical one in parser/coverage.ts, did not case-fold. Even the normaliser
@@ -185,4 +187,91 @@ export function computeConfirmed(model: ThreatModel): ConfirmedRow[] {
     line: c.location.line,
     external_refs: c.external_refs || [],
   }));
+}
+
+// ─── Attribution (guardlink dashboard --blame) ───────────────────────
+
+export interface AttributionClaimRow {
+  verb: string;
+  asset: string;
+  threat: string;
+  severity: string;
+  file: string;
+  line: number;
+  status: string;
+  lowerBound: boolean;
+  introducedBy: string;
+  introducedSha: string;
+  introducedDate: string;
+  introducedAi: string[];
+  declaredBy: string;
+  declaredSha: string;
+  fixedBy: string;
+  fixedSha: string;
+  fixedAi: string[];
+  timeToFix: number | null;
+}
+
+export interface AttributionData {
+  humans: HumanSummaryRow[];
+  agents: AgentSummaryRow[];
+  rows: AttributionClaimRow[];
+  /** Largest `introduced` count, for scaling the bars. */
+  maxIntroduced: number;
+  /** Claims whose status is not `ok`, by status. */
+  degraded: { status: string; count: number }[];
+}
+
+const aiLabels = (ref: CommitRef | null): string[] =>
+  ref ? ref.assisted_by.map(a => (a.model ? `${a.tool} (${a.model})` : a.tool)) : [];
+const authorLabel = (ref: CommitRef | null): string =>
+  ref ? [ref.author, ...ref.co_authors].join(' + ') : '';
+
+/**
+ * The Attribution page's data, or null when no record carries `blame` — the
+ * page is then not rendered at all, so a dashboard built without `--blame` is
+ * byte-for-byte what it was.
+ *
+ * @handles pii on #dashboard -- "Author identities from git, already in the configured identity mode"
+ * @comment -- "Pure projection of record.blame; the summariser is shared with the CLI and the report so every surface agrees on the numbers"
+ */
+export function computeAttribution(model: ThreatModel): AttributionData | null {
+  const entries = entriesFromModel(model);
+  if (entries.length === 0) return null;
+  const { by_human, by_agent } = summarise(entries);
+  const rows: AttributionClaimRow[] = entries.map(e => {
+    const b = e.blame;
+    const introduced = b.kind === 'exposure' ? b.introduced_by : null;
+    const declared = b.kind === 'exposure' ? b.found_by : b.declared_by;
+    const fixed = b.kind === 'exposure' ? b.fixed_by : null;
+    return {
+      verb: e.verb,
+      asset: e.asset,
+      threat: e.threat,
+      severity: e.severity ?? '',
+      file: e.file,
+      line: e.line,
+      status: b.status,
+      lowerBound: introduced?.lower_bound === true,
+      introducedBy: authorLabel(introduced),
+      introducedSha: introduced?.sha ?? '',
+      introducedDate: introduced?.date.slice(0, 10) ?? '',
+      introducedAi: aiLabels(introduced),
+      declaredBy: authorLabel(declared),
+      declaredSha: declared?.sha ?? '',
+      fixedBy: authorLabel(fixed),
+      fixedSha: fixed?.sha ?? '',
+      fixedAi: aiLabels(fixed),
+      timeToFix: b.kind === 'exposure' ? b.time_to_fix_days : null,
+    };
+  });
+  const degradedMap = new Map<string, number>();
+  for (const e of entries) if (e.blame.status !== 'ok') degradedMap.set(e.blame.status, (degradedMap.get(e.blame.status) ?? 0) + 1);
+  return {
+    humans: by_human,
+    agents: by_agent,
+    rows,
+    maxIntroduced: Math.max(0, ...by_human.map(r => r.introduced), ...by_agent.map(r => r.introduced)),
+    degraded: [...degradedMap].map(([status, count]) => ({ status, count })).sort((a, b) => (a.status < b.status ? -1 : 1)),
+  };
 }

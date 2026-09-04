@@ -269,9 +269,14 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
   // check explains. Anchors belong to the ledger comparison (`.guardlink/
   // verified.json`, which records them deliberately and is re-locked by
   // `guardlink verify`), not to the durable artifact.
+  //
+  // `blame` is stripped for the same reason as `anchor`: git attribution attached
+  // by `--blame` describes history the annotation hash cannot see and moves with
+  // every commit. The reader who asked for it has it on stdout; the committed
+  // artifact stays content-derived.
   const { generated_at, ...durableModel } = ordered;
   write(join(guardlinkDir, 'model.json'), '.guardlink/model.json',
-    JSON.stringify(durableModel, (key, value) => (key === 'anchor' ? undefined : value), 2) + '\n');
+    JSON.stringify(durableModel, (key, value) => (key === 'anchor' || key === 'blame' ? undefined : value), 2) + '\n');
 
   // Committed, so content-derived only — same rule as the .mmd headers.
   const manifestBody = JSON.stringify({
