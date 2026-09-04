@@ -6,7 +6,9 @@
 import type { ThreatModel } from '../types/index.js';
 import { buildCoverageIndex, annotationCount } from '../parser/coverage.js';
 import { entriesFromModel, summarise } from '../blame/summary.js';
-import type { AgentSummaryRow, CommitRef, HumanSummaryRow } from '../blame/types.js';
+import { readLedger } from '../parser/ledger.js';
+import { classifyClaims, type ClaimState, type VerificationReport } from '../parser/verification.js';
+import type { AgentSummaryRow, CommitCounts, CommitRef, Cohort, HotFile, HumanSummaryRow, TrendBucket } from '../blame/types.js';
 
 // D57: a private `normalizeRef` lived here — it stripped `#` but, unlike the
 // canonical one in parser/coverage.ts, did not case-fold. Even the normaliser
@@ -130,6 +132,20 @@ export function computeSeverity(model: ThreatModel): SeverityBreakdown {
   return result;
 }
 
+/** Severity buckets of a list of rows — the grade uses the OPEN ones, the breakdown panel uses all. */
+export function computeSeverityOf(rows: { severity: string }[]): SeverityBreakdown {
+  const result: SeverityBreakdown = { critical: 0, high: 0, medium: 0, low: 0, unset: 0 };
+  for (const e of rows) {
+    const sev = (e.severity || '').toLowerCase();
+    if (sev === 'critical' || sev === 'p0') result.critical++;
+    else if (sev === 'high' || sev === 'p1') result.high++;
+    else if (sev === 'medium' || sev === 'p2') result.medium++;
+    else if (sev === 'low' || sev === 'p3') result.low++;
+    else result.unset++;
+  }
+  return result;
+}
+
 export function computeExposures(model: ThreatModel): ExposureRow[] {
   // D57: this normalised `#` but still keyed on the pair alone, so the dashboard
   // exposure table showed a same-file-different-symbol exposure as mitigated.
@@ -220,6 +236,18 @@ export interface AttributionData {
   maxIntroduced: number;
   /** Claims whose status is not `ok`, by status. */
   degraded: { status: string; count: number }[];
+  /** The HEAD commit's author date — "now" for ages, so the page is deterministic per HEAD. */
+  as_of: string | null;
+  trends: TrendBucket[];
+  comparison: { human: Cohort; ai: Cohort } | null;
+  hot_files: HotFile[];
+  commits: CommitCounts | null;
+}
+
+/** What attachBlame leaves on the model so the dashboard can compute rates: commit counts per identity and the as-of date. */
+export interface BlameContext {
+  commits: CommitCounts | null;
+  as_of: string | null;
 }
 
 const aiLabels = (ref: CommitRef | null): string[] =>
@@ -238,7 +266,9 @@ const authorLabel = (ref: CommitRef | null): string =>
 export function computeAttribution(model: ThreatModel): AttributionData | null {
   const entries = entriesFromModel(model);
   if (entries.length === 0) return null;
-  const { by_human, by_agent } = summarise(entries);
+  const context = (model as ThreatModel & { blame_context?: BlameContext }).blame_context;
+  const summary = summarise(entries, { commits: context?.commits ?? null, as_of: context?.as_of ?? null });
+  const { by_human, by_agent } = summary;
   const rows: AttributionClaimRow[] = entries.map(e => {
     const b = e.blame;
     const introduced = b.kind === 'exposure' ? b.introduced_by : null;
@@ -273,5 +303,183 @@ export function computeAttribution(model: ThreatModel): AttributionData | null {
     rows,
     maxIntroduced: Math.max(0, ...by_human.map(r => r.introduced), ...by_agent.map(r => r.introduced)),
     degraded: [...degradedMap].map(([status, count]) => ({ status, count })).sort((a, b) => (a.status < b.status ? -1 : 1)),
+    as_of: summary.as_of,
+    trends: summary.trends,
+    comparison: summary.comparison,
+    hot_files: summary.hot_files,
+    commits: summary.comparison ? (context?.commits ?? null) : null,
   };
+}
+
+// ─── Actions: "What to do next" ──────────────────────────────────────
+
+export type ActionLevel = 'critical' | 'high' | 'medium' | 'info';
+
+export interface DashboardAction {
+  id: string;
+  level: ActionLevel;
+  title: string;
+  detail: string;
+  count: number;
+  /** A hash route into the page and filter that shows the items. */
+  href?: string;
+  /** A guardlink command that acts on them, offered with a copy button. */
+  command?: string;
+}
+
+export interface ActionInput {
+  model: ThreatModel;
+  exposures: ExposureRow[];
+  confirmed: ConfirmedRow[];
+  verification: VerificationReport | null;
+  attribution: AttributionData | null;
+  scope: string[] | null;
+}
+
+const sevKey = (s: string): string => {
+  const l = (s || '').toLowerCase();
+  if (l === 'critical' || l === 'p0') return 'critical';
+  if (l === 'high' || l === 'p1') return 'high';
+  return l;
+};
+const plural = (n: number, one: string, many = `${one}s`): string => (n === 1 ? one : many);
+
+/**
+ * The ordered list of things a reader should do, computed from what the page
+ * already knows. Urgency first: confirmed findings, then open critical/high
+ * exposures, then claims whose code moved (stale), then a first verify when no
+ * ledger exists, then AI-introduced open exposures, then governance items,
+ * then repository coverage. A slice withholds the project-wide measures
+ * (coverage, first-verify) that only mean something for the whole repository.
+ *
+ * @comment -- "Every item points somewhere: a hash route into the filtered view, a guardlink command, or both. Nothing here is a bare number"
+ */
+export function computeActions(input: ActionInput): DashboardAction[] {
+  const { model, exposures, confirmed, verification, attribution, scope } = input;
+  const out: DashboardAction[] = [];
+
+  if (confirmed.length > 0) {
+    out.push({
+      id: 'confirmed', level: 'critical', count: confirmed.length,
+      title: `${confirmed.length} confirmed exploitable ${plural(confirmed.length, 'finding')}`,
+      detail: 'Verified by test, scan or reproduction — not theoretical. Fix, or accept with explicit security sign-off, before anything else.',
+      href: '#threats?status=confirmed',
+    });
+  }
+
+  const open = exposures.filter(e => !e.mitigated && !e.accepted);
+  const severe = open.filter(e => sevKey(e.severity) === 'critical' || sevKey(e.severity) === 'high');
+  if (severe.length > 0) {
+    const crit = severe.filter(e => sevKey(e.severity) === 'critical').length;
+    out.push({
+      id: 'open-severe', level: crit > 0 ? 'critical' : 'high', count: severe.length,
+      title: `${severe.length} critical or high ${plural(severe.length, 'exposure')} open`,
+      detail: `${crit} critical, ${severe.length - crit} high. Each needs a @mitigates with a real control, or a human @accepts with a reason.`,
+      href: '#threats?sev=critical,high&status=open',
+      command: 'guardlink review .',
+    });
+  }
+
+  if (verification && verification.ledger === 'corrupt') {
+    out.push({
+      id: 'ledger-corrupt', level: 'high', count: 0,
+      title: 'The verification ledger is unreadable',
+      detail: '.guardlink/verified.json does not parse, so every claim reads as unverified. Validate, then rebuild it with a whole-repository verify.',
+      command: 'guardlink validate .',
+    });
+  } else if (verification && verification.ledger !== 'absent' && verification.summary.stale > 0) {
+    const s = verification.summary;
+    out.push({
+      id: 'stale-claims', level: s.demotable_stale > 0 ? 'high' : 'medium', count: s.stale,
+      title: `${s.stale} ${plural(s.stale, 'claim')} went stale`,
+      detail: `The code beneath ${s.stale === 1 ? 'it' : 'them'} changed since ${s.stale === 1 ? 'it was' : 'they were'} verified; ${s.demotable_stale} of them ${s.demotable_stale === 1 ? 'is a' : 'are'} ${plural(s.demotable_stale, 'mitigation or acceptance', 'mitigations or acceptances')} that may no longer hold. Re-check the code, then re-lock.`,
+      href: '#threats?state=stale',
+      command: 'guardlink verify --stale',
+    });
+  } else if (verification && verification.ledger === 'absent' && !scope) {
+    const n = verification.summary.unverified;
+    out.push({
+      id: 'start-verifying', level: 'medium', count: n,
+      title: 'No claim has been verified yet',
+      detail: `${n} ${plural(n, 'claim')} in this model ${n === 1 ? 'has' : 'have'} never been checked against the code beneath ${n === 1 ? 'it' : 'them'}. A first whole-repository verify records the baseline; from then on a stale claim stands out.`,
+      command: 'guardlink verify --all',
+    });
+  }
+
+  if (attribution) {
+    const aiOpen = attribution.rows.filter(r => r.verb !== 'mitigates' && r.fixedBy === '' && r.introducedAi.length > 0).length;
+    if (aiOpen > 0) {
+      out.push({
+        id: 'ai-open', level: 'medium', count: aiOpen,
+        title: `${aiOpen} open ${plural(aiOpen, 'exposure')} introduced with AI help`,
+        detail: 'The introducing commit credits an AI tool. Worth a closer review, and worth knowing which tool and model.',
+        href: '#attribution?who=ai',
+      });
+    }
+  }
+
+  const inert = (model.entitlements || []).filter(e => e.inert).length;
+  if (inert > 0) {
+    out.push({
+      id: 'inert-entitlements', level: 'medium', count: inert,
+      title: `${inert} ${plural(inert, 'entitlement')} cite${inert === 1 ? 's' : ''} no authorization code`,
+      detail: 'An @entitles without a file:line citation is inert: parsed, then ignored. Add the citation or drop the claim.',
+      href: '#data?q=inert',
+    });
+  }
+
+  if (model.audits.length > 0) {
+    const n = model.audits.length;
+    out.push({
+      id: 'audits', level: 'medium', count: n,
+      title: `${n} audit ${plural(n, 'item')} ${n === 1 ? 'awaits' : 'await'} human review`,
+      detail: 'Each @audit marks a risk with no control yet. Review it and either add a control or record a decision.',
+      href: '#data?q=audit',
+    });
+  }
+
+  if (!scope) {
+    const unannotated = (model.unannotated_files || []).length;
+    const total = (model.annotated_files?.length || 0) + unannotated;
+    const pct = total > 0 ? Math.round(((total - unannotated) / total) * 100) : 100;
+    if (total > 0 && pct < 70) {
+      out.push({
+        id: 'coverage', level: pct < 40 ? 'medium' : 'info', count: unannotated,
+        title: `${unannotated} of ${total} source ${plural(total, 'file')} carry no annotations`,
+        detail: `${pct}% file coverage. Not every file needs annotations, only those touching a security boundary — a coding agent can find them.`,
+        href: '#code?q=unannotated',
+        command: 'guardlink annotate "Add GuardLink annotations to the source files that touch a security boundary and carry none"',
+      });
+    }
+  }
+
+  if (out.length === 0) {
+    out.push({
+      id: 'none', level: 'info', count: 0,
+      title: 'Nothing urgent',
+      detail: 'Every exposure is mitigated or accepted, no claim is stale, and nothing awaits review.',
+    });
+  }
+  return out;
+}
+
+// ─── Ledger state per claim ──────────────────────────────────────────
+
+/**
+ * Verified / stale / unverified per claim, keyed by the record's location
+ * object — `classifyClaims` shares each location by reference with the model
+ * record, so identity is the join. The map is empty when no ledger exists
+ * (`report.ledger === 'absent'`), so a dashboard on a never-verified
+ * repository renders no badges rather than a wall of "unverified"; the report
+ * still carries the unverified count the actions list needs.
+ *
+ * @flows LedgerFile -> #dashboard via readLedger -- "Claim states for the badges and the stale-claims action"
+ * @comment -- "Reads .guardlink/verified.json once; the classification itself is the parser's, not re-derived here"
+ */
+export function computeLedgerStates(model: ThreatModel, root: string): { report: VerificationReport; byLocation: Map<object, ClaimState> } {
+  const read = readLedger(root);
+  const report = classifyClaims(model, read);
+  const byLocation = new Map<object, ClaimState>();
+  if (report.ledger !== 'absent') for (const c of report.claims) byLocation.set(c.location, c.state);
+  return { report, byLocation };
 }

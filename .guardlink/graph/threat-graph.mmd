@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v2:f185cb0f2b7551e204d6a238e33edc80c5a752f5aacb897be2d164cb9679dce6
+%% annotation_hash: sha256-v2:d2538716e1516a72624c1ddcc9771de831cb882700c6dfc58f602d58dd5fd38b
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -91,8 +91,9 @@ graph LR
   cli -. exposes .-> arbitrary_write
   cli -. exposes .-> api_key_exposure
   cli -. exposes .-> cmd_injection
-  dashboard -. exposes .-> xss
   dashboard -. exposes .-> path_traversal
+  dashboard -. exposes .-> xss
+  dashboard -. exposes .-> data_exposure
   diff -. exposes .-> cmd_injection
   diff -. exposes .-> arbitrary_write
   diff -. exposes .-> path_traversal
@@ -155,6 +156,7 @@ graph LR
   key_redaction -. protects .-> cli
   output_encoding -- mitigates --> xss
   output_encoding -. protects .-> dashboard
+  output_encoding -- mitigates --> data_exposure
   input_sanitize -- mitigates --> cmd_injection
   input_sanitize -. protects .-> diff
   path_validation -. protects .-> diff
@@ -195,6 +197,7 @@ graph LR
   resource_limits -. validates .-> mcp
   blame -- "📡 formatBlameText" --> cli
   blame -- "🗄️ buildBlamePayload" --> cli
+  blame -- "📡 summarise" --> dashboard
   mcp -- "📡 generateThreatReport" --> llm_client
   tui -- "📡 launchAgent" --> agent_launcher
   tui -- "📡 chatCompletion" --> llm_client

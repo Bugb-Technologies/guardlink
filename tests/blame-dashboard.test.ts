@@ -56,7 +56,7 @@ describe('dashboard attribution page', () => {
     const { model } = await parseProject({ root, project: 'dash' });
     const html = generateDashboardHTML(model, root);
     expect(html).not.toContain('sec-attribution');
-    expect(html).not.toContain('Attribution');
+    expect(html).not.toContain('href="#attribution"');
   });
 
   it('renders the per-person and per-AI tables with every identity escaped', async () => {

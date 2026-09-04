@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v2:f185cb0f2b7551e204d6a238e33edc80c5a752f5aacb897be2d164cb9679dce6
+%% annotation_hash: sha256-v2:d2538716e1516a72624c1ddcc9771de831cb882700c6dfc58f602d58dd5fd38b
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -70,7 +70,9 @@ graph LR
   sourcefiles["🧩 SourceFiles"]
   ledgerfile["🧩 LedgerFile"]
   userargs["👤 UserArgs"]
+  gitconfig["🧩 GitConfig"]
   html["🧩 HTML"]
+  dashboardhtml["🧩 DashboardHTML"]
   gitref["🧩 GitRef"]
   tempdir["🧩 TempDir"]
   changedfilelist["🧩 ChangedFileList"]
@@ -89,7 +91,6 @@ graph LR
   markdown["🧩 Markdown"]
   agentproposal["🧩 AgentProposal"]
   proposalledger["🧩 ProposalLedger"]
-  gitconfig["🧩 GitConfig"]
   grammarfile["🧩 GrammarFile"]
   commands["🧩 Commands"]
   rawstdin["🧩 RawStdin"]
@@ -137,7 +138,9 @@ graph LR
   configfile -- "🗄️ readBlameConfig" --> blame
   blame -- "📡 formatBlameText" --> cli
   gitrepo -- "🗄️ execFileSync" --> blame
+  gitrepo -- "📡 listCommits" --> blame
   blame -- "🗄️ buildBlamePayload" --> cli
+  blame -- "📡 summarise" --> dashboard
   committrailers -- "📡 parseTrailerBlock" --> blame
   threatmodel -- "📡 runCiChecks" --> cli
   sourcefiles -- "📡 findAnchorDrift" --> cli
@@ -147,12 +150,17 @@ graph LR
   gitrepo -- "📡 attachBlame" --> cli
   gitrepo -- "📡 computeBlame" --> cli
   userinput -- "📡 verify" --> cli
+  sourcefiles -- "🗄️ readFileSync" --> dashboard
+  ledgerfile -- "📡 readLedger" --> dashboard
   threatmodel -- "📡 generateThreatGraph" --> dashboard
   threatmodel -- "📡 computeStats" --> dashboard
-  sourcefiles -- "🗄️ readFileSync" --> dashboard
+  ledgerfile -- "📡 computeLedgerStates" --> dashboard
+  gitconfig -- "📡 detectRepoLinks" --> dashboard
   dashboard -- "📡 return" --> html
-  threatmodel -- "📡 featureScope" --> dashboard
   threatmodel -- "📡 generateDashboardHTML" --> dashboard
+  gitconfig -- "🗄️ readFileSync" --> dashboard
+  dashboard -- "📡 RepoLinks" --> dashboardhtml
+  threatmodel -- "📡 buildClaims" --> dashboard
   threatmodel -- "📡 diffModels" --> diff
   gitref -- "📡 execSync" --> diff
   diff -- "🗄️ writeFileSync" --> tempdir

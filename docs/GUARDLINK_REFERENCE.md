@@ -290,6 +290,15 @@ Every degraded answer is explicit in `status`: `no-git` (not a checkout), `uncom
 its span has changes git has not seen), `shallow` (history truncated; every introduction is a lower
 bound, as is one computed for a file with uncommitted edits), `no-anchor`, `file-missing`, `error`.
 
+The dashboard's Attribution page (`guardlink dashboard --blame`) adds the analysis: a quarterly trend of
+introductions (human vs AI-assisted) and fixes, exposures per 100 commits per person and per model
+(each identity's commit count comes from one history walk; `computeBlame({ history: false })`
+skips it), a severity-weighted risk score, the age of the oldest open exposure, the files most
+rewritten under open exposures, and a click on any identity that narrows the claims table. The
+dashboard also links every `file:line` and commit to the repository's web host when `.git/config`
+names a GitHub, GitLab or Bitbucket origin, and shows verified / stale / unverified per claim
+when a ledger exists.
+
 Attribution is opt-in and computed at run time. Without `--blame` every command's output is exactly
 what it was; with it, exposures, confirmed findings and mitigations carry a `blame` field that is
 invisible to the annotation hash and never written to `.guardlink/model.json`. The JSON payload of
