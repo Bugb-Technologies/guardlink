@@ -92,13 +92,17 @@ describe('guardlink paths — CLI', () => {
     expect(Array.isArray(parsed.endpoints.entries)).toBe(true);
   });
 
+  // 30s, generous and explicit: this is the only case here that launches the
+  // CLI twice, and a tsx spawn costs ~1s locally against roughly 5x that on
+  // GitHub's shared runners — two of them do not fit the 5000ms default. The
+  // global testTimeout stays where it is, so the NEXT slow test still shows up.
   it('--all widens the result rather than narrowing it', () => {
     const json = (...args: string[]) => {
       const { out } = guardlink('paths', '.', '--json', ...args);
       return JSON.parse(out.slice(out.indexOf('{')));
     };
     expect(json('--all').findings.length).toBeGreaterThanOrEqual(json().findings.length);
-  });
+  }, 30_000);
 
   it('--boundary-only returns only paths that cross a boundary', () => {
     const { out } = guardlink('paths', '.', '--all', '--boundary-only', '--json');

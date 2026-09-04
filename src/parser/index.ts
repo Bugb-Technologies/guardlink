@@ -29,3 +29,12 @@ export { findAnchorDrift, applyReanchor } from './reanchor.js';
 export type { AnchorDrift } from './reanchor.js';
 export { migrateAnnotationMode, readGalBlocks } from './migrate-mode.js';
 export type { MigrateOptions, MigrateResult, TargetMode } from './migrate-mode.js';
+// Stale claim detection (docs/superpowers/specs/2026-09-03-stale-claim-detection-design.md).
+export { relationRecords, claimText, DEMOTABLE_VERBS } from './claim-key.js';
+export type { ClaimSource, ClaimVerb } from './claim-key.js';
+export { readLedger, writeLedger, serializeLedger, emptyLedger, LEDGER_FILE, LEDGER_SCHEMA } from './ledger.js';
+export type { Ledger, LedgerEntry, LedgerRead, LedgerStatus } from './ledger.js';
+export { classifyClaims, demotionSet } from './verification.js';
+export type { ClaimRecord, ClaimState, VerificationReport } from './verification.js';
+export { planVerification, applyVerification, defaultVerifier, headCommit, nowIso } from './verify.js';
+export type { VerifyMode, VerifyPlan, VerifyTarget, VerifierIdentity } from './verify.js';

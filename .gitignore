@@ -3,6 +3,10 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Grammar WASM files, fetched from pinned npm packages by scripts/build-grammars.ts.
+# Published through package.json "files"; never committed.
+grammars/
+
 # Alternate package managers — we standardize on npm (package-lock.json is canonical)
 bun.lock
 yarn.lock

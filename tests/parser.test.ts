@@ -612,7 +612,9 @@ describe('parseString', () => {
       await mkdir(join(root, 'src'), { recursive: true });
       await writeFile(join(root, 'src', 'api.ts'), 'export const ok = true;\n');
 
-      const { model, diagnostics } = await parseProject({ root, project: 'tmp' });
+      // This test asserts an exact `location` shape for GAL sidecar/origin
+      // metadata; anchors are covered separately (tests/structure-attach.test.ts).
+      const { model, diagnostics } = await parseProject({ root, project: 'tmp', anchors: false });
 
       expect(diagnostics).toHaveLength(0);
       expect(model.annotations_parsed).toBe(3);

@@ -1,8 +1,8 @@
 {
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 90,
-  "annotations_parsed": 471,
+  "source_files": 100,
+  "annotations_parsed": 510,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -45,17 +45,21 @@
     "src/parser/canonical-order.ts",
     "src/parser/canonical-ref.ts",
     "src/parser/citation.ts",
+    "src/parser/claim-key.ts",
     "src/parser/clear.ts",
     "src/parser/coverage.ts",
     "src/parser/feature-filter.ts",
     "src/parser/fingerprint.ts",
     "src/parser/gal-path.ts",
+    "src/parser/ledger.ts",
     "src/parser/migrate-mode.ts",
     "src/parser/parse-file.ts",
     "src/parser/parse-line.ts",
     "src/parser/parse-project.ts",
     "src/parser/reanchor.ts",
     "src/parser/validate.ts",
+    "src/parser/verification.ts",
+    "src/parser/verify.ts",
     "src/paths/format.ts",
     "src/paths/index.ts",
     "src/report/index.ts",
@@ -64,6 +68,12 @@
     "src/report/sequence.ts",
     "src/review/entitlements.ts",
     "src/review/index.ts",
+    "src/structure/anchor.ts",
+    "src/structure/attach.ts",
+    "src/structure/grammars.ts",
+    "src/structure/hash.ts",
+    "src/structure/index.ts",
+    "src/structure/runtime.ts",
     "src/tui/commands.ts",
     "src/tui/config.ts",
     "src/tui/index.ts",
@@ -86,6 +96,7 @@
     "examples/ci/per-repo-report.yml",
     "examples/ci/workspace-merge.yml",
     "examples/github-action.yml",
+    "scripts/build-grammars.ts",
     "src/analyze/format.ts",
     "src/index.ts",
     "src/init/picker.ts",
@@ -94,8 +105,7 @@
     "src/parser/index.ts",
     "src/parser/normalize.ts",
     "src/tui/format.ts",
-    "src/types/index.ts",
-    "tmp/guardlink-paper/build_guardlink_ieee.py"
+    "src/types/index.ts"
   ],
   "assets": [
     {
@@ -868,6 +878,16 @@
       }
     },
     {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "Path is the constant LEDGER_FILE under a root that must already carry .guardlink/; targets only select claims, they are never written to",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 423
+      }
+    },
+    {
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
@@ -974,7 +994,7 @@
       "description": "rev-parse --verify must resolve ref to a single revision before it reaches the diff command; a shell metacharacter makes rev-parse fail, so the function returns [] instead of running the second command",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 92
+        "line": 93
       }
     },
     {
@@ -1179,6 +1199,26 @@
     },
     {
       "asset": "#parser",
+      "threat": "#insecure-deser",
+      "control": "#config-validation",
+      "description": "Shape is validated field by field before any entry is trusted; anything else is corrupt, not partially loaded",
+      "location": {
+        "file": "src/parser/ledger.ts",
+        "line": 19
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "The path is the constant LEDGER_FILE joined to root; no caller supplies a path",
+      "location": {
+        "file": "src/parser/ledger.ts",
+        "line": 21
+      }
+    },
+    {
+      "asset": "#parser",
       "threat": "#arbitrary-write",
       "control": "#path-validation",
       "description": "Only files already in the parsed model are touched; sidecar targets come from resolveGalPath, never from input",
@@ -1235,6 +1275,16 @@
       "location": {
         "file": "src/parser/validate.ts",
         "line": 7
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#cmd-injection",
+      "control": "#param-commands",
+      "description": "execFileSync with a fixed argv; no shell, no caller-supplied argument",
+      "location": {
+        "file": "src/parser/verify.ts",
+        "line": 14
       }
     },
     {
@@ -1325,6 +1375,36 @@
       "location": {
         "file": "src/review/index.ts",
         "line": 239
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "Each logical path is resolved against root and skipped unless it is root or lies under root + sep; the file is never opened otherwise, so nothing outside the scanned tree is read",
+      "location": {
+        "file": "src/structure/attach.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "Only files that carry annotations are parsed, once each, and the tree is released immediately",
+      "location": {
+        "file": "src/structure/attach.ts",
+        "line": 13
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "One runtime init and one load per language per process; trees are parsed on demand and deleted by callers",
+      "location": {
+        "file": "src/structure/runtime.ts",
+        "line": 17
       }
     },
     {
@@ -1735,6 +1815,19 @@
       }
     },
     {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "The one command that writes .guardlink/verified.json",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 422
+      }
+    },
+    {
       "asset": "#dashboard",
       "threat": "#xss",
       "severity": "high",
@@ -1822,7 +1915,7 @@
       "description": "ref is interpolated into an execSync git command",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 91
+        "line": 92
       }
     },
     {
@@ -2178,6 +2271,32 @@
     },
     {
       "asset": "#parser",
+      "threat": "#insecure-deser",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-502"
+      ],
+      "description": "JSON.parse on a committed file under .guardlink/",
+      "location": {
+        "file": "src/parser/ledger.ts",
+        "line": 18
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "writeLedger writes one fixed path under root",
+      "location": {
+        "file": "src/parser/ledger.ts",
+        "line": 20
+      }
+    },
+    {
+      "asset": "#parser",
       "threat": "#arbitrary-write",
       "severity": "high",
       "external_refs": [
@@ -2280,6 +2399,19 @@
     },
     {
       "asset": "#cli",
+      "threat": "#cmd-injection",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-78"
+      ],
+      "description": "git is spawned for the verifier name and HEAD",
+      "location": {
+        "file": "src/parser/verify.ts",
+        "line": 13
+      }
+    },
+    {
+      "asset": "#cli",
       "threat": "#arbitrary-write",
       "severity": "high",
       "external_refs": [
@@ -2341,6 +2473,45 @@
       "location": {
         "file": "src/review/index.ts",
         "line": 238
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#path-traversal",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "Reads the file each annotation's location names, and a .gal @source path is author-supplied text that survives normalisation with ../ intact",
+      "location": {
+        "file": "src/structure/attach.ts",
+        "line": 10
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "One structure parse per annotated file",
+      "location": {
+        "file": "src/structure/attach.ts",
+        "line": 12
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "Grammar WASM is loaded into memory per language; a pathological source file costs one parse",
+      "location": {
+        "file": "src/structure/runtime.ts",
+        "line": 16
       }
     },
     {
@@ -2722,7 +2893,7 @@
       "description": "Parsed model checked for uncovered exposures",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 29
+        "line": 30
       }
     },
     {
@@ -2732,7 +2903,17 @@
       "description": "Recorded anchors compared against current source",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 30
+        "line": 31
+      }
+    },
+    {
+      "source": "LedgerFile",
+      "target": "#cli",
+      "mechanism": "readLedger",
+      "description": "Recorded claim hashes, read only",
+      "location": {
+        "file": "src/ci/index.ts",
+        "line": 32
       }
     },
     {
@@ -2753,6 +2934,36 @@
       "location": {
         "file": "src/cli/index.ts",
         "line": 39
+      }
+    },
+    {
+      "source": "LedgerFile",
+      "target": "#cli",
+      "mechanism": "readLedger",
+      "description": "status reports verified/stale/unverified claim counts alongside annotation coverage",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 277
+      }
+    },
+    {
+      "source": "LedgerFile",
+      "target": "#cli",
+      "mechanism": "readLedger",
+      "description": "Read-only; a corrupt ledger becomes a validate error (ledger-corrupt) instead of being silently treated as absent",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 329
+      }
+    },
+    {
+      "source": "UserInput",
+      "target": "#cli",
+      "mechanism": "verify",
+      "description": "Targets, --by and mode flags",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 424
       }
     },
     {
@@ -2862,7 +3073,7 @@
       "description": "Ref input to git diff --name-only",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 93
+        "line": 94
       }
     },
     {
@@ -2872,7 +3083,7 @@
       "description": "Repo-relative paths used for entitlement staleness",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 94
+        "line": 95
       }
     },
     {
@@ -3186,6 +3397,26 @@
       }
     },
     {
+      "source": "LedgerFile",
+      "target": "#parser",
+      "mechanism": "readLedger",
+      "description": "Recorded hashes and verifiers",
+      "location": {
+        "file": "src/parser/ledger.ts",
+        "line": 22
+      }
+    },
+    {
+      "source": "#cli",
+      "target": "LedgerFile",
+      "mechanism": "writeLedger",
+      "description": "The only write the verify surfaces perform",
+      "location": {
+        "file": "src/parser/ledger.ts",
+        "line": 23
+      }
+    },
+    {
       "source": "ThreatModel",
       "target": "#parser",
       "mechanism": "migrateAnnotationMode",
@@ -3253,6 +3484,36 @@
       "location": {
         "file": "src/parser/reanchor.ts",
         "line": 21
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#parser",
+      "mechanism": "classifyClaims",
+      "description": "Anchors on every relation record compared with the ledger",
+      "location": {
+        "file": "src/parser/verification.ts",
+        "line": 29
+      }
+    },
+    {
+      "source": "LedgerFile",
+      "target": "#parser",
+      "mechanism": "classifyClaims",
+      "description": "Recorded hashes, already read by the caller",
+      "location": {
+        "file": "src/parser/verification.ts",
+        "line": 30
+      }
+    },
+    {
+      "source": "#cli",
+      "target": "LedgerFile",
+      "mechanism": "applyVerification",
+      "description": "The ledger the verify surfaces write",
+      "location": {
+        "file": "src/parser/verify.ts",
+        "line": 12
       }
     },
     {
@@ -3403,6 +3664,36 @@
       "location": {
         "file": "src/review/index.ts",
         "line": 240
+      }
+    },
+    {
+      "source": "SourceFiles",
+      "target": "#parser",
+      "mechanism": "attachAnchors",
+      "description": "Annotated files re-read for structure",
+      "location": {
+        "file": "src/structure/attach.ts",
+        "line": 14
+      }
+    },
+    {
+      "source": "SourceFile",
+      "target": "#parser",
+      "mechanism": "parseStructure",
+      "description": "File content already read by the parser, parsed again for structure",
+      "location": {
+        "file": "src/structure/index.ts",
+        "line": 11
+      }
+    },
+    {
+      "source": "GrammarFile",
+      "target": "#parser",
+      "mechanism": "Language.load",
+      "description": "Bundled WASM read from the package's grammars/ directory",
+      "location": {
+        "file": "src/structure/runtime.ts",
+        "line": 18
       }
     },
     {
@@ -4135,13 +4426,13 @@
       "reason": "graph/README example content, excluded from parsing",
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 372
+        "line": 381
       }
     },
     {
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 441
+        "line": 450
       }
     },
     {
@@ -4296,17 +4587,45 @@
       }
     },
     {
-      "description": "Exit code is a pure function of (strict, exposures, drift) and lives in the summary, so JSON consumers see the same verdict the shell got",
+      "description": "Exit code is a pure function of (strict, exposures, drift, demotable stale) and lives in the summary, so JSON consumers see the same verdict the shell got",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 31
+        "line": 33
       }
     },
     {
       "description": "Exposures and drift are serialized as the types the parser already produces — no renamed fields, so guardlink.ci/v1 cannot drift from the model it reports",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 32
+        "line": 34
+      }
+    },
+    {
+      "description": "The third check reads .guardlink/verified.json and never writes it; a corrupt ledger is reported once and treated as absent",
+      "location": {
+        "file": "src/ci/index.ts",
+        "line": 35
+      }
+    },
+    {
+      "description": "Closes the same blind spot ci's third check already closed (src/ci/index.ts) for the validate/CI-gate surface",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 330
+      }
+    },
+    {
+      "description": "Re-locking a stale claim is an assertion that the control still holds, so the default form never does it: --stale, --all or a named target is required, and each says so in its output",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 425
+      }
+    },
+    {
+      "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 2838
       }
     },
     {
@@ -4499,6 +4818,13 @@
       }
     },
     {
+      "description": "Pure functions over an assembled ThreatModel; no I/O",
+      "location": {
+        "file": "src/parser/claim-key.ts",
+        "line": 20
+      }
+    },
+    {
       "description": "No @entitles here on purpose: #local-dev is genuinely entitled to the #arbitrary-write effect (clear exists to rewrite these files), but that pair already carries @mitigates, so it is never an open finding and the claim would demote nothing. Recorded and withdrawn in .guardlink/entitlement-proposals.json — an entitlement on a covered pair is decoration",
       "location": {
         "file": "src/parser/clear.ts",
@@ -4646,6 +4972,20 @@
       }
     },
     {
+      "description": "Pure function; no I/O. Demotion is a SET of claim keys handed to coverage.ts, never a rewrite of the model",
+      "location": {
+        "file": "src/parser/verification.ts",
+        "line": 31
+      }
+    },
+    {
+      "description": "Identity comes from git config or the OS user, is prefixed human: here and agent: in the MCP tool, and is recorded verbatim so a later gate can key on the prefix",
+      "location": {
+        "file": "src/parser/verify.ts",
+        "line": 15
+      }
+    },
+    {
       "description": "Pure string formatting; no I/O. Every hop prints its file:line because a path that cannot be walked in an editor is an assertion rather than a finding, and the empty case states which kind of empty it is — no undefended route in the annotated graph is not the same claim as no undefended route in the code",
       "location": {
         "file": "src/paths/format.ts",
@@ -4751,6 +5091,48 @@
       }
     },
     {
+      "description": "Pure functions over an in-memory tree; no I/O, no user input beyond the source text already read by the parser",
+      "location": {
+        "file": "src/structure/anchor.ts",
+        "line": 16
+      }
+    },
+    {
+      "description": "A file that cannot be read or cannot be parsed nulls that file's anchors and warns once; it never fails the parse, because one pathological file must not take down every command in the repository",
+      "location": {
+        "file": "src/structure/attach.ts",
+        "line": 15
+      }
+    },
+    {
+      "description": "Data only: no I/O, no user input. The paths it produces are joined under the package's own grammars/ directory",
+      "location": {
+        "file": "src/structure/grammars.ts",
+        "line": 14
+      }
+    },
+    {
+      "description": "Pure functions over an in-memory syntax tree or a string; no I/O",
+      "location": {
+        "file": "src/structure/hash.ts",
+        "line": 14
+      }
+    },
+    {
+      "description": "Takes content, not a path to read: the parser owns file I/O and its path validation; this layer never opens a file",
+      "location": {
+        "file": "src/structure/index.ts",
+        "line": 12
+      }
+    },
+    {
+      "description": "Paths come only from grammarPath(language) over the package's own grammars/ directory; no caller-supplied path reaches Language.load",
+      "location": {
+        "file": "src/structure/runtime.ts",
+        "line": 19
+      }
+    },
+    {
       "description": "Derived query over @flows and @mitigates; every hop it prints is an existing annotation location, so a finding here cannot cite a line that was never written",
       "location": {
         "file": "src/tui/commands.ts",
@@ -4780,8 +5162,8 @@
     }
   ],
   "coverage": {
-    "annotation_count": 471,
-    "coverage_percent": 78
+    "annotation_count": 510,
+    "coverage_percent": 80
   },
   "external_refs": []
 }

@@ -50,6 +50,11 @@ jobs:
       - name: GuardLink status
         run: node dist/cli/index.js status .
 
+      # Stale claim detection, advisory. The clean-tree guard below now also
+      # proves that `ci` reads the ledger and never writes it.
+      - name: GuardLink ci (advisory)
+        run: node dist/cli/index.js ci .
+
       # D16 — the read commands must leave the tree exactly as they found it.
       # This is the regression guard for the property the step above depends on:
       # if validate or status ever starts writing again, this fails here rather

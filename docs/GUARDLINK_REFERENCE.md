@@ -94,6 +94,7 @@ guardlink init [dir]                    # Initialize .guardlink/ and agent instr
 guardlink parse [dir]                   # Parse annotations → ThreatModel JSON
 guardlink status [dir]                  # Risk grade + coverage summary
 guardlink validate [dir] [--strict]     # Syntax errors, dangling refs, unmitigated exposures
+guardlink verify [dir] [targets...]     # Lock claims to the code beneath them → .guardlink/verified.json
 
 # Reports & Export
 guardlink report [dir]                  # Generate threat-model.md + optional JSON
@@ -226,3 +227,17 @@ When connected via `.mcp.json`, use:
 - `guardlink_entitlement_list` — see proposals and their decisions; a rejected claim must not be re-filed
 
 There is deliberately no entitlement *accept* tool. Acceptance is a human decision recorded by name, through `guardlink entitle`.
+
+## Stale claims and the verification ledger
+
+Every relationship annotation is bound at parse time to the declaration beneath it — the function a doc-block sits on, the statement an inline comment precedes, the whole file for a header block — and that declaration's non-comment tokens are hashed. `guardlink verify` records the hash in `.guardlink/verified.json` with who verified it and when. On every later parse, `guardlink ci` and `guardlink status` compare the current hash with the recorded one.
+
+| State | Meaning |
+|---|---|
+| `verified` | hash matches the ledger |
+| `stale` | the code beneath the claim changed after it was verified |
+| `unverified` | no ledger entry yet — every claim starts here; never fails a build |
+
+Commit the ledger. It needs no git history to read, so it works on a depth-one CI checkout. Re-locking a stale claim is an explicit act: `guardlink verify --stale`, `guardlink verify --all`, or `guardlink verify src/file.ts:33`. The default `guardlink verify` only locks new claims and prunes entries whose claim is gone.
+
+Put claims on the function that implements the control, not in the file header. A file-header claim is bound to the whole file and goes stale on any edit to it.
