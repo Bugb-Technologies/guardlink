@@ -65,7 +65,13 @@ beforeAll(async () => {
   guardlink('sync', '.');
   git('add', '-A');
   git('commit', '-q', '--allow-empty', '-m', 'synced');
-}, 120_000);
+  // 5 minutes, and not because this is slow: the two tsx spawns above cost
+  // ~2.5s locally. It is that they are setup, so they queue behind every other
+  // file's spawns on a two-core shared runner — and when they lose that race
+  // the whole file reports as a hook timeout rather than as one slow test.
+  // Generous here buys nothing back for a genuinely hung setup, which still
+  // fails, just later.
+}, 300_000);
 
 afterAll(async () => {
   await rm(root, { recursive: true, force: true });
