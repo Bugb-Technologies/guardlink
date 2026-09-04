@@ -1,15 +1,16 @@
 /**
  * GuardLink Blame — terminal rendering. Pure.
  *
- * One group per file, one block per claim, then the two summary tables.
- * Plain `padEnd` columns and no colour, so the output pipes cleanly and the
- * TUI can indent it.
+ * One group per file, one block per claim, then the two summary tables and
+ * the quarterly trend. Plain `padEnd` columns and no colour, so the output
+ * pipes cleanly and the TUI can indent it.
  *
  * @handles pii on #blame -- "Identity strings printed to the terminal"
  * @flows #blame -> #cli via formatBlameText -- "Human-readable attribution"
  * @comment -- "Every degraded status is printed next to the claim it degrades, so a reader never mistakes an unattributed claim for a clean one"
+ * @comment -- "A rate with no denominator (no commit counts, or an identity with no commits) prints as a dash, never as 0: an absent number must not read as a good one"
  */
-import type { AgentSummaryRow, BlameEntry, BlamePayload, CommitRef, HumanSummaryRow } from './types.js';
+import type { AgentSummaryRow, BlameEntry, BlamePayload, CommitRef, HumanSummaryRow, TrendBucket } from './types.js';
 
 function who(ref: CommitRef | null): string {
   if (!ref) return '—';
@@ -29,22 +30,32 @@ function table(headers: string[], rows: string[][], numeric: boolean[]): string[
 
 const num = (n: number | null): string => (n === null ? '—' : String(n));
 
+const COUNT_HEADERS = ['commits', 'introduced', 'per 100', 'fixed', 'open', 'touched', 'lines', 'median days to fix'];
+
+const countCells = (r: HumanSummaryRow | AgentSummaryRow): string[] =>
+  [num(r.commits), String(r.introduced), num(r.per_100_commits), String(r.fixed), String(r.open), String(r.touched), String(r.lines), num(r.median_time_to_fix_days)];
+
 function humanRows(rows: HumanSummaryRow[]): string[] {
   if (rows.length === 0) return ['  (no one attributed)'];
   return table(
-    ['identity', 'introduced', 'fixed', 'open', 'touched', 'lines', 'median days to fix'],
-    rows.map(r => [r.identity, String(r.introduced), String(r.fixed), String(r.open), String(r.touched), String(r.lines), num(r.median_time_to_fix_days)]),
-    [false, true, true, true, true, true, true],
+    ['identity', ...COUNT_HEADERS],
+    rows.map(r => [r.identity, ...countCells(r)]),
+    [false, ...COUNT_HEADERS.map(() => true)],
   );
 }
 
 function agentRows(rows: AgentSummaryRow[]): string[] {
   if (rows.length === 0) return ['  (no AI tool credited on any attributed commit)'];
   return table(
-    ['tool', 'model', 'introduced', 'fixed', 'open', 'touched', 'lines', 'median days to fix'],
-    rows.map(r => [r.tool, r.model ?? '—', String(r.introduced), String(r.fixed), String(r.open), String(r.touched), String(r.lines), num(r.median_time_to_fix_days)]),
-    [false, false, true, true, true, true, true, true],
+    ['tool', 'model', ...COUNT_HEADERS],
+    rows.map(r => [r.tool, r.model ?? '—', ...countCells(r)]),
+    [false, false, ...COUNT_HEADERS.map(() => true)],
   );
+}
+
+function quarterLines(trends: TrendBucket[]): string[] {
+  if (trends.length === 0) return ['  (no dated claims)'];
+  return trends.map(t => `  ${t.period}  introduced ${t.introduced} (${t.introduced_ai} AI)  fixed ${t.fixed}  open ${t.open_end}`);
 }
 
 function claimLines(e: BlameEntry): string[] {
@@ -90,5 +101,6 @@ export function formatBlameText(p: BlamePayload): string {
 
   lines.push('', 'By person', ...humanRows(p.summary.by_human));
   lines.push('', 'By AI tool', ...agentRows(p.summary.by_agent));
+  lines.push('', 'By quarter', ...quarterLines(p.summary.trends));
   return `${lines.join('\n')}\n`;
 }

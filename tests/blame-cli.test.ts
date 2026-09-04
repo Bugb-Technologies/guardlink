@@ -123,8 +123,10 @@ describe('against a repository', () => {
     const model = JSON.parse(withBlame.stdout);
     expect(model.exposures[0].blame.kind).toBe('exposure');
     expect(model.mitigations[0].blame.kind).toBe('mitigation');
-    // everything except the blame field is unchanged (generated_at is the wall clock of each run)
-    const strip = (m: Record<string, unknown>) => JSON.parse(JSON.stringify(m, (k, v) => (k === 'blame' || k === 'generated_at' ? undefined : v)));
+    // everything except the blame fields is unchanged (generated_at is the wall clock of each run;
+    // blame_context carries the commit counts the dashboard's rates need)
+    expect(model.blame_context).toBeTruthy();
+    const strip = (m: Record<string, unknown>) => JSON.parse(JSON.stringify(m, (k, v) => (k === 'blame' || k === 'blame_context' || k === 'generated_at' ? undefined : v)));
     expect(strip(model)).toEqual(strip(JSON.parse(plain.stdout)));
   }, 120_000);
 

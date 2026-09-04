@@ -14,6 +14,7 @@ import { parseProject } from '../src/parser/parse-project.js';
 import { computeAnnotationHash } from '../src/parser/annotation-hash.js';
 import { computeBlame } from '../src/blame/compute.js';
 import { attachBlame } from '../src/blame/attach.js';
+import { buildBlamePayload } from '../src/blame/summary.js';
 import type { ExposureBlame, MitigationBlame } from '../src/blame/types.js';
 import { makeRepo, makePlainDir, type Repo } from './blame-fixture.js';
 
@@ -118,6 +119,46 @@ describe('computeBlame on a three-commit history', () => {
     expect(blamed).toHaveLength(1);
     expect((blamed[0] as { location: { file: string } }).location.file).toBe('src/other.ts');
   });
+
+  it('counts every commit in the history per human and per AI tool, and dates the summary at HEAD', async () => {
+    const repo = await threeCommitRepo();
+    const { model } = await parseProject({ root: repo.root, project: 'test' });
+    const comp = computeBlame(repo.root, model);
+    expect(comp.commits).toEqual({
+      total: 3,
+      ai_assisted: 2,
+      by_human: { 'human:Test Human': 3 },
+      by_agent: {
+        'claude-code Claude Opus 5 (1M context)': { tool: 'claude-code', model: 'Claude Opus 5 (1M context)', commits: 1 },
+        'codex gpt-5.2': { tool: 'codex', model: 'gpt-5.2', commits: 1 },
+      },
+    });
+    // git prints the author date as `…Z`; compare the instant, not the spelling.
+    expect(Date.parse(comp.as_of!)).toBe(Date.parse('2026-01-03T10:00:00+00:00'));
+
+    const { summary } = buildBlamePayload(model, comp, repo.root);
+    expect(Date.parse(summary.as_of!)).toBe(Date.parse('2026-01-03T10:00:00+00:00'));
+    expect(summary.comparison).not.toBeNull();
+    expect(summary.comparison!.human.commits).toBe(1);
+    expect(summary.comparison!.ai.commits).toBe(2);
+    expect(summary.by_human[0]).toMatchObject({ identity: 'human:Test Human', commits: 3, per_100_commits: 33.3 });
+  });
+
+  it('history: false skips the walk and leaves commits and as_of null', async () => {
+    const repo = await threeCommitRepo();
+    const { model } = await parseProject({ root: repo.root, project: 'test' });
+    const calls: string[][] = [];
+    const exec = (root: string, argv: string[]): string => {
+      calls.push(argv);
+      return execFileSync('git', argv, { cwd: root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+    };
+    const comp = computeBlame(repo.root, model, { history: false, exec });
+    expect(comp.commits).toBeNull();
+    expect(comp.as_of).toBeNull();
+    expect(comp.head).toBe(repo.c3);
+    expect(calls.some(argv => argv[0] === 'log' && argv.includes('HEAD'))).toBe(false);
+    expect(buildBlamePayload(model, comp, repo.root).summary.comparison).toBeNull();
+  });
 });
 
 describe('computeBlame degrades honestly', () => {
@@ -147,6 +188,8 @@ describe('computeBlame degrades honestly', () => {
     const comp = computeBlame(root, model);
     expect(comp.status).toBe('no-git');
     expect(comp.head).toBeNull();
+    expect(comp.commits).toBeNull();
+    expect(comp.as_of).toBeNull();
     const b = comp.byRecord.get(model.exposures[0]) as ExposureBlame;
     expect(b).toMatchObject({ status: 'no-git', introduced_by: null, found_by: null, fixed_by: null, contributors: [] });
   });

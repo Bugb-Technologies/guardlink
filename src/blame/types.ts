@@ -137,12 +137,32 @@ export interface RawCommit {
 
 export type ComputationStatus = 'ok' | 'no-git' | 'shallow';
 
+/**
+ * Commit counts over the history reachable from HEAD, the denominator of every
+ * "per 100 commits" rate. Attributed with the same rules and identity mode as
+ * the records, so an identity key here is the same string the rows carry.
+ */
+export interface CommitCounts {
+  /** Commits in the whole history. */
+  total: number;
+  /** Commits that credit at least one AI tool (author bot or trailer). */
+  ai_assisted: number;
+  /** Commits credited to each human identity (author or human co-author), identity string → count. */
+  by_human: Record<string, number>;
+  /** Commits credited to each AI tool+model, key `${tool} ${model ?? ''}` → { tool, model, commits }. */
+  by_agent: Record<string, { tool: string; model: string | null; commits: number }>;
+}
+
 export interface BlameComputation {
   status: ComputationStatus;
   head: string | null;
   identity_mode: IdentityMode;
   /** Keyed by the model record object itself; never written back unless `attachBlame` is asked to. */
   byRecord: Map<object, RecordBlame>;
+  /** The HEAD commit's author date — "now" for every age in the summary, so two runs on one HEAD agree. Null without git or when the walk was skipped. */
+  as_of: string | null;
+  /** Null without git or when the walk was skipped (`history: false`). */
+  commits: CommitCounts | null;
 }
 
 export type BlameVerb = 'exposes' | 'confirmed' | 'mitigates';
@@ -162,7 +182,19 @@ export interface BlameEntry {
   blame: RecordBlame;
 }
 
-export interface HumanSummaryRow {
+/** The analytics every summary row carries beyond its counts. */
+export interface SummaryRowRates {
+  /** Commits crediting this identity in the whole history; null when no counts were supplied. */
+  commits: number | null;
+  /** introduced / commits × 100, one decimal; null when commits is null or 0. */
+  per_100_commits: number | null;
+  /** Over the exposures this identity introduced that are still open: critical 8, high 4, medium 2, low 1, anything else 1 (`P0..P3` alike, case-insensitively). */
+  risk_score: number;
+  /** Whole days from the oldest open introduced exposure's date to `as_of`; null when nothing is open or there is no as_of. */
+  oldest_open_days: number | null;
+}
+
+export interface HumanSummaryRow extends SummaryRowRates {
   identity: string;
   /** Exposures whose introducing commit credits this identity. */
   introduced: number;
@@ -177,7 +209,7 @@ export interface HumanSummaryRow {
   median_time_to_fix_days: number | null;
 }
 
-export interface AgentSummaryRow {
+export interface AgentSummaryRow extends SummaryRowRates {
   tool: string;
   model: string | null;
   introduced: number;
@@ -188,9 +220,49 @@ export interface AgentSummaryRow {
   median_time_to_fix_days: number | null;
 }
 
+/** One quarter of the introduced/fixed timeline. Quarters are contiguous from the first to the last seen, so a chart has an even axis. */
+export interface TrendBucket {
+  /** `YYYY-Qn`, by UTC. */
+  period: string;
+  introduced: number;
+  /** Of `introduced`, those whose introducing commit credits an AI tool. */
+  introduced_ai: number;
+  fixed: number;
+  /** Cumulative introduced minus cumulative fixed at the end of the period. */
+  open_end: number;
+}
+
+/** Exposures whose introducing commit credits no AI tool (`human`) versus at least one (`ai`). */
+export interface Cohort {
+  commits: number;
+  introduced: number;
+  fixed: number;
+  open: number;
+  /** introduced / commits × 100, one decimal; null when commits is 0. */
+  per_100_commits: number | null;
+  median_time_to_fix_days: number | null;
+}
+
+export interface HotFile {
+  file: string;
+  /** Open exposures whose span is in this file. */
+  open: number;
+  /** Distinct commits currently owning lines across those spans. */
+  contributors: number;
+  /** Distinct AI tool+model credited among those commits. */
+  ai_tools: number;
+}
+
 export interface BlameSummary {
+  /** The instant every age was measured against: the HEAD commit's author date. Null without one. */
+  as_of: string | null;
   by_human: HumanSummaryRow[];
   by_agent: AgentSummaryRow[];
+  trends: TrendBucket[];
+  /** Null when no commit counts were available to divide by. */
+  comparison: { human: Cohort; ai: Cohort } | null;
+  /** Hottest first: open desc, contributors desc, file asc; at most ten. */
+  hot_files: HotFile[];
 }
 
 export interface BlamePayload {

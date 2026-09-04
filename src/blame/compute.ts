@@ -22,12 +22,13 @@
  *
  * @exposes #blame to #path-traversal [low] cwe:CWE-22 -- "Record locations name the files handed to git, and a sidecar @source path is author-supplied text that survives normalisation with ../ intact"
  * @mitigates #blame against #path-traversal using #path-validation -- "safeRelPath resolves each path against root and keeps it only when it is root or lies under root + sep; anything else yields status error and git never sees it"
- * @exposes #blame to #dos [low] cwe:CWE-400 -- "One blame per annotated file and one -L walk per distinct symbol span"
- * @mitigates #blame against #dos using #resource-limits -- "Files are blamed once and memoised; -L is memoised per span and skipped for dirty files and file-wide anchors; commits resolve in one batched log call"
+ * @exposes #blame to #dos [low] cwe:CWE-400 -- "One blame per annotated file, one -L walk per distinct symbol span, and one walk of the whole history reachable from HEAD for the commit counts"
+ * @mitigates #blame against #dos using #resource-limits -- "Files are blamed once and memoised; -L is memoised per span and skipped for dirty files and file-wide anchors; commits resolve in one batched log call; the history walk is a single call and history: false skips it"
  * @flows ThreatModel -> #blame via computeBlame -- "Record locations and anchors"
  * @flows #blame -> ThreatModel via attachBlame -- "record.blame, only on the CLI --blame paths"
- * @handles pii on #blame -- "Author identities attached to each record"
+ * @handles pii on #blame -- "Author identities attached to each record, and every identity in the history counted for the per-100-commits rates"
  * @comment -- "Opt-in and non-mutating by default: computeBlame returns a Map; the model is byte-identical afterwards. Attribution of an AI is only ever what a commit declared"
+ * @comment -- "as_of is the HEAD commit's author date, never the wall clock, so every age in the summary is a function of the checkout alone"
  */
 import { existsSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
@@ -38,12 +39,12 @@ import { buildCoverageIndex } from '../parser/coverage.js';
 import { compileRules, readBlameConfig } from './config.js';
 import { attributeCommit } from './trailers.js';
 import {
-  ZERO_SHA, blameFile, dirtyFiles, fileAddCommit, gitExec, headSha, isGitRepo, isShallow,
+  ZERO_SHA, blameFile, dirtyFiles, fileAddCommit, gitExec, headSha, isGitRepo, isShallow, listCommits,
   resolveCommits, spanOldestCommit, trackedFiles, type GitExec,
 } from './git.js';
 import type {
-  BlameComputation, BlameConfig, BlameGranularity, BlameStatus, CommitRef, Contributor,
-  ExposureBlame, IntroducedBy, IntroducedMethod, MitigationBlame, RecordBlame,
+  BlameComputation, BlameConfig, BlameGranularity, BlameStatus, CommitCounts, CommitRef, CompiledRule, Contributor,
+  ExposureBlame, IdentityMode, IntroducedBy, IntroducedMethod, MitigationBlame, RawCommit, RecordBlame,
 } from './types.js';
 
 export interface ComputeBlameOptions {
@@ -51,6 +52,8 @@ export interface ComputeBlameOptions {
   /** Root-relative path: compute only records declared in, or anchored to, this file. */
   file?: string;
   exec?: GitExec;
+  /** Walk the whole history for `commits` and `as_of` — one more git call. Default true; false leaves both null. */
+  history?: boolean;
 }
 
 type ExposureLike = ThreatModelExposure | ThreatModelConfirmed;
@@ -249,6 +252,44 @@ function granularityOf(loc: SourceLocation): BlameGranularity {
 const earliest = (refs: CommitRef[]): CommitRef | null =>
   refs.length === 0 ? null : refs.reduce((a, b) => (Date.parse(b.date) < Date.parse(a.date) ? b : a));
 
+const byKey = ([a]: [string, unknown], [b]: [string, unknown]): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Commit counts over the history, attributed with the same rules and identity
+ * mode as the records so a key here is the string a summary row carries. On a
+ * shallow clone the history is truncated and every count is a lower bound,
+ * which `status: 'shallow'` already says. Keys are sorted so the JSON is the
+ * same bytes on every run.
+ *
+ * @handles pii on #blame -- "Every author and human co-author identity in the history, counted per person"
+ * @comment -- "A commit credits its author and each human co-author once; a bot-authored commit with no human co-author has an agent: author and credits no person. An AI tool is credited once per commit however many trailers name it"
+ */
+function countCommits(history: RawCommit[], rules: readonly CompiledRule[], mode: IdentityMode): CommitCounts {
+  const byHuman = new Map<string, number>();
+  const byAgent = new Map<string, { tool: string; model: string | null; commits: number }>();
+  let ai_assisted = 0;
+  for (const raw of history) {
+    const ref = attributeCommit(raw, rules, mode);
+    for (const id of new Set([ref.author, ...ref.co_authors])) {
+      if (id.startsWith('agent:')) continue;
+      byHuman.set(id, (byHuman.get(id) ?? 0) + 1);
+    }
+    if (ref.assisted_by.length > 0) ai_assisted++;
+    for (const a of ref.assisted_by) {
+      const key = `${a.tool} ${a.model ?? ''}`;
+      const row = byAgent.get(key) ?? { tool: a.tool, model: a.model, commits: 0 };
+      row.commits++;
+      byAgent.set(key, row);
+    }
+  }
+  return {
+    total: history.length,
+    ai_assisted,
+    by_human: Object.fromEntries([...byHuman].sort(byKey)),
+    by_agent: Object.fromEntries([...byAgent].sort(byKey)),
+  };
+}
+
 export function computeBlame(root: string, model: ThreatModel, opts: ComputeBlameOptions = {}): BlameComputation {
   const exec = opts.exec ?? gitExec;
   const config = opts.config ?? readBlameConfig(root);
@@ -265,11 +306,18 @@ export function computeBlame(root: string, model: ThreatModel, opts: ComputeBlam
   if (!isGitRepo(root, exec)) {
     for (const r of exposures) byRecord.set(r, emptyExposure('no-git', granularityOf(r.location)));
     for (const r of mitigations) byRecord.set(r, emptyMitigation('no-git', granularityOf(r.location)));
-    return { status: 'no-git', head: null, identity_mode: mode, byRecord };
+    return { status: 'no-git', head: null, identity_mode: mode, byRecord, as_of: null, commits: null };
   }
 
   const shallow = isShallow(root, exec);
   const head = headSha(root, exec);
+  let as_of: string | null = null;
+  let commits: CommitCounts | null = null;
+  if (opts.history !== false) {
+    const history = listCommits(root, exec);
+    as_of = history.find(c => c.sha === head)?.date ?? null;
+    commits = countCommits(history, rules, mode);
+  }
   const coverage = buildCoverageIndex(model);
 
   // A covering mitigation may live outside the requested file; it is still the fix.
@@ -353,5 +401,5 @@ export function computeBlame(root: string, model: ThreatModel, opts: ComputeBlam
     });
   }
 
-  return { status: shallow ? 'shallow' : 'ok', head, identity_mode: mode, byRecord };
+  return { status: shallow ? 'shallow' : 'ok', head, identity_mode: mode, byRecord, as_of, commits };
 }

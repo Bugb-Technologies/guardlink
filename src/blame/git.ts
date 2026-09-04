@@ -14,8 +14,8 @@
  * @mitigates #blame against #cmd-injection using #param-commands -- "execFileSync with an argv array and no shell; paths follow a literal -- and line ranges are integers formatted here, never caller strings"
  * @exposes #blame to #path-traversal [low] cwe:CWE-22 -- "The file paths handed to blame, log and ls-files name what git reads"
  * @mitigates #blame against #path-traversal using #path-validation -- "compute.ts resolves every path against root and drops any that escapes it before this module sees it, and git itself refuses paths outside the work tree"
- * @exposes #blame to #dos [low] cwe:CWE-400 -- "git log -L walks history once per distinct span and blame reads every annotated file"
- * @mitigates #blame against #dos using #resource-limits -- "30 s timeout and 64 MiB output cap per call; one blame per file; sha resolution and path queries batched; -L only for symbol/block spans on clean files"
+ * @exposes #blame to #dos [low] cwe:CWE-400 -- "git log -L walks history once per distinct span, blame reads every annotated file, and listCommits reads the whole history reachable from HEAD"
+ * @mitigates #blame against #dos using #resource-limits -- "30 s timeout and 64 MiB output cap per call; one blame per file; sha resolution and path queries batched; -L only for symbol/block spans on clean files; the history walk is one call a caller can skip"
  * @flows GitRepo -> #blame via execFileSync -- "blame, log, ls-files, status and rev-parse output"
  * @handles pii on #blame -- "Author names, emails and dates from git log"
  * @comment -- "Read-only by construction: no command here writes to the repository, and optional index refreshes are disabled"
@@ -189,4 +189,22 @@ export function resolveCommits(root: string, shas: string[], exec: GitExec = git
     for (const rc of parseLogRecords(out)) map.set(rc.sha, rc);
   }
   return map;
+}
+
+/**
+ * Every commit reachable from HEAD, newest first, with the fields
+ * `resolveCommits` reads — the denominator of every "per 100 commits" rate
+ * and the source of `as_of`. `HEAD --` pins the argument as a revision even
+ * when a file is named HEAD. An empty repository (no HEAD yet) or a plain
+ * directory is an empty history, not an error.
+ *
+ * @exposes #blame to #dos [low] cwe:CWE-400 -- "One more history walk per computation: every commit reachable from HEAD is printed with its trailer block and parsed"
+ * @mitigates #blame against #dos using #resource-limits -- "A single log call under the same 30 s timeout and 64 MiB output cap; nothing is spawned per commit, and compute.ts lets a caller skip the walk with history: false"
+ * @handles pii on #blame -- "Author names, emails and co-author trailers of every commit in the history"
+ * @flows GitRepo -> #blame via listCommits -- "The reachable history, for commit counts and the HEAD author date"
+ * @comment -- "Reachable from HEAD only, never --all: what other branches carry is not this checkout's history"
+ */
+export function listCommits(root: string, exec: GitExec = gitExec): RawCommit[] {
+  const out = tryExec(root, ['log', LOG_FORMAT, 'HEAD', '--'], exec);
+  return out === null ? [] : parseLogRecords(out);
 }

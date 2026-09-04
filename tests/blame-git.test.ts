@@ -7,7 +7,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   ZERO_SHA, gitExec, isGitRepo, isShallow, headSha, trackedFiles, dirtyFiles,
-  blameFile, parseBlamePorcelain, spanOldestCommit, fileAddCommit, resolveCommits, parseLogRecords,
+  blameFile, parseBlamePorcelain, spanOldestCommit, fileAddCommit, resolveCommits, parseLogRecords, listCommits,
 } from '../src/blame/git.js';
 import { makeRepo, makePlainDir } from './blame-fixture.js';
 
@@ -131,5 +131,36 @@ describe('against a real repository', () => {
     resolveCommits(repo.root, many, fake);
     expect(calls).toHaveLength(3);
     expect(calls.map(c => c.filter(a => /^[0-9a-f]{40}$/.test(a)).length)).toEqual([500, 500, 1]);
+  });
+
+  it('listCommits walks the history reachable from HEAD once, newest first, with the same fields resolveCommits reads', async () => {
+    const repo = await makeRepo();
+    await repo.write('a.txt', 'one\n');
+    const c1 = repo.commit('c1', { date: '2026-01-01T00:00:00+00:00' });
+    await repo.write('a.txt', 'two\n');
+    const c2 = repo.commit('c2', { date: '2026-01-02T00:00:00+00:00', trailers: ['Assisted-by: Codex:gpt-5.2'] });
+    // A commit on another branch is not reachable from HEAD and must not be counted.
+    repo.git('checkout', '-q', '-b', 'side');
+    await repo.write('b.txt', 'side\n');
+    repo.commit('side');
+    repo.git('checkout', '-q', '-');
+    await repo.write('a.txt', 'three\n');
+    const c3 = repo.commit('c3', { date: '2026-01-03T00:00:00+00:00' });
+
+    const history = listCommits(repo.root);
+    expect(history.map(c => c.sha)).toEqual([c3, c2, c1]);
+    expect(history[1]).toMatchObject({ authorName: 'Test Human', authorEmail: 'human@example.com', trailers: 'Assisted-by: Codex:gpt-5.2' });
+    expect(Date.parse(history[0].date)).toBe(Date.parse('2026-01-03T00:00:00+00:00'));
+
+    const calls: string[][] = [];
+    listCommits(repo.root, (_root, argv) => { calls.push(argv); return ''; });
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toBe('log');
+    expect(calls[0]).toContain('HEAD');
+
+    // An empty repository has no HEAD to walk; that is an empty history, not an error.
+    const empty = await makeRepo();
+    expect(listCommits(empty.root)).toEqual([]);
+    expect(listCommits(await makePlainDir())).toEqual([]);
   });
 });

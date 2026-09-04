@@ -6,9 +6,10 @@
  * time, never written into source. See `docs/GUARDLINK_REFERENCE.md`,
  * "Attribution".
  *
- * @comment -- "Public surface of src/blame: computeBlame (non-mutating), attachBlame (CLI --blame), the payload builders and the config reader"
+ * @comment -- "Public surface of src/blame: computeBlame (non-mutating), attachBlame (CLI --blame), the payload builders, the config reader and listCommits, the one history walk behind the commit counts"
  */
 export * from './types.js';
+export { listCommits } from './git.js';
 export { readBlameConfig, compileRules, DEFAULT_TOOL_RULES, DEFAULT_IGNORE_REVS } from './config.js';
 export { attributeCommit, parseTrailerBlock, parseAssistedBy, splitPerson, identityFor, classifyPerson } from './trailers.js';
 export type { RawPerson } from './trailers.js';
