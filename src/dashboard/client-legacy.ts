@@ -72,8 +72,8 @@ function applyFeatureFilter(featureName) {
   });
 
   document.querySelectorAll('[data-ff-asset]').forEach(function(el) {
-    var asset = el.getAttribute('data-ff-asset');
-    el.style.display = featureAssets.has(asset) ? '' : 'none';
+    var names = el.getAttribute('data-ff-asset').split('|');
+    el.style.display = names.some(function(n) { return featureAssets.has(n); }) ? '' : 'none';
   });
 
   // ── Recompute & update all live stats ─────────────────────────

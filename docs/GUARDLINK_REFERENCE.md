@@ -297,7 +297,10 @@ skips it), a severity-weighted risk score, the age of the oldest open exposure, 
 rewritten under open exposures, and a click on any identity that narrows the claims table. The
 dashboard also links every `file:line` and commit to the repository's web host when `.git/config`
 names a GitHub, GitLab or Bitbucket origin, and shows verified / stale / unverified per claim
-when a ledger exists.
+when a ledger exists. The Analytics page charts the model itself — asset × threat, severity ×
+status, threats by frequency, control coverage (including controls nothing uses), the files with
+the most open exposures, and with `--blame` people × quarter and AI tool × severity — with every
+cell linking into the filtered Threats table.
 
 Attribution is opt-in and computed at run time. Without `--blame` every command's output is exactly
 what it was; with it, exposures, confirmed findings and mitigations carry a `blame` field that is

@@ -1,8 +1,8 @@
 {
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 124,
-  "annotations_parsed": 623,
+  "source_files": 126,
+  "annotations_parsed": 629,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -27,6 +27,7 @@
     "src/blame/types.ts",
     "src/ci/index.ts",
     "src/cli/index.ts",
+    "src/dashboard/analytics.ts",
     "src/dashboard/annotations.ts",
     "src/dashboard/client-legacy.ts",
     "src/dashboard/client.ts",
@@ -36,6 +37,7 @@
     "src/dashboard/html.ts",
     "src/dashboard/index.ts",
     "src/dashboard/links.ts",
+    "src/dashboard/pages/analytics.ts",
     "src/dashboard/pages/assets.ts",
     "src/dashboard/pages/attribution.ts",
     "src/dashboard/pages/code.ts",
@@ -1050,7 +1052,7 @@
       "description": "Every value the drawer renders from the embedded data passes through the client esc(); URLs are pre-built server-side and attribute-escaped here",
       "location": {
         "file": "src/dashboard/client.ts",
-        "line": 14
+        "line": 15
       }
     },
     {
@@ -1070,7 +1072,7 @@
       "description": "esc() HTML-encodes every interpolated value in every page module; serialized data escapes closing script tags before embedding in <script>",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 16
+        "line": 20
       }
     },
     {
@@ -1080,7 +1082,7 @@
       "description": "resolve() with root constrains file access (annotations.ts)",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 18
+        "line": 22
       }
     },
     {
@@ -1090,7 +1092,7 @@
       "description": "Feature scope names come from @feature annotations and the --feature flag; every one is rendered through esc()",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 27
+        "line": 31
       }
     },
     {
@@ -1147,6 +1149,16 @@
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
+      "description": "Asset, threat, control, file and identity names are escaped by heatTable/barList; routes are attribute-escaped",
+      "location": {
+        "file": "src/dashboard/pages/analytics.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
       "description": "Asset names and classifications are escaped",
       "location": {
         "file": "src/dashboard/pages/assets.ts",
@@ -1197,6 +1209,16 @@
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
+      "description": "Framework names in the command chips are fixed strings; nothing from a report is interpolated server-side",
+      "location": {
+        "file": "src/dashboard/pages/reports.ts",
+        "line": 7
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
       "description": "Every model value, action text and identity is rendered through esc(); hrefs are attribute-escaped",
       "location": {
         "file": "src/dashboard/pages/summary.ts",
@@ -1210,7 +1232,7 @@
       "description": "Every cell, attribute and identity is escaped; the search text is escaped as an attribute value",
       "location": {
         "file": "src/dashboard/pages/threats.ts",
-        "line": 9
+        "line": 11
       }
     },
     {
@@ -2236,7 +2258,7 @@
       "description": "Generates HTML with user-controlled threat model data, git identities and commit trailers",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 15
+        "line": 19
       }
     },
     {
@@ -2249,7 +2271,7 @@
       "description": "readFileSync reads code files for annotation context",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 17
+        "line": 21
       }
     },
     {
@@ -3558,7 +3580,7 @@
       "description": "Claim states for the badges and the stale-claims action",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 476
+        "line": 502
       }
     },
     {
@@ -3578,7 +3600,7 @@
       "description": "Model statistics input",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 19
+        "line": 23
       }
     },
     {
@@ -3588,7 +3610,7 @@
       "description": "Code snippet reads",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 20
+        "line": 24
       }
     },
     {
@@ -3598,7 +3620,7 @@
       "description": "Claim states for badges and the stale-claims action",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 21
+        "line": 25
       }
     },
     {
@@ -3608,7 +3630,7 @@
       "description": "The remote's web host, for file and commit links",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 22
+        "line": 26
       }
     },
     {
@@ -3618,7 +3640,7 @@
       "description": "Generated HTML output",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 23
+        "line": 27
       }
     },
     {
@@ -4951,10 +4973,19 @@
     {
       "classification": "pii",
       "asset": "#dashboard",
+      "description": "Introducer identities per asset and per period, in the configured identity mode",
+      "location": {
+        "file": "src/dashboard/analytics.ts",
+        "line": 9
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#dashboard",
       "description": "Author identities from git, already in the configured identity mode",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 263
+        "line": 285
       }
     },
     {
@@ -4963,7 +4994,7 @@
       "description": "Processes and displays threat model data",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 24
+        "line": 28
       }
     },
     {
@@ -4972,7 +5003,16 @@
       "description": "Author identities from attribution, in the configured identity mode",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 25
+        "line": 29
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#dashboard",
+      "description": "Introducer identities in the people × time heatmap",
+      "location": {
+        "file": "src/dashboard/pages/analytics.ts",
+        "line": 12
       }
     },
     {
@@ -5267,7 +5307,7 @@
       "description": "Interactive HTML threat model dashboard",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 26
+        "line": 30
       }
     },
     {
@@ -5540,6 +5580,13 @@
       }
     },
     {
+      "description": "Asset details match a tile by any of its aliases (#id, dotted path, as written), case-insensitively; mitigations never count as exposures, they only change a pair's status",
+      "location": {
+        "file": "src/dashboard/analytics.ts",
+        "line": 10
+      }
+    },
+    {
       "description": "Ported unchanged from the first generate.ts; a file that cannot be read yields an empty context, never a failed page",
       "location": {
         "file": "src/dashboard/annotations.ts",
@@ -5557,35 +5604,35 @@
       "description": "No network: the clipboard API with a textarea fallback, history.replaceState for filters, localStorage only for theme and sidebar state",
       "location": {
         "file": "src/dashboard/client.ts",
-        "line": 15
+        "line": 16
       }
     },
     {
       "description": "Stats mirror the model's own scope: on a --feature model these are the feature's numbers, and the dashboard suppresses the ones that only mean something project-wide",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 92
+        "line": 95
       }
     },
     {
       "description": "Pure projection of record.blame; the summariser is shared with the CLI and the report so every surface agrees on the numbers",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 264
+        "line": 286
       }
     },
     {
       "description": "Every item points somewhere: a hash route into the filtered view, a guardlink command, or both. Nothing here is a bare number",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 355
+        "line": 381
       }
     },
     {
       "description": "Reads .guardlink/verified.json once; the classification itself is the parser's, not re-derived here",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 477
+        "line": 503
       }
     },
     {
@@ -5599,7 +5646,7 @@
       "description": "A model narrowed with --feature carries filtered_by_features. The page then declares itself a slice in the title, the top bar and a banner, and suppresses the project-wide measures (file coverage, unannotated files) that a slice cannot answer",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 28
+        "line": 32
       }
     },
     {
@@ -5638,7 +5685,14 @@
       }
     },
     {
-      "description": "Cells keep data-ff-asset and the asset drawer; the legend and search text are new",
+      "description": "Pure rendering over the analytics builders; the same claim rows feed every grid so the numbers agree with the tables",
+      "location": {
+        "file": "src/dashboard/pages/analytics.ts",
+        "line": 13
+      }
+    },
+    {
+      "description": "Cells keep data-ff-asset (every alias of the tile, |-separated) and the asset drawer; the legend and search text are new",
       "location": {
         "file": "src/dashboard/pages/assets.ts",
         "line": 5
@@ -5673,17 +5727,17 @@
       }
     },
     {
-      "description": "Ported from the first generate.ts with the same panel ids and data-variant hooks the diagram script expects",
+      "description": "Ported from the first generate.ts with the same panel ids and data-variant hooks the diagram script expects; the toolbar is a segmented zoom group plus copy-source",
       "location": {
         "file": "src/dashboard/pages/diagrams.ts",
         "line": 6
       }
     },
     {
-      "description": "Whole-project documents: --feature does not narrow them, and the page says so on a slice",
+      "description": "Whole-project documents: --feature does not narrow them, and the page says so on a slice. With no saved report the page renders its own empty state so the copy buttons exist without the client",
       "location": {
         "file": "src/dashboard/pages/reports.ts",
-        "line": 5
+        "line": 8
       }
     },
     {
@@ -5697,7 +5751,7 @@
       "description": "Scope wording lives in a note, not in headings: the client feature filter rewrites headings by textContent",
       "location": {
         "file": "src/dashboard/pages/threats.ts",
-        "line": 10
+        "line": 12
       }
     },
     {
@@ -6227,7 +6281,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 623,
+    "annotation_count": 629,
     "coverage_percent": 84
   },
   "external_refs": []

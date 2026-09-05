@@ -70,7 +70,10 @@ export interface ConfirmedRow {
 }
 
 export interface AssetHeatmapEntry {
+  /** The declared `#id` when the asset has one, else its dotted path or the reference as written. */
   name: string;
+  /** Every form the model refers to this asset by (`#id`, dotted path, as written); the feature filter and the drawer match on these. */
+  aliases: string[];
   exposures: number;
   mitigations: number;
   flows: number;
@@ -165,19 +168,38 @@ export function computeExposures(model: ThreatModel): ExposureRow[] {
   });
 }
 
+/**
+ * One tile per asset. A declared asset is one tile whether annotations refer
+ * to it as `#id`, as its dotted path, or in another case — before this,
+ * `GuardLink.Parser` and `#parser` were two tiles with the counts split
+ * between them. Undeclared references stay tiles of their own.
+ */
 export function computeAssetHeatmap(model: ThreatModel): AssetHeatmapEntry[] {
-  const assetNames = new Set<string>();
-  for (const a of model.assets) assetNames.add(a.path.join('.'));
-  // Also collect assets referenced in exposures/mitigations
-  for (const e of model.exposures) assetNames.add(e.asset);
-  for (const m of model.mitigations) assetNames.add(m.asset);
-  for (const f of model.flows) { assetNames.add(f.source); assetNames.add(f.target); }
+  const canon = new Map<string, string>();
+  for (const a of model.assets) {
+    const path = a.path.join('.');
+    const name = a.id ? `#${a.id}` : path;
+    canon.set(path.toLowerCase(), name);
+    if (a.id) canon.set(`#${a.id.toLowerCase()}`, name);
+  }
+  const of = (ref: string): string => canon.get(ref.trim().toLowerCase()) ?? ref;
+  const aliases = new Map<string, Set<string>>();
+  const seen = (ref: string): void => {
+    const name = of(ref);
+    const set = aliases.get(name) ?? new Set<string>();
+    set.add(ref);
+    aliases.set(name, set);
+  };
+  for (const a of model.assets) seen(a.path.join('.'));
+  for (const e of model.exposures) seen(e.asset);
+  for (const m of model.mitigations) seen(m.asset);
+  for (const f of model.flows) { seen(f.source); seen(f.target); }
 
-  return Array.from(assetNames).map(name => {
-    const exposures = model.exposures.filter(e => e.asset === name).length;
-    const mitigations = model.mitigations.filter(m => m.asset === name).length;
-    const flows = model.flows.filter(f => f.source === name || f.target === name).length;
-    const dataHandling = model.data_handling.filter(h => h.asset === name).map(h => h.classification);
+  return Array.from(aliases.keys()).map(name => {
+    const exposures = model.exposures.filter(e => of(e.asset) === name).length;
+    const mitigations = model.mitigations.filter(m => of(m.asset) === name).length;
+    const flows = model.flows.filter(f => of(f.source) === name || of(f.target) === name).length;
+    const dataHandling = [...new Set(model.data_handling.filter(h => h.asset && of(h.asset) === name).map(h => h.classification))];
     const unmitigated = exposures - mitigations;
 
     let riskLevel: AssetHeatmapEntry['riskLevel'] = 'none';
@@ -186,7 +208,7 @@ export function computeAssetHeatmap(model: ThreatModel): AssetHeatmapEntry[] {
     else if (unmitigated >= 1) riskLevel = 'medium';
     else if (exposures > 0) riskLevel = 'low';
 
-    return { name, exposures, mitigations, flows, dataHandling, riskLevel };
+    return { name, aliases: [...aliases.get(name)!].sort(), exposures, mitigations, flows, dataHandling, riskLevel };
   }).sort((a, b) => {
     const order = { critical: 0, high: 1, medium: 2, low: 3, none: 4 };
     return order[a.riskLevel] - order[b.riskLevel];
@@ -310,6 +332,10 @@ export function computeAttribution(model: ThreatModel): AttributionData | null {
     commits: summary.comparison ? (context?.commits ?? null) : null,
   };
 }
+
+// The analytics builders live in analytics.ts; re-exported so consumers keep one import.
+export { computeAssetThreatMatrix, computeControlCoverage, computeSeverityStatus, computeAssetDetails, computeIntroductionHeat, computeToolSeverity, SEV_ORDER } from './analytics.js';
+export type { ClaimLike, MatrixCell, AssetThreatMatrix, ControlCoverage, SeverityStatus, StatusKey, AssetDetail, HeatGrid, SevKey } from './analytics.js';
 
 // ─── Actions: "What to do next" ──────────────────────────────────────
 

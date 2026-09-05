@@ -113,9 +113,16 @@ export function shaLink(sha: string, links: RepoLinks | null): string {
     : `<code class="sha" title="${esc(sha)}">${esc(short)}</code>`;
 }
 
-/** An identity, as a link that narrows the Attribution page to it. */
+/**
+ * An identity, as a link that narrows the Attribution page to it. The
+ * `human:` / `agent:` prefix is its own span so a table cell can hide it
+ * (the column already says what the identity is); the full identity stays in
+ * the title and the route.
+ */
 export function whoLink(identity: string): string {
-  return `<a class="who" href="#attribution?who=${encodeURIComponent(identity)}">${esc(identity)}</a>`;
+  const m = /^(human|agent):(.+)$/.exec(identity);
+  const shown = m ? `<span class="who-kind">${esc(m[1])}:</span>${esc(m[2])}` : esc(identity);
+  return `<a class="who" href="#attribution?who=${encodeURIComponent(identity)}" title="${esc(identity)}">${shown}</a>`;
 }
 
 export function claimStateBadge(state: ClaimState | undefined): string {
@@ -211,4 +218,98 @@ export function subHead(title: string, cls = '', right = ''): string {
 
 export function plural(n: number, one: string, many = `${one}s`): string {
   return n === 1 ? one : many;
+}
+
+/** `…/dir/file.ts` for deep paths; the full path travels in `title` and the copy button. */
+export function shortPath(file: string): string {
+  const parts = file.split('/');
+  return parts.length > 3 ? `…/${parts.slice(-2).join('/')}` : file;
+}
+
+/**
+ * A compact location cell for fixed-layout tables: the file name and line on
+ * one line, its directory in small type beneath, the full path in the title,
+ * the sort key and the copy button. The file name is what a reader scans for,
+ * so it is the part that never gets cut.
+ */
+export function locCellShort(file: string | undefined | null, line: number | undefined | null, links: RepoLinks | null): string {
+  if (!file) return '<td class="loc" data-v=""></td>';
+  const full = line ? `${file}:${line}` : file;
+  const slash = file.lastIndexOf('/');
+  const base = slash >= 0 ? file.slice(slash + 1) : file;
+  const dir = slash >= 0 ? file.slice(0, slash) : '';
+  const body = `<span class="loc-file">${esc(line ? `${base}:${line}` : base)}</span>${dir ? `<span class="loc-dir">${esc(dir)}</span>` : ''}`;
+  const inner = links
+    ? `<a class="loc-link" href="${esc(links.file(file, line ?? undefined))}" target="_blank" rel="noopener" title="${esc(full)} — open on ${hostLabel(links)}">${body}</a>`
+    : `<span class="loc-text" title="${esc(full)}">${body}</span>`;
+  return `<td class="loc" data-v="${esc(full)}"><div class="loc-cell">${inner}${copyButton(full, 'Copy path')}</div></td>`;
+}
+
+/** Column widths for a fixed-layout table. */
+export function colgroup(widths: string[]): string {
+  return `<colgroup>${widths.map(w => `<col style="width:${w}">`).join('')}</colgroup>`;
+}
+
+/** The pager container the client fills for a paginated table. */
+export function pager(tableId: string): string {
+  return `<div class="pager" data-pager-for="${esc(tableId)}"></div>`;
+}
+
+/** `#page?q=a b` with the search encoded the way the client's URLSearchParams reads it. */
+export function routeWithQuery(page: string, q: string, extra: Record<string, string> = {}): string {
+  const p = new URLSearchParams({ q, ...extra });
+  return `#${page}?${p.toString()}`;
+}
+
+export interface HeatCell {
+  value: number;
+  /** 0..1 intensity. */
+  h: number;
+  tone?: 'red' | 'green' | 'blue' | 'neutral';
+  href?: string;
+  title?: string;
+  label?: string;
+}
+
+export interface HeatSpec {
+  id?: string;
+  rowHead: string;
+  rows: string[];
+  cols: string[];
+  cell: (row: string, col: string) => HeatCell | null;
+  rowHref?: (row: string) => string | null;
+  colHref?: (col: string) => string | null;
+  rowLabel?: (row: string) => string;
+  colLabel?: (col: string) => string;
+}
+
+/** A heatmap as a table: colour intensity is `--h`, tone is a class, every cell can link into a filtered page. */
+export function heatTable(spec: HeatSpec): string {
+  const rl = spec.rowLabel ?? ((r: string) => r);
+  const cl = spec.colLabel ?? ((c: string) => c);
+  const head = `<thead><tr><th class="heat-corner">${esc(spec.rowHead)}</th>${spec.cols.map(c => {
+    const href = spec.colHref?.(c);
+    return `<th class="heat-col" title="${esc(cl(c))}"><span>${href ? `<a href="${esc(href)}">${esc(cl(c))}</a>` : esc(cl(c))}</span></th>`;
+  }).join('')}</tr></thead>`;
+  const body = `<tbody>${spec.rows.map(r => {
+    const href = spec.rowHref?.(r);
+    return `<tr><th class="heat-row" title="${esc(rl(r))}"><span>${href ? `<a href="${esc(href)}">${esc(rl(r))}</a>` : esc(rl(r))}</span></th>${spec.cols.map(c => {
+      const cell = spec.cell(r, c);
+      if (!cell || cell.value === 0) return '<td class="heat-cell empty"></td>';
+      const shown = cell.label ?? String(cell.value);
+      return `<td class="heat-cell tone-${cell.tone ?? 'neutral'}" style="--h:${Math.max(0.12, Math.min(1, cell.h)).toFixed(2)}"${cell.title ? ` title="${esc(cell.title)}"` : ''}>${cell.href ? `<a href="${esc(cell.href)}">${esc(shown)}</a>` : esc(shown)}</td>`;
+    }).join('')}</tr>`;
+  }).join('')}</tbody>`;
+  return `<div class="table-wrap heat-wrap"><table class="heat"${spec.id ? ` id="${esc(spec.id)}"` : ''}>${head}${body}</table></div>`;
+}
+
+/** A horizontal bar list: label, value, bar scaled to the max. */
+export function barList(items: { label: string; value: number; href?: string; tone?: string; hint?: string }[], max?: number): string {
+  const top = max ?? Math.max(1, ...items.map(i => i.value));
+  return `<div class="bars">${items.map(i => `
+  <div class="bar-row">
+    <span class="bar-label">${i.href ? `<a href="${esc(i.href)}">${esc(i.label)}</a>` : esc(i.label)}</span>
+    <div class="sev-track"><div class="sev-fill ${i.tone ?? 'attr-fill'}" style="width:${Math.round((i.value / top) * 100)}%"></div></div>
+    <span class="bar-value">${i.value}${i.hint ? ` <span class="muted">${esc(i.hint)}</span>` : ''}</span>
+  </div>`).join('')}</div>`;
 }

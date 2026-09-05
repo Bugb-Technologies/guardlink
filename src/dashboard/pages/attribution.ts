@@ -10,7 +10,7 @@
  * @handles pii on #dashboard -- "Author identities rendered into a page that is often committed; blame.identity=hash in config.json is the setting for a shared dashboard"
  * @comment -- "No wall clock: ages are measured to the HEAD commit's date, so two generations at the same HEAD are byte-identical"
  */
-import { esc, kpi, chip, sortableHead, rowAttrs, numCell, sevBadge, sevRank, locCell, whoLink, badge, sectionHead, subHead, plural, num } from '../html.js';
+import { esc, kpi, chip, sortableHead, rowAttrs, numCell, sevBadge, sevRank, locCellShort, whoLink, badge, sectionHead, subHead, plural, num, pager, colgroup } from '../html.js';
 import type { AttributionData } from '../data.js';
 import type { PageContext, ClaimView, DrawerRef } from './context.js';
 import type { Cohort, TrendBucket } from '../../blame/types.js';
@@ -102,8 +102,8 @@ function claimRow(c: ClaimView, ctx: PageContext): string {
     <tr class="clickable${c.status === 'open' || c.status === 'confirmed' ? ' row-open' : ''}" data-claim="${c.idx}" ${rowAttrs({ file: c.file, sev: c.severity, status: c.status, who: c.who, state: c.state, search: [c.search, b.status] })}>
       <td data-v="${esc(c.status)}">${badge(c.status === 'control' ? 'control' : c.status, c.status === 'open' || c.status === 'confirmed' ? 'red' : c.status === 'mitigated' ? 'green' : c.status === 'accepted' ? 'blue' : 'neutral')}</td>
       ${numCell(sevRank(c.severity), c.verb === 'mitigates' ? '—' : sevBadge(c.severity))}
-      <td><code>${esc(c.asset)}</code> → <code>${esc(c.threat)}</code></td>
-      ${locCell(c.file, c.line, ctx.links)}
+      <td data-v="${esc(`${c.asset} ${c.threat}`)}"><div class="claim-cell" title="${esc(`${c.asset} → ${c.threat}`)}"><code class="cc-asset">${esc(c.asset)}</code><code class="cc-threat">${esc(c.threat)}</code></div></td>
+      ${locCellShort(c.file, c.line, ctx.links)}
       ${c.verb === 'mitigates' ? '<td data-v="">—</td>' : refCell(b.introduced, ctx.links)}
       ${refCell(b.declared, ctx.links)}
       ${c.verb === 'mitigates' ? '<td data-v="">—</td>' : b.fixed ? refCell(b.fixed, ctx.links) : '<td data-v="">' + badge('open', 'red') + '</td>'}
@@ -162,7 +162,7 @@ export function renderAttributionPage(a: AttributionData, ctx: PageContext): str
   ${subHead('By person', '', `<span data-count-for="people">${a.humans.length}</span> credited`)}
   <p class="guide"><strong>Introduced</strong> credits the author, every human co-author and every AI tool on the commit that introduced the exposure's code. <strong>Risk score</strong> weights that person's still-open introductions by severity (critical 8, high 4, medium 2, low 1). <strong>Touched</strong> counts exposures whose span they currently own lines of, whoever introduced them. <strong>Per 100 commits</strong> divides introductions by the person's commits in history.</p>
   ${a.humans.length > 0 ? `
-  <div class="table-wrap"><table id="people" class="sortable">
+  <div class="table-wrap"><table id="people" class="sortable" data-paginate="25">
     ${sortableHead([{ key: 'identity', label: 'Identity' }, ...cols])}
     <tbody>
     ${a.humans.map(r => `
@@ -172,12 +172,13 @@ export function renderAttributionPage(a: AttributionData, ctx: PageContext): str
     </tr>`).join('')}
     </tbody>
   </table></div>
+  ${pager('people')}
   <div class="no-match" data-count-for="people" hidden>No person matches the current search.</div>` : '<p class="empty-state">No one could be attributed.</p>'}
 
   ${subHead('By AI tool', '', `<span data-count-for="agents">${a.agents.length}</span> credited`)}
   <p class="guide">Same measures per tool and model. A tool is credited only when a commit declared it; the granularity is the commit, so a co-authored commit means the tool was involved, not that it wrote every line.</p>
   ${a.agents.length > 0 ? `
-  <div class="table-wrap"><table id="agents" class="sortable">
+  <div class="table-wrap"><table id="agents" class="sortable" data-paginate="25">
     ${sortableHead([{ key: 'tool', label: 'Tool' }, { key: 'model', label: 'Model' }, ...cols])}
     <tbody>
     ${a.agents.map(r => `
@@ -187,21 +188,23 @@ export function renderAttributionPage(a: AttributionData, ctx: PageContext): str
       ${rateCells(r, maxIntro, hasCommits)}
     </tr>`).join('')}
     </tbody>
-  </table></div>` : '<p class="empty-state">No AI tool is credited on any attributed commit.</p>'}
+  </table></div>
+  ${pager('agents')}` : '<p class="empty-state">No AI tool is credited on any attributed commit.</p>'}
 
   ${a.hot_files.length > 0 ? `
   ${subHead('Files most rewritten under open exposures', '', `top ${a.hot_files.length}`)}
   <p class="guide">Files whose open exposures have the most distinct commits still owning lines — where many hands, and possibly many tools, keep touching exposed code.</p>
-  <div class="table-wrap"><table id="hotfiles" class="sortable">
+  <div class="table-wrap"><table id="hotfiles" class="sortable" data-paginate="25">
     ${sortableHead([{ key: 'file', label: 'File', cls: 'loc' }, { key: 'open', label: 'Open exposures', numeric: true }, { key: 'contributors', label: 'Commits owning lines', numeric: true }, { key: 'ai', label: 'AI tools', numeric: true }])}
     <tbody>
     ${a.hot_files.map(f => `
     <tr ${rowAttrs({ file: f.file, search: ['hot', f.file] })}>
-      ${locCell(f.file, null, links)}
+      ${locCellShort(f.file, null, links)}
       ${numCell(f.open)}${numCell(f.contributors)}${numCell(f.ai_tools)}
     </tr>`).join('')}
     </tbody>
-  </table></div>` : ''}
+  </table></div>
+  ${pager('hotfiles')}` : ''}
 
   ${subHead('Claims', '', `<span data-count-for="claims">${attributed.length}</span>`)}
   <div class="chips">
@@ -217,10 +220,12 @@ export function renderAttributionPage(a: AttributionData, ctx: PageContext): str
   </div>
   <div class="who-filter" hidden><span>Showing claims credited to</span> <strong class="who-filter-name"></strong><button class="btn btn-ghost" data-clear-filters style="margin-left:auto">Clear</button></div>
   <div class="filter-status" hidden><span class="filter-status-text"></span><button class="btn btn-ghost" data-clear-filters>Clear</button></div>
-  <div class="table-wrap"><table id="claims" class="sortable">
-    ${sortableHead([{ key: 'status', label: 'Status' }, { key: 'severity', label: 'Severity', numeric: true }, { key: 'claim', label: 'Claim' }, { key: 'location', label: 'Location', cls: 'loc' }, { key: 'introduced', label: 'Introduced by' }, { key: 'declared', label: 'Declared by' }, { key: 'fixed', label: 'Fixed by' }, { key: 'days', label: 'Days to fix', numeric: true }, { key: 'bstatus', label: 'Attribution' }])}
+  <div class="table-wrap"><table id="claims" class="sortable fixed" data-paginate="25">
+    ${colgroup(['9%', '10%', '13%', '16%', '12%', '12%', '11%', '6%', ''])}
+    ${sortableHead([{ key: 'status', label: 'Status' }, { key: 'severity', label: 'Severity', numeric: true }, { key: 'claim', label: 'Claim' }, { key: 'location', label: 'Location', cls: 'loc' }, { key: 'introduced', label: 'Introduced by' }, { key: 'declared', label: 'Declared by' }, { key: 'fixed', label: 'Fixed by' }, { key: 'days', label: 'Days', numeric: true }, { key: 'bstatus', label: 'Attribution' }])}
     <tbody>${attributed.map(c => claimRow(c, ctx)).join('')}</tbody>
   </table></div>
+  ${pager('claims')}
   <div class="no-match" data-count-for="claims" hidden>No claim matches the current filters.</div>
   ${a.degraded.length > 0 ? `<p class="guide">Not fully attributed: ${a.degraded.map(d => `<code>${esc(d.status)}</code> ×${d.count}`).join(', ')}. <code>no-git</code>: not a git checkout · <code>uncommitted</code>: the line or its span has changes git has not seen · <code>shallow</code>: history is truncated, so every introduction is a lower bound · <code>no-anchor</code>: the claim has no code span, only its own line.</p>` : ''}
   <p class="guide">${plural(attributed.length, 'claim')} read from git at ${a.as_of ? esc(a.as_of.slice(0, 10)) : 'HEAD'}. Identities are shown as configured by <code>blame.identity</code> (name, email or hash).</p>

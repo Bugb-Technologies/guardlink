@@ -1,15 +1,17 @@
 /**
- * GuardLink Dashboard — Threats & Exposures: one sortable, filterable table
- * of every claim, confirmed findings on top, transfers below.
+ * GuardLink Dashboard — Threats & Exposures: one sortable, filterable,
+ * paginated table of every claim, confirmed findings on top, transfers below.
  *
  * Rows carry the attributes the client filters act on (`data-sev`,
  * `data-status`, `data-state`, `data-who`, `data-search`) and open the claim
- * drawer through `data-claim`.
+ * drawer through `data-claim`. Tables are fixed-layout so a long description
+ * or path clamps instead of stretching the row; the full text stays in the
+ * cell title and the drawer.
  *
  * @mitigates #dashboard against #xss using #output-encoding -- "Every cell, attribute and identity is escaped; the search text is escaped as an attribute value"
  * @comment -- "Scope wording lives in a note, not in headings: the client feature filter rewrites headings by textContent"
  */
-import { esc, chip, sortableHead, rowAttrs, sevBadge, sevRank, numCell, locCell, claimStateBadge, whoLink, badge, scopeLabel, sectionHead, subHead, normSev, descCell } from '../html.js';
+import { esc, chip, sortableHead, rowAttrs, sevBadge, sevRank, numCell, locCellShort, claimStateBadge, whoLink, badge, scopeLabel, sectionHead, subHead, normSev, descCell, colgroup, pager } from '../html.js';
 import type { PageContext, ClaimView } from './context.js';
 
 const STATUS_LABEL: Record<string, string> = { open: 'Open', mitigated: 'Mitigated', accepted: 'Accepted', confirmed: 'Confirmed', control: 'Control' };
@@ -28,13 +30,11 @@ function introducedCell(c: ClaimView): string {
 function claimRow(c: ClaimView, ctx: PageContext, showState: boolean, showWho: boolean): string {
   return `
     <tr class="clickable${c.status === 'open' || c.status === 'confirmed' ? ' row-open' : ''}" data-claim="${c.idx}" ${rowAttrs({ file: c.file, sev: c.severity, status: c.status, who: c.who, state: c.state, search: [c.search] })}>
-      <td data-v="${esc(c.status)}">${statusBadge(c)}</td>
+      <td data-v="${esc(c.status)}"><div class="status-cell">${statusBadge(c)}${showState ? claimStateBadge(c.state ?? undefined) : ''}</div></td>
       ${numCell(sevRank(c.severity), sevBadge(c.severity))}
-      <td><code>${esc(c.asset)}</code></td>
-      <td><code>${esc(c.threat)}</code></td>
+      <td data-v="${esc(`${c.asset} ${c.threat}`)}"><div class="claim-cell" title="${esc(`${c.asset} → ${c.threat}`)}"><code class="cc-asset">${esc(c.asset)}</code><code class="cc-threat">${esc(c.threat)}</code></div></td>
       ${descCell(c.description)}
-      ${locCell(c.file, c.line, ctx.links)}
-      ${showState ? `<td data-v="${esc(c.state ?? '')}">${claimStateBadge(c.state ?? undefined)}</td>` : ''}
+      ${locCellShort(c.file, c.line, ctx.links)}
       ${showWho ? introducedCell(c) : ''}
     </tr>`;
 }
@@ -54,19 +54,19 @@ export function renderThreatsPage(ctx: PageContext): string {
   const cols = [
     { key: 'status', label: 'Status' },
     { key: 'severity', label: 'Severity', numeric: true },
-    { key: 'asset', label: 'Asset' },
-    { key: 'threat', label: 'Threat' },
+    { key: 'claim', label: 'Asset → threat' },
     { key: 'description', label: 'Description', plain: true },
     { key: 'location', label: 'Location', cls: 'loc' },
-    ...(showState ? [{ key: 'state', label: 'Claim' }] : []),
     ...(showWho ? [{ key: 'who', label: 'Introduced by' }] : []),
   ];
+  const widths = ['10%', '9%', showWho ? '17%' : '19%', '', showWho ? '15%' : '17%', ...(showWho ? ['14%'] : [])];
+  const head = colgroup(widths) + sortableHead(cols);
 
   return `
 <div id="sec-threats" class="section-content">
   ${sectionHead('⚠', 'Threats &amp; Exposures', scope, `<span class="muted"><span data-count-for="exposures">${exposures.length}</span> exposures</span>`)}
 ${scope ? `  <p class="scope-note">Only exposures annotated in the files tagged ${esc(scopeLabel(scope))}. Exposures elsewhere in the project are not listed here and are not counted below.</p>` : ''}
-  <p class="lead">Every <code>@exposes</code> in the model, with whether a control covers it${showState ? ', whether the claim is still verified against the code beneath it' : ''}${showWho ? ', and who introduced that code' : ''}. Click a row for detail and actions; click a column to sort; type <kbd>/</kbd> to search.</p>
+  <p class="lead">Every <code>@exposes</code> in the model, with whether a control covers it${showState ? ', whether the claim is still verified against the code beneath it' : ''}${showWho ? ', and who introduced that code' : ''}. Click a row for detail and actions; click a column to sort; type <kbd>/</kbd> to search (every word must match, so <code>#api sqli</code> narrows to one pair).</p>
 
   <div class="chips" id="threat-chips">
     <span class="chips-label">Status</span>
@@ -89,25 +89,28 @@ ${scope ? `  <p class="scope-note">Only exposures annotated in the files tagged 
   ${confirmed.length > 0 ? `
   ${subHead(`🔴 Confirmed Exploitable (${confirmed.length})`, 'sub-h-critical')}
   <p class="section-note">Verified through pentest, scanning, or manual reproduction — <strong>not false positives</strong>.</p>
-  <div class="table-wrap"><table id="confirmed" class="sortable">
-    ${sortableHead(cols)}
+  <div class="table-wrap"><table id="confirmed" class="sortable fixed" data-paginate="25">
+    ${head}
     <tbody>${confirmed.map(c => claimRow(c, ctx, showState, showWho)).join('')}</tbody>
   </table></div>
+  ${pager('confirmed')}
   <div class="no-match" data-count-for="confirmed" hidden>No confirmed finding matches the current filters.</div>` : ''}
 
   ${subHead('Exposures', open.length > 0 ? 'sub-h-alert' : 'sub-h-ok', `<span class="muted">${open.length} open · ${mitigated.length} mitigated · ${accepted.length} accepted</span>`)}
-  <p class="section-note">One table, every exposure${within}. <strong>Open</strong> rows have no covering control; use the chips above to narrow, or click a column header to sort.</p>
+  <p class="section-note">One table, every exposure${within}, open first. <strong>Open</strong> rows have no covering control; use the chips above to narrow, or click a column header to sort.</p>
   ${exposures.length > 0 ? `
-  <div class="table-wrap"><table id="exposures" class="sortable">
-    ${sortableHead(cols)}
+  <div class="table-wrap"><table id="exposures" class="sortable fixed" data-paginate="25">
+    ${head}
     <tbody>${[...exposures].sort((a, b) => (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1) || sevRank(a.severity) - sevRank(b.severity)).map(c => claimRow(c, ctx, showState, showWho)).join('')}</tbody>
   </table></div>
+  ${pager('exposures')}
   <div class="no-match" data-count-for="exposures" hidden>No exposure matches the current filters.</div>`
   : `<p class="empty-state">No <code>@exposes</code> annotations${within}.${scope ? ' Exposures declared elsewhere in the project are not shown.' : ''}</p>`}
 
   ${model.transfers.length > 0 ? `
   ${subHead(`Transferred Risks (${model.transfers.length})`, 'sub-h-info')}
-  <div class="table-wrap"><table id="transfers" class="sortable">
+  <div class="table-wrap"><table id="transfers" class="sortable fixed" data-paginate="25">
+    ${colgroup(['16%', '14%', '16%', '', '17%'])}
     ${sortableHead([{ key: 'source', label: 'Source' }, { key: 'threat', label: 'Threat' }, { key: 'target', label: 'Target' }, { key: 'description', label: 'Description', plain: true }, { key: 'location', label: 'Location', cls: 'loc' }])}
     <tbody>
     ${model.transfers.map(t => `
@@ -116,9 +119,10 @@ ${scope ? `  <p class="scope-note">Only exposures annotated in the files tagged 
       <td><code>${esc(t.threat)}</code></td>
       <td><code>${esc(t.target)}</code></td>
       ${descCell(t.description)}
-      ${locCell(t.location?.file, t.location?.line, ctx.links)}
+      ${locCellShort(t.location?.file, t.location?.line, ctx.links)}
     </tr>`).join('')}
     </tbody>
-  </table></div>` : ''}
+  </table></div>
+  ${pager('transfers')}` : ''}
 </div>`;
 }

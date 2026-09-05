@@ -12,6 +12,10 @@
  * Everything else the page reads is content-derived or, for attribution,
  * fixed per HEAD (the as-of date is the HEAD commit's).
  *
+ * Pages: Summary, Analytics (heatmaps and distributions over the same claim
+ * rows the tables show), Threats, Diagrams, Code, Reports, Data, Assets and,
+ * with --blame, Attribution.
+ *
  * @exposes #dashboard to #xss [high] cwe:CWE-79 -- "Generates HTML with user-controlled threat model data, git identities and commit trailers"
  * @mitigates #dashboard against #xss using #output-encoding -- "esc() HTML-encodes every interpolated value in every page module; serialized data escapes closing script tags before embedding in <script>"
  * @exposes #dashboard to #path-traversal [medium] cwe:CWE-22 -- "readFileSync reads code files for annotation context"
@@ -31,7 +35,7 @@ import type { ThreatModel } from '../types/index.js';
 import { listFeatures } from '../parser/feature-filter.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 import type { ThreatReportWithContent } from '../analyze/index.js';
-import { computeStats, computeSeverity, computeSeverityOf, computeExposures, computeConfirmed, computeAssetHeatmap, computeAttribution, computeActions, computeLedgerStates } from './data.js';
+import { computeStats, computeSeverity, computeSeverityOf, computeExposures, computeConfirmed, computeAssetHeatmap, computeAttribution, computeActions, computeLedgerStates, computeAssetDetails } from './data.js';
 import type { SeverityBreakdown } from './data.js';
 import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface } from './diagrams.js';
 import { detectRepoLinks } from './links.js';
@@ -49,6 +53,7 @@ import { renderCodePage } from './pages/code.js';
 import { renderDataPage } from './pages/data-boundaries.js';
 import { renderAssetsPage } from './pages/assets.js';
 import { renderAttributionPage } from './pages/attribution.js';
+import { renderAnalyticsPage } from './pages/analytics.js';
 
 export function computeRiskGrade(sev: SeverityBreakdown, unmitigatedCount: number, totalExposures: number, confirmedCount = 0): { grade: string; label: string; summary: string } {
   if (confirmedCount > 0) return { grade: 'F', label: 'Critical Risk', summary: `${confirmedCount} confirmed exploitable finding(s) — immediate remediation required` };
@@ -60,16 +65,22 @@ export function computeRiskGrade(sev: SeverityBreakdown, unmitigatedCount: numbe
   return { grade: 'A', label: 'Excellent', summary: 'All exposures mitigated or accepted' };
 }
 
-/** Diagrams start fitted to their panel instead of at natural size; a no-op when the legacy block changes shape. */
+/**
+ * Diagrams start fitted to their panel instead of at natural size: the svg's
+ * box shrinks to the panel width while its viewBox keeps the whole drawing,
+ * so the browser scales it and "Fit" (the identity transform) means fitted.
+ * A no-op when the legacy block changes shape.
+ */
 const DIAGRAMS_JS = DIAGRAMS_AND_REPORTS_JS.replace(
   ".style('overflow', 'visible');",
-  ".style('overflow', 'visible');\n            var wrap = el.closest('.mermaid-wrap');\n            if (wrap && wrap.clientWidth && viewW > wrap.clientWidth) { svg.call(zoom.transform, d3.zoomIdentity.scale(Math.max(0.2, wrap.clientWidth / viewW))); }",
+  ".style('overflow', 'visible');\n            var wrap = el.closest('.mermaid-wrap');\n            if (wrap && wrap.clientWidth) { var avail = Math.max(320, wrap.clientWidth - 36); if (viewW > avail) { svg.attr('width', avail).attr('height', Math.max(320, Math.ceil(viewH * (avail / viewW)))); } }",
 );
 
 const embed = (value: unknown): string => JSON.stringify(value).replace(/<\//g, '<\\/');
 
 const NAV_ICONS: Record<string, string> = {
   summary: '<path d="M8 2l6 4v6l-6 4-6-4V6l6-4z"/>',
+  analytics: '<path d="M1 1h6v6H1V1zm8 0h6v6H9V1zM1 9h6v6H1V9zm8 0h6v6H9V9z"/>',
   'ai-analysis': '<path d="M8 1l2 5h5l-4 3 2 5-5-3-5 3 2-5-4-3h5l2-5z"/>',
   threats: '<path d="M8 1L1 15h14L8 1zm0 4l3 8H5l3-8z"/>',
   diagrams: '<circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="8" cy="8" r="2"/>',
@@ -112,6 +123,8 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   const analysisData = buildAnalysisData(exposures);
   const claims = buildClaims(model, links, ledger);
   const actions = computeActions({ model, exposures, confirmed, verification: ledgerRead?.report ?? null, attribution, scope });
+  // One record per heatmap tile, in tile order: the asset drawer indexes it by the tile's position.
+  const assetsData = computeAssetDetails(model, claims, heatmap, attribution?.as_of ?? null);
 
   const ctx: PageContext = {
     model, scope, scopeFiles, links, hostLabel: hostLabel(links),
@@ -201,6 +214,7 @@ ${scope ? `<div id="scope-banner" class="scope-banner" role="note">
 <nav class="sidebar" id="sidebar">
   <div class="sidebar-nav">
     ${navLink('summary', 'Executive Summary', true)}
+    ${navLink('analytics', 'Analytics')}
     ${navLink('threats', 'Threats &amp; Exposures', false, unmitigated.length > 0 ? String(unmitigated.length) : undefined)}
     ${navLink('diagrams', 'Diagrams')}
     ${navLink('code', 'Code &amp; Annotations')}
@@ -220,6 +234,7 @@ ${scope ? `<div id="scope-banner" class="scope-banner" role="note">
 <div class="main">
 
 ${renderSummaryPage(ctx)}
+${renderAnalyticsPage(ctx)}
 ${renderReportsPage(ctx)}
 ${renderThreatsPage(ctx)}
 ${renderDiagramsPage(ctx)}
@@ -252,6 +267,7 @@ const savedAnalyses = ${embed(analyses || [])};
 const heatmapData = ${embed(heatmap)};
 const threatModel = ${embed(durableModel)};
 const claimsData = ${embed(claimsData)};
+const assetsData = ${embed(assetsData)};
 const openOnHost = ${JSON.stringify(`Open on ${hostLabel(links)}`)};
 ${CLIENT_JS}
 ${LEGACY_DRAWER_JS}

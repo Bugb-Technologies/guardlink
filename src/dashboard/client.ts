@@ -1,9 +1,10 @@
 /**
  * GuardLink Dashboard — the upgrade's client script, as a string.
  *
- * Routing (the URL hash is the page and its filters), search, sortable
- * tables, filter chips, copy-to-clipboard, the claim drawer with its actions
- * and previous/next, theme, sidebar. The legacy blocks it relies on
+ * Routing (the URL hash is the page and its filters), search (every term
+ * must match), sortable and paginated tables, filter chips, copy-to-clipboard,
+ * the claim drawer with its actions and previous/next, the asset drawer over
+ * the precomputed asset details, report copy/download, theme, sidebar. The legacy blocks it relies on
  * (feature filter, diagrams, threat reports, asset/annotation drawers) are
  * appended after it from client-legacy.ts.
  *
@@ -132,9 +133,10 @@ function filterPage(page) {
   var sec = document.getElementById('sec-' + page);
   if (!sec) return;
   var groups = {};
+  var terms = f.q ? f.q.split(/\\s+/).filter(Boolean) : [];
   $$('[data-search]', sec).forEach(function (el) {
     var ok = true;
-    if (f.q && el.getAttribute('data-search').indexOf(f.q) < 0) ok = false;
+    if (terms.length) { var hay = el.getAttribute('data-search'); for (var i = 0; i < terms.length; i++) { if (hay.indexOf(terms[i]) < 0) { ok = false; break; } } }
     if (ok && f.sev.length && el.hasAttribute('data-sev') && f.sev.indexOf(el.getAttribute('data-sev')) < 0) ok = false;
     if (ok && f.status.length && el.hasAttribute('data-status') && f.status.indexOf(el.getAttribute('data-status')) < 0) ok = false;
     if (ok && f.state.length && el.hasAttribute('data-state') && f.state.indexOf(el.getAttribute('data-state')) < 0) ok = false;
@@ -158,6 +160,7 @@ function filterPage(page) {
     var s = groups[n.getAttribute('data-count-for')];
     n.hidden = !s || s.shown > 0 || s.total === 0;
   });
+  $$('table[data-paginate]', sec).forEach(function (t) { t.setAttribute('data-page', '1'); paginate(t); });
   var active = !!(f.q || f.sev.length || f.status.length || f.state.length || f.who || f.file);
   var bar = $('.filter-status', sec);
   if (bar) {
@@ -202,10 +205,12 @@ function sortTable(th) {
   var key = function (r) {
     var c = r.children[idx]; if (!c) return numeric ? -Infinity : '';
     if (numeric) { var v = c.getAttribute('data-v'); var n = v !== null ? parseFloat(v) : parseFloat(c.textContent); return isNaN(n) ? -Infinity : n; }
-    return c.textContent.trim().toLowerCase();
+    var tv = c.getAttribute('data-v');
+    return (tv !== null ? tv : c.textContent).trim().toLowerCase();
   };
   rows.sort(function (a, b) { var ka = key(a), kb = key(b); var c = ka < kb ? -1 : ka > kb ? 1 : 0; return dir === 'asc' ? c : -c; });
   rows.forEach(function (r) { tbody.appendChild(r); });
+  if (table.hasAttribute('data-paginate')) { table.setAttribute('data-page', '1'); paginate(table); }
 }
 
 /* ===== COPY ===== */
@@ -235,6 +240,7 @@ function toast(msg) {
 var _drawerCtx = null;
 
 function openDrawer(type, idx, rowEl) {
+  if (type === 'asset') return renderAssetDrawer(idx);
   if (type !== 'claim') return openLegacyDrawer(type, idx);
   var c = claimsData[idx]; if (!c) return;
   var list = [idx];
@@ -319,6 +325,173 @@ function closeDrawer() {
   document.getElementById('drawer-overlay').classList.remove('open');
 }
 
+/* ===== PAGINATION ===== */
+function _pageRows(table) {
+  return $$('tbody > tr', table).filter(function (r) { return !r.classList.contains('filtered-out') && r.style.display !== 'none'; });
+}
+/* Rows outside the current page get .paged-out; the pager under the table is rebuilt. Hidden entirely when everything fits. */
+function paginate(table) {
+  if (typeof table === 'string') table = document.getElementById(table);
+  if (!table) return;
+  var base = parseInt(table.getAttribute('data-paginate'), 10) || 25;
+  var sel = table.getAttribute('data-page-size');
+  var size = sel === 'all' ? Infinity : (parseInt(sel, 10) || base);
+  var rows = _pageRows(table);
+  var pages = Math.max(1, Math.ceil(rows.length / size));
+  var page = Math.min(pages, Math.max(1, parseInt(table.getAttribute('data-page'), 10) || 1));
+  table.setAttribute('data-page', String(page));
+  var start = (page - 1) * size, end = start + size;
+  $$('tbody > tr', table).forEach(function (r) { r.classList.remove('paged-out'); });
+  rows.forEach(function (r, i) { if (i < start || i >= end) r.classList.add('paged-out'); });
+  renderPager(table, rows.length, page, pages, start, Math.min(end, rows.length), base);
+}
+function renderPager(table, total, page, pages, start, end, base) {
+  var el = $('[data-pager-for="' + table.id + '"]'); if (!el) return;
+  if (total <= base) { el.innerHTML = ''; el.hidden = true; return; }
+  el.hidden = false;
+  var cur = table.getAttribute('data-page-size') || String(base);
+  var sizes = [base, base * 2, base * 4, 'all'];
+  var h = '<span class="pager-info">' + (total ? (start + 1) + '–' + end : '0') + ' of ' + total + '</span>';
+  h += '<span class="pager-ctl">';
+  h += '<button class="pager-btn" data-page-go="prev"' + (page <= 1 ? ' disabled' : '') + ' title="Previous page">‹</button>';
+  var last = 0;
+  for (var p = 1; p <= pages; p++) {
+    if (!(p === 1 || p === pages || Math.abs(p - page) <= 2)) continue;
+    if (p - last > 1) h += '<span class="pager-gap">…</span>';
+    h += '<button class="pager-btn' + (p === page ? ' active' : '') + '" data-page-go="' + p + '"' + (p === page ? ' aria-current="page"' : '') + '>' + p + '</button>';
+    last = p;
+  }
+  h += '<button class="pager-btn" data-page-go="next"' + (page >= pages ? ' disabled' : '') + ' title="Next page">›</button>';
+  h += '</span>';
+  h += '<label class="pager-size">Rows <select data-page-size>' + sizes.map(function (v) { var s = String(v); return '<option value="' + s + '"' + (s === cur ? ' selected' : '') + '>' + (v === 'all' ? 'All' : v) + '</option>'; }).join('') + '</select></label>';
+  el.innerHTML = h;
+}
+function _pagerTable(el) {
+  var pager = el.closest('[data-pager-for]'); if (!pager) return null;
+  return document.getElementById(pager.getAttribute('data-pager-for'));
+}
+function pagerGo(el, action) {
+  var table = _pagerTable(el); if (!table) return;
+  var page = parseInt(table.getAttribute('data-page'), 10) || 1;
+  if (action === 'prev') page--; else if (action === 'next') page++; else page = parseInt(action, 10) || 1;
+  table.setAttribute('data-page', String(page));
+  paginate(table);
+  var wrap = table.closest('.table-wrap');
+  if (wrap && wrap.getBoundingClientRect().top < 0) wrap.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+function pagerSize(sel) {
+  var table = _pagerTable(sel); if (!table) return;
+  table.setAttribute('data-page-size', sel.value);
+  table.setAttribute('data-page', '1');
+  paginate(table);
+}
+
+/* ===== ASSET DRAWER ===== */
+function _bar(n, max, cls) { return '<div class="sev-track"><div class="sev-fill ' + cls + '" style="width:' + (max > 0 ? Math.round((n / max) * 100) : 0) + '%"></div></div>'; }
+function _plural(n, one) { return n + ' ' + one + (n === 1 ? '' : 's'); }
+/* Everything the model knows about one asset, from the precomputed assetsData; every number links into the filtered Threats page. */
+function renderAssetDrawer(idx) {
+  var a = typeof assetsData !== 'undefined' ? assetsData[idx] : null;
+  if (!a) return openLegacyDrawer('asset', idx);
+  var title = document.getElementById('drawer-title'), body = document.getElementById('drawer-body');
+  title.textContent = a.name;
+  var q = encodeURIComponent(a.name);
+  var open = a.exposures.open + a.exposures.confirmed;
+  var h = '';
+  h += '<div class="d-status d-status-' + (open > 0 ? 'open' : a.exposures.total > 0 ? 'mitigated' : 'control') + '"><span class="d-status-label">' + esc(a.riskLevel) + ' risk</span><span class="muted">'
+     + (open > 0 ? open + ' open of ' + _plural(a.exposures.total, 'exposure') : a.exposures.total > 0 ? 'all ' + _plural(a.exposures.total, 'exposure') + ' covered' : 'no exposures declared') + '</span></div>';
+  h += '<div class="d-grid d-grid-4">'
+     + sec('Open', '<a href="#threats?q=' + q + '&status=open" class="' + (open > 0 ? 'red' : 'muted') + '">' + open + '</a>')
+     + sec('Mitigated', '<a href="#threats?q=' + q + '&status=mitigated">' + a.exposures.mitigated + '</a>')
+     + sec('Accepted', '<a href="#threats?q=' + q + '&status=accepted">' + a.exposures.accepted + '</a>')
+     + sec('Confirmed', '<a href="#threats?q=' + q + '&status=confirmed" class="' + (a.exposures.confirmed > 0 ? 'red' : 'muted') + '">' + a.exposures.confirmed + '</a>')
+     + '</div>';
+  var sevs = ['critical', 'high', 'medium', 'low'].filter(function (s) { return a.bySeverity[s] > 0; });
+  if (sevs.length) {
+    h += sec('Open by severity', sevs.map(function (s) { return '<a href="#threats?q=' + q + '&sev=' + s + '&status=open" class="fc-sev ' + sevCls(s) + '">' + a.bySeverity[s] + ' ' + s + '</a>'; }).join(' '));
+  }
+  if (a.threats.length) {
+    var maxT = Math.max.apply(null, a.threats.map(function (t) { return t.total; }));
+    h += '<div class="d-section"><div class="d-label">' + _plural(a.threats.length, 'threat') + '</div><div class="d-bars">' + a.threats.map(function (t) {
+      return '<a class="d-bar-row" href="#threats?q=' + encodeURIComponent(a.name + ' ' + t.threat) + '" title="Show these rows"><span class="d-bar-label"><code>' + esc(t.threat) + '</code></span>' + _bar(t.total, maxT, t.open > 0 ? 'sev-fill-crit' : 'sev-fill-low') + '<span class="d-bar-value">' + (t.open > 0 ? '<b class="red">' + t.open + ' open</b> / ' : '') + t.total + '</span></a>';
+    }).join('') + '</div></div>';
+  }
+  if (a.controls.length) {
+    h += sec(_plural(a.controls.length, 'control'), a.controls.map(function (c) { return '<a class="pill" href="#threats?q=' + encodeURIComponent(a.name + ' ' + c.control) + '"><code>' + esc(c.control) + '</code><span class="muted">×' + c.count + '</span></a>'; }).join(' '));
+  } else if (a.exposures.total > 0) {
+    h += sec('Controls', '<span class="muted">None declared — nothing here is covered by a <code>@mitigates</code>.</span>');
+  }
+  if (a.flowsIn.length || a.flowsOut.length) {
+    h += '<div class="d-section"><div class="d-label">' + _plural(a.flowsIn.length + a.flowsOut.length, 'data flow') + '</div><div class="d-value d-flows">'
+       + a.flowsIn.map(function (f) { return '<div><code>' + esc(f.from) + '</code> <span class="muted">→</span> <b>' + esc(a.name) + '</b>' + (f.via ? ' <span class="muted">via ' + esc(f.via) + '</span>' : '') + '</div>'; }).join('')
+       + a.flowsOut.map(function (f) { return '<div><b>' + esc(a.name) + '</b> <span class="muted">→</span> <code>' + esc(f.to) + '</code>' + (f.via ? ' <span class="muted">via ' + esc(f.via) + '</span>' : '') + '</div>'; }).join('')
+       + '</div></div>';
+  }
+  var facts = [];
+  if (a.dataHandling.length) facts.push(sec('Handles', a.dataHandling.map(function (d) { return '<span class="badge badge-blue">' + esc(d) + '</span>'; }).join(' ')));
+  if (a.boundaries.length) facts.push(sec('Trust boundaries with', a.boundaries.map(function (b) { return '<code>' + esc(b) + '</code>'; }).join(' ')));
+  if (a.owners.length) facts.push(sec('Owner', a.owners.map(function (o) { return '<code>' + esc(o) + '</code>'; }).join(' ')));
+  var life = [];
+  if (a.audits) life.push(_plural(a.audits, 'audit'));
+  if (a.assumptions) life.push(_plural(a.assumptions, 'assumption'));
+  if (a.validations) life.push(_plural(a.validations, 'validation'));
+  if (life.length) facts.push(sec('Lifecycle', life.join(' · ')));
+  if (a.states) facts.push(sec('Claims', ['verified', 'stale', 'unverified'].map(function (k) { return '<span class="claim-state ' + k + '">' + a.states[k] + ' ' + k + '</span>'; }).join(' ')));
+  if (facts.length) h += '<div class="d-grid">' + facts.join('') + '</div>';
+  if (a.attribution) {
+    var at = a.attribution;
+    h += '<div class="d-blame"><div class="d-label">Attribution</div>'
+       + '<div class="d-blame-row"><span>Introduced by</span><span>' + (at.introducers.length ? at.introducers.map(function (p) { return whoHtml(p.identity) + ' <span class="muted">×' + p.count + '</span>'; }).join(', ') : '<span class="muted">—</span>') + '</span></div>'
+       + '<div class="d-blame-row"><span>AI-assisted</span><span>' + at.ai + ' of ' + a.exposures.total + (at.aiTools.length ? ' ' + aiHtml(at.aiTools) : '') + '</span></div>'
+       + (at.oldestOpenDays !== null ? '<div class="d-blame-row"><span>Oldest open</span><span>' + at.oldestOpenDays + ' days</span></div>' : '')
+       + '</div>';
+  }
+  if (a.files.length) {
+    h += '<div class="d-section"><div class="d-label">' + _plural(a.files.length, 'file') + '</div><div class="d-value d-files">' + a.files.slice(0, 8).map(function (f) {
+      return '<div><a class="loc-text" href="#threats?file=' + encodeURIComponent(f.file) + '" title="Show the rows in this file">' + esc(f.file) + '</a> <span class="muted">' + f.claims + '</span><button class="copy" data-copy="' + esc(f.file) + '" title="Copy path">⧉</button></div>';
+    }).join('') + (a.files.length > 8 ? '<div class="muted">+ ' + (a.files.length - 8) + ' more</div>' : '') + '</div></div>';
+  }
+  h += '<div class="d-actions">'
+     + '<a class="btn btn-primary" href="#threats?q=' + q + (open > 0 ? '&status=open' : '') + '">' + (open > 0 ? 'Show ' + open + ' open' : 'Show exposures') + '</a>'
+     + '<a class="btn" href="#analytics">Compare in Analytics</a>'
+     + '<button class="btn" data-copy="guardlink_lookup(&quot;asset ' + esc(a.name) + '&quot;)">Copy lookup</button>'
+     + '</div>';
+  body.innerHTML = h;
+  _drawerCtx = null;
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
+}
+
+/* ===== REPORTS & DIAGRAMS ===== */
+function _currentReport() {
+  var list = typeof savedAnalyses !== 'undefined' && Array.isArray(savedAnalyses) ? savedAnalyses : [];
+  var sel = document.getElementById('report-selector');
+  var i = sel && sel.value !== '' ? parseInt(sel.value, 10) : 0;
+  return list[isNaN(i) ? 0 : i] || null;
+}
+function copyReport(btn) {
+  var r = _currentReport();
+  if (!r || !r.content) { toast('No report to copy'); return; }
+  copyText(r.content, btn);
+}
+function downloadReport() {
+  var r = _currentReport();
+  if (!r || !r.content) { toast('No report to download'); return; }
+  var name = ((r.framework || r.label || 'threat-report') + '-' + (r.timestamp || '')).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/-+$/, '') + '.md';
+  var blob = new Blob([r.content], { type: 'text/markdown' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a'); a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  toast('Downloading ' + name);
+}
+function diagramCopySource(btn) {
+  var panel = btn.closest('.diagram-panel'); if (!panel) return;
+  var el = $$('.mermaid', panel).filter(function (m) { return m.style.display !== 'none'; })[0] || $('.mermaid', panel);
+  if (!el) return;
+  copyText(el.getAttribute('data-original') || el.textContent.trim(), btn);
+}
+
 /* ===== EVENTS ===== */
 document.addEventListener('click', function (e) {
   var th = e.target.closest('th[data-sort]');
@@ -335,10 +508,24 @@ document.addEventListener('click', function (e) {
   if (clear) { clearFilters(); return; }
   var cp = e.target.closest('[data-copy]');
   if (cp) { e.preventDefault(); e.stopPropagation(); copyText(cp.getAttribute('data-copy'), cp); return; }
+  var pg = e.target.closest('[data-page-go]');
+  if (pg) { if (!pg.disabled) pagerGo(pg, pg.getAttribute('data-page-go')); return; }
+  var cr = e.target.closest('[data-copy-report]');
+  if (cr) { copyReport(cr); return; }
+  var dr = e.target.closest('[data-download-report]');
+  if (dr) { downloadReport(); return; }
+  var ds = e.target.closest('[data-copy-diagram]');
+  if (ds) { diagramCopySource(ds); return; }
   var nav = e.target.closest('[data-drawer-nav]');
   if (nav) { drawerNav(nav.getAttribute('data-drawer-nav') === 'next' ? 1 : -1); return; }
   var row = e.target.closest('[data-claim]');
   if (row && !e.target.closest('a, button')) { openDrawer('claim', parseInt(row.getAttribute('data-claim'), 10), row); }
+});
+
+document.addEventListener('change', function (e) {
+  var t = e.target;
+  if (t && t.hasAttribute && t.hasAttribute('data-page-size')) { pagerSize(t); return; }
+  if (t && t.id === 'featureFilter') setTimeout(function () { $$('table[data-paginate]').forEach(function (tb) { tb.setAttribute('data-page', '1'); paginate(tb); }); }, 0);
 });
 
 document.addEventListener('keydown', function (e) {

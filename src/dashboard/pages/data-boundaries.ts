@@ -6,12 +6,12 @@
  * @mitigates #dashboard against #xss using #output-encoding -- "Every cell is escaped, including owner names, rationale and entitlement citations"
  * @comment -- "The empty-state sentence and its condition are unchanged (flows are not part of it) because the feature-slice test pins the sentence"
  */
-import { esc, scopeLabel, sectionHead, subHead, sortableHead, rowAttrs, locCell, descCell } from '../html.js';
+import { esc, scopeLabel, sectionHead, subHead, sortableHead, rowAttrs, locCellShort, descCell, pager } from '../html.js';
 import type { PageContext } from './context.js';
 
 export function renderDataPage(ctx: PageContext): string {
   const { model, scope, links } = ctx;
-  const loc = (l: { file: string; line: number } | undefined | null): string => locCell(l?.file, l?.line, links);
+  const loc = (l: { file: string; line: number } | undefined | null): string => locCellShort(l?.file, l?.line, links);
   const sections: { id: string; label: string; count: number }[] = [];
   const add = (id: string, label: string, count: number): void => { if (count > 0) sections.push({ id, label, count }); };
   add('flows', 'Data Flows', model.flows.length);
@@ -38,7 +38,7 @@ export function renderDataPage(ctx: PageContext): string {
 
   ${model.flows.length > 0 ? `
   ${subHead('Data Flows', '', `<span data-count-for="flows">${model.flows.length}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="data-flows">')}
-  <div class="table-wrap"><table id="flows" class="sortable">
+  <div class="table-wrap"><table id="flows" class="sortable" data-paginate="25">
     ${sortableHead([{ key: 'source', label: 'Source' }, { key: 'arrow', label: '', plain: true }, { key: 'target', label: 'Target' }, { key: 'mechanism', label: 'Mechanism' }, { key: 'description', label: 'Description', plain: true }, { key: 'location', label: 'Location', cls: 'loc' }])}
     <tbody>
     ${model.flows.map(f => `
@@ -52,11 +52,12 @@ export function renderDataPage(ctx: PageContext): string {
     </tr>`).join('')}
     </tbody>
   </table></div>
+  ${pager('flows')}
   <div class="no-match" data-count-for="flows" hidden>No flow matches the current filters.</div>` : ''}
 
   ${model.boundaries.length > 0 ? `
   ${subHead('Trust Boundaries', '', `<span data-count-for="boundaries">${model.boundaries.length}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="data-boundaries">')}
-  <div class="table-wrap"><table id="boundaries" class="sortable">
+  <div class="table-wrap"><table id="boundaries" class="sortable" data-paginate="25">
     ${sortableHead([{ key: 'a', label: 'Side A' }, { key: 'arrow', label: '', plain: true }, { key: 'b', label: 'Side B' }, { key: 'description', label: 'Description', plain: true }, { key: 'location', label: 'Location', cls: 'loc' }])}
     <tbody>
     ${model.boundaries.map(b => `
@@ -68,11 +69,12 @@ export function renderDataPage(ctx: PageContext): string {
       ${loc(b.location)}
     </tr>`).join('')}
     </tbody>
-  </table></div>` : ''}
+  </table></div>
+  ${pager('boundaries')}` : ''}
 
   ${model.data_handling.length > 0 ? `
   ${subHead('Data Classifications', '', `<span data-count-for="classifications">${model.data_handling.length}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="data-classifications">')}
-  <div class="table-wrap"><table id="classifications" class="sortable">
+  <div class="table-wrap"><table id="classifications" class="sortable" data-paginate="25">
     ${sortableHead([{ key: 'class', label: 'Classification' }, { key: 'asset', label: 'Asset' }, { key: 'description', label: 'Description', plain: true }, { key: 'location', label: 'Location', cls: 'loc' }])}
     <tbody>
     ${model.data_handling.map(d => `
@@ -83,11 +85,12 @@ export function renderDataPage(ctx: PageContext): string {
       ${loc(d.location)}
     </tr>`).join('')}
     </tbody>
-  </table></div>` : ''}
+  </table></div>
+  ${pager('classifications')}` : ''}
 
   ${model.validations.length > 0 ? `
   ${subHead('Validations', '', `<span data-count-for="validations">${model.validations.length}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="data-validations">')}
-  <div class="table-wrap"><table id="validations" class="sortable">
+  <div class="table-wrap"><table id="validations" class="sortable" data-paginate="25">
     ${sortableHead([{ key: 'control', label: 'Control' }, { key: 'asset', label: 'Asset' }, { key: 'description', label: 'Description', plain: true }, { key: 'location', label: 'Location', cls: 'loc' }])}
     <tbody>
     ${model.validations.map(v => `
@@ -98,11 +101,12 @@ export function renderDataPage(ctx: PageContext): string {
       ${loc(v.location)}
     </tr>`).join('')}
     </tbody>
-  </table></div>` : ''}
+  </table></div>
+  ${pager('validations')}` : ''}
 
   ${model.ownership.length > 0 ? `
   ${subHead('Ownership', '', `<span data-count-for="ownership">${model.ownership.length}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="data-ownership">')}
-  <div class="table-wrap"><table id="ownership" class="sortable">
+  <div class="table-wrap"><table id="ownership" class="sortable" data-paginate="25">
     ${sortableHead([{ key: 'asset', label: 'Asset' }, { key: 'owner', label: 'Owner' }, { key: 'description', label: 'Description', plain: true }, { key: 'location', label: 'Location', cls: 'loc' }])}
     <tbody>
     ${model.ownership.map(o => `
@@ -113,12 +117,13 @@ export function renderDataPage(ctx: PageContext): string {
       ${loc(o.location)}
     </tr>`).join('')}
     </tbody>
-  </table></div>` : ''}
+  </table></div>
+  ${pager('ownership')}` : ''}
 
   ${model.audits.length > 0 ? `
   ${subHead('Audit Items', '', `<span data-count-for="audits">${model.audits.length}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="data-audits">')}
   <p class="guide">Each <code>@audit</code> marks a risk that has no control yet and needs a human decision.</p>
-  <div class="table-wrap"><table id="audits" class="sortable">
+  <div class="table-wrap"><table id="audits" class="sortable" data-paginate="25">
     ${sortableHead([{ key: 'asset', label: 'Asset' }, { key: 'description', label: 'Description', plain: true }, { key: 'location', label: 'Location', cls: 'loc' }])}
     <tbody>
     ${model.audits.map(a => `
@@ -128,12 +133,13 @@ export function renderDataPage(ctx: PageContext): string {
       ${loc(a.location)}
     </tr>`).join('')}
     </tbody>
-  </table></div>` : ''}
+  </table></div>
+  ${pager('audits')}` : ''}
 
   ${(model.entitlements || []).length > 0 ? `
   ${subHead('Entitlements', '', `<span data-count-for="entitlements">${model.entitlements!.length}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="data-entitlements">')}
   <p class="guide">Capabilities a principal is claimed to hold <strong>by design</strong>. The join is (actor, asset, threat) — a row with either <em>missing</em> joins no finding and cannot demote one. An entitlement never suppresses a finding and never gates testing; it only changes what downstream triage recommends. A claim that cites no authorization code is <strong>inert</strong> and has no effect.</p>
-  <div class="table-wrap"><table id="entitlements" class="sortable">
+  <div class="table-wrap"><table id="entitlements" class="sortable" data-paginate="25">
     ${sortableHead([{ key: 'actor', label: 'Actor' }, { key: 'capability', label: 'Capability' }, { key: 'asset', label: 'Asset' }, { key: 'threat', label: 'Threat' }, { key: 'citation', label: 'Citation' }, { key: 'rationale', label: 'Rationale', plain: true }, { key: 'location', label: 'Location', cls: 'loc' }])}
     <tbody>
     ${model.entitlements!.map(en => `
@@ -147,12 +153,13 @@ export function renderDataPage(ctx: PageContext): string {
       ${loc(en.location)}
     </tr>`).join('')}
     </tbody>
-  </table></div>` : ''}
+  </table></div>
+  ${pager('entitlements')}` : ''}
 
   ${model.assumptions.length > 0 ? `
   ${subHead('Assumptions', '', `<span data-count-for="assumptions">${model.assumptions.length}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="data-assumptions">')}
   <p class="guide">Unverified assumptions that should be periodically reviewed.</p>
-  <div class="table-wrap"><table id="assumptions" class="sortable">
+  <div class="table-wrap"><table id="assumptions" class="sortable" data-paginate="25">
     ${sortableHead([{ key: 'asset', label: 'Asset' }, { key: 'assumption', label: 'Assumption', plain: true }, { key: 'location', label: 'Location', cls: 'loc' }])}
     <tbody>
     ${model.assumptions.map(a => `
@@ -162,12 +169,13 @@ export function renderDataPage(ctx: PageContext): string {
       ${loc(a.location)}
     </tr>`).join('')}
     </tbody>
-  </table></div>` : ''}
+  </table></div>
+  ${pager('assumptions')}` : ''}
 
   ${model.shields.length > 0 ? `
   ${subHead('Shielded Regions', '', `<span data-count-for="shields">${model.shields.length}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="data-shields">')}
   <p class="guide">Code regions where annotations are intentionally suppressed via <code>@shield</code>.</p>
-  <div class="table-wrap"><table id="shields" class="sortable">
+  <div class="table-wrap"><table id="shields" class="sortable" data-paginate="25">
     ${sortableHead([{ key: 'reason', label: 'Reason', plain: true }, { key: 'location', label: 'Location', cls: 'loc' }])}
     <tbody>
     ${model.shields.map(s => `
@@ -176,11 +184,12 @@ export function renderDataPage(ctx: PageContext): string {
       ${loc(s.location)}
     </tr>`).join('')}
     </tbody>
-  </table></div>` : ''}
+  </table></div>
+  ${pager('shields')}` : ''}
 
   ${model.comments.length > 0 ? `
   ${subHead('Developer Comments', '', `<span data-count-for="comments">${model.comments.length}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="data-comments">')}
-  <div class="table-wrap"><table id="comments" class="sortable">
+  <div class="table-wrap"><table id="comments" class="sortable" data-paginate="25">
     ${sortableHead([{ key: 'comment', label: 'Comment', plain: true }, { key: 'location', label: 'Location', cls: 'loc' }])}
     <tbody>
     ${model.comments.map(c => `
@@ -189,7 +198,8 @@ export function renderDataPage(ctx: PageContext): string {
       ${loc(c.location)}
     </tr>`).join('')}
     </tbody>
-  </table></div>` : ''}
+  </table></div>
+  ${pager('comments')}` : ''}
 
   ${nothingLifecycle
     ? `<p class="empty-state">${scope

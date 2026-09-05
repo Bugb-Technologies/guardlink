@@ -83,10 +83,39 @@ entitlements → audits awaiting review → coverage below 40% (`guardlink annot
 row `commits`, `per_100_commits`, `risk_score`, `oldest_open_days`. `computeBlame` walks history
 once (`listCommits`) to count commits per identity and per AI model; `history: false` skips it.
 
+### Second pass — analytics, tables, drawers (same day)
+
+Review of the first pass on this repo and Temporal: tables wrapped and overflowed, the diagram
+toolbar was four unstyled buttons, Threat Reports had no copy action, the asset popup repeated the
+tile, no pagination, and the data the model holds was under-charted.
+
+- **Analytics page** (`pages/analytics.ts` over `analytics.ts` builders, pure over the same
+  `ClaimView` rows the tables render so every number agrees): asset × threat matrix (capped at 24
+  assets × 14 threats with a note; the Threats page lists everything), severity × status, threats by
+  frequency, control coverage including unused controls, files with the most open exposures; with
+  attribution, people × quarter (years past 16 quarters) and AI tool × severity. `heatTable` in
+  `html.ts` renders every grid: intensity is a `--h` custom property mixed into a tone colour,
+  column labels are vertical, every cell is a hash-route link.
+- **Tables**: `table.fixed` + `colgroup`, the claim as asset over threat, `locCellShort` as file
+  name over directory with the full path in `title`/`data-v`, pager after every long table
+  (`data-paginate="25"`, `.paged-out`, page size select; re-run after filter and sort; the feature
+  filter re-paginates on change). Search splits on whitespace and requires every term.
+- **Asset drawer**: `computeAssetDetails` precomputes one record per heatmap tile (index-aligned)
+  embedded as `assetsData`; `renderAssetDrawer` in the client renders it. Tiles are one per asset:
+  `computeAssetHeatmap` folds `#id`, dotted path and case onto the declared asset and carries
+  `aliases` for the feature filter and the drawer.
+- **Reports**: toolbar with copy-report / download `.md` from `savedAnalyses`, and copyable
+  `guardlink threat-report <framework>` chips; the empty state is server-rendered so the chips exist
+  without the client. **Diagrams**: segmented zoom group, copy-source, and a fit that shrinks the
+  svg box to the panel width while keeping the viewBox (so "Fit" is the identity transform).
+- New pinned contract: the page's inline script must parse (`new Function`), because a stray quote
+  in the client string silently disables every control.
+
 ## Testing
 
 - `tests/dashboard-actions.test.ts` — action list on fixtures: order, hrefs, commands, empty case, slice withholding.
 - `tests/dashboard-upgrade.test.ts` — markup contracts: nav hrefs, sortable headers, row data attributes, search box, chips, link cells with/without a remote, ledger badges, drawer actions in the client script, KPI links.
 - `tests/dashboard-links.test.ts`, `tests/blame-summary.test.ts` (analytics) — by the module owners.
+- `tests/dashboard-analytics.test.ts` — the analytics builders on a fixture, the Analytics page markup and heat links, pagination hooks, the reports toolbar, the embedded asset details, and the inline-script parse check.
 - Existing: `feature-dashboard`, `dashboard-determinism`, `blame-dashboard`, `dashboard` stay green unmodified.
 - Every page screenshotted in Chrome on this repo and on Temporal before the PR.
