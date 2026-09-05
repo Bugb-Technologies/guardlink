@@ -58,7 +58,8 @@ import { generateSarif } from '../analyzer/index.js';
 import { emitArtifacts, checkArtifactDrift } from '../artifacts/emit.js';
 import { startStdioServer } from '../mcp/index.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, loadPentestData, serializePentestFindings, buildConfig, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, serializeModel, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
-import { generateDashboardHTML } from '../dashboard/index.js';
+import { generateDashboardHTML, loadSince } from '../dashboard/index.js';
+import type { SinceInput } from '../dashboard/analytics.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt, buildTranslatePrompt, buildAskPrompt, resolveAnnotationMode } from '../agents/index.js';
 import { resolveConfig, saveProjectConfig, saveGlobalConfig, loadProjectConfig, loadGlobalConfig, maskKey, describeConfigSource } from '../agents/config.js';
 import { getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview, type ReviewResult } from '../review/index.js';
@@ -2211,7 +2212,8 @@ program
   .option('--light', 'Default to light theme instead of dark')
   .option('--feature <names>', 'Filter dashboard to specific feature(s) (comma-separated)')
   .option('--blame', 'Add an Attribution page: exposures introduced and fixed per person and per AI tool (read from git)')
-  .action(async (dir: string, opts: { project: string; output?: string; light?: boolean; feature?: string; blame?: boolean }) => {
+  .option('--since <ref>', 'Add a "what changed" strip: exposures added and resolved, and claims gone stale, since a git ref (tag, branch, commit)')
+  .action(async (dir: string, opts: { project: string; output?: string; light?: boolean; feature?: string; blame?: boolean; since?: string }) => {
     const root = resolve(dir);
     const project = detectProjectName(root, opts.project);
     let { model, diagnostics } = await parseProject({ root, project });
@@ -2234,8 +2236,21 @@ program
     // @flows GitRepo -> #cli via attachBlame -- "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard"
     if (opts.blame) attachBlame(root, model);
 
+    // @flows GitRepo -> #cli via loadSince -- "dashboard --since <ref>: the model at the ref, diffed against this one"
+    let since: SinceInput | undefined;
+    if (opts.since) {
+      try {
+        since = await loadSince(root, opts.since, project, model);
+        console.error(`Compared against ${opts.since}: ${since.diff.summary.newUnmitigated} new unmitigated, ${since.diff.summary.resolvedUnmitigated} resolved`);
+      } catch (e) {
+        console.error(`--since ${opts.since}: ${(e as Error).message}`);
+        process.exitCode = 1;
+        return;
+      }
+    }
+
     const analyses = loadThreatReportsForDashboard(root);
-    let html = generateDashboardHTML(model, root, analyses);
+    let html = generateDashboardHTML(model, root, analyses, { since });
 
     // Switch default theme if requested
     if (opts.light) {

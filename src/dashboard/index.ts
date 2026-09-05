@@ -8,5 +8,7 @@
  */
 
 export { generateDashboardHTML } from './generate.js';
+export type { DashboardOptions } from './generate.js';
+export { loadSince } from './since.js';
 export { computeStats, computeSeverity, computeExposures, computeAssetHeatmap } from './data.js';
 export { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface } from './diagrams.js';

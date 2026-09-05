@@ -197,6 +197,9 @@ export interface RowAttrs {
   status?: string | null;
   who?: string[] | null;
   state?: ClaimState | null;
+  owners?: string[] | null;
+  handles?: string[] | null;
+  change?: string | null;
   search?: string[];
 }
 
@@ -208,6 +211,9 @@ export function rowAttrs(a: RowAttrs): string {
   if (a.status) parts.push(`data-status="${esc(a.status)}"`);
   if (a.who && a.who.length > 0) parts.push(`data-who="${esc(a.who.join('|'))}"`);
   if (a.state) parts.push(`data-state="${esc(a.state)}"`);
+  if (a.owners && a.owners.length > 0) parts.push(`data-owner="${esc(a.owners.join('|'))}"`);
+  if (a.handles && a.handles.length > 0) parts.push(`data-handles="${esc(a.handles.join('|'))}"`);
+  if (a.change) parts.push(`data-change="${esc(a.change)}"`);
   parts.push(`data-search="${esc((a.search ?? []).join(' ').toLowerCase())}"`);
   return parts.join(' ');
 }
@@ -259,6 +265,15 @@ export function subHead(title: string, cls = '', right = ''): string {
 
 export function plural(n: number, one: string, many = `${one}s`): string {
   return n === 1 ? one : many;
+}
+
+/**
+ * Shown when the feature dropdown is active on a page whose numbers are the
+ * whole model's (diagrams, attribution). The client fills the feature name
+ * and the regenerate command.
+ */
+export function wholeModelNote(): string {
+  return `<div class="whole-model-note filter-status" hidden><span class="filter-status-text">Feature <strong class="wm-feature"></strong> is selected, but this page shows the whole model. For a feature-only view, regenerate with the command.</span><button class="btn" data-copy="guardlink dashboard . --feature">Copy command</button></div>`;
 }
 
 /** `…/dir/file.ts` for deep paths; the full path travels in `title` and the copy button. */

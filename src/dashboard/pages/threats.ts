@@ -29,8 +29,8 @@ function introducedCell(c: ClaimView): string {
 
 function claimRow(c: ClaimView, ctx: PageContext, showState: boolean, showWho: boolean): string {
   return `
-    <tr class="clickable${c.status === 'open' || c.status === 'confirmed' ? ' row-open' : ''}" data-claim="${c.idx}" ${rowAttrs({ file: c.file, sev: c.severity, status: c.status, who: c.who, state: c.state, search: [c.search] })}>
-      <td data-v="${esc(c.status)}"><div class="status-cell">${statusBadge(c)}${showState ? claimStateBadge(c.state ?? undefined) : ''}</div></td>
+    <tr class="clickable${c.status === 'open' || c.status === 'confirmed' ? ' row-open' : ''}" data-claim="${c.idx}" ${rowAttrs({ file: c.file, sev: c.severity, status: c.status, who: c.who, state: c.state, owners: c.owners, handles: c.handles, change: c.change, search: [c.search] })}>
+      <td data-v="${esc(c.status)}"><div class="status-cell">${statusBadge(c)}${showState ? claimStateBadge(c.state ?? undefined) : ''}${c.change === 'new' ? badge('new', 'blue', 'Added since the --since ref') : ''}</div></td>
       ${numCell(sevRank(c.severity), sevBadge(c.severity))}
       <td data-v="${esc(`${c.asset} ${c.threat}`)}"><div class="claim-cell" title="${esc(`${c.asset} → ${c.threat}`)}"><code class="cc-asset">${esc(c.asset)}</code><code class="cc-threat">${esc(c.threat)}</code></div></td>
       ${descCell(c.description)}
@@ -40,7 +40,7 @@ function claimRow(c: ClaimView, ctx: PageContext, showState: boolean, showWho: b
 }
 
 export function renderThreatsPage(ctx: PageContext): string {
-  const { scope, claims, ledger, attribution, model } = ctx;
+  const { scope, claims, ledger, attribution, model, changes } = ctx;
   const exposures = claims.filter(c => c.verb === 'exposes');
   const confirmed = claims.filter(c => c.verb === 'confirmed');
   const open = exposures.filter(c => c.status === 'open');
@@ -82,6 +82,7 @@ ${scope ? `  <p class="scope-note">Only exposures annotated in the files tagged 
     ${chip('sev', 'medium', 'Medium', { count: bySev('medium'), cls: 'chip-med' })}
     ${chip('sev', 'low', 'Low', { count: bySev('low'), cls: 'chip-low' })}
     ${showState ? `<span class="sep"></span><span class="chips-label">Claim</span>${chip('state', 'verified', 'Verified')}${chip('state', 'stale', 'Stale')}${chip('state', 'unverified', 'Unverified')}` : ''}
+    ${changes ? `<span class="sep"></span>${chip('change', 'new', `New since ${changes.ref}`, { count: claims.filter(c => c.change === 'new').length, cls: 'chip-new' })}` : ''}
   </div>
   <div class="filter-status" hidden><span class="filter-status-text"></span><button class="btn btn-ghost" data-clear-filters>Clear</button></div>
   <div class="who-filter" hidden><span>Showing claims credited to</span> <strong class="who-filter-name"></strong><button class="btn btn-ghost" data-clear-filters style="margin-left:auto">Clear</button></div>

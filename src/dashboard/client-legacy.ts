@@ -26,6 +26,7 @@ function _featureFilesFor(featureName) {
 
 function applyFeatureFilter(featureName) {
   _activeFeature = featureName;
+  if (typeof onFeatureFilter === 'function') onFeatureFilter(featureName || '');
   var banner = document.getElementById('feature-banner');
 
   if (!featureName) {
@@ -360,7 +361,7 @@ async function getMermaidInstance() {
       clusterBkg: 'rgba(23,39,46,.55)', clusterBorder: '#3b6779',
       titleColor: '#f0f0f0', edgeLabelBackground: '#0f1b20', labelBackground: '#0f1b20',
       nodeTextColor: '#f0f0f0',
-      fontSize: '12px', fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: '12px', fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif',
     } : {
       primaryColor: '#ffffff', primaryTextColor: '#1f3943', primaryBorderColor: '#55899e',
       lineColor: '#3b6779', secondaryColor: '#f4f7f8', tertiaryColor: '#ffffff',
@@ -368,7 +369,7 @@ async function getMermaidInstance() {
       clusterBkg: '#f7fafb', clusterBorder: '#d9e4e8',
       titleColor: '#1f3943', edgeLabelBackground: '#ffffff', labelBackground: '#ffffff',
       nodeTextColor: '#1f3943',
-      fontSize: '12px', fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: '12px', fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif',
     },
     flowchart: { curve: 'monotoneX', padding: 20, nodeSpacing: 48, rankSpacing: 62, htmlLabels: false, useMaxWidth: false, defaultRenderer: 'dagre-d3' },
     securityLevel: 'loose',
@@ -389,7 +390,7 @@ async function renderMermaidPanel(panel) {
   // Re-run mermaid
   targets.forEach(el => {
     el.removeAttribute('data-processed');
-    el.innerHTML = el.getAttribute('data-original') || el.textContent;
+    el.innerHTML = typeof themeMermaid === 'function' ? themeMermaid(el.getAttribute('data-original') || el.textContent) : (el.getAttribute('data-original') || el.textContent);
   });
   await mermaid.run({ nodes: targets });
   
@@ -465,7 +466,7 @@ function renderAIAnalysisContent(container, content) {
   if (!container) return;
   if (content && content.trim()) {
     if (typeof marked !== 'undefined') {
-      try { container.innerHTML = marked.parse(content); }
+      try { container.innerHTML = marked.parse(content); if (typeof linkifyIds === 'function') linkifyIds(container); }
       catch { container.innerHTML = '<pre style="white-space:pre-wrap">' + esc(content) + '</pre>'; }
     } else {
       container.innerHTML = '<pre style="white-space:pre-wrap">' + esc(content) + '</pre>';

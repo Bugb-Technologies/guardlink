@@ -131,6 +131,7 @@ guardlink parse . --blame               # same, attached to each record of the J
 guardlink status . --blame              # top people and AI tools by exposures introduced
 guardlink report . --blame              # adds an Attribution section
 guardlink dashboard . --blame           # adds an Attribution page
+guardlink dashboard . --since v1.2.0    # adds a "what changed since <ref>" strip and marks new claims
 
 # Interactive
 guardlink tui [dir]                     # Interactive TUI: slash commands + AI chat
@@ -299,8 +300,11 @@ dashboard also links every `file:line` and commit to the repository's web host w
 names a GitHub, GitLab or Bitbucket origin, and shows verified / stale / unverified per claim
 when a ledger exists. The Analytics page charts the model itself — asset × threat, severity ×
 status, threats by frequency, control coverage (including controls nothing uses), the files with
-the most open exposures, and with `--blame` people × quarter and AI tool × severity — with every
-cell linking into the filtered Threats table.
+the most open exposures, open risk per owning team (`@owns`) with the exposed assets nobody owns,
+open exposure per data classification (`@handles`), and with `--blame` people × quarter and AI
+tool × severity — with every cell linking into the filtered Threats table. `--since <ref>` adds a
+strip under the summary saying what changed since a tag, branch or commit: exposures added and
+resolved, newly confirmed, new mitigations, and verified claims gone stale in files that changed.
 
 Attribution is opt-in and computed at run time. Without `--blame` every command's output is exactly
 what it was; with it, exposures, confirmed findings and mitigations carry a `blame` field that is

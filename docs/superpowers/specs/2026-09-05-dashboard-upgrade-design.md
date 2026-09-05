@@ -131,6 +131,27 @@ tile, no pagination, and the data the model holds was under-charted.
   the status band says "by X on date" (stale: "locked by X on date, code changed since"); the
   Verified-claims KPI says "all locked <date> by <who>" when nothing is stale or unverified.
 
+### Fourth pass — change, ownership, sensitive data, feature-true analytics, diagram focus
+
+- `--since <ref>`: `since.ts` (`loadSince`) validates the ref shape, `parseAtRef`s the model at
+  the ref, `diffModels` against the rendered model, and records the ref's commit date and the
+  commit count (facts of history, so the page stays deterministic per HEAD). `computeChanges`
+  turns the diff into the summary strip; `newClaimKeys` (`verb@file:line`) marks new claim rows
+  (`ClaimView.change`, `data-change`, the `change=new` route). "Went stale" = stale claims whose
+  file changed since the ref — the historical model has no anchors, so that is the honest measure.
+- `buildAssetIndex` canonicalises asset refs and answers `ownersOf` / `handlesOf`; every claim
+  row carries `owners` and `handles` (`data-owner`, `data-handles`; `owner=` / `handles=` routes).
+  `computeOwnership` (owners table + unowned exposed assets, plus the `unowned` action) and
+  `computeSensitiveData` (per classification) feed two Analytics panels.
+- Analytics is rendered per feature (`renderAnalyticsPage(ctx, variants)`; each variant is a
+  `filterByFeature` model with its own claims/attribution/heatmap); the legacy dropdown calls
+  `onFeatureFilter`, which swaps the `.analytics-body` and shows a `whole-model-note` on Diagrams
+  and Attribution with the `--feature` command to copy.
+- Diagrams: one focused threat graph per exposed asset (`selectSubgraph` depth 1), a find box that
+  dims non-matching nodes, light fills swapped in by `themeMermaid` on the light theme, fit floor 60%.
+- Reports: `linkifyIds` walks the rendered markdown's text nodes and links known `#ids`.
+  Code: `computeFileRisk` + `fileRiskRank` order file cards riskiest first and badge them.
+
 ## Testing
 
 - `tests/dashboard-actions.test.ts` — action list on fixtures: order, hrefs, commands, empty case, slice withholding.

@@ -87,10 +87,13 @@ function applyRoute() {
 window.addEventListener('hashchange', applyRoute);
 window.addEventListener('popstate', applyRoute);
 
+/* Filter groups that hold one value (the rest are lists). */
+var SINGLE = ['who', 'file', 'owner', 'handles', 'change'];
+
 function currentFilters() {
   var p = _route.params;
   var list = function (k) { var v = p.get(k); return v ? v.split(',').filter(Boolean) : []; };
-  return { q: (p.get('q') || '').toLowerCase().trim(), sev: list('sev'), status: list('status'), state: list('state'), who: p.get('who') || '', file: p.get('file') || '' };
+  return { q: (p.get('q') || '').toLowerCase().trim(), sev: list('sev'), status: list('status'), state: list('state'), who: p.get('who') || '', file: p.get('file') || '', owner: p.get('owner') || '', handles: p.get('handles') || '', change: p.get('change') || '' };
 }
 
 function setParam(k, v) {
@@ -120,7 +123,7 @@ function syncControls(page, params) {
   $$('.chip[data-chip]').forEach(function (c) {
     var group = c.getAttribute('data-chip'), value = c.getAttribute('data-value');
     var active;
-    if (group === 'who' || group === 'file') active = value ? f[group] === value : !f[group];
+    if (SINGLE.indexOf(group) >= 0) active = value ? f[group] === value : !f[group];
     else active = value ? (f[group] || []).indexOf(value) >= 0 : !(f[group] || []).length;
     c.classList.toggle('active', !!active);
   });
@@ -147,6 +150,9 @@ function filterPage(page) {
       ok = false; // a claim row with no attribution never matches an identity filter
     }
     if (ok && f.file && el.hasAttribute('data-ff') && el.getAttribute('data-ff') !== f.file) ok = false;
+    if (ok && f.owner && el.hasAttribute('data-sev')) ok = el.hasAttribute('data-owner') && el.getAttribute('data-owner').split('|').indexOf(f.owner) >= 0;
+    if (ok && f.handles && el.hasAttribute('data-sev')) ok = el.hasAttribute('data-handles') && el.getAttribute('data-handles').split('|').indexOf(f.handles) >= 0;
+    if (ok && f.change && el.hasAttribute('data-sev')) ok = el.getAttribute('data-change') === f.change;
     el.classList.toggle('filtered-out', !ok);
     var g = el.getAttribute('data-group') || (el.closest('table') && el.closest('table').id) || (el.closest('[data-list]') && el.closest('[data-list]').getAttribute('data-list'));
     if (g) { groups[g] = groups[g] || { shown: 0, total: 0 }; groups[g].total++; if (ok) groups[g].shown++; }
@@ -161,7 +167,7 @@ function filterPage(page) {
     n.hidden = !s || s.shown > 0 || s.total === 0;
   });
   $$('table[data-paginate]', sec).forEach(function (t) { t.setAttribute('data-page', '1'); paginate(t); });
-  var active = !!(f.q || f.sev.length || f.status.length || f.state.length || f.who || f.file);
+  var active = !!(f.q || f.sev.length || f.status.length || f.state.length || f.who || f.file || f.owner || f.handles || f.change);
   var bar = $('.filter-status', sec);
   if (bar) {
     bar.hidden = !active;
@@ -172,6 +178,9 @@ function filterPage(page) {
     if (f.state.length) parts.push('claims ' + f.state.join(', '));
     if (f.who) parts.push(f.who === 'ai' ? 'AI-assisted only' : f.who);
     if (f.file) parts.push(f.file);
+    if (f.owner) parts.push('owned by ' + f.owner);
+    if (f.handles) parts.push('handles ' + f.handles);
+    if (f.change === 'new') parts.push('new since the compared ref');
     var txt = $('.filter-status-text', bar); if (txt) txt.textContent = 'Filtered: ' + parts.join(' · ');
   }
 }
@@ -282,7 +291,8 @@ function advice(c) {
 function statusBand(c) {
   var by = c.verifiedBy ? '<span class="d-state-by">' + (c.state === 'stale' ? 'locked' : 'by') + ' ' + esc(c.verifiedBy) + (c.verifiedAt ? ' on ' + esc(String(c.verifiedAt).slice(0, 10)) : '') + (c.state === 'stale' ? ', code changed since' : '') + '</span>' : '';
   return '<div class="d-status d-status-' + esc(c.status) + '"><span class="d-status-label">' + esc(c.statusLabel) + '</span>'
-     + (c.state ? '<span class="claim-state ' + esc(c.state) + '">' + esc(c.state) + '</span>' + by : '') + '</div>';
+     + (c.state ? '<span class="claim-state ' + esc(c.state) + '">' + esc(c.state) + '</span>' + by : '')
+     + (c.change === 'new' ? '<span class="badge badge-blue" title="Added since the compared ref">new</span>' : '') + '</div>';
 }
 function blameBlock(c) {
   if (!c.blame) return '';
@@ -521,6 +531,73 @@ function openAnnotationDrawer(fileIdx, annIdx) {
   document.getElementById('drawer-overlay').classList.add('open');
 }
 
+/* ===== FEATURE FILTER HOOK ===== */
+/* The legacy dropdown hides rows by file; the Analytics grids are recomputed per feature server-side and swapped here, and whole-model pages say so. */
+function onFeatureFilter(name) {
+  name = name || '';
+  $$('.analytics-body[data-feature]').forEach(function (b) { b.hidden = b.getAttribute('data-feature') !== name; });
+  $$('.whole-model-note').forEach(function (n) {
+    n.hidden = !name;
+    var f = $('.wm-feature', n); if (f) f.textContent = name;
+    var c = $('[data-copy]', n); if (c) c.setAttribute('data-copy', 'guardlink dashboard . --feature "' + name + '"');
+  });
+  filterPage(_route.page);
+}
+
+/* ===== DIAGRAMS: focus, find, theme ===== */
+function diagramFocus(name) {
+  var panel = document.getElementById('dtab-threat-graph'); if (!panel) return;
+  var toggle = document.getElementById('threatGraphToggle');
+  var full = !!(toggle && toggle.classList.contains('active'));
+  $$('.mermaid', panel).forEach(function (el) {
+    var f = el.getAttribute('data-focus'), v = el.getAttribute('data-variant');
+    var show = name ? f === name : (v === 'full' ? full : v === 'filtered' ? !full : false);
+    el.style.display = show ? '' : 'none';
+  });
+  if (toggle) toggle.disabled = !!name;
+  var find = $('.diagram-find', panel); if (find) { find.value = ''; }
+  renderActiveDiagram();
+}
+function diagramFind(term) {
+  var panel = document.querySelector('.diagram-panel.active'); if (!panel) return;
+  var t = (term || '').toLowerCase().trim();
+  $$('svg .node, svg .cluster', panel).forEach(function (n) { n.classList.toggle('dim', !!t && n.textContent.toLowerCase().indexOf(t) < 0); });
+  $$('svg .edgePath, svg .edgeLabel, svg .edgePaths > path, svg .flowchart-link', panel).forEach(function (e) { e.classList.toggle('dim-edge', !!t); });
+}
+/* Mermaid sources carry dark fills for GitHub; on the light theme swap them for light tints before rendering. */
+function themeMermaid(src) {
+  if (document.documentElement.getAttribute('data-theme') === 'dark') return src;
+  var map = { 'fill:#3a1010': 'fill:#fbe3e3', 'fill:#402019': 'fill:#fdebe0', 'fill:#1f3943': 'fill:#e3eef3', 'fill:#10263b': 'fill:#e1ecf5', 'fill:#223942': 'fill:#e8eef0', 'fill:#102a24': 'fill:#e0f7ee', 'color:#f0f0f0': 'color:#1f3943' };
+  return src.replace(/fill:#3a1010|fill:#402019|fill:#1f3943|fill:#10263b|fill:#223942|fill:#102a24|color:#f0f0f0/g, function (m) { return map[m] || m; });
+}
+
+/* ===== REPORTS: link the model's ids ===== */
+function linkifyIds(container) {
+  if (!container || typeof threatModel === 'undefined') return;
+  var ids = {};
+  (threatModel.assets || []).forEach(function (a) { if (a.id) ids['#' + String(a.id).toLowerCase()] = 1; });
+  (threatModel.threats || []).forEach(function (t) { if (t.id) ids['#' + String(t.id).toLowerCase()] = 1; });
+  (threatModel.controls || []).forEach(function (c) { if (c.id) ids['#' + String(c.id).toLowerCase()] = 1; });
+  var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  var nodes = [], n;
+  while ((n = walker.nextNode())) { if (n.nodeValue.indexOf('#') >= 0 && !(n.parentNode && n.parentNode.closest && n.parentNode.closest('a'))) nodes.push(n); }
+  nodes.forEach(function (tn) {
+    var txt = tn.nodeValue, re = /#[A-Za-z0-9][A-Za-z0-9_-]*/g, last = 0, m, any = false;
+    var frag = document.createDocumentFragment();
+    while ((m = re.exec(txt))) {
+      if (!ids[m[0].toLowerCase()]) continue;
+      any = true;
+      frag.appendChild(document.createTextNode(txt.slice(last, m.index)));
+      var a = document.createElement('a'); a.href = '#threats?q=' + encodeURIComponent(m[0]); a.className = 'id-link'; a.title = 'Show rows naming ' + m[0]; a.textContent = m[0];
+      frag.appendChild(a);
+      last = m.index + m[0].length;
+    }
+    if (!any) return;
+    frag.appendChild(document.createTextNode(txt.slice(last)));
+    tn.parentNode.replaceChild(frag, tn);
+  });
+}
+
 /* ===== REPORTS & DIAGRAMS ===== */
 function _currentReport() {
   var list = typeof savedAnalyses !== 'undefined' && Array.isArray(savedAnalyses) ? savedAnalyses : [];
@@ -559,7 +636,7 @@ document.addEventListener('click', function (e) {
   if (chip) {
     var group = chip.getAttribute('data-chip'), value = chip.getAttribute('data-value');
     if (!value) setParam(group, '');
-    else if (group === 'who' || group === 'file') setParam(group, currentFilters()[group] === value ? '' : value);
+    else if (SINGLE.indexOf(group) >= 0) setParam(group, currentFilters()[group] === value ? '' : value);
     else toggleInList(group, value);
     return;
   }

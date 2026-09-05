@@ -1333,4 +1333,48 @@ table.heat .heat-col span { font-size: .68rem; }
 .d-state-by { font-size: .72rem; color: var(--muted); }
 .d-status .d-state-by { margin-left: 0; }
 .d-ref { min-width: 0; overflow-wrap: anywhere; line-height: 1.6; }
+
+/* ── what changed since <ref> ─────────────────────────────────────── */
+.since-strip { margin: .2rem 0 1.1rem; padding: .8rem .95rem; border: 1px solid var(--border); border-radius: var(--radius-lg); background: color-mix(in oklab, var(--surface) 92%, transparent); }
+.since-strip.since-increased { border-color: color-mix(in oklab, var(--red) 45%, var(--border)); }
+.since-strip.since-decreased { border-color: color-mix(in oklab, var(--green) 55%, var(--border)); }
+.since-head { display: flex; align-items: baseline; gap: .8rem; margin-bottom: .6rem; font-size: .8rem; }
+.since-title { font-weight: 650; }
+.since-delta { margin-left: auto; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.since-increased .since-delta { color: var(--red); }
+.since-decreased .since-delta { color: var(--green-text); }
+.since-cells { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .5rem; }
+.since-cell { display: flex; flex-direction: column; gap: .1rem; padding: .55rem .7rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface2); color: var(--text); text-decoration: none; transition: border-color .15s var(--ease); }
+.since-cell:hover { border-color: var(--border-strong); }
+.since-cell b { font-size: 1.3rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.since-cell span { font-size: .74rem; font-weight: 600; }
+.since-cell small { font-size: .66rem; color: var(--muted); }
+.since-cell.bad b { color: var(--red); }
+.since-cell.good b { color: var(--green-text); }
+.since-cell.warn b { color: var(--blue); }
+.since-cell.neutral b { color: var(--muted); }
+.since-list { margin-top: .6rem; font-size: .74rem; display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.since-list-label { color: var(--muted); text-transform: uppercase; font-size: .64rem; letter-spacing: .05em; margin-right: .2rem; }
+.chip-new.active, .chip-new:hover { border-color: var(--blue); color: var(--blue); }
+
+/* ── file cards: risk first ───────────────────────────────────────── */
+.file-risk { display: inline-flex; gap: .3rem; align-items: center; margin-left: .5rem; }
+.file-risk .badge, .file-risk .fc-sev { font-size: .58rem; padding: .1rem .38rem; letter-spacing: 0; }
+
+/* ── diagrams: focus, find, dimming ───────────────────────────────── */
+.diagram-focus, .diagram-find { height: 28px; font: inherit; font-size: .74rem; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0 .55rem; }
+.diagram-focus { max-width: 200px; }
+.diagram-find { width: 140px; }
+.diagram-find:focus, .diagram-focus:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.mermaid svg .node, .mermaid svg .cluster, .mermaid svg .edgePath, .mermaid svg .edgeLabel, .mermaid svg .flowchart-link { transition: opacity .15s var(--ease); }
+.mermaid svg .node.dim, .mermaid svg .cluster.dim { opacity: .12; }
+.mermaid svg .dim-edge { opacity: .22; }
+
+/* ── linked ids in reports, whole-model note ──────────────────────── */
+.md-content a.id-link { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent-dim); }
+.md-content a.id-link:hover { border-bottom-style: solid; }
+.whole-model-note { margin-bottom: .9rem; }
+.whole-model-note .btn { margin-left: auto; }
+#owners td .who, #sensitive td .who { border-bottom: 0; }
+.variant-note { font-size: .78rem; color: var(--muted); margin: 0 0 .9rem; padding: .5rem .7rem; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
 `;

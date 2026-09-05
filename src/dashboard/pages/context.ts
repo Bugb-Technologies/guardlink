@@ -18,6 +18,8 @@ import { buildCoverageIndex } from '../../parser/coverage.js';
 import type { CommitRef, IntroducedBy } from '../../blame/types.js';
 import type { ThreatReportWithContent } from '../../analyze/index.js';
 import type { RepoLinks } from '../links.js';
+import { buildAssetIndex } from '../analytics.js';
+import type { ChangeSummary, FileRisk } from '../analytics.js';
 import type { DashboardStats, SeverityBreakdown, ExposureRow, ConfirmedRow, AssetHeatmapEntry, AttributionData, DashboardAction } from '../data.js';
 import type { FileAnnotationGroup } from '../annotations.js';
 
@@ -58,6 +60,12 @@ export interface ClaimView {
   line: number;
   url: string | null;
   state: ClaimState | null;
+  /** Teams recorded with @owns for the asset. */
+  owners: string[];
+  /** Data classifications recorded with @handles for the asset. */
+  handles: string[];
+  /** 'new' when the claim was added since the --since ref. */
+  change: 'new' | null;
   /** Who locked the claim in the ledger, and when (ISO date), when the ledger holds it. */
   verifiedBy: string | null;
   verifiedAt: string | null;
@@ -88,8 +96,12 @@ export interface PageContext {
   actions: DashboardAction[];
   heatmap: AssetHeatmapEntry[];
   fileAnnotations: FileAnnotationGroup[];
-  diagrams: { threatGraph: string; threatGraphFull: string; dataFlow: string; attackSurface: string };
+  diagrams: { threatGraph: string; threatGraphFull: string; dataFlow: string; attackSurface: string; focus: { name: string; src: string }[] };
   analyses: ThreatReportWithContent[];
+  /** What changed since --since <ref>, or null without the flag. */
+  changes: ChangeSummary | null;
+  /** Per annotated file: what it carries, for the Code page order and badges. */
+  fileRisk: Map<string, FileRisk>;
 }
 
 const aiLabel = (ref: CommitRef): string[] => ref.assisted_by.map(a => (a.model ? `${a.tool} (${a.model})` : a.tool));
@@ -114,7 +126,14 @@ function whoTokens(refs: (CommitRef | null | undefined)[]): string[] {
   return [...out];
 }
 
-export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger: PageContext['ledger']): ClaimView[] {
+export interface BuildClaimsOptions {
+  /** `verb@file:line` keys of claims added since the --since ref. */
+  newKeys?: Set<string>;
+}
+
+export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger: PageContext['ledger'], opts: BuildClaimsOptions = {}): ClaimView[] {
+  const ix = buildAssetIndex(model);
+  const change = (verb: string, file: string, line: number): 'new' | null => (opts.newKeys?.has(`${verb}@${file}:${line}`) ? 'new' : null);
   const coverage = buildCoverageIndex(model);
   const claims: ClaimView[] = [];
   const state = (loc: object): ClaimState | null => ledger?.byLocation.get(loc) ?? null;
@@ -125,7 +144,7 @@ export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger:
   const url = (file: string, line: number): string | null => (links ? links.file(file, line) : null);
 
   const push = (c: Omit<ClaimView, 'idx' | 'search'>): void => {
-    const search = [c.verb, c.status, c.asset, c.threat, c.severity, c.description, c.control ?? '', c.file, c.state ?? '', ...c.who, ...c.refs].join(' ').toLowerCase();
+    const search = [c.verb, c.status, c.asset, c.threat, c.severity, c.description, c.control ?? '', c.file, c.state ?? '', c.change ?? '', ...c.owners, ...c.handles, ...c.who, ...c.refs].join(' ').toLowerCase();
     claims.push({ ...c, idx: claims.length, search });
   };
 
@@ -137,7 +156,7 @@ export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger:
       statusLabel: status === 'open' ? 'Open — no mitigation' : status === 'mitigated' ? 'Mitigated' : 'Accepted',
       asset: e.asset, threat: e.threat, severity: e.severity || 'unset', description: e.description || '', control: null,
       refs: e.external_refs || [], file: e.location.file, line: e.location.line, url: url(e.location.file, e.location.line),
-      state: state(e.location), ...entry(e.location),
+      state: state(e.location), ...entry(e.location), owners: ix.ownersOf(e.asset), handles: ix.handlesOf(e.asset), change: change('exposes', e.location.file, e.location.line),
       who: b ? whoTokens([b.introduced_by, b.found_by, b.fixed_by]) : [],
       blame: b ? { status: b.status, introduced: toRef(b.introduced_by, links), declared: toRef(b.found_by, links), fixed: toRef(b.fixed_by, links), days: b.time_to_fix_days, lowerBound: b.introduced_by?.lower_bound === true } : null,
     });
@@ -148,7 +167,7 @@ export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger:
       verb: 'confirmed', status: 'confirmed', statusLabel: 'Confirmed exploitable',
       asset: c.asset, threat: c.threat, severity: c.severity || 'unset', description: c.description || '', control: null,
       refs: c.external_refs || [], file: c.location.file, line: c.location.line, url: url(c.location.file, c.location.line),
-      state: state(c.location), ...entry(c.location),
+      state: state(c.location), ...entry(c.location), owners: ix.ownersOf(c.asset), handles: ix.handlesOf(c.asset), change: change('confirmed', c.location.file, c.location.line),
       who: b ? whoTokens([b.introduced_by, b.found_by, b.fixed_by]) : [],
       blame: b ? { status: b.status, introduced: toRef(b.introduced_by, links), declared: toRef(b.found_by, links), fixed: toRef(b.fixed_by, links), days: b.time_to_fix_days, lowerBound: b.introduced_by?.lower_bound === true } : null,
     });
@@ -159,7 +178,7 @@ export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger:
       verb: 'mitigates', status: 'control', statusLabel: 'Control declared',
       asset: m.asset, threat: m.threat, severity: 'unset', description: m.description || '', control: m.control ?? null,
       refs: [], file: m.location.file, line: m.location.line, url: url(m.location.file, m.location.line),
-      state: state(m.location), ...entry(m.location),
+      state: state(m.location), ...entry(m.location), owners: ix.ownersOf(m.asset), handles: ix.handlesOf(m.asset), change: null,
       who: b ? whoTokens([b.declared_by]) : [],
       blame: b ? { status: b.status, introduced: null, declared: toRef(b.declared_by, links), fixed: null, days: null, lowerBound: false } : null,
     });

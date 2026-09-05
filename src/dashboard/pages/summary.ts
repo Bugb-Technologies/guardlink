@@ -9,8 +9,9 @@
  * @mitigates #dashboard against #xss using #output-encoding -- "Every model value, action text and identity is rendered through esc(); hrefs are attribute-escaped"
  * @comment -- "The Open Threats tile keeps its exact markup and label, and the coverage panel keeps .coverage-pct / .posture-fill / the 'exposures mitigated' sentence: the client feature filter rewrites those by label, and a test greps the tile"
  */
-import { esc, kpi, statCard, sevBadge, sevRank, scopeLabel, sectionHead, subHead, copyButton, locInline, whoLink, plural, normSev, icon } from '../html.js';
+import { esc, kpi, statCard, sevBadge, sevRank, scopeLabel, sectionHead, subHead, copyButton, locInline, whoLink, plural, normSev, icon, routeWithQuery } from '../html.js';
 import type { PageContext } from './context.js';
+import type { ChangeSummary, ChangedClaim } from '../analytics.js';
 
 function severityBar(label: string, count: number, total: number, cls: string): string {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
@@ -21,8 +22,35 @@ function severityBar(label: string, count: number, total: number, cls: string): 
   </div>`;
 }
 
+const pair = (c: ChangedClaim): string => `<a class="pill" href="${esc(routeWithQuery('threats', `${c.asset} ${c.threat}`))}" title="${esc(`${c.file}:${c.line}`)}"><code>${esc(c.asset)}</code> → <code>${esc(c.threat)}</code></a>`;
+const pillList = (list: ChangedClaim[], max = 6): string => list.slice(0, max).map(pair).join(' ') + (list.length > max ? ` <span class="muted">and ${list.length - max} more</span>` : '');
+
+/** What changed since --since <ref>: the numbers that move open risk, each a way into the rows behind it. */
+function sinceStrip(ch: ChangeSummary): string {
+  const when = ch.refDate ? ch.refDate.slice(0, 10) : null;
+  const meta = [when, ch.commits !== null ? `${ch.commits} ${plural(ch.commits, 'commit')}` : null].filter(Boolean).join(', ');
+  const delta = ch.riskDelta === 'increased' ? 'worse' : ch.riskDelta === 'decreased' ? 'better' : 'unchanged';
+  return `
+  <div class="since-strip since-${esc(ch.riskDelta)}" id="since-strip">
+    <div class="since-head">
+      <span class="since-title">What changed since <code>${esc(ch.ref)}</code>${meta ? ` <span class="muted">(${esc(meta)})</span>` : ''}</span>
+      <span class="since-delta">open risk ${delta}</span>
+    </div>
+    <div class="since-cells">
+      <a class="since-cell ${ch.newOpen > 0 ? 'bad' : 'neutral'}" href="#threats?change=new"><b>${ch.newExposures.length}</b><span>new ${plural(ch.newExposures.length, 'exposure')}</span><small>${ch.newOpen} still open</small></a>
+      <a class="since-cell ${ch.resolved.length > 0 ? 'good' : 'neutral'}" href="#threats?status=mitigated"><b>${ch.resolved.length}</b><span>resolved</span><small>mitigated, accepted or removed</small></a>
+      <a class="since-cell ${ch.newConfirmed > 0 ? 'bad' : 'neutral'}" href="#threats?status=confirmed"><b>${ch.newConfirmed}</b><span>newly confirmed</span><small>proven exploitable</small></a>
+      <a class="since-cell ${ch.newMitigations > 0 ? 'good' : 'neutral'}" href="#threats?status=mitigated"><b>${ch.newMitigations}</b><span>new ${plural(ch.newMitigations, 'mitigation')}</span><small>controls declared</small></a>
+      <a class="since-cell ${ch.wentStale.length > 0 ? 'warn' : 'neutral'}" href="#threats?state=stale"><b>${ch.wentStale.length}</b><span>went stale</span><small>verified claims in files that changed</small></a>
+    </div>
+    ${ch.newExposures.length > 0 ? `<div class="since-list"><span class="since-list-label">New</span> ${pillList(ch.newExposures)}</div>` : ''}
+    ${ch.resolved.length > 0 ? `<div class="since-list"><span class="since-list-label">Resolved</span> ${pillList(ch.resolved)}</div>` : ''}
+    ${ch.wentStale.length > 0 ? `<div class="since-list"><span class="since-list-label">Stale</span> ${pillList(ch.wentStale)}</div>` : ''}
+  </div>`;
+}
+
 export function renderSummaryPage(ctx: PageContext): string {
-  const { stats, severity, risk, unmitigated, exposures, model, mitigatedCount, mitigationCoveragePercent, scope, scopeFiles, actions, ledger, attribution, links } = ctx;
+  const { stats, severity, risk, unmitigated, exposures, model, mitigatedCount, mitigationCoveragePercent, scope, scopeFiles, actions, ledger, attribution, links, changes } = ctx;
   const severeOpen = unmitigated.filter(e => ['critical', 'high'].includes(normSev(e.severity))).length;
   const accepted = exposures.filter(e => e.accepted).length;
   const verified = ledger ? ledger.report.summary : null;
@@ -73,6 +101,7 @@ ${scope ? `  <p class="scope-note">Every number on this page counts annotations 
   </div>
 
   <div class="kpis">${kpis.join('')}</div>
+${changes ? sinceStrip(changes) : ''}
 
   <div class="summary-grid">
     <div class="panel" id="actions">

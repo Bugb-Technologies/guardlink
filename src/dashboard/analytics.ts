@@ -11,6 +11,7 @@
  */
 import type { ThreatModel } from '../types/index.js';
 import type { ClaimState } from '../parser/verification.js';
+import type { ThreatModelDiff } from '../diff/engine.js';
 import type { AssetHeatmapEntry } from './data.js';
 
 export type SevKey = 'critical' | 'high' | 'medium' | 'low' | 'unset';
@@ -35,8 +36,263 @@ export interface ClaimLike {
   threat: string;
   severity: string;
   file: string;
+  line: number;
   state: ClaimState | null;
+  /** Teams recorded with @owns for the claim's asset (any alias). */
+  owners: string[];
+  /** Data classifications recorded with @handles for the claim's asset. */
+  handles: string[];
+  /** 'new' when the claim was added since the --since ref. */
+  change: 'new' | null;
   blame: { introduced: { date: string; author: string; co: string[]; ai: string[] } | null } | null;
+}
+
+/**
+ * The declared assets by every name the model uses for them, with the owners
+ * and classifications recorded against each. `#id`, dotted path and case all
+ * fold onto one name, so `@owns platform for App.API` covers `#api`.
+ */
+export interface AssetIndex {
+  canon: (ref: string) => string;
+  ownersOf: (ref: string) => string[];
+  handlesOf: (ref: string) => string[];
+}
+
+export function buildAssetIndex(model: ThreatModel): AssetIndex {
+  const canon = new Map<string, string>();
+  for (const a of model.assets) {
+    const path = a.path.join('.');
+    const name = a.id ? `#${a.id}` : path;
+    canon.set(path.toLowerCase(), name);
+    if (a.id) canon.set(`#${a.id.toLowerCase()}`, name);
+  }
+  const of = (ref: string): string => canon.get(ref.trim().toLowerCase()) ?? ref.trim();
+  const owners = new Map<string, Set<string>>();
+  for (const o of model.ownership) {
+    const k = of(o.asset);
+    if (!owners.has(k)) owners.set(k, new Set());
+    owners.get(k)!.add(o.owner);
+  }
+  const handles = new Map<string, Set<string>>();
+  for (const h of model.data_handling) {
+    if (!h.asset) continue;
+    const k = of(h.asset);
+    if (!handles.has(k)) handles.set(k, new Set());
+    handles.get(k)!.add(h.classification);
+  }
+  return {
+    canon: of,
+    ownersOf: r => [...(owners.get(of(r)) ?? [])].sort(byName),
+    handlesOf: r => [...(handles.get(of(r)) ?? [])].sort(byName),
+  };
+}
+
+const DAY_MS = 86_400_000;
+const isOpen = (c: ClaimLike): boolean => c.status === 'open' || c.status === 'confirmed';
+const worstOf = (list: ClaimLike[]): SevKey => list.reduce<SevKey>((w, c) => (SEV_ORDER.indexOf(sevOf(c.severity)) < SEV_ORDER.indexOf(w) ? sevOf(c.severity) : w), 'unset');
+const asOfOf = (model: ThreatModel): number => {
+  const ctx = (model as ThreatModel & { blame_context?: { as_of?: string | null } }).blame_context;
+  return ctx?.as_of ? Date.parse(ctx.as_of) : Number.NaN;
+};
+const oldestOpen = (list: ClaimLike[], asOfMs: number): number | null => {
+  if (Number.isNaN(asOfMs)) return null;
+  let oldest: number | null = null;
+  for (const c of list) {
+    if (!isOpen(c) || !c.blame?.introduced) continue;
+    const d = Math.max(0, Math.floor((asOfMs - Date.parse(c.blame.introduced.date)) / DAY_MS));
+    if (oldest === null || d > oldest) oldest = d;
+  }
+  return oldest;
+};
+
+export interface OwnerRow {
+  owner: string;
+  assets: string[];
+  total: number;
+  open: number;
+  confirmed: number;
+  worstSev: SevKey;
+  stale: number;
+  oldestOpenDays: number | null;
+}
+export interface UnownedAsset { asset: string; open: number; worstSev: SevKey }
+
+/** Open risk rolled up to the team that owns it, and the exposed assets no team owns. */
+export function computeOwnership(model: ThreatModel, claims: ClaimLike[]): { owners: OwnerRow[]; unowned: UnownedAsset[] } {
+  const ix = buildAssetIndex(model);
+  const asOfMs = asOfOf(model);
+  const exposures = claims.filter(c => c.verb !== 'mitigates');
+  const byOwner = new Map<string, { assets: Set<string>; claims: ClaimLike[]; exposures: ClaimLike[] }>();
+  for (const o of model.ownership) {
+    if (!byOwner.has(o.owner)) byOwner.set(o.owner, { assets: new Set(), claims: [], exposures: [] });
+    byOwner.get(o.owner)!.assets.add(ix.canon(o.asset));
+  }
+  for (const [, v] of byOwner) {
+    v.claims = claims.filter(c => v.assets.has(ix.canon(c.asset)));
+    v.exposures = v.claims.filter(c => c.verb !== 'mitigates');
+  }
+  const owners: OwnerRow[] = [...byOwner].map(([owner, v]) => ({
+    owner,
+    assets: [...v.assets].sort(byName),
+    total: v.exposures.length,
+    open: v.exposures.filter(isOpen).length,
+    confirmed: v.exposures.filter(c => c.status === 'confirmed').length,
+    worstSev: worstOf(v.exposures.filter(isOpen)),
+    stale: v.claims.filter(c => c.state === 'stale').length,
+    oldestOpenDays: oldestOpen(v.exposures, asOfMs),
+  })).sort((a, b) => b.open - a.open || b.confirmed - a.confirmed || byName(a.owner, b.owner));
+  const owned = new Set([...byOwner.values()].flatMap(v => [...v.assets]));
+  const openByAsset = new Map<string, ClaimLike[]>();
+  for (const c of exposures) {
+    if (!isOpen(c)) continue;
+    const k = ix.canon(c.asset);
+    if (owned.has(k)) continue;
+    if (!openByAsset.has(k)) openByAsset.set(k, []);
+    openByAsset.get(k)!.push(c);
+  }
+  const unowned: UnownedAsset[] = [...openByAsset].map(([asset, list]) => ({ asset, open: list.length, worstSev: worstOf(list) }))
+    .sort((a, b) => b.open - a.open || SEV_ORDER.indexOf(a.worstSev) - SEV_ORDER.indexOf(b.worstSev) || byName(a.asset, b.asset));
+  return { owners, unowned };
+}
+
+export interface SensitiveRow {
+  classification: string;
+  /** Assets recorded as handling this class. */
+  assets: number;
+  /** Of those, how many carry an open or confirmed exposure. */
+  exposedAssets: number;
+  open: number;
+  confirmed: number;
+  total: number;
+  worstSev: SevKey;
+  assetList: { asset: string; open: number; worstSev: SevKey }[];
+}
+
+/** Open exposure per data classification: the compliance question. */
+export function computeSensitiveData(model: ThreatModel, claims: ClaimLike[]): SensitiveRow[] {
+  const ix = buildAssetIndex(model);
+  const exposures = claims.filter(c => c.verb !== 'mitigates');
+  const byClass = new Map<string, Set<string>>();
+  for (const h of model.data_handling) {
+    if (!h.asset) continue;
+    if (!byClass.has(h.classification)) byClass.set(h.classification, new Set());
+    byClass.get(h.classification)!.add(ix.canon(h.asset));
+  }
+  const rows: SensitiveRow[] = [...byClass].map(([classification, assets]) => {
+    const list = exposures.filter(c => assets.has(ix.canon(c.asset)));
+    const assetList = [...assets].map(asset => {
+      const mine = list.filter(c => ix.canon(c.asset) === asset);
+      const open = mine.filter(isOpen);
+      return { asset, open: open.length, worstSev: worstOf(open) };
+    }).sort((a, b) => b.open - a.open || byName(a.asset, b.asset));
+    return {
+      classification,
+      assets: assets.size,
+      exposedAssets: assetList.filter(a => a.open > 0).length,
+      open: list.filter(isOpen).length,
+      confirmed: list.filter(c => c.status === 'confirmed').length,
+      total: list.length,
+      worstSev: worstOf(list.filter(isOpen)),
+      assetList,
+    };
+  });
+  return rows.sort((a, b) => b.open - a.open || SEV_ORDER.indexOf(a.worstSev) - SEV_ORDER.indexOf(b.worstSev) || byName(a.classification, b.classification));
+}
+
+export interface FileRisk { open: number; confirmed: number; total: number; worst: SevKey; stale: number }
+
+/** What each annotated file carries, so the Code page can put the riskiest first. */
+export function computeFileRisk(claims: ClaimLike[]): Map<string, FileRisk> {
+  const out = new Map<string, FileRisk>();
+  for (const c of claims) {
+    const r = out.get(c.file) ?? { open: 0, confirmed: 0, total: 0, worst: 'unset' as SevKey, stale: 0 };
+    if (c.verb !== 'mitigates') {
+      r.total++;
+      if (isOpen(c)) {
+        r.open++;
+        if (SEV_ORDER.indexOf(sevOf(c.severity)) < SEV_ORDER.indexOf(r.worst)) r.worst = sevOf(c.severity);
+      }
+      if (c.status === 'confirmed') r.confirmed++;
+    }
+    if (c.state === 'stale') r.stale++;
+    out.set(c.file, r);
+  }
+  return out;
+}
+
+/** Sort key: confirmed first, then by the worst open severity, then files with nothing open. */
+export function fileRiskRank(r: FileRisk | undefined): number {
+  if (!r || r.open === 0) return 6;
+  if (r.confirmed > 0) return 0;
+  return 1 + SEV_ORDER.indexOf(r.worst);
+}
+
+/** What `--since <ref>` loads: the diff against the model at the ref, and the ref's place in history. */
+export interface SinceInput {
+  ref: string;
+  /** The ref's commit date (ISO), when git could answer. */
+  refDate: string | null;
+  /** Commits between the ref and HEAD, when git could answer. */
+  commits: number | null;
+  diff: ThreatModelDiff;
+  /** Files changed between the ref and the working tree, repo-relative. */
+  changedFiles: string[];
+}
+
+export interface ChangedClaim { asset: string; threat: string; severity: string; file: string; line: number; open: boolean }
+
+export interface ChangeSummary {
+  ref: string;
+  refDate: string | null;
+  commits: number | null;
+  newExposures: ChangedClaim[];
+  /** How many of the new exposures are still open. */
+  newOpen: number;
+  /** Previously unmitigated exposures that are now mitigated, accepted or gone. */
+  resolved: ChangedClaim[];
+  removed: number;
+  newConfirmed: number;
+  newMitigations: number;
+  /** Claims stale now whose file changed since the ref. */
+  wentStale: ChangedClaim[];
+  riskDelta: 'increased' | 'decreased' | 'unchanged';
+}
+
+const claimKey = (verb: string, file: string, line: number): string => `${verb}@${file}:${line}`;
+
+/** Keys (`verb@file:line`) of the exposures and confirmed findings a diff added; `buildClaims` marks those rows new. */
+export function newClaimKeys(since: SinceInput): Set<string> {
+  const keys = new Set<string>();
+  for (const c of since.diff.exposures) if (c.kind === 'added') keys.add(claimKey('exposes', c.item.location.file, c.item.location.line));
+  for (const c of since.diff.confirmed) if (c.kind === 'added') keys.add(claimKey('confirmed', c.item.location.file, c.item.location.line));
+  return keys;
+}
+
+/** The strip on the summary: what the diff since the ref means for open risk. */
+export function computeChanges(since: SinceInput, claims: ClaimLike[]): ChangeSummary {
+  const now = new Map(claims.map(c => [claimKey(c.verb, c.file, c.line), c]));
+  const toChanged = (e: { asset: string; threat: string; severity?: string; location: { file: string; line: number } }, verb: string): ChangedClaim => {
+    const cur = now.get(claimKey(verb, e.location.file, e.location.line));
+    return { asset: e.asset, threat: e.threat, severity: e.severity || 'unset', file: e.location.file, line: e.location.line, open: cur ? isOpen(cur) : false };
+  };
+  const newExposures = since.diff.exposures.filter(c => c.kind === 'added').map(c => toChanged(c.item, 'exposes'));
+  const resolved = since.diff.resolvedExposures.map(e => ({ ...toChanged(e, 'exposes'), open: false }));
+  const changed = new Set(since.changedFiles);
+  const wentStale = claims.filter(c => c.state === 'stale' && changed.has(c.file))
+    .map(c => ({ asset: c.asset, threat: c.threat, severity: c.severity, file: c.file, line: c.line, open: isOpen(c) }));
+  return {
+    ref: since.ref,
+    refDate: since.refDate,
+    commits: since.commits,
+    newExposures,
+    newOpen: newExposures.filter(e => e.open).length,
+    resolved,
+    removed: since.diff.exposures.filter(c => c.kind === 'removed').length,
+    newConfirmed: since.diff.confirmed.filter(c => c.kind === 'added').length,
+    newMitigations: since.diff.mitigations.filter(c => c.kind === 'added').length,
+    wentStale,
+    riskDelta: since.diff.summary.riskDelta,
+  };
 }
 
 export interface MatrixCell {

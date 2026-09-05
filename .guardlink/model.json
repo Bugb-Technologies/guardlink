@@ -1,8 +1,8 @@
 {
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 126,
-  "annotations_parsed": 629,
+  "source_files": 127,
+  "annotations_parsed": 635,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -47,6 +47,7 @@
     "src/dashboard/pages/reports.ts",
     "src/dashboard/pages/summary.ts",
     "src/dashboard/pages/threats.ts",
+    "src/dashboard/since.ts",
     "src/dashboard/styles.ts",
     "src/diff/engine.ts",
     "src/diff/format.ts",
@@ -1032,7 +1033,7 @@
       "description": "Path is the constant LEDGER_FILE under a root that must already carry .guardlink/; targets only select claims, they are never written to",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 432
+        "line": 433
       }
     },
     {
@@ -1072,7 +1073,7 @@
       "description": "esc() HTML-encodes every interpolated value in every page module; serialized data escapes closing script tags before embedding in <script>",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 20
+        "line": 24
       }
     },
     {
@@ -1082,7 +1083,7 @@
       "description": "resolve() with root constrains file access (annotations.ts)",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 22
+        "line": 26
       }
     },
     {
@@ -1092,7 +1093,7 @@
       "description": "Feature scope names come from @feature annotations and the --feature flag; every one is rendered through esc()",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 31
+        "line": 35
       }
     },
     {
@@ -1233,6 +1234,16 @@
       "location": {
         "file": "src/dashboard/pages/threats.ts",
         "line": 11
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#cmd-injection",
+      "control": "#param-commands",
+      "description": "Checked against a strict ref shape first, then only ever passed as one argv element to execFileSync; parseAtRef rev-parses it before reading anything",
+      "location": {
+        "file": "src/dashboard/since.ts",
+        "line": 7
       }
     },
     {
@@ -2232,7 +2243,7 @@
       "description": "The one command that writes .guardlink/verified.json",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 431
+        "line": 432
       }
     },
     {
@@ -2258,7 +2269,7 @@
       "description": "Generates HTML with user-controlled threat model data, git identities and commit trailers",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 19
+        "line": 23
       }
     },
     {
@@ -2271,7 +2282,7 @@
       "description": "readFileSync reads code files for annotation context",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 21
+        "line": 25
       }
     },
     {
@@ -2311,6 +2322,19 @@
       "location": {
         "file": "src/dashboard/links.ts",
         "line": 12
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#cmd-injection",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-78"
+      ],
+      "description": "The ref the user typed reaches git",
+      "location": {
+        "file": "src/dashboard/since.ts",
+        "line": 6
       }
     },
     {
@@ -3490,7 +3514,7 @@
       "description": "Opt-in attribution; without --blame the JSON is byte-identical to before",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 243
+        "line": 244
       }
     },
     {
@@ -3500,7 +3524,7 @@
       "description": "status reports verified/stale/unverified claim counts alongside annotation coverage",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 284
+        "line": 285
       }
     },
     {
@@ -3510,7 +3534,7 @@
       "description": "status --blame reads attribution without touching the model",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 286
+        "line": 287
       }
     },
     {
@@ -3520,7 +3544,7 @@
       "description": "Read-only; a corrupt ledger becomes a validate error (ledger-corrupt) instead of being silently treated as absent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 338
+        "line": 339
       }
     },
     {
@@ -3530,7 +3554,7 @@
       "description": "Targets, --by and mode flags",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 433
+        "line": 434
       }
     },
     {
@@ -3540,7 +3564,7 @@
       "description": "Attribution read from blame, log -L and commit trailers",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 550
+        "line": 551
       }
     },
     {
@@ -3550,7 +3574,7 @@
       "description": "report --blame attaches attribution before the metadata spread, so the shared records carry it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 660
+        "line": 661
       }
     },
     {
@@ -3560,7 +3584,17 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2234
+        "line": 2236
+      }
+    },
+    {
+      "source": "GitRepo",
+      "target": "#cli",
+      "mechanism": "loadSince",
+      "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 2239
       }
     },
     {
@@ -3580,7 +3614,7 @@
       "description": "Claim states for the badges and the stale-claims action",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 502
+        "line": 515
       }
     },
     {
@@ -3594,13 +3628,23 @@
       }
     },
     {
+      "source": "GitRepo",
+      "target": "#dashboard",
+      "mechanism": "loadSince",
+      "description": "The model at --since <ref>, diffed against the one rendered",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 21
+      }
+    },
+    {
       "source": "ThreatModel",
       "target": "#dashboard",
       "mechanism": "computeStats",
       "description": "Model statistics input",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 23
+        "line": 27
       }
     },
     {
@@ -3610,7 +3654,7 @@
       "description": "Code snippet reads",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 24
+        "line": 28
       }
     },
     {
@@ -3620,7 +3664,7 @@
       "description": "Claim states for badges and the stale-claims action",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 25
+        "line": 29
       }
     },
     {
@@ -3630,7 +3674,7 @@
       "description": "The remote's web host, for file and commit links",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 26
+        "line": 30
       }
     },
     {
@@ -3640,7 +3684,7 @@
       "description": "Generated HTML output",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 27
+        "line": 31
       }
     },
     {
@@ -3681,6 +3725,16 @@
       "location": {
         "file": "src/dashboard/pages/context.ts",
         "line": 11
+      }
+    },
+    {
+      "source": "GitRepo",
+      "target": "#dashboard",
+      "mechanism": "parseAtRef",
+      "description": "The threat model as it was at the ref",
+      "location": {
+        "file": "src/dashboard/since.ts",
+        "line": 8
       }
     },
     {
@@ -4958,7 +5012,7 @@
       "description": "Author identities printed or emitted as JSON; --identity hash (or blame.identity in config.json) redacts emails",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 551
+        "line": 552
       }
     },
     {
@@ -4967,7 +5021,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2941
+        "line": 2956
       }
     },
     {
@@ -4994,7 +5048,7 @@
       "description": "Processes and displays threat model data",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 28
+        "line": 32
       }
     },
     {
@@ -5003,7 +5057,7 @@
       "description": "Author identities from attribution, in the configured identity mode",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 29
+        "line": 33
       }
     },
     {
@@ -5307,7 +5361,7 @@
       "description": "Interactive HTML threat model dashboard",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 30
+        "line": 34
       }
     },
     {
@@ -5548,35 +5602,35 @@
       "description": "Closes the same blind spot ci's third check already closed (src/ci/index.ts) for the validate/CI-gate surface",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 339
+        "line": 340
       }
     },
     {
       "description": "Re-locking a stale claim is an assertion that the control still holds, so the default form never does it: --stale, --all or a named target is required, and each says so in its output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 434
+        "line": 435
       }
     },
     {
       "description": "Always exits 0 once the model parsed: outside a git checkout every claim reads as unattributed, which is an answer, not a failure. Only an unknown --identity is an error",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 552
+        "line": 553
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2897
+        "line": 2912
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2942
+        "line": 2957
       }
     },
     {
@@ -5625,14 +5679,14 @@
       "description": "Every item points somewhere: a hash route into the filtered view, a guardlink command, or both. Nothing here is a bare number",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 381
+        "line": 384
       }
     },
     {
       "description": "Reads .guardlink/verified.json once; the classification itself is the parser's, not re-derived here",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 503
+        "line": 516
       }
     },
     {
@@ -5646,7 +5700,7 @@
       "description": "A model narrowed with --feature carries filtered_by_features. The page then declares itself a slice in the title, the top bar and a banner, and suppresses the project-wide measures (file coverage, unannotated files) that a slice cannot answer",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 32
+        "line": 36
       }
     },
     {
@@ -5752,6 +5806,13 @@
       "location": {
         "file": "src/dashboard/pages/threats.ts",
         "line": 12
+      }
+    },
+    {
+      "description": "Deterministic per ref: the ref's commit date and the commit count are facts of history, so two runs at the same HEAD produce the same page",
+      "location": {
+        "file": "src/dashboard/since.ts",
+        "line": 9
       }
     },
     {
@@ -6281,7 +6342,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 629,
+    "annotation_count": 635,
     "coverage_percent": 84
   },
   "external_refs": []

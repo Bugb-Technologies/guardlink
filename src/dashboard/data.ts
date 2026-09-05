@@ -334,7 +334,8 @@ export function computeAttribution(model: ThreatModel): AttributionData | null {
 }
 
 // The analytics builders live in analytics.ts; re-exported so consumers keep one import.
-export { computeAssetThreatMatrix, computeControlCoverage, computeSeverityStatus, computeAssetDetails, computeIntroductionHeat, computeToolSeverity, SEV_ORDER } from './analytics.js';
+export { computeAssetThreatMatrix, computeControlCoverage, computeSeverityStatus, computeAssetDetails, computeIntroductionHeat, computeToolSeverity, SEV_ORDER, buildAssetIndex, computeOwnership, computeSensitiveData, computeFileRisk, fileRiskRank, computeChanges, newClaimKeys } from './analytics.js';
+export type { AssetIndex, OwnerRow, UnownedAsset, SensitiveRow, FileRisk, SinceInput, ChangedClaim, ChangeSummary } from './analytics.js';
 export type { ClaimLike, MatrixCell, AssetThreatMatrix, ControlCoverage, SeverityStatus, StatusKey, AssetDetail, HeatGrid, SevKey } from './analytics.js';
 
 // ─── Actions: "What to do next" ──────────────────────────────────────
@@ -355,6 +356,8 @@ export interface DashboardAction {
 
 export interface ActionInput {
   model: ThreatModel;
+  /** Exposed assets with no @owns, canonical names. */
+  unownedExposed?: string[];
   exposures: ExposureRow[];
   confirmed: ConfirmedRow[];
   verification: VerificationReport | null;
@@ -451,6 +454,16 @@ export function computeActions(input: ActionInput): DashboardAction[] {
       title: `${inert} ${plural(inert, 'entitlement')} cite${inert === 1 ? 's' : ''} no authorization code`,
       detail: 'An @entitles without a file:line citation is inert: parsed, then ignored. Add the citation or drop the claim.',
       href: '#data?q=inert',
+    });
+  }
+
+  if (input.unownedExposed && input.unownedExposed.length > 0) {
+    const n = input.unownedExposed.length;
+    out.push({
+      id: 'unowned', level: 'medium', count: n,
+      title: `${n} exposed ${plural(n, 'asset has', 'assets have')} no owner`,
+      detail: `${input.unownedExposed.slice(0, 4).join(', ')}${n > 4 ? ` and ${n - 4} more` : ''} carry open exposures but no @owns, so nobody is accountable for closing them. Name the team in the definitions file.`,
+      href: '#analytics',
     });
   }
 

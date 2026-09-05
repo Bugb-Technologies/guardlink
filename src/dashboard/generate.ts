@@ -12,9 +12,13 @@
  * Everything else the page reads is content-derived or, for attribution,
  * fixed per HEAD (the as-of date is the HEAD commit's).
  *
- * Pages: Summary, Analytics (heatmaps and distributions over the same claim
- * rows the tables show), Threats, Diagrams, Code, Reports, Data, Assets and,
- * with --blame, Attribution.
+ * Pages: Summary (with a "what changed since <ref>" strip under --since),
+ * Analytics (heatmaps, owners, sensitive data and distributions over the same
+ * claim rows the tables show, recomputed per feature), Threats, Diagrams (with
+ * one focused graph per exposed asset), Code (riskiest file first), Reports,
+ * Data, Assets and, with --blame, Attribution.
+ *
+ * @flows GitRepo -> #dashboard via loadSince -- "The model at --since <ref>, diffed against the one rendered"
  *
  * @exposes #dashboard to #xss [high] cwe:CWE-79 -- "Generates HTML with user-controlled threat model data, git identities and commit trailers"
  * @mitigates #dashboard against #xss using #output-encoding -- "esc() HTML-encodes every interpolated value in every page module; serialized data escapes closing script tags before embedding in <script>"
@@ -32,10 +36,12 @@
  * @comment -- "A model narrowed with --feature carries filtered_by_features. The page then declares itself a slice in the title, the top bar and a banner, and suppresses the project-wide measures (file coverage, unannotated files) that a slice cannot answer"
  */
 import type { ThreatModel } from '../types/index.js';
-import { listFeatures } from '../parser/feature-filter.js';
+import { listFeatures, filterByFeature } from '../parser/feature-filter.js';
+import { selectSubgraph } from '../mcp/subgraph.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 import type { ThreatReportWithContent } from '../analyze/index.js';
-import { computeStats, computeSeverity, computeSeverityOf, computeExposures, computeConfirmed, computeAssetHeatmap, computeAttribution, computeActions, computeLedgerStates, computeAssetDetails } from './data.js';
+import { computeStats, computeSeverity, computeSeverityOf, computeExposures, computeConfirmed, computeAssetHeatmap, computeAttribution, computeActions, computeLedgerStates, computeAssetDetails, computeOwnership, computeFileRisk, fileRiskRank, computeChanges, newClaimKeys } from './data.js';
+import type { SinceInput } from './analytics.js';
 import type { SeverityBreakdown } from './data.js';
 import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface } from './diagrams.js';
 import { detectRepoLinks } from './links.js';
@@ -53,7 +59,7 @@ import { renderCodePage } from './pages/code.js';
 import { renderDataPage } from './pages/data-boundaries.js';
 import { renderAssetsPage } from './pages/assets.js';
 import { renderAttributionPage } from './pages/attribution.js';
-import { renderAnalyticsPage } from './pages/analytics.js';
+import { renderAnalyticsPage, type AnalyticsVariant } from './pages/analytics.js';
 
 export function computeRiskGrade(sev: SeverityBreakdown, unmitigatedCount: number, totalExposures: number, confirmedCount = 0): { grade: string; label: string; summary: string } {
   if (confirmedCount > 0) return { grade: 'F', label: 'Critical Risk', summary: `${confirmedCount} confirmed exploitable finding(s) — immediate remediation required` };
@@ -73,7 +79,7 @@ export function computeRiskGrade(sev: SeverityBreakdown, unmitigatedCount: numbe
  */
 const DIAGRAMS_JS = DIAGRAMS_AND_REPORTS_JS.replace(
   ".style('overflow', 'visible');",
-  ".style('overflow', 'visible');\n            var wrap = el.closest('.mermaid-wrap');\n            if (wrap && wrap.clientWidth) { var avail = Math.max(320, wrap.clientWidth - 36); if (viewW > avail) { svg.attr('width', avail).attr('height', Math.max(320, Math.ceil(viewH * (avail / viewW)))); } }",
+  ".style('overflow', 'visible');\n            var wrap = el.closest('.mermaid-wrap');\n            if (wrap && wrap.clientWidth) { var avail = Math.max(320, wrap.clientWidth - 36); if (viewW > avail) { var s = Math.max(0.6, avail / viewW); svg.attr('width', Math.ceil(viewW * s)).attr('height', Math.max(320, Math.ceil(viewH * s))); } }",
 );
 
 const embed = (value: unknown): string => JSON.stringify(value).replace(/<\//g, '<\\/');
@@ -84,7 +90,12 @@ function navLink(page: string, label: string, active = false, badge?: string): s
   return `<a href="#${page}" data-page="${page}"${active ? ' class="active"' : ''}><span class="nav-icon">${icon(NAV_ICON[page] ?? 'square')}</span> <span class="nav-text">${label}</span>${badge ? `<span class="nav-badge">${badge}</span>` : ''}</a>`;
 }
 
-export function generateDashboardHTML(rawModel: ThreatModel, root?: string, analyses?: ThreatReportWithContent[]): string {
+export interface DashboardOptions {
+  /** What changed since a git ref, from `loadSince`; adds the summary strip and marks new rows. */
+  since?: SinceInput;
+}
+
+export function generateDashboardHTML(rawModel: ThreatModel, root?: string, analyses?: ThreatReportWithContent[], opts: DashboardOptions = {}): string {
   const model = canonicalizeModelOrder(rawModel);
   // Read from rawModel: canonicalisation reorders, it does not add fields.
   const scope = featureScope(rawModel);
@@ -110,10 +121,27 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   // `.guardlink/definitions.*`, which carries no tag.
   const scopeFiles = scope ? new Set(model.features.map(f => f.location.file)).size : 0;
   const analysisData = buildAnalysisData(exposures);
-  const claims = buildClaims(model, links, ledger);
+  const newKeys = opts.since ? newClaimKeys(opts.since) : undefined;
+  const claims = buildClaims(model, links, ledger, { newKeys });
+  const changes = opts.since ? computeChanges(opts.since, claims) : null;
+  const ownership = computeOwnership(model, claims);
+  const fileRisk = computeFileRisk(claims);
   // Annotations join to the claim rows and asset tiles the drawers render.
   const fileAnnotations = buildFileAnnotations(model, root, { claims, assets: heatmap, links });
-  const actions = computeActions({ model, exposures, confirmed, verification: ledgerRead?.report ?? null, attribution, scope });
+  // Riskiest file first: confirmed, then the worst open severity, then how many are open; the drawer indexes this order.
+  fileAnnotations.sort((a, b) => fileRiskRank(fileRisk.get(a.file)) - fileRiskRank(fileRisk.get(b.file))
+    || (fileRisk.get(b.file)?.open ?? 0) - (fileRisk.get(a.file)?.open ?? 0)
+    || (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+  // One focused threat graph per exposed asset: the asset, its threats and controls, and its flow neighbours.
+  const focus = heatmap.filter(t => t.exposures > 0).slice(0, 40)
+    .map(t => ({ name: t.name, src: generateThreatGraph(selectSubgraph(model, { from: t.name, depth: 1, direction: 'both' }), { showAll: true, icons: 'none' }) }))
+    .filter(f => f.src.length > 0);
+  // The Analytics grids recomputed per feature, so the top-bar dropdown can swap them in.
+  const variants: AnalyticsVariant[] = featureNames.map(f => {
+    const fm = filterByFeature(model, [f]);
+    return { feature: f, input: { scope: [f], model: fm, claims: buildClaims(fm, links, ledger, { newKeys }), attribution: computeAttribution(fm), heatmap: computeAssetHeatmap(fm) } };
+  });
+  const actions = computeActions({ model, exposures, confirmed, verification: ledgerRead?.report ?? null, attribution, scope, unownedExposed: ownership.unowned.map(u => u.asset) });
   // One record per heatmap tile, in tile order: the asset drawer indexes it by the tile's position.
   const assetsData = computeAssetDetails(model, claims, heatmap, attribution?.as_of ?? null);
 
@@ -128,13 +156,17 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
       threatGraphFull: generateThreatGraph(model, { showAll: true, icons: 'none' }),
       dataFlow: generateDataFlowDiagram(model, { icons: 'none' }),
       attackSurface: generateAttackSurface(model, { icons: 'none' }),
+      focus,
     },
     analyses: analyses || [],
+    changes,
+    fileRisk,
   };
 
   const claimsData = claims.map(c => ({
     idx: c.idx, verb: c.verb, status: c.status, statusLabel: c.statusLabel, asset: c.asset, threat: c.threat, severity: c.severity,
-    description: c.description, control: c.control, refs: c.refs, file: c.file, line: c.line, url: c.url, state: c.state, verifiedBy: c.verifiedBy, verifiedAt: c.verifiedAt, blame: c.blame,
+    description: c.description, control: c.control, refs: c.refs, file: c.file, line: c.line, url: c.url, state: c.state, verifiedBy: c.verifiedBy, verifiedAt: c.verifiedAt,
+    owners: c.owners, handles: c.handles, change: c.change, blame: c.blame,
   }));
 
   return `<!DOCTYPE html>
@@ -227,7 +259,7 @@ ${scope ? `<div id="scope-banner" class="scope-banner" role="note">
 <div class="main">
 
 ${renderSummaryPage(ctx)}
-${renderAnalyticsPage(ctx)}
+${renderAnalyticsPage(ctx, variants)}
 ${renderReportsPage(ctx)}
 ${renderThreatsPage(ctx)}
 ${renderDiagramsPage(ctx)}

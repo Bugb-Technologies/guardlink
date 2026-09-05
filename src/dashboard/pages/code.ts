@@ -11,11 +11,17 @@
  * @mitigates #dashboard against #xss using #output-encoding -- "File paths, summaries, descriptions and code lines are escaped"
  * @comment -- "The withheld-on-a-slice sentence and the coverage strings are pinned by tests; file cards gain search text and a host link"
  */
-import { esc, scopeLabel, sectionHead, subHead, copyButton, plural, icon } from '../html.js';
+import { esc, scopeLabel, sectionHead, subHead, copyButton, plural, icon, badge, sevBadge } from '../html.js';
 import type { PageContext } from './context.js';
+import type { FileRisk } from '../analytics.js';
+
+function fileRiskBadges(r: FileRisk | undefined): string {
+  if (!r || (r.open === 0 && r.confirmed === 0 && r.stale === 0)) return '<span class="file-risk"></span>';
+  return `<span class="file-risk">${r.confirmed > 0 ? badge(`${r.confirmed} confirmed`, 'red') : ''}${r.open > 0 ? badge(`${r.open} open`, 'red') + sevBadge(r.worst) : ''}${r.stale > 0 ? badge(`${r.stale} stale`, 'neutral') : ''}</span>`;
+}
 
 export function renderCodePage(ctx: PageContext): string {
-  const { fileAnnotations, model, scope, scopeFiles, links } = ctx;
+  const { fileAnnotations, model, scope, scopeFiles, links, fileRisk } = ctx;
   const unannotated = model.unannotated_files || [];
   const annotatedCount = model.annotated_files?.length || fileAnnotations.length;
   const totalFiles = annotatedCount + unannotated.length;
@@ -40,6 +46,7 @@ export function renderCodePage(ctx: PageContext): string {
   <div class="file-card" data-ff="${esc(f.file)}" data-search="${esc(search.toLowerCase())}">
     <div class="file-card-header" onclick="toggleFile(this)">
       <span class="file-path">${esc(f.file)}${copyButton(f.file, 'Copy path')}</span>
+      ${fileRiskBadges(fileRisk.get(f.file))}
       <span class="file-kinds">${[...kinds].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => `<span>${esc(k)} ${n}</span>`).join('')}</span>
       <span style="display:flex;align-items:center;gap:.4rem;margin-left:auto">
         ${links ? `<a class="loc-link" href="${esc(links.file(f.file))}" target="_blank" rel="noopener" title="Open on host" onclick="event.stopPropagation()">${icon('external')} open</a>` : ''}

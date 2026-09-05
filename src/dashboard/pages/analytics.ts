@@ -12,15 +12,67 @@
  * @handles pii on #dashboard -- "Introducer identities in the people × time heatmap"
  * @comment -- "Pure rendering over the analytics builders; the same claim rows feed every grid so the numbers agree with the tables"
  */
-import { esc, heatTable, barList, sectionHead, subHead, routeWithQuery, badge, kpi, plural, shortPath, icon } from '../html.js';
-import { computeAssetThreatMatrix, computeControlCoverage, computeSeverityStatus, computeIntroductionHeat, computeToolSeverity, SEV_ORDER } from '../analytics.js';
+import { esc, heatTable, barList, sectionHead, subHead, routeWithQuery, badge, kpi, plural, shortPath, icon, sortableHead, numCell, sevBadge } from '../html.js';
+import { computeAssetThreatMatrix, computeControlCoverage, computeSeverityStatus, computeIntroductionHeat, computeToolSeverity, computeOwnership, computeSensitiveData, SEV_ORDER } from '../analytics.js';
 import type { SevKey } from '../analytics.js';
 import type { PageContext } from './context.js';
 
 const STATUS_LABEL: Record<string, string> = { open: 'Open', mitigated: 'Mitigated', accepted: 'Accepted', confirmed: 'Confirmed' };
 
-export function renderAnalyticsPage(ctx: PageContext): string {
-  const { scope, claims, model } = ctx;
+/** What the grids need; a feature variant supplies the same shape for a narrowed model. */
+export type AnalyticsInput = Pick<PageContext, 'scope' | 'claims' | 'model' | 'attribution' | 'heatmap'>;
+export interface AnalyticsVariant { feature: string; input: AnalyticsInput }
+
+const sevRankCell = (sev: SevKey, show: boolean): string => numCell(SEV_ORDER.length - SEV_ORDER.indexOf(sev), show ? sevBadge(sev) : '—');
+
+/** Open risk per owning team, and the exposed assets no team owns. */
+function ownersPanel(input: AnalyticsInput): string {
+  const o = computeOwnership(input.model, input.claims);
+  const hasAge = input.attribution !== null;
+  const hasLedger = input.claims.some(c => c.state !== null);
+  const cols = [
+    { key: 'owner', label: 'Owner' }, { key: 'assets', label: 'Assets', numeric: true }, { key: 'open', label: 'Open', numeric: true },
+    { key: 'confirmed', label: 'Confirmed', numeric: true }, { key: 'worst', label: 'Worst', numeric: true },
+    ...(hasLedger ? [{ key: 'stale', label: 'Stale', numeric: true }] : []),
+    ...(hasAge ? [{ key: 'oldest', label: 'Oldest open', numeric: true }] : []),
+  ];
+  return `${subHead('Who owns the open risk', '', `${o.owners.length} ${plural(o.owners.length, 'team')} · ${o.unowned.length} unowned`)}
+      <p class="guide">Open exposures rolled up to the team named by <code>@owns</code> on the asset. An exposed asset with no owner has nobody accountable for closing it.</p>
+      ${o.owners.length > 0 ? `<div class="table-wrap"><table id="owners" class="sortable">${sortableHead(cols)}<tbody>${o.owners.map(r => `
+        <tr><td><a class="who" href="${esc(`#threats?owner=${encodeURIComponent(r.owner)}&status=open`)}" title="Show this team's open rows"><code>${esc(r.owner)}</code></a></td>
+        ${numCell(r.assets.length, `<span title="${esc(r.assets.join(', '))}">${r.assets.length}</span>`)}${numCell(r.open, r.open > 0 ? `<b class="red">${r.open}</b>` : '0')}${numCell(r.confirmed)}${sevRankCell(r.worstSev, r.open > 0)}${hasLedger ? numCell(r.stale) : ''}${hasAge ? numCell(r.oldestOpenDays, r.oldestOpenDays === null ? '—' : `${r.oldestOpenDays} d`) : ''}</tr>`).join('')}</tbody></table></div>` : '<p class="empty-state">No <code>@owns</code> in the model, so no team is accountable for anything here.</p>'}
+      ${o.unowned.length > 0 ? `<div class="unused-controls">${badge(`${o.unowned.length} exposed, unowned`, 'red')} ${o.unowned.slice(0, 12).map(u => `<a class="pill" href="${esc(`#threats?q=${encodeURIComponent(u.asset)}&status=open`)}"><code>${esc(u.asset)}</code><span class="muted">${u.open} open</span></a>`).join(' ')}${o.unowned.length > 12 ? `<span class="muted">and ${o.unowned.length - 12} more</span>` : ''}</div>` : ''}`;
+}
+
+/** Open exposure per data classification. */
+function sensitivePanel(input: AnalyticsInput): string {
+  const rows = computeSensitiveData(input.model, input.claims);
+  const cols = [
+    { key: 'class', label: 'Classification' }, { key: 'assets', label: 'Assets', numeric: true }, { key: 'exposed', label: 'With open exposure', numeric: true },
+    { key: 'open', label: 'Open', numeric: true }, { key: 'confirmed', label: 'Confirmed', numeric: true }, { key: 'worst', label: 'Worst', numeric: true },
+  ];
+  return `${subHead('Sensitive data under open exposure', '', `${rows.length} ${plural(rows.length, 'classification')}`)}
+      <p class="guide">Assets recorded with <code>@handles</code>, and how many of them carry an open exposure. Click a class for its rows; each pill is one exposed asset.</p>
+      ${rows.length > 0 ? `<div class="table-wrap"><table id="sensitive" class="sortable">${sortableHead(cols)}<tbody>${rows.map(r => `
+        <tr><td><a class="who" href="${esc(`#threats?handles=${encodeURIComponent(r.classification)}&status=open`)}" title="Show open rows on assets handling this"><code>${esc(r.classification)}</code></a>${r.exposedAssets > 0 ? `<div class="attr-ai">${r.assetList.filter(a => a.open > 0).slice(0, 6).map(a => `<a class="pill" href="${esc(`#threats?q=${encodeURIComponent(a.asset)}&status=open`)}"><code>${esc(a.asset)}</code><span class="muted">${a.open}</span></a>`).join('')}</div>` : ''}</td>
+        ${numCell(r.assets)}${numCell(r.exposedAssets, r.exposedAssets > 0 ? `<b class="red">${r.exposedAssets}</b>` : '0')}${numCell(r.open)}${numCell(r.confirmed)}${sevRankCell(r.worstSev, r.open > 0)}</tr>`).join('')}</tbody></table></div>` : '<p class="empty-state">No <code>@handles</code> in the model, so nothing here is classified.</p>'}`;
+}
+
+/** The whole page: the grids for the whole model, then one hidden body per feature that the top-bar dropdown swaps in. */
+export function renderAnalyticsPage(ctx: PageContext, variants: AnalyticsVariant[] = []): string {
+  const { scope } = ctx;
+  return `
+<div id="sec-analytics" class="section-content">
+  ${sectionHead(icon('grid'), 'Analytics', scope)}
+${scope ? `  <p class="scope-note">Every grid below counts only the annotations in the files tagged ${esc(String(scope.map(s => `"${s}"`).join(', ')))}.</p>` : ''}
+  <p class="lead">Where the exposure is concentrated, who owns it, what covers it, and what nothing covers. Every cell is a link into the filtered Threats page.${variants.length > 0 ? ' Pick a feature in the top bar and every grid recomputes for it.' : ''}</p>
+  <div class="analytics-body" data-feature="">${renderAnalyticsBody(ctx)}</div>
+  ${variants.map(v => `<div class="analytics-body" data-feature="${esc(v.feature)}" hidden><p class="variant-note">Counting only the files tagged <code>@feature "${esc(v.feature)}"</code> and the definitions they reference.</p>${renderAnalyticsBody(v.input)}</div>`).join('')}
+</div>`;
+}
+
+function renderAnalyticsBody(input: AnalyticsInput): string {
+  const { scope, claims, model } = input;
   const exposures = claims.filter(c => c.verb !== 'mitigates');
   const matrix = computeAssetThreatMatrix(claims);
   const MAX_ROWS = 24, MAX_COLS = 14;
@@ -47,8 +99,8 @@ export function renderAnalyticsPage(ctx: PageContext): string {
   const unused = coverage.filter(c => c.unused);
   const used = coverage.filter(c => !c.unused);
 
-  const peopleHeat = ctx.attribution ? computeIntroductionHeat(claims) : null;
-  const toolSev = ctx.attribution ? computeToolSeverity(claims) : null;
+  const peopleHeat = input.attribution ? computeIntroductionHeat(claims) : null;
+  const toolSev = input.attribution ? computeToolSeverity(claims) : null;
   const maxPeople = peopleHeat ? Math.max(1, ...peopleHeat.cells.flat()) : 1;
   const maxTool = toolSev ? Math.max(1, ...toolSev.cells.flat()) : 1;
 
@@ -56,12 +108,8 @@ export function renderAnalyticsPage(ctx: PageContext): string {
   type StatusKey = (typeof sevStatus.cols)[number];
   const maxSevStatus = Math.max(1, ...SEV_ORDER.map(x => Math.max(...sevStatus.cols.map(y => sevStatus.counts[x][y]))));
 
+  void scope;
   return `
-<div id="sec-analytics" class="section-content">
-  ${sectionHead(icon('grid'), 'Analytics', scope)}
-${scope ? `  <p class="scope-note">Every grid below counts only the annotations in the files tagged ${esc(String(scope.map(s => `"${s}"`).join(', ')))}.</p>` : ''}
-  <p class="lead">Where the exposure is concentrated, what covers it, and what nothing covers. Every cell is a link into the filtered Threats page.</p>
-
   <div class="kpis">
     ${kpi({ value: matrix.assets.length, label: 'Assets with exposures', href: '#assets', hint: `of ${model.assets.length} declared` })}
     ${kpi({ value: matrix.threats.length, label: 'Threat classes seen', href: '#threats', hint: `of ${model.threats.length} declared` })}
@@ -69,6 +117,9 @@ ${scope ? `  <p class="scope-note">Every grid below counts only the annotations 
     ${kpi({ value: used.length, label: 'Controls in use', href: '#analytics', tone: 'success', hint: `${unused.length} declared but unused` })}
     ${kpi({ value: hotFiles.length > 0 ? hotFiles[0].value : 0, label: 'Most open in one file', href: hotFiles.length > 0 ? hotFiles[0].href : '#code', tone: hotFiles.length > 0 ? 'warn' : 'muted', hint: hotFiles.length > 0 ? hotFiles[0].label : 'no open exposure' })}
   </div>
+
+  <div class="panel">${ownersPanel(input)}</div>
+  <div class="panel">${sensitivePanel(input)}</div>
 
   <div class="panel">
     ${subHead('Asset × threat', '', `${matrix.assets.length} assets · ${matrix.threats.length} threats`)}
@@ -161,6 +212,5 @@ ${scope ? `  <p class="scope-note">Every grid below counts only the annotations 
           return v === 0 ? null : { value: v, h: v / maxTool, tone: s === 'critical' || s === 'high' ? 'red' : 'neutral', title: `${r}: ${v} ${s}` };
         },
       }) : '<p class="empty-state">No AI tool is credited on an introducing commit.</p>'}
-    </div>` : `<p class="guide">Generate with <code>guardlink dashboard --blame</code> to add the people × time and AI tool × severity grids.</p>`}
-</div>`;
+    </div>` : `<p class="guide">Generate with <code>guardlink dashboard --blame</code> to add the people × time and AI tool × severity grids.</p>`}`;
 }
