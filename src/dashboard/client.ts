@@ -406,7 +406,7 @@ function renderAssetDrawer(idx) {
   var q = encodeURIComponent(a.name);
   var open = a.exposures.open + a.exposures.confirmed;
   var h = '';
-  h += '<div class="d-status d-status-' + (open > 0 ? 'open' : a.exposures.total > 0 ? 'mitigated' : 'control') + '"><span class="d-status-label">' + (a.riskLevel === 'none' ? 'no exposure' : esc(a.riskLevel) + ' risk')</span><span class="muted">'
+  h += '<div class="d-status d-status-' + (open > 0 ? 'open' : a.exposures.total > 0 ? 'mitigated' : 'control') + '"><span class="d-status-label">' + (a.riskLevel === 'none' ? 'no exposure' : esc(a.riskLevel) + ' risk') + '</span><span class="muted">'
      + (open > 0 ? open + ' open of ' + _plural(a.exposures.total, 'exposure') : a.exposures.total > 0 ? 'all ' + _plural(a.exposures.total, 'exposure') + ' covered' : 'no exposures declared') + '</span></div>';
   h += '<div class="d-grid d-grid-4">'
      + sec('Open', '<a href="#threats?q=' + q + '&status=open" class="' + (open > 0 ? 'red' : 'muted') + '">' + open + '</a>')
@@ -500,7 +500,7 @@ function openAnnotationDrawer(fileIdx, annIdx) {
   if (c) h += blameBlock(c);
   if (tile) {
     var open = tile.exposures.open + tile.exposures.confirmed;
-    h += sec('Asset', '<span class="badge badge-' + (open > 0 ? 'red' : 'green') + '">' + (tile.riskLevel === 'none' ? 'no exposure' : esc(tile.riskLevel) + ' risk')</span> <span class="muted">' + open + ' open of ' + tile.exposures.total + ' exposures · ' + tile.controls.length + ' controls · ' + (tile.flowsIn.length + tile.flowsOut.length) + ' flows</span>');
+    h += sec('Asset', '<span class="badge badge-' + (open > 0 ? 'red' : 'green') + '">' + (tile.riskLevel === 'none' ? 'no exposure' : esc(tile.riskLevel) + ' risk') + '</span> <span class="muted">' + open + ' open of ' + tile.exposures.total + ' exposures · ' + tile.controls.length + ' controls · ' + (tile.flowsIn.length + tile.flowsOut.length) + ' flows</span>');
   }
   var loc = f.file + ':' + a.line;
   h += sec('Location', (a.url ? '<a class="loc-link" href="' + esc(a.url) + '" target="_blank" rel="noopener">' : '<span class="loc-text">') + esc(loc) + (a.url ? '</a>' : '</span>') + ' <button class="copy" data-copy="' + esc(loc) + '" title="Copy path">' + ICONS.copy + '</button>');
