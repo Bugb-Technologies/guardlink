@@ -17,6 +17,7 @@ pnpm-lock.yaml
 
 # IDE / Agent local state
 .claude/
+.bravos/
 
 # GuardLink runtime config (API keys - do not commit)
 .guardlink/config.json
@@ -33,6 +34,13 @@ pnpm-lock.yaml
 
 # Debug / internal
 _debug.ts
+
+# Local scratch at the repo root. Paper drafts, renders and one-off exports
+# land here while writing; none of it is source, and some of it is large
+# binary. Anchored to the root so a legitimate output/ or tmp/ deeper in the
+# tree is still tracked.
+/output/
+/tmp/
 
 # Packing artifacts. `npm pack` / `npm pack --dry-run` write the tarball into
 # the repo root, and a stray guardlink-<version>.tgz committed alongside the
