@@ -11,7 +11,7 @@
  * @mitigates #dashboard against #xss using #output-encoding -- "File paths, summaries, descriptions and code lines are escaped"
  * @comment -- "The withheld-on-a-slice sentence and the coverage strings are pinned by tests; file cards gain search text and a host link"
  */
-import { esc, scopeLabel, sectionHead, subHead, copyButton, plural } from '../html.js';
+import { esc, scopeLabel, sectionHead, subHead, copyButton, plural, icon } from '../html.js';
 import type { PageContext } from './context.js';
 
 export function renderCodePage(ctx: PageContext): string {
@@ -24,7 +24,7 @@ export function renderCodePage(ctx: PageContext): string {
 
   return `
 <div id="sec-code" class="section-content">
-  ${sectionHead('&lt;/&gt;', 'Code &amp; Annotations', scope, `<span class="muted"><span data-count-for="files">${fileAnnotations.length}</span> ${plural(fileAnnotations.length, 'file')}</span>`)}
+  ${sectionHead(icon('code'), 'Code &amp; Annotations', scope, `<span class="muted"><span data-count-for="files">${fileAnnotations.length}</span> ${plural(fileAnnotations.length, 'file')}</span>`)}
   <p class="lead">
     ${scope
       ? `Files tagged ${esc(scopeLabel(scope))}, plus the definition file(s) holding the assets, threats and controls they reference. Click any annotation to see details.`
@@ -42,9 +42,9 @@ export function renderCodePage(ctx: PageContext): string {
       <span class="file-path">${esc(f.file)}${copyButton(f.file, 'Copy path')}</span>
       <span class="file-kinds">${[...kinds].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => `<span>${esc(k)} ${n}</span>`).join('')}</span>
       <span style="display:flex;align-items:center;gap:.4rem;margin-left:auto">
-        ${links ? `<a class="loc-link" href="${esc(links.file(f.file))}" target="_blank" rel="noopener" title="Open on host" onclick="event.stopPropagation()">open ↗</a>` : ''}
+        ${links ? `<a class="loc-link" href="${esc(links.file(f.file))}" target="_blank" rel="noopener" title="Open on host" onclick="event.stopPropagation()">${icon('external')} open</a>` : ''}
         <span class="file-count">${f.annotations.length}</span>
-        <span class="chevron">▶</span>
+        <span class="chevron">${icon('chevron')}</span>
       </span>
     </div>
     <div class="file-card-body">
@@ -88,13 +88,13 @@ export function renderCodePage(ctx: PageContext): string {
   ${totalFiles > 0 ? `<div class="posture-bar"><div class="posture-fill ${pct >= 0.7 ? 'good' : pct >= 0.4 ? 'warn' : 'bad'}" style="width:${Math.round(pct * 100)}%"></div></div>` : ''}
 
   ${unannotated.length > 0 ? `
-  ${subHead(`⚠ Unannotated Files (${unannotated.length})`, '', `<span class="action-cmd"><code>guardlink unannotated .</code>${copyButton('guardlink unannotated .', 'Copy command')}</span>`)}
+  ${subHead(`${icon('alert')} Unannotated Files (${unannotated.length})`, '', `<span class="action-cmd"><code>guardlink unannotated .</code>${copyButton('guardlink unannotated .', 'Copy command')}</span>`)}
   <p style="color:var(--muted);font-size:.78rem;margin-bottom:.5rem">
     Source files with no GuardLink annotations. Not all files need annotations — only those touching security boundaries.
   </p>
   <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:1rem" data-list="unannotated">
     ${unannotated.map(f => `<div data-search="unannotated ${esc(f.toLowerCase())}" style="display:flex;align-items:center;font-family:var(--font-mono);font-size:.78rem;padding:.3rem .6rem;background:var(--surface2);border-left:3px solid var(--yellow);border-radius:2px">${links ? `<a class="loc-link" href="${esc(links.file(f))}" target="_blank" rel="noopener">${esc(f)}</a>` : esc(f)}${copyButton(f, 'Copy path')}</div>`).join('')}
-  </div>` : `<p style="color:var(--green);font-size:.82rem;margin-top:.5rem">✓ All source files have annotations.</p>`}
+  </div>` : `<p style="color:var(--green-text);font-size:.82rem;margin-top:.5rem">${icon('check')} All source files have annotations.</p>`}
   `}
 </div>`;
 }

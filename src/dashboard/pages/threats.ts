@@ -11,7 +11,7 @@
  * @mitigates #dashboard against #xss using #output-encoding -- "Every cell, attribute and identity is escaped; the search text is escaped as an attribute value"
  * @comment -- "Scope wording lives in a note, not in headings: the client feature filter rewrites headings by textContent"
  */
-import { esc, chip, sortableHead, rowAttrs, sevBadge, sevRank, numCell, locCellShort, claimStateBadge, whoLink, badge, scopeLabel, sectionHead, subHead, normSev, descCell, colgroup, pager } from '../html.js';
+import { esc, chip, sortableHead, rowAttrs, sevBadge, sevRank, numCell, locCellShort, claimStateBadge, whoLink, badge, scopeLabel, sectionHead, subHead, normSev, descCell, colgroup, pager, icon } from '../html.js';
 import type { PageContext, ClaimView } from './context.js';
 
 const STATUS_LABEL: Record<string, string> = { open: 'Open', mitigated: 'Mitigated', accepted: 'Accepted', confirmed: 'Confirmed', control: 'Control' };
@@ -64,7 +64,7 @@ export function renderThreatsPage(ctx: PageContext): string {
 
   return `
 <div id="sec-threats" class="section-content">
-  ${sectionHead('⚠', 'Threats &amp; Exposures', scope, `<span class="muted"><span data-count-for="exposures">${exposures.length}</span> exposures</span>`)}
+  ${sectionHead(icon('alert'), 'Threats &amp; Exposures', scope, `<span class="muted"><span data-count-for="exposures">${exposures.length}</span> exposures</span>`)}
 ${scope ? `  <p class="scope-note">Only exposures annotated in the files tagged ${esc(scopeLabel(scope))}. Exposures elsewhere in the project are not listed here and are not counted below.</p>` : ''}
   <p class="lead">Every <code>@exposes</code> in the model, with whether a control covers it${showState ? ', whether the claim is still verified against the code beneath it' : ''}${showWho ? ', and who introduced that code' : ''}. Click a row for detail and actions; click a column to sort; type <kbd>/</kbd> to search (every word must match, so <code>#api sqli</code> narrows to one pair).</p>
 
@@ -87,7 +87,7 @@ ${scope ? `  <p class="scope-note">Only exposures annotated in the files tagged 
   <div class="who-filter" hidden><span>Showing claims credited to</span> <strong class="who-filter-name"></strong><button class="btn btn-ghost" data-clear-filters style="margin-left:auto">Clear</button></div>
 
   ${confirmed.length > 0 ? `
-  ${subHead(`🔴 Confirmed Exploitable (${confirmed.length})`, 'sub-h-critical')}
+  ${subHead(`${icon('zap')} Confirmed Exploitable (${confirmed.length})`, 'sub-h-critical')}
   <p class="section-note">Verified through pentest, scanning, or manual reproduction — <strong>not false positives</strong>.</p>
   <div class="table-wrap"><table id="confirmed" class="sortable fixed" data-paginate="25">
     ${head}

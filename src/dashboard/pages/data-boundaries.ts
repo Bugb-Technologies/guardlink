@@ -6,7 +6,7 @@
  * @mitigates #dashboard against #xss using #output-encoding -- "Every cell is escaped, including owner names, rationale and entitlement citations"
  * @comment -- "The empty-state sentence and its condition are unchanged (flows are not part of it) because the feature-slice test pins the sentence"
  */
-import { esc, scopeLabel, sectionHead, subHead, sortableHead, rowAttrs, locCellShort, descCell, pager } from '../html.js';
+import { esc, scopeLabel, sectionHead, subHead, sortableHead, rowAttrs, locCellShort, descCell, pager, icon } from '../html.js';
 import type { PageContext } from './context.js';
 
 export function renderDataPage(ctx: PageContext): string {
@@ -31,7 +31,7 @@ export function renderDataPage(ctx: PageContext): string {
 
   return `
 <div id="sec-data" class="section-content">
-  ${sectionHead('🔒', 'Data &amp; Boundaries', scope)}
+  ${sectionHead(icon('lock'), 'Data &amp; Boundaries', scope)}
   <p class="lead">Where data moves, where trust changes hands, what is classified, and the lifecycle claims (validations, ownership, audits, entitlements, assumptions). Type <kbd>/</kbd> to search across all of them.</p>
   ${sections.length > 0 ? `<div class="jump">${sections.map(s => `<a href="#data-${s.id}" onclick="event.preventDefault();document.getElementById('data-${s.id}').scrollIntoView({behavior:'smooth',block:'start'})">${s.label}<b>${s.count}</b></a>`).join('')}</div>` : ''}
   <div class="filter-status" hidden><span class="filter-status-text"></span><button class="btn btn-ghost" data-clear-filters>Clear</button></div>

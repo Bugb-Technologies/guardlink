@@ -10,7 +10,8 @@
 import { readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import type { ThreatModel } from '../types/index.js';
-import type { ExposureRow } from './data.js';
+import type { ExposureRow, AssetHeatmapEntry } from './data.js';
+import type { RepoLinks } from './links.js';
 
 export interface FileAnnotation {
   kind: string;
@@ -22,7 +23,27 @@ export interface FileAnnotation {
   codeContext: string[];
   /** Which index in codeContext is the annotation line. */
   annLineIdx: number;
+  /** The record's scalar fields (asset, threat, control, severity, source, target, mechanism, classification, owner, actor, capability, …) for the drawer. */
+  fields: Record<string, string>;
+  /** External references (cwe:, owasp:, …) when the record carries them. */
+  refs: string[];
+  /** Index into the embedded claims when this annotation is an exposure, confirmed finding or mitigation. */
+  claimIdx: number | null;
+  /** Index into the asset details when the annotation is about an asset the heatmap has a tile for. */
+  assetIdx: number | null;
+  /** The file at this line on the repository host, when one is known. */
+  url: string | null;
 }
+
+/** What `buildFileAnnotations` joins each annotation to; every part is optional. */
+export interface AnnotationJoin {
+  claims?: { idx: number; verb: string; file: string; line: number; asset: string; threat: string }[];
+  assets?: Pick<AssetHeatmapEntry, 'name' | 'aliases'>[];
+  links?: RepoLinks | null;
+}
+
+const FIELD_KEYS = ['asset', 'threat', 'control', 'severity', 'source', 'target', 'mechanism', 'classification', 'owner', 'actor', 'capability', 'asset_a', 'asset_b', 'reason', 'justification', 'name', 'id'] as const;
+const VERB_OF_KIND: Record<string, string> = { exposes: 'exposes', confirmed: 'confirmed', mitigates: 'mitigates' };
 
 export interface FileAnnotationGroup {
   file: string;
@@ -44,16 +65,33 @@ export function readCodeContext(filePath: string, line: number, root?: string, c
   }
 }
 
-type Located = { location?: { file: string; line: number; raw_text?: string }; description?: string };
+type Located = { location?: { file: string; line: number; raw_text?: string }; description?: string; external_refs?: string[]; path?: string[] };
 
-export function buildFileAnnotations(model: ThreatModel, root?: string): FileAnnotationGroup[] {
+export function buildFileAnnotations(model: ThreatModel, root?: string, join: AnnotationJoin = {}): FileAnnotationGroup[] {
   const byFile = new Map<string, FileAnnotation[]>();
+  const tileOf = new Map<string, number>();
+  (join.assets ?? []).forEach((a, i) => { for (const alias of [a.name, ...a.aliases]) tileOf.set(alias.trim().toLowerCase(), i); });
+  const claimsAt = new Map<string, { idx: number; asset: string; threat: string }[]>();
+  for (const c of join.claims ?? []) {
+    const k = `${c.file}:${c.line}:${c.verb}`;
+    const list = claimsAt.get(k) ?? [];
+    list.push(c);
+    claimsAt.set(k, list);
+  }
 
   const addEntry = (kind: string, item: Located, summary: string): void => {
     if (!item.location) return;
     const file = item.location.file;
     if (!byFile.has(file)) byFile.set(file, []);
     const { lines: codeContext, annIdx } = readCodeContext(file, item.location.line, root);
+    const rec = item as unknown as Record<string, unknown>;
+    const fields: Record<string, string> = {};
+    for (const k of FIELD_KEYS) if (typeof rec[k] === 'string' && (rec[k] as string).length > 0) fields[k] = rec[k] as string;
+    if (Array.isArray(item.path) && item.path.length > 0) fields.path = item.path.join('.');
+    const verb = VERB_OF_KIND[kind];
+    const candidates = verb ? claimsAt.get(`${file}:${item.location.line}:${verb}`) ?? [] : [];
+    const claim = candidates.find(c => c.asset === fields.asset && c.threat === fields.threat) ?? candidates[0] ?? null;
+    const assetRef = fields.asset ?? (kind === 'asset' ? (fields.id ? `#${fields.id}` : fields.path) : undefined) ?? fields.source ?? fields.asset_a;
     byFile.get(file)!.push({
       kind,
       line: item.location.line,
@@ -62,6 +100,11 @@ export function buildFileAnnotations(model: ThreatModel, root?: string): FileAnn
       raw: item.location.raw_text || '',
       codeContext,
       annLineIdx: annIdx,
+      fields,
+      refs: Array.isArray(item.external_refs) ? item.external_refs.filter((r): r is string => typeof r === 'string') : [],
+      claimIdx: claim ? claim.idx : null,
+      assetIdx: assetRef ? tileOf.get(assetRef.trim().toLowerCase()) ?? null : null,
+      url: join.links ? join.links.file(file, item.location.line) : null,
     });
   };
 

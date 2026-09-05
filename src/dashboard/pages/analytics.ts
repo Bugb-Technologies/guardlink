@@ -12,7 +12,7 @@
  * @handles pii on #dashboard -- "Introducer identities in the people × time heatmap"
  * @comment -- "Pure rendering over the analytics builders; the same claim rows feed every grid so the numbers agree with the tables"
  */
-import { esc, heatTable, barList, sectionHead, subHead, routeWithQuery, badge, kpi, plural, shortPath } from '../html.js';
+import { esc, heatTable, barList, sectionHead, subHead, routeWithQuery, badge, kpi, plural, shortPath, icon } from '../html.js';
 import { computeAssetThreatMatrix, computeControlCoverage, computeSeverityStatus, computeIntroductionHeat, computeToolSeverity, SEV_ORDER } from '../analytics.js';
 import type { SevKey } from '../analytics.js';
 import type { PageContext } from './context.js';
@@ -58,7 +58,7 @@ export function renderAnalyticsPage(ctx: PageContext): string {
 
   return `
 <div id="sec-analytics" class="section-content">
-  ${sectionHead('▦', 'Analytics', scope)}
+  ${sectionHead(icon('grid'), 'Analytics', scope)}
 ${scope ? `  <p class="scope-note">Every grid below counts only the annotations in the files tagged ${esc(String(scope.map(s => `"${s}"`).join(', ')))}.</p>` : ''}
   <p class="lead">Where the exposure is concentrated, what covers it, and what nothing covers. Every cell is a link into the filtered Threats page.</p>
 

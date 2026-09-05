@@ -278,12 +278,27 @@ function advice(c) {
   return 'A declared control. Verify it so a later edit beneath it is flagged as stale.';
 }
 
+/* Status band: coverage status, ledger state, and who locked the claim when. */
+function statusBand(c) {
+  var by = c.verifiedBy ? '<span class="d-state-by">' + (c.state === 'stale' ? 'locked' : 'by') + ' ' + esc(c.verifiedBy) + (c.verifiedAt ? ' on ' + esc(String(c.verifiedAt).slice(0, 10)) : '') + (c.state === 'stale' ? ', code changed since' : '') + '</span>' : '';
+  return '<div class="d-status d-status-' + esc(c.status) + '"><span class="d-status-label">' + esc(c.statusLabel) + '</span>'
+     + (c.state ? '<span class="claim-state ' + esc(c.state) + '">' + esc(c.state) + '</span>' + by : '') + '</div>';
+}
+function blameBlock(c) {
+  if (!c.blame) return '';
+  return '<div class="d-blame"><div class="d-label">Attribution</div>'
+       + '<div class="d-blame-row"><span>Introduced</span><span class="d-ref">' + refHtml(c.blame.introduced) + (c.blame.lowerBound ? ' <span class="badge" title="History is truncated or the file has uncommitted edits: the true introduction may be older">lower bound</span>' : '') + '</span></div>'
+       + '<div class="d-blame-row"><span>Declared</span><span class="d-ref">' + refHtml(c.blame.declared) + '</span></div>'
+       + (c.verb !== 'mitigates' ? '<div class="d-blame-row"><span>Fixed</span><span class="d-ref">' + (c.blame.fixed ? refHtml(c.blame.fixed) + (c.blame.days !== null ? ' <span class="muted">after ' + c.blame.days + ' days</span>' : '') : '<span class="badge badge-red">open</span>') + '</span></div>' : '')
+       + (c.blame.status !== 'ok' ? '<div class="d-blame-row"><span>Status</span><span class="badge">' + esc(c.blame.status) + '</span></div>' : '')
+       + '</div>';
+}
+
 function renderClaimDrawer(c) {
   var title = document.getElementById('drawer-title'), body = document.getElementById('drawer-body');
   title.textContent = c.threat + ' · ' + c.asset;
   var h = '';
-  h += '<div class="d-status d-status-' + esc(c.status) + '"><span class="d-status-label">' + esc(c.statusLabel) + '</span>'
-     + (c.state ? '<span class="claim-state ' + esc(c.state) + '">' + esc(c.state) + '</span>' : '') + '</div>';
+  h += statusBand(c);
   h += '<div class="d-grid">'
      + sec('Severity', '<span class="fc-sev ' + sevCls(c.severity) + '">' + esc(c.severity) + '</span>')
      + sec('Kind', '<code>' + esc(c.verb) + '</code>')
@@ -295,15 +310,8 @@ function renderClaimDrawer(c) {
   if (c.refs && c.refs.length) h += sec('References', c.refs.map(function (r) { return '<code>' + esc(r) + '</code>'; }).join(' '));
   h += sec('Location', (c.url ? '<a class="loc-link" href="' + esc(c.url) + '" target="_blank" rel="noopener">' : '<span class="loc-text">')
      + esc(c.file + ':' + c.line) + (c.url ? '</a>' : '</span>')
-     + ' <button class="copy" data-copy="' + esc(c.file + ':' + c.line) + '" title="Copy path">⧉</button>');
-  if (c.blame) {
-    h += '<div class="d-blame"><div class="d-label">Attribution</div>'
-       + '<div class="d-blame-row"><span>Introduced</span>' + refHtml(c.blame.introduced) + (c.blame.lowerBound ? ' <span class="badge" title="History is truncated or the file has uncommitted edits: the true introduction may be older">lower bound</span>' : '') + '</div>'
-       + '<div class="d-blame-row"><span>Declared</span>' + refHtml(c.blame.declared) + '</div>'
-       + (c.verb !== 'mitigates' ? '<div class="d-blame-row"><span>Fixed</span>' + (c.blame.fixed ? refHtml(c.blame.fixed) + (c.blame.days !== null ? ' <span class="muted">after ' + c.blame.days + ' days</span>' : '') : '<span class="badge badge-red">open</span>') + '</div>' : '')
-       + (c.blame.status !== 'ok' ? '<div class="d-blame-row"><span>Status</span><span class="badge">' + esc(c.blame.status) + '</span></div>' : '')
-       + '</div>';
-  }
+     + ' <button class="copy" data-copy="' + esc(c.file + ':' + c.line) + '" title="Copy path">' + ICONS.copy + '</button>');
+  h += blameBlock(c);
   h += '<div class="d-actions">'
      + (c.url ? '<a class="btn btn-primary" href="' + esc(c.url) + '" target="_blank" rel="noopener">' + esc(openOnHost) + '</a>' : '')
      + '<button class="btn" data-copy="guardlink verify ' + esc(c.file + ':' + c.line) + '">Copy verify command</button>'
@@ -398,7 +406,7 @@ function renderAssetDrawer(idx) {
   var q = encodeURIComponent(a.name);
   var open = a.exposures.open + a.exposures.confirmed;
   var h = '';
-  h += '<div class="d-status d-status-' + (open > 0 ? 'open' : a.exposures.total > 0 ? 'mitigated' : 'control') + '"><span class="d-status-label">' + esc(a.riskLevel) + ' risk</span><span class="muted">'
+  h += '<div class="d-status d-status-' + (open > 0 ? 'open' : a.exposures.total > 0 ? 'mitigated' : 'control') + '"><span class="d-status-label">' + (a.riskLevel === 'none' ? 'no exposure' : esc(a.riskLevel) + ' risk')</span><span class="muted">'
      + (open > 0 ? open + ' open of ' + _plural(a.exposures.total, 'exposure') : a.exposures.total > 0 ? 'all ' + _plural(a.exposures.total, 'exposure') + ' covered' : 'no exposures declared') + '</span></div>';
   h += '<div class="d-grid d-grid-4">'
      + sec('Open', '<a href="#threats?q=' + q + '&status=open" class="' + (open > 0 ? 'red' : 'muted') + '">' + open + '</a>')
@@ -448,13 +456,64 @@ function renderAssetDrawer(idx) {
   }
   if (a.files.length) {
     h += '<div class="d-section"><div class="d-label">' + _plural(a.files.length, 'file') + '</div><div class="d-value d-files">' + a.files.slice(0, 8).map(function (f) {
-      return '<div><a class="loc-text" href="#threats?file=' + encodeURIComponent(f.file) + '" title="Show the rows in this file">' + esc(f.file) + '</a> <span class="muted">' + f.claims + '</span><button class="copy" data-copy="' + esc(f.file) + '" title="Copy path">⧉</button></div>';
+      return '<div><a class="loc-text" href="#threats?file=' + encodeURIComponent(f.file) + '" title="Show the rows in this file">' + esc(f.file) + '</a> <span class="muted">' + f.claims + '</span><button class="copy" data-copy="' + esc(f.file) + '" title="Copy path">' + ICONS.copy + '</button></div>';
     }).join('') + (a.files.length > 8 ? '<div class="muted">+ ' + (a.files.length - 8) + ' more</div>' : '') + '</div></div>';
   }
   h += '<div class="d-actions">'
      + '<a class="btn btn-primary" href="#threats?q=' + q + (open > 0 ? '&status=open' : '') + '">' + (open > 0 ? 'Show ' + open + ' open' : 'Show exposures') + '</a>'
      + '<a class="btn" href="#analytics">Compare in Analytics</a>'
      + '<button class="btn" data-copy="guardlink_lookup(&quot;asset ' + esc(a.name) + '&quot;)">Copy lookup</button>'
+     + '</div>';
+  body.innerHTML = h;
+  _drawerCtx = null;
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
+}
+
+/* ===== ANNOTATION DRAWER ===== */
+var FIELD_ORDER = ['asset', 'threat', 'control', 'severity', 'source', 'target', 'mechanism', 'classification', 'owner', 'actor', 'capability', 'asset_a', 'asset_b', 'reason', 'justification', 'path', 'id', 'name'];
+var FIELD_LABEL = { asset_a: 'Side A', asset_b: 'Side B', id: 'Id', path: 'Path' };
+/* Everything one annotation carries: its fields, the claim it makes (status, ledger state, attribution), the asset it is about, its raw text and the code around it. */
+function openAnnotationDrawer(fileIdx, annIdx) {
+  var f = typeof fileAnnotations !== 'undefined' ? fileAnnotations[fileIdx] : null; if (!f) return;
+  var a = f.annotations[annIdx]; if (!a) return;
+  var title = document.getElementById('drawer-title'), body = document.getElementById('drawer-body');
+  var c = a.claimIdx !== null && a.claimIdx !== undefined && typeof claimsData !== 'undefined' ? claimsData[a.claimIdx] : null;
+  var tile = a.assetIdx !== null && a.assetIdx !== undefined && typeof assetsData !== 'undefined' ? assetsData[a.assetIdx] : null;
+  title.textContent = '@' + a.kind + ' · ' + a.summary;
+  var h = '';
+  h += '<div class="d-kind"><span class="ann-badge ann-' + esc(a.kind) + '">' + esc(a.kind) + '</span><span class="d-kind-summary">' + esc(a.summary) + '</span></div>';
+  if (c) h += statusBand(c);
+  var fields = a.fields || {};
+  var keys = FIELD_ORDER.filter(function (k) { return fields[k]; });
+  if (keys.length || (a.refs && a.refs.length)) {
+    h += '<div class="d-fields">' + keys.map(function (k) {
+      var label = FIELD_LABEL[k] || (k.charAt(0).toUpperCase() + k.slice(1));
+      var v = k === 'severity' ? '<span class="fc-sev ' + sevCls(fields[k]) + '">' + esc(fields[k]) + '</span>'
+        : k === 'asset' || k === 'threat' || k === 'control' || k === 'source' || k === 'target' || k === 'asset_a' || k === 'asset_b' || k === 'id' || k === 'path'
+          ? '<a class="pill" href="#threats?q=' + encodeURIComponent(fields[k]) + '" title="Show rows naming this"><code>' + esc(fields[k]) + '</code></a>'
+          : esc(fields[k]);
+      return sec(label, v);
+    }).join('') + (a.refs && a.refs.length ? sec('References', a.refs.map(function (r) { return '<code>' + esc(r) + '</code>'; }).join(' ')) : '') + '</div>';
+  }
+  if (a.description) h += sec('Description', esc(a.description));
+  if (c) h += blameBlock(c);
+  if (tile) {
+    var open = tile.exposures.open + tile.exposures.confirmed;
+    h += sec('Asset', '<span class="badge badge-' + (open > 0 ? 'red' : 'green') + '">' + (tile.riskLevel === 'none' ? 'no exposure' : esc(tile.riskLevel) + ' risk')</span> <span class="muted">' + open + ' open of ' + tile.exposures.total + ' exposures · ' + tile.controls.length + ' controls · ' + (tile.flowsIn.length + tile.flowsOut.length) + ' flows</span>');
+  }
+  var loc = f.file + ':' + a.line;
+  h += sec('Location', (a.url ? '<a class="loc-link" href="' + esc(a.url) + '" target="_blank" rel="noopener">' : '<span class="loc-text">') + esc(loc) + (a.url ? '</a>' : '</span>') + ' <button class="copy" data-copy="' + esc(loc) + '" title="Copy path">' + ICONS.copy + '</button>');
+  if (a.raw) h += '<div class="d-section d-raw"><div class="d-label">Annotation</div><div class="d-code">' + esc(a.raw) + '</div><button class="copy" data-copy="' + esc(a.raw) + '" title="Copy annotation">' + ICONS.copy + '</button></div>';
+  if (a.codeContext && a.codeContext.length) {
+    h += '<div class="d-section"><div class="d-label">Code</div><div class="d-code-ctx">' + a.codeContext.map(function (line, i) { return '<span' + (i === a.annLineIdx ? ' class="hl"' : '') + '>' + esc(line) + '</span>'; }).join('') + '</div></div>';
+  }
+  var q = fields.asset && fields.threat ? fields.asset + ' ' + fields.threat : fields.asset || fields.control || fields.source || fields.path || '';
+  h += '<div class="d-actions">'
+     + (c ? '<a class="btn btn-primary" href="#threats?q=' + encodeURIComponent(q) + '">Open in Threats</a>' : q ? '<a class="btn btn-primary" href="#threats?q=' + encodeURIComponent(q) + '">Related exposures</a>' : '')
+     + (tile ? '<button class="btn" data-asset-drawer="' + a.assetIdx + '">Asset details</button>' : '')
+     + (a.url ? '<a class="btn" href="' + esc(a.url) + '" target="_blank" rel="noopener">' + esc(openOnHost) + '</a>' : '')
+     + (c ? '<button class="btn" data-copy="guardlink verify ' + esc(loc) + '">Copy verify command</button>' : '')
      + '</div>';
   body.innerHTML = h;
   _drawerCtx = null;
@@ -516,6 +575,8 @@ document.addEventListener('click', function (e) {
   if (dr) { downloadReport(); return; }
   var ds = e.target.closest('[data-copy-diagram]');
   if (ds) { diagramCopySource(ds); return; }
+  var ad = e.target.closest('[data-asset-drawer]');
+  if (ad) { renderAssetDrawer(parseInt(ad.getAttribute('data-asset-drawer'), 10)); return; }
   var nav = e.target.closest('[data-drawer-nav]');
   if (nav) { drawerNav(nav.getAttribute('data-drawer-nav') === 'next' ? 1 : -1); return; }
   var row = e.target.closest('[data-claim]');

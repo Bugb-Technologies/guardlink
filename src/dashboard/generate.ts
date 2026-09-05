@@ -40,7 +40,7 @@ import type { SeverityBreakdown } from './data.js';
 import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface } from './diagrams.js';
 import { detectRepoLinks } from './links.js';
 import { buildFileAnnotations, buildAnalysisData } from './annotations.js';
-import { esc, featureScope, scopeLabel, hostLabel } from './html.js';
+import { esc, featureScope, scopeLabel, hostLabel, icon } from './html.js';
 import { BASE_CSS, UPGRADE_CSS } from './styles.js';
 import { CLIENT_JS } from './client.js';
 import { FEATURE_FILTER_JS, DIAGRAMS_AND_REPORTS_JS, LEGACY_DRAWER_JS } from './client-legacy.js';
@@ -78,20 +78,10 @@ const DIAGRAMS_JS = DIAGRAMS_AND_REPORTS_JS.replace(
 
 const embed = (value: unknown): string => JSON.stringify(value).replace(/<\//g, '<\\/');
 
-const NAV_ICONS: Record<string, string> = {
-  summary: '<path d="M8 2l6 4v6l-6 4-6-4V6l6-4z"/>',
-  analytics: '<path d="M1 1h6v6H1V1zm8 0h6v6H9V1zM1 9h6v6H1V9zm8 0h6v6H9V9z"/>',
-  'ai-analysis': '<path d="M8 1l2 5h5l-4 3 2 5-5-3-5 3 2-5-4-3h5l2-5z"/>',
-  threats: '<path d="M8 1L1 15h14L8 1zm0 4l3 8H5l3-8z"/>',
-  diagrams: '<circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="8" cy="8" r="2"/>',
-  code: '<path d="M5 4L1 8l4 4v-2L3 8l2-2V4zm6 0v2l2 2-2 2v2l4-4-4-4z"/>',
-  data: '<path d="M4 2h8v2H4V2zm0 3h8v2H4V5zm0 3h8v2H4V8zm0 3h8v2H4v-2zm-2-9v12h12V2H2zm1 1h10v10H3V3z"/>',
-  assets: '<path d="M1 3h14v10H1V3zm1 1v8h12V4H2zm2 2h8v1H4V6zm0 2h6v1H4V8z"/>',
-  attribution: '<path d="M8 2a3 3 0 110 6 3 3 0 010-6zm-5 11c0-2.5 2.2-4 5-4s5 1.5 5 4v1H3v-1z"/>',
-};
+const NAV_ICON: Record<string, string> = { summary: 'layout', analytics: 'grid', threats: 'alert', diagrams: 'diagram', code: 'code', 'ai-analysis': 'file', data: 'lock', assets: 'map', attribution: 'users' };
 
 function navLink(page: string, label: string, active = false, badge?: string): string {
-  return `<a href="#${page}" data-page="${page}"${active ? ' class="active"' : ''}><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">${NAV_ICONS[page]}</svg></span> <span class="nav-text">${label}</span>${badge ? `<span class="nav-badge">${badge}</span>` : ''}</a>`;
+  return `<a href="#${page}" data-page="${page}"${active ? ' class="active"' : ''}><span class="nav-icon">${icon(NAV_ICON[page] ?? 'square')}</span> <span class="nav-text">${label}</span>${badge ? `<span class="nav-badge">${badge}</span>` : ''}</a>`;
 }
 
 export function generateDashboardHTML(rawModel: ThreatModel, root?: string, analyses?: ThreatReportWithContent[]): string {
@@ -119,9 +109,10 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   // is not the same thing: definitions the feature references live in
   // `.guardlink/definitions.*`, which carries no tag.
   const scopeFiles = scope ? new Set(model.features.map(f => f.location.file)).size : 0;
-  const fileAnnotations = buildFileAnnotations(model, root);
   const analysisData = buildAnalysisData(exposures);
   const claims = buildClaims(model, links, ledger);
+  // Annotations join to the claim rows and asset tiles the drawers render.
+  const fileAnnotations = buildFileAnnotations(model, root, { claims, assets: heatmap, links });
   const actions = computeActions({ model, exposures, confirmed, verification: ledgerRead?.report ?? null, attribution, scope });
   // One record per heatmap tile, in tile order: the asset drawer indexes it by the tile's position.
   const assetsData = computeAssetDetails(model, claims, heatmap, attribution?.as_of ?? null);
@@ -131,17 +122,19 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
     stats, severity, exposures, confirmed, unmitigated, mitigatedCount, mitigationCoveragePercent, risk,
     claims, ledger, attribution, actions, heatmap, fileAnnotations,
     diagrams: {
-      threatGraph: generateThreatGraph(model),
-      threatGraphFull: generateThreatGraph(model, { showAll: true }),
-      dataFlow: generateDataFlowDiagram(model),
-      attackSurface: generateAttackSurface(model),
+      // No emoji on the page: shapes and severity classes carry what the
+      // committed .mmd artifacts say with icons.
+      threatGraph: generateThreatGraph(model, { icons: 'none' }),
+      threatGraphFull: generateThreatGraph(model, { showAll: true, icons: 'none' }),
+      dataFlow: generateDataFlowDiagram(model, { icons: 'none' }),
+      attackSurface: generateAttackSurface(model, { icons: 'none' }),
     },
     analyses: analyses || [],
   };
 
   const claimsData = claims.map(c => ({
     idx: c.idx, verb: c.verb, status: c.status, statusLabel: c.statusLabel, asset: c.asset, threat: c.threat, severity: c.severity,
-    description: c.description, control: c.control, refs: c.refs, file: c.file, line: c.line, url: c.url, state: c.state, blame: c.blame,
+    description: c.description, control: c.control, refs: c.refs, file: c.file, line: c.line, url: c.url, state: c.state, verifiedBy: c.verifiedBy, verifiedAt: c.verifiedAt, blame: c.blame,
   }));
 
   return `<!DOCTYPE html>
@@ -151,7 +144,7 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GuardLink — ${esc(model.project)} Threat Model${scope ? ` — PARTIAL: ${scope.length > 1 ? 'features' : 'feature'} ${esc(scopeLabel(scope))}` : ''}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 ${BASE_CSS}
 ${UPGRADE_CSS}
@@ -180,7 +173,7 @@ ${scope
     ? `      <div class="tn-stat" title="Exposures mitigated within this feature. Project file coverage is not shown on a slice."><span class="tn-k">Mitigated</span> <span class="tn-v ${mitigationCoveragePercent >= 70 ? 'green' : mitigationCoveragePercent >= 40 ? 'yellow' : 'red'}">${mitigationCoveragePercent}%</span></div>`
     : `      <div class="tn-stat"><span class="tn-k">Coverage</span> <span class="tn-v ${stats.coveragePercent >= 70 ? 'green' : stats.coveragePercent >= 40 ? 'yellow' : 'red'}">${stats.coveragePercent}%</span></div>`}
     </div>
-    <div class="search-wrap"><span class="search-icon">⌕</span><input id="search" type="search" placeholder="Search this page…" autocomplete="off" oninput="onSearchInput(this)" aria-label="Search this page"><kbd>/</kbd></div>
+    <div class="search-wrap"><span class="search-icon">${icon('search')}</span><input id="search" type="search" placeholder="Search this page…" autocomplete="off" oninput="onSearchInput(this)" aria-label="Search this page"><kbd>/</kbd></div>
 ${featureNames.length > 0 ? `    <div class="feature-filter-wrap">
       <select id="featureFilter" class="feature-filter-select" onchange="applyFeatureFilter(this.value)" title="${scope ? 'Narrow further within this slice — the page already excludes everything outside it' : 'Filter by feature'}">
         <option value="">${scope ? 'All in this slice' : 'All Features'}</option>
@@ -188,7 +181,7 @@ ${featureNames.map(f => `        <option value="${esc(f)}">${esc(f)}</option>`).
       </select>
     </div>` : ''}
     <button id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark mode">
-      <span class="icon-sun">☀️</span><span class="icon-moon">🌙</span>
+      <span class="icon-sun">${icon('sun')}</span><span class="icon-moon">${icon('moon')}</span>
     </button>
   </div>
 </div>
@@ -251,7 +244,7 @@ ${attribution ? renderAttributionPage(attribution, ctx) : ''}
 <div class="drawer" id="drawer">
   <div class="drawer-header">
     <h3 id="drawer-title">Details</h3>
-    <button class="drawer-close" onclick="closeDrawer()">× Close</button>
+    <button class="drawer-close" onclick="closeDrawer()">${icon('x')} Close</button>
   </div>
   <div class="drawer-body" id="drawer-body"></div>
 </div>
@@ -269,6 +262,7 @@ const threatModel = ${embed(durableModel)};
 const claimsData = ${embed(claimsData)};
 const assetsData = ${embed(assetsData)};
 const openOnHost = ${JSON.stringify(`Open on ${hostLabel(links)}`)};
+const ICONS = ${JSON.stringify({ copy: icon('copy'), external: icon('external'), x: icon('x') })};
 ${CLIENT_JS}
 ${LEGACY_DRAWER_JS}
 ${FEATURE_FILTER_JS}

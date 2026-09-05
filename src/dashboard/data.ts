@@ -502,10 +502,23 @@ export function computeActions(input: ActionInput): DashboardAction[] {
  * @flows LedgerFile -> #dashboard via readLedger -- "Claim states for the badges and the stale-claims action"
  * @comment -- "Reads .guardlink/verified.json once; the classification itself is the parser's, not re-derived here"
  */
-export function computeLedgerStates(model: ThreatModel, root: string): { report: VerificationReport; byLocation: Map<object, ClaimState> } {
+export interface LedgerStates {
+  report: VerificationReport;
+  byLocation: Map<object, ClaimState>;
+  /** Who locked the claim and when, for claims the ledger holds. */
+  entryByLocation: Map<object, { verified_by: string; verified_at: string }>;
+}
+
+export function computeLedgerStates(model: ThreatModel, root: string): LedgerStates {
   const read = readLedger(root);
   const report = classifyClaims(model, read);
   const byLocation = new Map<object, ClaimState>();
-  if (report.ledger !== 'absent') for (const c of report.claims) byLocation.set(c.location, c.state);
-  return { report, byLocation };
+  const entryByLocation = new Map<object, { verified_by: string; verified_at: string }>();
+  if (report.ledger !== 'absent') {
+    for (const c of report.claims) {
+      byLocation.set(c.location, c.state);
+      if (c.entry) entryByLocation.set(c.location, { verified_by: c.entry.verified_by, verified_at: c.entry.verified_at });
+    }
+  }
+  return { report, byLocation, entryByLocation };
 }

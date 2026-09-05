@@ -4,7 +4,7 @@
  * @mitigates #dashboard against #xss using #output-encoding -- "Asset names and classifications are escaped"
  * @comment -- "Cells keep data-ff-asset (every alias of the tile, |-separated) and the asset drawer; the legend and search text are new"
  */
-import { esc, scopeLabel, sectionHead } from '../html.js';
+import { esc, scopeLabel, sectionHead, icon } from '../html.js';
 import type { PageContext } from './context.js';
 
 export function renderAssetsPage(ctx: PageContext): string {
@@ -13,7 +13,7 @@ export function renderAssetsPage(ctx: PageContext): string {
   for (const a of heatmap) counts[a.riskLevel]++;
   return `
 <div id="sec-assets" class="section-content">
-  ${sectionHead('🗺', 'Asset Risk Heatmap', scope, `<span class="muted"><span data-count-for="assets">${heatmap.length}</span> assets</span>`)}
+  ${sectionHead(icon('map'), 'Asset Risk Heatmap', scope, `<span class="muted"><span data-count-for="assets">${heatmap.length}</span> assets</span>`)}
   <p class="lead">Assets sorted by risk. Risk rises with unmitigated exposures: <strong>critical</strong> 3 or more open, <strong>high</strong> 2, <strong>medium</strong> 1, <strong>low</strong> exposed but covered. Click an asset for its threats, controls, flows, owners, files and who introduced its open exposures.${scope ? ` Only assets ${esc(scopeLabel(scope))} touches appear, and each tile counts only that feature's exposures, mitigations and flows — an asset shown here as low-risk may carry open threats elsewhere in the project.` : ''}</p>
   <div class="chips">
     <span class="chips-label">Legend</span>
@@ -30,9 +30,9 @@ export function renderAssetsPage(ctx: PageContext): string {
     <div class="heatmap-cell risk-cell-${a.riskLevel} clickable" data-ff-asset="${esc(a.aliases.join('|'))}" data-search="${esc(`${a.aliases.join(' ')} ${a.riskLevel} ${a.dataHandling.join(' ')}`.toLowerCase())}" onclick="openDrawer('asset', ${i})">
       <div class="heatmap-name">${esc(a.name)}</div>
       <div class="heatmap-stats">
-        <span title="Exposures">⚠ ${a.exposures}</span>
-        <span title="Mitigations">🛡 ${a.mitigations}</span>
-        <span title="Data flows">↔ ${a.flows}</span>
+        <span title="Exposures">${icon('alert')}${a.exposures}</span>
+        <span title="Mitigations">${icon('shield')}${a.mitigations}</span>
+        <span title="Data flows">${icon('arrows')}${a.flows}</span>
       </div>
       ${a.dataHandling.length > 0 ? `<div class="heatmap-data">${a.dataHandling.map(d => `<span class="data-badge">${esc(d)}</span>`).join('')}</div>` : ''}
     </div>`).join('')}

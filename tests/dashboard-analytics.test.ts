@@ -9,7 +9,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseProject } from '../src/parser/parse-project.js';
 import { generateDashboardHTML } from '../src/dashboard/index.js';
-import { computeAssetThreatMatrix, computeControlCoverage, computeSeverityStatus, computeAssetDetails, computeAssetHeatmap } from '../src/dashboard/data.js';
+import { computeAssetThreatMatrix, computeControlCoverage, computeSeverityStatus, computeAssetDetails, computeAssetHeatmap, computeLedgerStates } from '../src/dashboard/data.js';
+import { buildFileAnnotations } from '../src/dashboard/annotations.js';
+import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface } from '../src/dashboard/diagrams.js';
+import { readLedger, writeLedger, classifyClaims, planVerification, applyVerification } from '../src/parser/index.js';
 import { buildClaims } from '../src/dashboard/pages/context.js';
 import type { ExposureBlame } from '../src/blame/types.js';
 
@@ -148,5 +151,63 @@ describe('markup', () => {
     expect(api.threats.length).toBe(2);
     expect(api.owners).toEqual(['platform']);
     expect(h).toContain('function renderAssetDrawer(');
+  });
+});
+
+// Emoji and the symbol blocks the old page used for icons (geometric shapes, arrows-as-glyphs, misc technical).
+const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{25A0}-\u{25FF}\u{2300}-\u{23FF}\u{2980}-\u{29FF}\u{2B00}-\u{2BFF}]/u;
+
+describe('icons, not emoji', () => {
+  it('the page carries inline svg icons and no emoji, while the generators keep emoji by default for the .mmd artifacts', async () => {
+    const root = await project();
+    const { model } = await parseProject({ root, project: 'an' });
+    const h = generateDashboardHTML(model, root);
+    expect(h).toContain('<svg class="ico"');
+    expect(EMOJI.test(h)).toBe(false);
+    expect(EMOJI.test(generateThreatGraph(model))).toBe(true);
+    const plain = generateThreatGraph(model, { icons: 'none', showAll: true });
+    expect(EMOJI.test(plain)).toBe(false);
+    expect(plain).toMatch(/\{\{"[^"]*SQL_Injection[^"]*"\}\}:::sev_crit/);   // threat: hexagon, severity class
+    expect(plain).toMatch(/\(\["Output_Encoding"\]\):::control/);           // control: pill
+    expect(EMOJI.test(generateDataFlowDiagram(model, { icons: 'none' }))).toBe(false);
+    expect(EMOJI.test(generateAttackSurface(model, { icons: 'none' }))).toBe(false);
+    expect(generateAttackSurface(model, { icons: 'none' })).toMatch(/\(\["XSS"\]\):::sev_/);  // mitigated: pill
+  });
+});
+
+describe('annotation drawer data', () => {
+  it('joins each annotation to its fields, its claim row and its asset tile', async () => {
+    const root = await project();
+    const { model } = await parseProject({ root, project: 'an' });
+    const claims = buildClaims(model, null, null);
+    const heatmap = computeAssetHeatmap(model);
+    const groups = buildFileAnnotations(model, root, { claims, assets: heatmap, links: null });
+    const file = groups.find(g => g.file === 'src/a.ts')!;
+    const sqli = file.annotations.find(a => a.kind === 'exposes' && a.summary.includes('#sqli'))!;
+    expect(sqli.fields).toMatchObject({ asset: '#api', threat: '#sqli', severity: 'critical' });
+    expect(sqli.refs).toEqual(['cwe:CWE-89']);
+    expect(claims[sqli.claimIdx!]).toMatchObject({ asset: '#api', threat: '#sqli', verb: 'exposes' });
+    expect(heatmap[sqli.assetIdx!].name).toBe('#api');
+    const flow = file.annotations.find(a => a.kind === 'flow')!;
+    expect(flow.fields).toMatchObject({ source: 'User', target: '#api', mechanism: 'HTTPS' });
+    expect(flow.claimIdx).toBeNull();
+    const def = groups.find(g => g.file === '.guardlink/definitions.ts')!.annotations.find(a => a.kind === 'asset' && a.summary === 'App.API')!;
+    expect(heatmap[def.assetIdx!].name).toBe('#api');
+    expect(generateDashboardHTML(model, root)).toContain('function openAnnotationDrawer(');
+  });
+});
+
+describe('verified means locked', () => {
+  it('carries who locked each claim and when, and says so when one run locked everything', async () => {
+    const root = await project();
+    const { model } = await parseProject({ root, project: 'an' });
+    const plan = planVerification(classifyClaims(model, readLedger(root)), { kind: 'all' });
+    writeLedger(root, applyVerification(null, plan, { verified_by: 'human:test', verified_at: '2026-01-01T00:00:00.000Z' }));
+    const ledger = computeLedgerStates(model, root);
+    const claims = buildClaims(model, null, ledger);
+    expect(claims.every(c => c.state === 'verified' && c.verifiedBy === 'human:test' && c.verifiedAt === '2026-01-01T00:00:00.000Z')).toBe(true);
+    const h = generateDashboardHTML(model, root);
+    expect(h).toContain('all locked 2026-01-01 by human:test');
+    expect(h).toContain('"verifiedBy":"human:test"');
   });
 });

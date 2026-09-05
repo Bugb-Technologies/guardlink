@@ -10,7 +10,7 @@
  * @handles pii on #dashboard -- "Author identities rendered into a page that is often committed; blame.identity=hash in config.json is the setting for a shared dashboard"
  * @comment -- "No wall clock: ages are measured to the HEAD commit's date, so two generations at the same HEAD are byte-identical"
  */
-import { esc, kpi, chip, sortableHead, rowAttrs, numCell, sevBadge, sevRank, locCellShort, whoLink, badge, sectionHead, subHead, plural, num, pager, colgroup } from '../html.js';
+import { esc, kpi, chip, sortableHead, rowAttrs, numCell, sevBadge, sevRank, locCellShort, whoLink, badge, sectionHead, subHead, plural, num, pager, colgroup, icon } from '../html.js';
 import type { AttributionData } from '../data.js';
 import type { PageContext, ClaimView, DrawerRef } from './context.js';
 import type { Cohort, TrendBucket } from '../../blame/types.js';
@@ -130,7 +130,7 @@ export function renderAttributionPage(a: AttributionData, ctx: PageContext): str
 
   return `
 <div id="sec-attribution" class="section-content">
-  ${sectionHead('👥', 'Attribution', scope, a.as_of ? `<span class="muted">as of ${esc(a.as_of.slice(0, 10))}</span>` : '')}
+  ${sectionHead(icon('users'), 'Attribution', scope, a.as_of ? `<span class="muted">as of ${esc(a.as_of.slice(0, 10))}</span>` : '')}
   <p class="lead">Who introduced the code beneath each claim, who declared it, who declared its fix, and which AI tool co-authored those commits — read from git history. AI credit is <strong>declared</strong> by commit trailers (<code>Co-Authored-By</code>, <code>Assisted-by</code>), never detected from code; a commit with no trailer stays human. Click any person or tool to see exactly their claims.</p>
 
   <div class="kpis">

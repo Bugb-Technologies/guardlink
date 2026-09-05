@@ -9,7 +9,7 @@
  * @mitigates #dashboard against #xss using #output-encoding -- "Every model value, action text and identity is rendered through esc(); hrefs are attribute-escaped"
  * @comment -- "The Open Threats tile keeps its exact markup and label, and the coverage panel keeps .coverage-pct / .posture-fill / the 'exposures mitigated' sentence: the client feature filter rewrites those by label, and a test greps the tile"
  */
-import { esc, kpi, statCard, sevBadge, sevRank, scopeLabel, sectionHead, subHead, copyButton, locInline, whoLink, plural, normSev } from '../html.js';
+import { esc, kpi, statCard, sevBadge, sevRank, scopeLabel, sectionHead, subHead, copyButton, locInline, whoLink, plural, normSev, icon } from '../html.js';
 import type { PageContext } from './context.js';
 
 function severityBar(label: string, count: number, total: number, cls: string): string {
@@ -28,6 +28,17 @@ export function renderSummaryPage(ctx: PageContext): string {
   const verified = ledger ? ledger.report.summary : null;
   const claimsTotal = verified ? verified.verified + verified.stale + verified.unverified : 0;
   const verifiedPct = verified && claimsTotal > 0 ? Math.round((verified.verified / claimsTotal) * 100) : 0;
+  // A ledger where nothing is stale or unverified usually means one `guardlink verify`
+  // locked every claim; say so, with who and when, so 100% reads as a lock, not a review.
+  const lockedHint = ((): string | null => {
+    if (!ledger || !verified || verified.stale > 0 || verified.unverified > 0) return null;
+    const entries = ledger.report.claims.map(c => c.entry).filter((e): e is NonNullable<typeof e> => !!e);
+    if (entries.length === 0) return null;
+    const whos = [...new Set(entries.map(e => e.verified_by))];
+    const dates = entries.map(e => e.verified_at.slice(0, 10)).sort();
+    const when = dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} to ${dates[dates.length - 1]}`;
+    return `all locked ${when} by ${whos.length === 1 ? whos[0] : `${whos.length} people`}`;
+  })();
   const filesTotal = (model.annotated_files?.length || 0) + (model.unannotated_files || []).length;
 
   const kpis = [
@@ -38,7 +49,7 @@ export function renderSummaryPage(ctx: PageContext): string {
       : kpi({ value: accepted, label: 'Accepted risks', href: '#threats?status=accepted', tone: 'muted', hint: 'signed off by a human' }),
     kpi({ value: `${mitigationCoveragePercent}%`, label: 'Mitigation coverage', href: '#threats?status=mitigated', tone: mitigationCoveragePercent >= 70 ? 'success' : mitigationCoveragePercent >= 40 ? 'warn' : 'danger', hint: `${mitigatedCount} of ${exposures.length} exposures` }),
     verified
-      ? kpi({ value: `${verifiedPct}%`, label: 'Verified claims', href: '#threats?state=verified', tone: verified.stale > 0 ? 'warn' : verifiedPct >= 70 ? 'success' : 'muted', hint: `${verified.stale} stale · ${verified.unverified} unverified` })
+      ? kpi({ value: `${verifiedPct}%`, label: 'Verified claims', href: '#threats?state=verified', tone: verified.stale > 0 ? 'warn' : verifiedPct >= 70 ? 'success' : 'muted', hint: lockedHint ?? `${verified.stale} stale · ${verified.unverified} unverified` })
       : scope
         ? kpi({ value: scopeFiles, label: 'Files in this slice', href: '#code', tone: 'muted', hint: `tagged @feature ${scopeLabel(scope)}` })
         : kpi({ value: `${stats.coveragePercent}%`, label: 'Files annotated', href: '#code', tone: stats.coveragePercent >= 70 ? 'success' : stats.coveragePercent >= 40 ? 'warn' : 'danger', hint: `${model.annotated_files?.length || 0} of ${filesTotal} source files` }),
@@ -49,7 +60,7 @@ export function renderSummaryPage(ctx: PageContext): string {
 
   return `
 <div id="sec-summary" class="section-content active">
-  ${sectionHead('◆', 'Executive Summary', scope)}
+  ${sectionHead(icon('layout'), 'Executive Summary', scope)}
 ${scope ? `  <p class="scope-note">Every number on this page counts annotations from the ${scopeFiles} file(s) tagged <code>@feature ${esc(scopeLabel(scope))}</code>. The risk grade below grades ${scope.length > 1 ? 'these features' : 'this feature'} — it is <strong>not</strong> the project's grade.</p>` : ''}
 
   <div class="risk-banner risk-${risk.grade.toLowerCase()}">

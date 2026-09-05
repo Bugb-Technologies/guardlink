@@ -472,7 +472,6 @@ function renderAIAnalysisContent(container, content) {
     }
   } else {
     container.innerHTML = '<div class="empty-state" style="text-align:center;padding:3rem 1rem">' +
-      '<div style="font-size:3rem;margin-bottom:1rem;opacity:0.5">✨</div>' +
       '<div style="font-size:1.1rem;font-weight:600;margin-bottom:0.5rem">No Threat Reports Yet</div>' +
       '<div style="color:var(--muted);margin-bottom:1.5rem">Generate an AI threat report using the threat-report command</div>' +
       '<div style="display:flex;flex-direction:column;gap:0.5rem;max-width:500px;margin:0 auto;text-align:left">' +
@@ -539,8 +538,8 @@ function renderAIAnalysis() {
 
 /**
  * The first dashboard's drawer builders for assets and annotations, kept as
- * `openLegacyDrawer`. Claim drawers (exposure, confirmed, mitigation) are the
- * upgrade's own; the asset and annotation ones still work and are reused.
+ * `openLegacyDrawer`. Claim, asset and annotation drawers are the upgrade's
+ * own (client.ts); these builders remain for the legacy exposure types.
  */
 export const LEGACY_DRAWER_JS = `function openLegacyDrawer(type, idx) {
   const title = document.getElementById('drawer-title');
@@ -568,7 +567,7 @@ export const LEGACY_DRAWER_JS = `function openLegacyDrawer(type, idx) {
   } else if (type === 'confirmed') {
     const c = confirmedData[idx];
     title.textContent = c.threat + ' (Confirmed)';
-    h += '<div style="background:var(--badge-red-bg);border:1px solid var(--sev-crit);border-radius:6px;padding:.6rem;margin-bottom:1rem"><div style="font-size:.82rem;font-weight:700;color:var(--sev-crit)">🔴 CONFIRMED EXPLOITABLE</div><div style="font-size:.75rem;margin-top:.2rem;color:var(--muted)">Verified through testing — not a false positive</div></div>';
+    h += '<div style="background:var(--badge-red-bg);border:1px solid var(--sev-crit);border-radius:6px;padding:.6rem;margin-bottom:1rem"><div style="font-size:.82rem;font-weight:700;color:var(--sev-crit)">CONFIRMED EXPLOITABLE</div><div style="font-size:.75rem;margin-top:.2rem;color:var(--muted)">Verified through testing — not a false positive</div></div>';
     h += sec('Severity', '<span class="fc-sev ' + sevCls(c.severity) + '">' + esc(c.severity) + '</span>');
     h += sec('Asset', '<code>' + esc(c.asset) + '</code>');
     h += sec('Threat', '<code>' + esc(c.threat) + '</code>');
@@ -781,23 +780,5 @@ export const LEGACY_DRAWER_JS = `function openLegacyDrawer(type, idx) {
   document.getElementById('drawer-overlay').classList.add('open');
 }
 
-function openAnnotationDrawer(fileIdx, annIdx) {
-  const title = document.getElementById('drawer-title');
-  const body = document.getElementById('drawer-body');
-  const fentry = fileAnnotations[fileIdx];
-  if (!fentry) return;
-  const ann = fentry.annotations[annIdx];
-  if (!ann) return;
-
-  title.textContent = ann.kind.toUpperCase() + ': ' + ann.summary;
-  let h = '';
-  h += sec('Type', '<span class="ann-badge ann-' + ann.kind + '">' + ann.kind + '</span>');
-  h += sec('Location', '<span style="font-family:var(--font-mono);font-size:.78rem;color:var(--muted)">' + esc(fentry.file) + ':' + ann.line + '</span>');
-  if (ann.description) h += sec('Description', esc(ann.description));
-  if (ann.raw) h += sec('Raw Annotation', '<div class="d-code">' + esc(ann.raw) + '</div>');
-  body.innerHTML = h;
-  document.getElementById('drawer').classList.add('open');
-  document.getElementById('drawer-overlay').classList.add('open');
-}
 
 `;

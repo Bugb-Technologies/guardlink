@@ -111,6 +111,26 @@ tile, no pagination, and the data the model holds was under-charted.
 - New pinned contract: the page's inline script must parse (`new Function`), because a stray quote
   in the client string silently disables every control.
 
+### Third pass — type, palette, icons, drawers
+
+- Fonts: Helvetica Neue (UI) and Monoska (code) with JetBrains Mono as the loaded fallback; the
+  Google Fonts link carries only the fallback. Palette: the ten brand colours as tokens, tints via
+  `color-mix`; light theme accent is blue (`#0360a2`) because the brand green fails contrast as
+  text on white, green stays for fills and "covered"; muted text is `#3b6779` on light and a
+  55% mix of `#55899e` with `#f0f0f0` on dark. Critical badges are filled, high outlined.
+- No emoji: `icon(name)` in `html.ts` renders inline SVG (Lucide-style paths); `ICONS` is
+  embedded for the client. The Mermaid generators take `{ icons: 'emoji' | 'none' }` — the
+  dashboard passes `none` and gets shapes (hexagon threat, pill control, cylinder store, flag
+  external, status as shape on the attack surface) plus `sev_*` classes; artifacts and MCP keep
+  the default emoji because GitHub's renderer has no other icon. Legends are SVG chips.
+- Matrices: `table.heat` is `width: 100%` with no box, so a 3-column grid fills its panel.
+- Drawers: 680px. The annotation drawer is the upgrade's own (`openAnnotationDrawer` in
+  `client.ts`) over `FileAnnotation.fields/refs/claimIdx/assetIdx/url`, which
+  `buildFileAnnotations(model, root, { claims, assets, links })` joins; the legacy builder is gone.
+- Ledger: `computeLedgerStates` returns `entryByLocation`; `ClaimView.verifiedBy/verifiedAt`;
+  the status band says "by X on date" (stale: "locked by X on date, code changed since"); the
+  Verified-claims KPI says "all locked <date> by <who>" when nothing is stale or unverified.
+
 ## Testing
 
 - `tests/dashboard-actions.test.ts` — action list on fixtures: order, hrefs, commands, empty case, slice withholding.
