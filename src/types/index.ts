@@ -441,6 +441,12 @@ export interface ThreatModelMitigation {
   control?: string;
   description?: string;
   location: SourceLocation;
+  /**
+   * Git attribution, present only after `attachBlame` (CLI `--blame`). Like
+   * `anchor` it describes history, not the claim: excluded from the annotation
+   * hash and stripped from the committed model.json.
+   */
+  blame?: import('../blame/types.js').MitigationBlame;
 }
 
 export interface ThreatModelExposure {
@@ -450,6 +456,8 @@ export interface ThreatModelExposure {
   external_refs: string[];
   description?: string;
   location: SourceLocation;
+  /** Git attribution, present only after `attachBlame` (CLI `--blame`). See ThreatModelMitigation.blame. */
+  blame?: import('../blame/types.js').ExposureBlame;
 }
 
 export interface ThreatModelConfirmed {
@@ -459,6 +467,8 @@ export interface ThreatModelConfirmed {
   external_refs: string[];
   description?: string;
   location: SourceLocation;
+  /** Git attribution, present only after `attachBlame` (CLI `--blame`). See ThreatModelMitigation.blame. */
+  blame?: import('../blame/types.js').ExposureBlame;
 }
 
 export interface ThreatModelAcceptance {

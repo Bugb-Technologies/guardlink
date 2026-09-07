@@ -208,6 +208,48 @@ function severityIcon(sev: string): string {
   return '⚪';
 }
 
+/**
+ * How a diagram marks kinds and states. `emoji` (default) is what the
+ * committed `.mmd` artifacts and MCP carry, because GitHub's renderer has no
+ * other icon. `none` is what the dashboard asks for: the same facts as node
+ * shapes (hexagon threat, pill control, cylinder store…) and severity classes.
+ */
+export type DiagramIcons = 'emoji' | 'none';
+export interface DiagramOptions { icons?: DiagramIcons }
+
+function glyphs(icons: DiagramIcons | undefined) {
+  const on = icons !== 'none';
+  return {
+    on,
+    asset: on ? '🔷 ' : '',
+    zone: on ? '🧱 ' : '',
+    control: on ? '🛡️ ' : '',
+    confirmed: on ? '💥 confirmed' : 'confirmed',
+    sev: (s: string): string => (on ? `${severityIcon(s)} ` : ''),
+    node: (n: string): string => (on ? `${assetIcon(n)} ` : ''),
+    flow: (m: string): string => (on ? `${flowIcon(m)} ` : ''),
+    bnd: (desc: string): string => (on ? `🧱 ${desc}` : desc),
+  };
+}
+
+/** Node shape by what the asset is, for diagrams without emoji. */
+function nodeShape(name: string, text: string): string {
+  const n = normalizeRef(name).toLowerCase();
+  if (/(user|client|browser|mobile|frontend|ui)/.test(n)) return `(["${text}"])`;
+  if (/(external|internet|partner|vendor|public|third[_-]?party)/.test(n)) return `>"${text}"]`;
+  if (/(queue|topic|kafka|pubsub|amqp|broker|stream)/.test(n)) return `[["${text}"]]`;
+  if (/(db|database|store|storage|bucket|cache|redis|s3|blob)/.test(n)) return `[("${text}")]`;
+  return `["${text}"]`;
+}
+
+const SEV_CLASSDEFS = [
+  '  classDef sev_crit fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.4px',
+  '  classDef sev_high fill:#402019,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.2px',
+  '  classDef sev_med fill:#1f3943,stroke:#55899e,color:#f0f0f0',
+  '  classDef sev_low fill:#10263b,stroke:#0360a2,color:#f0f0f0',
+  '  classDef sev_unset fill:#223942,stroke:#3b6779,color:#f0f0f0',
+];
+
 function severityClass(sev: string): string {
   if (sev === 'critical' || sev === 'p0') return 'sev_crit';
   if (sev === 'high' || sev === 'p1') return 'sev_high';
@@ -220,7 +262,7 @@ function severityClass(sev: string): string {
  * Diagram 1: Threat Model Graph
  * ══════════════════════════════════════════════════════════════════════════ */
 
-interface ThreatGraphOptions {
+interface ThreatGraphOptions extends DiagramOptions {
   /** Show all threats regardless of severity. Defaults to auto-filter when >12 distinct threats are exposed. */
   showAll?: boolean;
 }
@@ -334,19 +376,20 @@ export function generateThreatGraph(model: ThreatModel, opts: ThreatGraphOptions
     'graph LR',
   ];
 
+  const g = glyphs(opts.icons);
   const assetLabelFor = (node: AliasNode): string => {
     const classes = dataClassByKey.get(node.key);
     const owner = ownerByKey.get(node.key);
     let suffix = '';
     if (classes && classes.length > 0) suffix += ` [${classes.join(', ')}]`;
     if (owner) suffix += ` (${label(owner, 15)})`;
-    return `🔷 ${label(node.label)}${suffix}`;
+    return `${g.asset}${label(node.label)}${suffix}`;
   };
 
   // Emit subgraphs first
   const emittedAssets = new Set<string>();
   for (const [zoneId, zone] of zoneById) {
-    lines.push(`  subgraph ${zoneId}["🧱 ${label(zone.label, 40)}"]`);
+    lines.push(`  subgraph ${zoneId}["${g.zone}${label(zone.label, 40)}"]`);
     for (const key of zone.members) {
       const node = [...aliases.getAll('asset')].find(n => n.key === key);
       if (!node) continue;
@@ -368,16 +411,16 @@ export function generateThreatGraph(model: ThreatModel, opts: ThreatGraphOptions
   for (const key of usedThreatKeys) {
     const node = [...aliases.getAll('threat')].find(n => n.key === key);
     if (!node) continue;
-    const icon = severityIcon(node.severity);
     const refSuffix = node.externalRefs.length > 0 ? ` (${node.externalRefs.slice(0, 2).join(', ')})` : '';
-    lines.push(`  ${mid(node.key)}["${icon} ${label(node.label, 35)}${refSuffix}"]:::threat`);
+    const text = `${g.sev(node.severity)}${label(node.label, 35)}${refSuffix}`;
+    lines.push(g.on ? `  ${mid(node.key)}["${text}"]:::threat` : `  ${mid(node.key)}{{"${text}"}}:::${severityClass(node.severity)}`);
   }
 
   // Control nodes
   for (const key of usedControlKeys) {
     const node = [...aliases.getAll('control')].find(n => n.key === key);
     if (!node) continue;
-    lines.push(`  ${mid(node.key)}["🛡️ ${label(node.label)}"]:::control`);
+    lines.push(g.on ? `  ${mid(node.key)}["${g.control}${label(node.label)}"]:::control` : `  ${mid(node.key)}(["${label(node.label)}"]):::control`);
   }
 
   // Edge emission (deduped)
@@ -399,7 +442,7 @@ export function generateThreatGraph(model: ThreatModel, opts: ThreatGraphOptions
   for (const c of model.confirmed || []) {
     const asset = resolve('asset', c.asset);
     const threat = resolve('threat', c.threat);
-    edge(asset.key, threat.key, 'conf', `${mid(asset.key)} == "💥 confirmed" ==> ${mid(threat.key)}`);
+    edge(asset.key, threat.key, 'conf', `${mid(asset.key)} == "${g.confirmed}" ==> ${mid(threat.key)}`);
   }
   for (const m of model.mitigations) {
     const threat = resolve('threat', m.threat);
@@ -436,7 +479,7 @@ export function generateThreatGraph(model: ThreatModel, opts: ThreatGraphOptions
     const target = resolve('asset', f.target);
     if (!usedAssetKeys.has(source.key) || !usedAssetKeys.has(target.key)) continue;
     if (f.mechanism) {
-      edge(source.key, target.key, `flow:${f.mechanism}`, `${mid(source.key)} -- "${flowIcon(f.mechanism)} ${label(f.mechanism, 22)}" --> ${mid(target.key)}`);
+      edge(source.key, target.key, `flow:${f.mechanism}`, `${mid(source.key)} -- "${g.flow(f.mechanism)}${label(f.mechanism, 22)}" --> ${mid(target.key)}`);
     } else {
       edge(source.key, target.key, 'flow', `${mid(source.key)} --> ${mid(target.key)}`);
     }
@@ -446,11 +489,12 @@ export function generateThreatGraph(model: ThreatModel, opts: ThreatGraphOptions
     const z = resolve('asset', b.asset_b);
     if (!usedAssetKeys.has(a.key) || !usedAssetKeys.has(z.key)) continue;
     const desc = b.description ? label(b.description, 26) : 'trust boundary';
-    edge(a.key, z.key, 'bnd', `${mid(a.key)} -.-|🧱 ${desc}| ${mid(z.key)}`);
+    edge(a.key, z.key, 'bnd', `${mid(a.key)} -.-|${g.bnd(desc)}| ${mid(z.key)}`);
   }
 
   lines.push('  classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px');
   lines.push('  classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px');
+  if (!g.on) lines.push(...SEV_CLASSDEFS);
 
   return lines.join('\n');
 }
@@ -465,7 +509,8 @@ export function generateThreatGraph(model: ThreatModel, opts: ThreatGraphOptions
  * itself is drawn as a purple dashed edge between the two sides. Assets that
  * are not touched by any boundary render as standalone nodes.
  */
-export function generateDataFlowDiagram(model: ThreatModel): string {
+export function generateDataFlowDiagram(model: ThreatModel, opts: DiagramOptions = {}): string {
+  const g = glyphs(opts.icons);
   if (model.flows.length === 0) return '';
 
   const aliases = buildAliases(model);
@@ -494,7 +539,7 @@ export function generateDataFlowDiagram(model: ThreatModel): string {
   const nodeLabel = (n: AliasNode): string => {
     const badges = handlingByKey.get(n.key);
     const suffix = badges && badges.length > 0 ? ` · ${badges.join(', ')}` : '';
-    return `${assetIcon(n.label)} ${labelFull(n.label)}${suffix}`;
+    return `${g.node(n.label)}${labelFull(n.label)}${suffix}`;
   };
 
   // Collect the set of assets actually used by flows (or boundaries)
@@ -515,8 +560,8 @@ export function generateDataFlowDiagram(model: ThreatModel): string {
     if (placedAssets.has(node.key)) return;
     const zoneId = `Z${zIdx++}`;
     const zoneLabel = desc === node.label ? node.label : `${node.label} · ${desc}`;
-    lines.push(`  subgraph ${zoneId}["🧱 ${labelFull(zoneLabel)}"]`);
-    lines.push(`    ${mid(node.key)}["${nodeLabel(node)}"]`);
+    lines.push(`  subgraph ${zoneId}["${g.zone}${labelFull(zoneLabel)}"]`);
+    lines.push(`    ${mid(node.key)}${g.on ? `["${nodeLabel(node)}"]` : nodeShape(node.label, nodeLabel(node))}`);
     lines.push('  end');
     placedAssets.add(node.key);
     usedAssets.set(node.key, node);
@@ -533,7 +578,7 @@ export function generateDataFlowDiagram(model: ThreatModel): string {
   // Standalone nodes (flow endpoints not inside any boundary zone)
   for (const node of usedAssets.values()) {
     if (placedAssets.has(node.key)) continue;
-    lines.push(`  ${mid(node.key)}["${nodeLabel(node)}"]`);
+    lines.push(`  ${mid(node.key)}${g.on ? `["${nodeLabel(node)}"]` : nodeShape(node.label, nodeLabel(node))}`);
     placedAssets.add(node.key);
   }
 
@@ -546,7 +591,7 @@ export function generateDataFlowDiagram(model: ThreatModel): string {
     if (emittedBoundaries.has(k)) continue;
     emittedBoundaries.add(k);
     const desc = b.description ? labelFull(b.description) : 'trust boundary';
-    lines.push(`  ${mid(a.key)} -.-|🧱 ${desc}| ${mid(z.key)}`);
+    lines.push(`  ${mid(a.key)} -.-|${g.bnd(desc)}| ${mid(z.key)}`);
   }
 
   // Flow edges
@@ -558,7 +603,7 @@ export function generateDataFlowDiagram(model: ThreatModel): string {
     if (emittedFlows.has(k)) continue;
     emittedFlows.add(k);
     if (f.mechanism) {
-      lines.push(`  ${mid(s.key)} -- "${flowIcon(f.mechanism)} ${labelFull(f.mechanism)}" --> ${mid(t.key)}`);
+      lines.push(`  ${mid(s.key)} -- "${g.flow(f.mechanism)}${labelFull(f.mechanism)}" --> ${mid(t.key)}`);
     } else {
       lines.push(`  ${mid(s.key)} --> ${mid(t.key)}`);
     }
@@ -585,8 +630,9 @@ interface AttackSurfaceEntry {
  *   - 🟦  accepted
  *   - 💥  confirmed (raises severity to critical)
  */
-export function generateAttackSurface(model: ThreatModel): string {
+export function generateAttackSurface(model: ThreatModel, opts: DiagramOptions = {}): string {
   if (model.exposures.length === 0 && (!model.confirmed || model.confirmed.length === 0)) return '';
+  const g = glyphs(opts.icons);
 
   const aliases = buildAliases(model);
   const resolveAsset = (ref: string) => aliases.resolve('asset', ref);
@@ -684,10 +730,10 @@ export function generateAttackSurface(model: ThreatModel): string {
     const totalThreats = group.threats.size;
     const coverage = totalThreats === 0 ? 0 : Math.round((group.mitigatedCount / totalThreats) * 100);
     const statusSuffix = group.confirmedCount > 0
-      ? ` · 💥 ${group.confirmedCount} confirmed`
+      ? ` · ${g.on ? '💥 ' : ''}${group.confirmedCount} confirmed`
       : group.openCount > 0
-        ? ` · ⚠ ${group.openCount} open`
-        : ` · ✅ ${coverage}% covered`;
+        ? ` · ${g.on ? '⚠ ' : ''}${group.openCount} open`
+        : ` · ${g.on ? '✅ ' : ''}${coverage}% covered`;
 
     lines.push(`  subgraph A_${mid(assetKey)}["${label(group.label)}${statusSuffix}"]`);
     lines.push(`    direction TB`);
@@ -696,13 +742,23 @@ export function generateAttackSurface(model: ThreatModel): string {
 
     for (const entry of sorted) {
       const cls = severityClass(entry.severity);
-      const icon = entry.status === 'confirmed' ? '💥'
-        : entry.status === 'mitigated' ? '✅'
-          : entry.status === 'accepted' ? '🟦'
-            : '⚠️';
       const threatLabel = label(entry.threatLabel, 30);
       const countSuffix = entry.count > 1 ? ` ×${entry.count}` : '';
-      lines.push(`    E${eIdx}["${icon} ${threatLabel}${countSuffix}"]:::${cls}`);
+      if (g.on) {
+        const icon = entry.status === 'confirmed' ? '💥'
+          : entry.status === 'mitigated' ? '✅'
+            : entry.status === 'accepted' ? '🟦'
+              : '⚠️';
+        lines.push(`    E${eIdx}["${icon} ${threatLabel}${countSuffix}"]:::${cls}`);
+      } else {
+        // Shape is status: hexagon confirmed, box open, pill mitigated, slanted accepted.
+        const text = `${threatLabel}${countSuffix}`;
+        const shaped = entry.status === 'confirmed' ? `{{"${text}"}}`
+          : entry.status === 'mitigated' ? `(["${text}"])`
+            : entry.status === 'accepted' ? `[/"${text}"/]`
+              : `["${text}"]`;
+        lines.push(`    E${eIdx}${shaped}:::${cls}`);
+      }
       eIdx++;
     }
     lines.push('  end');

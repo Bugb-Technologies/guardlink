@@ -203,8 +203,10 @@ describe('a narrowed model keeps the definitions its relations reference', () =>
 
   it('shows the same resolved nodes in the dashboard\'s diagram panel', () => {
     const scoped = generateDashboardHTML(narrowed(projectModel(), ['Dashboard']));
-    expect(scoped).toContain('🟠 Cross_Site_Scripting (cwe:CWE-79)');
+    // The page draws no emoji: severity is the node's class, the name is resolved.
+    expect(scoped).toContain('Cross_Site_Scripting (cwe:CWE-79)&quot;}}:::sev_high');
     expect(scoped).not.toContain('⚪ xss');
+    expect(scoped).not.toContain('🟠');
   });
 
   it('tells the reader an absent node is out of scope, not out of the model', () => {

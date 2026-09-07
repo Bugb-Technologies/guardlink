@@ -125,6 +125,14 @@ guardlink unannotated [dir]             # List source files with no annotations
 guardlink feature list [dir]            # List all @feature tags with stats
 guardlink feature show <name>           # Show threat model for a specific feature
 
+# Attribution (read from git; nothing written)
+guardlink blame [dir] [--file f] [--json] [--identity name|email|hash]   # who introduced / declared / fixed each claim, and which AI co-authored it
+guardlink parse . --blame               # same, attached to each record of the JSON model
+guardlink status . --blame              # top people and AI tools by exposures introduced
+guardlink report . --blame              # adds an Attribution section
+guardlink dashboard . --blame           # adds an Attribution page
+guardlink dashboard . --since v1.2.0    # adds a "what changed since <ref>" strip and marks new claims
+
 # Interactive
 guardlink tui [dir]                     # Interactive TUI: slash commands + AI chat
 guardlink mcp                           # Start MCP server (stdio) for Claude Code, Cursor, etc.
@@ -225,8 +233,85 @@ When connected via `.mcp.json`, use:
 - `guardlink_status` — coverage stats
 - `guardlink_entitlement_propose` — propose an `@entitles` claim into `.guardlink/entitlement-proposals.json` (writes nothing to source)
 - `guardlink_entitlement_list` — see proposals and their decisions; a rejected claim must not be re-filed
+- `guardlink_blame` — who introduced, declared and fixed each claim, and which AI tool co-authored those commits (read from git; optional `file`)
 
 There is deliberately no entitlement *accept* tool. Acceptance is a human decision recorded by name, through `guardlink entitle`.
+
+## Attribution (`guardlink blame`)
+
+Every relationship claim sits on a span of code. `guardlink blame` reads git history for each
+one and answers four questions, without writing anything — not a note, not a trailer:
+
+| Question | How it is answered |
+|---|---|
+| Who introduced the code beneath the claim? | The oldest commit in the span's line history (`git log -L`). For a file-header claim the span is the whole file, so it is the commit that added the file, and the record says `granularity: file`. |
+| Who declared the claim? | `git blame` of the annotation line — for a `.gal` sidecar, the line in the sidecar. |
+| Who declared the fix? | The earliest-declared `@mitigates` that covers the exposure; `time_to_fix_days` is the gap. |
+| Did an AI co-author those commits, and which model? | Commit trailers and bot author identities. |
+
+**AI attribution is declared, never detected.** A commit is credited to an AI tool only when its
+author or a `Co-Authored-By` / `Co-authored-by` / `Assisted-by` trailer matches a rule. A commit
+with no trailer stays human, and a `Co-authored-by` that matches no rule is a human co-author. The
+granularity is the commit: a co-authored commit means the tool was involved, not that it wrote
+every line. The shipped rules:
+
+| Tool | Recognised by | Model |
+|---|---|---|
+| Claude Code | `Co-Authored-By: Claude … <noreply@anthropic.com>` | the name, e.g. `Claude Opus 5 (1M context)` |
+| GitHub Copilot coding agent | bot **author** `Copilot <…+Copilot@users.noreply.github.com>`; the human co-author becomes the author | — |
+| Codex CLI | `Co-authored-by: Codex <noreply@openai.com>` | — |
+| Cursor | `Co-authored-by: Cursor <cursoragent@cursor.com>` | — |
+| Gemini CLI | `Co-authored-by: gemini-cli <model> <…gemini-cli@users.noreply.github.com>` | what follows the tool token |
+| aider | author name suffix ` (aider)`, or a co-author trailer naming aider | text in parentheses |
+| Warp | `Co-Authored-By: Warp <agent@warp.dev>` | — |
+| Kernel style | `Assisted-by: AGENT:MODEL [tool…]` (Linux, Fedora, LLVM, QEMU, …) | after the colon |
+
+Add your own, or override a vendor's, in `.guardlink/config.json`; user rows are matched first.
+Patterns are anchored, case-insensitive regular expressions, capped at 256 characters:
+
+```json
+{
+  "blame": {
+    "identity": "name",
+    "tools": [{ "tool": "corp-bot", "email": "bot@corp\\.example" }],
+    "ignore_revs": ".git-blame-ignore-revs"
+  }
+}
+```
+
+- `identity` — `name` (default), `email`, or `hash` (12 hex of the email's sha256). Author emails are
+  personal data and the dashboard embeds the model in a file people commit, so `hash` is the setting
+  for a shared dashboard. `guardlink blame --identity` overrides it for one run. Names and emails are
+  read through git's `.mailmap`, so one person who committed under two identities is one row once the
+  repository maps them.
+- `ignore_revs` — passed to `git blame --ignore-revs-file` when the file exists, so a mass reformat does
+  not become the introducer of everything it touched.
+
+Every degraded answer is explicit in `status`: `no-git` (not a checkout), `uncommitted` (the line or
+its span has changes git has not seen), `shallow` (history truncated; every introduction is a lower
+bound, as is one computed for a file with uncommitted edits), `no-anchor`, `file-missing`, `error`.
+
+The dashboard's Attribution page (`guardlink dashboard --blame`) adds the analysis: a quarterly trend of
+introductions (human vs AI-assisted) and fixes, exposures per 100 commits per person and per model
+(each identity's commit count comes from one history walk; `computeBlame({ history: false })`
+skips it), a severity-weighted risk score, the age of the oldest open exposure, the files most
+rewritten under open exposures, and a click on any identity that narrows the claims table. The
+dashboard also links every `file:line` and commit to the repository's web host when `.git/config`
+names a GitHub, GitLab or Bitbucket origin, and shows verified / stale / unverified per claim
+when a ledger exists. The Analytics page charts the model itself — asset × threat, severity ×
+status, threats by frequency, control coverage (including controls nothing uses), the files with
+the most open exposures, open risk per owning team (`@owns`) with the exposed assets nobody owns,
+open exposure per data classification (`@handles`), and with `--blame` people × quarter and AI
+tool × severity — with every cell linking into the filtered Threats table. `--since <ref>` adds a
+strip under the summary saying what changed since a tag, branch or commit: exposures added and
+resolved, newly confirmed, new mitigations, and verified claims gone stale in files that changed.
+
+Attribution is opt-in and computed at run time. Without `--blame` every command's output is exactly
+what it was; with it, exposures, confirmed findings and mitigations carry a `blame` field that is
+invisible to the annotation hash and never written to `.guardlink/model.json`. The JSON payload of
+`guardlink blame --json` (`guardlink.blame/v1`) keys every entry with the ledger claim key, so it
+joins to `.guardlink/verified.json`. It works whether one person or the whole team runs GuardLink:
+the evidence is in git, not in the annotations.
 
 ## Stale claims and the verification ledger
 

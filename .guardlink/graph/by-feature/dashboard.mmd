@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-feature/dashboard.mmd
 %% scope:           PARTIAL — @feature "Dashboard" only, not the whole model
-%% annotation_hash: sha256-v2:d87c67372ccc764e906cdaf802b5994abcee762996822cf0d6a615c756e1b030
+%% annotation_hash: sha256-v2:d776d470058d48c0f39ad2cd1c5840a020d0ce27bac75add962f15f5f65ea5c6
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -23,7 +23,7 @@
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
 graph LR
-  dashboard["🔷 GuardLink.Dashboard [INTERNAL]"]
+  dashboard["🔷 GuardLink.Dashboard [INTERNAL, PII]"]
   xss["🟠 Cross_Site_Scripting (cwe:CWE-79)"]:::threat
   path_traversal["🟠 Path_Traversal (cwe:CWE-22)"]:::threat
   output_encoding["🛡️ Output_Encoding"]:::control

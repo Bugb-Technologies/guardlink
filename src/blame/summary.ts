@@ -1,0 +1,350 @@
+/**
+ * GuardLink Blame — the versioned payload and the summaries. Pure.
+ *
+ * Entries are keyed with the ledger's claim key (`relationRecords`), so a
+ * blame payload joins to `.guardlink/verified.json` on `key`. The join is by
+ * verb + index into the model arrays, never by location identity: chained
+ * `@flows` share one location object, and an index cannot rot.
+ *
+ * Credit is co-attribution, not a split. An exposure credits `introduced` to
+ * its introducing commit's author, every human co-author of that commit, and
+ * every AI tool the commit declared; `fixed` likewise from the fixing commit.
+ * `open` is "introduced by X and not yet fixed". The median time-to-fix for X
+ * is over the exposures X introduced that were fixed. An `agent:` author is
+ * never a person: it is credited only in `by_agent`.
+ *
+ * The analytics on top — rates per 100 commits, the risk score, the age of the
+ * oldest open exposure, the quarterly trend, the human/AI cohort comparison and
+ * the hot files — are the same fold over the same entries plus the commit
+ * counts `compute.ts` read from history. "Now" is never the wall clock: every
+ * age is measured against `as_of`, the HEAD commit's author date, so two runs
+ * on the same HEAD print the same bytes.
+ *
+ * @handles pii on #blame -- "Identity strings aggregated per person"
+ * @flows #blame -> #cli via buildBlamePayload -- "guardlink.blame/v1 payload for --json, the MCP tool and the TUI"
+ * @flows #blame -> #dashboard via summarise -- "Per-person and per-tool rows, the quarterly trend, the cohort comparison and the hot files the Attribution page renders"
+ * @comment -- "Every list is sorted (rows by introduced desc, then identity; hot files by open desc; quarters contiguous and ascending) so two runs on the same HEAD print the same bytes — the dashboard and report determinism tests depend on it"
+ * @comment -- "Pure over BlameEntry[] and CommitCounts: no I/O, no clock. The trend axis is bounded by the date range of the entries, everything else by their count"
+ */
+import { relationRecords } from '../parser/claim-key.js';
+import type { ThreatModel } from '../types/index.js';
+import {
+  BLAME_SCHEMA,
+  type AgentSummaryRow, type BlameComputation, type BlameEntry, type BlamePayload, type BlameSummary,
+  type BlameVerb, type Cohort, type CommitCounts, type CommitRef, type HotFile, type HumanSummaryRow,
+  type RecordBlame, type SummaryRowRates, type TrendBucket,
+} from './types.js';
+
+export interface SummaryContext {
+  commits?: CommitCounts | null;
+  /** The HEAD commit's author date; every age in the summary is measured against it. */
+  as_of?: string | null;
+}
+
+const DAY_MS = 86_400_000;
+const HOT_FILES_CAP = 10;
+
+export function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 === 1 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+/** Weight of one open exposure: `critical|high|medium|low` or `P0..P3`, case-insensitively; anything else, or none, counts 1. */
+export function severityWeight(severity: string | null): number {
+  switch ((severity ?? '').toLowerCase()) {
+    case 'critical': case 'p0': return 8;
+    case 'high': case 'p1': return 4;
+    case 'medium': case 'p2': return 2;
+    case 'low': case 'p3': return 1;
+    default: return 1;
+  }
+}
+
+const round1 = (n: number): number => Math.round(n * 10) / 10;
+
+/** introduced per 100 commits, one decimal; null without commits to divide by. */
+const per100 = (introduced: number, commits: number | null): number | null =>
+  commits === null || commits === 0 ? null : round1((introduced / commits) * 100);
+
+/** Whole days from `fromMs` to `as_of`, never negative; null without either, or with an unparseable as_of. */
+function daysUntil(fromMs: number | null, as_of: string | null): number | null {
+  if (fromMs === null || as_of === null) return null;
+  const to = Date.parse(as_of);
+  if (Number.isNaN(to)) return null;
+  return Math.max(0, Math.floor((to - fromMs) / DAY_MS));
+}
+
+/** `Record` lookup that ignores inherited keys: an identity named `constructor` must not read `Object.prototype`. */
+const own = <T>(rec: Record<string, T>, key: string): T | undefined => (Object.hasOwn(rec, key) ? rec[key] : undefined);
+
+interface Acc {
+  introduced: number;
+  fixed: number;
+  open: number;
+  touched: number;
+  lines: number;
+  /** Spans whose lines were already counted for this identity. */
+  spans: Set<string>;
+  ttf: number[];
+  risk: number;
+  /** Author date (ms) of the oldest still-open exposure this identity introduced. */
+  oldestOpenMs: number | null;
+}
+
+const newAcc = (): Acc => ({ introduced: 0, fixed: 0, open: 0, touched: 0, lines: 0, spans: new Set(), ttf: [], risk: 0, oldestOpenMs: null });
+
+function credits(ref: CommitRef): { humans: string[]; agents: { tool: string; model: string | null }[] } {
+  const humans = [...new Set([ref.author, ...ref.co_authors])].filter(id => !id.startsWith('agent:'));
+  const agents = ref.assisted_by.map(a => ({ tool: a.tool, model: a.model }));
+  return { humans, agents };
+}
+
+const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+const agentKey = (tool: string, model: string | null): string => `${tool} ${model ?? ''}`;
+
+/** Quarter as a single ordinal (year × 4 + quarter index) so a range can be walked without gaps; null for an unparseable date. */
+function quarterIndex(date: string): number | null {
+  const ms = Date.parse(date);
+  if (Number.isNaN(ms)) return null;
+  const d = new Date(ms);
+  return d.getUTCFullYear() * 4 + Math.floor(d.getUTCMonth() / 3);
+}
+
+const periodOf = (q: number): string => `${Math.floor(q / 4)}-Q${(q % 4) + 1}`;
+
+function trendsOf(entries: BlameEntry[]): TrendBucket[] {
+  const introduced = new Map<number, { all: number; ai: number }>();
+  const fixed = new Map<number, number>();
+  let min = Infinity;
+  let max = -Infinity;
+  const seen = (q: number): void => { if (q < min) min = q; if (q > max) max = q; };
+  for (const e of entries) {
+    if (e.blame.kind !== 'exposure') continue;
+    const b = e.blame;
+    if (b.introduced_by) {
+      const q = quarterIndex(b.introduced_by.date);
+      if (q !== null) {
+        seen(q);
+        const t = introduced.get(q) ?? { all: 0, ai: 0 };
+        t.all++;
+        if (b.introduced_by.assisted_by.length > 0) t.ai++;
+        introduced.set(q, t);
+      }
+    }
+    if (b.fixed_by) {
+      const q = quarterIndex(b.fixed_by.date);
+      if (q !== null) { seen(q); fixed.set(q, (fixed.get(q) ?? 0) + 1); }
+    }
+  }
+  if (min === Infinity) return [];
+  const out: TrendBucket[] = [];
+  let open = 0;
+  for (let q = min; q <= max; q++) {
+    const t = introduced.get(q) ?? { all: 0, ai: 0 };
+    const f = fixed.get(q) ?? 0;
+    open += t.all - f;
+    out.push({ period: periodOf(q), introduced: t.all, introduced_ai: t.ai, fixed: f, open_end: open });
+  }
+  return out;
+}
+
+function comparisonOf(entries: BlameEntry[], counts: CommitCounts): { human: Cohort; ai: Cohort } {
+  const cohort = (commits: number) => ({ commits: Math.max(0, commits), introduced: 0, fixed: 0, open: 0, ttf: [] as number[] });
+  const human = cohort(counts.total - counts.ai_assisted);
+  const ai = cohort(counts.ai_assisted);
+  for (const e of entries) {
+    if (e.blame.kind !== 'exposure' || !e.blame.introduced_by) continue;
+    const c = e.blame.introduced_by.assisted_by.length > 0 ? ai : human;
+    c.introduced++;
+    if (e.blame.fixed_by) c.fixed++; else c.open++;
+    if (e.blame.time_to_fix_days !== null) c.ttf.push(e.blame.time_to_fix_days);
+  }
+  const done = (c: ReturnType<typeof cohort>): Cohort => ({
+    commits: c.commits, introduced: c.introduced, fixed: c.fixed, open: c.open,
+    per_100_commits: per100(c.introduced, c.commits), median_time_to_fix_days: median(c.ttf),
+  });
+  return { human: done(human), ai: done(ai) };
+}
+
+/** Open = an exposure with no `fixed_by`, whoever (if anyone) could be credited with it. */
+function hotFilesOf(entries: BlameEntry[]): HotFile[] {
+  const files = new Map<string, { open: number; shas: Set<string>; tools: Set<string> }>();
+  for (const e of entries) {
+    if (e.blame.kind !== 'exposure' || e.blame.fixed_by !== null) continue;
+    let f = files.get(e.file);
+    if (!f) { f = { open: 0, shas: new Set(), tools: new Set() }; files.set(e.file, f); }
+    f.open++;
+    for (const c of e.blame.contributors) {
+      f.shas.add(c.sha);
+      for (const a of c.assisted_by) f.tools.add(agentKey(a.tool, a.model));
+    }
+  }
+  return [...files]
+    .map(([file, f]) => ({ file, open: f.open, contributors: f.shas.size, ai_tools: f.tools.size }))
+    .sort((x, y) => y.open - x.open || y.contributors - x.contributors || cmp(x.file, y.file))
+    .slice(0, HOT_FILES_CAP);
+}
+
+export function summarise(entries: BlameEntry[], ctx: SummaryContext = {}): BlameSummary {
+  const counts = ctx.commits ?? null;
+  const as_of = ctx.as_of ?? null;
+  const humans = new Map<string, Acc>();
+  const agents = new Map<string, Acc & { tool: string; model: string | null }>();
+  const humanAcc = (id: string): Acc => { let a = humans.get(id); if (!a) { a = newAcc(); humans.set(id, a); } return a; };
+  const agentAcc = (tool: string, model: string | null): Acc => {
+    const k = agentKey(tool, model);
+    let a = agents.get(k);
+    if (!a) { a = { ...newAcc(), tool, model }; agents.set(k, a); }
+    return a;
+  };
+
+  for (const e of entries) {
+    if (e.blame.kind !== 'exposure') continue;
+    const b = e.blame;
+    if (b.introduced_by) {
+      const open = b.fixed_by === null;
+      const weight = severityWeight(e.severity);
+      const introducedMs = Date.parse(b.introduced_by.date);
+      const c = credits(b.introduced_by);
+      const apply = (a: Acc): void => {
+        a.introduced++;
+        if (open) {
+          a.open++;
+          a.risk += weight;
+          if (!Number.isNaN(introducedMs) && (a.oldestOpenMs === null || introducedMs < a.oldestOpenMs)) a.oldestOpenMs = introducedMs;
+        }
+        if (b.time_to_fix_days !== null) a.ttf.push(b.time_to_fix_days);
+      };
+      for (const id of c.humans) apply(humanAcc(id));
+      for (const ag of c.agents) apply(agentAcc(ag.tool, ag.model));
+    }
+    if (b.fixed_by) {
+      const c = credits(b.fixed_by);
+      for (const id of c.humans) humanAcc(id).fixed++;
+      for (const ag of c.agents) agentAcc(ag.tool, ag.model).fixed++;
+    }
+    // Touched: who currently owns lines of the exposed span, whoever introduced
+    // it. On a repository whose claims sit in file headers this is the measure
+    // that says which people and tools keep rewriting vulnerable code. One
+    // exposure counts once per identity however many commits of theirs remain,
+    // and a span shared by several claims (ten header claims on one file) has
+    // its lines counted once per identity, not once per claim.
+    const owned = new Map<Acc, number>();
+    for (const contributor of b.contributors) {
+      const c = credits(contributor);
+      for (const id of c.humans) { const a = humanAcc(id); owned.set(a, (owned.get(a) ?? 0) + contributor.lines); }
+      for (const ag of c.agents) { const a = agentAcc(ag.tool, ag.model); owned.set(a, (owned.get(a) ?? 0) + contributor.lines); }
+    }
+    for (const [a, lines] of owned) {
+      a.touched++;
+      if (e.span === null || !a.spans.has(e.span)) {
+        a.lines += lines;
+        if (e.span !== null) a.spans.add(e.span);
+      }
+    }
+  }
+
+  /** With counts, an identity the history never credited has 0 commits; without counts, nobody has a number. */
+  const rates = (a: Acc, commits: number | null): SummaryRowRates => ({
+    commits,
+    per_100_commits: per100(a.introduced, commits),
+    risk_score: a.risk,
+    oldest_open_days: daysUntil(a.oldestOpenMs, as_of),
+  });
+
+  const by_human: HumanSummaryRow[] = [...humans]
+    .map(([identity, a]) => ({
+      identity, introduced: a.introduced, fixed: a.fixed, open: a.open, touched: a.touched, lines: a.lines, median_time_to_fix_days: median(a.ttf),
+      ...rates(a, counts ? own(counts.by_human, identity) ?? 0 : null),
+    }))
+    .sort((x, y) => y.introduced - x.introduced || y.touched - x.touched || cmp(x.identity, y.identity));
+  const by_agent: AgentSummaryRow[] = [...agents.values()]
+    .map(a => ({
+      tool: a.tool, model: a.model, introduced: a.introduced, fixed: a.fixed, open: a.open, touched: a.touched, lines: a.lines, median_time_to_fix_days: median(a.ttf),
+      ...rates(a, counts ? own(counts.by_agent, agentKey(a.tool, a.model))?.commits ?? 0 : null),
+    }))
+    .sort((x, y) => y.introduced - x.introduced || y.touched - x.touched || cmp(x.tool, y.tool) || cmp(x.model ?? '￿', y.model ?? '￿'));
+
+  return {
+    as_of,
+    by_human,
+    by_agent,
+    trends: trendsOf(entries),
+    comparison: counts ? comparisonOf(entries, counts) : null,
+    hot_files: hotFilesOf(entries),
+  };
+}
+
+const BLAME_VERBS: ReadonlySet<string> = new Set<BlameVerb>(['exposes', 'confirmed', 'mitigates']);
+
+type BlameRecord = {
+  asset: string;
+  threat: string;
+  severity?: string;
+  location: { file: string; line: number; anchor?: { scope: string; start_line: number; end_line: number } | null };
+  blame?: RecordBlame;
+};
+
+/** `file#start-end`, `file#file` for a file-wide anchor, null without an anchor. */
+function spanKey(rec: BlameRecord): string | null {
+  const a = rec.location.anchor;
+  if (!a) return null;
+  return a.scope === 'file' ? `${rec.location.file}#file` : `${rec.location.file}#${a.start_line}-${a.end_line}`;
+}
+
+/** Entries for every record `blameOf` answers for, keyed with the ledger claim key. */
+function collectEntries(model: ThreatModel, blameOf: (rec: BlameRecord) => RecordBlame | undefined): BlameEntry[] {
+  const arrays: Record<BlameVerb, BlameRecord[]> = {
+    mitigates: model.mitigations,
+    exposes: model.exposures,
+    confirmed: model.confirmed ?? [],
+  };
+  const next: Record<BlameVerb, number> = { mitigates: 0, exposes: 0, confirmed: 0 };
+  const entries: BlameEntry[] = [];
+  for (const claim of relationRecords(model)) {
+    if (!BLAME_VERBS.has(claim.verb)) continue;
+    const verb = claim.verb as BlameVerb;
+    const rec = arrays[verb][next[verb]++];
+    if (!rec) continue;
+    const blame = blameOf(rec);
+    if (!blame) continue;
+    entries.push({
+      key: claim.key,
+      verb,
+      asset: rec.asset,
+      threat: rec.threat,
+      severity: rec.severity ?? null,
+      file: rec.location.file,
+      line: rec.location.line,
+      granularity: blame.granularity,
+      span: spanKey(rec),
+      blame,
+    });
+  }
+  return entries;
+}
+
+export function buildBlamePayload(model: ThreatModel, comp: BlameComputation, root: string): BlamePayload {
+  const entries = collectEntries(model, rec => comp.byRecord.get(rec));
+  return {
+    schema: BLAME_SCHEMA,
+    root,
+    head: comp.head,
+    identity_mode: comp.identity_mode,
+    status: comp.status,
+    entries,
+    summary: summarise(entries, { commits: comp.commits, as_of: comp.as_of }),
+  };
+}
+
+/**
+ * Entries from a model whose records already carry `blame` (after
+ * `attachBlame`). What the report and the dashboard read; empty when nothing
+ * was attached, which is how both know to render nothing.
+ */
+export function entriesFromModel(model: ThreatModel): BlameEntry[] {
+  return collectEntries(model, rec => rec.blame);
+}

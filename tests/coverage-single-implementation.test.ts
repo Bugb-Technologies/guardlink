@@ -118,6 +118,11 @@ const ALLOWED: { file: string; snippet: string; why: string }[] = [
     why: 'the confirmed-pair probe for this exposure; coverage status comes from buildCoverageIndex alongside it',
   },
   {
+    file: 'src/dashboard/annotations.ts',
+    snippet: 'const claim = candidates.find(c => c.asset === fields.asset && c.threat === fields.threat) ?? candidates[0] ?? null;',
+    why: 'record identity for the Code page drawer — among claim rows already narrowed to the same file, line and verb (several .gal annotations can name one source line), picks the one this annotation is; the row carries its own coverage status from buildClaims, so nothing here decides whether an exposure is covered',
+  },
+  {
     file: 'src/tui/commands.ts',
     snippet: 'e.asset === r.asset && e.threat === r.threat && e.location.file === r.file && e.location.line === r.line',
     why: 'exact record identity — matches on file and line too, to find the one exposure row a TUI action refers to; not a coverage join',

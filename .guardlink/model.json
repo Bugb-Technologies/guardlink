@@ -1,8 +1,8 @@
 {
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 100,
-  "annotations_parsed": 510,
+  "source_files": 127,
+  "annotations_parsed": 635,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -16,12 +16,39 @@
     "src/analyzer/index.ts",
     "src/analyzer/sarif.ts",
     "src/artifacts/emit.ts",
+    "src/blame/attach.ts",
+    "src/blame/compute.ts",
+    "src/blame/config.ts",
+    "src/blame/format.ts",
+    "src/blame/git.ts",
+    "src/blame/index.ts",
+    "src/blame/summary.ts",
+    "src/blame/trailers.ts",
+    "src/blame/types.ts",
     "src/ci/index.ts",
     "src/cli/index.ts",
+    "src/dashboard/analytics.ts",
+    "src/dashboard/annotations.ts",
+    "src/dashboard/client-legacy.ts",
+    "src/dashboard/client.ts",
     "src/dashboard/data.ts",
     "src/dashboard/diagrams.ts",
     "src/dashboard/generate.ts",
+    "src/dashboard/html.ts",
     "src/dashboard/index.ts",
+    "src/dashboard/links.ts",
+    "src/dashboard/pages/analytics.ts",
+    "src/dashboard/pages/assets.ts",
+    "src/dashboard/pages/attribution.ts",
+    "src/dashboard/pages/code.ts",
+    "src/dashboard/pages/context.ts",
+    "src/dashboard/pages/data-boundaries.ts",
+    "src/dashboard/pages/diagrams.ts",
+    "src/dashboard/pages/reports.ts",
+    "src/dashboard/pages/summary.ts",
+    "src/dashboard/pages/threats.ts",
+    "src/dashboard/since.ts",
+    "src/dashboard/styles.ts",
     "src/diff/engine.ts",
     "src/diff/format.ts",
     "src/diff/git.ts",
@@ -254,6 +281,18 @@
     },
     {
       "path": [
+        "GuardLink",
+        "Blame"
+      ],
+      "id": "blame",
+      "description": "Maps annotated code spans to git history: authors, commits, AI co-author trailers",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 27
+      }
+    },
+    {
+      "path": [
         "Workspace",
         "Link"
       ],
@@ -313,7 +352,7 @@
       "description": "File read/write operations outside intended project directory via ../ sequences or absolute paths",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 31
+        "line": 32
       }
     },
     {
@@ -327,7 +366,7 @@
       "description": "Shell command execution with unsanitized user input",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 32
+        "line": 33
       }
     },
     {
@@ -341,7 +380,7 @@
       "description": "Injection of malicious scripts into generated HTML output",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 33
+        "line": 34
       }
     },
     {
@@ -355,7 +394,7 @@
       "description": "API keys leaked in logs, error messages, or unintended output",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 34
+        "line": 35
       }
     },
     {
@@ -369,7 +408,7 @@
       "description": "LLM API requests to attacker-controlled URLs via config override",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 35
+        "line": 36
       }
     },
     {
@@ -383,7 +422,7 @@
       "description": "Regular expression denial of service from crafted annotation content",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 36
+        "line": 37
       }
     },
     {
@@ -397,7 +436,7 @@
       "description": "Writing files to attacker-controlled paths outside project",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 37
+        "line": 38
       }
     },
     {
@@ -411,7 +450,7 @@
       "description": "Malicious content in annotations injected into LLM prompts",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 38
+        "line": 39
       }
     },
     {
@@ -425,7 +464,7 @@
       "description": "Resource exhaustion from processing large files or deep directory trees",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 39
+        "line": 40
       }
     },
     {
@@ -439,7 +478,7 @@
       "description": "Threat model details exposed to unauthorized parties",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 40
+        "line": 41
       }
     },
     {
@@ -453,7 +492,7 @@
       "description": "Unsafe parsing of JSON/YAML configuration files",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 41
+        "line": 42
       }
     },
     {
@@ -467,7 +506,7 @@
       "description": "Agent launcher executing attacker-controlled commands via process spawn",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 42
+        "line": 43
       }
     },
     {
@@ -481,7 +520,7 @@
       "description": "Unintended exposure of internal paths, structure, or implementation details",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 43
+        "line": 44
       }
     },
     {
@@ -519,7 +558,7 @@
       "description": "Validates file paths using resolve() + startsWith() to ensure access within allowed directories",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 48
+        "line": 49
       }
     },
     {
@@ -529,7 +568,7 @@
       "description": "Input validation with anchored regex patterns and length limits",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 49
+        "line": 50
       }
     },
     {
@@ -539,7 +578,7 @@
       "description": "HTML entity encoding for untrusted data in generated output",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 50
+        "line": 51
       }
     },
     {
@@ -549,7 +588,7 @@
       "description": "Masking API keys in logs and error messages",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 51
+        "line": 52
       }
     },
     {
@@ -559,7 +598,7 @@
       "description": "Controlled child process spawning with explicit args array, no shell",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 52
+        "line": 53
       }
     },
     {
@@ -569,7 +608,7 @@
       "description": "Schema validation for configuration files before use",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 53
+        "line": 54
       }
     },
     {
@@ -579,7 +618,7 @@
       "description": "File size limits, recursion depth limits, timeout constraints",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 54
+        "line": 55
       }
     },
     {
@@ -589,7 +628,7 @@
       "description": "Using spawn with args array instead of shell string interpolation",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 55
+        "line": 56
       }
     },
     {
@@ -599,7 +638,7 @@
       "description": "Filtering files using glob patterns with explicit excludes",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 56
+        "line": 57
       }
     },
     {
@@ -609,7 +648,7 @@
       "description": "Using anchored regex patterns (^...$) to prevent backtracking",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 57
+        "line": 58
       }
     },
     {
@@ -619,7 +658,7 @@
       "description": "Tag prefix determines owning repo, preventing cross-repo tag collisions",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 58
+        "line": 59
       }
     },
     {
@@ -629,7 +668,17 @@
       "description": "Schema validation for workspace.yaml configuration files",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 59
+        "line": 60
+      }
+    },
+    {
+      "name": "Identity_Redaction",
+      "canonical_name": "identity_redaction",
+      "id": "identity-redaction",
+      "description": "Hashes or drops author emails before attribution leaves the machine",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 61
       }
     }
   ],
@@ -641,7 +690,7 @@
       "description": "Runs the guardlink binary from a shell on the project; already holds write access to the same working tree guardlink edits, and has an interactive TTY that can answer a confirmation prompt",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 69
+        "line": 71
       }
     },
     {
@@ -651,7 +700,7 @@
       "description": "AI coding agent calling guardlink tools over stdio through the MCP server; acts only with the tool set src/mcp/server.ts exposes, not with the operator's shell",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 70
+        "line": 72
       }
     },
     {
@@ -661,7 +710,7 @@
       "description": "GitHub Actions job invoking the built CLI (see .github/workflows/ci.yml); has no TTY, so it cannot answer a confirmation prompt, and is deliberately granted no entitlement",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 71
+        "line": 73
       }
     }
   ],
@@ -682,7 +731,7 @@
       "imprecise": false,
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 52
+        "line": 53
       }
     }
   ],
@@ -848,13 +897,113 @@
       }
     },
     {
+      "asset": "#blame",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "safeRelPath resolves each path against root and keeps it only when it is root or lies under root + sep; anything else yields status error and git never sees it",
+      "location": {
+        "file": "src/blame/compute.ts",
+        "line": 24
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "Files are blamed once and memoised; -L is memoised per span and skipped for dirty files and file-wide anchors; commits resolve in one batched log call; the history walk is a single call and history: false skips it",
+      "location": {
+        "file": "src/blame/compute.ts",
+        "line": 26
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#redos",
+      "control": "#regex-anchoring",
+      "description": "Every pattern is anchored (^…$), capped at 256 characters and compiled once; a pattern that fails to compile drops its whole rule rather than half-matching",
+      "location": {
+        "file": "src/blame/config.ts",
+        "line": 23
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "The value is resolved against root and kept only when it is root or lies under root + sep; anything else becomes null and git is never told about it",
+      "location": {
+        "file": "src/blame/config.ts",
+        "line": 25
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#cmd-injection",
+      "control": "#param-commands",
+      "description": "execFileSync with an argv array and no shell; paths follow a literal -- and line ranges are integers formatted here, never caller strings",
+      "location": {
+        "file": "src/blame/git.ts",
+        "line": 14
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "compute.ts resolves every path against root and drops any that escapes it before this module sees it, and git itself refuses paths outside the work tree",
+      "location": {
+        "file": "src/blame/git.ts",
+        "line": 16
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "30 s timeout and 64 MiB output cap per call; one blame per file; sha resolution and path queries batched; -L only for symbol/block spans on clean files; the history walk is one call a caller can skip",
+      "location": {
+        "file": "src/blame/git.ts",
+        "line": 18
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "A single log call under the same 30 s timeout and 64 MiB output cap; nothing is spawned per commit, and compute.ts lets a caller skip the walk with history: false",
+      "location": {
+        "file": "src/blame/git.ts",
+        "line": 202
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#data-exposure",
+      "control": "#identity-redaction",
+      "description": "identityFor renders the configured mode: name by default, and hash replaces the email with 12 hex of its sha256 so a shared artifact carries no address",
+      "location": {
+        "file": "src/blame/trailers.ts",
+        "line": 20
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#redos",
+      "control": "#regex-anchoring",
+      "description": "Rules arrive compiled, anchored and length-capped from config.ts; the fixed regexes here are linear in the input",
+      "location": {
+        "file": "src/blame/trailers.ts",
+        "line": 22
+      }
+    },
+    {
       "asset": "#cli",
       "threat": "#path-traversal",
       "control": "#path-validation",
       "description": "resolve() canonicalizes paths; cwd-relative by design",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 31
+        "line": 32
       }
     },
     {
@@ -864,7 +1013,7 @@
       "description": "Output paths resolved relative to project root",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 33
+        "line": 34
       }
     },
     {
@@ -874,7 +1023,7 @@
       "description": "maskKey() redacts keys in show output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 35
+        "line": 36
       }
     },
     {
@@ -884,7 +1033,27 @@
       "description": "Path is the constant LEDGER_FILE under a root that must already carry .guardlink/; targets only select claims, they are never written to",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 423
+        "line": 433
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "Relative locations are resolved against root; an absolute location is read as given because it came from the parser, not from a caller",
+      "location": {
+        "file": "src/dashboard/annotations.ts",
+        "line": 6
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Every value the drawer renders from the embedded data passes through the client esc(); URLs are pre-built server-side and attribute-escaped here",
+      "location": {
+        "file": "src/dashboard/client.ts",
+        "line": 15
       }
     },
     {
@@ -901,30 +1070,20 @@
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
-      "description": "esc() HTML-encodes all interpolated values",
+      "description": "esc() HTML-encodes every interpolated value in every page module; serialized data escapes closing script tags before embedding in <script>",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 9
+        "line": 24
       }
     },
     {
       "asset": "#dashboard",
       "threat": "#path-traversal",
       "control": "#path-validation",
-      "description": "resolve() with root constrains file access",
+      "description": "resolve() with root constrains file access (annotations.ts)",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 11
-      }
-    },
-    {
-      "asset": "#dashboard",
-      "threat": "#xss",
-      "control": "#output-encoding",
-      "description": "Serialized model data escapes closing script tags before embedding in <script>",
-      "location": {
-        "file": "src/dashboard/generate.ts",
-        "line": 15
+        "line": 26
       }
     },
     {
@@ -934,17 +1093,17 @@
       "description": "Feature scope names come from @feature annotations and the --feature flag; every one is rendered through esc()",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 18
+        "line": 35
       }
     },
     {
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
-      "description": "Caller passes the result through esc() before interpolation",
+      "description": "esc() HTML-encodes every interpolated value; hrefs built here are encoded too, so a hash route carrying a search term cannot break out of the attribute",
       "location": {
-        "file": "src/dashboard/generate.ts",
-        "line": 1761
+        "file": "src/dashboard/html.ts",
+        "line": 8
       }
     },
     {
@@ -955,6 +1114,136 @@
       "location": {
         "file": "src/dashboard/index.ts",
         "line": 5
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "Only the fixed `config` name is read under the pointed-to gitdir, only `remote.origin.url` is extracted from it, and the result is discarded unless it parses as an http(s)/ssh remote to a web host; file links reject `..` segments and absolute paths and fall back to the repo web root",
+      "location": {
+        "file": "src/dashboard/links.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#data-exposure",
+      "control": "#output-encoding",
+      "description": "linksFromRemote rebuilds every link from hostname and path only; userinfo is dropped before anything is emitted, so credentials never reach RepoLinks.web",
+      "location": {
+        "file": "src/dashboard/links.ts",
+        "line": 13
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
+      "description": "Absolute paths and any `..` segment (either separator) are refused; each surviving segment is encodeURIComponent-ed so `#`, `?` and spaces cannot rewrite the URL",
+      "location": {
+        "file": "src/dashboard/links.ts",
+        "line": 84
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Asset, threat, control, file and identity names are escaped by heatTable/barList; routes are attribute-escaped",
+      "location": {
+        "file": "src/dashboard/pages/analytics.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Asset names and classifications are escaped",
+      "location": {
+        "file": "src/dashboard/pages/assets.ts",
+        "line": 4
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Identities, model names, shas, paths and statuses all pass through esc(); a co-author trailer is free text in a commit message and is the realistic vector",
+      "location": {
+        "file": "src/dashboard/pages/attribution.ts",
+        "line": 9
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "File paths, summaries, descriptions and code lines are escaped",
+      "location": {
+        "file": "src/dashboard/pages/code.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Every cell is escaped, including owner names, rationale and entitlement citations",
+      "location": {
+        "file": "src/dashboard/pages/data-boundaries.ts",
+        "line": 6
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Mermaid source is escaped into the <pre>; the client reads it back as text",
+      "location": {
+        "file": "src/dashboard/pages/diagrams.ts",
+        "line": 5
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Framework names in the command chips are fixed strings; nothing from a report is interpolated server-side",
+      "location": {
+        "file": "src/dashboard/pages/reports.ts",
+        "line": 7
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Every model value, action text and identity is rendered through esc(); hrefs are attribute-escaped",
+      "location": {
+        "file": "src/dashboard/pages/summary.ts",
+        "line": 9
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Every cell, attribute and identity is escaped; the search text is escaped as an attribute value",
+      "location": {
+        "file": "src/dashboard/pages/threats.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#cmd-injection",
+      "control": "#param-commands",
+      "description": "Checked against a strict ref shape first, then only ever passed as one argv element to execFileSync; parseAtRef rev-parses it before reading anything",
+      "location": {
+        "file": "src/dashboard/since.ts",
+        "line": 7
       }
     },
     {
@@ -1074,7 +1363,7 @@
       "description": "Zod schema validates root; resolve() canonicalizes",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 33
+        "line": 34
       }
     },
     {
@@ -1084,7 +1373,7 @@
       "description": "Output paths resolved relative to validated root",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 35
+        "line": 36
       }
     },
     {
@@ -1094,7 +1383,7 @@
       "description": "Keys from env only; never logged or returned",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 39
+        "line": 40
       }
     },
     {
@@ -1104,7 +1393,7 @@
       "description": "The proposal artifact path is fixed, and its target file must resolve inside the project root — a proposal never writes to source",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 43
+        "line": 44
       }
     },
     {
@@ -1763,6 +2052,136 @@
       }
     },
     {
+      "asset": "#blame",
+      "threat": "#path-traversal",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "Record locations name the files handed to git, and a sidecar @source path is author-supplied text that survives normalisation with ../ intact",
+      "location": {
+        "file": "src/blame/compute.ts",
+        "line": 23
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "One blame per annotated file, one -L walk per distinct symbol span, and one walk of the whole history reachable from HEAD for the commit counts",
+      "location": {
+        "file": "src/blame/compute.ts",
+        "line": 25
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#redos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-1333"
+      ],
+      "description": "Tool rules are user-supplied regular expressions applied to every commit author and trailer in the history",
+      "location": {
+        "file": "src/blame/config.ts",
+        "line": 22
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#path-traversal",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "ignore_revs names a file git will open with --ignore-revs-file",
+      "location": {
+        "file": "src/blame/config.ts",
+        "line": 24
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#cmd-injection",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-78"
+      ],
+      "description": "git is spawned with file paths and line ranges taken from the parsed model",
+      "location": {
+        "file": "src/blame/git.ts",
+        "line": 13
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#path-traversal",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "The file paths handed to blame, log and ls-files name what git reads",
+      "location": {
+        "file": "src/blame/git.ts",
+        "line": 15
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "git log -L walks history once per distinct span, blame reads every annotated file, and listCommits reads the whole history reachable from HEAD",
+      "location": {
+        "file": "src/blame/git.ts",
+        "line": 17
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "One more history walk per computation: every commit reachable from HEAD is printed with its trailer block and parsed",
+      "location": {
+        "file": "src/blame/git.ts",
+        "line": 201
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#data-exposure",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-200"
+      ],
+      "description": "Author names and email addresses from git history become identity strings that reach reports, dashboards and MCP responses",
+      "location": {
+        "file": "src/blame/trailers.ts",
+        "line": 19
+      }
+    },
+    {
+      "asset": "#blame",
+      "threat": "#redos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-1333"
+      ],
+      "description": "Compiled tool rules run against every author and trailer in the history",
+      "location": {
+        "file": "src/blame/trailers.ts",
+        "line": 21
+      }
+    },
+    {
       "asset": "#cli",
       "threat": "#path-traversal",
       "severity": "high",
@@ -1772,7 +2191,7 @@
       "description": "User-supplied dir argument resolved via path.resolve",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 30
+        "line": 31
       }
     },
     {
@@ -1785,7 +2204,7 @@
       "description": "init/report/sarif/dashboard write files to user-specified paths",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 32
+        "line": 33
       }
     },
     {
@@ -1798,7 +2217,7 @@
       "description": "API keys handled in config set/show commands",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 34
+        "line": 35
       }
     },
     {
@@ -1811,7 +2230,7 @@
       "description": "Agent launcher spawns child processes",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 36
+        "line": 37
       }
     },
     {
@@ -1824,7 +2243,20 @@
       "description": "The one command that writes .guardlink/verified.json",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 422
+        "line": 432
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#path-traversal",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "readFileSync reads the file each annotation's location names, for the code context",
+      "location": {
+        "file": "src/dashboard/annotations.ts",
+        "line": 5
       }
     },
     {
@@ -1834,10 +2266,10 @@
       "external_refs": [
         "cwe:CWE-79"
       ],
-      "description": "Generates HTML with user-controlled threat model data",
+      "description": "Generates HTML with user-controlled threat model data, git identities and commit trailers",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 8
+        "line": 23
       }
     },
     {
@@ -1850,7 +2282,7 @@
       "description": "readFileSync reads code files for annotation context",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 10
+        "line": 25
       }
     },
     {
@@ -1864,6 +2296,45 @@
       "location": {
         "file": "src/dashboard/index.ts",
         "line": 4
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#path-traversal",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-22"
+      ],
+      "description": "detectRepoLinks reads <root>/.git/config and, when .git is a worktree file, follows its `gitdir:` pointer to a config elsewhere on disk; a crafted .git file can name any readable path",
+      "location": {
+        "file": "src/dashboard/links.ts",
+        "line": 10
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#data-exposure",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-200"
+      ],
+      "description": "Remote URLs may embed credentials (https://user:token@host/...) which would otherwise land in a committed HTML artifact",
+      "location": {
+        "file": "src/dashboard/links.ts",
+        "line": 12
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#cmd-injection",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-78"
+      ],
+      "description": "The ref the user typed reaches git",
+      "location": {
+        "file": "src/dashboard/since.ts",
+        "line": 6
       }
     },
     {
@@ -2071,7 +2542,7 @@
       "description": "Tool arguments include 'root' directory path from external client",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 32
+        "line": 33
       }
     },
     {
@@ -2084,7 +2555,7 @@
       "description": "report, dashboard, sarif tools write files",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 34
+        "line": 35
       }
     },
     {
@@ -2097,7 +2568,7 @@
       "description": "annotate and threat_report tools pass user prompts to LLM",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 36
+        "line": 37
       }
     },
     {
@@ -2110,7 +2581,7 @@
       "description": "threat_report tool uses API keys from environment",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 38
+        "line": 39
       }
     },
     {
@@ -2123,7 +2594,7 @@
       "description": "Resources expose full threat model to MCP clients",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 40
+        "line": 41
       }
     },
     {
@@ -2136,7 +2607,7 @@
       "description": "guardlink_entitlement_propose writes a client-supplied claim into .guardlink/entitlement-proposals.json",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 42
+        "line": 43
       }
     },
     {
@@ -2887,6 +3358,106 @@
       }
     },
     {
+      "source": "#blame",
+      "target": "ThreatModel",
+      "mechanism": "attachBlame",
+      "description": "record.blame on exposures, confirmed and mitigations",
+      "location": {
+        "file": "src/blame/attach.ts",
+        "line": 8
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#blame",
+      "mechanism": "computeBlame",
+      "description": "Record locations and anchors",
+      "location": {
+        "file": "src/blame/compute.ts",
+        "line": 27
+      }
+    },
+    {
+      "source": "#blame",
+      "target": "ThreatModel",
+      "mechanism": "attachBlame",
+      "description": "record.blame, only on the CLI --blame paths",
+      "location": {
+        "file": "src/blame/compute.ts",
+        "line": 28
+      }
+    },
+    {
+      "source": "ConfigFile",
+      "target": "#blame",
+      "mechanism": "readBlameConfig",
+      "description": "Attribution settings",
+      "location": {
+        "file": "src/blame/config.ts",
+        "line": 26
+      }
+    },
+    {
+      "source": "#blame",
+      "target": "#cli",
+      "mechanism": "formatBlameText",
+      "description": "Human-readable attribution",
+      "location": {
+        "file": "src/blame/format.ts",
+        "line": 9
+      }
+    },
+    {
+      "source": "GitRepo",
+      "target": "#blame",
+      "mechanism": "execFileSync",
+      "description": "blame, log, ls-files, status and rev-parse output",
+      "location": {
+        "file": "src/blame/git.ts",
+        "line": 19
+      }
+    },
+    {
+      "source": "GitRepo",
+      "target": "#blame",
+      "mechanism": "listCommits",
+      "description": "The reachable history, for commit counts and the HEAD author date",
+      "location": {
+        "file": "src/blame/git.ts",
+        "line": 204
+      }
+    },
+    {
+      "source": "#blame",
+      "target": "#cli",
+      "mechanism": "buildBlamePayload",
+      "description": "guardlink.blame/v1 payload for --json, the MCP tool and the TUI",
+      "location": {
+        "file": "src/blame/summary.ts",
+        "line": 24
+      }
+    },
+    {
+      "source": "#blame",
+      "target": "#dashboard",
+      "mechanism": "summarise",
+      "description": "Per-person and per-tool rows, the quarterly trend, the cohort comparison and the hot files the Attribution page renders",
+      "location": {
+        "file": "src/blame/summary.ts",
+        "line": 25
+      }
+    },
+    {
+      "source": "CommitTrailers",
+      "target": "#blame",
+      "mechanism": "parseTrailerBlock",
+      "description": "Co-authored-by and Assisted-by values",
+      "location": {
+        "file": "src/blame/trailers.ts",
+        "line": 24
+      }
+    },
+    {
       "source": "ThreatModel",
       "target": "#cli",
       "mechanism": "runCiChecks",
@@ -2923,7 +3494,7 @@
       "description": "CLI argument input path",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 38
+        "line": 39
       }
     },
     {
@@ -2933,7 +3504,17 @@
       "description": "Report/config output path",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 39
+        "line": 40
+      }
+    },
+    {
+      "source": "GitRepo",
+      "target": "#cli",
+      "mechanism": "attachBlame",
+      "description": "Opt-in attribution; without --blame the JSON is byte-identical to before",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 244
       }
     },
     {
@@ -2943,7 +3524,17 @@
       "description": "status reports verified/stale/unverified claim counts alongside annotation coverage",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 277
+        "line": 285
+      }
+    },
+    {
+      "source": "GitRepo",
+      "target": "#cli",
+      "mechanism": "computeBlame",
+      "description": "status --blame reads attribution without touching the model",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 287
       }
     },
     {
@@ -2953,7 +3544,7 @@
       "description": "Read-only; a corrupt ledger becomes a validate error (ledger-corrupt) instead of being silently treated as absent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 329
+        "line": 339
       }
     },
     {
@@ -2963,7 +3554,67 @@
       "description": "Targets, --by and mode flags",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 424
+        "line": 434
+      }
+    },
+    {
+      "source": "GitRepo",
+      "target": "#cli",
+      "mechanism": "computeBlame",
+      "description": "Attribution read from blame, log -L and commit trailers",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 551
+      }
+    },
+    {
+      "source": "GitRepo",
+      "target": "#cli",
+      "mechanism": "attachBlame",
+      "description": "report --blame attaches attribution before the metadata spread, so the shared records carry it",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 661
+      }
+    },
+    {
+      "source": "GitRepo",
+      "target": "#cli",
+      "mechanism": "attachBlame",
+      "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 2236
+      }
+    },
+    {
+      "source": "GitRepo",
+      "target": "#cli",
+      "mechanism": "loadSince",
+      "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 2239
+      }
+    },
+    {
+      "source": "SourceFiles",
+      "target": "#dashboard",
+      "mechanism": "readFileSync",
+      "description": "Code snippet reads",
+      "location": {
+        "file": "src/dashboard/annotations.ts",
+        "line": 7
+      }
+    },
+    {
+      "source": "LedgerFile",
+      "target": "#dashboard",
+      "mechanism": "readLedger",
+      "description": "Claim states for the badges and the stale-claims action",
+      "location": {
+        "file": "src/dashboard/data.ts",
+        "line": 515
       }
     },
     {
@@ -2977,13 +3628,23 @@
       }
     },
     {
+      "source": "GitRepo",
+      "target": "#dashboard",
+      "mechanism": "loadSince",
+      "description": "The model at --since <ref>, diffed against the one rendered",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 21
+      }
+    },
+    {
       "source": "ThreatModel",
       "target": "#dashboard",
       "mechanism": "computeStats",
       "description": "Model statistics input",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 12
+        "line": 27
       }
     },
     {
@@ -2993,7 +3654,27 @@
       "description": "Code snippet reads",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 13
+        "line": 28
+      }
+    },
+    {
+      "source": "LedgerFile",
+      "target": "#dashboard",
+      "mechanism": "computeLedgerStates",
+      "description": "Claim states for badges and the stale-claims action",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 29
+      }
+    },
+    {
+      "source": "GitConfig",
+      "target": "#dashboard",
+      "mechanism": "detectRepoLinks",
+      "description": "The remote's web host, for file and commit links",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 30
       }
     },
     {
@@ -3003,17 +3684,7 @@
       "description": "Generated HTML output",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 14
-      }
-    },
-    {
-      "source": "ThreatModel",
-      "target": "#dashboard",
-      "mechanism": "featureScope",
-      "description": "Reads the narrowing marker that decides whether the page declares itself partial",
-      "location": {
-        "file": "src/dashboard/generate.ts",
-        "line": 1744
+        "line": 31
       }
     },
     {
@@ -3024,6 +3695,46 @@
       "location": {
         "file": "src/dashboard/index.ts",
         "line": 6
+      }
+    },
+    {
+      "source": "GitConfig",
+      "target": "#dashboard",
+      "mechanism": "readFileSync",
+      "description": "remote.origin.url read from .git/config (or the worktree's gitdir config)",
+      "location": {
+        "file": "src/dashboard/links.ts",
+        "line": 14
+      }
+    },
+    {
+      "source": "#dashboard",
+      "target": "DashboardHTML",
+      "mechanism": "RepoLinks",
+      "description": "Web, file and commit links embedded in the generated dashboard",
+      "location": {
+        "file": "src/dashboard/links.ts",
+        "line": 15
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#dashboard",
+      "mechanism": "buildClaims",
+      "description": "Records joined with coverage, ledger state and attribution into table rows",
+      "location": {
+        "file": "src/dashboard/pages/context.ts",
+        "line": 11
+      }
+    },
+    {
+      "source": "GitRepo",
+      "target": "#dashboard",
+      "mechanism": "parseAtRef",
+      "description": "The threat model as it was at the ref",
+      "location": {
+        "file": "src/dashboard/since.ts",
+        "line": 8
       }
     },
     {
@@ -3233,7 +3944,7 @@
       "description": "Tool invocation input",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 45
+        "line": 46
       }
     },
     {
@@ -3243,7 +3954,7 @@
       "description": "Report/dashboard output",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 46
+        "line": 47
       }
     },
     {
@@ -3253,7 +3964,7 @@
       "description": "LLM API call path",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 47
+        "line": 48
       }
     },
     {
@@ -3263,7 +3974,17 @@
       "description": "Threat model data output",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 48
+        "line": 49
+      }
+    },
+    {
+      "source": "GitRepo",
+      "target": "#mcp",
+      "mechanism": "computeBlame",
+      "description": "Attribution read from blame, log -L and commit trailers for the connected agent",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 1095
       }
     },
     {
@@ -3737,6 +4458,16 @@
       }
     },
     {
+      "source": "GitRepo",
+      "target": "#tui",
+      "mechanism": "computeBlame",
+      "description": "Attribution read from blame, log -L and commit trailers",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 995
+      }
+    },
+    {
       "source": "ConfigFile",
       "target": "#tui",
       "mechanism": "loadProjectConfig",
@@ -3905,7 +4636,7 @@
       "description": "Trust boundary at CLI argument parsing",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 40
+        "line": 41
       }
     },
     {
@@ -3935,7 +4666,7 @@
       "description": "Trust boundary at tool argument parsing",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 49
+        "line": 50
       }
     },
     {
@@ -4032,7 +4763,7 @@
       "description": "Child process spawning delegated to agents/launcher.ts with explicit args",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 37
+        "line": 38
       }
     },
     {
@@ -4072,7 +4803,7 @@
       "description": "User prompts passed to LLM; model context is read-only",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 37
+        "line": 38
       }
     },
     {
@@ -4080,7 +4811,7 @@
       "description": "Threat model data intentionally exposed to connected agents",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 41
+        "line": 42
       }
     },
     {
@@ -4204,12 +4935,111 @@
       }
     },
     {
+      "classification": "pii",
+      "asset": "#blame",
+      "description": "Author identities attached to each record, and every identity in the history counted for the per-100-commits rates",
+      "location": {
+        "file": "src/blame/compute.ts",
+        "line": 29
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#blame",
+      "description": "Every author and human co-author identity in the history, counted per person",
+      "location": {
+        "file": "src/blame/compute.ts",
+        "line": 264
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#blame",
+      "description": "Identity strings printed to the terminal",
+      "location": {
+        "file": "src/blame/format.ts",
+        "line": 8
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#blame",
+      "description": "Author names, emails and dates from git log",
+      "location": {
+        "file": "src/blame/git.ts",
+        "line": 20
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#blame",
+      "description": "Author names, emails and co-author trailers of every commit in the history",
+      "location": {
+        "file": "src/blame/git.ts",
+        "line": 203
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#blame",
+      "description": "Identity strings aggregated per person",
+      "location": {
+        "file": "src/blame/summary.ts",
+        "line": 23
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#blame",
+      "description": "Git author names and email addresses",
+      "location": {
+        "file": "src/blame/trailers.ts",
+        "line": 23
+      }
+    },
+    {
       "classification": "secrets",
       "asset": "#cli",
       "description": "Processes API keys via config commands",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 41
+        "line": 42
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#cli",
+      "description": "Author identities printed or emitted as JSON; --identity hash (or blame.identity in config.json) redacts emails",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 552
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#cli",
+      "description": "Identity strings printed to the terminal",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 2956
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#dashboard",
+      "description": "Introducer identities per asset and per period, in the configured identity mode",
+      "location": {
+        "file": "src/dashboard/analytics.ts",
+        "line": 9
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#dashboard",
+      "description": "Author identities from git, already in the configured identity mode",
+      "location": {
+        "file": "src/dashboard/data.ts",
+        "line": 285
       }
     },
     {
@@ -4218,7 +5048,43 @@
       "description": "Processes and displays threat model data",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 16
+        "line": 32
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#dashboard",
+      "description": "Author identities from attribution, in the configured identity mode",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 33
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#dashboard",
+      "description": "Introducer identities in the people × time heatmap",
+      "location": {
+        "file": "src/dashboard/pages/analytics.ts",
+        "line": 12
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#dashboard",
+      "description": "Author identities rendered into a page that is often committed; blame.identity=hash in config.json is the setting for a shared dashboard",
+      "location": {
+        "file": "src/dashboard/pages/attribution.ts",
+        "line": 10
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#dashboard",
+      "description": "Author identities from attribution, already in the configured identity mode",
+      "location": {
+        "file": "src/dashboard/pages/context.ts",
+        "line": 12
       }
     },
     {
@@ -4236,7 +5102,16 @@
       "description": "Processes project annotations and threat model data",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 50
+        "line": 51
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#mcp",
+      "description": "Author identities, in the configured identity mode (blame.identity in config.json), reach the MCP client",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 1096
       }
     },
     {
@@ -4246,6 +5121,15 @@
       "location": {
         "file": "src/parser/clear.ts",
         "line": 16
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#report",
+      "description": "Author identities from git, in the configured identity mode",
+      "location": {
+        "file": "src/report/report.ts",
+        "line": 1514
       }
     },
     {
@@ -4273,6 +5157,15 @@
       "location": {
         "file": "src/tui/commands.ts",
         "line": 21
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#tui",
+      "description": "Author identities printed to the terminal in the configured identity mode",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 996
       }
     },
     {
@@ -4426,13 +5319,13 @@
       "reason": "graph/README example content, excluded from parsing",
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 381
+        "line": 386
       }
     },
     {
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 450
+        "line": 455
       }
     },
     {
@@ -4458,7 +5351,7 @@
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1137
+        "line": 1139
       }
     }
   ],
@@ -4468,7 +5361,7 @@
       "description": "Interactive HTML threat model dashboard",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 17
+        "line": 34
       }
     },
     {
@@ -4476,7 +5369,7 @@
       "description": "Model Context Protocol server for AI agent tooling",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 51
+        "line": 52
       }
     }
   ],
@@ -4587,6 +5480,104 @@
       }
     },
     {
+      "description": "The field is invisible to the annotation hash (a whitelist of claim fields) and stripped from the committed model.json, so attaching it changes no tracked artifact; the same goes for blame_context, the commit counts the dashboard's rates need",
+      "location": {
+        "file": "src/blame/attach.ts",
+        "line": 9
+      }
+    },
+    {
+      "description": "Opt-in and non-mutating by default: computeBlame returns a Map; the model is byte-identical afterwards. Attribution of an AI is only ever what a commit declared",
+      "location": {
+        "file": "src/blame/compute.ts",
+        "line": 30
+      }
+    },
+    {
+      "description": "as_of is the HEAD commit's author date, never the wall clock, so every age in the summary is a function of the checkout alone",
+      "location": {
+        "file": "src/blame/compute.ts",
+        "line": 31
+      }
+    },
+    {
+      "description": "A commit credits its author and each human co-author once; a bot-authored commit with no human co-author has an agent: author and credits no person. An AI tool is credited once per commit however many trailers name it",
+      "location": {
+        "file": "src/blame/compute.ts",
+        "line": 265
+      }
+    },
+    {
+      "description": "The default ignore_revs is .git-blame-ignore-revs, the file GitHub already honours; git.ts passes it only when it exists",
+      "location": {
+        "file": "src/blame/config.ts",
+        "line": 27
+      }
+    },
+    {
+      "description": "Every degraded status is printed next to the claim it degrades, so a reader never mistakes an unattributed claim for a clean one",
+      "location": {
+        "file": "src/blame/format.ts",
+        "line": 10
+      }
+    },
+    {
+      "description": "A rate with no denominator (no commit counts, or an identity with no commits) prints as a dash, never as 0: an absent number must not read as a good one",
+      "location": {
+        "file": "src/blame/format.ts",
+        "line": 11
+      }
+    },
+    {
+      "description": "Read-only by construction: no command here writes to the repository, and optional index refreshes are disabled",
+      "location": {
+        "file": "src/blame/git.ts",
+        "line": 21
+      }
+    },
+    {
+      "description": "Reachable from HEAD only, never --all: what other branches carry is not this checkout's history",
+      "location": {
+        "file": "src/blame/git.ts",
+        "line": 205
+      }
+    },
+    {
+      "description": "Public surface of src/blame: computeBlame (non-mutating), attachBlame (CLI --blame), the payload builders, the config reader and listCommits, the one history walk behind the commit counts",
+      "location": {
+        "file": "src/blame/index.ts",
+        "line": 9
+      }
+    },
+    {
+      "description": "Every list is sorted (rows by introduced desc, then identity; hot files by open desc; quarters contiguous and ascending) so two runs on the same HEAD print the same bytes — the dashboard and report determinism tests depend on it",
+      "location": {
+        "file": "src/blame/summary.ts",
+        "line": 26
+      }
+    },
+    {
+      "description": "Pure over BlameEntry[] and CommitCounts: no I/O, no clock. The trend axis is bounded by the date range of the entries, everything else by their count",
+      "location": {
+        "file": "src/blame/summary.ts",
+        "line": 27
+      }
+    },
+    {
+      "description": "Declared, not detected: a commit is credited to an AI only through a matching author identity or trailer. Nothing here inspects code or guesses",
+      "location": {
+        "file": "src/blame/trailers.ts",
+        "line": 25
+      }
+    },
+    {
+      "description": "Pure type declarations for the blame module; no I/O. The optional `blame` field these describe is invisible to the annotation hash and stripped from the committed model.json, exactly like `anchor`",
+      "location": {
+        "file": "src/blame/types.ts",
+        "line": 14
+      }
+    },
+    {
       "description": "Exit code is a pure function of (strict, exposures, drift, demotable stale) and lives in the summary, so JSON consumers see the same verdict the shell got",
       "location": {
         "file": "src/ci/index.ts",
@@ -4611,28 +5602,91 @@
       "description": "Closes the same blind spot ci's third check already closed (src/ci/index.ts) for the validate/CI-gate surface",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 330
+        "line": 340
       }
     },
     {
       "description": "Re-locking a stale claim is an assertion that the control still holds, so the default form never does it: --stale, --all or a named target is required, and each says so in its output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 425
+        "line": 435
+      }
+    },
+    {
+      "description": "Always exits 0 once the model parsed: outside a git checkout every claim reads as unattributed, which is an answer, not a failure. Only an unknown --identity is an error",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 553
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2838
+        "line": 2912
+      }
+    },
+    {
+      "description": "Prints only what the payload already holds; no I/O here",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 2957
+      }
+    },
+    {
+      "description": "Asset details match a tile by any of its aliases (#id, dotted path, as written), case-insensitively; mitigations never count as exposures, they only change a pair's status",
+      "location": {
+        "file": "src/dashboard/analytics.ts",
+        "line": 10
+      }
+    },
+    {
+      "description": "Ported unchanged from the first generate.ts; a file that cannot be read yields an empty context, never a failed page",
+      "location": {
+        "file": "src/dashboard/annotations.ts",
+        "line": 8
+      }
+    },
+    {
+      "description": "Verbatim from the previous generate.ts; behaviour unchanged. Model data never reaches these strings at generation time — they read the embedded arrays at run time",
+      "location": {
+        "file": "src/dashboard/client-legacy.ts",
+        "line": 9
+      }
+    },
+    {
+      "description": "No network: the clipboard API with a textarea fallback, history.replaceState for filters, localStorage only for theme and sidebar state",
+      "location": {
+        "file": "src/dashboard/client.ts",
+        "line": 16
       }
     },
     {
       "description": "Stats mirror the model's own scope: on a --feature model these are the feature's numbers, and the dashboard suppresses the ones that only mean something project-wide",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 88
+        "line": 95
+      }
+    },
+    {
+      "description": "Pure projection of record.blame; the summariser is shared with the CLI and the report so every surface agrees on the numbers",
+      "location": {
+        "file": "src/dashboard/data.ts",
+        "line": 286
+      }
+    },
+    {
+      "description": "Every item points somewhere: a hash route into the filtered view, a guardlink command, or both. Nothing here is a bare number",
+      "location": {
+        "file": "src/dashboard/data.ts",
+        "line": 384
+      }
+    },
+    {
+      "description": "Reads .guardlink/verified.json once; the classification itself is the parser's, not re-derived here",
+      "location": {
+        "file": "src/dashboard/data.ts",
+        "line": 516
       }
     },
     {
@@ -4646,14 +5700,14 @@
       "description": "A model narrowed with --feature carries filtered_by_features. The page then declares itself a slice in the title, the top bar and a banner, and suppresses the project-wide measures (file coverage, unannotated files) that a slice cannot answer",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 19
+        "line": 36
       }
     },
     {
-      "description": "Typed structurally so the dashboard compiles whether or not ThreatModel declares the optional field yet",
+      "description": "statCard keeps its exact markup: the feature-slice test greps the Open Threats tile by that string",
       "location": {
-        "file": "src/dashboard/generate.ts",
-        "line": 1745
+        "file": "src/dashboard/html.ts",
+        "line": 9
       }
     },
     {
@@ -4661,6 +5715,111 @@
       "location": {
         "file": "src/dashboard/index.ts",
         "line": 7
+      }
+    },
+    {
+      "description": "Pure and deterministic: URL parsing is string work, detection is two file reads at most. Hosts are classified by hostname substring (github/gitlab/bitbucket); anything else is `other` and gets GitHub-shaped links as a best effort.",
+      "location": {
+        "file": "src/dashboard/links.ts",
+        "line": 16
+      }
+    },
+    {
+      "description": "Accepts scp-style (git@host:org/repo.git), ssh://, http:// and https:// remotes. Strips `.git` and trailing slashes from the path.",
+      "location": {
+        "file": "src/dashboard/links.ts",
+        "line": 38
+      }
+    },
+    {
+      "description": "Best effort and side-effect free: every failure mode (no .git, junk pointer, dangling gitdir, config without origin, local-path origin) collapses to null rather than throwing, so dashboard generation never depends on this succeeding",
+      "location": {
+        "file": "src/dashboard/links.ts",
+        "line": 118
+      }
+    },
+    {
+      "description": "Pure rendering over the analytics builders; the same claim rows feed every grid so the numbers agree with the tables",
+      "location": {
+        "file": "src/dashboard/pages/analytics.ts",
+        "line": 13
+      }
+    },
+    {
+      "description": "Cells keep data-ff-asset (every alias of the tile, |-separated) and the asset drawer; the legend and search text are new",
+      "location": {
+        "file": "src/dashboard/pages/assets.ts",
+        "line": 5
+      }
+    },
+    {
+      "description": "No wall clock: ages are measured to the HEAD commit's date, so two generations at the same HEAD are byte-identical",
+      "location": {
+        "file": "src/dashboard/pages/attribution.ts",
+        "line": 11
+      }
+    },
+    {
+      "description": "The withheld-on-a-slice sentence and the coverage strings are pinned by tests; file cards gain search text and a host link",
+      "location": {
+        "file": "src/dashboard/pages/code.ts",
+        "line": 12
+      }
+    },
+    {
+      "description": "Pure; every string here is raw and is escaped by the page that renders it",
+      "location": {
+        "file": "src/dashboard/pages/context.ts",
+        "line": 13
+      }
+    },
+    {
+      "description": "The empty-state sentence and its condition are unchanged (flows are not part of it) because the feature-slice test pins the sentence",
+      "location": {
+        "file": "src/dashboard/pages/data-boundaries.ts",
+        "line": 7
+      }
+    },
+    {
+      "description": "Ported from the first generate.ts with the same panel ids and data-variant hooks the diagram script expects; the toolbar is a segmented zoom group plus copy-source",
+      "location": {
+        "file": "src/dashboard/pages/diagrams.ts",
+        "line": 6
+      }
+    },
+    {
+      "description": "Whole-project documents: --feature does not narrow them, and the page says so on a slice. With no saved report the page renders its own empty state so the copy buttons exist without the client",
+      "location": {
+        "file": "src/dashboard/pages/reports.ts",
+        "line": 8
+      }
+    },
+    {
+      "description": "The Open Threats tile keeps its exact markup and label, and the coverage panel keeps .coverage-pct / .posture-fill / the 'exposures mitigated' sentence: the client feature filter rewrites those by label, and a test greps the tile",
+      "location": {
+        "file": "src/dashboard/pages/summary.ts",
+        "line": 10
+      }
+    },
+    {
+      "description": "Scope wording lives in a note, not in headings: the client feature filter rewrites headings by textContent",
+      "location": {
+        "file": "src/dashboard/pages/threats.ts",
+        "line": 12
+      }
+    },
+    {
+      "description": "Deterministic per ref: the ref's commit date and the commit count are facts of history, so two runs at the same HEAD produce the same page",
+      "location": {
+        "file": "src/dashboard/since.ts",
+        "line": 9
+      }
+    },
+    {
+      "description": "Static CSS only; nothing here interpolates model data",
+      "location": {
+        "file": "src/dashboard/styles.ts",
+        "line": 9
       }
     },
     {
@@ -4737,14 +5896,21 @@
       "description": "No guardlink_entitlement_accept tool exists on purpose: proposing is an agent's job, granting authority is not (actor-entitlement design §3.6)",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 44
+        "line": 45
       }
     },
     {
       "description": "Entitlement accepted by zippon on 2026-08-10 via guardlink entitle (proposal ent-mcp_agent.mcp.data_exposure).",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 53
+        "line": 54
+      }
+    },
+    {
+      "description": "Non-mutating: computeBlame leaves the cached model untouched, so a later guardlink_parse in the same session never carries blame unasked. Nothing is written to the repository",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 1097
       }
     },
     {
@@ -5056,6 +6222,13 @@
       }
     },
     {
+      "description": "AI credit is what a commit declared in a trailer, never detected from code; a claim whose commits carry no trailer stays human. Every degraded status is listed so the reader never mistakes an unattributed claim for a clean one",
+      "location": {
+        "file": "src/report/report.ts",
+        "line": 1515
+      }
+    },
+    {
       "description": "Pure function: transforms ThreatModel flows to Mermaid sequence diagram",
       "location": {
         "file": "src/report/sequence.ts",
@@ -5133,10 +6306,17 @@
       }
     },
     {
+      "description": "Non-mutating on purpose: ctx.model is reused by every later command, and /blame must not make /report carry attribution unasked",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 997
+      }
+    },
+    {
       "description": "Derived query over @flows and @mitigates; every hop it prints is an existing annotation location, so a finding here cannot cite a line that was never written",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 1041
+        "line": 1069
       }
     },
     {
@@ -5162,8 +6342,8 @@
     }
   ],
   "coverage": {
-    "annotation_count": 510,
-    "coverage_percent": 80
+    "annotation_count": 635,
+    "coverage_percent": 84
   },
   "external_refs": []
 }

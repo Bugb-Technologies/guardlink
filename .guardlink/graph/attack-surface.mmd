@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        attack-surface.mmd
-%% annotation_hash: sha256-v2:d87c67372ccc764e906cdaf802b5994abcee762996822cf0d6a615c756e1b030
+%% annotation_hash: sha256-v2:d776d470058d48c0f39ad2cd1c5840a020d0ce27bac75add962f15f5f65ea5c6
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -76,25 +76,35 @@ graph TB
     E40["✅ ReDoS"]:::sev_med
     E41["⚠️ Denial_of_Service"]:::sev_low
   end
+  subgraph A_blame["GuardLink.Blame · ✅ 100% covered"]
+    direction TB
+    E42["✅ Sensitive_Data_Exposure"]:::sev_med
+    E43["✅ Path_Traversal ×3"]:::sev_low
+    E44["✅ Denial_of_Service ×3"]:::sev_low
+    E45["✅ ReDoS ×2"]:::sev_low
+    E46["✅ Command_Injection"]:::sev_low
+  end
   subgraph A_cli["GuardLink.CLI · ✅ 100% covered"]
     direction TB
-    E42["✅ Command_Injection ×2"]:::sev_crit
-    E43["✅ Path_Traversal"]:::sev_high
-    E44["✅ Arbitrary_File_Write ×7"]:::sev_high
-    E45["✅ API_Key_Exposure"]:::sev_high
-    E46["✅ Insecure_Deserialization"]:::sev_med
+    E47["✅ Command_Injection ×2"]:::sev_crit
+    E48["✅ Path_Traversal"]:::sev_high
+    E49["✅ Arbitrary_File_Write ×7"]:::sev_high
+    E50["✅ API_Key_Exposure"]:::sev_high
+    E51["✅ Insecure_Deserialization"]:::sev_med
   end
   subgraph A_dashboard["GuardLink.Dashboard · ✅ 100% covered"]
     direction TB
-    E47["✅ Cross_Site_Scripting ×2"]:::sev_high
-    E48["✅ Arbitrary_File_Write"]:::sev_med
-    E49["✅ Path_Traversal"]:::sev_med
+    E52["✅ Cross_Site_Scripting ×2"]:::sev_high
+    E53["✅ Arbitrary_File_Write"]:::sev_med
+    E54["✅ Path_Traversal ×3"]:::sev_med
+    E55["✅ Sensitive_Data_Exposure"]:::sev_low
+    E56["✅ Command_Injection"]:::sev_low
   end
   subgraph A_diff["GuardLink.Diff · ✅ 100% covered"]
     direction TB
-    E50["✅ Command_Injection ×3"]:::sev_high
-    E51["✅ Arbitrary_File_Write"]:::sev_med
-    E52["✅ Path_Traversal"]:::sev_med
+    E57["✅ Command_Injection ×3"]:::sev_high
+    E58["✅ Arbitrary_File_Write"]:::sev_med
+    E59["✅ Path_Traversal"]:::sev_med
   end
   classDef sev_crit fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.4px
   classDef sev_high fill:#402019,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.2px

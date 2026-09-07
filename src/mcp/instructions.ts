@@ -92,6 +92,7 @@ A scanner reported a CWE → guardlink_lookup("cwe:CWE-89")
 
 Before you finish → guardlink_validate   ·   After a change → guardlink_diff("HEAD~1")
 Cold on an unfamiliar repo → guardlink_status
+Who introduced this, and did an AI co-author it → guardlink_blame(file)
 
 WRITING ANNOTATIONS
 

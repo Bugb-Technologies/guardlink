@@ -17,6 +17,7 @@
  *   guardlink_entitlement_propose — Propose an @entitles claim into the review artifact
  *   guardlink_entitlement_list — List entitlement proposals and their decisions
  *   guardlink_workspace_info — Workspace config, siblings, tag prefixes
+ *   guardlink_blame    — Who introduced / declared / fixed each claim, and which AI co-authored it (read from git)
  *
  * There is no entitlement *accept* tool. An entitlement's error mode is a silent
  * false negative, so acceptance stays a human decision recorded by name through
@@ -80,6 +81,7 @@ import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard,
 import { buildAnnotatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
 import { loadWorkspaceConfig } from '../workspace/index.js';
+import { computeBlame, buildBlamePayload } from '../blame/index.js';
 import { getPackageVersion } from '../version.js';
 import type { ThreatModel } from '../types/index.js';
 
@@ -1085,6 +1087,42 @@ export function createServer(): McpServer {
       } catch (err) {
         return { content: [{ type: 'text', text: `Error: ${(err as Error).message}` }] };
       }
+    },
+  );
+
+  // ── Tool: guardlink_blame ──
+  /**
+   * @flows GitRepo -> #mcp via computeBlame -- "Attribution read from blame, log -L and commit trailers for the connected agent"
+   * @handles pii on #mcp -- "Author identities, in the configured identity mode (blame.identity in config.json), reach the MCP client"
+   * @comment -- "Non-mutating: computeBlame leaves the cached model untouched, so a later guardlink_parse in the same session never carries blame unasked. Nothing is written to the repository"
+   */
+  registerTool(
+    server, cache,
+    'guardlink_blame',
+    'Who introduced the code beneath each claim, who declared it, who declared its fix, and which AI tool co-authored those commits — read from git (blame, log -L, Co-Authored-By / Assisted-by trailers); nothing is written. AI credit is DECLARED by commit trailers, never detected from code: a commit with no trailer stays human. Pass `file` to narrow to one file. Entries carry the ledger claim key, so they join to .guardlink/verified.json. Outside a git checkout every entry is status no-git; uncommitted means the line has changes git has not seen; shallow means every introduction is a lower bound.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      file: z.string().describe('Optional file: only claims declared in, or anchored to, it. Absolute, relative or ./-prefixed; resolved against root.').optional(),
+    },
+    async ({ root, file }) => {
+      const { model } = await getModel(root);
+      let rel: string | undefined;
+      if (file !== undefined) {
+        const normalised = normalizeContextPath(root, file);
+        if (normalised === null) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({
+              file, status: 'outside_root',
+              hint: 'That path resolves outside the project root. Paths are interpreted relative to root; nothing outside it is read.',
+            }, null, 2) }],
+          };
+        }
+        rel = normalised;
+      }
+      const { resolve } = await import('node:path');
+      const abs = resolve(root);
+      const payload = buildBlamePayload(model, computeBlame(abs, model, { file: rel }), abs);
+      return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] };
     },
   );
 
