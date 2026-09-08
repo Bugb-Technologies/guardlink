@@ -1,37 +1,37 @@
 {
   "schema_version": 1,
-  "annotation_hash": "sha256-v2:d776d470058d48c0f39ad2cd1c5840a020d0ce27bac75add962f15f5f65ea5c6",
+  "annotation_hash": "sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f",
   "generator": "guardlink@2.0.0",
   "artifacts": [
     {
       "path": ".guardlink/graph/threat-graph.mmd",
-      "bytes": 9325,
-      "annotation_hash": "sha256-v2:d776d470058d48c0f39ad2cd1c5840a020d0ce27bac75add962f15f5f65ea5c6"
+      "bytes": 9408,
+      "annotation_hash": "sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f"
     },
     {
       "path": ".guardlink/graph/dataflow.mmd",
-      "bytes": 11151,
-      "annotation_hash": "sha256-v2:d776d470058d48c0f39ad2cd1c5840a020d0ce27bac75add962f15f5f65ea5c6"
+      "bytes": 11296,
+      "annotation_hash": "sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f"
     },
     {
       "path": ".guardlink/graph/attack-surface.mmd",
-      "bytes": 4770,
-      "annotation_hash": "sha256-v2:d776d470058d48c0f39ad2cd1c5840a020d0ce27bac75add962f15f5f65ea5c6"
+      "bytes": 4774,
+      "annotation_hash": "sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f"
     },
     {
       "path": ".guardlink/graph/by-feature/dashboard.mmd",
       "bytes": 2301,
-      "annotation_hash": "sha256-v2:d776d470058d48c0f39ad2cd1c5840a020d0ce27bac75add962f15f5f65ea5c6"
+      "annotation_hash": "sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f"
     },
     {
       "path": ".guardlink/graph/by-feature/mcp-integration.mmd",
       "bytes": 2749,
-      "annotation_hash": "sha256-v2:d776d470058d48c0f39ad2cd1c5840a020d0ce27bac75add962f15f5f65ea5c6"
+      "annotation_hash": "sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f"
     },
     {
       "path": ".guardlink/model.json",
-      "bytes": 182662,
-      "annotation_hash": "sha256-v2:d776d470058d48c0f39ad2cd1c5840a020d0ce27bac75add962f15f5f65ea5c6"
+      "bytes": 186921,
+      "annotation_hash": "sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f"
     }
   ]
 }

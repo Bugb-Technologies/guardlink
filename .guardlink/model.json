@@ -2,7 +2,7 @@
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 127,
-  "annotations_parsed": 635,
+  "annotations_parsed": 652,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -74,6 +74,7 @@
     "src/parser/citation.ts",
     "src/parser/claim-key.ts",
     "src/parser/clear.ts",
+    "src/parser/comment-strip.ts",
     "src/parser/coverage.ts",
     "src/parser/feature-filter.ts",
     "src/parser/fingerprint.ts",
@@ -127,7 +128,6 @@
     "src/analyze/format.ts",
     "src/index.ts",
     "src/init/picker.ts",
-    "src/parser/comment-strip.ts",
     "src/parser/format.ts",
     "src/parser/index.ts",
     "src/parser/normalize.ts",
@@ -1478,6 +1478,26 @@
     },
     {
       "asset": "#parser",
+      "threat": "#redos",
+      "control": "#regex-anchoring",
+      "description": "Every pattern is anchored at ^ and bounded — decoration is {1,3}, the marker tail is a character-by-character scan, and no pattern nests a quantifier",
+      "location": {
+        "file": "src/parser/comment-strip.ts",
+        "line": 8
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "consumeMarkerTail is linear in the marker, not the line: it stops at the first character that is not the marker's own",
+      "location": {
+        "file": "src/parser/comment-strip.ts",
+        "line": 9
+      }
+    },
+    {
+      "asset": "#parser",
       "threat": "#dos",
       "control": "#resource-limits",
       "description": "Reuses DEFAULT_EXCLUDE; stats come from the glob walk, no extra stat() calls, no file reads",
@@ -2729,6 +2749,19 @@
     },
     {
       "asset": "#parser",
+      "threat": "#redos",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-1333"
+      ],
+      "description": "Marker and decoration matching runs on every line of every scanned file, including attacker-supplied source",
+      "location": {
+        "file": "src/parser/comment-strip.ts",
+        "line": 7
+      }
+    },
+    {
+      "asset": "#parser",
       "threat": "#dos",
       "severity": "low",
       "external_refs": [
@@ -3464,7 +3497,17 @@
       "description": "Parsed model checked for uncovered exposures",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 30
+        "line": 47
+      }
+    },
+    {
+      "source": "ParseDiagnostics",
+      "target": "#cli",
+      "mechanism": "runCiChecks",
+      "description": "Diagnostics from the parse are reported, never recomputed",
+      "location": {
+        "file": "src/ci/index.ts",
+        "line": 48
       }
     },
     {
@@ -3474,7 +3517,7 @@
       "description": "Recorded anchors compared against current source",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 31
+        "line": 49
       }
     },
     {
@@ -3484,7 +3527,7 @@
       "description": "Recorded claim hashes, read only",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 32
+        "line": 50
       }
     },
     {
@@ -3574,7 +3617,7 @@
       "description": "report --blame attaches attribution before the metadata spread, so the shared records carry it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 661
+        "line": 662
       }
     },
     {
@@ -3584,7 +3627,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2236
+        "line": 2237
       }
     },
     {
@@ -3594,7 +3637,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2239
+        "line": 2240
       }
     },
     {
@@ -4178,6 +4221,16 @@
       }
     },
     {
+      "source": "#parser",
+      "target": "ParseDiagnostics",
+      "mechanism": "parseString",
+      "description": "Lines that were meant to be annotations and were not read, named rather than dropped",
+      "location": {
+        "file": "src/parser/parse-file.ts",
+        "line": 11
+      }
+    },
+    {
       "source": "ProjectRoot",
       "target": "#parser",
       "mechanism": "fast-glob",
@@ -4699,6 +4752,24 @@
         "file": "src/mcp/subgraph.ts",
         "line": 46
       }
+    },
+    {
+      "control": "#regex-anchoring",
+      "asset": "#parser",
+      "description": "tests/comment-forms.test.ts pins every §2.9.1 form and, negatively, that a non-comment still returns null",
+      "location": {
+        "file": "src/parser/comment-strip.ts",
+        "line": 11
+      }
+    },
+    {
+      "control": "#input-sanitize",
+      "asset": "#parser",
+      "description": "tests/comment-forms.test.ts pins that doc-tag and decorator traffic produces neither annotations nor diagnostics",
+      "location": {
+        "file": "src/parser/parse-file.ts",
+        "line": 13
+      }
     }
   ],
   "audits": [
@@ -5021,7 +5092,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2956
+        "line": 2957
       }
     },
     {
@@ -5316,6 +5387,19 @@
       }
     },
     {
+      "reason": "Externalized relationship examples, excluded from parsing",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 477
+      }
+    },
+    {
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 482
+      }
+    },
+    {
       "reason": "graph/README example content, excluded from parsing",
       "location": {
         "file": "src/artifacts/emit.ts",
@@ -5338,20 +5422,59 @@
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 117
+        "line": 105
+      }
+    },
+    {
+      "reason": "Placement examples per language; every verb line below is a template, not a claim",
+      "location": {
+        "file": "src/init/templates.ts",
+        "line": 109
+      }
+    },
+    {
+      "location": {
+        "file": "src/init/templates.ts",
+        "line": 176
+      }
+    },
+    {
+      "reason": "The annotation reference's own syntax block: verb lines at column 0 with no comment marker, which is what an annotation lost inside a docstring looks like",
+      "location": {
+        "file": "src/init/templates.ts",
+        "line": 207
+      }
+    },
+    {
+      "location": {
+        "file": "src/init/templates.ts",
+        "line": 303
+      }
+    },
+    {
+      "reason": "agentInstructions renders the Quick Syntax block: verb lines at column 0 that document the grammar rather than claim anything",
+      "location": {
+        "file": "src/init/templates.ts",
+        "line": 307
+      }
+    },
+    {
+      "location": {
+        "file": "src/init/templates.ts",
+        "line": 416
       }
     },
     {
       "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 841
+        "line": 904
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1139
+        "line": 1202
       }
     }
   ],
@@ -5581,21 +5704,21 @@
       "description": "Exit code is a pure function of (strict, exposures, drift, demotable stale) and lives in the summary, so JSON consumers see the same verdict the shell got",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 33
+        "line": 51
       }
     },
     {
       "description": "Exposures and drift are serialized as the types the parser already produces — no renamed fields, so guardlink.ci/v1 cannot drift from the model it reports",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 34
+        "line": 52
       }
     },
     {
       "description": "The third check reads .guardlink/verified.json and never writes it; a corrupt ledger is reported once and treated as absent",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 35
+        "line": 53
       }
     },
     {
@@ -5623,14 +5746,14 @@
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2912
+        "line": 2913
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2957
+        "line": 2958
       }
     },
     {
@@ -6005,6 +6128,13 @@
       }
     },
     {
+      "description": "Widening what is consumed AFTER a recognised marker is safe; widening the marker set would not be. The openers in LINE_MARKERS are unchanged from the single-marker version, so no line that was code became a comment",
+      "location": {
+        "file": "src/parser/comment-strip.ts",
+        "line": 10
+      }
+    },
+    {
       "description": "Inline annotations never carry parent_symbol (parse-file.ts populates it only from @source), so this rule is inert in every inline repo — measured: 0 of 74 exposures change state on guardlink, 0 of 61 on specter-v1, 2 of 11 on expense-api",
       "location": {
         "file": "src/parser/coverage.ts",
@@ -6072,6 +6202,13 @@
       "location": {
         "file": "src/parser/migrate-mode.ts",
         "line": 30
+      }
+    },
+    {
+      "description": "A line lost before parseLine is a security claim that reached no threat model and produced no warning; the two comment-form diagnostics here exist so the next unread form cannot survive a release unnoticed",
+      "location": {
+        "file": "src/parser/parse-file.ts",
+        "line": 12
       }
     },
     {
@@ -6342,8 +6479,8 @@
     }
   ],
   "coverage": {
-    "annotation_count": 635,
-    "coverage_percent": 84
+    "annotation_count": 652,
+    "coverage_percent": 85
   },
   "external_refs": []
 }
