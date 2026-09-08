@@ -2,7 +2,7 @@
  * GuardLink init — Template content for generated files.
  */
 
-import type { ProjectInfo } from './detect.js';
+import type { ProjectInfo, ProjectLanguage } from './detect.js';
 import type { ThreatModel } from '../types/index.js';
 import type { AnnotationMode } from '../parser/annotation-mode.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
@@ -92,27 +92,86 @@ not edit source files to add annotations in this mode.
 > annotations. \`guardlink validate\` warns if a \`.gal\` is off-convention, and still parses it.`;
   }
 
-  const example = project.commentPrefix === '#'
-    ? `\`\`\`py
-# @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
-# @mitigates #api against #sqli using #prepared-stmts -- "parameterized via psycopg"
-def login(email): ...
-\`\`\``
-    : `\`\`\`ts
-/**
- * @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
- * @mitigates #api against #sqli using #prepared-stmts -- "parameterized via pg"
- */
-export function login(email: string) { … }
-\`\`\``;
+  const { example, notRead } = inlinePlacementExample(project);
 
   return `**Annotation mode: \`inline\`. Annotations live in source-file comments**, in the comment
 syntax of the file you are editing — the doc-block of the function or module they describe.
 ${unrecorded}
 ${example}
-
+${notRead}
 Do not create \`.gal\` sidecars under \`.guardlink/annotations/\` in this mode; a repo with
 both is a mixed repo, and that is the failure this section exists to prevent.`;
+}
+// @shield:end
+
+// ─── Inline placement, in the host language's real doc-block ─────────
+
+// @shield:begin -- "Placement examples per language; every verb line below is a template, not a claim"
+/**
+ * The doc-block an author of this language actually writes, and the forms this
+ * parser does not read.
+ *
+ * The old version of this offered two examples — a `#` one and a JSDoc one —
+ * and handed the JSDoc one to Rust, Go, C#, Swift and Kotlin alike. For Rust
+ * that was worse than unhelpful: the instruction says "the doc-block of the
+ * function or module they describe", a Rust doc-block is `///`, and `///` was
+ * the exact form the parser dropped without a diagnostic. GuardLink's own
+ * generated guidance taught the mistake it then punished silently.
+ *
+ * `///` parses now (see parser/comment-strip.ts), so the guidance can simply be
+ * true. What is still **not** read is stated rather than left to be discovered:
+ * Python docstrings, Ruby `=begin`, and multi-line `<!-- -->` and `{- -}` are
+ * not comments to this parser — SPEC §2.9 §"Not read" says the same thing in
+ * the specification, and `uncommented-annotation` says it at parse time.
+ */
+function inlinePlacementExample(project: ProjectInfo): { example: string; notRead: string } {
+  // `language` is the real signal; `commentPrefix` is the fallback for a caller
+  // that built a ProjectInfo by hand (and for a language this switch has not
+  // met), so a `#` project never silently gets the TypeScript example.
+  const language: ProjectLanguage = project.language
+    ?? (project.commentPrefix === '#' ? 'python' : 'unknown');
+  const fence = (lang: string, body: string) => `\`\`\`${lang}\n${body}\n\`\`\``;
+  const line = (prefix: string) =>
+    `${prefix} @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"\n`
+    + `${prefix} @mitigates #api against #sqli using #prepared-stmts -- "parameterized query"`;
+  const block = (lang: string, signature: string) => fence(lang,
+    `/**\n`
+    + ` * @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"\n`
+    + ` * @mitigates #api against #sqli using #prepared-stmts -- "parameterized query"\n`
+    + ` */\n${signature}`);
+
+  const DOCSTRINGS_NOT_READ = `\n> **Not read:** annotations inside a \`"""\` docstring are not parsed — a docstring is a\n`
+    + `> string, not a comment. Use \`#\` comment lines, as above. GuardLink warns\n`
+    + `> (\`uncommented-annotation\`) if it finds one.\n`;
+  const RUBY_NOT_READ = `\n> **Not read:** annotations inside a \`=begin\` / \`=end\` block are not parsed. Use \`#\`\n`
+    + `> comment lines, as above. GuardLink warns (\`uncommented-annotation\`) if it finds one.\n`;
+
+  switch (language) {
+    case 'python':
+      return { example: fence('py', `${line('#')}\ndef login(email): ...`), notRead: DOCSTRINGS_NOT_READ };
+    case 'ruby':
+      return { example: fence('rb', `${line('#')}\ndef login(email); end`), notRead: RUBY_NOT_READ };
+    case 'terraform':
+      return { example: fence('hcl', `${line('#')}\nresource "aws_db_instance" "main" { … }`), notRead: '' };
+    case 'rust':
+      return { example: fence('rust', `${line('///')}\npub fn login(email: &str) { … }`), notRead: '' };
+    case 'csharp':
+      return { example: fence('csharp', `${line('///')}\npublic void Login(string email) { … }`), notRead: '' };
+    case 'swift':
+      return { example: fence('swift', `${line('///')}\nfunc login(email: String) { … }`), notRead: '' };
+    case 'go':
+      return { example: fence('go', `${line('//')}\nfunc Login(email string) { … }`), notRead: '' };
+    case 'java':
+      return { example: block('java', 'public void login(String email) { … }'), notRead: '' };
+    case 'kotlin':
+      return { example: block('kotlin', 'fun login(email: String) { … }'), notRead: '' };
+    case 'javascript':
+      return { example: block('js', 'export function login(email) { … }'), notRead: '' };
+    case 'typescript':
+    case 'unknown':
+    default:
+      return { example: block('ts', 'export function login(email: string) { … }'), notRead: '' };
+  }
 }
 // @shield:end
 
@@ -145,6 +204,7 @@ export function referenceDocPath(rootFiles: boolean): string {
   return rootFiles ? REFERENCE_DOC_IN_DOCS : REFERENCE_DOC_IN_GUARDLINK;
 }
 
+// @shield:begin -- "The annotation reference's own syntax block: verb lines at column 0 with no comment marker, which is what an annotation lost inside a docstring looks like"
 export function referenceDocContent(project: ProjectInfo): string {
   return `# GuardLink — Annotation Reference
 
@@ -240,9 +300,11 @@ When connected via \`.mcp.json\`, use:
 - \`guardlink_entitlement_propose\` / \`guardlink_entitlement_list\` — propose an \`@entitles\` claim and see what happened to it. There is no accept tool: a human accepts, with \`guardlink entitle\`.
 `;
 }
+// @shield:end
 
 // ─── Agent instruction content (compact — points to reference doc) ───
 
+// @shield:begin -- "agentInstructions renders the Quick Syntax block: verb lines at column 0 that document the grammar rather than claim anything"
 /**
  * Compact GuardLink instruction block injected into agent files.
  * Points to docs/GUARDLINK_REFERENCE.md for full syntax.
@@ -351,6 +413,7 @@ guardlink entitle --propose --actor '#ns-admin' --capability configure-archival-
 \`\`\`
 `.trimStart();
 }
+// @shield:end
 
 // ─── Model-aware instruction block (for sync) ──────────────────────
 

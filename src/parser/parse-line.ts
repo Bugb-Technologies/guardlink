@@ -762,3 +762,79 @@ function desc(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   return unescapeDescription(raw);
 }
+
+// ─── The silence upstream of the tiering (D-DOC) ─────────────────────
+
+/**
+ * Everything above this line only ever runs on text that already begins with
+ * `@`. That is the whole reason the tier system has been quiet: a `///` marker
+ * the stripper did not fully consume, or a docstring with no marker at all,
+ * never reached `parseLine`, so `KNOWN_VERBS`, `DOC_TAGS` and `nearestVerb`
+ * were being applied one layer too late to say anything about them.
+ *
+ * The two predicates below hand that same discriminator to the caller so a
+ * line that was *meant* to be an annotation can be reported instead of
+ * discarded. Both are scoped to the 25 known verbs, and the scoping is the
+ * safety argument, not a convenience: measured across the pinned corpora,
+ * comment lines beginning `@token` number 750 on juice-shop, 2,330 on
+ * ghostfolio and 3,176 on bkeeper — and of those, **0, 0 and 3** are a known
+ * GuardLink verb. An unscoped "unparsed @ line" warning would emit 2,330
+ * warnings on a repository that has never heard of GuardLink. This one emits
+ * none.
+ */
+
+/** Whether a token is one of the verbs this parser implements. */
+export function isKnownVerb(token: string): boolean {
+  return KNOWN_VERBS.has(token);
+}
+
+/**
+ * A known verb sitting behind leftover marker punctuation: `/ @exposes …`,
+ * what `///` leaves when only `//` is consumed.
+ *
+ * Three things have to hold at once, and each one is load-bearing:
+ *
+ * 1. **The residue is marker punctuation**, from the alphabet comment markers
+ *    and their decorations are actually drawn from. This is what excludes
+ *    prose: a backticked mention (``@handles`` in a sentence) and a section
+ *    rule (`── @asset ──`) both put a character before the `@`, and neither is
+ *    a comment marker. Measured on GuardLink's own source, the unrestricted
+ *    form fired six times and every one was documentation.
+ * 2. **The residue is not itself a whole comment marker.** If what is left over
+ *    is `//` or `#`, the thing consumed as a marker was not one — a TypeScript
+ *    string literal opening with `'` is read as VB.NET, and the `//` inside it
+ *    is source, not a decoration this parser has yet to learn.
+ * 3. **Structural evidence**, on the same terms `structuralEvidence` already
+ *    sets for the prose/malformed split. A hidden annotation names a `#ref` or
+ *    carries a `--`; a sentence about a verb does neither.
+ *
+ * Bounded to four characters so the scan cannot walk a long line.
+ */
+export function residualMarkerVerb(text: string): { residue: string; verb: string } | null {
+  const m = text.match(/^([/#;%'!<>|^*=~+-]{1,4})[ \t]*@(\S+)\s*([\s\S]*)$/);
+  if (!m) return null;
+  if (WHOLE_MARKERS.has(m[1])) return null;
+  const verb = m[2].replace(/[,.;:!?)\]}]+$/, '');
+  if (!KNOWN_VERBS.has(verb)) return null;
+  return structuralEvidence(verb, m[3]) ? { residue: m[1], verb } : null;
+}
+
+/** The line-comment openers themselves — see rule 2 above. */
+const WHOLE_MARKERS: ReadonlySet<string> = new Set(['//', '#', '--', '%', ';', "'", '*']);
+
+/**
+ * A known verb on a line that carried no comment marker at all — the shape an
+ * annotation takes inside a Python docstring, a Ruby `=begin` block, or a
+ * multi-line `<!-- -->`.
+ *
+ * §2.9 promised those forms and the parser has never implemented them (see
+ * SPEC §2.9's "Not read" table). Structural evidence is required on top of the
+ * verb, so a bare English line starting with a verb name is not enough: this
+ * has to look like someone writing an annotation, not writing about one.
+ */
+export function uncommentedVerb(text: string): { verb: string; evidence: string } | null {
+  const m = text.match(/^@(\S+)\s*([\s\S]*)$/);
+  if (!m || !KNOWN_VERBS.has(m[1])) return null;
+  const evidence = structuralEvidence(m[1], m[2]);
+  return evidence ? { verb: m[1], evidence } : null;
+}

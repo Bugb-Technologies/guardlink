@@ -209,15 +209,50 @@ Parsers must strip the host language's comment prefix before matching annotation
 | `--` | Haskell, Lua, SQL, Ada, VHDL |
 | `/* */` | C, C++, Java, CSS (block comments) |
 | `(* *)` | OCaml, Pascal |
-| `""" """` | Python (docstrings) |
 | `%` | LaTeX, Erlang, MATLAB |
 | `;` | Lisp, Clojure, Assembly, INI files |
-| `<!-- -->` | HTML, XML, SVG |
-| `{- -}` | Haskell (block comments) |
+| `<!-- -->` | HTML, XML, SVG (single line) |
+| `{- -}` | Haskell (block comments, single line) |
 | `REM` | Batch files |
 | `'` | VBA, VB.NET |
 
-Within block comments (`/* */`, `<!-- -->`, etc.), parsers should check each line independently after stripping the comment delimiters and any leading `*` characters (common in Javadoc-style blocks).
+#### 2.9.1. Repeated and decorated markers
+
+**A marker repeated, or decorated with one of `!`, `<`, `|`, `^`, is still that language's comment.** Every doc-comment convention in circulation is a marker plus one character, and a parser that removes exactly one marker leaves the annotation one character out of reach. Parsers must consume the whole marker:
+
+| Form | Language |
+|------|----------|
+| `///`, `//!`, `//!<` | Rust doc and inner doc, Doxygen; also C#, Swift, Dart |
+| `/**`, `/*!`, `/**<` **on the opening line** | JavaScript, TypeScript, Java, Doxygen |
+| `##` | Python, Bash, YAML banner comments |
+| `;;`, `;;;` | Lisp, Clojure |
+| `%%` | Erlang module comments |
+| `---` | Lua (LDoc) |
+| `-- \|`, `-- ^` | Haskell (Haddock) |
+| `'''` | VB.NET XML doc |
+
+The rule is general, not a list of spellings: strip the marker, then any repetition of the marker's own character, then at most three decoration characters drawn from `!<|^` (optionally preceded by whitespace, as Haddock writes `-- | doc`). A parser that hard-codes the table above will be wrong about the next language.
+
+This must not widen what counts as a comment. Only what follows a **recognised** opener is consumed; a line that is not a comment is still not a comment.
+
+#### 2.9.2. Block comments
+
+Within block comments (`/* */`, `<!-- -->`, etc.), parsers should check each line independently after stripping the comment delimiters and any leading `*` characters (common in Javadoc-style blocks). An opening `/**` line carries its annotation as often as the `* @…` continuations below it, so the opener must be stripped too (§2.9.1).
+
+#### 2.9.3. Not read
+
+The following are **not** comment styles for the purpose of this section, and an annotation written inside one is not part of the model:
+
+| Form | Why |
+|------|-----|
+| `""" """`, `''' '''` | A Python docstring is a string expression, not a comment. Treating string literals as comments would make any multi-line string in any language a place annotations can hide, including the template literals tools use to *document* this syntax. |
+| `=begin` / `=end` | Ruby block comment; no line-oriented marker to strip. |
+| `<!-- -->` spanning multiple lines | Only the single-line form is a line-oriented comment. |
+| `{- -}` spanning multiple lines | Same. |
+
+Earlier revisions of this section listed `""" """` among the supported styles. No implementation has ever read it; the claim is withdrawn rather than kept as an aspiration, because a specification that promises a form the parser drops produces exactly the silent loss §2.12 exists to prevent.
+
+**A conforming parser must not be silent about these.** When a line carries no comment marker, begins with a known verb, and shows structural evidence (§2.12), the parser must emit a diagnostic — GuardLink emits `uncommented-annotation`. Likewise, when a line *is* a comment and a known verb sits behind punctuation the parser could not account for, it must emit `unrecognised-comment-form` rather than discarding the line. Both are warnings, and both are scoped to the known verbs: measured across juice-shop, ghostfolio and bkeeper, comment lines beginning `@token` number 750, 2,330 and 3,176, of which 0, 0 and 3 are known verbs. An unscoped warning would be unusable; a scoped one is silent on code that has never heard of GuardLink.
 
 ### 2.10. Name Normalization
 
@@ -329,6 +364,15 @@ needs to know the remedy without consulting the specification.
 another` contains `from`, which is genuinely part of `@transfers`'s grammar, and
 will be reported as an error. The split is heuristic by construction; the
 `@shield` markers are the deterministic override.
+
+**The tiering only sees lines that reached it.** Both tiers above run on text
+that already begins with `@`, which means a line lost before that point — a
+comment marker the parser could not fully consume, or a form §2.9.3 does not
+read — is invisible to them however well they are designed. §2.9.1 removes the
+first cause; §2.9.3 requires the second to be reported. Their codes,
+`unrecognised-comment-form` and `uncommented-annotation`, are warnings and use
+the same known-verb scoping, for the same reason: a diagnostic that fires on
+third-party code is one nobody keeps switched on.
 
 ---
 

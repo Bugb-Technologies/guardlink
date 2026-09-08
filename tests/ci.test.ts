@@ -329,3 +329,96 @@ describe('--format json emits guardlink.ci/v1', () => {
     expect(runs.badFormat.stderr).toContain("Unknown --format 'yaml'");
   });
 });
+
+// ─── parse diagnostics ───────────────────────────────────────────────
+
+/**
+ * `ci` used to check three things about a model and nothing about whether the
+ * model was read. That is the wrong end to be silent at: an annotation the
+ * parser could not see is not an exposure, not a drifted anchor and not a stale
+ * claim — it is nothing at all, and the counts look healthier for its absence.
+ *
+ * The fixture puts one of each kind on disk: a malformed annotation (error), an
+ * annotation in a docstring the parser does not read (warning), and a clean
+ * mitigated pair so the other three checks have nothing of their own to say.
+ */
+const DIAGNOSTIC_SOURCE = `/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
+ * @mitigates #api against #sqli using #prepared-stmts -- "Parameterized via pg"
+ * @exposes #api to
+ */
+export function login(email: string) { return email; }
+`;
+
+const DOCSTRING_SOURCE = `def read(path):
+    """Read a file.
+
+    @exposes #db to #pt [medium] cwe:CWE-22 -- "path segment from the request"
+    """
+    return path
+`;
+
+describe('parse diagnostics are reported, and advisory unless --strict', () => {
+  let root: string;
+  let runs: Record<'advisory' | 'strict' | 'json', Run>;
+
+  beforeAll(async () => {
+    root = await scaffold('gl-ci-diag-', DIAGNOSTIC_SOURCE);
+    await writeFile(join(root, 'src', 'read.py'), DOCSTRING_SOURCE);
+    runs = await warm(root, {
+      advisory: ['ci', '.'],
+      strict: ['ci', '.', '--strict'],
+      json: ['ci', '.', '--format', 'json'],
+    });
+  }, 60_000);
+  afterAll(async () => { await rm(root, { recursive: true, force: true }); });
+
+  it('names both diagnostics, above the counts they qualify', () => {
+    expect(runs.advisory.stderr).toContain('Parse diagnostics: 1 error(s), 1 warning(s)');
+    expect(runs.advisory.stderr).toContain('malformed-annotation 1');
+    expect(runs.advisory.stderr).toContain('uncommented-annotation 1');
+    expect(runs.advisory.stderr).toContain('src/read.py');
+    // Reported before the model counts, because it qualifies them.
+    expect(runs.advisory.stderr.indexOf('Parse diagnostics'))
+      .toBeLessThan(runs.advisory.stderr.indexOf('Unmitigated exposures'));
+  });
+
+  it('does not fail the build on its own', () => {
+    expect(runs.advisory.status).toBe(0);
+    expect(runs.advisory.stderr).toContain('Advisory — nothing here failed the build');
+  });
+
+  it('--strict fails on a parse error, with no exposure or drift present', () => {
+    expect(runs.strict.status).toBe(1);
+  });
+
+  it('serializes the diagnostics the parser produced, with its field names', () => {
+    const report = JSON.parse(runs.json.stdout);
+    expect(report.summary.parse_errors).toBe(1);
+    expect(report.summary.parse_warnings).toBe(1);
+    expect(report.summary.parse_by_code).toMatchObject({
+      'malformed-annotation': 1,
+      'uncommented-annotation': 1,
+    });
+    const docstring = report.parse.find((d: { code: string }) => d.code === 'uncommented-annotation');
+    expect(docstring).toMatchObject({ level: 'warning', file: 'src/read.py' });
+    expect(typeof docstring.line).toBe('number');
+  });
+});
+
+describe('a clean repo says so about the parse too', () => {
+  let root: string;
+  let run: Run;
+
+  beforeAll(async () => {
+    root = await scaffold('gl-ci-clean-parse-', CLEAN_SOURCE);
+    run = await guardlink(root, 'ci', '.');
+  }, 60_000);
+  afterAll(async () => { await rm(root, { recursive: true, force: true }); });
+
+  it('reports zero and includes the parse in the all-clear', () => {
+    expect(run.status).toBe(0);
+    expect(run.stderr).toContain('Parse diagnostics: 0');
+    expect(run.stderr).toContain('✓ No unmitigated exposures, no anchor drift.');
+  });
+});

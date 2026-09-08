@@ -587,7 +587,7 @@ program
 
 program
   .command('ci')
-  .description('Advisory CI checks — unmitigated exposures, drifted @source anchors, and stale claims (exit 0 unless --strict)')
+  .description('Advisory CI checks — parse diagnostics, unmitigated exposures, drifted @source anchors, and stale claims (exit 0 unless --strict)')
   .argument('[dir]', 'Project directory to scan', '.')
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('-f, --format <fmt>', 'Output format: text (default) or json', 'text')
@@ -600,8 +600,8 @@ program
       process.exit(1);
     }
 
-    const { model } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
-    const report = runCiChecks(root, model, { strict: opts.strict });
+    const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    const report = runCiChecks(root, model, { strict: opts.strict, diagnostics });
 
     if (report.summary.ledger === 'corrupt' && opts.format === 'text') {
       console.error(`✗ ${readLedger(root).diagnostic!.message}`);
@@ -609,7 +609,8 @@ program
 
     if (opts.format === 'json') {
       console.log(JSON.stringify(report, null, 2));
-      console.error(`GuardLink CI: ${report.summary.exposures} unmitigated exposure(s), ${report.summary.drift} drifted anchor(s), ${report.summary.stale} stale claim(s)`);
+      console.error(`GuardLink CI: ${report.summary.parse_errors} parse error(s), ${report.summary.parse_warnings} parse warning(s), `
+        + `${report.summary.exposures} unmitigated exposure(s), ${report.summary.drift} drifted anchor(s), ${report.summary.stale} stale claim(s)`);
     } else {
       console.error(formatCiReport(report));
     }

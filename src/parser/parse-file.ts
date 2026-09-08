@@ -8,12 +8,15 @@
  * @audit #parser -- "Path validation delegated to callers (CLI/MCP validate root)"
  * @flows FilePath -> #parser via readFile -- "Disk read path"
  * @flows #parser -> Annotations via parseString -- "Parsed annotation output"
+ * @flows #parser -> ParseDiagnostics via parseString -- "Lines that were meant to be annotations and were not read, named rather than dropped"
+ * @comment -- "A line lost before parseLine is a security claim that reached no threat model and produced no warning; the two comment-form diagnostics here exist so the next unread form cannot survive a release unnoticed"
+ * @validates #input-sanitize for #parser -- "tests/comment-forms.test.ts pins that doc-tag and decorator traffic produces neither annotations nor diagnostics"
  */
 
 import { readFile } from 'node:fs/promises';
 import type { Annotation, ParseDiagnostic, ParseResult, SourceLocation } from '../types/index.js';
 import { isStandaloneAnnotationFile, stripCommentPrefix } from './comment-strip.js';
-import { parseLine } from './parse-line.js';
+import { parseLine, residualMarkerVerb, uncommentedVerb } from './parse-line.js';
 import { unescapeDescription } from './normalize.js';
 
 /**
@@ -45,6 +48,28 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
     // annotations are stored as raw lines instead of host-language comments.
     const inner = allowRawAnnotationLines ? rawLine : stripCommentPrefix(rawLine);
     if (inner === null) {
+      // Not a comment — and that is exactly where a docstring annotation lands.
+      // §2.9 lists `""" """`, `=begin`, multi-line `<!-- -->` and `{- -}`; none
+      // of them has ever been implemented, and the parser is line-by-line with
+      // no block state, so an annotation written inside one arrives here with
+      // no marker to strip and used to leave without a word. It cannot be
+      // parsed — this file does not know it is inside a block — but it can be
+      // named, which is the difference between a narrow parser and a silent one.
+      if (!inShield) {
+        const bare = uncommentedVerb(rawLine.trim());
+        if (bare) {
+          diagnostics.push({
+            level: 'warning',
+            code: 'uncommented-annotation',
+            message: `@${bare.verb} on a line with no comment marker (found ${bare.evidence}) — not parsed. `
+              + `GuardLink reads annotations from comments only; docstrings and multi-line block `
+              + `comments are not read (SPEC §2.9). Move it into a ${'`//`'}-style comment.`,
+            file: filePath,
+            line: lineNum,
+            raw: rawLine.trim(),
+          });
+        }
+      }
       lastAnnotation = null;
       continue;
     }
@@ -115,6 +140,26 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
     } else {
       if (result.diagnostic) {
         diagnostics.push(result.diagnostic);
+      } else if (!result.isContinuation && !result.sourceDirective) {
+        // This was a comment, and behind punctuation the stripper did not
+        // recognise sits a known verb. Every comment form GuardLink reads is
+        // handled in comment-strip.ts, so reaching here means the host language
+        // has a doc-comment convention nobody has taught it yet — and the cost
+        // of not saying so is measured: 54 real annotations on one repository,
+        // invisible for months, with `validate` green the whole time.
+        const residual = residualMarkerVerb(text);
+        if (residual) {
+          diagnostics.push({
+            level: 'warning',
+            code: 'unrecognised-comment-form',
+            message: `Unrecognised comment form: '${residual.residue}' sits between the comment marker and `
+              + `@${residual.verb}, so this line is not parsed and contributes nothing to the model. `
+              + `Report the form so the parser can learn it, or rewrite the annotation in a comment style §2.9 lists.`,
+            file: filePath,
+            line: lineNum,
+            raw: rawLine.trim(),
+          });
+        }
       }
       if (!result.isContinuation) {
         lastAnnotation = null;
@@ -122,11 +167,11 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
     }
   }
 
-  return { annotations, diagnostics: collapseUnknownVerbs(diagnostics), files_parsed: 1 };
+  return { annotations, diagnostics: collapsePerFileToken(diagnostics), files_parsed: 1 };
 }
 
 /**
- * Collapse repeated `unknown-verb` warnings to one per distinct token per file.
+ * Collapse repeated parse warnings to one per distinct token per file.
  *
  * **Per file, not per project, and not globally.** Two alternatives were on the
  * table and both lose something this does not:
@@ -148,32 +193,47 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
  *
  * The first occurrence keeps the line, because that is where you start reading.
  * The count rides in the message so nothing is silently hidden.
+ *
+ * `COLLAPSE_TOKEN` names, per code, the thing a reader would go and fix.
+ * `unknown-verb` reads its token back out of its own message, which is where
+ * this started and is kept verbatim so its existing tests still describe it.
+ * The two comment-form codes collapse per file rather than per token: a
+ * doc-comment convention the parser cannot read, or a docstring holding a block
+ * of annotations, is **one** mistake with one fix, and listing it once per line
+ * would reproduce exactly the flood this function exists to prevent.
  */
-function collapseUnknownVerbs(diagnostics: ParseDiagnostic[]): ParseDiagnostic[] {
-  const firstByToken = new Map<string, ParseDiagnostic>();
-  const countByToken = new Map<string, number>();
+const COLLAPSE_TOKEN: Readonly<Record<string, (d: ParseDiagnostic) => string>> = {
+  'unknown-verb': d => d.message.match(/^Unknown annotation verb (\S+)/)?.[1] ?? d.message,
+  'unrecognised-comment-form': d => d.message.match(/^Unrecognised comment form: ('[^']*')/)?.[1] ?? 'form',
+  'uncommented-annotation': () => 'block',
+};
+
+function collapsePerFileToken(diagnostics: ParseDiagnostic[]): ParseDiagnostic[] {
+  const first = new Map<string, ParseDiagnostic>();
+  const count = new Map<string, number>();
+  const keyOf = (d: ParseDiagnostic): string | null => {
+    const token = d.code ? COLLAPSE_TOKEN[d.code] : undefined;
+    return token ? `${d.code}\u0000${token(d)}` : null;
+  };
 
   for (const d of diagnostics) {
-    if (d.code !== 'unknown-verb') continue;
-    const token = d.message.match(/^Unknown annotation verb (\S+)/)?.[1] ?? d.message;
-    countByToken.set(token, (countByToken.get(token) ?? 0) + 1);
-    if (!firstByToken.has(token)) firstByToken.set(token, d);
+    const key = keyOf(d);
+    if (key === null) continue;
+    count.set(key, (count.get(key) ?? 0) + 1);
+    if (!first.has(key)) first.set(key, d);
   }
-  if (firstByToken.size === 0) return diagnostics;
+  if (first.size === 0) return diagnostics;
 
-  const kept = new Set(firstByToken.values());
+  const kept = new Set(first.values());
   const out: ParseDiagnostic[] = [];
   for (const d of diagnostics) {
-    if (d.code === 'unknown-verb' && !kept.has(d)) continue;
-    if (d.code === 'unknown-verb') {
-      const token = d.message.match(/^Unknown annotation verb (\S+)/)?.[1] ?? d.message;
-      const n = countByToken.get(token) ?? 1;
-      out.push(n > 1
-        ? { ...d, message: `${d.message} (${n} occurrences in this file; first at line ${d.line})` }
-        : d);
-      continue;
-    }
-    out.push(d);
+    const key = keyOf(d);
+    if (key === null) { out.push(d); continue; }
+    if (!kept.has(d)) continue;
+    const n = count.get(key) ?? 1;
+    out.push(n > 1
+      ? { ...d, message: `${d.message} (${n} occurrences in this file; first at line ${d.line})` }
+      : d);
   }
   return out;
 }

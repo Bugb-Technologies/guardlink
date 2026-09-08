@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v2:d776d470058d48c0f39ad2cd1c5840a020d0ce27bac75add962f15f5f65ea5c6
+%% annotation_hash: sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -67,6 +67,7 @@ graph LR
   dashboard["🧩 GuardLink.Dashboard · pii, internal"]
   blame["🧩 GuardLink.Blame · pii"]
   committrailers["🧩 CommitTrailers"]
+  parsediagnostics["🧩 ParseDiagnostics"]
   sourcefiles["🧩 SourceFiles"]
   ledgerfile["🧩 LedgerFile"]
   userargs["👤 UserArgs"]
@@ -143,6 +144,7 @@ graph LR
   blame -- "📡 summarise" --> dashboard
   committrailers -- "📡 parseTrailerBlock" --> blame
   threatmodel -- "📡 runCiChecks" --> cli
+  parsediagnostics -- "📡 runCiChecks" --> cli
   sourcefiles -- "📡 findAnchorDrift" --> cli
   ledgerfile -- "📡 readLedger" --> cli
   userargs -- "📡 process.argv" --> cli
@@ -205,6 +207,7 @@ graph LR
   threatmodel -- "📡 migrateAnnotationMode" --> parser
   filepath -- "🗄️ readFile" --> parser
   parser -- "📡 parseString" --> annotations
+  parser -- "📡 parseString" --> parsediagnostics
   parser -- "📡 assembleModel" --> threatmodel
   threatmodel -- "📡 findAnchorDrift" --> parser
   threatmodel -- "📡 classifyClaims" --> parser

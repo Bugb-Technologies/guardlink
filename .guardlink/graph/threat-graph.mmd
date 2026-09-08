@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v2:d776d470058d48c0f39ad2cd1c5840a020d0ce27bac75add962f15f5f65ea5c6
+%% annotation_hash: sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -116,9 +116,9 @@ graph LR
   parser -. exposes .-> arbitrary_write
   parser -. exposes .-> insecure_deser
   parser -. exposes .-> path_traversal
+  parser -. exposes .-> redos
   parser -. exposes .-> dos
   parser -. exposes .-> data_exposure
-  parser -. exposes .-> redos
   cli -. exposes .-> insecure_deser
   tui -. exposes .-> path_traversal
   tui -. exposes .-> arbitrary_write
@@ -197,6 +197,8 @@ graph LR
   yaml_validation -- mitigates --> config_tamper
   yaml_validation -. protects .-> workspace_config
   resource_limits -. validates .-> mcp
+  regex_anchoring -. validates .-> parser
+  input_sanitize -. validates .-> parser
   blame -- "📡 formatBlameText" --> cli
   blame -- "🗄️ buildBlamePayload" --> cli
   blame -- "📡 summarise" --> dashboard

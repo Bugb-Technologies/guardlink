@@ -11,8 +11,8 @@ accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 635 annotations · 17 assets · 15 threats · 13 controls · 102 exposures · 149 flows
-Content hash: `sha256-v2:d776d470058d48c0f39ad2cd1c5840a020d0ce27bac75add962f15f5f65ea5c6` — identical hash means identical model.
+Current model: 652 annotations · 17 assets · 15 threats · 13 controls · 103 exposures · 151 flows
+Content hash: `sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f` — identical hash means identical model.
 
 ---
 
@@ -77,7 +77,7 @@ syntax of the file you are editing — the doc-block of the function or module t
 ```ts
 /**
  * @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
- * @mitigates #api against #sqli using #prepared-stmts -- "parameterized via pg"
+ * @mitigates #api against #sqli using #prepared-stmts -- "parameterized query"
  */
 export function login(email: string) { … }
 ```
