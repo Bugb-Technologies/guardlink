@@ -283,7 +283,7 @@ Descriptions must reference the real code: function names, variable names, libra
 // @shield:end
 \`\`\`
 
-### @flows — Stitch the Complete Data Path
+### \`@flows\` — Stitch the Complete Data Path
 @flows is the backbone of the threat model. Trace data movement accurately:
 
 \`\`\`
@@ -299,7 +299,7 @@ Descriptions must reference the real code: function names, variable names, libra
 // @shield:end
 \`\`\`
 
-### @boundary — Mark Every Trust Zone Crossing
+### \`@boundary\` — Mark Every Trust Zone Crossing
 Place @boundary annotations where trust level changes between two components:
 
 \`\`\`
@@ -353,11 +353,11 @@ Annotations capture what COULD go wrong, calibrated to realistic risk:
 
 Don't rate everything P0. A SQL injection in an admin-only internal tool is different from one in a public API.
 
-### @comment — Always Add Context
+### \`@comment\` — Always Add Context
 Every annotation block should include at least one @comment explaining non-obvious security decisions, assumptions, or context that helps future developers (and AI tools) understand the "why".
 
-### @entitles — Propose, Never Grant
-@entitles states that an actor is entitled to a capability **by design** — the answer to "is the caller already allowed to do this?". Reach for it when a finding requires a privilege that is *supposed* to have that effect (a namespace admin setting namespace config, a cluster operator managing cluster endpoints).
+### \`@entitles\` — Propose, Never Grant
+\`@entitles\` states that an actor is entitled to a capability **by design** — the answer to "is the caller already allowed to do this?". Reach for it when a finding requires a privilege that is *supposed* to have that effect (a namespace admin setting namespace config, a cluster operator managing cluster endpoints).
 
 It is not @mitigates and not @accepts: it has **no effect on what gets exported or tested**. The exposure is still probed, still in the SARIF, still real. Only the downstream *recommendation* changes.
 
@@ -395,7 +395,7 @@ Report what you proposed at the end of your run, and tell the user to review it 
 // @shield:end
 \`\`\`
 
-### @accepts — NEVER USE (Human-Only Decision)
+### \`@accepts\` — NEVER USE (Human-Only Decision)
 @accepts marks a risk as intentionally unmitigated. This is a **human-only governance decision** — it requires conscious risk ownership by a person or team.
 As an AI agent, you MUST NEVER write @accepts annotations. You cannot accept risk on behalf of humans.
 
@@ -432,7 +432,7 @@ For governance/design gaps:
 - Add @audit on the relevant asset with precise reasoning.
 - Add @comment suggesting concrete controls or follow-up review tasks.
 
-### @shield — DO NOT USE Unless Explicitly Asked
+### \`@shield\` — DO NOT USE Unless Explicitly Asked
 @shield and @shield:begin/@shield:end block AI coding assistants from reading the annotated code.
 This means any shielded code becomes invisible to AI tools — they cannot analyze, refactor, or annotate it.
 Do NOT add @shield annotations unless the user has EXPLICITLY requested it (e.g., "shield the crypto module").
@@ -474,10 +474,12 @@ Definitions go in .guardlink/definitions.{ts,js,py,rs}. Relationship annotations
 
 ### Relationships (in standalone .gal files)
 \`\`\`
+// @shield:begin -- "Externalized relationship examples, excluded from parsing"
 @source file:src/auth/login.ts line:42 symbol:authenticate
 @exposes #auth to #sqli [P0] cwe:CWE-89 owasp:A03:2021 -- "User input concatenated into query"
 @mitigates #auth against #sqli using #prepared-stmts -- "Uses parameterized queries via sqlx"
 @audit #auth -- "Timing attack risk — needs human review"
+// @shield:end
 \`\`\`
 
 ## CRITICAL SYNTAX RULES (violations cause parse errors)

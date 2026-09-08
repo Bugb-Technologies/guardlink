@@ -637,6 +637,10 @@ export type DiagnosticCode =
   | 'prose-like'
   /** Line starts with an unknown `@verb` that is one or two edits from a known one. */
   | 'unknown-verb'
+  /** A comment whose marker this parser could not fully consume, hiding a known verb. */
+  | 'unrecognised-comment-form'
+  /** A known verb with annotation structure on a line carrying no comment marker. */
+  | 'uncommented-annotation'
   /** Two definitions claim the same `(#id)`. */
   | 'duplicate-id'
   // ── Validation-time (src/parser/validate.ts) ──

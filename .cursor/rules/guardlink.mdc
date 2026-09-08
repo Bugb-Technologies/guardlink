@@ -16,7 +16,7 @@ syntax of the file you are editing — the doc-block of the function or module t
 ```ts
 /**
  * @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
- * @mitigates #api against #sqli using #prepared-stmts -- "parameterized via pg"
+ * @mitigates #api against #sqli using #prepared-stmts -- "parameterized query"
  */
 export function login(email: string) { … }
 ```
@@ -114,7 +114,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
 - #llm-client -> NVD via fetch
-- … and 129 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
+- … and 131 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
 
 ### Features (filter with `--feature`)
 
@@ -123,11 +123,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-635 annotations, 17 assets, 15 threats, 13 controls, 102 exposures, 0 confirmed, 104 mitigations, 3 actors, 1 entitlements, 149 flows, 2 features
+652 annotations, 17 assets, 15 threats, 13 controls, 103 exposures, 0 confirmed, 106 mitigations, 3 actors, 1 entitlements, 151 flows, 2 features
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v2:d776d470058d48c0f39ad2cd1c5840a020d0ce27bac75add962f15f5f65ea5c6`
+- `annotation_hash`: `sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.
