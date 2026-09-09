@@ -646,8 +646,9 @@ export function createServer(): McpServer {
       root: z.string().describe('Project root directory').default('.'),
       prompt: z.string().describe('Annotation instructions (e.g., "annotate auth endpoints for OWASP Top 10")'),
       mode: z.enum(['inline', 'external']).describe('Annotation placement mode — inline (default) or external (externalized .gal files)').default('inline'),
+      playbook: z.enum(['map', 'exploitable', 'chains', 'diff', 'coverage', 'verify']).optional().describe('The method: map (architecture first, no exposures), exploitable (default: claim only what an attacker can reach), chains (follow flows from open exposures), diff (changed files only), coverage (unannotated files), verify (re-check existing claims). Inferred from the prompt when omitted.'),
     },
-    async ({ root, prompt, mode }) => {
+    async ({ root, prompt, mode, playbook }) => {
       let model: ThreatModel | null = null;
       try {
         const result = await getModel(root);
@@ -656,7 +657,7 @@ export function createServer(): McpServer {
         }
       } catch { /* no model yet — fine */ }
 
-      const annotatePrompt = buildAnnotatePrompt(prompt, root, model, mode);
+      const annotatePrompt = buildAnnotatePrompt(prompt, root, model, mode, playbook);
 
       return {
         content: [{ type: 'text', text: JSON.stringify({

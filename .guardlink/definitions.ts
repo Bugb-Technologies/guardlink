@@ -59,6 +59,7 @@
 // @control Prefix_Ownership (#prefix-ownership) -- "Tag prefix determines owning repo, preventing cross-repo tag collisions"
 // @control YAML_Validation (#yaml-validation) -- "Schema validation for workspace.yaml configuration files"
 // @control Identity_Redaction (#identity-redaction) -- "Hashes or drops author emails before attribution leaves the machine"
+// @asset GuardLink.Gate (#gate) -- "Checks what an annotating agent added against the evidence bar: lints, re-prompts, strips what still fails"
 
 // ─── ACTORS ───────────────────────────────────────────────────────────
 // Principals in guardlink's own authorization model — roles, not people.

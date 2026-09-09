@@ -1,14 +1,15 @@
 {
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 127,
-  "annotations_parsed": 635,
+  "source_files": 138,
+  "annotations_parsed": 660,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
     "src/agents/index.ts",
     "src/agents/launcher.ts",
     "src/agents/prompts.ts",
+    "src/analyze/findings.ts",
     "src/analyze/index.ts",
     "src/analyze/llm.ts",
     "src/analyze/prompts.ts",
@@ -53,6 +54,9 @@
     "src/diff/format.ts",
     "src/diff/git.ts",
     "src/diff/index.ts",
+    "src/gate/gate.ts",
+    "src/gate/index.ts",
+    "src/gate/lint.ts",
     "src/init/detect.ts",
     "src/init/index.ts",
     "src/init/migrate.ts",
@@ -89,6 +93,13 @@
     "src/parser/verify.ts",
     "src/paths/format.ts",
     "src/paths/index.ts",
+    "src/playbooks/annotate.ts",
+    "src/playbooks/evidence.ts",
+    "src/playbooks/index.ts",
+    "src/playbooks/report.ts",
+    "src/playbooks/select.ts",
+    "src/playbooks/skills.ts",
+    "src/playbooks/types.ts",
     "src/report/index.ts",
     "src/report/mermaid.ts",
     "src/report/report.ts",
@@ -289,6 +300,18 @@
       "location": {
         "file": ".guardlink/definitions.ts",
         "line": 27
+      }
+    },
+    {
+      "path": [
+        "GuardLink",
+        "Gate"
+      ],
+      "id": "gate",
+      "description": "Checks what an annotating agent added against the evidence bar: lints, re-prompts, strips what still fails",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 62
       }
     },
     {
@@ -690,7 +713,7 @@
       "description": "Runs the guardlink binary from a shell on the project; already holds write access to the same working tree guardlink edits, and has an interactive TTY that can answer a confirmation prompt",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 71
+        "line": 72
       }
     },
     {
@@ -700,7 +723,7 @@
       "description": "AI coding agent calling guardlink tools over stdio through the MCP server; acts only with the tool set src/mcp/server.ts exposes, not with the operator's shell",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 72
+        "line": 73
       }
     },
     {
@@ -710,7 +733,7 @@
       "description": "GitHub Actions job invoking the built CLI (see .github/workflows/ci.yml); has no TTY, so it cannot answer a confirmation prompt, and is deliberately granted no entitlement",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 73
+        "line": 74
       }
     }
   ],
@@ -803,7 +826,17 @@
       "description": "renderRows caps the assembled context at PROMPT_CONTEXT_BUDGET_CHARS and reports how many rows it dropped",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 65
+        "line": 66
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#insecure-deser",
+      "control": "#config-validation",
+      "description": "Only plain data is read out of the parsed object; every field is coerced to a string, a number or one of a fixed set, and anything else is dropped",
+      "location": {
+        "file": "src/analyze/findings.ts",
+        "line": 9
       }
     },
     {
@@ -833,7 +866,7 @@
       "description": "join() constrains reads to .guardlink/",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 775
+        "line": 798
       }
     },
     {
@@ -1003,7 +1036,7 @@
       "description": "resolve() canonicalizes paths; cwd-relative by design",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 32
+        "line": 33
       }
     },
     {
@@ -1013,7 +1046,7 @@
       "description": "Output paths resolved relative to project root",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 34
+        "line": 35
       }
     },
     {
@@ -1023,7 +1056,7 @@
       "description": "maskKey() redacts keys in show output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 36
+        "line": 37
       }
     },
     {
@@ -1033,7 +1066,7 @@
       "description": "Path is the constant LEDGER_FILE under a root that must already carry .guardlink/; targets only select claims, they are never written to",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 433
+        "line": 438
       }
     },
     {
@@ -1287,6 +1320,16 @@
       }
     },
     {
+      "asset": "#gate",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "Every path is resolved under root and refused outside it; a line is removed only when its text carries the annotation verb the model says is there",
+      "location": {
+        "file": "src/gate/gate.ts",
+        "line": 12
+      }
+    },
+    {
       "asset": "#init",
       "threat": "#path-traversal",
       "control": "#path-validation",
@@ -1323,7 +1366,7 @@
       "description": "callers pass join(root, ...) constrained paths",
       "location": {
         "file": "src/init/index.ts",
-        "line": 492
+        "line": 512
       }
     },
     {
@@ -1574,6 +1617,16 @@
       "location": {
         "file": "src/parser/verify.ts",
         "line": 14
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#redos",
+      "control": "#regex-anchoring",
+      "description": "Every trigger is a short literal or word-boundary pattern with no nested quantifiers; the prompt is capped before matching",
+      "location": {
+        "file": "src/playbooks/select.ts",
+        "line": 7
       }
     },
     {
@@ -1905,7 +1958,20 @@
       "description": "Prompt size now scales with model size: uncapped flow and exposure rows mean a large repo assembles a large prompt",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 64
+        "line": 65
+      }
+    },
+    {
+      "asset": "#llm-client",
+      "threat": "#insecure-deser",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-502"
+      ],
+      "description": "JSON.parse over a block the model wrote",
+      "location": {
+        "file": "src/analyze/findings.ts",
+        "line": 8
       }
     },
     {
@@ -2058,7 +2124,7 @@
       "external_refs": [
         "cwe:CWE-22"
       ],
-      "description": "Record locations name the files handed to git, and a sidecar @source path is author-supplied text that survives normalisation with ../ intact",
+      "description": "safeRelPath() receives location.file from each parsed record; a sidecar @source path is author text that can carry ../ into the argv computeBlame() hands to git",
       "location": {
         "file": "src/blame/compute.ts",
         "line": 23
@@ -2071,7 +2137,7 @@
       "external_refs": [
         "cwe:CWE-400"
       ],
-      "description": "One blame per annotated file, one -L walk per distinct symbol span, and one walk of the whole history reachable from HEAD for the commit counts",
+      "description": "computeBlame() spawns git blame once per annotated file, git log -L once per distinct symbol span and listCommits() once over the whole history; a large model multiplies the spawns",
       "location": {
         "file": "src/blame/compute.ts",
         "line": 25
@@ -2084,7 +2150,7 @@
       "external_refs": [
         "cwe:CWE-1333"
       ],
-      "description": "Tool rules are user-supplied regular expressions applied to every commit author and trailer in the history",
+      "description": "readBlameConfig() compiles blame.tools[].match from .guardlink/config.json into RegExp objects that attributeCommit() runs against every author and trailer in the history",
       "location": {
         "file": "src/blame/config.ts",
         "line": 22
@@ -2110,7 +2176,7 @@
       "external_refs": [
         "cwe:CWE-78"
       ],
-      "description": "git is spawned with file paths and line ranges taken from the parsed model",
+      "description": "gitExec() builds the argv it spawns from location.file and the start/end line numbers of each parsed record",
       "location": {
         "file": "src/blame/git.ts",
         "line": 13
@@ -2123,7 +2189,7 @@
       "external_refs": [
         "cwe:CWE-22"
       ],
-      "description": "The file paths handed to blame, log and ls-files name what git reads",
+      "description": "blameFile(), spanOldestCommit() and fileAddCommit() pass location.file to git blame, git log and git ls-files, which read whatever path it names",
       "location": {
         "file": "src/blame/git.ts",
         "line": 15
@@ -2149,7 +2215,7 @@
       "external_refs": [
         "cwe:CWE-400"
       ],
-      "description": "One more history walk per computation: every commit reachable from HEAD is printed with its trailer block and parsed",
+      "description": "listCommits() runs git log over every commit reachable from HEAD and parseLogRecords() parses each trailer block; history size, not model size, sets the cost",
       "location": {
         "file": "src/blame/git.ts",
         "line": 201
@@ -2162,7 +2228,7 @@
       "external_refs": [
         "cwe:CWE-200"
       ],
-      "description": "Author names and email addresses from git history become identity strings that reach reports, dashboards and MCP responses",
+      "description": "identityFor() turns author.name and author.email from git history into identity strings that buildBlamePayload() writes into reports, dashboards and MCP responses",
       "location": {
         "file": "src/blame/trailers.ts",
         "line": 19
@@ -2175,7 +2241,7 @@
       "external_refs": [
         "cwe:CWE-1333"
       ],
-      "description": "Compiled tool rules run against every author and trailer in the history",
+      "description": "attributeCommit() runs every compiled ToolRule.match against each author and Co-Authored-By trailer in the history",
       "location": {
         "file": "src/blame/trailers.ts",
         "line": 21
@@ -2191,7 +2257,7 @@
       "description": "User-supplied dir argument resolved via path.resolve",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 31
+        "line": 32
       }
     },
     {
@@ -2204,7 +2270,7 @@
       "description": "init/report/sarif/dashboard write files to user-specified paths",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 33
+        "line": 34
       }
     },
     {
@@ -2217,7 +2283,7 @@
       "description": "API keys handled in config set/show commands",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 35
+        "line": 36
       }
     },
     {
@@ -2230,7 +2296,7 @@
       "description": "Agent launcher spawns child processes",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 37
+        "line": 38
       }
     },
     {
@@ -2243,7 +2309,7 @@
       "description": "The one command that writes .guardlink/verified.json",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 432
+        "line": 437
       }
     },
     {
@@ -2266,7 +2332,7 @@
       "external_refs": [
         "cwe:CWE-79"
       ],
-      "description": "Generates HTML with user-controlled threat model data, git identities and commit trailers",
+      "description": "generateDashboardHTML() interpolates model descriptions, asset names, git identities and commit trailers into the page markup and the embedded JSON constants",
       "location": {
         "file": "src/dashboard/generate.ts",
         "line": 23
@@ -2318,7 +2384,7 @@
       "external_refs": [
         "cwe:CWE-200"
       ],
-      "description": "Remote URLs may embed credentials (https://user:token@host/...) which would otherwise land in a committed HTML artifact",
+      "description": "detectRepoLinks() reads remote.origin.url from .git/config, which may embed user:token@host credentials that would land in the committed HTML",
       "location": {
         "file": "src/dashboard/links.ts",
         "line": 12
@@ -2331,7 +2397,7 @@
       "external_refs": [
         "cwe:CWE-78"
       ],
-      "description": "The ref the user typed reaches git",
+      "description": "loadSince() passes the --since ref the user typed to parseAtRef() and into the git log and git rev-list argv",
       "location": {
         "file": "src/dashboard/since.ts",
         "line": 6
@@ -2403,6 +2469,19 @@
       }
     },
     {
+      "asset": "#gate",
+      "threat": "#arbitrary-write",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "stripViolations rewrites source files named by the model's locations",
+      "location": {
+        "file": "src/gate/gate.ts",
+        "line": 11
+      }
+    },
+    {
       "asset": "#init",
       "threat": "#path-traversal",
       "severity": "low",
@@ -2464,7 +2543,7 @@
       "description": "Creates directories for agent-file writes",
       "location": {
         "file": "src/init/index.ts",
-        "line": 491
+        "line": 511
       }
     },
     {
@@ -2883,6 +2962,19 @@
     },
     {
       "asset": "#cli",
+      "threat": "#redos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-1333"
+      ],
+      "description": "selectAnnotatePlaybook() runs each Playbook.triggers RegExp against the prompt text the user typed",
+      "location": {
+        "file": "src/playbooks/select.ts",
+        "line": 6
+      }
+    },
+    {
+      "asset": "#cli",
       "threat": "#arbitrary-write",
       "severity": "high",
       "external_refs": [
@@ -3218,6 +3310,16 @@
       }
     },
     {
+      "source": "SavedReport",
+      "target": "#llm-client",
+      "mechanism": "parseFindingsBlock",
+      "description": "Findings out of a saved report",
+      "location": {
+        "file": "src/analyze/findings.ts",
+        "line": 10
+      }
+    },
+    {
       "source": "ThreatModel",
       "target": "#llm-client",
       "mechanism": "serializeModel",
@@ -3254,7 +3356,7 @@
       "description": "Reads CXG scan results for dashboard and report context",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 702
+        "line": 725
       }
     },
     {
@@ -3494,7 +3596,7 @@
       "description": "CLI argument input path",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 39
+        "line": 40
       }
     },
     {
@@ -3504,7 +3606,7 @@
       "description": "Report/config output path",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 40
+        "line": 41
       }
     },
     {
@@ -3514,7 +3616,7 @@
       "description": "Opt-in attribution; without --blame the JSON is byte-identical to before",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 244
+        "line": 249
       }
     },
     {
@@ -3524,7 +3626,7 @@
       "description": "status reports verified/stale/unverified claim counts alongside annotation coverage",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 285
+        "line": 290
       }
     },
     {
@@ -3534,7 +3636,7 @@
       "description": "status --blame reads attribution without touching the model",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 287
+        "line": 292
       }
     },
     {
@@ -3544,7 +3646,7 @@
       "description": "Read-only; a corrupt ledger becomes a validate error (ledger-corrupt) instead of being silently treated as absent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 339
+        "line": 344
       }
     },
     {
@@ -3554,7 +3656,7 @@
       "description": "Targets, --by and mode flags",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 434
+        "line": 439
       }
     },
     {
@@ -3564,7 +3666,7 @@
       "description": "Attribution read from blame, log -L and commit trailers",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 551
+        "line": 556
       }
     },
     {
@@ -3574,7 +3676,17 @@
       "description": "report --blame attaches attribution before the metadata spread, so the shared records carry it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 661
+        "line": 666
+      }
+    },
+    {
+      "source": "#cli",
+      "target": "#gate",
+      "mechanism": "runGate",
+      "description": "The model before and after the agent",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1406
       }
     },
     {
@@ -3584,7 +3696,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2236
+        "line": 2354
       }
     },
     {
@@ -3594,7 +3706,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2239
+        "line": 2357
       }
     },
     {
@@ -3808,6 +3920,46 @@
       }
     },
     {
+      "source": "ThreatModel",
+      "target": "#gate",
+      "mechanism": "runGate",
+      "description": "The model before and after an agent run",
+      "location": {
+        "file": "src/gate/gate.ts",
+        "line": 13
+      }
+    },
+    {
+      "source": "#gate",
+      "target": "AgentPrompt",
+      "mechanism": "buildGateFollowUp",
+      "description": "The violations as a re-prompt",
+      "location": {
+        "file": "src/gate/gate.ts",
+        "line": 14
+      }
+    },
+    {
+      "source": "#gate",
+      "target": "SourceFiles",
+      "mechanism": "stripViolations",
+      "description": "Rejected annotation lines removed",
+      "location": {
+        "file": "src/gate/gate.ts",
+        "line": 15
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#gate",
+      "mechanism": "lintAnnotations",
+      "description": "Claims and their descriptions",
+      "location": {
+        "file": "src/gate/lint.ts",
+        "line": 8
+      }
+    },
+    {
       "source": "ProjectRoot",
       "target": "#init",
       "mechanism": "detectProject",
@@ -3984,7 +4136,7 @@
       "description": "Attribution read from blame, log -L and commit trailers for the connected agent",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1095
+        "line": 1096
       }
     },
     {
@@ -4636,7 +4788,7 @@
       "description": "Trust boundary at CLI argument parsing",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 41
+        "line": 42
       }
     },
     {
@@ -4763,7 +4915,7 @@
       "description": "Child process spawning delegated to agents/launcher.ts with explicit args",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 38
+        "line": 39
       }
     },
     {
@@ -4922,7 +5074,7 @@
       "description": "Processes pentest scan output (JSON/SARIF)",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 703
+        "line": 726
       }
     },
     {
@@ -5003,7 +5155,7 @@
       "description": "Processes API keys via config commands",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 42
+        "line": 43
       }
     },
     {
@@ -5012,7 +5164,7 @@
       "description": "Author identities printed or emitted as JSON; --identity hash (or blame.identity in config.json) redacts emails",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 552
+        "line": 557
       }
     },
     {
@@ -5021,7 +5173,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2956
+        "line": 3074
       }
     },
     {
@@ -5111,7 +5263,7 @@
       "description": "Author identities, in the configured identity mode (blame.identity in config.json), reach the MCP client",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1096
+        "line": 1097
       }
     },
     {
@@ -5202,117 +5354,117 @@
       "reason": "Example annotation block for reference, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 253
+        "line": 268
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 266
+        "line": 281
       }
     },
     {
       "reason": "Description examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 273
+        "line": 288
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 283
+        "line": 298
       }
     },
     {
       "reason": "Flow examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 290
+        "line": 305
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 299
+        "line": 314
       }
     },
     {
       "reason": "Boundary examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 306
+        "line": 321
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 312
+        "line": 327
       }
     },
     {
       "reason": "Actor example, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 373
+        "line": 388
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 375
+        "line": 390
       }
     },
     {
       "reason": "Entitlement example, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 392
+        "line": 407
       }
     },
     {
-      "location": {
-        "file": "src/agents/prompts.ts",
-        "line": 395
-      }
-    },
-    {
-      "reason": "@accepts alternative examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
         "line": 410
       }
     },
     {
+      "reason": "@accepts alternative examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 420
+        "line": 425
+      }
+    },
+    {
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 435
       }
     },
     {
       "reason": "Definition syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 447
+        "line": 462
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 451
+        "line": 466
       }
     },
     {
       "reason": "Relationship syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 456
+        "line": 471
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 472
+        "line": 487
       }
     },
     {
@@ -5399,7 +5551,21 @@
       "description": "Row counts are uncapped on purpose and the byte budget is the only ceiling: a truncated flow graph made the agent duplicate edges it was never shown, and a missing hop reads as findPath's 'no directed path' — a false clean rather than a coverage gap",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 66
+        "line": 67
+      }
+    },
+    {
+      "description": "The method sits above the generic rules on purpose: the agent reads it first, and the evidence bar it carries is what the gate later checks",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 121
+      }
+    },
+    {
+      "description": "The last block wins when a report carries more than one, because a model that restated its findings restated them last",
+      "location": {
+        "file": "src/analyze/findings.ts",
+        "line": 11
       }
     },
     {
@@ -5602,35 +5768,35 @@
       "description": "Closes the same blind spot ci's third check already closed (src/ci/index.ts) for the validate/CI-gate surface",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 340
+        "line": 345
       }
     },
     {
       "description": "Re-locking a stale claim is an assertion that the control still holds, so the default form never does it: --stale, --all or a named target is required, and each says so in its output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 435
+        "line": 440
       }
     },
     {
       "description": "Always exits 0 once the model parsed: outside a git checkout every claim reads as unattributed, which is an answer, not a failure. Only an unknown --identity is an error",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 553
+        "line": 558
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2912
+        "line": 3030
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2957
+        "line": 3075
       }
     },
     {
@@ -5837,6 +6003,27 @@
       }
     },
     {
+      "description": "Never edits an annotation's text: a rejected claim is re-prompted, then removed; rewriting would hide that it was wrong",
+      "location": {
+        "file": "src/gate/gate.ts",
+        "line": 16
+      }
+    },
+    {
+      "description": "The acceptance check behind `guardlink annotate` and the standalone `guardlink lint`",
+      "location": {
+        "file": "src/gate/index.ts",
+        "line": 4
+      }
+    },
+    {
+      "description": "Errors are what the gate rejects; warnings are what it reports. Governance verbs (@accepts, @entitles) are errors only for claims under check, because a human may legitimately have written the others",
+      "location": {
+        "file": "src/gate/lint.ts",
+        "line": 9
+      }
+    },
+    {
       "description": "Detection is read-only; no file writes",
       "location": {
         "file": "src/init/detect.ts",
@@ -5910,7 +6097,7 @@
       "description": "Non-mutating: computeBlame leaves the cached model untouched, so a later guardlink_parse in the same session never carries blame unasked. Nothing is written to the repository",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1097
+        "line": 1098
       }
     },
     {
@@ -6173,6 +6360,55 @@
       }
     },
     {
+      "description": "Bodies are markdown that lands verbatim in the agent prompt and in the SKILL.md; keep each one readable on its own",
+      "location": {
+        "file": "src/playbooks/annotate.ts",
+        "line": 5
+      }
+    },
+    {
+      "description": "Kept in one place so the lint in src/gate mirrors it rule for rule: what the prompt demands is what the gate checks",
+      "location": {
+        "file": "src/playbooks/evidence.ts",
+        "line": 5
+      }
+    },
+    {
+      "description": "Annotate playbooks compose into buildAnnotatePrompt; report shapes into buildUserMessage; skills into guardlink init",
+      "location": {
+        "file": "src/playbooks/index.ts",
+        "line": 4
+      }
+    },
+    {
+      "description": "'full' is the framework's own structure and appends nothing; the other three are audience shapes",
+      "location": {
+        "file": "src/playbooks/report.ts",
+        "line": 6
+      }
+    },
+    {
+      "description": "Order matters where prompts match several playbooks: chains beats exploitable because a prompt that asks for chains also asks for exploitability, and diff beats coverage because a change is narrower than the tree",
+      "location": {
+        "file": "src/playbooks/select.ts",
+        "line": 8
+      }
+    },
+    {
+      "description": "Frontmatter is the two keys every skill loader reads (name, description); the body is the playbook verbatim plus how to invoke the CLI equivalent",
+      "location": {
+        "file": "src/playbooks/skills.ts",
+        "line": 7
+      }
+    },
+    {
+      "description": "Pure data and pure functions: nothing here reads a file, runs a process or talks to a model",
+      "location": {
+        "file": "src/playbooks/types.ts",
+        "line": 10
+      }
+    },
+    {
       "description": "Report generation is pure transformation; no I/O in this module",
       "location": {
         "file": "src/report/index.ts",
@@ -6342,8 +6578,8 @@
     }
   ],
   "coverage": {
-    "annotation_count": 635,
-    "coverage_percent": 84
+    "annotation_count": 660,
+    "coverage_percent": 86
   },
   "external_refs": []
 }

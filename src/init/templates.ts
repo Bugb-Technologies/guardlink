@@ -769,7 +769,7 @@ export function promptMdContent(project: ProjectInfo): string {
   return `# ${project.name} — Project Description
 
 <!-- This file feeds into \`guardlink report\` as the Application Overview section. -->
-<!-- Fill it in manually, or let \`guardlink annotate\` generate it with AI assistance. -->
+<!-- Fill it in manually, or let \`guardlink annotate\` generate it with AI assistance (\`--playbook map\` draws the flows first). -->
 
 ## What This Application Does
 

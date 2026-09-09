@@ -42,6 +42,7 @@ function readIfExists(path: string, maxChars = 5000): string {
 
 import { ANNOTATIONS_DIR, galPathFor } from '../parser/gal-path.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
+import { selectAnnotatePlaybook, getPlaybook, type AnnotatePlaybookId } from '../playbooks/index.js';
 
 /**
  * How much of the live model each prompt builder shows the agent.
@@ -111,15 +112,23 @@ You MUST write annotations inline in the source code comments.
 /**
  * Build a prompt for annotation agents.
  *
- * Includes the GuardLink reference doc, current model summary with flows and exposures,
- * flow-first threat modeling methodology, and precise GAL syntax rules.
+ * The playbook supplies the method (phases, the evidence bar, when to stop);
+ * the user's text supplies scope and intent. When no playbook is given one is
+ * selected from the text by rule, so a vague prompt still runs a full method.
+ * Then the reference doc, the current model, the placement mode and the
+ * syntax rules.
+ *
+ * @comment -- "The method sits above the generic rules on purpose: the agent reads it first, and the evidence bar it carries is what the gate later checks"
  */
 export function buildAnnotatePrompt(
   userPrompt: string,
   root: string,
   model: ThreatModel | null,
   annotationMode: AnnotationMode = 'inline',
+  playbook?: AnnotatePlaybookId | string,
 ): string {
+  const selection = selectAnnotatePlaybook(userPrompt, playbook);
+  const pb = getPlaybook(selection.id);
   // Read the reference doc if available
   let refDoc = '';
   const refPath = resolve(root, '.guardlink', 'GUARDLINK_REFERENCE.md');
@@ -205,8 +214,14 @@ Annotations capture what COULD go wrong, what controls exist, and how data moves
 ${refDoc ? '## GuardLink Annotation Language Reference\n\n' + refDoc + '\n\n' : ''}## Current State
 ${modelSummary}${existingIds}${existingFlows}${existingExposures}
 
-## Your Task
-${userPrompt}
+Playbook: ${pb.id} — ${pb.summary}
+
+## Scope and intent
+${userPrompt.trim() || '(none given — the whole project, as the method directs)'}
+
+${pb.body.trim()}
+
+The method above governs. The scope narrows where it applies; where they conflict, the evidence bar wins.
 
 ${annotationModeInstructions(annotationMode)}
 

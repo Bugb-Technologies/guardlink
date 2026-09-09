@@ -20,7 +20,7 @@
  *
  * @flows GitRepo -> #dashboard via loadSince -- "The model at --since <ref>, diffed against the one rendered"
  *
- * @exposes #dashboard to #xss [high] cwe:CWE-79 -- "Generates HTML with user-controlled threat model data, git identities and commit trailers"
+ * @exposes #dashboard to #xss [high] cwe:CWE-79 -- "generateDashboardHTML() interpolates model descriptions, asset names, git identities and commit trailers into the page markup and the embedded JSON constants"
  * @mitigates #dashboard against #xss using #output-encoding -- "esc() HTML-encodes every interpolated value in every page module; serialized data escapes closing script tags before embedding in <script>"
  * @exposes #dashboard to #path-traversal [medium] cwe:CWE-22 -- "readFileSync reads code files for annotation context"
  * @mitigates #dashboard against #path-traversal using #path-validation -- "resolve() with root constrains file access (annotations.ts)"

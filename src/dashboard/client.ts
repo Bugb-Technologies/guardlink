@@ -571,6 +571,31 @@ function themeMermaid(src) {
   return src.replace(/fill:#3a1010|fill:#402019|fill:#1f3943|fill:#10263b|fill:#223942|fill:#102a24|color:#f0f0f0/g, function (m) { return map[m] || m; });
 }
 
+/* ===== REPORTS: the findings block as rows ===== */
+/* One row per finding the report declared, each id a link into the Threats table. Prose stays below. */
+function renderFindingsTable(findings) {
+  if (!findings || !findings.length) return '';
+  var rank = { critical: 0, high: 1, medium: 2, low: 3, unset: 4 };
+  var rows = findings.slice().sort(function (a, b) { return (rank[a.severity] || 4) - (rank[b.severity] || 4) || String(a.id).localeCompare(String(b.id)); });
+  var h = '<div class="findings"><div class="sub-h"><span>Findings</span><span class="sub-h-right">' + rows.length + ' declared by the report</span></div>';
+  h += '<div class="table-wrap"><table class="sortable fixed findings-table"><colgroup><col style="width:7%"><col style="width:9%"><col style="width:9%"><col style="width:14%"><col style="width:14%"><col><col style="width:16%"></colgroup>';
+  h += '<thead><tr><th>ID</th><th>Severity</th><th>Status</th><th>Asset</th><th>Threat</th><th>Finding</th><th class="loc">Location</th></tr></thead><tbody>';
+  rows.forEach(function (f) {
+    var q = encodeURIComponent((f.asset || '') + ' ' + (f.threat || ''));
+    var loc = f.location && f.location.file ? f.location.file + (f.location.line ? ':' + f.location.line : '') : '';
+    var st = f.status === 'open' || f.status === 'confirmed' ? 'red' : f.status === 'mitigated' ? 'green' : f.status === 'accepted' ? 'blue' : 'neutral';
+    h += '<tr title="' + esc(f.evidence || '') + '"><td><code>' + esc(f.id) + '</code></td>'
+       + '<td><span class="fc-sev ' + sevCls(f.severity) + '">' + esc(f.severity) + '</span></td>'
+       + '<td><span class="badge' + (st === 'neutral' ? '' : ' badge-' + st) + '">' + esc(f.status) + '</span></td>'
+       + '<td>' + (f.asset ? '<a class="pill" href="#threats?q=' + encodeURIComponent(f.asset) + '"><code>' + esc(f.asset) + '</code></a>' : '') + '</td>'
+       + '<td>' + (f.threat ? '<a class="pill" href="#threats?q=' + encodeURIComponent(f.threat) + '"><code>' + esc(f.threat) + '</code></a>' : '') + '</td>'
+       + '<td><a class="who" href="#threats?q=' + q + '">' + esc(f.title || '') + '</a>' + (f.remediation ? '<div class="muted small">' + esc(f.remediation) + '</div>' : '') + '</td>'
+       + '<td class="loc">' + (loc ? '<span class="loc-text">' + esc(loc) + '</span><button class="copy" data-copy="' + esc(loc) + '" title="Copy path">' + ICONS.copy + '</button>' : '') + '</td></tr>';
+  });
+  h += '</tbody></table></div></div>';
+  return h;
+}
+
 /* ===== REPORTS: link the model's ids ===== */
 function linkifyIds(container) {
   if (!container || typeof threatModel === 'undefined') return;
