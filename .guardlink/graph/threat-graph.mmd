@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f
+%% annotation_hash: sha256-v3:4c19a512329ad2634f6e7043be80cc315e3c1cc3eced4de1ac2fb7b3e181426e
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -113,8 +113,9 @@ graph LR
   suggest -. exposes .-> path_traversal
   suggest -. exposes .-> redos
   suggest -. exposes .-> dos
-  parser -. exposes .-> arbitrary_write
+  parser -. exposes .-> config_tamper
   parser -. exposes .-> insecure_deser
+  parser -. exposes .-> arbitrary_write
   parser -. exposes .-> path_traversal
   parser -. exposes .-> redos
   parser -. exposes .-> dos
@@ -173,14 +174,15 @@ graph LR
   resource_limits -- mitigates --> info_disclosure
   path_validation -. protects .-> suggest
   regex_anchoring -. protects .-> suggest
+  config_validation -- mitigates --> config_tamper
+  config_validation -. protects .-> parser
+  config_validation -- mitigates --> insecure_deser
   path_validation -. protects .-> parser
   input_sanitize -- mitigates --> insecure_deser
   input_sanitize -. protects .-> parser
   regex_anchoring -. protects .-> parser
   glob_filtering -. protects .-> parser
   resource_limits -. protects .-> parser
-  config_validation -- mitigates --> insecure_deser
-  config_validation -. protects .-> parser
   prefix_ownership -- mitigates --> tag_collision
   prefix_ownership -. protects .-> parser
   param_commands -. protects .-> cli
