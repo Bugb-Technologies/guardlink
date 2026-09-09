@@ -66,7 +66,7 @@ Every time you write or modify code that touches security-relevant behavior, you
 
 _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`, or read `.guardlink/definitions.*`._
 
-**Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest), #blame (GuardLink,Blame), #workspace-link (Workspace,Link), #merge-engine (Workspace,Merge), #report-metadata (Workspace,Metadata), #workspace-config (Workspace,Config)
+**Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest), #blame (GuardLink,Blame), #gate (GuardLink,Gate), #workspace-link (Workspace,Link), #merge-engine (Workspace,Merge), #report-metadata (Workspace,Metadata), #workspace-config (Workspace,Config)
 **Threats:** #path-traversal (Path_Traversal) [high], #cmd-injection (Command_Injection) [critical], #xss (Cross_Site_Scripting) [high], #api-key-exposure (API_Key_Exposure) [high], #ssrf (Server_Side_Request_Forgery) [medium], #redos (ReDoS) [medium], #arbitrary-write (Arbitrary_File_Write) [high], #prompt-injection (Prompt_Injection) [medium], #dos (Denial_of_Service) [medium], #data-exposure (Sensitive_Data_Exposure) [medium], #insecure-deser (Insecure_Deserialization) [medium], #child-proc-injection (Child_Process_Injection) [high], #info-disclosure (Information_Disclosure) [low], #tag-collision (Tag_Collision) [medium], #config-tamper (Config_Tampering) [medium]
 **Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring), #prefix-ownership (Prefix_Ownership), #yaml-validation (YAML_Validation), #identity-redaction (Identity_Redaction)
 **Actors:** #local-dev (Local_Developer), #mcp-agent (MCP_Agent), #ci-runner (CI_Runner)
@@ -105,6 +105,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - UserPrompt -> #agent-launcher via buildAskPrompt
 - ThreatModel -> #agent-launcher via model
 - #agent-launcher -> AgentPrompt via return
+- SavedReport -> #llm-client via parseFindingsBlock
 - ThreatModel -> #llm-client via serializeModel
 - ProjectFiles -> #llm-client via readFileSync
 - #llm-client -> ReportFile via writeFileSync
@@ -113,8 +114,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - #llm-client -> LLMProvider via fetch
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
-- #llm-client -> NVD via fetch
-- … and 131 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
+- … and 137 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
 
 ### Features (filter with `--feature`)
 
@@ -123,11 +123,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-652 annotations, 17 assets, 15 threats, 13 controls, 103 exposures, 0 confirmed, 106 mitigations, 3 actors, 1 entitlements, 151 flows, 2 features
+677 annotations, 18 assets, 15 threats, 13 controls, 106 exposures, 0 confirmed, 109 mitigations, 3 actors, 1 entitlements, 157 flows, 2 features
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f`
+- `annotation_hash`: `sha256-v2:08844e596d37b81b75c23dbdb37cdaefb4a03c591d2509fd54a09c91b86f7996`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.

@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f
+%% annotation_hash: sha256-v2:08844e596d37b81b75c23dbdb37cdaefb4a03c591d2509fd54a09c91b86f7996
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -57,6 +57,7 @@ graph LR
   userprompt["👤 UserPrompt"]
   threatmodel["🧩 ThreatModel"]
   agentprompt["🧩 AgentPrompt"]
+  savedreport["🧩 SavedReport"]
   projectfiles["🧩 ProjectFiles"]
   reportfile["🧩 ReportFile"]
   pentestfindings["🧩 PentestFindings"]
@@ -71,6 +72,7 @@ graph LR
   sourcefiles["🧩 SourceFiles"]
   ledgerfile["🧩 LedgerFile"]
   userargs["👤 UserArgs"]
+  gate["🧩 GuardLink.Gate"]
   gitconfig["🧩 GitConfig"]
   html["🧩 HTML"]
   dashboardhtml["🧩 DashboardHTML"]
@@ -121,6 +123,7 @@ graph LR
   userprompt -- "📡 buildAskPrompt" --> agent_launcher
   threatmodel -- "📡 model" --> agent_launcher
   agent_launcher -- "📡 return" --> agentprompt
+  savedreport -- "📡 parseFindingsBlock" --> llm_client
   threatmodel -- "📡 serializeModel" --> llm_client
   projectfiles -- "🗄️ readFileSync" --> llm_client
   llm_client -- "🗄️ writeFileSync" --> reportfile
@@ -152,6 +155,7 @@ graph LR
   gitrepo -- "📡 attachBlame" --> cli
   gitrepo -- "📡 computeBlame" --> cli
   userinput -- "📡 verify" --> cli
+  cli -- "📡 runGate" --> gate
   gitrepo -- "📡 loadSince" --> cli
   sourcefiles -- "🗄️ readFileSync" --> dashboard
   ledgerfile -- "📡 readLedger" --> dashboard
@@ -172,6 +176,10 @@ graph LR
   diff -- "📡 parseProject" --> threatmodel
   diff -- "📡 return" --> changedfilelist
   gitref -- "📡 parseAtRef" --> diff
+  threatmodel -- "📡 runGate" --> gate
+  gate -- "📡 buildGateFollowUp" --> agentprompt
+  gate -- "📡 stripViolations" --> sourcefiles
+  threatmodel -- "📡 lintAnnotations" --> gate
   projectroot -- "📡 detectProject" --> init
   projectroot -- "📡 options.root" --> init
   init -- "🗄️ writeFileSync" --> agentfiles

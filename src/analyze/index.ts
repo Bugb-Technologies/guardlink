@@ -26,6 +26,10 @@ import { GUARDLINK_TOOLS, createToolExecutor } from './tools.js';
 import { formatConfidence, redactEvidence } from './format.js';
 import { loadProjectConfig } from '../agents/config.js';
 import { findUnmitigatedExposures, annotationCount } from '../parser/coverage.js';
+import { parseFindingsBlock, validateFindings, stripFindingsBlock, type Finding, type Unresolved } from './findings.js';
+import type { ReportShapeId } from '../playbooks/index.js';
+export { parseFindingsBlock, validateFindings, renderFindingsTable, stripFindingsBlock, FINDINGS_SCHEMA } from './findings.js';
+export type { Finding, FindingStatus, FindingSeverity, ParsedFindings, Unresolved } from './findings.js';
 
 export { type AnalysisFramework, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage } from './prompts.js';
 export { type LLMConfig, type LLMProvider, buildConfig, autoDetectConfig } from './llm.js';
@@ -40,6 +44,8 @@ export interface ThreatReportOptions {
   framework: AnalysisFramework;
   llmConfig: LLMConfig;
   customPrompt?: string;
+  /** Audience shape appended to the user message: executive, pr, audit. Default full. */
+  shape?: ReportShapeId;
   stream?: boolean;
   onChunk?: (text: string) => void;
   /** Max lines of context to include around each annotated line (default: 8) */
@@ -68,6 +74,12 @@ export interface ThreatReportResult {
   /** Thinking/reasoning content (if extended thinking was enabled) */
   thinking?: string;
   thinkingTokens?: number;
+  /** The findings block, parsed; empty when the model wrote none. */
+  findings: Finding[];
+  /** Why the block was unusable, or 'no findings block'; absent when it parsed. */
+  findingsError?: string;
+  /** Findings whose asset or threat names nothing in the model. */
+  unresolved: Unresolved[];
 }
 
 // ─── Project context builder ─────────────────────────────────────────
@@ -548,7 +560,7 @@ export async function generateThreatReport(opts: ThreatReportOptions): Promise<T
   const pentestData = loadPentestData(root);
   const pentestContext = serializePentestFindings(pentestData);
   const systemPrompt = FRAMEWORK_PROMPTS[framework];
-  const userMessage = buildUserMessage(modelJson, framework, customPrompt, projectContext || undefined, codeSnippets || undefined, pentestContext || undefined);
+  const userMessage = buildUserMessage(modelJson, framework, customPrompt, projectContext || undefined, codeSnippets || undefined, pentestContext || undefined, opts.shape);
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 
@@ -601,10 +613,16 @@ annotations: ${model.annotations_parsed}
 
   writeFileSync(filepath, header + response.content + '\n');
 
+  const parsed = parseFindingsBlock(response.content);
+  const unresolved = validateFindings(parsed.findings, model).unresolved;
+
   return {
     framework,
     label: FRAMEWORK_LABELS[framework],
     content: response.content,
+    findings: parsed.findings,
+    findingsError: parsed.error ?? (parsed.present ? undefined : 'no findings block'),
+    unresolved,
     model: response.model,
     timestamp,
     savedTo: `.guardlink/${THREAT_REPORTS_DIR}/${filename}`,
@@ -675,7 +693,10 @@ export function listThreatReports(root: string): SavedThreatReport[] {
 // ─── Load reports with content (for dashboard embedding) ─────────────
 
 export interface ThreatReportWithContent extends SavedThreatReport {
+  /** The report prose, with the findings block removed. */
   content: string;
+  /** The findings block, parsed; empty when the report carries none. */
+  findings: Finding[];
 }
 
 const MAX_REPORTS_IN_DASHBOARD = 50;
@@ -688,8 +709,10 @@ export function loadThreatReportsForDashboard(root: string): ThreatReportWithCon
     const dir = join(root, '.guardlink', entry.dirName || THREAT_REPORTS_DIR);
     try {
       const raw = readFileSync(join(dir, entry.filename), 'utf-8');
-      const content = raw.replace(/^---[\s\S]*?---\n*/, '').trim();
-      if (content) result.push({ ...entry, content });
+      const body = raw.replace(/^---[\s\S]*?---\n*/, '').trim();
+      if (!body) continue;
+      const parsed = parseFindingsBlock(body);
+      result.push({ ...entry, content: stripFindingsBlock(body).trim(), findings: parsed.findings });
     } catch { /* skip unreadable files */ }
   }
 

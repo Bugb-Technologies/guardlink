@@ -462,14 +462,15 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(
 /* ===== AI ANALYSIS EXPLORER ===== */
 let _selectedAnalysisIdx = 0;
 
-function renderAIAnalysisContent(container, content) {
+function renderAIAnalysisContent(container, content, findings) {
   if (!container) return;
+  var table = typeof renderFindingsTable === 'function' ? renderFindingsTable(findings || []) : '';
   if (content && content.trim()) {
     if (typeof marked !== 'undefined') {
-      try { container.innerHTML = marked.parse(content); if (typeof linkifyIds === 'function') linkifyIds(container); }
-      catch { container.innerHTML = '<pre style="white-space:pre-wrap">' + esc(content) + '</pre>'; }
+      try { container.innerHTML = table + marked.parse(content); if (typeof linkifyIds === 'function') linkifyIds(container); }
+      catch { container.innerHTML = table + '<pre style="white-space:pre-wrap">' + esc(content) + '</pre>'; }
     } else {
-      container.innerHTML = '<pre style="white-space:pre-wrap">' + esc(content) + '</pre>';
+      container.innerHTML = table + '<pre style="white-space:pre-wrap">' + esc(content) + '</pre>';
     }
   } else {
     container.innerHTML = '<div class="empty-state" style="text-align:center;padding:3rem 1rem">' +
@@ -525,11 +526,11 @@ function renderAIAnalysis() {
       var idx = parseInt(this.value, 10);
       if (isNaN(idx) || idx === _selectedAnalysisIdx) return;
       _selectedAnalysisIdx = idx;
-      renderAIAnalysisContent(container, (list[idx] && list[idx].content) ? list[idx].content : '');
+      renderAIAnalysisContent(container, (list[idx] && list[idx].content) ? list[idx].content : '', list[idx] && list[idx].findings);
     });
 
     // Render initial content
-    renderAIAnalysisContent(container, (list[_selectedAnalysisIdx] && list[_selectedAnalysisIdx].content) ? list[_selectedAnalysisIdx].content : '');
+    renderAIAnalysisContent(container, (list[_selectedAnalysisIdx] && list[_selectedAnalysisIdx].content) ? list[_selectedAnalysisIdx].content : '', list[_selectedAnalysisIdx] && list[_selectedAnalysisIdx].findings);
   } else {
     if (selector) selector.style.display = 'none';
     renderAIAnalysisContent(container, '');

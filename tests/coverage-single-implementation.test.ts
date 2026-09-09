@@ -118,6 +118,11 @@ const ALLOWED: { file: string; snippet: string; why: string }[] = [
     why: 'the confirmed-pair probe for this exposure; coverage status comes from buildCoverageIndex alongside it',
   },
   {
+    file: 'src/gate/lint.ts',
+    snippet: '`${canon(e.asset)}::${bare(e.threat)}`',
+    why: 'the "never a lone @exposes" pairing check (GAP-50): the lookup into the transfers set — a @transfers pairs an exposure without covering it (the exposure stays open in every export), so it cannot come from buildCoverageIndex; coverage.isCovered(e) on the same line is the predicate for the covered half',
+  },
+  {
     file: 'src/dashboard/annotations.ts',
     snippet: 'const claim = candidates.find(c => c.asset === fields.asset && c.threat === fields.threat) ?? candidates[0] ?? null;',
     why: 'record identity for the Code page drawer — among claim rows already narrowed to the same file, line and verb (several .gal annotations can name one source line), picks the one this annotation is; the row carries its own coverage status from buildClaims, so nothing here decides whether an exposure is covered',

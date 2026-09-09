@@ -8,6 +8,8 @@
  * @comment -- "customPrompt is appended to user message, not system prompt — bounded injection risk"
  */
 
+import { getPlaybook, type ReportShapeId } from '../playbooks/index.js';
+
 export type AnalysisFramework = 'stride' | 'dread' | 'pasta' | 'attacker' | 'rapid' | 'general';
 
 export const FRAMEWORK_LABELS: Record<AnalysisFramework, string> = {
@@ -78,7 +80,39 @@ For each significant annotation, assess: is the annotation accurate given the co
 ### Part 2 — Threat Model
 A complete, standalone threat model document produced from all available evidence (annotations + code + project context). Structure it with the sections appropriate to the framework you are applying. This is what a security team would hand to an auditor.`;
 
-export const FRAMEWORK_PROMPTS: Record<AnalysisFramework, string> = {
+/**
+ * What every report ends with: the findings as data. The dashboard, the
+ * validator and anything downstream read this block; the prose above it stays
+ * the model's.
+ */
+export const FINDINGS_CONTRACT = `## Findings block — required, last
+
+End the report with one fenced block, exactly this shape, holding every finding the report discusses. It is parsed by a program: valid JSON, no comments, no trailing prose after the closing fence.
+
+\`\`\`json guardlink-findings
+{
+  "schema": "guardlink.findings/v1",
+  "findings": [
+    {
+      "id": "F-1",
+      "title": "one line, what an attacker gets",
+      "asset": "#asset-id (an id or name from the annotation graph — never invent one)",
+      "threat": "#threat-id (likewise)",
+      "severity": "critical | high | medium | low",
+      "status": "open | mitigated | confirmed | accepted | gap",
+      "evidence": "what in the code or the scan shows it: file:line, the call, the request and response",
+      "location": { "file": "path/from/repo/root.ext", "line": 42 },
+      "scenario": "how an attacker exploits it, step by step",
+      "remediation": "the specific change or control",
+      "annotation": "the GuardLink annotation that would reflect the fix, e.g. @mitigates #asset against #threat using #control -- \"…\""
+    }
+  ]
+}
+\`\`\`
+
+Rules: one entry per finding, ids unique and stable within the report (F-1, F-2, …); \`status: gap\` for something the model should annotate and does not; \`location: null\` only when no file applies; every asset and threat is an id or name that exists in the annotation graph.`;
+
+const BASE_FRAMEWORK_PROMPTS: Record<AnalysisFramework, string> = {
   stride: `${SYSTEM_BASE}
 
 Apply the **STRIDE** framework to produce a complete threat model.
@@ -315,6 +349,12 @@ All @accepts annotations: for each, state the risk, why it was accepted, whether
 Top 5–10 items the team should act on, ordered by risk. For each: one-line description, severity, effort estimate (low/medium/high), and the specific GuardLink annotation change that would reflect the fix.`,
 };
 
+export const FRAMEWORK_PROMPTS: Record<AnalysisFramework, string> = Object.fromEntries(
+  (Object.entries(BASE_FRAMEWORK_PROMPTS) as [AnalysisFramework, string][]).map(([k, v]) => [k, `${v}
+
+${FINDINGS_CONTRACT}`]),
+) as Record<AnalysisFramework, string>;
+
 /**
  * Build the user message containing the serialized threat model,
  * optional project context, optional code snippets, and optional
@@ -327,12 +367,18 @@ export function buildUserMessage(
   projectContext?: string,
   codeSnippets?: string,
   pentestFindings?: string,
+  shape?: ReportShapeId,
 ): string {
-  const header = customPrompt
-    ? `Use these annotations as input to produce a threat model. Additional focus: ${customPrompt}`
-    : `Produce a ${FRAMEWORK_LABELS[framework]} for this codebase using all available evidence below.`;
+  // The framework is the method and always heads the message; free text is a
+  // focus under it, never a replacement (it used to replace the header, which
+  // silently dropped the structure the report was supposed to have).
+  const header = `Produce a ${FRAMEWORK_LABELS[framework]} for this codebase using all available evidence below.${customPrompt ? `\nFocus: ${customPrompt}` : ''}`;
 
   const parts: string[] = [header, ''];
+  if (shape && shape !== 'full') {
+    parts.push(getPlaybook(shape).body);
+    parts.push('');
+  }
 
   if (projectContext) {
     parts.push('<project_context>');

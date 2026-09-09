@@ -3,7 +3,7 @@
  * against the model being rendered, plus the ref's place in history. The
  * page turns it into the "what changed" strip and the "new" marks on rows.
  *
- * @exposes #dashboard to #cmd-injection [low] cwe:CWE-78 -- "The ref the user typed reaches git"
+ * @exposes #dashboard to #cmd-injection [low] cwe:CWE-78 -- "loadSince() passes the --since ref the user typed to parseAtRef() and into the git log and git rev-list argv"
  * @mitigates #dashboard against #cmd-injection using #param-commands -- "Checked against a strict ref shape first, then only ever passed as one argv element to execFileSync; parseAtRef rev-parses it before reading anything"
  * @flows GitRepo -> #dashboard via parseAtRef -- "The threat model as it was at the ref"
  * @comment -- "Deterministic per ref: the ref's commit date and the commit count are facts of history, so two runs at the same HEAD produce the same page"
