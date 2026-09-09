@@ -202,8 +202,11 @@ rather than demoting. No existing annotation changes meaning.
 - Grammar: both forms parse, including the optional `on <asset>` and the description; a missing
   citation parses but is marked inert.
 - `validate`: undeclared actor is an error; duplicate actor id is an error.
-- Export: SARIF for a model with entitlements is **byte-identical** to one without, except for the
-  entitlement payload itself — proving §3.2.
+- Export: SARIF `runs[].results` and `runs[].tool` for a model with entitlements are
+  **byte-identical** to one without — proving §3.2. `runs[].properties.annotation_hash` DOES move,
+  and must: it names the annotation set the export was cut from, an entitlement is an annotation,
+  and a provenance hash blind to entitlements would call a rewritten model unchanged (§2). No
+  result, no suppression, no property on any result — that is the invariant, and it holds.
 - `diff`: an entitlement whose cited file changed reports stale.
 - Consumer contract (in bugb): an entitlement demotes only when minimum privilege is *measured*, only
   for the measured role, never for an ownership-class threat, and never without a citation.
@@ -515,7 +518,7 @@ refused.
 - An entitlement with `on` but no `against` is carried and reported as unable to demote; likewise
   `against` with no `on`.
 - Uncited **and** imprecise are reported independently — a reviewer needs to know which is missing.
-- SARIF remains byte-identical to a model without entitlements (§3.2 regression, now including the
+- SARIF results remain byte-identical to a model without entitlements (§3.2 regression, now including the
   threat slot).
 - `diff` reports a capability change on the same `(actor, asset, threat)` as a modification rather
   than an add plus a remove.
