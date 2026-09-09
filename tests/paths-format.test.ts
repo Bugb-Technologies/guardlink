@@ -85,12 +85,15 @@ describe('guardlink paths — CLI', () => {
     expect(out).toMatch(/Flow graph: \d+ entries, \d+ exits/);
   });
 
+  // 30s, same reason as --all below: one tsx spawn is ~1s locally and ~5s on a
+  // shared runner, which sits on the 5000ms default. It timed out on the merge
+  // of #30 and again on #33, both times only on the Node 18/20 runners.
   it('--json emits parseable findings with endpoints alongside', () => {
     const { out } = guardlink('paths', '.', '--json');
     const parsed = JSON.parse(out.slice(out.indexOf('{')));
     expect(Array.isArray(parsed.findings)).toBe(true);
     expect(Array.isArray(parsed.endpoints.entries)).toBe(true);
-  });
+  }, 30_000);
 
   // 30s, generous and explicit: this is the only case here that launches the
   // CLI twice, and a tsx spawn costs ~1s locally against roughly 5x that on
