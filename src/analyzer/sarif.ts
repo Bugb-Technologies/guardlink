@@ -17,13 +17,24 @@
  * remove an exposure from this export, and a suppression that also prevents
  * verification is how a threat model becomes confidently wrong. An entitlement
  * therefore carries no export semantics at all: the exposure is probed exactly
- * as before, and a reader of this SARIF cannot tell an entitlement exists. Only
- * the downstream *recommendation* changes. See docs/prd/actor-entitlement-design.md
- * §3.2 — and do not "complete" this exporter by adding entitlements to it.
+ * as before, and a reader of this SARIF cannot tell from the RESULTS that an
+ * entitlement exists. Only the downstream *recommendation* changes. See
+ * docs/prd/actor-entitlement-design.md §3.2 — and do not "complete" this
+ * exporter by adding entitlements to it.
+ *
+ * The one place an entitlement is visible is `runs[0].properties.annotation_hash`,
+ * and that is not a relaxation of §3.2. The invariant is "no result, no
+ * suppression, no property on any result"; provenance is not a finding. A hash
+ * that could not see an entitlement would report a model whose entitlements had
+ * been rewritten as unchanged, which is the silent all-clear §2 exists to
+ * prevent — the same reason the annotation hash was taught about @entitles in
+ * v2. `results` and `tool` remain byte-identical, and the test asserts exactly
+ * that rather than document equality.
  *
  * @exposes #sarif to #data-exposure [low] cwe:CWE-200 -- "Exposes threat model findings to SARIF consumers"
  * @audit #sarif -- "SARIF output intentionally reveals security findings for CI/CD integration"
  * @comment -- "Pure function: transforms ThreatModel to SARIF JSON; no I/O"
+ * @comment -- "runs[0].properties.annotation_hash stamps the export with the annotations it was cut from (R10), so a hygiene gate can tell a current SARIF from one built three commits ago — this file is the pentest surface, and a stale one decides which exposures get tested"
  * @comment -- "@entitles has no export semantics by design: SARIF for a model with entitlements is byte-identical to one without, so an entitlement can never hide an exposure from the pentest export (actor-entitlement design §3.2)"
  * @comment -- "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} derived from the asset's inbound @flows route so downstream HTTP consumers (e.g. cert-x-gen) can target the endpoint; emitted verbatim from the annotation, no base path assumed"
  * @flows ThreatModel -> #sarif via generateSarif -- "Model input"
@@ -34,6 +45,7 @@ import { createHash } from 'node:crypto';
 
 import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
+import { computeAnnotationHash, ANNOTATION_HASH_VERSION } from '../parser/annotation-hash.js';
 import { getPackageVersion } from '../version.js';
 
 // ─── SARIF 2.1.0 types (subset) ─────────────────────────────────────
@@ -54,6 +66,19 @@ interface SarifRun {
     };
   };
   results: SarifResult[];
+  /**
+   * Provenance, in SARIF's own property bag so no consumer has to be taught a
+   * new envelope. `annotation_hash` is the point: this export is the surface a
+   * pentest probes from, so "which annotations was this cut from?" has to be
+   * answerable from the file alone. Without it a SARIF describing a model three
+   * commits old is indistinguishable from a current one, and the difference is
+   * which exposures got tested.
+   */
+  properties: {
+    annotation_hash: string;
+    annotation_hash_version: number;
+    generator: string;
+  };
 }
 
 interface SarifRule {
@@ -278,6 +303,11 @@ export function generateSarif(
         },
       },
       results,
+      properties: {
+        annotation_hash: computeAnnotationHash(model),
+        annotation_hash_version: ANNOTATION_HASH_VERSION,
+        generator: `guardlink@${getPackageVersion()}`,
+      },
     }],
   };
 }

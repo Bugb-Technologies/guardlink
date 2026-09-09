@@ -80,6 +80,18 @@ const THREAT_REF = String.raw`(?:${TAG_REF}|${QUOTED_REF}|[A-Za-z]\w*(?:[_\- ][A
 // Keeping it single-token is still what makes it citable and comparable rather
 // than a sentence nobody can match on.
 const CAPABILITY = String.raw`[A-Za-z][A-Za-z0-9_.\-]*`;
+/**
+ * The name in `@accepts … by <who>` — a person, not prose.
+ *
+ * Quoted, or a single unspaced token. Deliberately NOT the `NAME` fragment,
+ * which joins segments with a space: `by Jane Doe until 2027-01-01` would then
+ * match `Jane Doe until` as the name and silently swallow the expiry clause.
+ * A name with a space has to be quoted, which is what the writer emits, and the
+ * unquoted form errors loudly rather than parsing into the wrong shape.
+ */
+const AUTHOR    = String.raw`(?:${QUOTED_REF}|[A-Za-z][\w.@+\-]*)`;
+/** `until <YYYY-MM-DD>`. Calendar validity is checked at assembly, not here. */
+const ISO_DATE  = String.raw`\d{4}-\d{2}-\d{2}`;
 const SEVERITY  = String.raw`\[(P[0-3]|critical|high|medium|low)\]`;
 const DESC      = String.raw`--\s*"((?:[^"\\]|\\.)*)"`;
 const SOURCE_FILE = String.raw`\S+`;
@@ -103,8 +115,14 @@ const PATTERNS: Record<string, RegExp> = {
   mitigates_v1: new RegExp(String.raw`^@mitigates\s+(${ASSET_REF})\s+against\s+(${THREAT_REF})(?:\s+with\s+(${THREAT_REF}))?(?:\s+${DESC})?$`),
   exposes: new RegExp(String.raw`^@exposes\s+(${ASSET_REF})\s+to\s+(${THREAT_REF})(?:\s+${SEVERITY})?${EXT_REFS_OPT}(?:\s+${DESC})?$`),
   confirmed: new RegExp(String.raw`^@confirmed\s+(${THREAT_REF})\s+on\s+(${ASSET_REF})(?:\s+${SEVERITY})?${EXT_REFS_OPT}(?:\s+${DESC})?$`),
-  accepts: new RegExp(String.raw`^@accepts\s+(${THREAT_REF})\s+on\s+(${ASSET_REF})(?:\s+${DESC})?$`),
-  accepts_v1: new RegExp(String.raw`^@accepts\s+(${THREAT_REF})\s+to\s+(${ASSET_REF})(?:\s+${DESC})?$`),
+  // `by <who>` and `until <date>` are what turn an acceptance from a deletion
+  // into a decision: who signed, and when the signature stops covering. Both
+  // stay optional so every acceptance written before they existed still parses —
+  // an unattributed or undated acceptance is a GATE finding (src/ci/index.ts),
+  // not a parse error, because refusing to read it would hide it from the very
+  // check that is meant to name it.
+  accepts: new RegExp(String.raw`^@accepts\s+(${THREAT_REF})\s+on\s+(${ASSET_REF})(?:\s+by\s+(${AUTHOR}))?(?:\s+until\s+(${ISO_DATE}))?(?:\s+${DESC})?$`),
+  accepts_v1: new RegExp(String.raw`^@accepts\s+(${THREAT_REF})\s+to\s+(${ASSET_REF})(?:\s+by\s+(${AUTHOR}))?(?:\s+until\s+(${ISO_DATE}))?(?:\s+${DESC})?$`),
   // `against <threat>` is the second half of the join key (§9.3). Both clauses
   // stay optional so the loose form still parses — an imprecise entitlement is
   // harmless because it demotes nothing, whereas making it a parse error would
@@ -288,7 +306,12 @@ export function parseLine(
 
   // ── @accepts ──
   if ((m = trimmed.match(PATTERNS.accepts)) || (m = trimmed.match(PATTERNS.accepts_v1))) {
-    return ok({ ...base, verb: 'accepts', threat: resolveRef(m[1]), asset: resolveRef(m[2]), description: desc(m[3]) });
+    return ok({
+      ...base, verb: 'accepts', threat: resolveRef(m[1]), asset: resolveRef(m[2]),
+      accepted_by: m[3] ? resolveRef(m[3]) : undefined,
+      expires: m[4] || undefined,
+      description: desc(m[5]),
+    });
   }
 
   // ── @entitles ──
@@ -679,6 +702,18 @@ const VERB_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
   exposes: ['to'],
   mitigates: ['against', 'using', 'with'],
   confirmed: ['on'],
+  // `by` and `until` are in the @accepts GRAMMAR but deliberately NOT here.
+  //
+  // This list answers "did someone try to write an annotation and miss?", and
+  // `by` is one of the commonest words in English. Adding it made D29's evidence
+  // test fire on this repository's own prose — `src/agents/prompts.ts:399`,
+  // "it requires conscious risk ownership by a person or team", a sentence
+  // explaining that agents must never write `@accepts` — which is precisely the
+  // failure D29's note describes: writing prose about GuardLink inside a
+  // GuardLink-annotated repo breaking that repo's own validate.
+  //
+  // Nothing is lost. A genuinely malformed `@accepts` still carries `on`, a
+  // `#ref`, or the `-- "…"` delimiter, and each of those is already evidence.
   accepts: ['on', 'to'],
   transfers: ['from', 'to'],
   flows: ['->'],
