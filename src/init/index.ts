@@ -49,6 +49,7 @@ import type { AnnotationMode as ObservedAnnotationMode } from '../parser/annotat
 import type { ThreatModel } from '../types/index.js';
 import type { AnnotationMode } from '../agents/index.js';
 import { AGENT_CHOICES } from './picker.js';
+import { ANNOTATE_PLAYBOOKS, REPORT_SHAPES, skillFileFor, SKILL_GENERATED_MARKER } from '../playbooks/index.js';
 import { definitionsArePopulated, configIsCustomised } from './preserve.js';
 
 /**
@@ -355,6 +356,25 @@ function updateAgentFiles(
 
   // Default: write ALL agent files so switching agents is seamless
   const ids = agentIds ?? AGENT_CHOICES.map(c => c.id);
+
+  // The playbooks as Claude Code skills, one file each. A skill file a person
+  // wrote (no generated marker) is theirs and stays.
+  if (ids.includes('claude')) {
+    for (const pb of [...ANNOTATE_PLAYBOOKS, ...REPORT_SHAPES.filter(s => s.id !== 'full')]) {
+      const skill = skillFileFor(pb);
+      const abs = join(root, skill.path);
+      if (existsSync(abs)) {
+        const existing = readForGuard(abs);
+        if (existing === null || !existing.includes(SKILL_GENERATED_MARKER)) { skipped.push(`${skill.path} (authored — kept)`); continue; }
+        if (existing === skill.content) { skipped.push(`${skill.path} (up to date)`); continue; }
+        if (!dryRun) writeFileSync(abs, skill.content);
+        updated.push(skill.path);
+        continue;
+      }
+      if (!dryRun) { mkdirSync(dirname(abs), { recursive: true }); writeFileSync(abs, skill.content); }
+      created.push(skill.path);
+    }
+  }
 
   for (const id of ids) {
     const choice = AGENT_CHOICES.find(c => c.id === id);

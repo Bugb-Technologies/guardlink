@@ -20,9 +20,9 @@
  * for one bad file, because one pathological file must not take down `blame`
  * for the whole repository.
  *
- * @exposes #blame to #path-traversal [low] cwe:CWE-22 -- "Record locations name the files handed to git, and a sidecar @source path is author-supplied text that survives normalisation with ../ intact"
+ * @exposes #blame to #path-traversal [low] cwe:CWE-22 -- "safeRelPath() receives location.file from each parsed record; a sidecar @source path is author text that can carry ../ into the argv computeBlame() hands to git"
  * @mitigates #blame against #path-traversal using #path-validation -- "safeRelPath resolves each path against root and keeps it only when it is root or lies under root + sep; anything else yields status error and git never sees it"
- * @exposes #blame to #dos [low] cwe:CWE-400 -- "One blame per annotated file, one -L walk per distinct symbol span, and one walk of the whole history reachable from HEAD for the commit counts"
+ * @exposes #blame to #dos [low] cwe:CWE-400 -- "computeBlame() spawns git blame once per annotated file, git log -L once per distinct symbol span and listCommits() once over the whole history; a large model multiplies the spawns"
  * @mitigates #blame against #dos using #resource-limits -- "Files are blamed once and memoised; -L is memoised per span and skipped for dirty files and file-wide anchors; commits resolve in one batched log call; the history walk is a single call and history: false skips it"
  * @flows ThreatModel -> #blame via computeBlame -- "Record locations and anchors"
  * @flows #blame -> ThreatModel via attachBlame -- "record.blame, only on the CLI --blame paths"

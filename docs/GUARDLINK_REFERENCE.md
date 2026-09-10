@@ -110,9 +110,10 @@ guardlink diff [ref]                    # Compare threat model against a git ref
 guardlink paths [dir] [--all]           # Undefended source-to-sink routes, derived from @flows (no LLM)
 
 # AI-Powered Analysis
-guardlink threat-report <fw|prompt>     # AI threat report (see frameworks below)
+guardlink threat-report <fw> [focus…] [--shape full|executive|pr|audit]  # AI threat report (see frameworks below); free text is a focus, the shape is the audience
 guardlink threat-reports                # List saved threat reports
-guardlink annotate <prompt> [--mode inline|external]  # Launch coding agent to add annotations
+guardlink annotate <prompt> [--playbook map|exploitable|chains|diff|coverage|verify] [--mode inline|external]  # Launch coding agent; the playbook is the method, the prompt is scope; the gate checks the result
+guardlink lint [dir] [--since <ref>] [--json]   # Check annotations against the evidence bar; --since checks only what a session added
 guardlink translate [prompt]            # Generate CERT-X-GEN pentest templates from threat findings
 guardlink ask <query>                   # Ask questions about the threat model and codebase
 guardlink config <show|set|clear>       # Manage LLM provider / CLI agent configuration
@@ -153,6 +154,45 @@ guardlink report . --feature "SSO Login"          # Report filtered to feature
 guardlink dashboard . --feature "SSO,Payments"    # Dashboard filtered to features
 guardlink status . --feature "SSO Login"           # Status filtered to feature
 ```
+
+## Playbooks, the evidence bar and the gate
+
+`guardlink annotate` and `guardlink threat-report` used to leave the method to whoever typed the
+prompt: "annotate all the threats" got a shallow pass and only an expert prompt got a deep one.
+Now the tool owns the method and the prompt supplies scope and intent.
+
+**Annotate playbooks** (`--playbook`, or inferred from the prompt by rule and announced on stderr;
+`exploitable` when nothing matches):
+
+| id | what it does |
+|---|---|
+| `map` | Architecture first: assets, flows, boundaries, data classes. Writes no `@exposes`. |
+| `exploitable` | Default. Map → hypothesise → verify each path by reading it → write. |
+| `chains` | Start from the open exposures, follow the flows, ask what each enables next. |
+| `diff` | Only the files this branch changed (`--since <ref>`, default HEAD). |
+| `coverage` | The unannotated files, entry points first, structure before claims. |
+| `verify` | Re-read every existing claim against the code; flag what no longer holds. |
+
+**The evidence bar**, shared by every playbook: an `@exposes` must name the entry point, the
+attacker-controlled input, the sink and the absent control, in the code's own names. What cannot
+meet the bar is written as `@audit`. Severity never outranks the threat's declared severity.
+`@confirmed` needs evidence in hand. `@accepts` and `@entitles` are never written by an agent.
+
+**The gate.** When a terminal agent returns, `guardlink annotate` parses the tree, finds what the
+run added, and lints it against the bar. Violations are sent back to the agent once
+(`--gate-retries`); what still fails is removed from the tree and printed so nothing is lost, and
+the command exits 1. `--no-gate` skips it. `guardlink lint . --since HEAD` runs the same check
+for a session the CLI did not launch; without `--since` it lints the whole tree and does not
+hold a person's `@accepts` against them.
+
+**Report shapes** (`--shape`): `full` (the framework's own structure), `executive` (one page),
+`pr` (what this change adds), `audit` (controls, evidence, owners). Every report ends with a
+````json guardlink-findings```` block the dashboard and the CLI read; ids that name nothing in
+the model are reported on stderr.
+
+**Skills.** `guardlink init` writes each playbook as `.claude/skills/guardlink-<kind>-<id>/SKILL.md`
+so a developer's own agent session runs the same method. A skill file without the generated marker
+is treated as authored and left alone.
 
 ## Threat Report Frameworks
 

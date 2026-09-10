@@ -19,7 +19,7 @@
  * unreadable config returns the defaults, deliberately — a broken config must
  * not silently change who gets attributed.
  *
- * @exposes #blame to #redos [low] cwe:CWE-1333 -- "Tool rules are user-supplied regular expressions applied to every commit author and trailer in the history"
+ * @exposes #blame to #redos [low] cwe:CWE-1333 -- "readBlameConfig() compiles blame.tools[].match from .guardlink/config.json into RegExp objects that attributeCommit() runs against every author and trailer in the history"
  * @mitigates #blame against #redos using #regex-anchoring -- "Every pattern is anchored (^…$), capped at 256 characters and compiled once; a pattern that fails to compile drops its whole rule rather than half-matching"
  * @exposes #blame to #path-traversal [low] cwe:CWE-22 -- "ignore_revs names a file git will open with --ignore-revs-file"
  * @mitigates #blame against #path-traversal using #path-validation -- "The value is resolved against root and kept only when it is root or lies under root + sep; anything else becomes null and git is never told about it"

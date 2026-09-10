@@ -17,7 +17,8 @@
  *   guardlink threat-reports          List saved AI threat reports
  *   guardlink translate [prompt]      Generate CERT-X-GEN pentest templates from threats
  *   guardlink ask <query>             Ask questions about threats and codebase context
- *   guardlink annotate <prompt>       Launch coding agent to add annotations
+ *   guardlink annotate <prompt>       Launch coding agent to add annotations (a playbook supplies the method; the gate checks the result)
+ *   guardlink lint [dir]              Check annotations against the evidence bar; --since <ref> for what a session added
  *   guardlink review [dir]            Interactive governance review of unmitigated exposures
  *   guardlink entitle [dir]           Accept/reject/defer proposed @entitles claims
  *   guardlink config <action>         Manage LLM provider configuration
@@ -61,6 +62,10 @@ import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard,
 import { generateDashboardHTML, loadSince } from '../dashboard/index.js';
 import type { SinceInput } from '../dashboard/analytics.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt, buildTranslatePrompt, buildAskPrompt, resolveAnnotationMode } from '../agents/index.js';
+import { selectAnnotatePlaybook, selectReportShape, ANNOTATE_PLAYBOOKS, REPORT_SHAPES } from '../playbooks/index.js';
+import { lintAnnotations, runGate, formatGateReport, buildGateFollowUp, stripViolations, RULE_FIX } from '../gate/index.js';
+import { relationRecords } from '../parser/claim-key.js';
+import { parseFindingsBlock, validateFindings } from '../analyze/findings.js';
 import { resolveConfig, saveProjectConfig, saveGlobalConfig, loadProjectConfig, loadGlobalConfig, maskKey, describeConfigSource } from '../agents/config.js';
 import {
   getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview,
@@ -1121,23 +1126,27 @@ program
   .option('--cursor', 'Open Cursor IDE with prompt on clipboard')
   .option('--windsurf', 'Open Windsurf IDE with prompt on clipboard')
   .option('--clipboard', 'Copy threat report prompt to clipboard only')
+  .option('--shape <shape>', `Who the report is for: ${REPORT_SHAPES.map(s => s.id).join(', ')} (default full — the framework's own structure)`)
   .action(async (promptParts: string[], opts: {
     dir: string; project: string; provider?: string; model?: string; apiKey?: string;
     stream?: boolean; webSearch?: boolean; thinking?: boolean;
     claudeCode?: boolean; codex?: boolean; gemini?: boolean;
-    cursor?: boolean; windsurf?: boolean; clipboard?: boolean;
+    cursor?: boolean; windsurf?: boolean; clipboard?: boolean; shape?: string;
   }) => {
     const root = resolve(opts.dir);
     const project = detectProjectName(root, opts.project);
     const input = promptParts.join(' ').trim();
+    let shape;
+    try { shape = selectReportShape(opts.shape); } catch (e) { console.error((e as Error).message); process.exit(1); }
 
     // Determine framework vs custom prompt
     const validFrameworks = ['stride', 'dread', 'pasta', 'attacker', 'rapid', 'general'];
     const inputLower = input.toLowerCase();
     const isStandard = validFrameworks.includes(inputLower);
     const fw = (isStandard ? inputLower : 'general') as AnalysisFramework;
+    // Free text is a focus under the framework, never a replacement: the framework is the method.
     const customPrompt = isStandard ? undefined : (input || undefined);
-    const reportLabel = customPrompt ? 'Custom Threat Analysis' : FRAMEWORK_LABELS[fw];
+    const reportLabel = `${FRAMEWORK_LABELS[fw]}${customPrompt ? ` (focus: ${customPrompt})` : ''}${shape.id !== 'full' ? ` — ${shape.id} shape` : ''}`;
 
     // Parse project
     const { model, diagnostics } = await parseProject({ root, project });
@@ -1157,8 +1166,18 @@ program
     const pentestData = loadPentestData(root);
     const pentestContext = serializePentestFindings(pentestData);
     const systemPrompt = FRAMEWORK_PROMPTS[fw];
-    const userMessage = buildUserMessage(serialized, fw, customPrompt, projectContext || undefined, codeSnippets || undefined, pentestContext || undefined);
+    const userMessage = buildUserMessage(serialized, fw, customPrompt, projectContext || undefined, codeSnippets || undefined, pentestContext || undefined, shape.id);
     const hasPentest = pentestData.totalFindings > 0;
+    /** What the findings block said, on stderr, so a report with no block or made-up ids is noticed at once. */
+    const reportFindings = (content: string): number => {
+      const parsed = parseFindingsBlock(content);
+      if (!parsed.present) { console.error('  ! No findings block: the report cannot feed the dashboard\'s findings table. Re-run; the prompt asks for one.'); return 0; }
+      if (parsed.error) { console.error(`  ! Findings block unusable: ${parsed.error}`); return 0; }
+      const { unresolved } = validateFindings(parsed.findings, model);
+      console.error(`  Findings: ${parsed.findings.length} declared${unresolved.length > 0 ? `, ${unresolved.length} name nothing in the model` : ''}`);
+      for (const u of unresolved) console.error(`    ! ${u.id}: ${u.field} ${u.ref} is not in the model`);
+      return parsed.findings.length;
+    };
     const analysisPrompt = `You are analyzing a codebase with GuardLink security annotations.
 You have access to the full source code in the current directory.
 
@@ -1220,9 +1239,11 @@ ${userMessage}
         const { cleanCliArtifacts } = await import('../tui/format.js');
         const cleanedContent = cleanCliArtifacts(result.content);
         
-        const header = `---\nframework: ${fw}\nlabel: ${FRAMEWORK_LABELS[fw]}\nmodel: ${agent.name}\ntimestamp: ${new Date().toISOString()}\nproject: ${project}\nannotations: ${model.annotations_parsed}\n---\n\n# ${FRAMEWORK_LABELS[fw]}\n\n> Generated by \`guardlink threat-report ${fw}\` on ${new Date().toISOString().slice(0, 10)}\n> Agent: ${agent.name} | Project: ${project} | Annotations: ${model.annotations_parsed}\n\n`;
+        const declared = parseFindingsBlock(cleanedContent).findings.length;
+        const header = `---\nframework: ${fw}\nlabel: ${FRAMEWORK_LABELS[fw]}\nmodel: ${agent.name}\ntimestamp: ${new Date().toISOString()}\nproject: ${project}\nannotations: ${model.annotations_parsed}\nshape: ${shape.id}\nfindings: ${declared}\n---\n\n# ${FRAMEWORK_LABELS[fw]}\n\n> Generated by \`guardlink threat-report ${fw}\` on ${new Date().toISOString().slice(0, 10)}\n> Agent: ${agent.name} | Project: ${project} | Annotations: ${model.annotations_parsed}\n\n`;
         writeFileSync(filepath, header + cleanedContent + '\n');
         console.error(`\n✓ Report saved to .guardlink/threat-reports/${filename}`);
+        reportFindings(cleanedContent);
       }
       return;
     }
@@ -1273,6 +1294,7 @@ ${userMessage}
         framework: fw,
         llmConfig,
         customPrompt,
+        shape: shape.id,
         stream: opts.stream !== false,
         onChunk: opts.stream !== false ? (text) => process.stdout.write(text) : undefined,
         webSearch: opts.webSearch,
@@ -1286,6 +1308,7 @@ ${userMessage}
       }
 
       console.error(`\n✓ Report saved to ${result.savedTo}`);
+      reportFindings(result.content);
       if (result.inputTokens || result.outputTokens) {
         console.error(`  Tokens: ${result.inputTokens || '?'} in / ${result.outputTokens || '?'} out`);
       }
@@ -1337,14 +1360,30 @@ program
   .option('--windsurf', 'Open Windsurf IDE with prompt on clipboard')
   .option('--clipboard', 'Copy annotation prompt to clipboard only')
   .option('--stdout', 'Print annotation prompt to stdout and exit (for piping)')
+  .option('--playbook <id>', `The method: ${ANNOTATE_PLAYBOOKS.map(p => p.id).join(', ')} (inferred from the prompt when omitted; exploitable by default)`)
+  .option('--since <ref>', 'For the diff playbook: the ref the changed-file list is taken from (default HEAD)')
+  .option('--no-gate', 'Skip the acceptance check after a terminal agent returns')
+  .option('--gate-retries <n>', 'How many times to re-prompt the agent with the gate\'s violations before stripping what still fails', '1')
   .action(async (prompt: string, dir: string, opts: {
     project: string;
     mode?: string;
     claudeCode?: boolean; codex?: boolean; gemini?: boolean;
     cursor?: boolean; windsurf?: boolean; clipboard?: boolean; stdout?: boolean;
+    playbook?: string; since?: string; gate?: boolean; gateRetries?: string;
   }) => {
     const root = resolve(dir);
     const project = detectProjectName(root, opts.project);
+
+    // The playbook is the method; the prompt is scope and intent. Chosen by rule, announced.
+    let selection;
+    try { selection = selectAnnotatePlaybook(prompt, opts.playbook); } catch (e) { console.error((e as Error).message); process.exit(1); }
+    console.error(`Playbook: ${selection.id} (${selection.reason})`);
+    let scopedPrompt = prompt;
+    if (selection.id === 'diff') {
+      const ref = opts.since || 'HEAD';
+      const changed = getChangedFiles(root, ref);
+      scopedPrompt = `${prompt}\n\nChanged files (git diff --name-only ${ref}):\n${changed.length > 0 ? changed.map(f => `- ${f}`).join('\n') : '- (none — the working tree matches the ref)'}`;
+    }
     let annotationMode;
     try {
       annotationMode = resolveAnnotationMode(opts.mode);
@@ -1363,17 +1402,20 @@ program
       process.exit(1);
     }
 
-    // Parse model (optional — annotations may not exist yet)
+    // Parse model (optional — annotations may not exist yet). The parse is also
+    // the gate's baseline: what the run adds is what it is checked on.
     let model: ThreatModel | null = null;
+    let baseline: ThreatModel | null = null;
     try {
       const result = await parseProject({ root, project });
+      baseline = result.model;
       if (result.model.annotations_parsed > 0) {
         model = result.model;
       }
     } catch { /* no model yet — that's fine */ }
 
     // Build prompt
-    const fullPrompt = buildAnnotatePrompt(prompt, root, model, annotationMode);
+    const fullPrompt = buildAnnotatePrompt(scopedPrompt, root, model, annotationMode, selection.id);
 
     // Launch agent
     if (agent.id !== 'stdout') {
@@ -1406,18 +1448,94 @@ program
       if (result.exitCode != null && result.exitCode !== 0) {
         console.error(`\n✗ ${agent.name} exited with code ${result.exitCode}.`);
         process.exitCode = 1;
-      } else {
-        console.log(`\n✓ ${agent.name} session ended.`);
+        return;
       }
-      console.log('  Run: guardlink parse  to update the threat model.');
+      console.log(`\n✓ ${agent.name} session ended.`);
+      if (opts.gate === false) { console.log('  Gate skipped (--no-gate). Run: guardlink lint . --since HEAD'); return; }
+
+      // The gate: what did the run add, and does it meet the evidence bar?
+      // Re-prompt with the violations, then strip what still fails so a bad
+      // claim never lands in the tree as if it had been checked.
+      // @flows #cli -> #gate via runGate -- "The model before and after the agent"
+      const parseNow = async (): Promise<ThreatModel> => (await parseProject({ root, project })).model;
+      let report = runGate(baseline, await parseNow());
+      console.log('\n' + formatGateReport(report));
+      let retries = Math.max(0, parseInt(opts.gateRetries ?? '1', 10) || 0);
+      while (!report.ok && retries > 0) {
+        retries--;
+        console.log(`\nRe-prompting ${agent.name} with the violations (${retries} ${retries === 1 ? 'retry' : 'retries'} left after this)...`);
+        const again = launchAgent(agent, buildGateFollowUp(report), root);
+        if (again.error) { console.error(`✗ ${again.error}`); break; }
+        report = runGate(baseline, await parseNow());
+        console.log('\n' + formatGateReport(report));
+      }
+      if (report.ok) {
+        console.log(`\n✓ Gate passed: ${report.added.length} added ${report.added.length === 1 ? 'claim meets' : 'claims meet'} the evidence bar.`);
+        return;
+      }
+      const { removed, refused } = stripViolations(root, report);
+      console.error(`\n✗ Gate: ${report.errors} ${report.errors === 1 ? 'error remains' : 'errors remain'}. Removed ${removed.length} annotation ${removed.length === 1 ? 'line' : 'lines'} that failed the evidence bar:`);
+      for (const r of removed) console.error(`  ${r.file}:${r.line}  ${r.text}`);
+      for (const r of refused) console.error(`  ! ${r}`);
+      console.error('  They are printed above so nothing is lost. Narrow the scope and re-run, or write them by hand; guardlink lint . --since HEAD re-checks.');
+      process.exitCode = 1;
     } else if (agent.app && result.launched) {
       console.log(`✓ ${agent.name} launched with project: ${project}`);
       console.log('\nPaste (Cmd+V) the prompt in the AI chat panel.');
-      console.log('When done, run: guardlink parse');
+      console.log('When done, run: guardlink lint . --since HEAD');
     } else if (agent.id === 'clipboard') {
       console.log('\nPaste the prompt into your preferred AI tool.');
-      console.log('When done, run: guardlink parse');
+      console.log('When done, run: guardlink lint . --since HEAD');
     }
+  });
+
+// ─── lint ────────────────────────────────────────────────────────────
+
+program
+  .command('lint')
+  .description('Check annotations against the evidence bar: exposures that name code and are paired, severities within band, evidence on @confirmed; --since <ref> checks only what a session added, including that it wrote no @accepts or @entitles')
+  .argument('[dir]', 'Project directory', '.')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('--since <ref>', 'Only claims added since a git ref (what an agent session wrote)')
+  .option('--json', 'Machine-readable output (guardlink.lint/v1)')
+  .action(async (dir: string, opts: { project?: string; since?: string; json?: boolean }) => {
+    const root = resolve(dir);
+    const project = detectProjectName(root, opts.project);
+    const { model } = await parseProject({ root, project });
+    let only: Set<string> | undefined;
+    let scopeClaims = relationRecords(model).length;
+    if (opts.since) {
+      try {
+        const before = await parseAtRef(root, opts.since, project);
+        const beforeKeys = new Set(relationRecords(before).map(r => r.key));
+        const added = relationRecords(model).filter(r => !beforeKeys.has(r.key));
+        only = new Set(added.map(r => r.key));
+        scopeClaims = added.length;
+      } catch (e) {
+        console.error(`--since ${opts.since}: ${(e as Error).message}`);
+        process.exitCode = 1;
+        return;
+      }
+    }
+    // Without --since a person may have written the @accepts in the tree; only a session's additions are held to the no-governance rule.
+    const violations = lintAnnotations(model, { only, governance: opts.since ? 'error' : 'ignore' });
+    const errors = violations.filter(v => v.level === 'error').length;
+    const warnings = violations.length - errors;
+    if (opts.json) {
+      console.log(JSON.stringify({
+        schema: 'guardlink.lint/v1',
+        root,
+        scope: { since: opts.since ?? null, claims: scopeClaims },
+        summary: { errors, warnings, violations: violations.length },
+        violations: violations.map(v => ({ rule: v.rule, level: v.level, verb: v.verb, file: v.file, line: v.line, claim: v.claim, message: v.message, fix: RULE_FIX[v.rule] })),
+      }, null, 2));
+    } else {
+      for (const v of violations) console.log(`${v.file}:${v.line}  ${v.level === 'error' ? 'error' : 'warn '}  ${v.rule}  ${v.message}`);
+      if (violations.length > 0) console.log('');
+      console.log(`${scopeClaims} ${scopeClaims === 1 ? 'claim' : 'claims'}${opts.since ? ` added since ${opts.since}` : ''}: ${errors} ${errors === 1 ? 'error' : 'errors'}, ${warnings} ${warnings === 1 ? 'warning' : 'warnings'}`);
+      if (!opts.since) console.log('(governance verbs are not checked without --since: a person may have written them)');
+    }
+    if (errors > 0) process.exitCode = 1;
   });
 
 // ─── translate ───────────────────────────────────────────────────────

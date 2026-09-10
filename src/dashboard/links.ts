@@ -9,7 +9,7 @@
  *
  * @exposes #dashboard to #path-traversal [low] cwe:CWE-22 -- "detectRepoLinks reads <root>/.git/config and, when .git is a worktree file, follows its `gitdir:` pointer to a config elsewhere on disk; a crafted .git file can name any readable path"
  * @mitigates #dashboard against #path-traversal using #path-validation -- "Only the fixed `config` name is read under the pointed-to gitdir, only `remote.origin.url` is extracted from it, and the result is discarded unless it parses as an http(s)/ssh remote to a web host; file links reject `..` segments and absolute paths and fall back to the repo web root"
- * @exposes #dashboard to #data-exposure [low] cwe:CWE-200 -- "Remote URLs may embed credentials (https://user:token@host/...) which would otherwise land in a committed HTML artifact"
+ * @exposes #dashboard to #data-exposure [low] cwe:CWE-200 -- "detectRepoLinks() reads remote.origin.url from .git/config, which may embed user:token@host credentials that would land in the committed HTML"
  * @mitigates #dashboard against #data-exposure using #output-encoding -- "linksFromRemote rebuilds every link from hostname and path only; userinfo is dropped before anything is emitted, so credentials never reach RepoLinks.web"
  * @flows GitConfig -> #dashboard via readFileSync -- "remote.origin.url read from .git/config (or the worktree's gitdir config)"
  * @flows #dashboard -> DashboardHTML via RepoLinks -- "Web, file and commit links embedded in the generated dashboard"

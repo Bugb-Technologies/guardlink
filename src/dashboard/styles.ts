@@ -1377,4 +1377,11 @@ table.heat .heat-col span { font-size: .68rem; }
 .whole-model-note .btn { margin-left: auto; }
 #owners td .who, #sensitive td .who { border-bottom: 0; }
 .variant-note { font-size: .78rem; color: var(--muted); margin: 0 0 .9rem; padding: .5rem .7rem; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+
+/* ── report findings ─────────────────────────────────────────────── */
+.findings { margin: .2rem 0 1.2rem; }
+.findings .sub-h { margin-top: .2rem; }
+.findings-table td .who { border-bottom: 0; font-weight: 600; }
+.findings-table td .small { font-size: .7rem; margin-top: 2px; }
+.findings-table td .pill { margin: 0; }
 `;
