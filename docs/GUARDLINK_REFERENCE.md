@@ -14,7 +14,9 @@ DEFINE   @asset <Component.Path> (#id) -- "description"
 RELATE   @mitigates <Asset> against <#threat> using <#control> -- "how"
          @exposes <Asset> to <#threat> [severity] cwe:CWE-NNN -- "what's wrong"
          @confirmed <#threat> on <Asset> [severity] cwe:CWE-NNN -- "verified evidence"
-         @accepts <#threat> on <Asset> -- "HUMAN-ONLY — AI agents must use @audit instead"
+         @accepts <#threat> on <Asset> by "<who>" until <YYYY-MM-DD> -- "why it is acceptable"
+                   ^ HUMAN-ONLY — AI agents must use @audit instead. Needs a name, a horizon
+                     and a real reason, or the gate does not count it as an acceptance
          @transfers <#threat> from <Source> to <Target> -- "who handles it"
          @entitles <#actor> to <capability> on <Asset> against <#threat> -- "by design + authz file:line"
                    ^ PROPOSED via `guardlink entitle --propose`, written only when a human accepts
@@ -95,6 +97,10 @@ guardlink parse [dir]                   # Parse annotations → ThreatModel JSON
 guardlink status [dir]                  # Risk grade + coverage summary
 guardlink validate [dir] [--strict]     # Syntax errors, dangling refs, unmitigated exposures
 guardlink verify [dir] [targets...]     # Lock claims to the code beneath them → .guardlink/verified.json
+guardlink ci [dir] [--strict]           # The gate: parse errors, unmitigated exposures, confirmed
+                                        #   exploits, unqualified acceptances, anchor drift, stale claims
+guardlink ci . --strict --severity critical,high   # Gate on risk findings at these severities only
+guardlink ci . --strict --scope services/api       # Gate on findings under these paths only
 
 # Reports & Export
 guardlink report [dir]                  # Generate threat-model.md + optional JSON
@@ -114,6 +120,10 @@ guardlink config <show|set|clear>       # Manage LLM provider / CLI agent config
 # Governance & Maintenance
 guardlink review [dir]                  # Interactive review of unmitigated exposures (accept/remediate/skip)
 guardlink review --list [--severity X]  # List reviewable exposures without prompting
+guardlink review . --list --format json # Same, with the ids a scripted decision needs
+guardlink review . --accept <id> --by "<name>" --justification "<why>" --until 2027-01-31
+guardlink review . --remediate <id> --justification "<planned fix>"
+guardlink review . --from decisions.json               # {"decisions":[{id,decision,by,justification,until}]}
 guardlink entitle [dir]                 # Review proposed @entitles claims (accept/reject/defer)
 guardlink entitle --list [--status X]   # List entitlement proposals and their decisions
 guardlink entitle --propose --actor "#ns-admin" --capability configure-archival-destination \
@@ -312,6 +322,77 @@ invisible to the annotation hash and never written to `.guardlink/model.json`. T
 `guardlink blame --json` (`guardlink.blame/v1`) keys every entry with the ledger claim key, so it
 joins to `.guardlink/verified.json`. It works whether one person or the whole team runs GuardLink:
 the evidence is in git, not in the annotations.
+
+## What an acceptance costs
+
+`@accepts` is the only verb a human writes to make a finding go away without changing any code, so
+it is the one the gate has to be hardest on. Four things it must be:
+
+```
+@accepts <#threat> on <Asset> by "<who>" until <YYYY-MM-DD> -- "<why this risk is acceptable here>"
+```
+
+| | Rule | Default |
+|---|---|---|
+| **attributed** | `by <who>` — a name a reviewer can go and ask | required |
+| **justified** | a reason, not a category | ≥ 24 characters |
+| **expiring** | `until <YYYY-MM-DD>`; after it, the exposure returns | required, ≤ 365 days out |
+| **scoped** | covers exposures **in its own file**, and no others | not configurable |
+
+An acceptance that fails any of the first three **does not count as an acceptance** to
+`guardlink ci --strict`: its exposures are reported as unmitigated, and the acceptance itself is
+listed with what is wrong with it. `guardlink validate` reports the same thing as a warning
+(`acceptance-unqualified`). Nothing is rejected at parse time — an annotation the parser drops is
+invisible to the check that exists to name it.
+
+**Why per-file scope.** An acceptance used to match on `(asset, threat)` alone, like a mitigation.
+A mitigation may legitimately reach across files: a control is code, it runs, and a filter at a
+trust boundary really does defend a handler downstream of it. An acceptance is a person saying *"I
+read this risk, at this site, and I sign for it"* — and that does not travel to a file they never
+opened. Measured on OWASP NodeGoat: one `@accepts` at `app/data/user-dao.js:17` also silenced the
+identical pair at `artifacts/db-reset.js:12`, in the gate **and** in the SARIF a pentest probes
+from, so a site nobody had reviewed stopped being something that would ever be tested.
+
+`guardlink review` prints the blast radius before it asks for the justification:
+
+```
+  Silences: 1 exposure(s) in this file; 1 more on the same asset+threat elsewhere,
+            which this does NOT cover — in the gate AND in the SARIF a pentest reads
+```
+
+**Policy**, in `.guardlink/config.json`. A project may move a threshold; scope and expiry semantics
+are not settings:
+
+```json
+{ "acceptance": { "min_justification": 40, "require_author": true, "require_expiry": true, "max_horizon_days": 90 } }
+```
+
+**`@confirmed` is not silenceable.** A reproduced exploit fails `guardlink ci --strict` regardless
+of any `@accepts` or `@mitigates` on the same pair — `@accepts` has never removed one from the SARIF
+export either. The way to clear it is to delete the annotation once the exploit no longer
+reproduces: a visible deletion in a diff, which is what re-verification looks like, rather than a
+line someone appends.
+
+## Adopting the gate without deleting it
+
+`guardlink ci --strict` on a repository that has just been annotated is red on day one and green
+never, which is how a gate gets deleted rather than adopted. Two narrowings, both additive:
+
+```bash
+guardlink ci . --strict --severity critical,high    # gate on these risk severities
+guardlink ci . --strict --scope services/api,libs/auth
+```
+
+`--severity` narrows **risk** findings — unmitigated exposures and confirmed exploits — and nothing
+else. Drift, parse errors, stale claims and unqualified acceptances carry no severity: they are
+about whether the model can be read and trusted at all, and a team that gates on `critical` has not
+said their annotations need not parse. An exposure written with no severity always counts, so the
+threshold is not something you pass by forgetting a bracket, and a misspelled level is an error
+rather than a filter that matches nothing and exits 0.
+
+`--scope` narrows everything, because everything has a file. Both echo what they dropped, in the
+text output and in `summary.filters` of the JSON — a green gate that only looked at part of the
+repository says so.
 
 ## Stale claims and the verification ledger
 

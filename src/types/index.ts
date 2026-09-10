@@ -129,10 +129,23 @@ export interface ConfirmedAnnotation extends BaseAnnotation {
   external_refs: string[];
 }
 
+/**
+ * A human signing for a risk no control answers.
+ *
+ * `accepted_by` and `expires` are what separate a decision from a deletion, and
+ * both are optional in the grammar for one reason: an acceptance written before
+ * they existed must still parse, so that the gate can NAME it rather than the
+ * parser dropping it. See `src/parser/acceptance.ts` for what a missing one
+ * costs.
+ */
 export interface AcceptsAnnotation extends BaseAnnotation {
   verb: 'accepts';
   threat: string;
   asset: string;
+  /** `by <who>` — the human whose name is on this decision. */
+  accepted_by?: string;
+  /** `until <YYYY-MM-DD>` — the last day this acceptance covers anything. */
+  expires?: string;
 }
 
 /**
@@ -475,6 +488,10 @@ export interface ThreatModelAcceptance {
   threat: string;
   asset: string;
   description?: string;
+  /** `by <who>` — the human whose name is on this decision. See AcceptsAnnotation. */
+  accepted_by?: string;
+  /** `until <YYYY-MM-DD>` — the last day this acceptance covers anything. */
+  expires?: string;
   location: SourceLocation;
 }
 
@@ -654,6 +671,13 @@ export type DiagnosticCode =
   | 'imprecise-entitlement'
   /** `@accepts` with no paired `@audit` — acceptance without a traceable review. */
   | 'accepted-without-audit'
+  /**
+   * `@accepts` that does not meet the project's acceptance policy: no `by`, no
+   * `until`, a justification too short to be a reason, or a horizon that has
+   * passed. A warning here and an exit code in `guardlink ci --strict` — an
+   * acceptance that fails this does not count as an acceptance there.
+   */
+  | 'acceptance-unqualified'
   /** A `.gal` sidecar sits somewhere other than its conventional path. */
   | 'off-convention-gal'
   /** An on-convention `.gal` sidecar carries `@source` blocks for other files. */

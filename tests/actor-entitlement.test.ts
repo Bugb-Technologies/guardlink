@@ -269,7 +269,16 @@ describe('@entitles has no export semantics', () => {
         citation: { file: 'common/api/metadata.go', line: 189, raw: 'common/api/metadata.go:189' },
       })],
     }));
-    expect(JSON.stringify(with_)).toBe(JSON.stringify(without));
+    // RESULTS and TOOL, not the whole document. `runs[].properties` carries the
+    // provenance hash, an @entitles IS an annotation, and a hash blind to one
+    // would call a rewritten model unchanged — the silent all-clear §2 exists to
+    // prevent. §3.2's invariant is "no result, no suppression, no property on any
+    // RESULT", and that is what is asserted here. See docs/SPEC.md §6.1.
+    expect(JSON.stringify(with_.runs[0].results)).toBe(JSON.stringify(without.runs[0].results));
+    expect(JSON.stringify(with_.runs[0].tool)).toBe(JSON.stringify(without.runs[0].tool));
+    // And the provenance genuinely differs, so the hash is doing its job.
+    expect(with_.runs[0].properties.annotation_hash)
+      .not.toBe(without.runs[0].properties.annotation_hash);
   });
 
   it('leaves the exposure unmitigated — an entitlement is not @mitigates or @accepts', () => {
@@ -548,7 +557,16 @@ describe('§3.2 still holds with the threat slot', () => {
       actors: [actor('ns-admin', 'Namespace_Admin')],
       entitlements: [effective()],
     }));
-    expect(JSON.stringify(with_)).toBe(JSON.stringify(without));
+    // RESULTS and TOOL, not the whole document. `runs[].properties` carries the
+    // provenance hash, an @entitles IS an annotation, and a hash blind to one
+    // would call a rewritten model unchanged — the silent all-clear §2 exists to
+    // prevent. §3.2's invariant is "no result, no suppression, no property on any
+    // RESULT", and that is what is asserted here. See docs/SPEC.md §6.1.
+    expect(JSON.stringify(with_.runs[0].results)).toBe(JSON.stringify(without.runs[0].results));
+    expect(JSON.stringify(with_.runs[0].tool)).toBe(JSON.stringify(without.runs[0].tool));
+    // And the provenance genuinely differs, so the hash is doing its job.
+    expect(with_.runs[0].properties.annotation_hash)
+      .not.toBe(without.runs[0].properties.annotation_hash);
   });
 
   it('leaves the exactly-matching exposure unmitigated and exported', () => {

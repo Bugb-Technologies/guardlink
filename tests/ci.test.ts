@@ -265,7 +265,7 @@ describe('a repo with nothing to report passes even under --strict', () => {
 
   it('reports clean and exits 0', () => {
     expect(runs.advisory.status).toBe(0);
-    expect(runs.advisory.stderr).toContain('✓ No unmitigated exposures, no anchor drift.');
+    expect(runs.advisory.stderr).toContain('✓ No unmitigated exposures, no confirmed exploits, no anchor drift');
   });
 
   it('exits 0 under --strict too', () => {
@@ -419,6 +419,6 @@ describe('a clean repo says so about the parse too', () => {
   it('reports zero and includes the parse in the all-clear', () => {
     expect(run.status).toBe(0);
     expect(run.stderr).toContain('Parse diagnostics: 0');
-    expect(run.stderr).toContain('✓ No unmitigated exposures, no anchor drift.');
+    expect(run.stderr).toContain('✓ No unmitigated exposures, no confirmed exploits, no anchor drift');
   });
 });

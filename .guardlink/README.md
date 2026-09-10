@@ -11,8 +11,8 @@ accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 652 annotations · 17 assets · 15 threats · 13 controls · 103 exposures · 151 flows
-Content hash: `sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f` — identical hash means identical model.
+Current model: 671 annotations · 17 assets · 15 threats · 13 controls · 106 exposures · 153 flows
+Content hash: `sha256-v3:4c19a512329ad2634f6e7043be80cc315e3c1cc3eced4de1ac2fb7b3e181426e` — identical hash means identical model.
 
 ---
 
@@ -124,7 +124,7 @@ Assets are referenced as `#id` or as a `Dotted.Path`; both resolve to the same n
 | `@assumes` | `@assumes <asset> -- "what must hold for this to be safe"` |
 | `@feature` | `@feature "Name" -- "what it groups"` |
 | `@comment` | `@comment -- "context that fits no other verb"` |
-| `@accepts` | `@accepts <threat> on <asset> -- "why"` — **human only, never write this** |
+| `@accepts` | `@accepts <threat> on <asset> by "<who>" until <YYYY-MM-DD> -- "why"` — **human only, never write this** |
 
 One note that catches people out: `@confirmed` and `@exposes` take their arguments in
 **opposite orders** — exposes is asset-then-threat, confirmed is threat-then-asset.
@@ -164,6 +164,14 @@ levels, and worked examples per language. Read it before inventing syntax.
 
 **Never write `@accepts`.** Accepting a risk is a human governance decision. If you find a
 risk with no control, write `@exposes` to record it and `@audit` to flag it for review.
+
+What an acceptance costs, so you know what you would be spending: it must name the human who
+made it (`by "<who>"`), carry a horizon (`until <YYYY-MM-DD>`) after which the exposure
+returns, and give a real reason rather than a category — an acceptance missing any of those
+does not count as one to `guardlink ci --strict`. It covers exposures **in its own file
+only**, so the same risk at a second site needs a second signature. And it removes the
+exposure from the SARIF a pentest reads, which means it stops the risk being TESTED, not just
+reported. That is why it is the one decision a person has to sign.
 
 ---
 
@@ -261,6 +269,12 @@ like source, and a reader who does not know a file is derived will not think to 
 whether it is current. If the header's hash differs from the one above, the diagram
 is stale — regenerate it. Never hand-edit an artifact to make the check pass: the
 hash describes the annotations, so editing the file only makes it lie.
+
+The same hash stamps `model.json`, `report.json`, `findings.sarif` and **this file**,
+and `guardlink validate . --artifacts` checks every one of them that exists. So the
+freshness block at the top of these instructions is not decoration: if its hash differs
+from what `guardlink status .` reports, the asset and threat ids you are being told to
+reuse are last month's. Trust the tool and run `guardlink sync`.
 
 They are committed on purpose, so a fresh clone has the model without running
 anything and a reviewer sees model changes in the diff. Resolve merge conflicts by

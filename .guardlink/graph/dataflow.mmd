@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v2:c009e71abb9019bb6a6a29e129dc48c1952d2baea2d71c29c10f7802b24f289f
+%% annotation_hash: sha256-v3:4c19a512329ad2634f6e7043be80cc315e3c1cc3eced4de1ac2fb7b3e181426e
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -193,6 +193,8 @@ graph LR
   threatmodel -- "📡 selectSubgraph" --> mcp
   filepath -- "🗄️ readFileSync" --> suggest
   suggest -- "📡 suggestAnnotations" --> suggestions
+  threatmodel -- "📡 findAcceptanceDefects" --> parser
+  configfile -- "📡 readAcceptancePolicy" --> parser
   threatmodel -- "📡 computeAnnotationHash" --> parser
   threatmodel -- "📡 detectAnnotationMode" --> parser
   mcpclient -- "📡 applyAnnotations" --> parser
