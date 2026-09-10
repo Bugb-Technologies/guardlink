@@ -18,6 +18,22 @@
  * always covers, because that is the shape a real control has: the filter lives
  * at the trust boundary and the exposure lives downstream of it.
  *
+ * ── The one asymmetry: an acceptance is not a mitigation ────────────
+ *
+ * An acceptance additionally has to be sited in the SAME FILE as the exposure,
+ * and must not have expired. Both rules live in `acceptance.ts` and are applied
+ * here, at the single predicate, so `ci`, `validate`, `sarif`, the dashboard and
+ * MCP cannot disagree about what an acceptance reaches.
+ *
+ * The asymmetry is deliberate and it is the whole of it. A control is code: it
+ * runs, and it really can defend a handler in another file — the measured
+ * argument below is against tightening that, 6 of 6. An acceptance is a person
+ * saying "I read this risk here and I sign for it", and that claim does not
+ * travel to a file they never opened. Measured on NodeGoat: one `@accepts` at
+ * `app/data/user-dao.js:17` silenced the identical pair at
+ * `artifacts/db-reset.js:12` as well, in the gate and in the SARIF cxg probes
+ * from. Scoping it can only ever RE-OPEN a finding, never hide one.
+ *
  * ── Why not simply add the symbol to the key ────────────────────────
  *
  * Because it cries wolf, and an alarm that cries wolf gets ignored. Measured on
@@ -72,6 +88,7 @@ import type {
   SourceLocation, CoverageStats,
 } from '../types/index.js';
 import { canonicaliser } from './canonical-ref.js';
+import { acceptanceCovers, isQualified, type AcceptancePolicy } from './acceptance.js';
 
 /** Strip a leading `#` and case so `#sqli`, `sqli` and `SQLi` compare equal. */
 export function normalizeRef(ref: string): string {
@@ -147,7 +164,27 @@ function indexByPair<T extends SitedRelation>(rows: T[], assetKey: (ref: string)
   return map;
 }
 
-export function buildCoverageIndex(model: ThreatModel): CoverageIndex {
+export interface CoverageOptions {
+  /**
+   * The clock the expiry check reads. A parameter rather than a call to
+   * `new Date()` inside the predicate so a test can pin it, and so one `ci` run
+   * cannot classify two acceptances against two different midnights.
+   */
+  now?: Date;
+  /**
+   * When set, an acceptance that fails this policy stops covering anything.
+   *
+   * Off by default, and that default is the design. Scope and expiry are facts
+   * about an annotation and are always applied; QUALITY is policy, and policy
+   * driving the SARIF export would mean raising `min_justification` by ten
+   * characters silently re-opens findings in someone's pentest queue. So the
+   * gate — and only the gate — passes this, which is where R2c puts it:
+   * `guardlink ci` refuses to count an acceptance that fails the rule.
+   */
+  policy?: AcceptancePolicy;
+}
+
+export function buildCoverageIndex(model: ThreatModel, opts: CoverageOptions = {}): CoverageIndex {
   // D47: `#db` and `Svc.Db` are one asset when the model declares
   // `@asset Svc.Db (#db)`. `guardlink_graph` resolved both to one node and
   // coverage did not, so a mitigation written in dotted form left its exposure
@@ -163,8 +200,14 @@ export function buildCoverageIndex(model: ThreatModel): CoverageIndex {
   // guardlink (16 → 16) or specter-v1 (1 → 1). It adds no coverage on any real
   // corpus; it removes a disagreement.
   const assetKey = canonicaliser(model);
+  const now = opts.now ?? new Date();
   const mitigations = indexByPair(model.mitigations as unknown as SitedRelation[] as ThreatModelMitigation[], assetKey);
-  const acceptances = indexByPair(model.acceptances as unknown as SitedRelation[] as ThreatModelAcceptance[], assetKey);
+  // An acceptance the gate has already refused never reaches the index, so
+  // "does this cover?" and "does this count?" cannot answer differently.
+  const eligible = opts.policy
+    ? model.acceptances.filter(a => isQualified(a, opts.policy, now))
+    : model.acceptances;
+  const acceptances = indexByPair(eligible as unknown as SitedRelation[] as ThreatModelAcceptance[], assetKey);
 
   const matching = <T extends SitedRelation>(index: Map<string, T[]>, e: SitedRelation): T[] => {
     const bucket = index.get(`${assetKey(e.asset)}::${normalizeRef(e.threat)}`);
@@ -173,7 +216,11 @@ export function buildCoverageIndex(model: ThreatModel): CoverageIndex {
   };
 
   const isMitigated = (e: SitedRelation) => matching(mitigations, e).length > 0;
-  const isAccepted = (e: SitedRelation) => matching(acceptances, e).length > 0;
+  // Same (asset, threat) match as a mitigation, then the two rules that are only
+  // an acceptance's: it must be sited in this exposure's file, and it must not
+  // have lapsed. See `acceptance.ts` for why the file and not the pair.
+  const isAccepted = (e: SitedRelation) => matching(acceptances, e)
+    .some(a => acceptanceCovers(a, e.location, now));
 
   return {
     isMitigated,
@@ -184,8 +231,8 @@ export function buildCoverageIndex(model: ThreatModel): CoverageIndex {
 }
 
 /** Exposures with no covering `@mitigates` and no covering `@accepts`. */
-export function findUnmitigatedExposures(model: ThreatModel): ThreatModelExposure[] {
-  const index = buildCoverageIndex(model);
+export function findUnmitigatedExposures(model: ThreatModel, opts: CoverageOptions = {}): ThreatModelExposure[] {
+  const index = buildCoverageIndex(model, opts);
   return model.exposures.filter(e => !index.isCovered(e));
 }
 
@@ -193,8 +240,8 @@ export function findUnmitigatedExposures(model: ThreatModel): ThreatModelExposur
  * Exposures covered ONLY by `@accepts` — the risk is real and no control is in
  * place, a human simply signed for it.
  */
-export function findAcceptedExposures(model: ThreatModel): ThreatModelExposure[] {
-  const index = buildCoverageIndex(model);
+export function findAcceptedExposures(model: ThreatModel, opts: CoverageOptions = {}): ThreatModelExposure[] {
+  const index = buildCoverageIndex(model, opts);
   return model.exposures.filter(e => index.isAccepted(e) && !index.isMitigated(e));
 }
 

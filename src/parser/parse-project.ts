@@ -408,6 +408,7 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
         const a = ann as AcceptsAnnotation;
         model.acceptances.push({
           threat: a.threat, asset: a.asset,
+          accepted_by: a.accepted_by, expires: a.expires,
           description: a.description, location: a.location,
         });
         break;

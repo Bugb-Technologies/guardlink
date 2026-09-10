@@ -78,12 +78,35 @@ describe('formatPaths', () => {
   });
 });
 
+/**
+ * Every case below launches the real CLI, and every one of them carries an
+ * explicit 30s timeout.
+ *
+ * `--all` carried one already, on the reasoning that it was "the only case here
+ * that launches the CLI twice". The reasoning was right and the scope was too
+ * narrow: a single `npx tsx` spawn plus a full parse of this repository costs
+ * ~0.9-1.7s locally and roughly 3x that on GitHub's shared runners, which is
+ * 3.5-3.7s against a 5000ms default. That is not a budget, it is a dice roll,
+ * and `--json` lost it once — timing out at 5000ms while its three identical
+ * siblings passed in the same run.
+ *
+ * Measured before changing anything, because "the default was always marginal"
+ * and "something got slower" are different problems with different fixes. The
+ * exact invocation, mean of 7 runs: **1161ms on this branch against 1180ms on
+ * main** end to end, and **1721ms against 1802ms** with the code isolated on one
+ * fixed tree so only the CLI source differed. No regression — the command is the
+ * same speed and the test simply lacked the timeout its passing sibling had.
+ *
+ * The global `testTimeout` stays where it is, so a genuinely slow NEW test still
+ * surfaces. These four are annotated because it is known and measured that they
+ * spawn a process, not to buy silence.
+ */
 describe('guardlink paths — CLI', () => {
   it('reports paths on this repo and exits 0 by default', () => {
     const { out, code } = guardlink('paths', '.');
     expect(code).toBe(0);
     expect(out).toMatch(/Flow graph: \d+ entries, \d+ exits/);
-  });
+  }, 30_000);
 
   // 30s, same reason as --all below: one tsx spawn is ~1s locally and ~5s on a
   // shared runner, which sits on the 5000ms default. It timed out on the merge
@@ -95,10 +118,7 @@ describe('guardlink paths — CLI', () => {
     expect(Array.isArray(parsed.endpoints.entries)).toBe(true);
   }, 30_000);
 
-  // 30s, generous and explicit: this is the only case here that launches the
-  // CLI twice, and a tsx spawn costs ~1s locally against roughly 5x that on
-  // GitHub's shared runners — two of them do not fit the 5000ms default. The
-  // global testTimeout stays where it is, so the NEXT slow test still shows up.
+  // Two spawns rather than one, so this was the first to need saying out loud.
   it('--all widens the result rather than narrowing it', () => {
     const json = (...args: string[]) => {
       const { out } = guardlink('paths', '.', '--json', ...args);
@@ -112,10 +132,10 @@ describe('guardlink paths — CLI', () => {
     const { findings } = JSON.parse(out.slice(out.indexOf('{')));
     expect(findings.length).toBeGreaterThan(0);
     for (const f of findings) expect(f.crossesBoundary).toBe(true);
-  });
+  }, 30_000);
 
   it('--fail-on-found exits 1 when a path is reported', () => {
     const { code } = guardlink('paths', '.', '--all', '--fail-on-found');
     expect(code).toBe(1);
-  });
+  }, 30_000);
 });

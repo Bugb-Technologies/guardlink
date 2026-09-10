@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v2:08844e596d37b81b75c23dbdb37cdaefb4a03c591d2509fd54a09c91b86f7996
+%% annotation_hash: sha256-v3:cb9f75b5ec0780eec97f19d4d8c7863bad4c10575a98a6c4fb7bc1cf152601d2
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -116,8 +116,9 @@ graph LR
   suggest -. exposes .-> path_traversal
   suggest -. exposes .-> redos
   suggest -. exposes .-> dos
-  parser -. exposes .-> arbitrary_write
+  parser -. exposes .-> config_tamper
   parser -. exposes .-> insecure_deser
+  parser -. exposes .-> arbitrary_write
   parser -. exposes .-> path_traversal
   parser -. exposes .-> redos
   parser -. exposes .-> dos
@@ -179,13 +180,14 @@ graph LR
   resource_limits -- mitigates --> info_disclosure
   path_validation -. protects .-> suggest
   regex_anchoring -. protects .-> suggest
+  config_validation -- mitigates --> config_tamper
+  config_validation -. protects .-> parser
   path_validation -. protects .-> parser
   input_sanitize -- mitigates --> insecure_deser
   input_sanitize -. protects .-> parser
   regex_anchoring -. protects .-> parser
   glob_filtering -. protects .-> parser
   resource_limits -. protects .-> parser
-  config_validation -. protects .-> parser
   prefix_ownership -- mitigates --> tag_collision
   prefix_ownership -. protects .-> parser
   param_commands -. protects .-> cli

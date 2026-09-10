@@ -63,7 +63,11 @@ function identity([verb, r]: Rec): string[] {
     case 'mitigates': return [s(r.asset), s(r.threat), s(r.control)];
     case 'exposes':   return [s(r.asset), s(r.threat), refs(r.external_refs)];
     case 'confirmed': return [s(r.asset), s(r.threat), refs(r.external_refs)];
-    case 'accepts':   return [s(r.asset), s(r.threat)];
+    // `by` and `until` are part of the claim's identity, not decoration: a
+    // renewed expiry or a different signatory is a DIFFERENT decision, and it
+    // should arrive in the ledger unverified rather than inheriting the
+    // verification of the acceptance it replaced.
+    case 'accepts':   return [s(r.asset), s(r.threat), s(r.accepted_by), s(r.expires)];
     case 'transfers': return [s(r.threat), s(r.source), s(r.target)];
     case 'flows':     return [s(r.source), s(r.target), s(r.mechanism)];
     case 'boundary':  return [s(r.asset_a), s(r.asset_b), s(r.id)];
@@ -85,7 +89,7 @@ export function claimText(rec: Rec): string {
     case 'mitigates': return `${r.asset} against ${r.threat}${r.control ? ` using ${r.control}` : ''}`;
     case 'exposes':   return `${r.asset} to ${r.threat}`;
     case 'confirmed': return `${r.threat} on ${r.asset}`;
-    case 'accepts':   return `${r.threat} on ${r.asset}`;
+    case 'accepts':   return `${r.threat} on ${r.asset}${r.accepted_by ? ` by ${r.accepted_by}` : ''}${r.expires ? ` until ${r.expires}` : ''}`;
     case 'transfers': return `${r.threat} from ${r.source} to ${r.target}`;
     case 'flows':     return `${r.source} -> ${r.target}${r.mechanism ? ` via ${r.mechanism}` : ''}`;
     case 'boundary':  return `between ${r.asset_a} and ${r.asset_b}${r.id ? ` (#${r.id})` : ''}`;

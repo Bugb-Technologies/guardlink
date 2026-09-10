@@ -61,8 +61,9 @@ import { z } from 'zod';
 // because it branched before D19 landed.
 import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
+import { readAcceptancePolicy, acceptanceBlastRadius, formatBlastRadius } from '../parser/acceptance.js';
 import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
-import { getReviewableExposures, applyReviewAction } from '../review/index.js';
+import { getReviewableExposures, applyReviewAction, horizonFrom } from '../review/index.js';
 import {
   proposeEntitlement, listProposals, checkEntitlementProvenance, PROPOSALS_FILE,
   type ProposalStatus,
@@ -941,7 +942,7 @@ export function createServer(): McpServer {
     async ({ root, severity }) => {
       invalidateCache();
       const { model } = await getModel(root);
-      let exposures = getReviewableExposures(model);
+      let exposures = getReviewableExposures(model, { policy: readAcceptancePolicy(root) });
 
       if (severity) {
         const allowed = new Set(severity.split(',').map((s: string) => s.trim().toLowerCase()));
@@ -972,28 +973,41 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_review_accept',
-    'Record a governance decision for an unmitigated exposure. Writes @accepts + @audit (for accept) or @audit (for remediate) directly into the source file. IMPORTANT: This modifies source files. Only call after explicit human confirmation of the decision and justification.',
+    'Record a governance decision for an unmitigated exposure. Writes @accepts + @audit (for accept) or @audit (for remediate) directly into the source file. IMPORTANT: This modifies source files, and an acceptance removes the exposure from the SARIF a pentest reads — so it stops the risk from ever being TESTED, not just reported. Only call after explicit human confirmation, and pass that human\'s name as `by`: an acceptance with nobody\'s name on it is refused. An acceptance also expires (`until`), and its justification must be a reason rather than a category — the rule is enforced by the writer, so a short one is an error and not a warning.',
     {
       root: z.string().describe('Project root directory').default('.'),
       exposure_id: z.string().describe('Exposure ID from guardlink_review_list'),
       decision: z.enum(['accept', 'remediate', 'skip']).describe('accept = risk acknowledged; remediate = planned fix; skip = no action'),
-      justification: z.string().describe('Required explanation for accept/remediate decisions'),
+      justification: z.string().describe('Required explanation. For accept it must be a real reason (minimum length is enforced): what compensates for the risk, who is exposed, what would change the answer.'),
+      by: z.string().optional().describe('REQUIRED for accept: the name of the HUMAN who made this decision. Never your own name — you are not the decider, and a decision recorded under an agent\'s name is worse than one recorded under none.'),
+      until: z.string().optional().describe('Acceptance horizon as YYYY-MM-DD. Defaults to the project ceiling. An acceptance stops covering anything after this date.'),
     },
-    async ({ root, exposure_id, decision, justification }) => {
+    async ({ root, exposure_id, decision, justification, by, until }) => {
       if (decision !== 'skip' && !justification.trim()) {
         return { content: [{ type: 'text', text: 'Error: Justification is required for accept and remediate decisions.' }] };
       }
 
       invalidateCache();
       const { model } = await getModel(root);
-      const exposures = getReviewableExposures(model);
+      const exposures = getReviewableExposures(model, { policy: readAcceptancePolicy(root) });
       const target = exposures.find(e => e.id === exposure_id);
 
       if (!target) {
         return { content: [{ type: 'text', text: `Error: Exposure "${exposure_id}" not found. Use guardlink_review_list to get valid IDs.` }] };
       }
 
-      const result = await applyReviewAction(root, target, { decision, justification });
+      const policy = readAcceptancePolicy(root);
+      let result;
+      try {
+        result = await applyReviewAction(root, target, {
+          decision, justification, by,
+          until: decision === 'accept' ? (until ?? horizonFrom(policy.max_horizon_days)) : undefined,
+        }, { policy });
+      } catch (err) {
+        // The rule lives in applyReviewAction, so this path gets it too — which
+        // is the whole reason it does not live in the CLI prompt.
+        return { content: [{ type: 'text', text: `Refused: ${(err as Error).message}` }] };
+      }
       invalidateCache();
 
       if (decision === 'skip') {
@@ -1007,8 +1021,11 @@ export function createServer(): McpServer {
       } catch {}
 
       const verb = decision === 'accept' ? 'Accepted' : 'Marked for remediation';
+      const radius = decision === 'accept'
+        ? `\nSilenced: ${formatBlastRadius(acceptanceBlastRadius(model, target.exposure.asset, target.exposure.threat, target.exposure.location.file))}`
+        : '';
       return {
-        content: [{ type: 'text', text: `${verb}: ${target.exposure.asset} → ${target.exposure.threat} [${target.exposure.severity}]\nJustification: ${justification}\n${result.linesInserted} annotation line(s) written to ${result.targetFile}` }],
+        content: [{ type: 'text', text: `${verb}: ${target.exposure.asset} → ${target.exposure.threat} [${target.exposure.severity}]\nJustification: ${justification}${decision === 'accept' ? `\nRecorded for: ${by}` : ''}${radius}\n${result.linesInserted} annotation line(s) written to ${result.targetFile}` }],
       };
     },
   );

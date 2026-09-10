@@ -30,6 +30,7 @@
  * @assumes #parser -- "location.file is the logical source path in both inline and external mode (parse-file.ts resolves @source before the model is assembled)"
  * @comment -- "Excludes line, origin_file, origin_line and parent_symbol so inline and external authoring of the same model hash identically"
  * @comment -- "v2 adds @actor and @entitles records. Before that a migration could drop or rewrite every entitlement in a repo and the hash gate would still report the model unchanged — a silent all-clear, which is the failure mode the entitlement design exists to prevent (actor-entitlement design §2)"
+ * @comment -- "v3 adds an acceptance's accepted_by and expires. Those two fields decide whether an acceptance still covers anything, so a hash that could not see them would call a renewed or re-signed governance decision 'unchanged'"
  */
 
 import { createHash } from 'node:crypto';
@@ -39,7 +40,7 @@ import type { ThreatModel, SourceLocation } from '../types/index.js';
  * Bump when the set of hashed fields changes. Two hashes are only comparable at
  * the same algorithm version, so it is part of the emitted string.
  */
-export const ANNOTATION_HASH_VERSION = 2;
+export const ANNOTATION_HASH_VERSION = 3;
 
 // Control characters, so that a description containing a pipe, a newline or any
 // other printable byte cannot forge a boundary. Without a real field separator
@@ -67,21 +68,22 @@ function record(kind: string, ...fields: string[]): string {
  * a new relation added to the model shows up in both or neither.
  */
 function everyLocation(model: ThreatModel): SourceLocation[] {
+  // `?? []` throughout, for the reason `canonicalAnnotationRecords` states.
   return [
-    ...model.assets, ...model.threats, ...model.controls,
-    ...model.mitigations, ...model.exposures, ...(model.confirmed || []),
-    ...model.acceptances, ...model.transfers, ...model.flows,
-    ...model.boundaries, ...model.validations, ...model.audits,
-    ...model.ownership, ...model.data_handling, ...model.assumptions,
+    ...(model.assets ?? []), ...(model.threats ?? []), ...(model.controls ?? []),
+    ...(model.mitigations ?? []), ...(model.exposures ?? []), ...(model.confirmed ?? []),
+    ...(model.acceptances ?? []), ...(model.transfers ?? []), ...(model.flows ?? []),
+    ...(model.boundaries ?? []), ...(model.validations ?? []), ...(model.audits ?? []),
+    ...(model.ownership ?? []), ...(model.data_handling ?? []), ...(model.assumptions ?? []),
     // MERGE: @actor and @entitles are anchored like any other annotation, so
     // they belong here too. `canonicalAnnotationRecords` gained them in v2;
     // this list is the D48 anchor hash and is separate, so it had to be told
     // as well. Without them a `@source … symbol:x` block holding only
     // entitlement rows contributed no anchor, and `migrate --to inline` would
     // have discarded it without counting it in what it refuses over.
-    ...(model.actors || []), ...(model.entitlements || []),
-    ...model.shields, ...model.features, ...model.comments,
-  ].map(r => r.location).filter(Boolean);
+    ...(model.actors ?? []), ...(model.entitlements ?? []),
+    ...(model.shields ?? []), ...(model.features ?? []), ...(model.comments ?? []),
+  ].map(r => r?.location).filter(Boolean);
 }
 
 /**
@@ -90,68 +92,82 @@ function everyLocation(model: ThreatModel): SourceLocation[] {
  */
 export function canonicalAnnotationRecords(model: ThreatModel): string[] {
   const out: string[] = [];
+  // Every collection is read through `?? []`.
+  //
+  // `ThreatModel` declares most of them required, and `parseProject` always
+  // populates them — but this function is now called from `generateSarif`, which
+  // is a pure transform that callers hand hand-built models to, and half of them
+  // carry only the two collections the case is about. A hash that throws on a
+  // partial model would make stamping the export (R10) a crash risk in exactly
+  // the places a partial model is legitimate. An absent collection contributes
+  // no records, which is the same answer an empty one gives.
 
-  for (const a of model.assets) {
-    out.push(record('asset', s(a.id), a.path.join('.'), s(a.description), f(a.location.file)));
+  for (const a of model.assets ?? []) {
+    out.push(record('asset', s(a.id), (a.path ?? []).join('.'), s(a.description), f(a.location.file)));
   }
-  for (const t of model.threats) {
+  for (const t of model.threats ?? []) {
     out.push(record('threat', s(t.id), s(t.canonical_name), s(t.severity), refs(t.external_refs), s(t.description), f(t.location.file)));
   }
-  for (const c of model.controls) {
+  for (const c of model.controls ?? []) {
     out.push(record('control', s(c.id), s(c.canonical_name), s(c.description), f(c.location.file)));
   }
-  for (const m of model.mitigations) {
+  for (const m of model.mitigations ?? []) {
     out.push(record('mitigates', s(m.asset), s(m.threat), s(m.control), s(m.description), f(m.location.file)));
   }
-  for (const e of model.exposures) {
+  for (const e of model.exposures ?? []) {
     out.push(record('exposes', s(e.asset), s(e.threat), s(e.severity), refs(e.external_refs), s(e.description), f(e.location.file)));
   }
-  for (const c of model.confirmed || []) {
+  for (const c of model.confirmed ?? []) {
     out.push(record('confirmed', s(c.asset), s(c.threat), s(c.severity), refs(c.external_refs), s(c.description), f(c.location.file)));
   }
-  for (const a of model.acceptances) {
-    out.push(record('accepts', s(a.asset), s(a.threat), s(a.description), f(a.location.file)));
+  // v3: `accepted_by` and `expires`. Without them, editing an acceptance's
+  // signatory or pushing its expiry out by a year moved nothing the staleness
+  // gate could see — and those two fields are the entire difference between a
+  // decision and a deletion. Same failure the v2 note describes for @entitles,
+  // on the verb that removes exposures from the export.
+  for (const a of model.acceptances ?? []) {
+    out.push(record('accepts', s(a.asset), s(a.threat), s(a.accepted_by), s(a.expires), s(a.description), f(a.location.file)));
   }
-  for (const t of model.transfers) {
+  for (const t of model.transfers ?? []) {
     out.push(record('transfers', s(t.threat), s(t.source), s(t.target), s(t.description), f(t.location.file)));
   }
-  for (const fl of model.flows) {
+  for (const fl of model.flows ?? []) {
     out.push(record('flows', s(fl.source), s(fl.target), s(fl.mechanism), s(fl.description), f(fl.location.file)));
   }
-  for (const b of model.boundaries) {
+  for (const b of model.boundaries ?? []) {
     out.push(record('boundary', s(b.asset_a), s(b.asset_b), s(b.id), s(b.description), f(b.location.file)));
   }
-  for (const v of model.validations) {
+  for (const v of model.validations ?? []) {
     out.push(record('validates', s(v.control), s(v.asset), s(v.description), f(v.location.file)));
   }
-  for (const a of model.audits) {
+  for (const a of model.audits ?? []) {
     out.push(record('audit', s(a.asset), s(a.description), f(a.location.file)));
   }
-  for (const o of model.ownership) {
+  for (const o of model.ownership ?? []) {
     out.push(record('owns', s(o.owner), s(o.asset), s(o.description), f(o.location.file)));
   }
-  for (const d of model.data_handling) {
+  for (const d of model.data_handling ?? []) {
     out.push(record('handles', s(d.classification), s(d.asset), s(d.description), f(d.location.file)));
   }
-  for (const ac of model.actors || []) {
+  for (const ac of model.actors ?? []) {
     out.push(record('actor', s(ac.id), s(ac.canonical_name), s(ac.description), f(ac.location.file)));
   }
   // An entitlement is hashed on its authored fields only. `inert` and `imprecise`
   // are derived (from citation, asset and threat) and `citation` is derived from
   // the description, so hashing them would double-count rather than detect more.
-  for (const en of model.entitlements || []) {
+  for (const en of model.entitlements ?? []) {
     out.push(record('entitles', s(en.actor), s(en.canonical_capability), s(en.asset), s(en.threat), s(en.description), f(en.location.file)));
   }
-  for (const a of model.assumptions) {
+  for (const a of model.assumptions ?? []) {
     out.push(record('assumes', s(a.asset), s(a.description), f(a.location.file)));
   }
-  for (const sh of model.shields) {
+  for (const sh of model.shields ?? []) {
     out.push(record('shield', s(sh.reason), f(sh.location.file)));
   }
-  for (const ft of model.features) {
+  for (const ft of model.features ?? []) {
     out.push(record('feature', s(ft.feature), s(ft.description), f(ft.location.file)));
   }
-  for (const c of model.comments) {
+  for (const c of model.comments ?? []) {
     out.push(record('comment', s(c.description), f(c.location.file)));
   }
 
