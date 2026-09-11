@@ -35,11 +35,34 @@ worse than no diagram at all.
 To check:
 
 ```sh
-guardlink validate . --artifacts     # exits non-zero if any artifact is stale
+guardlink validate . --artifacts     # exits non-zero if any artifact is stale or undrawable
 ```
 
 If it reports drift, regenerate. Never hand-edit an artifact to make the check
 pass — the hash describes the annotations, so editing the file makes it lie.
+
+## Drawability
+
+Staleness is not the only way one of these files can be wrong. Past a size
+Mermaid stops drawing, and the worse of its two limits fails **silently**: over
+`maxTextSize` (50000 characters) the render resolves normally, writes nothing to
+the console, and draws a single box reading "Maximum text size in diagram
+exceeded". Over `maxEdges` (500) the parser throws and you get a syntax error.
+Both are Mermaid's own defaults, so they apply in GitHub, in mermaid.live and in
+the VS Code preview, not only here.
+
+`guardlink artifacts` measures every diagram against those limits before writing
+it. A diagram that would exceed them is **not written as a diagram**: the file
+gets a stub naming what exceeded and by how much, `MANIFEST.json` records
+`renderable: false` for it, and `validate . --artifacts` fails. That is
+deliberate — the alternative is a committed file that looks like a diagram,
+cannot be drawn, and passes the freshness check.
+
+If you hit it: the model is not lost, only this picture of it. Read
+`../model.json` for all of it, or open the dashboard — Analytics for the
+asset × threat matrix (readable at this size, capped at its worst 24 assets and
+says so) and Threats & Exposures for every claim. Tagging code with `@feature`
+also helps: each feature gets its own, much smaller, graph in `by-feature/`.
 
 ## Merge conflicts
 

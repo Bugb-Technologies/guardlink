@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        attack-surface.mmd
-%% annotation_hash: sha256-v3:cb9f75b5ec0780eec97f19d4d8c7863bad4c10575a98a6c4fb7bc1cf152601d2
+%% annotation_hash: sha256-v3:ece0b6f5232742e07e7b8c7f0e5eb4f070f722301c2d595cb12091ae1088000b
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -101,17 +101,18 @@ graph TB
     E56["✅ Arbitrary_File_Write"]:::sev_med
     E57["✅ Path_Traversal ×3"]:::sev_med
     E58["✅ Sensitive_Data_Exposure"]:::sev_low
-    E59["✅ Command_Injection"]:::sev_low
+    E59["✅ Denial_of_Service"]:::sev_low
+    E60["✅ Command_Injection"]:::sev_low
   end
   subgraph A_diff["GuardLink.Diff · ✅ 100% covered"]
     direction TB
-    E60["✅ Command_Injection ×3"]:::sev_high
-    E61["✅ Arbitrary_File_Write"]:::sev_med
-    E62["✅ Path_Traversal"]:::sev_med
+    E61["✅ Command_Injection ×3"]:::sev_high
+    E62["✅ Arbitrary_File_Write"]:::sev_med
+    E63["✅ Path_Traversal"]:::sev_med
   end
   subgraph A_gate["GuardLink.Gate · ✅ 100% covered"]
     direction TB
-    E63["✅ Arbitrary_File_Write"]:::sev_med
+    E64["✅ Arbitrary_File_Write"]:::sev_med
   end
   classDef sev_crit fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.4px
   classDef sev_high fill:#402019,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.2px

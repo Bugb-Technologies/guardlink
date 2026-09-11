@@ -56,7 +56,8 @@ import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getChangedFiles
 import { findUnmitigatedPaths, classifyEndpoints } from '../paths/index.js';
 import { formatPaths } from '../paths/format.js';
 import { generateSarif } from '../analyzer/index.js';
-import { emitArtifacts, checkArtifactDrift } from '../artifacts/emit.js';
+import { emitArtifacts, checkArtifactDrift, checkArtifactRenderability } from '../artifacts/emit.js';
+import { describeViolation, ARTIFACT_FALLBACK, MERMAID_LIMITS_SOURCE } from '../dashboard/render-budget.js';
 import { startStdioServer } from '../mcp/index.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, loadPentestData, serializePentestFindings, buildConfig, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, serializeModel, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { generateDashboardHTML, loadSince } from '../dashboard/index.js';
@@ -431,7 +432,14 @@ program
     // ── Artifact drift (GL-302) ──
     // A generated .mmd in a repo looks like source, so a stale one is trusted
     // rather than questioned. This is the check that makes emission safe.
+    //
+    // Drawability is checked separately and reported separately, because it is a
+    // different question with a different answer. "Current" and "drawable" were
+    // one line for as long as only the first was asked, and the second fails
+    // first: at the measured 257-file repository the committed threat graph is
+    // over Mermaid's edge cap while its hash is perfectly correct.
     let artifactDrift = false;
+    let artifactUndrawable = false;
     if (opts.artifacts) {
       const findings = checkArtifactDrift(root, model);
       if (findings.length === 0) {
@@ -453,10 +461,36 @@ program
         console.error('\n   Regenerate with: guardlink artifacts .');
         console.error('   Never hand-edit an artifact to silence this — the hash describes the annotations.');
       }
+
+      const undrawable = checkArtifactRenderability(root);
+      if (undrawable.length === 0) {
+        console.error('✓ Artifacts are drawable.');
+      } else {
+        artifactUndrawable = true;
+        console.error(`\n⚠  ${undrawable.length} artifact(s) no renderer will draw:`);
+        for (const f of undrawable) {
+          console.error(`   ${f.path}`);
+          for (const v of f.violations) {
+            console.error(`      ${describeViolation(v)}`);
+            console.error(`      ${v.symptom}`);
+          }
+        }
+        console.error(`\n   These are Mermaid's own defaults (${MERMAID_LIMITS_SOURCE}), so the same files do not`);
+        console.error('   draw in GitHub, in mermaid.live or in the VS Code preview either.');
+        console.error('   Regenerate with: guardlink artifacts .');
+        console.error('   That writes a stub saying what exceeded, in place of a diagram nothing can draw.');
+        console.error(`   ${ARTIFACT_FALLBACK}`);
+      }
     }
 
-    // Exit 1 on errors always; also on unmitigated if --strict, or on artifact drift
-    process.exit(errorCount > 0 || artifactDrift || (opts.strict && hasUnmitigated) ? 1 : 0);
+    // Exit 1 on errors always; also on unmitigated if --strict, or on an artifact
+    // that is stale or undrawable. Undrawable is an exit code and not a warning
+    // on purpose: --artifacts is already opt-in, its whole job is to say whether
+    // the committed artifacts can be trusted, and a diagram nothing will draw
+    // cannot. It is also self-clearing — one `guardlink artifacts .` turns it
+    // green again — so it stops a pipeline exactly once, with the fix in the
+    // message.
+    process.exit(errorCount > 0 || artifactDrift || artifactUndrawable || (opts.strict && hasUnmitigated) ? 1 : 0);
   });
 
 // ─── verify ──────────────────────────────────────────────────────────
@@ -972,6 +1006,22 @@ program
     const verb = opts.dryRun ? 'Would write' : 'Wrote';
     console.error(`${verb} ${result.written.length} artifact(s):`);
     for (const path of result.written) console.error(`   ${path}`);
+
+    // Loud, and above the provenance block: a run that quietly replaced the
+    // threat graph with a stub and then printed its hash would be the same
+    // silent-success failure this guard exists to end.
+    if (result.undrawable.length > 0) {
+      console.error(`\n⚠  ${result.undrawable.length} diagram(s) exceeded the Mermaid render budget and were written as a stub:`);
+      for (const u of result.undrawable) {
+        console.error(`   ${u.path}`);
+        for (const v of u.verdict.violations) {
+          console.error(`      ${describeViolation(v)}`);
+          console.error(`      ${v.symptom}`);
+        }
+      }
+      console.error(`\n   The model is intact — only this picture of it is. ${ARTIFACT_FALLBACK}`);
+      console.error('   Tagging code with @feature also gives you one smaller, drawable graph per feature.');
+    }
     console.error(`\nannotation_hash: ${result.provenance.annotation_hash}`);
     console.error(`generated_at:    ${result.emission.generated_at}`);
     console.error(`git_sha:         ${result.emission.git_sha ?? 'not a git checkout'}`);

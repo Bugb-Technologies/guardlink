@@ -7,7 +7,10 @@
  * marked). Both are plain strings inlined into the page's script.
  *
  * @comment -- "Verbatim from the previous generate.ts; behaviour unchanged. Model data never reaches these strings at generation time — they read the embedded arrays at run time"
+ * @comment -- "One exception to 'no generation-time data': MERMAID_LIMITS is interpolated into mermaid.initialize, so the renderer is configured with the same two numbers the render budget measured against"
  */
+import { MERMAID_LIMITS } from './render-budget.js';
+
 export const FEATURE_FILTER_JS = `/* ===== FEATURE FILTER ===== */
 var _activeFeature = '';
 
@@ -373,6 +376,16 @@ async function getMermaidInstance() {
     },
     flowchart: { curve: 'monotoneX', padding: 20, nodeSpacing: 48, rankSpacing: 62, htmlLabels: false, useMaxWidth: false, defaultRenderer: 'dagre-d3' },
     securityLevel: 'loose',
+    // Mermaid's own defaults, stated rather than inherited. The page loads
+    // \`mermaid@11\` from a CDN, so the values these used to fall back to could
+    // move underneath it on any patch release — and src/dashboard/render-budget.ts
+    // decides, before this runs, which diagrams are drawable AT THESE NUMBERS.
+    // Left implicit, that decision would be made against one set of limits and
+    // enforced against another. Not raised: past this size the graph renders at
+    // 39,609 x 32,646 px with 0.2% of it visible, so drawing more of it is not
+    // the same as showing it.
+    maxTextSize: ${MERMAID_LIMITS.maxTextSize},
+    maxEdges: ${MERMAID_LIMITS.maxEdges},
   });
   return mermaid;
 }
@@ -392,7 +405,22 @@ async function renderMermaidPanel(panel) {
     el.removeAttribute('data-processed');
     el.innerHTML = typeof themeMermaid === 'function' ? themeMermaid(el.getAttribute('data-original') || el.textContent) : (el.getAttribute('data-original') || el.textContent);
   });
-  await mermaid.run({ nodes: targets });
+  // Backstop. The render budget upstream (src/dashboard/render-budget.ts) has
+  // already replaced anything over the limits with a stub, so this should never
+  // fire — but the edge cap THROWS, and an unhandled rejection here used to
+  // leave the panel blank with nothing said. A diagram that fails to draw has to
+  // say so on the page; that is the whole defect this guard exists to close.
+  try {
+    await mermaid.run({ nodes: targets });
+  } catch (err) {
+    targets.forEach(el => {
+      if (el.querySelector('svg')) return;
+      el.classList.add('diagram-render-failed');
+      el.textContent = 'This diagram could not be drawn: ' + ((err && err.message) || err)
+        + ' — the model is intact; open Analytics for the asset x threat matrix, or read .guardlink/model.json.';
+    });
+    return;
+  }
   
   // Add interactive zoom/pan to the rendered SVG
   if (typeof d3 !== 'undefined') {
