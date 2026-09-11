@@ -6,7 +6,70 @@
  * @comment -- "Ported from the first generate.ts with the same panel ids and data-variant hooks the diagram script expects; the toolbar is a segmented zoom group plus copy-source"
  */
 import { esc, scopeLabel, sectionHead, icon, wholeModelNote } from '../html.js';
+import {
+  checkRenderBudget, oversizedStub, describeViolation,
+  DASHBOARD_FALLBACK, MERMAID_LIMITS_SOURCE,
+} from '../render-budget.js';
 import type { PageContext } from './context.js';
+
+/**
+ * A diagram is embedded only if something will draw it.
+ *
+ * The dashboard's failure at scale was not that the picture got crowded — it was
+ * that Mermaid's text-size limit fails SILENTLY. `mermaid.render` resolves, the
+ * console stays empty, and the page draws one pink box reading "Maximum text
+ * size in diagram exceeded" while keeping the zoom controls, the Find box, the
+ * focus dropdown and a legend describing a diagram that is not there.
+ *
+ * So the check happens here, where the source is placed into the page, and an
+ * over-budget diagram is swapped for a stub that says what exceeded and by how
+ * much. The stub goes inside the same `<pre class="mermaid">` on purpose: the
+ * variant toggle, the focus dropdown and `diagramFind` all address these
+ * elements by class and `data-` attribute, and a different element here would
+ * make the toggle silently do nothing — one more control that looks live and is
+ * not. The banner above the panel carries the same facts as real HTML, for the
+ * reader who should not have to read a diagram to learn that the diagram is
+ * missing.
+ */
+interface BudgetedDiagram {
+  /** The Mermaid source to embed — the stub when the original is over budget. */
+  src: string;
+  /** One line per violation, empty when the diagram is fine. */
+  reasons: string[];
+}
+
+function budgeted(name: string, src: string): BudgetedDiagram {
+  if (!src) return { src, reasons: [] };
+  const verdict = checkRenderBudget(src);
+  if (verdict.renderable) return { src, reasons: [] };
+  return {
+    src: oversizedStub(name, verdict, DASHBOARD_FALLBACK),
+    reasons: verdict.violations.map(v => `${name} — ${describeViolation(v)}. ${v.symptom}`),
+  };
+}
+
+/**
+ * What the panel footer says when nothing in it was drawn.
+ *
+ * The legend is a key to shapes and colours that are not on the page. Leaving it
+ * under a stub is a smaller version of the same defect — a control describing
+ * content that is not there — so a fully-stubbed panel drops it.
+ */
+function budgetMeta(allStubbed: boolean, meta: string): string {
+  return allStubbed
+    ? 'No diagram is drawn at this size — see the notice above. The legend is omitted because there is nothing to key.'
+    : meta;
+}
+
+/** The plain-HTML notice that sits above a panel holding at least one stub. */
+function budgetBanner(reasons: string[]): string {
+  if (reasons.length === 0) return '';
+  return `<div class="diagram-budget" role="status">
+          <strong>${reasons.length > 1 ? 'These diagrams were' : 'This diagram was'} not drawn.</strong>
+          <ul>${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
+          <p>The limits are Mermaid's own (${esc(MERMAID_LIMITS_SOURCE)}), so this model does not draw in GitHub or mermaid.live either — it is the picture that does not fit, not the model. ${esc(DASHBOARD_FALLBACK)} Tagging code with <code>@feature</code> also gives one smaller graph per feature, in <code>.guardlink/graph/by-feature/</code>.</p>
+        </div>`;
+}
 
 const TOOLS = `
             <input class="diagram-find" type="search" placeholder="Find node" aria-label="Find a node in the diagram" oninput="diagramFind(this.value)">
@@ -45,13 +108,20 @@ export function renderDiagramsPage(ctx: PageContext): string {
   if (threatGraph) {
     tabs.push({ id: 'threat-graph', label: 'Threat Graph', icon: icon('diagram') });
     const hasFullVariant = !!threatGraphFull && threatGraphFull !== threatGraph;
+    const bFiltered = budgeted('Threat Graph (high/critical)', threatGraph);
+    const bFull = budgeted('Threat Graph (all severities)', hasFullVariant ? threatGraphFull : '');
+    const bFocus = focus.map(f => ({ name: f.name, ...budgeted(`Threat Graph — ${f.name}`, f.src) }));
     panels.push(shell('threat-graph', 'Threat Graph',
-      `
-          <pre class="mermaid" data-variant="filtered">\n${esc(threatGraph)}\n</pre>
-          ${hasFullVariant ? `<pre class="mermaid" data-variant="full" style="display:none">\n${esc(threatGraphFull)}\n</pre>` : ''}
-          ${focus.map(f => `<pre class="mermaid" data-focus="${esc(f.name)}" style="display:none">\n${esc(f.src)}\n</pre>`).join('\n          ')}
+      `${budgetBanner([...bFiltered.reasons, ...bFull.reasons, ...bFocus.flatMap(f => f.reasons)])}
+          <pre class="mermaid" data-variant="filtered">\n${esc(bFiltered.src)}\n</pre>
+          ${hasFullVariant ? `<pre class="mermaid" data-variant="full" style="display:none">\n${esc(bFull.src)}\n</pre>` : ''}
+          ${bFocus.map(f => `<pre class="mermaid" data-focus="${esc(f.name)}" style="display:none">\n${esc(f.src)}\n</pre>`).join('\n          ')}
         `,
-      `Assets, threats, controls, and mitigations. ${hasFullVariant ? 'Filtered to high/critical by default — click <em>All severities</em> to expand. ' : ''}${LEGEND_THREAT}`,
+      budgetMeta(
+        bFiltered.reasons.length > 0
+          && (!hasFullVariant || bFull.reasons.length > 0)
+          && bFocus.every(f => f.reasons.length > 0),
+        `Assets, threats, controls, and mitigations. ${hasFullVariant ? 'Filtered to high/critical by default — click <em>All severities</em> to expand. ' : ''}${LEGEND_THREAT}`),
       (focus.length > 0 ? `
             <select class="diagram-focus" onchange="diagramFocus(this.value)" title="Show one asset with its threats, controls and neighbours"><option value="">Whole graph</option>${focus.map(f => `<option value="${esc(f.name)}">${esc(f.name)}</option>`).join('')}</select>` : '') + (hasFullVariant ? `
             <button id="threatGraphToggle" class="diagram-btn" onclick="toggleThreatGraphAll(this)" title="Show all threat severities (not just high/critical)">All severities</button>` : ''),
@@ -59,13 +129,16 @@ export function renderDiagramsPage(ctx: PageContext): string {
   }
   if (dataFlow) {
     tabs.push({ id: 'data-flow', label: 'Data Flow', icon: icon('arrows') });
-    panels.push(shell('data-flow', 'Data Flow', `<pre class="mermaid">\n${esc(dataFlow)}\n</pre>`,
-      `Data movement across trust boundaries; each boundary shows both sides of the trust line. ${LEGEND_FLOW}`, '', panels.length === 0));
+    const b = budgeted('Data Flow', dataFlow);
+    panels.push(shell('data-flow', 'Data Flow', `${budgetBanner(b.reasons)}<pre class="mermaid">\n${esc(b.src)}\n</pre>`,
+      budgetMeta(b.reasons.length > 0,
+        `Data movement across trust boundaries; each boundary shows both sides of the trust line. ${LEGEND_FLOW}`), '', panels.length === 0));
   }
   if (attackSurface) {
     tabs.push({ id: 'attack-surface', label: 'Attack Surface', icon: icon('alert') });
-    panels.push(shell('attack-surface', 'Attack Surface', `<pre class="mermaid">\n${esc(attackSurface)}\n</pre>`,
-      `Exposures per asset. ${LEGEND_SURFACE}`, '', panels.length === 0));
+    const b = budgeted('Attack Surface', attackSurface);
+    panels.push(shell('attack-surface', 'Attack Surface', `${budgetBanner(b.reasons)}<pre class="mermaid">\n${esc(b.src)}\n</pre>`,
+      budgetMeta(b.reasons.length > 0, `Exposures per asset. ${LEGEND_SURFACE}`), '', panels.length === 0));
   }
 
   if (tabs.length === 0) {

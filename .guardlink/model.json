@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:cb9f75b5ec0780eec97f19d4d8c7863bad4c10575a98a6c4fb7bc1cf152601d2",
+    "annotation_hash": "sha256-v3:ece0b6f5232742e07e7b8c7f0e5eb4f070f722301c2d595cb12091ae1088000b",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 139,
-  "annotations_parsed": 696,
+  "source_files": 140,
+  "annotations_parsed": 701,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -52,6 +52,7 @@
     "src/dashboard/pages/reports.ts",
     "src/dashboard/pages/summary.ts",
     "src/dashboard/pages/threats.ts",
+    "src/dashboard/render-budget.ts",
     "src/dashboard/since.ts",
     "src/dashboard/styles.ts",
     "src/diff/engine.ts",
@@ -1071,7 +1072,7 @@
       "description": "Path is the constant LEDGER_FILE under a root that must already carry .guardlink/; targets only select claims, they are never written to",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 466
+        "line": 500
       }
     },
     {
@@ -1272,6 +1273,16 @@
       "location": {
         "file": "src/dashboard/pages/threats.ts",
         "line": 11
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#dos",
+      "control": "#regex-anchoring",
+      "description": "Every pattern is line-anchored or a bounded character class; no nested quantifier can backtrack across the input",
+      "location": {
+        "file": "src/dashboard/render-budget.ts",
+        "line": 58
       }
     },
     {
@@ -2364,7 +2375,7 @@
       "description": "The one command that writes .guardlink/verified.json",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 465
+        "line": 499
       }
     },
     {
@@ -2443,6 +2454,17 @@
       "location": {
         "file": "src/dashboard/links.ts",
         "line": 12
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [],
+      "description": "Measures caller-supplied diagram text with regular expressions",
+      "location": {
+        "file": "src/dashboard/render-budget.ts",
+        "line": 57
       }
     },
     {
@@ -3733,7 +3755,7 @@
       "description": "Opt-in attribution; without --blame the JSON is byte-identical to before",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 253
+        "line": 254
       }
     },
     {
@@ -3743,7 +3765,7 @@
       "description": "status reports verified/stale/unverified claim counts alongside annotation coverage",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 303
+        "line": 304
       }
     },
     {
@@ -3753,7 +3775,7 @@
       "description": "status --blame reads attribution without touching the model",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 305
+        "line": 306
       }
     },
     {
@@ -3763,7 +3785,7 @@
       "description": "Read-only; a corrupt ledger becomes a validate error (ledger-corrupt) instead of being silently treated as absent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 372
+        "line": 373
       }
     },
     {
@@ -3773,7 +3795,7 @@
       "description": "Targets, --by and mode flags",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 467
+        "line": 501
       }
     },
     {
@@ -3783,7 +3805,7 @@
       "description": "Attribution read from blame, log -L and commit trailers",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 584
+        "line": 618
       }
     },
     {
@@ -3793,7 +3815,7 @@
       "description": "report --blame attaches attribution before the metadata spread, so the shared records carry it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 719
+        "line": 753
       }
     },
     {
@@ -3803,7 +3825,7 @@
       "description": "The model before and after the agent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1459
+        "line": 1509
       }
     },
     {
@@ -3813,7 +3835,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2577
+        "line": 2627
       }
     },
     {
@@ -3823,7 +3845,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2580
+        "line": 2630
       }
     },
     {
@@ -3954,6 +3976,16 @@
       "location": {
         "file": "src/dashboard/pages/context.ts",
         "line": 11
+      }
+    },
+    {
+      "source": "DiagramSource",
+      "target": "#dashboard",
+      "mechanism": "checkRenderBudget",
+      "description": "Generated Mermaid text measured before it is written or served",
+      "location": {
+        "file": "src/dashboard/render-budget.ts",
+        "line": 59
       }
     },
     {
@@ -5337,7 +5369,7 @@
       "description": "Author identities printed or emitted as JSON; --identity hash (or blame.identity in config.json) redacts emails",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 585
+        "line": 619
       }
     },
     {
@@ -5346,7 +5378,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3297
+        "line": 3347
       }
     },
     {
@@ -5666,13 +5698,13 @@
       "reason": "graph/README example content, excluded from parsing",
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 497
+        "line": 645
       }
     },
     {
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 566
+        "line": 737
       }
     },
     {
@@ -6023,35 +6055,35 @@
       "description": "Closes the same blind spot ci's third check already closed (src/ci/index.ts) for the validate/CI-gate surface",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 373
+        "line": 374
       }
     },
     {
       "description": "Re-locking a stale claim is an assertion that the control still holds, so the default form never does it: --stale, --all or a named target is required, and each says so in its output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 468
+        "line": 502
       }
     },
     {
       "description": "Always exits 0 once the model parsed: outside a git checkout every claim reads as unattributed, which is an answer, not a failure. Only an unknown --identity is an error",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 586
+        "line": 620
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3253
+        "line": 3303
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3298
+        "line": 3348
       }
     },
     {
@@ -6073,6 +6105,13 @@
       "location": {
         "file": "src/dashboard/client-legacy.ts",
         "line": 9
+      }
+    },
+    {
+      "description": "One exception to 'no generation-time data': MERMAID_LIMITS is interpolated into mermaid.initialize, so the renderer is configured with the same two numbers the render budget measured against",
+      "location": {
+        "file": "src/dashboard/client-legacy.ts",
+        "line": 10
       }
     },
     {
@@ -6227,6 +6266,13 @@
       "location": {
         "file": "src/dashboard/pages/threats.ts",
         "line": 12
+      }
+    },
+    {
+      "description": "The limits are Mermaid's shipped defaults, read out of mermaid@11.17.2's bundle and cited above — deriving them rather than guessing is the whole point of the module",
+      "location": {
+        "file": "src/dashboard/render-budget.ts",
+        "line": 60
       }
     },
     {
@@ -6889,7 +6935,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 696,
+    "annotation_count": 701,
     "coverage_percent": 86
   },
   "external_refs": []

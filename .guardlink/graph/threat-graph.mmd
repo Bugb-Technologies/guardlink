@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:cb9f75b5ec0780eec97f19d4d8c7863bad4c10575a98a6c4fb7bc1cf152601d2
+%% annotation_hash: sha256-v3:ece0b6f5232742e07e7b8c7f0e5eb4f070f722301c2d595cb12091ae1088000b
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -96,6 +96,7 @@ graph LR
   dashboard -. exposes .-> path_traversal
   dashboard -. exposes .-> xss
   dashboard -. exposes .-> data_exposure
+  dashboard -. exposes .-> dos
   dashboard -. exposes .-> cmd_injection
   diff -. exposes .-> cmd_injection
   diff -. exposes .-> arbitrary_write
@@ -164,6 +165,8 @@ graph LR
   output_encoding -- mitigates --> xss
   output_encoding -. protects .-> dashboard
   output_encoding -- mitigates --> data_exposure
+  regex_anchoring -- mitigates --> dos
+  regex_anchoring -. protects .-> dashboard
   param_commands -. protects .-> dashboard
   input_sanitize -- mitigates --> cmd_injection
   input_sanitize -. protects .-> diff

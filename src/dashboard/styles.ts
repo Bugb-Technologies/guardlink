@@ -790,6 +790,32 @@ tr.clickable:hover { background: var(--table-hover); }
   margin-bottom: 0;
   box-shadow: none;
 }
+/* The render budget said this diagram would not draw. Styled to read as a
+   notice and not as a diagram: the failure it replaces was one pink box that
+   looked exactly like a rendered graph. */
+.diagram-budget {
+  border: 1px solid var(--danger, #ea1d1d);
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger, #ea1d1d) 8%, var(--surface));
+  padding: .7rem .9rem;
+  margin: 0 0 14px;
+  font-size: .78rem;
+  color: var(--text);
+  max-width: 82ch;
+}
+.diagram-budget strong { display: block; margin-bottom: .35rem; }
+.diagram-budget ul { margin: 0 0 .5rem; padding-left: 1.1rem; }
+.diagram-budget li { margin-bottom: .2rem; }
+.diagram-budget p { margin: 0; color: var(--muted); }
+/* The client-side backstop, when mermaid.run throws despite the budget. */
+.diagram-render-failed {
+  display: block;
+  white-space: normal;
+  color: var(--danger, #ea1d1d);
+  font-size: .8rem;
+  max-width: 82ch;
+}
 .mermaid { text-align: left; width: max-content; min-width: 100%; }
 .mermaid svg { max-width: none; height: auto; display: block; }
 .mermaid svg .cluster rect,

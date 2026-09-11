@@ -36,6 +36,11 @@
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface } from '../dashboard/index.js';
+import {
+  checkRenderBudget, oversizedStub, describeViolation,
+  ARTIFACT_FALLBACK, MERMAID_LIMITS, MERMAID_LIMITS_SOURCE,
+  type RenderBudgetVerdict, type DiagramMeasurement, type BudgetViolation,
+} from '../dashboard/render-budget.js';
 import { listFeatures, filterByFeature } from '../parser/feature-filter.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 import { computeAnnotationHash } from '../parser/annotation-hash.js';
@@ -43,8 +48,14 @@ import { readGitSha } from '../workspace/metadata.js';
 import { getPackageVersion } from '../version.js';
 import type { ThreatModel } from '../types/index.js';
 
-/** Bump when the emitted layout changes in a way a consumer would notice. */
-export const ARTIFACT_SCHEMA_VERSION = 1;
+/**
+ * Bump when the emitted layout changes in a way a consumer would notice.
+ *
+ * 2 — every `.mmd` entry in MANIFEST.json now carries `renderable` and a
+ *     `render` measurement, and a diagram over the Mermaid render budget is
+ *     written as a stub that says so instead of as a diagram nothing can draw.
+ */
+export const ARTIFACT_SCHEMA_VERSION = 2;
 
 /**
  * What a written artifact records about where it came from.
@@ -77,6 +88,31 @@ export interface ManifestEntry {
   path: string;
   bytes: number;
   annotation_hash: string;
+  /**
+   * `.mmd` only: is this file within the Mermaid render budget?
+   *
+   * Separate from the hash on purpose. The hash answers *is this current*; this
+   * answers *will anything draw it*, and the second fails first. A manifest that
+   * carried only the hash is what let a repository commit a 62 KB threat graph
+   * no renderer would draw and have `validate --artifacts` call it fine.
+   */
+  renderable?: boolean;
+  /**
+   * `.mmd` only: what the budget measured, in Mermaid's units — characters of
+   * comment-stripped text and flowchart edges.
+   *
+   * When `renderable` is false this describes the diagram that was REJECTED, not
+   * the stub that was written in its place; `bytes` above is the file on disk.
+   * That is the pairing a reader wants: how far past the limit the real diagram
+   * was, and how small the thing standing in for it is.
+   */
+  render?: { text_size: number; edges: number };
+}
+
+/** A diagram that was over the render budget, and what was written instead. */
+export interface UndrawableArtifact {
+  path: string;
+  verdict: RenderBudgetVerdict;
 }
 
 export interface EmitResult {
@@ -85,6 +121,11 @@ export interface EmitResult {
   /** Reported to the caller; deliberately absent from every written file. */
   emission: EmissionInfo;
   manifest: ManifestEntry[];
+  /**
+   * Diagrams replaced by a stub because they exceeded the render budget.
+   * Empty on every project small enough to draw, which is nearly all of them.
+   */
+  undrawable: UndrawableArtifact[];
 }
 
 /** Feature names become filenames; keep them boring and collision-free. */
@@ -237,15 +278,48 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
 
   const written: string[] = [];
   const manifest: ManifestEntry[] = [];
+  const undrawable: UndrawableArtifact[] = [];
 
-  const write = (absolute: string, relative: string, content: string) => {
+  const write = (absolute: string, relative: string, content: string, render?: RenderBudgetVerdict) => {
     if (!dryRun) writeFileSync(absolute, content);
     written.push(relative);
     manifest.push({
       path: relative,
       bytes: Buffer.byteLength(content),
       annotation_hash: provenance.annotation_hash,
+      ...(render ? {
+        renderable: render.renderable,
+        render: { text_size: render.measurement.textSize, edges: render.measurement.edges },
+      } : {}),
     });
+  };
+
+  /**
+   * Write a diagram, or — when nothing would draw it — write a diagram that says
+   * so instead.
+   *
+   * The stub is not a smaller version of the graph and does not try to be. It is
+   * a one-node flowchart carrying the measurement, the limit and where to read
+   * the same model, so the file a reviewer opens in GitHub says what happened
+   * rather than rendering one pink box with no explanation and no console
+   * output. The `%%` preamble above it says the same thing in prose, for the
+   * reader who opens the file as text — `%%` lines cost nothing against the
+   * budget, because Mermaid strips them before it measures.
+   *
+   * Deliberately NOT a new path: the stub replaces the content of the artifact
+   * that would have been written, so `expectedArtifactPaths`, the manifest, the
+   * `%%` header and the whole staleness machinery are untouched. Drawability is
+   * a second question about the same file, not a second file.
+   */
+  const writeDiagram = (name: string, relative: string, absolute: string, body: string, feature?: string) => {
+    const verdict = checkRenderBudget(body);
+    const header = mermaidHeader(name, provenance, feature);
+    if (verdict.renderable) {
+      write(absolute, relative, header + body, verdict);
+      return;
+    }
+    undrawable.push({ path: relative, verdict });
+    write(absolute, relative, header + budgetPreamble(name, verdict) + oversizedStub(name, verdict, ARTIFACT_FALLBACK), verdict);
   };
 
   if (!dryRun) {
@@ -264,7 +338,7 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
     ['attack-surface.mmd', generateAttackSurface(ordered)],
   ];
   for (const [name, body] of diagrams) {
-    write(join(graphDir, name), `.guardlink/graph/${name}`, mermaidHeader(name, provenance) + body);
+    writeDiagram(name, `.guardlink/graph/${name}`, join(graphDir, name), body);
   }
 
   // Per-feature graphs. Near-free — filterByFeature already exists and each is a
@@ -281,8 +355,8 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
   for (const feature of features) {
     const name = `${featureSlug(feature)}.mmd`;
     const body = generateThreatGraph(filterByFeature(ordered, [feature]), { showAll: true });
-    write(join(byFeatureDir, name), `.guardlink/graph/by-feature/${name}`,
-      mermaidHeader(`by-feature/${name}`, provenance, feature) + body);
+    writeDiagram(`by-feature/${name}`, `.guardlink/graph/by-feature/${name}`,
+      join(byFeatureDir, name), body, feature);
   }
 
   // A renamed or deleted @feature must not leave its diagram behind claiming to
@@ -339,7 +413,34 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
   if (!dryRun) writeFileSync(join(graphDir, 'README.md'), graphReadme(provenance, features));
   written.push('.guardlink/graph/README.md');
 
-  return { written, provenance, emission, manifest };
+  return { written, provenance, emission, manifest, undrawable };
+}
+
+/**
+ * The `%%` block that sits above a stub, for the reader who opens the file as
+ * text rather than rendering it.
+ *
+ * Says the number, the limit, where the limit comes from and what to read
+ * instead. A stub with no prose would be a second kind of confidently-wrong
+ * file: small, drawable, and silent about the model it is standing in for.
+ */
+export function budgetPreamble(name: string, verdict: RenderBudgetVerdict): string {
+  return [
+    `%% ---`,
+    `%% NOT A DIAGRAM. ${name} exceeded the Mermaid render budget, so the graph`,
+    `%% below is a stub. The real one was not written, because nothing would have`,
+    `%% drawn it — and a .mmd that renders as one pink box reading "Maximum text`,
+    `%% size in diagram exceeded" is worse than a file that says what happened.`,
+    ...verdict.violations.map(v => `%%   ${describeViolation(v)}`),
+    ...verdict.violations.map(v => `%%   ${v.symptom}`),
+    `%% The limits are Mermaid's own defaults (${MERMAID_LIMITS_SOURCE}:`,
+    `%% maxTextSize ${MERMAID_LIMITS.maxTextSize}, maxEdges ${MERMAID_LIMITS.maxEdges}), so they apply in GitHub, in`,
+    `%% mermaid.live and in the VS Code preview exactly as they do here.`,
+    `%% ${ARTIFACT_FALLBACK}`,
+    `%% Narrow the picture instead: tag code with @feature and`,
+    `%% .guardlink/graph/by-feature/ gets one drawable graph per feature.`,
+    '',
+  ].join('\n');
 }
 
 // ─── Drift check (GL-302) ────────────────────────────────────────────
@@ -458,6 +559,53 @@ export function checkArtifactDrift(root: string, model: ThreatModel): DriftFindi
   return findings;
 }
 
+// ─── Drawability check ───────────────────────────────────────────────
+
+export interface RenderFinding {
+  path: string;
+  measurement: DiagramMeasurement;
+  violations: BudgetViolation[];
+}
+
+/**
+ * Every committed `.mmd` that no renderer will draw.
+ *
+ * Deliberately a SECOND function beside `checkArtifactDrift`, not a new
+ * `DriftFinding.kind`. They answer different questions — *is this current* and
+ * *will anything draw it* — and folding the second into the first would repeat
+ * the mistake that made this necessary: one check, one verdict, and the
+ * drawability half invisible inside it. A diagram can be perfectly current and
+ * undrawable, which is the case `validate --artifacts` used to certify as fine.
+ *
+ * Measured from the bytes on disk rather than read out of MANIFEST.json's
+ * `renderable` field, for two reasons. An artifact written by a GuardLink that
+ * predates the budget carries no such field and is exactly the file this needs
+ * to catch; and a check that trusts the manifest is trusting the same emission
+ * it is supposed to be checking.
+ *
+ * Silent about files that are absent — that is `checkArtifactDrift`'s question,
+ * and answering it twice would double every missing-file line in the output.
+ */
+export function checkArtifactRenderability(root: string): RenderFinding[] {
+  const graphDir = join(root, '.guardlink', 'graph');
+  const findings: RenderFinding[] = [];
+
+  const sweep = (dir: string, prefix: string) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir).sort()) {
+      if (!entry.endsWith('.mmd')) continue;
+      const verdict = checkRenderBudget(readFileSync(join(dir, entry), 'utf-8'));
+      if (!verdict.renderable) {
+        findings.push({ path: `${prefix}${entry}`, measurement: verdict.measurement, violations: verdict.violations });
+      }
+    }
+  };
+  sweep(graphDir, '.guardlink/graph/');
+  sweep(join(graphDir, 'by-feature'), '.guardlink/graph/by-feature/');
+
+  return findings;
+}
+
 /**
  * Artifacts that carry an `annotation_hash` when they exist, and are checked
  * when they do (R10).
@@ -533,11 +681,34 @@ worse than no diagram at all.
 To check:
 
 \`\`\`sh
-guardlink validate . --artifacts     # exits non-zero if any artifact is stale
+guardlink validate . --artifacts     # exits non-zero if any artifact is stale or undrawable
 \`\`\`
 
 If it reports drift, regenerate. Never hand-edit an artifact to make the check
 pass — the hash describes the annotations, so editing the file makes it lie.
+
+## Drawability
+
+Staleness is not the only way one of these files can be wrong. Past a size
+Mermaid stops drawing, and the worse of its two limits fails **silently**: over
+\`maxTextSize\` (${MERMAID_LIMITS.maxTextSize} characters) the render resolves normally, writes nothing to
+the console, and draws a single box reading "Maximum text size in diagram
+exceeded". Over \`maxEdges\` (${MERMAID_LIMITS.maxEdges}) the parser throws and you get a syntax error.
+Both are Mermaid's own defaults, so they apply in GitHub, in mermaid.live and in
+the VS Code preview, not only here.
+
+\`guardlink artifacts\` measures every diagram against those limits before writing
+it. A diagram that would exceed them is **not written as a diagram**: the file
+gets a stub naming what exceeded and by how much, \`MANIFEST.json\` records
+\`renderable: false\` for it, and \`validate . --artifacts\` fails. That is
+deliberate — the alternative is a committed file that looks like a diagram,
+cannot be drawn, and passes the freshness check.
+
+If you hit it: the model is not lost, only this picture of it. Read
+\`../model.json\` for all of it, or open the dashboard — Analytics for the
+asset × threat matrix (readable at this size, capped at its worst 24 assets and
+says so) and Threats & Exposures for every claim. Tagging code with \`@feature\`
+also helps: each feature gets its own, much smaller, graph in \`by-feature/\`.
 
 ## Merge conflicts
 
