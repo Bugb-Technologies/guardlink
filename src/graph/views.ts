@@ -303,7 +303,7 @@ export function growWithinBudget(model: ThreatModel, options: GrowOptions): Grow
     // then returned anyway.
     return {
       model: select(included), source: '', included,
-      omitted: [...new Set([...dropped, ...adjacentTo(edges, included, direction)])].sort(),
+      omitted: outside(dropped, included, adjacentTo(edges, included, direction)),
       verdict, seedsAlone: true,
     };
   }
@@ -327,9 +327,20 @@ export function growWithinBudget(model: ThreatModel, options: GrowOptions): Grow
     // they are collapsed to the same empty answer here.
     source: verdict.measurement.nodes === 0 ? '' : source,
     included,
-    omitted: [...new Set([...dropped, ...adjacentTo(edges, included, direction)])].sort(),
+    // `dropped` is filtered against `included` because the growth loop can
+    // re-admit a seed the trim removed: a dropped seed is adjacent to a kept
+    // one, so it is a candidate like any other, and one that is well connected
+    // may earn its place back. Without this it would be drawn AND listed as
+    // outside the frame, which is the caption contradicting the picture.
+    omitted: outside(dropped, included, adjacentTo(edges, included, direction)),
     verdict, seedsAlone: false,
   };
+}
+
+/** Everything named as outside the frame, deduped and never including what is in it. */
+function outside(dropped: string[], included: string[], adjacent: string[]): string[] {
+  const within = new Set(included);
+  return [...new Set([...dropped, ...adjacent])].filter(k => !within.has(k)).sort();
 }
 
 /** Nodes exactly one hop from `inside`, excluding `inside` itself. */

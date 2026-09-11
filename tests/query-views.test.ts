@@ -235,6 +235,18 @@ describe('growing a neighbourhood to fit', () => {
     expect(grown.included.length + grown.omitted.length).toBe(21); // hub + 20 satellites
   });
 
+  it('never names a drawn node as being outside the frame', () => {
+    // A trimmed seed is adjacent to a kept one, so the growth loop can re-admit
+    // it. If it stayed in `omitted` the caption would contradict the picture.
+    for (const seeds of [['#hub'], ['#hub', '#sat0', '#sat1'], model.assets.map(a => `#${a.id}`)]) {
+      const grown = growWithinBudget(model, {
+        seeds, render: FLOW_PLANE, kinds: FLOW_KINDS, trimSeedsToFit: true,
+      });
+      const drawn = new Set(grown.included);
+      for (const k of grown.omitted) expect(drawn.has(k), k).toBe(false);
+    }
+  });
+
   it('is deterministic — the same model always yields the same view', () => {
     const a = growWithinBudget(model, { seeds: ['#hub'], render: FLOW_PLANE, kinds: FLOW_KINDS });
     const b = growWithinBudget(model, { seeds: ['#hub'], render: FLOW_PLANE, kinds: FLOW_KINDS });
