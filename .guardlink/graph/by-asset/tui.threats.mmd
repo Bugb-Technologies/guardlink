@@ -1,0 +1,38 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-asset/tui.threats.mmd
+%% scope:           PARTIAL — #tui only — its own threats and controls
+%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% generator:       guardlink@2.0.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
+graph LR
+  tui["🔷 GuardLink.TUI"]
+  path_traversal["🟠 Path_Traversal (cwe:CWE-22)"]:::threat
+  arbitrary_write["🟠 Arbitrary_File_Write (cwe:CWE-73)"]:::threat
+  cmd_injection["🔴 Command_Injection (cwe:CWE-78)"]:::threat
+  api_key_exposure["🟠 API_Key_Exposure (cwe:CWE-798)"]:::threat
+  prompt_injection["🟡 Prompt_Injection (cwe:CWE-77)"]:::threat
+  dos["🟡 Denial_of_Service (cwe:CWE-400)"]:::threat
+  path_validation["🛡️ Path_Validation"]:::control
+  key_redaction["🛡️ Key_Redaction"]:::control
+  resource_limits["🛡️ Resource_Limits"]:::control
+  tui -. exposes .-> path_traversal
+  tui -. exposes .-> arbitrary_write
+  tui -. exposes .-> cmd_injection
+  tui -. exposes .-> api_key_exposure
+  tui -. exposes .-> prompt_injection
+  tui -. exposes .-> dos
+  path_validation -- mitigates --> path_traversal
+  path_validation -. protects .-> tui
+  path_validation -- mitigates --> arbitrary_write
+  key_redaction -- mitigates --> api_key_exposure
+  key_redaction -. protects .-> tui
+  resource_limits -- mitigates --> dos
+  resource_limits -. protects .-> tui
+  classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
+  classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px

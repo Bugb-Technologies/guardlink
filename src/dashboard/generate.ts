@@ -37,7 +37,7 @@
  */
 import type { ThreatModel } from '../types/index.js';
 import { listFeatures, filterByFeature } from '../parser/feature-filter.js';
-import { selectSubgraph } from '../mcp/subgraph.js';
+import { selectSubgraph, canonicaliser } from '../mcp/subgraph.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 import type { ThreatReportWithContent } from '../analyze/index.js';
 import { computeStats, computeSeverity, computeSeverityOf, computeExposures, computeConfirmed, computeAssetHeatmap, computeAttribution, computeActions, computeLedgerStates, computeAssetDetails, computeOwnership, computeFileRisk, fileRiskRank, computeChanges, newClaimKeys } from './data.js';
@@ -55,11 +55,13 @@ import { renderSummaryPage } from './pages/summary.js';
 import { renderReportsPage } from './pages/reports.js';
 import { renderThreatsPage } from './pages/threats.js';
 import { renderDiagramsPage } from './pages/diagrams.js';
+import { renderExplorePage } from './pages/explore.js';
 import { renderCodePage } from './pages/code.js';
 import { renderDataPage } from './pages/data-boundaries.js';
 import { renderAssetsPage } from './pages/assets.js';
 import { renderAttributionPage } from './pages/attribution.js';
 import { renderAnalyticsPage, type AnalyticsVariant } from './pages/analytics.js';
+import { buildExploreData } from './explore.js';
 
 export function computeRiskGrade(sev: SeverityBreakdown, unmitigatedCount: number, totalExposures: number, confirmedCount = 0): { grade: string; label: string; summary: string } {
   if (confirmedCount > 0) return { grade: 'F', label: 'Critical Risk', summary: `${confirmedCount} confirmed exploitable finding(s) — immediate remediation required` };
@@ -72,19 +74,51 @@ export function computeRiskGrade(sev: SeverityBreakdown, unmitigatedCount: numbe
 }
 
 /**
- * Diagrams start fitted to their panel instead of at natural size: the svg's
- * box shrinks to the panel width while its viewBox keeps the whole drawing,
- * so the browser scales it and "Fit" (the identity transform) means fitted.
- * A no-op when the legacy block changes shape.
+ * Whole-model diagrams start fitted to their panel instead of at natural size:
+ * the svg's box shrinks to the panel width while its viewBox keeps the whole
+ * drawing, so the browser scales it and "Fit" (the identity transform) means
+ * fitted. A no-op when the legacy block changes shape.
+ *
+ * **Explore panes are excluded, deliberately.** The 0.6 floor on that scale
+ * exists so labels stay legible and does not achieve it — Mermaid's label font
+ * is 11px, so 0.6 is 6.6px — and every whole-model diagram measured sits
+ * exactly at the floor, which means "Fit" both fails to fit AND fails to keep
+ * the labels readable. On a budgeted diagram it is worse than useless: the
+ * diagram is already small enough to read, so shrinking it can only take that
+ * away. Measured on this repository, `src/mcp/server.ts`'s blast radius is 7
+ * nodes and 16 edges — comfortably inside the budget — and lays out 1,905px
+ * wide because its flow labels are long; fitted, its labels came out at 6.1px.
+ *
+ * So an Explore diagram is drawn at natural size and the panel scrolls. That is
+ * the guarantee the node-and-edge budget can actually deliver: labels at their
+ * full size, always, with panning for a drawing wider than the panel. Bounding
+ * the canvas WIDTH is a different thing that no generation-time check can do —
+ * it depends on font metrics in a browser — which is exactly why the answer is
+ * to stop scaling rather than to add a second budget nobody can measure.
  */
 const DIAGRAMS_JS = DIAGRAMS_AND_REPORTS_JS.replace(
   ".style('overflow', 'visible');",
-  ".style('overflow', 'visible');\n            var wrap = el.closest('.mermaid-wrap');\n            if (wrap && wrap.clientWidth) { var avail = Math.max(320, wrap.clientWidth - 36); if (viewW > avail) { var s = Math.max(0.6, avail / viewW); svg.attr('width', Math.ceil(viewW * s)).attr('height', Math.max(320, Math.ceil(viewH * s))); } }",
+  ".style('overflow', 'visible');\n            var wrap = el.closest('.mermaid-wrap');\n            if (wrap && wrap.clientWidth && !el.closest('.explore-pane')) { var avail = Math.max(320, wrap.clientWidth - 36); if (viewW > avail) { var s = Math.max(0.6, avail / viewW); svg.attr('width', Math.ceil(viewW * s)).attr('height', Math.max(320, Math.ceil(viewH * s))); } }",
 );
 
 const embed = (value: unknown): string => JSON.stringify(value).replace(/<\//g, '<\\/');
 
-const NAV_ICON: Record<string, string> = { summary: 'layout', analytics: 'grid', threats: 'alert', diagrams: 'diagram', code: 'code', 'ai-analysis': 'file', data: 'lock', assets: 'map', attribution: 'users' };
+/**
+ * Claims per canonical asset key, for ordering the Explore component picker.
+ *
+ * Canonicalised rather than keyed on the raw `asset` string, because one
+ * component is spelled several ways across a repository — `#mcp`,
+ * `GuardLink.MCP` — and a picker that listed those as two entries would offer
+ * two half-answers about the same thing.
+ */
+function countByAsset(rows: { asset: string }[], model: ThreatModel): Map<string, number> {
+  const key = canonicaliser(model);
+  const counts = new Map<string, number>();
+  for (const r of rows) counts.set(key(r.asset), (counts.get(key(r.asset)) ?? 0) + 1);
+  return counts;
+}
+
+const NAV_ICON: Record<string, string> = { summary: 'layout', analytics: 'grid', threats: 'alert', explore: 'search', diagrams: 'diagram', code: 'code', 'ai-analysis': 'file', data: 'lock', assets: 'map', attribution: 'users' };
 
 function navLink(page: string, label: string, active = false, badge?: string): string {
   return `<a href="#${page}" data-page="${page}"${active ? ' class="active"' : ''}><span class="nav-icon">${icon(NAV_ICON[page] ?? 'square')}</span> <span class="nav-text">${label}</span>${badge ? `<span class="nav-badge">${badge}</span>` : ''}</a>`;
@@ -144,6 +178,14 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   const actions = computeActions({ model, exposures, confirmed, verification: ledgerRead?.report ?? null, attribution, scope, unownedExposed: ownership.unowned.map(u => u.asset) });
   // One record per heatmap tile, in tile order: the asset drawer indexes it by the tile's position.
   const assetsData = computeAssetDetails(model, claims, heatmap, attribution?.as_of ?? null);
+  // Every Explore answer, selected and drawn here rather than in the browser —
+  // see src/dashboard/explore.ts for why the selection stays on this side.
+  const exploreData = buildExploreData({
+    model,
+    openByAsset: countByAsset(claims.filter(c => c.status === 'open' || c.status === 'confirmed'), model),
+    totalByAsset: countByAsset(claims.filter(c => c.verb !== 'mitigates'), model),
+    changes,
+  });
 
   const ctx: PageContext = {
     model, scope, scopeFiles, links, hostLabel: hostLabel(links),
@@ -163,8 +205,13 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
     fileRisk,
   };
 
+  // `akey` is the canonical asset key. The Explore panes are addressed by it —
+  // one component is spelled `#mcp` in one file and `GuardLink.MCP` in another,
+  // and a row filter on the raw string would split one component's claims
+  // across two panes that each looked complete.
+  const assetKey = canonicaliser(model);
   const claimsData = claims.map(c => ({
-    idx: c.idx, verb: c.verb, status: c.status, statusLabel: c.statusLabel, asset: c.asset, threat: c.threat, severity: c.severity,
+    idx: c.idx, verb: c.verb, status: c.status, statusLabel: c.statusLabel, asset: c.asset, akey: assetKey(c.asset), threat: c.threat, severity: c.severity,
     description: c.description, control: c.control, refs: c.refs, file: c.file, line: c.line, url: c.url, state: c.state, verifiedBy: c.verifiedBy, verifiedAt: c.verifiedAt,
     owners: c.owners, handles: c.handles, change: c.change, blame: c.blame,
   }));
@@ -241,6 +288,7 @@ ${scope ? `<div id="scope-banner" class="scope-banner" role="note">
     ${navLink('summary', 'Executive Summary', true)}
     ${navLink('analytics', 'Analytics')}
     ${navLink('threats', 'Threats &amp; Exposures', false, unmitigated.length > 0 ? String(unmitigated.length) : undefined)}
+    ${navLink('explore', 'Explore')}
     ${navLink('diagrams', 'Diagrams')}
     ${navLink('code', 'Code &amp; Annotations')}
     ${navLink('ai-analysis', 'Threat Reports', false, ctx.analyses.length > 0 ? String(ctx.analyses.length) : undefined)}
@@ -262,6 +310,7 @@ ${renderSummaryPage(ctx)}
 ${renderAnalyticsPage(ctx, variants)}
 ${renderReportsPage(ctx)}
 ${renderThreatsPage(ctx)}
+${renderExplorePage(ctx, exploreData)}
 ${renderDiagramsPage(ctx)}
 ${renderCodePage(ctx)}
 ${renderDataPage(ctx)}

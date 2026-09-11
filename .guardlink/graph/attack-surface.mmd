@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        attack-surface.mmd
-%% annotation_hash: sha256-v3:ece0b6f5232742e07e7b8c7f0e5eb4f070f722301c2d595cb12091ae1088000b
+%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -8,6 +8,17 @@
 %% diagram is STALE — regenerate rather than trusting it.
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
+%% ---
+%% DRAWS, BUT IS TOO BIG TO READ. attack-surface.mmd is 65 nodes / 0 edges, past the 12 / 16 legibility budget (65 nodes against 12).
+%% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
+%% label size; past it a layered layout grows taller than the panel and
+%% fitting it shrinks the labels below reading size. Mermaid will draw this
+%% — it is well inside the limits in the header above — so nothing will
+%% report an error. It is simply not a picture anyone can use.
+%% This is the whole model in one frame, which is the right thing on a small
+%% repository. For one that is not: by-asset/ has this component's threats
+%% and its flow neighbourhood as separate, budgeted diagrams, by-boundary/
+%% has one per trust line, and index.md says which question each answers.
 %%{init: {"flowchart": {"nodeSpacing": 38, "rankSpacing": 48, "curve": "linear", "htmlLabels": false}}}%%
 graph TB
   subgraph A_mcp["GuardLink.MCP · ⚠ 3 open"]
@@ -97,11 +108,11 @@ graph TB
   end
   subgraph A_dashboard["GuardLink.Dashboard · ✅ 100% covered"]
     direction TB
-    E55["✅ Cross_Site_Scripting ×2"]:::sev_high
+    E55["✅ Cross_Site_Scripting ×3"]:::sev_high
     E56["✅ Arbitrary_File_Write"]:::sev_med
     E57["✅ Path_Traversal ×3"]:::sev_med
     E58["✅ Sensitive_Data_Exposure"]:::sev_low
-    E59["✅ Denial_of_Service"]:::sev_low
+    E59["✅ Denial_of_Service ×2"]:::sev_low
     E60["✅ Command_Injection"]:::sev_low
   end
   subgraph A_diff["GuardLink.Diff · ✅ 100% covered"]

@@ -1,0 +1,39 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-asset/cli.flows.mmd
+%% scope:           PARTIAL — #cli and its flow neighbourhood, grown until the drawing stopped fitting — 14 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% generator:       guardlink@2.0.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
+graph LR
+  blame["🧩 GuardLink.Blame"]
+  cli["🧩 GuardLink.CLI"]
+  gitrepo["🧩 GitRepo"]
+  parsediagnostics["🧩 ParseDiagnostics"]
+  ledgerfile["🧩 LedgerFile"]
+  filesystem["🧩 FileSystem"]
+  gate["🧩 GuardLink.Gate"]
+  agentproposal["🧩 AgentProposal"]
+  gitconfig["🧩 GitConfig"]
+  packagejson["🧩 PackageJson"]
+  blame -- "📡 formatBlameText" --> cli
+  gitrepo -- "🗄️ execFileSync" --> blame
+  gitrepo -- "📡 listCommits" --> blame
+  blame -- "🗄️ buildBlamePayload" --> cli
+  parsediagnostics -- "📡 runCiChecks" --> cli
+  ledgerfile -- "📡 readLedger" --> cli
+  cli -- "🗄️ writeFile" --> filesystem
+  gitrepo -- "📡 attachBlame" --> cli
+  gitrepo -- "📡 computeBlame" --> cli
+  cli -- "📡 runGate" --> gate
+  gitrepo -- "📡 loadSince" --> cli
+  cli -- "📡 writeLedger" --> ledgerfile
+  cli -- "📡 applyVerification" --> ledgerfile
+  agentproposal -- "📡 proposeEntitlement" --> cli
+  gitconfig -- "🗄️ execFileSync" --> cli
+  packagejson -- "🗄️ readFileSync" --> cli

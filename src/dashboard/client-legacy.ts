@@ -331,7 +331,7 @@ function toggleThreatGraphAll(btn) {
 }
 
 function diagramZoom(action) {
-  const panel = document.querySelector('.diagram-panel.active');
+  const panel = typeof activeDiagramPanel === 'function' ? activeDiagramPanel() : document.querySelector('.diagram-panel.active');
   if (!panel || !panel._diagramZoom) return;
   const state = panel._diagramZoom;
   const svg = state.svg;
@@ -474,7 +474,7 @@ async function renderMermaid() {
 }
 
 function renderActiveDiagram() {
-  const active = document.querySelector('.diagram-panel.active');
+  const active = typeof activeDiagramPanel === 'function' ? activeDiagramPanel() : document.querySelector('.diagram-panel.active');
   if (!active) return;
   renderMermaidPanel(active).then(() => { window._mermaidRendered = true; });
 }

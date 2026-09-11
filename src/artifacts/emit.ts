@@ -38,9 +38,14 @@ import { join } from 'node:path';
 import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface } from '../dashboard/index.js';
 import {
   checkRenderBudget, oversizedStub, describeViolation,
-  ARTIFACT_FALLBACK, MERMAID_LIMITS, MERMAID_LIMITS_SOURCE,
+  ARTIFACT_FALLBACK, MERMAID_LIMITS, MERMAID_LIMITS_SOURCE, groupDigits,
   type RenderBudgetVerdict, type DiagramMeasurement, type BudgetViolation,
 } from '../dashboard/render-budget.js';
+import { checkLegibility, describeLegibility, LEGIBILITY_BUDGET } from '../graph/legibility.js';
+import {
+  growWithinBudget, assetThreatPlane, boundarySides, FLOW_KINDS,
+} from '../graph/views.js';
+import { canonicaliser } from '../mcp/subgraph.js';
 import { listFeatures, filterByFeature } from '../parser/feature-filter.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 import { computeAnnotationHash } from '../parser/annotation-hash.js';
@@ -156,11 +161,15 @@ export function featureSlug(name: string): string {
  *      hash. Left project-wide, and now stated rather than left to be inferred
  *      from a value that happens to be identical in every file.
  */
-export function mermaidHeader(name: string, p: ArtifactProvenance, feature?: string): string {
+export function mermaidHeader(name: string, p: ArtifactProvenance, feature?: string, scope?: string): string {
   return [
     `%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .`,
     `%% artifact:        ${name}`,
     ...(feature ? [`%% scope:           PARTIAL — @feature "${feature}" only, not the whole model`] : []),
+    // A by-asset or by-boundary slice makes the same claim a by-feature file
+    // makes, about a different axis: it is one question's answer, and a node it
+    // omits is one that question does not reach.
+    ...(scope ? [`%% scope:           PARTIAL — ${scope}`] : []),
     // Kept a bare `hash` value on its own line: `readArtifactHash` and the CI
     // gate both match `^%% annotation_hash:\s*(\S+)\s*$`, so anything appended
     // here would be read as part of the hash. Commentary goes below.
@@ -275,6 +284,8 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
   const guardlinkDir = join(root, '.guardlink');
   const graphDir = join(guardlinkDir, 'graph');
   const byFeatureDir = join(graphDir, 'by-feature');
+  const byAssetDir = join(graphDir, 'by-asset');
+  const byBoundaryDir = join(graphDir, 'by-boundary');
 
   const written: string[] = [];
   const manifest: ManifestEntry[] = [];
@@ -311,11 +322,18 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
    * `%%` header and the whole staleness machinery are untouched. Drawability is
    * a second question about the same file, not a second file.
    */
-  const writeDiagram = (name: string, relative: string, absolute: string, body: string, feature?: string) => {
+  const writeDiagram = (name: string, relative: string, absolute: string, body: string, feature?: string, scope?: string) => {
     const verdict = checkRenderBudget(body);
-    const header = mermaidHeader(name, provenance, feature);
+    const header = mermaidHeader(name, provenance, feature, scope);
     if (verdict.renderable) {
-      write(absolute, relative, header + body, verdict);
+      // Drawable is not the same as readable, and a committed `.mmd` has no
+      // page around it to say which it is: GitHub renders the file and nothing
+      // else. So a diagram past the legibility budget carries the measurement
+      // in its own `%%` header, where a reader who opens the file as text sees
+      // it and Mermaid does not. `%%` lines are stripped before the render
+      // budget measures, so saying this costs nothing against the limit it is
+      // not about.
+      write(absolute, relative, header + legibilityPreamble(name, body) + body, verdict);
       return;
     }
     undrawable.push({ path: relative, verdict });
@@ -325,6 +343,8 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
   if (!dryRun) {
     mkdirSync(graphDir, { recursive: true });
     mkdirSync(byFeatureDir, { recursive: true });
+    mkdirSync(byAssetDir, { recursive: true });
+    mkdirSync(byBoundaryDir, { recursive: true });
   }
 
   // The three canonical diagrams. Each generator is called exactly once.
@@ -359,15 +379,26 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
       join(byFeatureDir, name), body, feature);
   }
 
-  // A renamed or deleted @feature must not leave its diagram behind claiming to
-  // describe something the model no longer has.
-  if (!dryRun && existsSync(byFeatureDir)) {
-    for (const stale of readdirSync(byFeatureDir)) {
-      if (stale.endsWith('.mmd') && !expectedFeatureFiles.has(stale)) {
-        rmSync(join(byFeatureDir, stale));
-      }
-    }
+  // Per-asset and per-boundary slices: the set that is readable rather than
+  // merely drawable. See `sliceArtifacts` for what each answers and why the
+  // planes are separate files.
+  const slices = sliceArtifacts(ordered);
+  for (const slice of slices) {
+    const dir = slice.path.includes('/by-asset/') ? byAssetDir : byBoundaryDir;
+    writeDiagram(slice.name, slice.path, join(dir, slice.file), slice.body, undefined, slice.scope);
   }
+
+  // A renamed or deleted @feature, asset or boundary must not leave its diagram
+  // behind claiming to describe something the model no longer has.
+  const sweepStale = (dir: string, keep: Set<string>) => {
+    if (dryRun || !existsSync(dir)) return;
+    for (const stale of readdirSync(dir)) {
+      if (stale.endsWith('.mmd') && !keep.has(stale)) rmSync(join(dir, stale));
+    }
+  };
+  sweepStale(byFeatureDir, expectedFeatureFiles);
+  sweepStale(byAssetDir, new Set(slices.filter(x => x.path.includes('/by-asset/')).map(x => x.file)));
+  sweepStale(byBoundaryDir, new Set(slices.filter(x => x.path.includes('/by-boundary/')).map(x => x.file)));
 
   // The model itself, canonically ordered so a diff is a real change.
   //
@@ -413,7 +444,185 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
   if (!dryRun) writeFileSync(join(graphDir, 'README.md'), graphReadme(provenance, features));
   written.push('.guardlink/graph/README.md');
 
+  // The file a human opens first. Every fence in it is a link rather than a
+  // diagram, so it renders on GitHub and on a docs site at any model size —
+  // which is the property the whole-model diagrams lost.
+  if (!dryRun) writeFileSync(join(graphDir, 'index.md'), graphIndex(ordered, provenance, features, slices, manifest));
+  written.push('.guardlink/graph/index.md');
+
   return { written, provenance, emission, manifest, undrawable };
+}
+
+/**
+ * One committed slice: a question, and the diagram that answers it.
+ */
+export interface SliceArtifact {
+  /** Artifact name for the `%%` header. */
+  name: string;
+  /** Repo-relative path, for the manifest and the drift check. */
+  path: string;
+  /** Filename within its directory. */
+  file: string;
+  /** The `%% scope:` line — what this file leaves out, and why that is correct. */
+  scope: string;
+  body: string;
+}
+
+/**
+ * What the committed `.mmd` files should contain now that an interactive view exists.
+ *
+ * The static artifacts have a job the dashboard cannot do: survive in a git
+ * clone, read as text, render in GitHub and in editors nobody configured, and
+ * show a threat-model change in a pull request diff. None of that is replaced by
+ * a query page, so the answer is not to emit fewer files — it is to change what
+ * they are pictures OF.
+ *
+ * The three top-level diagrams are the whole model in one frame. They stay,
+ * because on a small repository they are the right picture and because they are
+ * the file a newcomer opens first. But this repository's own threat graph is 43
+ * nodes against a measured legibility ceiling of 12, so on anything real they
+ * are a picture of a hairball — drawable, current, correct and unreadable, which
+ * is the state no existing check could describe. Those three now say their own
+ * size in their header.
+ *
+ * Beside them go the slices that ARE readable, one per question:
+ *
+ *   `by-asset/<id>.threats.mmd`  what is this component exposed to, and what
+ *                                defends it
+ *   `by-asset/<id>.flows.mmd`    what does it talk to
+ *   `by-boundary/<id>.mmd`       what crosses this trust line
+ *
+ * Three properties make this worth committing rather than leaving to the
+ * dashboard:
+ *
+ *   **Each one is budgeted.** Every file here is selected by the same
+ *   `growWithinBudget` / `assetThreatPlane` code the Explore page uses, so a
+ *   file is emitted only if it draws at a size a person can read. A slice that
+ *   cannot be narrowed to fit is not written at all — see below.
+ *
+ *   **A change to one component touches one file.** The whole-graph artifacts
+ *   move whenever anything moves; `attack-surface.mmd` rewrites 200 lines for a
+ *   single added asset. A per-asset slice diffs where the change was, which is
+ *   what committing these files was for.
+ *
+ *   **It works on repositories that never write `@feature`.** `by-feature/` was
+ *   already the density hedge and it is gated on a tag most projects never
+ *   apply — this repository has two features, the sibling project measured
+ *   alongside it has none. Assets and boundaries are not optional.
+ *
+ * The planes are separate files because they are separate questions and because
+ * a `.mmd` holds exactly one diagram. Fusing them is what makes a 20-node
+ * neighbourhood a hairball; a file per plane is the same split the Explore page
+ * makes, for the same reason.
+ *
+ * **A slice that cannot be made legible is not emitted.** That is the one case
+ * where writing nothing beats writing something: a stub in `by-asset/` would be
+ * a file that exists to say a smaller file could not be made smaller, and the
+ * rows that answer the question are in `model.json` and on the Threats page.
+ * `index.md` lists what was skipped and why, so the absence is stated rather
+ * than left to be noticed.
+ */
+export function sliceArtifacts(model: ThreatModel): SliceArtifact[] {
+  const key = canonicaliser(model);
+  const out: SliceArtifact[] = [];
+
+  // Declared assets only. An undeclared endpoint (`UserPrompt`, `FileSystem`)
+  // has no `@asset` to name a file after and no identity that survives a
+  // rename, so committing a file per one of those would churn on spelling.
+  const assetKeys = [...new Set(model.assets.map(a => key(a.id || a.path.join('.'))))].sort();
+
+  for (const asset of assetKeys) {
+    const label = model.assets.find(a => key(a.id || a.path.join('.')) === asset);
+    const display = label ? (label.id ? `#${label.id}` : label.path.join('.')) : asset;
+    const slug = featureSlug(asset);
+
+    const threats = assetThreatPlane(model, asset, m => generateThreatGraph(m, { showAll: true }));
+    if (threats.source) {
+      out.push({
+        name: `by-asset/${slug}.threats.mmd`,
+        path: `.guardlink/graph/by-asset/${slug}.threats.mmd`,
+        file: `${slug}.threats.mmd`,
+        scope: `${display} only — its own threats and controls`
+          + (threats.narrowing === 'high-severity-only'
+            ? `, narrowed to high and critical (${threats.hidden ?? 0} lower-severity claim(s) omitted to keep it readable)`
+            : ''),
+        body: threats.source,
+      });
+    }
+
+    const flows = growWithinBudget(model, {
+      seeds: [asset], render: m => generateDataFlowDiagram(m), kinds: FLOW_KINDS,
+    });
+    if (flows.source) {
+      out.push({
+        name: `by-asset/${slug}.flows.mmd`,
+        path: `.guardlink/graph/by-asset/${slug}.flows.mmd`,
+        file: `${slug}.flows.mmd`,
+        scope: `${display} and its flow neighbourhood, grown until the drawing stopped fitting`
+          + (flows.omitted.length > 0 ? ` — ${flows.omitted.length} neighbour(s) one hop out are not shown` : ''),
+        body: flows.source,
+      });
+    }
+  }
+
+  // Boundaries are named by their `@boundary (#id)` where one was declared and
+  // by their two sides otherwise, so the filename survives an edit to the
+  // description. Small by construction — a boundary has two sides — which makes
+  // this the one whole-scope picture that is always drawable.
+  const seenBoundary = new Set<string>();
+  for (let i = 0; i < model.boundaries.length; i++) {
+    const b = model.boundaries[i];
+    const sides = boundarySides(model, i);
+    const slug = featureSlug(b.id || sides.join('-to-'));
+    if (seenBoundary.has(slug)) continue;
+    seenBoundary.add(slug);
+
+    const grown = growWithinBudget(model, {
+      seeds: sides, render: m => generateDataFlowDiagram(m), kinds: FLOW_KINDS,
+    });
+    if (!grown.source) continue;
+    out.push({
+      name: `by-boundary/${slug}.mmd`,
+      path: `.guardlink/graph/by-boundary/${slug}.mmd`,
+      file: `${slug}.mmd`,
+      scope: `the ${b.description || b.id || 'trust boundary'} between ${sides.join(' and ')}, and what flows across it`,
+      body: grown.source,
+    });
+  }
+
+  return out;
+}
+
+/**
+ * The `%%` note above a diagram that draws but cannot be read.
+ *
+ * Empty for every slice, by construction — they are selected against this exact
+ * budget — and present on the three whole-model diagrams of any real
+ * repository. It exists because a committed `.mmd` is opened somewhere we do
+ * not control: GitHub renders it with no page around it, so if the file does
+ * not say it is too big to read, nothing does.
+ *
+ * Not a refusal. The diagram is still written and still correct; what changes is
+ * that it stops being presented as though its size were fine, and it names the
+ * files that answer the same question at a size that is.
+ */
+export function legibilityPreamble(name: string, body: string): string {
+  const verdict = checkLegibility(body);
+  if (verdict.legible) return '';
+  return [
+    `%% ---`,
+    `%% DRAWS, BUT IS TOO BIG TO READ. ${name} is ${describeLegibility(verdict)}.`,
+    `%% ${LEGIBILITY_BUDGET.nodes} nodes and ${LEGIBILITY_BUDGET.edges} edges is what fits a dashboard diagram panel at its`,
+    `%% label size; past it a layered layout grows taller than the panel and`,
+    `%% fitting it shrinks the labels below reading size. Mermaid will draw this`,
+    `%% — it is well inside the limits in the header above — so nothing will`,
+    `%% report an error. It is simply not a picture anyone can use.`,
+    `%% This is the whole model in one frame, which is the right thing on a small`,
+    `%% repository. For one that is not: by-asset/ has this component's threats`,
+    `%% and its flow neighbourhood as separate, budgeted diagrams, by-boundary/`,
+    `%% has one per trust line, and index.md says which question each answers.`,
+    '',
+  ].join('\n');
 }
 
 /**
@@ -468,6 +677,11 @@ export function expectedArtifactPaths(model: ThreatModel): string[] {
     '.guardlink/graph/dataflow.mmd',
     '.guardlink/graph/attack-surface.mmd',
     ...listFeatures(ordered).map(f => `.guardlink/graph/by-feature/${featureSlug(f)}.mmd`),
+    // Derived from the same function that writes them, so a slice that is not
+    // emitted (because it could not be made legible) is not then reported
+    // missing — the emitter and the check agree by construction rather than by
+    // both being maintained.
+    ...sliceArtifacts(ordered).map(x => x.path),
     '.guardlink/model.json',
     '.guardlink/graph/MANIFEST.json',
   ];
@@ -524,6 +738,8 @@ export function checkArtifactDrift(root: string, model: ThreatModel): DriftFindi
   };
   alsoCheck(graphDir);
   alsoCheck(join(graphDir, 'by-feature'));
+  alsoCheck(join(graphDir, 'by-asset'));
+  alsoCheck(join(graphDir, 'by-boundary'));
 
   for (const file of files) {
     const relative = file.slice(root.length + 1).replaceAll('\\', '/');
@@ -602,6 +818,8 @@ export function checkArtifactRenderability(root: string): RenderFinding[] {
   };
   sweep(graphDir, '.guardlink/graph/');
   sweep(join(graphDir, 'by-feature'), '.guardlink/graph/by-feature/');
+  sweep(join(graphDir, 'by-asset'), '.guardlink/graph/by-asset/');
+  sweep(join(graphDir, 'by-boundary'), '.guardlink/graph/by-boundary/');
 
   return findings;
 }
@@ -639,6 +857,116 @@ export const OPTIONAL_STAMPED_ARTIFACTS: readonly string[] = [
   '.github/copilot-instructions.md',
   '.guardlink/README.md',
 ];
+
+// ─── graph/index.md ──────────────────────────────────────────────────
+
+// @shield:begin -- "graph/index example content, excluded from parsing"
+/**
+ * A table of slices and the question each one answers.
+ *
+ * This is the file to open first, and it is deliberately Markdown rather than a
+ * diagram. It renders natively on GitHub and on a docs site at any model size,
+ * because it holds links and a table rather than a picture — the one form that
+ * does not have a legibility ceiling. The three whole-model diagrams are listed
+ * with their measured size, so a reader learns which of them is worth opening
+ * BEFORE opening it.
+ *
+ * Slices that were skipped are named. An absent `by-asset/<id>.flows.mmd` means
+ * that component declares no `@flows`, which is a fact about the model and not
+ * an emission that failed; leaving it unexplained would make the directory
+ * listing read as incomplete.
+ */
+function graphIndex(
+  model: ThreatModel, p: ArtifactProvenance, features: string[],
+  slices: SliceArtifact[], manifest: ManifestEntry[],
+): string {
+  const key = canonicaliser(model);
+  const measured = new Map(manifest.map(m => [m.path, m]));
+
+  const topLevel = [
+    ['threat-graph.mmd', 'Every component, the threats declared on it, and the controls that answer them.'],
+    ['dataflow.mmd', 'Every `@flows` between components, with trust boundaries drawn as zones.'],
+    ['attack-surface.mmd', 'Exposures per component, worst first.'],
+  ] as const;
+
+  const sizeOf = (path: string): string => {
+    const entry = measured.get(path);
+    if (!entry?.render) return '—';
+    if (entry.renderable === false) return `**not drawn** — ${groupDigits(entry.render.text_size)} chars / ${entry.render.edges} edges`;
+    const legible = entry.render.edges <= LEGIBILITY_BUDGET.edges;
+    return `${entry.render.edges} edges${legible ? '' : ' — **past the readable size**'}`;
+  };
+
+  const assetSlices = slices.filter(x => x.path.includes('/by-asset/'));
+  const boundarySlices = slices.filter(x => x.path.includes('/by-boundary/'));
+
+  const declared = [...new Set(model.assets.map(a => key(a.id || a.path.join('.'))))].sort();
+  const noThreats = declared.filter(a => !assetSlices.some(x => x.file === `${featureSlug(a)}.threats.mmd`));
+  const noFlows = declared.filter(a => !assetSlices.some(x => x.file === `${featureSlug(a)}.flows.mmd`));
+
+  const rows = (xs: SliceArtifact[]) => xs
+    .map(x => `| [\`${x.file}\`](${x.path.replace('.guardlink/graph/', '')}) | ${x.scope} |`)
+    .join('\n');
+
+  return `# Threat model diagrams — what to open, and for which question
+
+**Every file here is generated. Do not edit any of them.** Regenerate with
+\`guardlink artifacts .\`; check them with \`guardlink validate . --artifacts\`.
+
+## Start here
+
+These are budgeted: each is selected and drawn only if it comes out at a size a
+person can read — at most ${LEGIBILITY_BUDGET.nodes} nodes and ${LEGIBILITY_BUDGET.edges} edges, which is what fits a diagram
+panel at its label size. A file that could not be made to fit is not written, and
+is named at the bottom of this page instead.
+
+### One component at a time
+
+\`.threats.mmd\` answers *what is this exposed to, and what defends it*.
+\`.flows.mmd\` answers *what does it talk to*. They are separate files because
+they are separate questions: fusing the two planes onto one canvas is what turns
+a small neighbourhood into a hairball.
+
+${assetSlices.length > 0
+    ? `| File | What it shows |\n|---|---|\n${rows(assetSlices)}`
+    : '_No component slices: this model declares no `@asset` carrying a claim or a flow._'}
+
+### One trust line at a time
+
+${boundarySlices.length > 0
+    ? `| File | What it shows |\n|---|---|\n${rows(boundarySlices)}`
+    : '_No boundary slices: this model declares no `@boundary`._'}
+
+## The whole model in one frame
+
+Correct, current, and — past about a dozen components — not readable. Kept
+because on a small repository they are the right picture, and listed with their
+size so you know which you are about to open.
+
+| File | What it shows | Size |
+|---|---|---|
+${topLevel.map(([file, what]) => `| [\`${file}\`](${file}) | ${what} | ${sizeOf(`.guardlink/graph/${file}`)} |`).join('\n')}
+
+${features.length > 0
+    ? `## One feature at a time\n\n${features.map(f => `- [\`by-feature/${featureSlug(f)}.mmd\`](by-feature/${featureSlug(f)}.mmd) — the threat graph narrowed to \`@feature "${f}"\`. **Partial by construction**: a node it does not show is one that feature does not touch, not one the project lacks.`).join('\n')}`
+    : '## One feature at a time\n\nThis project declares no `@feature` annotations, so `by-feature/` is empty. The\ncomponent and boundary slices above need no tagging and are always emitted.'}
+
+## Also here
+
+- [\`MANIFEST.json\`](MANIFEST.json) — per-artifact size, the annotation hash each was built from, and whether anything will draw it.
+- [\`../model.json\`](../model.json) — the whole parsed model, canonically ordered. Every claim is in it, whether or not a diagram could show it.
+- [\`README.md\`](README.md) — how staleness and drawability are checked, and how to resolve a merge conflict in this directory.
+${noThreats.length > 0 ? `\n## Components with no threat diagram\n\n${noThreats.map(a => `- \`${a}\` — declares no \`@exposes\`, \`@mitigates\`, \`@confirmed\` or \`@accepts\`, or carries too many to draw legibly even narrowed to high and critical. Its claims, if any, are in \`../model.json\`.`).join('\n')}` : ''}
+${noFlows.length > 0 ? `\n## Components with no flow diagram\n\n${noFlows.map(a => `- \`${a}\` — declares no \`@flows\` or \`@boundary\`, so it has no neighbourhood to draw.`).join('\n')}` : ''}
+
+---
+
+Generated by ${p.generator} from annotation hash \`${p.annotation_hash}\`. If that
+differs from what \`guardlink status .\` reports, everything here is stale —
+regenerate rather than trusting it.
+`;
+}
+// @shield:end
 
 // ─── graph/README.md ─────────────────────────────────────────────────
 

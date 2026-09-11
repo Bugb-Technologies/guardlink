@@ -1,0 +1,20 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-asset/report.threats.mmd
+%% scope:           PARTIAL — #report only — its own threats and controls
+%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% generator:       guardlink@2.0.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
+graph LR
+  report["🔷 GuardLink.Report"]
+  xss["🟠 Cross_Site_Scripting (cwe:CWE-79)"]:::threat
+  output_encoding["🛡️ Output_Encoding"]:::control
+  output_encoding -- mitigates --> xss
+  output_encoding -. protects .-> report
+  classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
+  classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px

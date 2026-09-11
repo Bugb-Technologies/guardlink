@@ -1,0 +1,40 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-boundary/tui-input-boundary.mmd
+%% scope:           PARTIAL — the Trust boundary at interactive input between tui and userinput, and what flows across it
+%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% generator:       guardlink@2.0.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
+graph LR
+  subgraph Z0["🧱 GuardLink.CLI · Trust boundary at CLI argument parsing"]
+    cli["🧩 GuardLink.CLI"]
+  end
+  subgraph Z1["🧱 UserInput · Trust boundary at CLI argument parsing"]
+    userinput["👤 UserInput"]
+  end
+  subgraph Z2["🧱 GuardLink.TUI · Trust boundary at interactive input"]
+    tui["👤 GuardLink.TUI"]
+  end
+  configfile["🧩 ConfigFile"]
+  agent_launcher["🧩 GuardLink.Agent_Launcher"]
+  filesystem["🧩 FileSystem"]
+  llm_client["👤 GuardLink.LLM_Client"]
+  commands["🧩 Commands"]
+  cli -.-|🧱 Trust boundary at CLI argument parsing| userinput
+  tui -.-|🧱 Trust boundary at interactive input| userinput
+  configfile -- "🗄️ readFileSync" --> agent_launcher
+  agent_launcher -- "🗄️ writeFileSync" --> configfile
+  cli -- "🗄️ writeFile" --> filesystem
+  userinput -- "📡 verify" --> cli
+  tui -- "🗄️ writeFile" --> filesystem
+  tui -- "📡 launchAgent" --> agent_launcher
+  tui -- "📡 chatCompletion" --> llm_client
+  configfile -- "📡 loadProjectConfig" --> tui
+  tui -- "📡 saveProjectConfig" --> configfile
+  userinput -- "📡 readline" --> tui
+  tui -- "📡 dispatch" --> commands

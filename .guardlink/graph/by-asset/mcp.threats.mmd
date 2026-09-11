@@ -1,0 +1,30 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-asset/mcp.threats.mmd
+%% scope:           PARTIAL — #mcp only — its own threats and controls, narrowed to high and critical (12 lower-severity claim(s) omitted to keep it readable)
+%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% generator:       guardlink@2.0.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
+graph LR
+  mcp["🔷 GuardLink.MCP"]
+  cmd_injection["🔴 Command_Injection (cwe:CWE-78)"]:::threat
+  path_traversal["🟠 Path_Traversal (cwe:CWE-22)"]:::threat
+  arbitrary_write["🟠 Arbitrary_File_Write (cwe:CWE-73)"]:::threat
+  api_key_exposure["🟠 API_Key_Exposure (cwe:CWE-798)"]:::threat
+  path_validation["🛡️ Path_Validation"]:::control
+  key_redaction["🛡️ Key_Redaction"]:::control
+  mcp -. exposes .-> cmd_injection
+  mcp -. exposes .-> path_traversal
+  mcp -. exposes .-> arbitrary_write
+  path_validation -- mitigates --> path_traversal
+  path_validation -. protects .-> mcp
+  path_validation -- mitigates --> arbitrary_write
+  key_redaction -- mitigates --> api_key_exposure
+  key_redaction -. protects .-> mcp
+  classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
+  classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px
