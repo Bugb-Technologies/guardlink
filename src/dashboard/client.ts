@@ -170,7 +170,13 @@ function filterPage(page) {
   });
   $$('table[data-paginate]', sec).forEach(function (t) { t.setAttribute('data-page', '1'); paginate(t); });
   var active = !!(f.q || f.sev.length || f.status.length || f.state.length || f.who || f.file || f.owner || f.handles || f.change);
-  var bar = $('.filter-status', sec);
+  /* :not(.whole-model-note) because wholeModelNote() carries BOTH classes and
+     this lookup returns the first match. On a page where the note comes first —
+     Explore, Diagrams, Attribution — this was toggling the note instead of the
+     filter bar, so onFeatureFilter un-hid the note and filterPage immediately
+     re-hid it: selecting a feature on Explore did nothing AND the sentence
+     explaining why it does nothing never appeared. */
+  var bar = $('.filter-status:not(.whole-model-note)', sec);
   if (bar) {
     bar.hidden = !active;
     var parts = [];

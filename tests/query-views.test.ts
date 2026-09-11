@@ -385,6 +385,20 @@ describe('the Explore page', () => {
     }
   });
 
+  it('tells the reader the feature dropdown does not narrow these answers', () => {
+    // The top-bar feature filter hides rows by file; an Explore pane carries no
+    // file, so selecting a feature cannot narrow it. wholeModelNote() is the
+    // sentence that says so — and it only works if filterPage stops clobbering
+    // it, because it carries `filter-status` as well as `whole-model-note` and
+    // the lookup returns the first match. Measured in a browser before the fix:
+    // onFeatureFilter un-hid the note and filterPage re-hid it in the same tick,
+    // so a feature could be selected on Explore with no effect and no
+    // explanation.
+    expect(html).toContain('whole-model-note');
+    expect(html).toContain('but this page shows the whole model');
+    expect(html).toContain(".filter-status:not(.whole-model-note)");
+  });
+
   it('says why a view that is not a diagram is not a diagram', () => {
     const list = GRAPH_VIEWS.find(v => v.id === 'threat')!;
     expect(list.shape).toBe('list');
