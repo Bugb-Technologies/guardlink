@@ -284,6 +284,7 @@ function advice(c) {
   if (c.status === 'open') return '<strong>Recommended:</strong> add a <code>@mitigates</code> annotation naming the control that addresses this threat, or <code>@accepts</code> if the risk is intentionally accepted. Then <code>guardlink verify</code> the claim.';
   if (c.status === 'mitigated') return c.state === 'stale' ? '<strong>Stale:</strong> the code beneath this mitigation changed after it was verified. Re-check that the control still holds, then re-lock with <code>guardlink verify --stale</code>.' : 'Mitigated. Keep the control and its claim verified as the code moves.';
   if (c.status === 'accepted') return 'Accepted by a human. Revisit the acceptance when the asset or the threat changes.';
+  if (c.status === 'refuted') return 'Tested and not exploitable, with the evidence above. The claim stays in the source so the risk class is documented; the outcome expires by itself when the code beneath it changes.';
   return 'A declared control. Verify it so a later edit beneath it is flagged as stale.';
 }
 
@@ -293,6 +294,15 @@ function statusBand(c) {
   return '<div class="d-status d-status-' + esc(c.status) + '"><span class="d-status-label">' + esc(c.statusLabel) + '</span>'
      + (c.state ? '<span class="claim-state ' + esc(c.state) + '">' + esc(c.state) + '</span>' + by : '')
      + (c.change === 'new' ? '<span class="badge badge-blue" title="Added since the compared ref">new</span>' : '') + '</div>';
+}
+/* The tested state: what happened when this exposure was tried, by whom, and whether the code moved since. */
+function hypothesisBand(c) {
+  var h = c.hypothesis; if (!h || h.state === 'untested' && !h.previous_outcome) return '';
+  var label = h.state === 'refuted' ? 'Tested: not exploitable' : h.state === 'confirmed' ? 'Tested: exploitable' : h.state === 'retest' ? 'Confirmed before — code changed, retest' : 'Untested again — code changed since it was ' + esc(h.previous_outcome);
+  var tone = h.state === 'refuted' ? 'mitigated' : h.state === 'confirmed' ? 'confirmed' : 'open';
+  return '<div class="d-status d-status-' + tone + ' d-hyp"><span class="d-status-label">' + label + '</span>'
+    + (h.by ? '<span class="d-state-by">by ' + esc(h.by) + (h.at ? ' on ' + esc(String(h.at).slice(0, 10)) : '') + '</span>' : '') + '</div>'
+    + (h.evidence ? sec('Evidence', esc(h.evidence)) : '');
 }
 function blameBlock(c) {
   if (!c.blame) return '';
@@ -309,6 +319,7 @@ function renderClaimDrawer(c) {
   title.textContent = c.threat + ' · ' + c.asset;
   var h = '';
   h += statusBand(c);
+  h += hypothesisBand(c);
   h += '<div class="d-grid">'
      + sec('Severity', '<span class="fc-sev ' + sevCls(c.severity) + '">' + esc(c.severity) + '</span>')
      + sec('Kind', '<code>' + esc(c.verb) + '</code>')

@@ -3,7 +3,7 @@
  * Converts ThreatModel into dashboard-ready statistics.
  */
 
-import type { ThreatModel } from '../types/index.js';
+import type { ExposureHypothesis, ThreatModel } from '../types/index.js';
 import { buildCoverageIndex, annotationCount } from '../parser/coverage.js';
 import { entriesFromModel, summarise } from '../blame/summary.js';
 import { readLedger } from '../parser/ledger.js';
@@ -57,6 +57,10 @@ export interface ExposureRow {
   line: number;
   mitigated: boolean;
   accepted: boolean;
+  /** Tested and found not exploitable (ledger); not counted as open. */
+  refuted: boolean;
+  /** The tested state when the ledger was attached, else null. */
+  hypothesis: ExposureHypothesis | null;
 }
 
 export interface ConfirmedRow {
@@ -164,6 +168,8 @@ export function computeExposures(model: ThreatModel): ExposureRow[] {
       line: e.location.line,
       mitigated: coverage.isMitigated(e),
       accepted: coverage.isAccepted(e),
+      refuted: e.hypothesis?.state === 'refuted',
+      hypothesis: e.hypothesis ?? null,
     };
   });
 }
@@ -396,7 +402,7 @@ export function computeActions(input: ActionInput): DashboardAction[] {
     });
   }
 
-  const open = exposures.filter(e => !e.mitigated && !e.accepted);
+  const open = exposures.filter(e => !e.mitigated && !e.accepted && !e.refuted);
   const severe = open.filter(e => sevKey(e.severity) === 'critical' || sevKey(e.severity) === 'high');
   if (severe.length > 0) {
     const crit = severe.filter(e => sevKey(e.severity) === 'critical').length;

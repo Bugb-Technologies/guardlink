@@ -108,6 +108,7 @@ guardlink threat-report <fw> [focus…] [--shape full|executive|pr|audit]  # AI 
 guardlink threat-reports                # List saved threat reports
 guardlink annotate <prompt> [--playbook map|exploitable|chains|diff|coverage|verify] [--mode inline|external]  # Launch coding agent; the playbook is the method, the prompt is scope; the gate checks the result
 guardlink lint [dir] [--since <ref>] [--json]   # Check annotations against the evidence bar; --since checks only what a session added
+guardlink hypothesis list|next|refute|confirm   # What happened when an exposure was tested (see below)
 guardlink translate [prompt]            # Generate CERT-X-GEN pentest templates from threat findings
 guardlink ask <query>                   # Ask questions about the threat model and codebase
 guardlink config <show|set|clear>       # Manage LLM provider / CLI agent configuration
@@ -183,6 +184,42 @@ the model are reported on stderr.
 **Skills.** `guardlink init` writes each playbook as `.claude/skills/guardlink-<kind>-<id>/SKILL.md`
 so a developer's own agent session runs the same method. A skill file without the generated marker
 is treated as authored and left alone.
+
+## Hypotheses (`guardlink hypothesis`)
+
+An `@exposes` is a hypothesis; `@confirmed` is the hypothesis with evidence. The third state —
+tested and **not** exploitable — used to have nowhere to go: the exposure stayed open forever or
+was deleted with the reasoning. `.guardlink/hypotheses.json` (schema `guardlink.hypotheses/v1`)
+records what happened when an exposure was tested, keyed by the claim key, with the evidence, who,
+when, and the code hash beneath the claim at that moment.
+
+```bash
+guardlink hypothesis list [dir] [--state untested|confirmed|refuted|retest] [--json]
+guardlink hypothesis next [dir] [-n 10] [--intake]           # what to test next; --intake prints a brief for bugb intake
+guardlink hypothesis refute  src/x.ts:12 --evidence "POST /login with payload X returned 400 from validateEmail()"
+guardlink hypothesis confirm src/x.ts:12 --evidence "request … response …" [--write]   # --write inserts the @confirmed line beneath the @exposes
+guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--write]     # cxg findings joined to claims
+```
+
+- **Evidence is required.** A refutation needs what was tried and what came back; a confirmation
+  needs evidence in hand (a request and response, a reproduction, a scan with proof), the same
+  bar the gate holds `@confirmed` to. Scan evidence is redacted before it is stored.
+- **Outcomes expire with the code.** An outcome holds while the claim's anchor hash is the one it
+  was recorded against. When the code beneath the claim changes, a refutation lapses to
+  `untested` (the old outcome stays attached) and a confirmation becomes `retest`. Earlier
+  outcomes are kept in the entry's history.
+- **Where it shows.** `guardlink status` prints a `Hypotheses:` line and notes refuted exposures
+  beside the exposure count. The dashboard does not count a refuted exposure as open (grade,
+  KPIs, the what-to-do list), badges it `refuted`, and shows the evidence in the drawer; a
+  `retest` row stays open with a badge saying why. Threat reports see `hypothesis` on each
+  exposure and treat refuted as not an open risk. `guardlink lint` treats a refuted exposure as
+  paired.
+- **The queue.** `next` puts retests first, then untested exposures by severity, then those on an
+  undefended path (`guardlink paths`), then unowned ones. No AI: the ledger is bookkeeping and
+  the ranking is arithmetic. Testing stays with bugb and cxg.
+- **Scan import joins** by the finding's annotation location, then by asset and threat, then by
+  CWE. A finding that fits more than one claim is reported as ambiguous, never guessed; one that
+  fits none is listed as unmatched.
 
 ## Threat Report Frameworks
 

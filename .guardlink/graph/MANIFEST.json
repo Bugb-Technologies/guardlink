@@ -1,37 +1,37 @@
 {
   "schema_version": 1,
-  "annotation_hash": "sha256-v2:08844e596d37b81b75c23dbdb37cdaefb4a03c591d2509fd54a09c91b86f7996",
+  "annotation_hash": "sha256-v2:7022e43f23386427ea0d97ba82ca763db48c3d95ed57255f4a1fd713ad86d769",
   "generator": "guardlink@2.0.0",
   "artifacts": [
     {
       "path": ".guardlink/graph/threat-graph.mmd",
       "bytes": 9656,
-      "annotation_hash": "sha256-v2:08844e596d37b81b75c23dbdb37cdaefb4a03c591d2509fd54a09c91b86f7996"
+      "annotation_hash": "sha256-v2:7022e43f23386427ea0d97ba82ca763db48c3d95ed57255f4a1fd713ad86d769"
     },
     {
       "path": ".guardlink/graph/dataflow.mmd",
-      "bytes": 11641,
-      "annotation_hash": "sha256-v2:08844e596d37b81b75c23dbdb37cdaefb4a03c591d2509fd54a09c91b86f7996"
+      "bytes": 12064,
+      "annotation_hash": "sha256-v2:7022e43f23386427ea0d97ba82ca763db48c3d95ed57255f4a1fd713ad86d769"
     },
     {
       "path": ".guardlink/graph/attack-surface.mmd",
-      "bytes": 4980,
-      "annotation_hash": "sha256-v2:08844e596d37b81b75c23dbdb37cdaefb4a03c591d2509fd54a09c91b86f7996"
+      "bytes": 4984,
+      "annotation_hash": "sha256-v2:7022e43f23386427ea0d97ba82ca763db48c3d95ed57255f4a1fd713ad86d769"
     },
     {
       "path": ".guardlink/graph/by-feature/dashboard.mmd",
       "bytes": 2301,
-      "annotation_hash": "sha256-v2:08844e596d37b81b75c23dbdb37cdaefb4a03c591d2509fd54a09c91b86f7996"
+      "annotation_hash": "sha256-v2:7022e43f23386427ea0d97ba82ca763db48c3d95ed57255f4a1fd713ad86d769"
     },
     {
       "path": ".guardlink/graph/by-feature/mcp-integration.mmd",
       "bytes": 2749,
-      "annotation_hash": "sha256-v2:08844e596d37b81b75c23dbdb37cdaefb4a03c591d2509fd54a09c91b86f7996"
+      "annotation_hash": "sha256-v2:7022e43f23386427ea0d97ba82ca763db48c3d95ed57255f4a1fd713ad86d769"
     },
     {
       "path": ".guardlink/model.json",
-      "bytes": 194693,
-      "annotation_hash": "sha256-v2:08844e596d37b81b75c23dbdb37cdaefb4a03c591d2509fd54a09c91b86f7996"
+      "bytes": 201684,
+      "annotation_hash": "sha256-v2:7022e43f23386427ea0d97ba82ca763db48c3d95ed57255f4a1fd713ad86d769"
     }
   ]
 }

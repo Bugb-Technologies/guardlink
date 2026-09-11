@@ -53,6 +53,10 @@
     "./blame": {
       "import": "./dist/blame/index.js",
       "types": "./dist/blame/index.d.ts"
+    },
+    "./hypothesis": {
+      "import": "./dist/hypothesis/index.js",
+      "types": "./dist/hypothesis/index.d.ts"
     }
   },
   "scripts": {

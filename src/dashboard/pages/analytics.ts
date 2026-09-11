@@ -17,7 +17,7 @@ import { computeAssetThreatMatrix, computeControlCoverage, computeSeverityStatus
 import type { SevKey } from '../analytics.js';
 import type { PageContext } from './context.js';
 
-const STATUS_LABEL: Record<string, string> = { open: 'Open', mitigated: 'Mitigated', accepted: 'Accepted', confirmed: 'Confirmed' };
+const STATUS_LABEL: Record<string, string> = { open: 'Open', mitigated: 'Mitigated', accepted: 'Accepted', confirmed: 'Confirmed', refuted: 'Refuted' };
 
 /** What the grids need; a feature variant supplies the same shape for a narrowed model. */
 export type AnalyticsInput = Pick<PageContext, 'scope' | 'claims' | 'model' | 'attribution' | 'heatmap'>;

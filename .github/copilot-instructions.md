@@ -163,7 +163,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - #llm-client -> LLMProvider via fetch
 - LLMProvider -> #llm-client via response
 - LLMToolCall -> #llm-client via createToolExecutor
-- … and 137 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
+- … and 147 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
 
 ### Features (filter with `--feature`)
 
@@ -172,11 +172,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-677 annotations, 18 assets, 15 threats, 13 controls, 106 exposures, 0 confirmed, 109 mitigations, 3 actors, 1 entitlements, 157 flows, 2 features
+701 annotations, 18 assets, 15 threats, 13 controls, 109 exposures, 0 confirmed, 112 mitigations, 3 actors, 1 entitlements, 167 flows, 2 features
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v2:08844e596d37b81b75c23dbdb37cdaefb4a03c591d2509fd54a09c91b86f7996`
+- `annotation_hash`: `sha256-v2:7022e43f23386427ea0d97ba82ca763db48c3d95ed57255f4a1fd713ad86d769`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.

@@ -276,7 +276,7 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
   // artifact stays content-derived.
   const { generated_at, ...durableModel } = ordered;
   write(join(guardlinkDir, 'model.json'), '.guardlink/model.json',
-    JSON.stringify(durableModel, (key, value) => (key === 'anchor' || key === 'blame' || key === 'blame_context' ? undefined : value), 2) + '\n');
+    JSON.stringify(durableModel, (key, value) => (key === 'anchor' || key === 'blame' || key === 'blame_context' || key === 'hypothesis' ? undefined : value), 2) + '\n');
 
   // Committed, so content-derived only — same rule as the .mmd headers.
   const manifestBody = JSON.stringify({

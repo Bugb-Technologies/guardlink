@@ -19,6 +19,7 @@
  *   guardlink ask <query>             Ask questions about threats and codebase context
  *   guardlink annotate <prompt>       Launch coding agent to add annotations (a playbook supplies the method; the gate checks the result)
  *   guardlink lint [dir]              Check annotations against the evidence bar; --since <ref> for what a session added
+ *   guardlink hypothesis <cmd>        What happened when an exposure was tested: list, next, refute, confirm (--from-scan)
  *   guardlink review [dir]            Interactive governance review of unmitigated exposures
  *   guardlink entitle [dir]           Accept/reject/defer proposed @entitles claims
  *   guardlink config <action>         Manage LLM provider configuration
@@ -66,6 +67,8 @@ import { selectAnnotatePlaybook, selectReportShape, ANNOTATE_PLAYBOOKS, REPORT_S
 import { lintAnnotations, runGate, formatGateReport, buildGateFollowUp, stripViolations, RULE_FIX } from '../gate/index.js';
 import { relationRecords } from '../parser/claim-key.js';
 import { parseFindingsBlock, validateFindings } from '../analyze/findings.js';
+import { readHypotheses, classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, confirmedLine, writeConfirmedLine, formatHypothesisList, formatQueue, formatIntake, formatOutcome, formatImport } from '../hypothesis/index.js';
+import type { HypothesisClassification } from '../hypothesis/index.js';
 import { resolveConfig, saveProjectConfig, saveGlobalConfig, loadProjectConfig, loadGlobalConfig, maskKey, describeConfigSource } from '../agents/config.js';
 import { getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview, type ReviewResult } from '../review/index.js';
 import {
@@ -288,7 +291,8 @@ program
 
     printDiagnostics(diagnostics);
     // @flows LedgerFile -> #cli via readLedger -- "status reports verified/stale/unverified claim counts alongside annotation coverage"
-    printStatus(model, classifyClaims(model, readLedger(root)));
+    // @flows LedgerFile -> #cli via readHypotheses -- "status reports how many exposures were tested, and with what outcome"
+    printStatus(model, classifyClaims(model, readLedger(root)), classifyHypotheses(model, readHypotheses(root)));
     // @flows GitRepo -> #cli via computeBlame -- "status --blame reads attribution without touching the model"
     if (opts.blame) printBlameSummary(buildBlamePayload(model, computeBlame(root, model), root));
 
@@ -1405,7 +1409,11 @@ program
       // Re-prompt with the violations, then strip what still fails so a bad
       // claim never lands in the tree as if it had been checked.
       // @flows #cli -> #gate via runGate -- "The model before and after the agent"
-      const parseNow = async (): Promise<ThreatModel> => (await parseProject({ root, project })).model;
+      const parseNow = async (): Promise<ThreatModel> => {
+        const m = (await parseProject({ root, project })).model;
+        attachHypotheses(m, classifyHypotheses(m, readHypotheses(root)));
+        return m;
+      };
       let report = runGate(baseline, await parseNow());
       console.log('\n' + formatGateReport(report));
       let retries = Math.max(0, parseInt(opts.gateRetries ?? '1', 10) || 0);
@@ -1465,6 +1473,8 @@ program
         return;
       }
     }
+    // A refuted exposure counts as paired: the ledger is the evidence.
+    attachHypotheses(model, classifyHypotheses(model, readHypotheses(root)));
     // Without --since a person may have written the @accepts in the tree; only a session's additions are held to the no-governance rule.
     const violations = lintAnnotations(model, { only, governance: opts.since ? 'error' : 'ignore' });
     const errors = violations.filter(v => v.level === 'error').length;
@@ -1485,6 +1495,119 @@ program
     }
     if (errors > 0) process.exitCode = 1;
   });
+
+// ─── hypothesis ──────────────────────────────────────────────────────
+
+const hypothesis = program
+  .command('hypothesis')
+  .description('What happened when an exposure was tested: record confirmed or refuted outcomes with evidence, see what is untested, and what to test next');
+
+/** Parse, classify, and hand back both — every subcommand starts here. */
+async function hypothesisContext(dir: string, projectOpt?: string): Promise<{ root: string; project: string; model: ThreatModel; c: HypothesisClassification }> {
+  const root = resolve(dir);
+  const project = detectProjectName(root, projectOpt);
+  const { model } = await parseProject({ root, project });
+  const c = classifyHypotheses(model, readHypotheses(root));
+  return { root, project, model, c };
+}
+
+hypothesis
+  .command('list')
+  .description('Every exposure with its tested state: untested, confirmed, refuted, or retest (confirmed, then the code changed)')
+  .argument('[dir]', 'Project directory', '.')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('--state <state>', 'Only this state: untested, confirmed, refuted, retest')
+  .option('--json', 'Machine-readable output (guardlink.hypotheses-list/v1)')
+  .action(async (dir: string, opts: { project?: string; state?: string; json?: boolean }) => {
+    const { root, c } = await hypothesisContext(dir, opts.project);
+    if (opts.state && !['untested', 'confirmed', 'refuted', 'retest'].includes(opts.state)) { console.error(`Unknown state ${opts.state}`); process.exitCode = 1; return; }
+    if (opts.json) {
+      const records = (opts.state ? c.records.filter(r => r.state === opts.state) : c.records).map(r => ({
+        key: r.key, claim: r.claim, asset: r.asset, threat: r.threat, severity: r.severity, file: r.file, line: r.line, state: r.state, expired: r.expired,
+        outcome: r.entry ? { outcome: r.entry.outcome, evidence: r.entry.evidence, by: r.entry.by, at: r.entry.at, source: r.entry.source, history: r.entry.history.length } : null,
+        previous: r.previous ? { outcome: r.previous.outcome, by: r.previous.by, at: r.previous.at } : null,
+      }));
+      console.log(JSON.stringify({ schema: 'guardlink.hypotheses-list/v1', root, ledger: c.ledger, summary: c.summary, records }, null, 2));
+      return;
+    }
+    console.log(formatHypothesisList(c, opts.state));
+  });
+
+hypothesis
+  .command('next')
+  .description('What to test next: retests first, then untested by severity, undefended path, and ownership')
+  .argument('[dir]', 'Project directory', '.')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('-n, --count <n>', 'How many to list', '10')
+  .option('--intake', 'Print the queue as a brief for bugb intake')
+  .option('--json', 'Machine-readable output')
+  .action(async (dir: string, opts: { project?: string; count?: string; intake?: boolean; json?: boolean }) => {
+    const { root, project, model, c } = await hypothesisContext(dir, opts.project);
+    // @flows ThreatModel -> #cli via findUnmitigatedPaths -- "Which assets sit on an undefended path, for the ranking"
+    const pathAssets = new Set<string>();
+    for (const f of findUnmitigatedPaths(model)) for (const a of f.assetsOnPath) pathAssets.add(a);
+    const n = Math.max(1, parseInt(opts.count ?? '10', 10) || 10);
+    const queue = rankUntested(c.records, model, pathAssets).slice(0, opts.intake ? Number.MAX_SAFE_INTEGER : n);
+    if (opts.json) { console.log(JSON.stringify({ schema: 'guardlink.hypotheses-next/v1', root, queue: queue.map(r => ({ rank: r.rank, state: r.state, asset: r.asset, threat: r.threat, severity: r.severity, file: r.file, line: r.line, onPath: r.onPath, unowned: r.unowned, claim: r.claim })) }, null, 2)); return; }
+    console.log(opts.intake ? formatIntake(queue, project) : formatQueue(queue));
+  });
+
+const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: string | undefined, dir: string, opts: { project?: string; evidence?: string; by?: string; write?: boolean; fromScan?: string }) => {
+  const { root, model } = await hypothesisContext(dir, opts.project);
+  const by = opts.by || `human:${defaultVerifier(root)}`;
+  const at = nowIso();
+  try {
+    if (outcome === 'confirmed' && opts.fromScan) {
+      // @flows ScanReport -> #cli via importScan -- "cxg findings recorded as confirmations, joined to claims"
+      const r = importScan(root, model, opts.fromScan, { by: opts.by || 'cxg', at });
+      console.log(formatImport(r));
+      if (opts.write) {
+        for (const c of r.confirmed) {
+          try { const w = writeConfirmedLine(root, c.record, confirmedLine(c.record, c.entry)); console.log(`  wrote ${w.file}:${w.line}`); }
+          catch (e) { console.error(`  ! ${(e as Error).message}`); }
+        }
+      } else if (r.confirmed.length > 0) {
+        console.log('\nadd --write to insert an @confirmed line beneath each joined @exposes');
+      }
+      if (r.ambiguous.length > 0 || r.unmatched.length > 0) process.exitCode = 1;
+      return;
+    }
+    if (!target) { console.error('Name the exposure as file:line, or pass --from-scan <report.json>.'); process.exitCode = 1; return; }
+    if (!opts.evidence) { console.error(`--evidence is required: say what was tried and what came back. A ${outcome === 'refuted' ? 'refutation' : 'confirmation'} without it is a guess.`); process.exitCode = 1; return; }
+    const { record, entry } = recordOutcome(root, model, target, outcome, { evidence: opts.evidence, by, at });
+    const offered = outcome === 'confirmed' ? confirmedLine(record, entry) : undefined;
+    console.log(formatOutcome(record, entry, opts.write ? undefined : offered));
+    if (outcome === 'confirmed' && opts.write) {
+      const w = writeConfirmedLine(root, record, offered!);
+      console.log(`\nWrote ${w.file}:${w.line}`);
+    }
+  } catch (e) {
+    console.error(`✗ ${(e as Error).message}`);
+    process.exitCode = 1;
+  }
+};
+
+hypothesis
+  .command('refute')
+  .description('Record that an exposure was tested and is not exploitable, with the evidence')
+  .argument('<target>', 'The exposure as file:line')
+  .argument('[dir]', 'Project directory', '.')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('--evidence <text>', 'What was tried and what came back (required)')
+  .option('--by <name>', 'Who tested it (default: human:<git user.name>)')
+  .action(outcomeAction('refuted'));
+
+hypothesis
+  .command('confirm')
+  .description('Record that an exposure was tested and is exploitable, from evidence in hand or a cxg scan report')
+  .argument('[target]', 'The exposure as file:line (omit with --from-scan)')
+  .argument('[dir]', 'Project directory', '.')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('--evidence <text>', 'The request and response, the reproduction, or the scan proof (required without --from-scan)')
+  .option('--from-scan <file>', 'A cxg scan report (JSON); each finding is joined to a claim by location, then asset and threat, then CWE')
+  .option('--by <name>', 'Who tested it (default: human:<git user.name>; cxg for --from-scan)')
+  .option('--write', 'Also insert the @confirmed line beneath the @exposes in the source')
+  .action(outcomeAction('confirmed'));
 
 // ─── translate ───────────────────────────────────────────────────────
 
@@ -3021,7 +3144,7 @@ function printDiagnostics(diagnostics: ParseDiagnostic[]) {
   }
 }
 
-function printStatus(model: ThreatModel, verification?: VerificationReport) {
+function printStatus(model: ThreatModel, verification?: VerificationReport, hypotheses?: HypothesisClassification) {
   console.log(`GuardLink Status: ${model.project}`);
   console.log(`${'─'.repeat(40)}`);
   console.log(`Files scanned:    ${model.source_files}`);
@@ -3045,8 +3168,15 @@ function printStatus(model: ThreatModel, verification?: VerificationReport) {
   console.log(`Controls:         ${model.controls.length}`);
   if ((model.actors || []).length > 0) console.log(`Actors:           ${model.actors!.length}`);
   console.log(`Mitigations:      ${model.mitigations.length}`);
-  console.log(`Exposures:        ${model.exposures.length}`);
+  const refuted = hypotheses ? hypotheses.summary.refuted : 0;
+  console.log(`Exposures:        ${model.exposures.length}${refuted > 0 ? ` (${refuted} refuted with evidence)` : ''}`);
   if ((model.confirmed || []).length > 0) console.log(`Confirmed:        ${model.confirmed.length} 🔴`);
+  if (hypotheses && hypotheses.ledger !== 'absent') {
+    const h = hypotheses.summary;
+    console.log(hypotheses.ledger === 'corrupt'
+      ? 'Hypotheses:       ledger unreadable (.guardlink/hypotheses.json)'
+      : `Hypotheses:       ${h.untested} untested, ${h.confirmed} confirmed, ${h.refuted} refuted, ${h.retest} retest`);
+  }
   console.log(`Acceptances:      ${model.acceptances.length}`);
   if ((model.entitlements || []).length > 0) {
     const inert = model.entitlements!.filter(e => e.inert).length;
