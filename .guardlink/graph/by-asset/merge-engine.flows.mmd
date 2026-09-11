@@ -1,0 +1,18 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-asset/merge-engine.flows.mmd
+%% scope:           PARTIAL — #merge-engine and its flow neighbourhood, grown until the drawing stopped fitting
+%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% generator:       guardlink@2.0.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
+graph LR
+  reportjson["🧩 ReportJSON"]
+  merge_engine["🧩 Workspace.Merge"]
+  mergedreport["🧩 MergedReport"]
+  reportjson -- "📡 mergeReports" --> merge_engine
+  merge_engine -- "📡 mergeReports" --> mergedreport

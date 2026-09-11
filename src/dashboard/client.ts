@@ -66,6 +66,7 @@ function showSection(id, el, opts) {
   if (nav) nav.classList.add('active');
   closeDrawer();
   if (id === 'diagrams') setTimeout(function () { renderActiveDiagram(); }, 100);
+  if (id === 'explore') setTimeout(function () { exploreApply(_route.params); }, 100);
   if (id === 'ai-analysis' && !window._aiAnalysisRendered) renderAIAnalysis();
   if (!opts.silent) {
     var target = '#' + id + (opts.query ? '?' + opts.query : '');
@@ -129,6 +130,7 @@ function syncControls(page, params) {
   });
   var who = sec ? $('.who-filter', sec) : null;
   if (who) { who.hidden = !f.who; var name = $('.who-filter-name', who); if (name) name.textContent = f.who === 'ai' ? 'AI-assisted only' : f.who; }
+  if (page === 'explore') exploreApply(params);
 }
 
 function filterPage(page) {
@@ -544,7 +546,166 @@ function onFeatureFilter(name) {
   filterPage(_route.page);
 }
 
-/* ===== DIAGRAMS: focus, find, theme ===== */
+/* ===== EXPLORE: one question at a time =====
+   Every answer is already in the page — buildExploreData ran the queries at
+   generation time. This only decides which one is visible, so there is no
+   selection logic in the browser to disagree with the selection in TypeScript.
+
+   The pane a reader lands on with no params is the first question in the
+   catalogue; a view whose subject is missing or unknown falls back to that
+   view's first subject rather than showing nothing, because an empty Explore
+   page after a click is indistinguishable from a broken one. */
+function exploreDefaultSubject(view) {
+  var sel = $('.explore-subject[data-view="' + view + '"]');
+  return sel && sel.options.length ? sel.options[0].value : '';
+}
+
+function exploreApply(params) {
+  var sec = document.getElementById('sec-explore');
+  if (!sec) return;
+  var view = params.get('view') || 'overview';
+  if (!$('.explore-q[data-view="' + CSS.escape(view) + '"]', sec)) view = 'overview';
+  var subject = params.get('subject') || '';
+  var wanted = '.explore-pane[data-view="' + CSS.escape(view) + '"][data-subject="' + CSS.escape(subject) + '"]';
+  if (!$(wanted, sec)) {
+    subject = exploreDefaultSubject(view);
+    wanted = '.explore-pane[data-view="' + CSS.escape(view) + '"][data-subject="' + CSS.escape(subject) + '"]';
+  }
+
+  $$('.explore-q', sec).forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-view') === view); });
+  $$('.explore-purpose', sec).forEach(function (p) { p.hidden = p.getAttribute('data-view') !== view; });
+  $$('.explore-subject', sec).forEach(function (sel) {
+    var mine = sel.getAttribute('data-view') === view;
+    sel.hidden = !mine;
+    if (mine && subject && sel.value !== subject) sel.value = subject;
+  });
+  $$('.explore-pane', sec).forEach(function (p) { p.classList.remove('active'); });
+  var pane = $(wanted, sec);
+  if (pane) pane.classList.add('active');
+  if (pane) exploreFillRows(pane);
+  /* Find and zoom act on a diagram. A view answering with a matrix or a list has
+     none, and leaving the controls up would be one more control that looks live
+     and is not — the same defect as a legend keyed to a diagram that is not
+     there. */
+  var hasDiagram = !!(pane && $('.mermaid', pane));
+  $$('.explore-controls .diagram-find, .explore-controls .diagram-seg', sec).forEach(function (c) { c.hidden = !hasDiagram; });
+  if (hasDiagram) renderMermaidPanel(pane);
+}
+
+/* The rows under an Explore pane, built from claimsData the page already holds.
+   Rendering them server-side put every claim on the page three times — once per
+   component, weakness and file pane — and measured +1.19 MB on a 4.21 MB file.
+   Markup mirrors the Threats table so a row looks and behaves the same on both
+   pages, including data-claim, which the delegated click handler turns into the
+   claim drawer. */
+var EXPLORE_STATUS_LABEL = { open: 'Open', mitigated: 'Mitigated', accepted: 'Accepted', confirmed: 'Confirmed', control: 'Control' };
+var EXPLORE_STATUS_TONE = { open: 'badge-red', confirmed: 'badge-red', mitigated: 'badge-green', accepted: 'badge-blue', control: '' };
+var EXPLORE_STATUS_RANK = { confirmed: 0, open: 1, mitigated: 2, accepted: 3, control: 4 };
+var EXPLORE_SEV_RANK = { critical: 0, high: 1, medium: 2, low: 3, unset: 4 };
+
+function exploreNormSev(s) {
+  var l = (s || '').toLowerCase();
+  if (l === 'critical' || l === 'p0') return 'critical';
+  if (l === 'high' || l === 'p1') return 'high';
+  if (l === 'medium' || l === 'p2') return 'medium';
+  if (l === 'low' || l === 'p3') return 'low';
+  return 'unset';
+}
+function exploreSevBadge(s) {
+  var k = exploreNormSev(s);
+  var cls = k === 'critical' ? 'crit' : k === 'medium' ? 'med' : k;
+  return '<span class="fc-sev ' + cls + '">' + esc(k === 'unset' ? (s || 'unset') : k) + '</span>';
+}
+function exploreLocCell(c) {
+  var full = c.line ? c.file + ':' + c.line : c.file;
+  var slash = c.file.lastIndexOf('/');
+  var base = slash >= 0 ? c.file.slice(slash + 1) : c.file;
+  var dir = slash >= 0 ? c.file.slice(0, slash) : '';
+  var body = '<span class="loc-file">' + esc(c.line ? base + ':' + c.line : base) + '</span>'
+    + (dir ? '<span class="loc-dir">' + esc(dir) + '</span>' : '');
+  var inner = c.url
+    ? '<a class="loc-link" href="' + esc(c.url) + '" target="_blank" rel="noopener" title="' + esc(full) + ' — ' + esc(openOnHost) + '">' + body + '</a>'
+    : '<span class="loc-text" title="' + esc(full) + '">' + body + '</span>';
+  return '<td class="loc"><div class="loc-cell">' + inner + '</div></td>';
+}
+
+/* Which claims a slot wants. One predicate per kind, so a pane declares what it
+   is about and never carries a copy of the answer. */
+function exploreRowsFor(kind, value) {
+  return claimsData.filter(function (c) {
+    if (kind === 'asset') return c.akey === value;
+    if (kind === 'threat') return c.threat === value;
+    if (kind === 'file') return c.file === value;
+    if (kind === 'open') return c.status === 'open' || c.status === 'confirmed';
+    if (kind === 'new') return c.change === 'new';
+    return false;
+  }).sort(function (a, b) {
+    return (EXPLORE_STATUS_RANK[a.status] - EXPLORE_STATUS_RANK[b.status])
+      || (EXPLORE_SEV_RANK[exploreNormSev(a.severity)] - EXPLORE_SEV_RANK[exploreNormSev(b.severity)])
+      || String(a.asset).localeCompare(String(b.asset))
+      || String(a.threat).localeCompare(String(b.threat));
+  });
+}
+
+function exploreRowHtml(c, noAsset) {
+  var open = c.status === 'open' || c.status === 'confirmed';
+  var tone = EXPLORE_STATUS_TONE[c.status] || '';
+  var desc = c.description || '—';
+  return '<tr class="clickable' + (open ? ' row-open' : '') + '" data-claim="' + c.idx + '">'
+    + '<td><span class="badge ' + tone + '">' + esc(EXPLORE_STATUS_LABEL[c.status] || c.status) + '</span>'
+    + (c.change === 'new' ? '<span class="badge badge-blue" title="Added since the --since ref">new</span>' : '') + '</td>'
+    + '<td>' + exploreSevBadge(c.severity) + '</td>'
+    + '<td><div class="claim-cell">' + (noAsset ? '' : '<code class="cc-asset">' + esc(c.asset) + '</code>')
+    + '<code class="cc-threat">' + esc(c.threat) + '</code></div></td>'
+    + '<td>' + (desc.length > 160 ? '<div class="desc-clamp" title="' + esc(desc) + '">' + esc(desc) + '</div>' : esc(desc)) + '</td>'
+    + exploreLocCell(c) + '</tr>';
+}
+
+function exploreFillRows(pane) {
+  $$('.explore-rows-slot', pane).forEach(function (slot) {
+    if (slot.getAttribute('data-filled') === '1') return;
+    var kind = slot.getAttribute('data-rows-kind');
+    var value = slot.getAttribute('data-rows-value') || '';
+    var noAsset = slot.getAttribute('data-rows-noasset') === '1';
+    var limit = parseInt(slot.getAttribute('data-rows-limit') || '0', 10);
+    var rows = exploreRowsFor(kind, value);
+    var shown = limit > 0 ? rows.slice(0, limit) : rows;
+    slot.innerHTML = shown.length === 0
+      ? '<p class="empty-state">' + esc(slot.getAttribute('data-rows-empty') || 'Nothing here.') + '</p>'
+      : '<div class="table-wrap"><table class="tbl explore-rows"><thead><tr><th>Status</th><th>Sev</th><th>'
+        + (noAsset ? 'Threat' : 'Asset → threat') + '</th><th>What it says</th><th class="loc">Where</th></tr></thead><tbody>'
+        + shown.map(function (c) { return exploreRowHtml(c, noAsset); }).join('') + '</tbody></table></div>';
+    slot.setAttribute('data-filled', '1');
+    $$('[data-rows-count="' + kind + ':' + value + '"]', pane).forEach(function (n) { n.textContent = String(rows.length); });
+  });
+}
+
+function exploreGo(view, subject) {
+  var p = new URLSearchParams();
+  p.set('view', view);
+  if (subject) p.set('subject', subject);
+  location.hash = '#explore?' + p.toString();
+}
+
+function exploreView(view) {
+  /* Switching question keeps the subject only when the new view has that one;
+     exploreApply falls back to the view's first subject otherwise. */
+  exploreGo(view, _route.params.get('subject') || '');
+}
+
+function exploreSubject(subject) {
+  exploreGo(_route.params.get('view') || 'overview', subject);
+}
+
+/* ===== DIAGRAMS: focus, find, theme =====
+   Diagram controls address "the active panel". Two pages now hold panels, so
+   the lookup is scoped to the section on screen first — without that, whichever
+   panel came first in the document would answer for both pages. */
+function activeDiagramPanel() {
+  var sec = $('.section-content.active');
+  return (sec && $('.diagram-panel.active', sec)) || $('.diagram-panel.active');
+}
+
 function diagramFocus(name) {
   var panel = document.getElementById('dtab-threat-graph'); if (!panel) return;
   var toggle = document.getElementById('threatGraphToggle');
@@ -559,7 +720,7 @@ function diagramFocus(name) {
   renderActiveDiagram();
 }
 function diagramFind(term) {
-  var panel = document.querySelector('.diagram-panel.active'); if (!panel) return;
+  var panel = activeDiagramPanel(); if (!panel) return;
   var t = (term || '').toLowerCase().trim();
   $$('svg .node, svg .cluster', panel).forEach(function (n) { n.classList.toggle('dim', !!t && n.textContent.toLowerCase().indexOf(t) < 0); });
   $$('svg .edgePath, svg .edgeLabel, svg .edgePaths > path, svg .flowchart-link', panel).forEach(function (e) { e.classList.toggle('dim-edge', !!t); });
@@ -712,7 +873,13 @@ function toggleTheme() {
   html.setAttribute('data-theme', next);
   try { localStorage.setItem('theme', next); } catch (e) { /* private mode */ }
   window._mermaidRendered = false;
-  if (document.getElementById('sec-diagrams').classList.contains('active')) renderActiveDiagram();
+  /* Mermaid sources carry dark fills for GitHub and themeMermaid() swaps them on
+     the light theme, so a theme change means a re-render — on whichever of the
+     two diagram-bearing pages is on screen. */
+  var diagrams = document.getElementById('sec-diagrams');
+  var explore = document.getElementById('sec-explore');
+  if (diagrams && diagrams.classList.contains('active')) renderActiveDiagram();
+  else if (explore && explore.classList.contains('active')) exploreApply(_route.params);
 }
 function toggleSidebar() {
   var sidebar = document.getElementById('sidebar');

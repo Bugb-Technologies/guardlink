@@ -1410,4 +1410,121 @@ table.heat .heat-col span { font-size: .68rem; }
 .findings-table td .who { border-bottom: 0; font-weight: 600; }
 .findings-table td .small { font-size: .7rem; margin-top: 2px; }
 .findings-table td .pill { margin: 0; }
+
+/* ── Explore: one question at a time ─────────────────────────────── */
+/* The question bar is the page's primary control, so it reads as a control
+   strip rather than as a row of tabs inside a panel: it stays put while the
+   answer beneath it changes shape completely. */
+.explore-bar {
+  display: flex; flex-wrap: wrap; gap: .6rem .9rem; align-items: center;
+  justify-content: space-between;
+  padding: .55rem .7rem; margin-bottom: .8rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  position: sticky; top: 0; z-index: 5;
+}
+.explore-questions { display: flex; flex-wrap: wrap; gap: .3rem; }
+.explore-q {
+  font: inherit; font-size: .78rem; font-weight: 600;
+  padding: .34rem .7rem; border-radius: 999px; cursor: pointer;
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--border); transition: all .15s var(--ease);
+}
+.explore-q:hover { color: var(--text); border-color: var(--accent-dim); }
+.explore-q.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.explore-controls { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.explore-subject {
+  font: inherit; font-size: .76rem; max-width: 22rem;
+  padding: .3rem .5rem; border-radius: var(--radius-sm);
+  background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+}
+.explore-subject:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* What the view is for. Always above the answer, never collapsible: a reader
+   has to be able to tell a view somebody wanted from one the data allowed. */
+.explore-purpose {
+  margin: 0 0 .9rem; padding: .6rem .85rem;
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0; max-width: 90ch;
+}
+.explore-question { margin: 0; font-size: .86rem; font-weight: 600; color: var(--text); }
+.explore-shape { margin: .35rem 0 0; font-size: .76rem; color: var(--muted); }
+
+.explore-pane { display: none; }
+.explore-pane.active { display: block; }
+
+/* One plane per row, never two abreast.
+   They are separate questions and must never share one canvas — but they must
+   not share a ROW either. The 12-node budget is a measurement against a
+   1096 x 648 panel; put two of those side by side on the same page and each
+   gets ~530px, the layout no longer fits, and a diagram that passed the budget
+   is cropped or scaled to illegible labels. Measured in a browser: the #mcp
+   threat plane at 7 nodes / 8 edges — comfortably inside budget — ran off the
+   right edge of a half-width panel. Stacking costs a scroll; the alternative
+   costs the guarantee. */
+.explore-planes { display: grid; grid-template-columns: 1fr; gap: .8rem; margin-bottom: 1rem; }
+.explore-diagram { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.explore-diagram-head {
+  display: flex; flex-wrap: wrap; gap: .2rem .6rem; align-items: baseline;
+  padding: .5rem .8rem; border-bottom: 1px solid var(--border); background: var(--surface2);
+}
+.explore-diagram-title { font-size: .8rem; font-weight: 700; letter-spacing: .2px; }
+.explore-diagram-purpose { font-size: .73rem; color: var(--muted); }
+.explore-diagram .mermaid-wrap { max-height: 46vh; }
+
+/* The size readout. Deliberately unalarming — it is the normal state of a
+   working view, not a warning — and always present, so its absence never has
+   to be interpreted. */
+.explore-budget {
+  margin: 0; padding: .45rem .8rem;
+  font-size: .72rem; color: var(--muted); line-height: 1.5;
+  border-top: 1px solid var(--border); background: var(--surface2);
+}
+.explore-pane > .explore-budget { border: 1px solid var(--border); border-radius: var(--radius-sm); margin: .6rem 0; max-width: 90ch; }
+
+/* "There is no picture, and here is why." Not styled as an error: declining to
+   draw an illegible graph is the view working correctly. */
+.explore-nodraw {
+  margin: 0; padding: 1.1rem .9rem; text-align: center;
+  font-size: .78rem; color: var(--muted); background: var(--surface2);
+}
+
+.explore-rows { font-size: .78rem; }
+.explore-rows td, .explore-rows th { padding: .35rem .55rem; }
+
+/* ── undefended routes: a path drawn as the line it is ───────────── */
+.path-finding {
+  padding: .6rem .8rem; margin-bottom: .55rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-left: 3px solid var(--danger, #ea1d1d); border-radius: var(--radius-sm);
+}
+.path-chain { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
+.path-node { font-size: .78rem; padding: .15rem .45rem; border-radius: var(--radius-sm); background: var(--surface2); border: 1px solid var(--border); }
+.path-node.path-asset { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.path-arrow { color: var(--muted); font-size: .8rem; }
+.path-meta { display: flex; flex-wrap: wrap; gap: .3rem .6rem; align-items: center; margin-top: .4rem; font-size: .72rem; color: var(--muted); }
+.path-hops { display: flex; flex-wrap: wrap; gap: .3rem; }
+
+@media (max-width: 900px) {
+  .explore-bar { position: static; }
+}
+
+/* A whole-model diagram that draws but cannot be read. Not an error colour:
+   the picture is still there and still correct, it is only being honest about
+   its size — which is a different thing from the render-budget banner above it,
+   where nothing was drawn at all. */
+.diagram-toobig {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  padding: .7rem .9rem;
+  margin: 0 0 14px;
+  font-size: .78rem;
+  color: var(--text);
+  max-width: 86ch;
+}
+.diagram-toobig strong { display: block; margin-bottom: .35rem; }
+.diagram-toobig ul { margin: 0 0 .5rem; padding-left: 1.1rem; }
+.diagram-toobig li { margin-bottom: .2rem; }
+.diagram-toobig p { margin: 0; color: var(--muted); }
 `;

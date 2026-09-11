@@ -1,0 +1,41 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-asset/blame.threats.mmd
+%% scope:           PARTIAL — #blame only — its own threats and controls
+%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% generator:       guardlink@2.0.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
+graph LR
+  blame["🔷 GuardLink.Blame"]
+  path_traversal["🟠 Path_Traversal (cwe:CWE-22)"]:::threat
+  dos["🟡 Denial_of_Service (cwe:CWE-400)"]:::threat
+  redos["🟡 ReDoS (cwe:CWE-1333)"]:::threat
+  cmd_injection["🔴 Command_Injection (cwe:CWE-78)"]:::threat
+  data_exposure["🟡 Sensitive_Data_Exposure (cwe:CWE-200)"]:::threat
+  path_validation["🛡️ Path_Validation"]:::control
+  resource_limits["🛡️ Resource_Limits"]:::control
+  regex_anchoring["🛡️ Regex_Anchoring"]:::control
+  param_commands["🛡️ Parameterized_Commands"]:::control
+  identity_redaction["🛡️ Identity_Redaction"]:::control
+  blame -. exposes .-> path_traversal
+  blame -. exposes .-> dos
+  blame -. exposes .-> redos
+  blame -. exposes .-> cmd_injection
+  blame -. exposes .-> data_exposure
+  path_validation -- mitigates --> path_traversal
+  path_validation -. protects .-> blame
+  resource_limits -- mitigates --> dos
+  resource_limits -. protects .-> blame
+  regex_anchoring -- mitigates --> redos
+  regex_anchoring -. protects .-> blame
+  param_commands -- mitigates --> cmd_injection
+  param_commands -. protects .-> blame
+  identity_redaction -- mitigates --> data_exposure
+  identity_redaction -. protects .-> blame
+  classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
+  classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px

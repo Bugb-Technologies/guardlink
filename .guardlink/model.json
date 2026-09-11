@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:ece0b6f5232742e07e7b8c7f0e5eb4f070f722301c2d595cb12091ae1088000b",
+    "annotation_hash": "sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 140,
-  "annotations_parsed": 701,
+  "source_files": 145,
+  "annotations_parsed": 717,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -38,6 +38,7 @@
     "src/dashboard/client.ts",
     "src/dashboard/data.ts",
     "src/dashboard/diagrams.ts",
+    "src/dashboard/explore.ts",
     "src/dashboard/generate.ts",
     "src/dashboard/html.ts",
     "src/dashboard/index.ts",
@@ -49,6 +50,7 @@
     "src/dashboard/pages/context.ts",
     "src/dashboard/pages/data-boundaries.ts",
     "src/dashboard/pages/diagrams.ts",
+    "src/dashboard/pages/explore.ts",
     "src/dashboard/pages/reports.ts",
     "src/dashboard/pages/summary.ts",
     "src/dashboard/pages/threats.ts",
@@ -62,6 +64,8 @@
     "src/gate/gate.ts",
     "src/gate/index.ts",
     "src/gate/lint.ts",
+    "src/graph/legibility.ts",
+    "src/graph/views.ts",
     "src/init/detect.ts",
     "src/init/index.ts",
     "src/init/migrate.ts",
@@ -143,6 +147,7 @@
     "examples/github-action.yml",
     "scripts/build-grammars.ts",
     "src/analyze/format.ts",
+    "src/graph/index.ts",
     "src/index.ts",
     "src/init/picker.ts",
     "src/parser/format.ts",
@@ -1109,6 +1114,16 @@
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
+      "description": "Every value here is raw; pages/explore.ts escapes each one through esc() at the point it is interpolated, including Mermaid source, which is escaped into the <pre> and read back as text",
+      "location": {
+        "file": "src/dashboard/explore.ts",
+        "line": 21
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
       "description": "esc() HTML-encodes every interpolated value in every page module; serialized data escapes closing script tags before embedding in <script>",
       "location": {
         "file": "src/dashboard/generate.ts",
@@ -1249,6 +1264,16 @@
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
+      "description": "Every interpolated value — asset ids, threat names, file paths, descriptions, boundary labels and the Mermaid source itself — goes through esc(); the Mermaid text is escaped into the <pre> and read back by the client as textContent",
+      "location": {
+        "file": "src/dashboard/pages/explore.ts",
+        "line": 30
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
       "description": "Framework names in the command chips are fixed strings; nothing from a report is interpolated server-side",
       "location": {
         "file": "src/dashboard/pages/reports.ts",
@@ -1343,6 +1368,16 @@
       "location": {
         "file": "src/gate/gate.ts",
         "line": 12
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#dos",
+      "control": "#regex-anchoring",
+      "description": "Every pattern is line-anchored or a bounded character class; no nested quantifier can backtrack across the input, and each line is scanned a fixed number of times",
+      "location": {
+        "file": "src/graph/legibility.ts",
+        "line": 91
       }
     },
     {
@@ -2398,6 +2433,19 @@
       "external_refs": [
         "cwe:CWE-79"
       ],
+      "description": "buildExploreData carries asset ids, threat names, file paths and annotation descriptions from the model into strings the Explore page renders",
+      "location": {
+        "file": "src/dashboard/explore.ts",
+        "line": 20
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-79"
+      ],
       "description": "generateDashboardHTML() interpolates model descriptions, asset names, git identities and commit trailers into the page markup and the embedded JSON constants",
       "location": {
         "file": "src/dashboard/generate.ts",
@@ -2556,6 +2604,19 @@
       "location": {
         "file": "src/gate/gate.ts",
         "line": 11
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "measureLegibility scans caller-supplied diagram text with regular expressions, once per line",
+      "location": {
+        "file": "src/graph/legibility.ts",
+        "line": 90
       }
     },
     {
@@ -3879,6 +3940,16 @@
       }
     },
     {
+      "source": "ThreatModel",
+      "target": "#dashboard",
+      "mechanism": "buildExploreData",
+      "description": "Model narrowed into one budgeted answer per view",
+      "location": {
+        "file": "src/dashboard/explore.ts",
+        "line": 22
+      }
+    },
+    {
       "source": "GitRepo",
       "target": "#dashboard",
       "mechanism": "loadSince",
@@ -4106,6 +4177,26 @@
       "location": {
         "file": "src/gate/lint.ts",
         "line": 8
+      }
+    },
+    {
+      "source": "DiagramSource",
+      "target": "#dashboard",
+      "mechanism": "measureLegibility",
+      "description": "Generated Mermaid text measured for node and edge count before a view decides to draw it",
+      "location": {
+        "file": "src/graph/legibility.ts",
+        "line": 92
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#dashboard",
+      "mechanism": "growWithinBudget",
+      "description": "Model narrowed to a neighbourhood that fits the legibility budget",
+      "location": {
+        "file": "src/graph/views.ts",
+        "line": 52
       }
     },
     {
@@ -5695,16 +5786,29 @@
       }
     },
     {
-      "reason": "graph/README example content, excluded from parsing",
+      "reason": "graph/index example content, excluded from parsing",
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 645
+        "line": 863
       }
     },
     {
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 737
+        "line": 969
+      }
+    },
+    {
+      "reason": "graph/README example content, excluded from parsing",
+      "location": {
+        "file": "src/artifacts/emit.ts",
+        "line": 973
+      }
+    },
+    {
+      "location": {
+        "file": "src/artifacts/emit.ts",
+        "line": 1065
       }
     },
     {
@@ -6157,6 +6261,13 @@
       }
     },
     {
+      "description": "Pure over an already-parsed model: no file I/O, no user input, no network",
+      "location": {
+        "file": "src/dashboard/explore.ts",
+        "line": 23
+      }
+    },
+    {
       "description": "A model narrowed with --feature carries filtered_by_features. The page then declares itself a slice in the title, the top bar and a banner, and suppresses the project-wide measures (file coverage, unannotated files) that a slice cannot answer",
       "location": {
         "file": "src/dashboard/generate.ts",
@@ -6248,6 +6359,20 @@
       }
     },
     {
+      "description": "Panes carry .diagram-panel so the existing zoom, find and copy-source controls work unchanged; .explore-pane is what the router shows and hides",
+      "location": {
+        "file": "src/dashboard/pages/explore.ts",
+        "line": 31
+      }
+    },
+    {
+      "description": "Nothing is selected in the browser: buildExploreData has already run every query at generation time, so the page holds answers rather than a query engine",
+      "location": {
+        "file": "src/dashboard/pages/explore.ts",
+        "line": 32
+      }
+    },
+    {
       "description": "Whole-project documents: --feature does not narrow them, and the page says so on a slice. With no saved report the page renders its own empty state so the copy buttons exist without the client",
       "location": {
         "file": "src/dashboard/pages/reports.ts",
@@ -6322,6 +6447,27 @@
       "location": {
         "file": "src/gate/lint.ts",
         "line": 9
+      }
+    },
+    {
+      "description": "The numbers are measured against a specific panel and font size, both cited above — deriving rather than guessing is the same discipline render-budget.ts applies to Mermaid's own limits",
+      "location": {
+        "file": "src/graph/legibility.ts",
+        "line": 93
+      }
+    },
+    {
+      "description": "Pure functions over an already-parsed ThreatModel: no file I/O, no user input, no network, and the renderer is injected so this module never depends on the dashboard",
+      "location": {
+        "file": "src/graph/views.ts",
+        "line": 53
+      }
+    },
+    {
+      "description": "Selection goes through selectSubgraph's `nodes` option rather than reimplementing the filter, so a view and an MCP graph query narrow the model the same way",
+      "location": {
+        "file": "src/graph/views.ts",
+        "line": 54
       }
     },
     {
@@ -6935,7 +7081,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 701,
+    "annotation_count": 717,
     "coverage_percent": 86
   },
   "external_refs": []

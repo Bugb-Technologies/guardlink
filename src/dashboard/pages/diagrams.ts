@@ -10,6 +10,7 @@ import {
   checkRenderBudget, oversizedStub, describeViolation,
   DASHBOARD_FALLBACK, MERMAID_LIMITS_SOURCE,
 } from '../render-budget.js';
+import { checkLegibility, describeLegibility, LEGIBILITY_BUDGET } from '../../graph/legibility.js';
 import type { PageContext } from './context.js';
 
 /**
@@ -36,16 +37,51 @@ interface BudgetedDiagram {
   src: string;
   /** One line per violation, empty when the diagram is fine. */
   reasons: string[];
+  /**
+   * How far past READABLE this diagram is, when it is. Empty when it fits.
+   *
+   * A second question about the same drawing, and the one that fails first. The
+   * render budget above asks whether anything will draw it; this asks whether
+   * anyone can read what gets drawn, and between the two limits sits every
+   * whole-model diagram GuardLink has ever produced — 43 nodes on this
+   * repository against a measured ceiling of 12, drawn perfectly and telling
+   * the reader nothing. Saying so is the difference between a picture that is
+   * honest about its size and one presented as though it were fine.
+   */
+  tooBig: string;
 }
 
 function budgeted(name: string, src: string): BudgetedDiagram {
-  if (!src) return { src, reasons: [] };
+  if (!src) return { src, reasons: [], tooBig: '' };
+  const legibility = checkLegibility(src);
+  const tooBig = legibility.legible ? '' : `${name} — ${describeLegibility(legibility)}`;
   const verdict = checkRenderBudget(src);
-  if (verdict.renderable) return { src, reasons: [] };
+  if (verdict.renderable) return { src, reasons: [], tooBig };
   return {
     src: oversizedStub(name, verdict, DASHBOARD_FALLBACK),
     reasons: verdict.violations.map(v => `${name} — ${describeViolation(v)}. ${v.symptom}`),
+    // A diagram that was not drawn at all has no drawn size to be honest about;
+    // the render-budget banner above it already says what happened.
+    tooBig: '',
   };
+}
+
+/**
+ * The notice above a whole-model diagram that draws but cannot be read.
+ *
+ * Deliberately not styled as an error and deliberately not a refusal: the
+ * drawing stays, because on a small repository it is the right picture and
+ * because panning around a big one is sometimes what a reader wants. What
+ * changes is that the page stops implying it is legible, and names the surface
+ * that answers the same question at a size that is.
+ */
+function legibilityNotice(tooBig: string[]): string {
+  if (tooBig.length === 0) return '';
+  return `<div class="diagram-toobig" role="note">
+          <strong>${tooBig.length > 1 ? 'These are whole-model diagrams' : 'This is a whole-model diagram'}, past the size anyone can read.</strong>
+          <ul>${tooBig.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
+          <p>The budget is ${LEGIBILITY_BUDGET.nodes} nodes and ${LEGIBILITY_BUDGET.edges} edges, measured against this panel at its label size — past it the drawing grows taller than the panel and "Fit" shrinks the labels below reading size rather than fitting. It still draws, and zoom and pan still work, so it is kept: on a small model it is the right picture. For a model this size, <a href="#explore">Explore</a> answers one question at a time and every answer is sized to be read.</p>
+        </div>`;
 }
 
 /**
@@ -113,6 +149,7 @@ export function renderDiagramsPage(ctx: PageContext): string {
     const bFocus = focus.map(f => ({ name: f.name, ...budgeted(`Threat Graph — ${f.name}`, f.src) }));
     panels.push(shell('threat-graph', 'Threat Graph',
       `${budgetBanner([...bFiltered.reasons, ...bFull.reasons, ...bFocus.flatMap(f => f.reasons)])}
+          ${legibilityNotice([bFiltered.tooBig, bFull.tooBig].filter(Boolean))}
           <pre class="mermaid" data-variant="filtered">\n${esc(bFiltered.src)}\n</pre>
           ${hasFullVariant ? `<pre class="mermaid" data-variant="full" style="display:none">\n${esc(bFull.src)}\n</pre>` : ''}
           ${bFocus.map(f => `<pre class="mermaid" data-focus="${esc(f.name)}" style="display:none">\n${esc(f.src)}\n</pre>`).join('\n          ')}
@@ -130,14 +167,14 @@ export function renderDiagramsPage(ctx: PageContext): string {
   if (dataFlow) {
     tabs.push({ id: 'data-flow', label: 'Data Flow', icon: icon('arrows') });
     const b = budgeted('Data Flow', dataFlow);
-    panels.push(shell('data-flow', 'Data Flow', `${budgetBanner(b.reasons)}<pre class="mermaid">\n${esc(b.src)}\n</pre>`,
+    panels.push(shell('data-flow', 'Data Flow', `${budgetBanner(b.reasons)}${legibilityNotice([b.tooBig].filter(Boolean))}<pre class="mermaid">\n${esc(b.src)}\n</pre>`,
       budgetMeta(b.reasons.length > 0,
         `Data movement across trust boundaries; each boundary shows both sides of the trust line. ${LEGEND_FLOW}`), '', panels.length === 0));
   }
   if (attackSurface) {
     tabs.push({ id: 'attack-surface', label: 'Attack Surface', icon: icon('alert') });
     const b = budgeted('Attack Surface', attackSurface);
-    panels.push(shell('attack-surface', 'Attack Surface', `${budgetBanner(b.reasons)}<pre class="mermaid">\n${esc(b.src)}\n</pre>`,
+    panels.push(shell('attack-surface', 'Attack Surface', `${budgetBanner(b.reasons)}${legibilityNotice([b.tooBig].filter(Boolean))}<pre class="mermaid">\n${esc(b.src)}\n</pre>`,
       budgetMeta(b.reasons.length > 0, `Exposures per asset. ${LEGEND_SURFACE}`), '', panels.length === 0));
   }
 
@@ -155,7 +192,7 @@ export function renderDiagramsPage(ctx: PageContext): string {
 <div id="sec-diagrams" class="section-content">
   ${sectionHead(icon('diagram'), 'Diagrams', scope)}
   ${wholeModelNote()}
-  <p class="diagram-hint">Interactive diagrams generated from annotations. The view starts fitted to the panel (never below 60%, so labels stay legible; scroll sideways for the rest); scroll to zoom, drag to pan, double-click or press <em>Fit</em> to reset. <em>Find</em> dims everything that does not match; on the threat graph, pick an asset to see only it and its neighbours. <em>Source</em> copies the Mermaid text.</p>
+  <p class="diagram-hint"><strong>These are the whole model in one picture.</strong> That is the right thing on a small repository and stops being readable at about a dozen components — each panel below says its own size, and <a href="#explore">Explore</a> is where a question gets an answer scaled to be read. Scroll to zoom, drag to pan, double-click or press <em>Fit</em> to reset. <em>Find</em> dims everything that does not match; on the threat graph, pick an asset to see only it and its neighbours. <em>Source</em> copies the Mermaid text.</p>
 ${scope ? `  <p class="scope-note">These are <strong>narrowed</strong> diagrams: the edges are this feature's relations, and the nodes are the assets, threats and controls those relations reference. A node the feature never touches is absent — an absent node does not mean the project lacks it. The same narrowed graph is written to <code>.guardlink/graph/by-feature/</code>.</p>` : ''}
   <div class="diagram-tabs">
     ${tabs.map((t, i) => `<button class="diagram-tab${i === 0 ? ' active' : ''}" onclick="switchDiagramTab('${t.id}', this)">${t.icon} ${t.label}</button>`).join('')}

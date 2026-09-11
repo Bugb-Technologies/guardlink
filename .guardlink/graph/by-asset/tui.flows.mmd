@@ -1,0 +1,42 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-asset/tui.flows.mmd
+%% scope:           PARTIAL — #tui and its flow neighbourhood, grown until the drawing stopped fitting — 22 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% generator:       guardlink@2.0.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
+graph LR
+  subgraph Z0["🧱 GuardLink.TUI · Trust boundary at interactive input"]
+    tui["👤 GuardLink.TUI"]
+  end
+  subgraph Z1["🧱 UserInput · Trust boundary at interactive input"]
+    userinput["👤 UserInput"]
+  end
+  configfile["🧩 ConfigFile"]
+  agent_launcher["🧩 GuardLink.Agent_Launcher"]
+  userargs["👤 UserArgs"]
+  filesystem["🧩 FileSystem"]
+  llm_client["👤 GuardLink.LLM_Client"]
+  gitrepo["🧩 GitRepo"]
+  commands["🧩 Commands"]
+  rawstdin["🧩 RawStdin"]
+  terminal["🧩 Terminal"]
+  tui -.-|🧱 Trust boundary at interactive input| userinput
+  configfile -- "🗄️ readFileSync" --> agent_launcher
+  agent_launcher -- "🗄️ writeFileSync" --> configfile
+  userargs -- "📡 args" --> tui
+  tui -- "🗄️ writeFile" --> filesystem
+  tui -- "📡 launchAgent" --> agent_launcher
+  tui -- "📡 chatCompletion" --> llm_client
+  gitrepo -- "📡 computeBlame" --> tui
+  configfile -- "📡 loadProjectConfig" --> tui
+  tui -- "📡 saveProjectConfig" --> configfile
+  userinput -- "📡 readline" --> tui
+  tui -- "📡 dispatch" --> commands
+  rawstdin -- "📡 process.stdin" --> tui
+  tui -- "📡 process.stdout" --> terminal

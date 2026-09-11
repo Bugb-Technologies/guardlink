@@ -95,6 +95,24 @@ export type Completeness =
 export interface SubgraphOptions {
   /** Asset ref to start from. Omitted → no traversal, just the pre-filters. */
   from?: string;
+  /**
+   * An explicit node set, canonicalised on the way in. Takes precedence over
+   * `from`/`depth`: the caller has already decided which nodes it wants and
+   * needs the model narrowed to exactly those.
+   *
+   * Added for the query views (`src/graph/views.ts`), which size a selection by
+   * measuring the DRAWING it produces rather than by hop count — depth is not a
+   * usable size control on a real model, where depth 2 from any declared asset
+   * returns 36–40 nodes of a whole-graph 43. Growing a node set and re-narrowing
+   * the model at each step needs a way to say "this set", and reimplementing the
+   * filtering below to get one would have made a view's idea of a subgraph
+   * differ from an MCP query's.
+   *
+   * Every other option still composes: `feature` and `file` pre-filter the model
+   * this set is taken from, and `kinds` still chooses which relation arrays
+   * survive.
+   */
+  nodes?: string[];
   /** Hops from `from`. 0 is the node alone. Clamped to MAX_DEPTH. */
   depth?: number;
   direction?: Direction;
@@ -368,10 +386,15 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
     };
   }
 
-  const selected = options.from ? nodeSetOf(base, options) : null;
+  const key = canonicaliser(base);
+  // An explicit node set wins over a traversal: the caller already knows which
+  // nodes it wants. Canonicalised here so a caller may pass `#cli`, `cli` or
+  // `GuardLink.CLI` and get the same set, exactly as `from` would.
+  const selected = options.nodes
+    ? new Set(options.nodes.map(n => key(n)))
+    : options.from ? nodeSetOf(base, options) : null;
   const kinds = options.kinds?.length ? new Set(options.kinds) : null;
 
-  const key = canonicaliser(base);
   const inSet = (ref: string) => selected === null || selected.has(key(ref));
   const bothIn = (a: string, b: string) => inSet(a) && inSet(b);
   const wanted = (kind: SelectableKind) => !kinds || kinds.has(kind);

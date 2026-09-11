@@ -1,0 +1,40 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-asset/agent-launcher.flows.mmd
+%% scope:           PARTIAL — #agent-launcher and its flow neighbourhood, grown until the drawing stopped fitting — 19 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% generator:       guardlink@2.0.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
+graph LR
+  subgraph Z0["🧱 GuardLink.Agent_Launcher · Trust boundary at process spawn"]
+    agent_launcher["🧩 GuardLink.Agent_Launcher"]
+  end
+  subgraph Z1["🧱 AgentProcess · Trust boundary at process spawn"]
+    agentprocess["🧩 AgentProcess"]
+  end
+  envvars["🧩 EnvVars"]
+  configfile["🧩 ConfigFile"]
+  userprompt["👤 UserPrompt"]
+  threatmodel["🧩 ThreatModel"]
+  agentprompt["🧩 AgentPrompt"]
+  tui["👤 GuardLink.TUI"]
+  agent_launcher -.-|🧱 Trust boundary at process spawn| agentprocess
+  envvars -- "📡 process.env" --> agent_launcher
+  configfile -- "🗄️ readFileSync" --> agent_launcher
+  agent_launcher -- "🗄️ writeFileSync" --> configfile
+  userprompt -- "📡 launchAgent" --> agent_launcher
+  agent_launcher -- "📡 spawn" --> agentprocess
+  agentprocess -- "📡 stdout" --> agent_launcher
+  userprompt -- "📡 buildAnnotatePrompt" --> agent_launcher
+  userprompt -- "📡 buildTranslatePrompt" --> agent_launcher
+  userprompt -- "📡 buildAskPrompt" --> agent_launcher
+  threatmodel -- "📡 model" --> agent_launcher
+  agent_launcher -- "📡 return" --> agentprompt
+  tui -- "📡 launchAgent" --> agent_launcher
+  configfile -- "📡 loadProjectConfig" --> tui
+  tui -- "📡 saveProjectConfig" --> configfile

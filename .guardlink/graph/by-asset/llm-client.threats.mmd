@@ -1,0 +1,30 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-asset/llm-client.threats.mmd
+%% scope:           PARTIAL — #llm-client only — its own threats and controls, narrowed to high and critical (13 lower-severity claim(s) omitted to keep it readable)
+%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% generator:       guardlink@2.0.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
+graph LR
+  llm_client["🔷 GuardLink.LLM_Client"]
+  api_key_exposure["🟠 API_Key_Exposure (cwe:CWE-798)"]:::threat
+  path_traversal["🟠 Path_Traversal (cwe:CWE-22)"]:::threat
+  arbitrary_write["🟠 Arbitrary_File_Write (cwe:CWE-73)"]:::threat
+  path_validation["🛡️ Path_Validation"]:::control
+  key_redaction["🛡️ Key_Redaction"]:::control
+  glob_filtering["🛡️ Glob_Pattern_Filtering"]:::control
+  llm_client -. exposes .-> api_key_exposure
+  path_validation -- mitigates --> path_traversal
+  path_validation -. protects .-> llm_client
+  path_validation -- mitigates --> arbitrary_write
+  key_redaction -- mitigates --> api_key_exposure
+  key_redaction -. protects .-> llm_client
+  glob_filtering -- mitigates --> path_traversal
+  glob_filtering -. protects .-> llm_client
+  classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
+  classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px

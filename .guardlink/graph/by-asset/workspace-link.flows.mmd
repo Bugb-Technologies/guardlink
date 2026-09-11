@@ -1,0 +1,37 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-asset/workspace-link.flows.mmd
+%% scope:           PARTIAL — #workspace-link and its flow neighbourhood, grown until the drawing stopped fitting — 30 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% generator:       guardlink@2.0.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 47, "rankSpacing": 67, "curve": "basis", "htmlLabels": false}}}%%
+graph LR
+  blame["🧩 GuardLink.Blame"]
+  cli["🧩 GuardLink.CLI"]
+  userargs["👤 UserArgs"]
+  gate["🧩 GuardLink.Gate"]
+  init["🧩 GuardLink.Init"]
+  agentfiles["🧩 AgentFiles"]
+  agentproposal["🧩 AgentProposal"]
+  tui["👤 GuardLink.TUI"]
+  agent_launcher["🧩 GuardLink.Agent_Launcher"]
+  llm_client["👤 GuardLink.LLM_Client"]
+  commands["🧩 Commands"]
+  workspace_link["🧩 Workspace.Link"]
+  blame -- "📡 formatBlameText" --> cli
+  blame -- "🗄️ buildBlamePayload" --> cli
+  userargs -- "📡 process.argv" --> cli
+  cli -- "📡 runGate" --> gate
+  init -- "🗄️ writeFileSync" --> agentfiles
+  agentproposal -- "📡 proposeEntitlement" --> cli
+  userargs -- "📡 args" --> tui
+  tui -- "📡 launchAgent" --> agent_launcher
+  tui -- "📡 chatCompletion" --> llm_client
+  tui -- "📡 dispatch" --> commands
+  userargs -- "📡 linkProject" --> workspace_link
+  workspace_link -- "📡 updateAgentWorkspaceContext" --> agentfiles

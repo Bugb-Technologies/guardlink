@@ -1,0 +1,43 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-asset/llm-client.flows.mmd
+%% scope:           PARTIAL — #llm-client and its flow neighbourhood, grown until the drawing stopped fitting — 12 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% generator:       guardlink@2.0.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
+graph LR
+  subgraph Z0["🧱 GuardLink.LLM_Client · Trust boundary at external API call"]
+    llm_client["👤 GuardLink.LLM_Client"]
+  end
+  subgraph Z1["🧱 LLMProvider · Trust boundary at external API call"]
+    llmprovider["🧩 LLMProvider"]
+  end
+  subgraph Z2["🧱 NVD · Trust boundary at external API"]
+    nvd["🧩 NVD"]
+  end
+  savedreport["🧩 SavedReport"]
+  projectfiles["🧩 ProjectFiles"]
+  reportfile["🧩 ReportFile"]
+  pentestfindings["🧩 PentestFindings"]
+  llmconfig["🧩 LLMConfig"]
+  llmtoolcall["🧩 LLMToolCall"]
+  mcp["🧩 GuardLink.MCP"]
+  tui["👤 GuardLink.TUI"]
+  llm_client -.-|🧱 Trust boundary at external API call| llmprovider
+  llm_client -.-|🧱 Trust boundary at external API| nvd
+  savedreport -- "📡 parseFindingsBlock" --> llm_client
+  projectfiles -- "🗄️ readFileSync" --> llm_client
+  llm_client -- "🗄️ writeFileSync" --> reportfile
+  pentestfindings -- "🗄️ readFileSync" --> llm_client
+  llmconfig -- "📡 chatCompletion" --> llm_client
+  llm_client -- "📡 fetch" --> llmprovider
+  llmprovider -- "📡 response" --> llm_client
+  llmtoolcall -- "📡 createToolExecutor" --> llm_client
+  llm_client -- "📡 fetch" --> nvd
+  mcp -- "📡 generateThreatReport" --> llm_client
+  tui -- "📡 chatCompletion" --> llm_client
