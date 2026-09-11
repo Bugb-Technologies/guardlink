@@ -1,8 +1,12 @@
 {
+  "provenance": {
+    "annotation_hash": "sha256-v3:cb9f75b5ec0780eec97f19d4d8c7863bad4c10575a98a6c4fb7bc1cf152601d2",
+    "generator": "guardlink@2.0.0"
+  },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 143,
-  "annotations_parsed": 701,
+  "source_files": 139,
+  "annotations_parsed": 696,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -57,11 +61,6 @@
     "src/gate/gate.ts",
     "src/gate/index.ts",
     "src/gate/lint.ts",
-    "src/hypothesis/classify.ts",
-    "src/hypothesis/commands.ts",
-    "src/hypothesis/format.ts",
-    "src/hypothesis/index.ts",
-    "src/hypothesis/ledger.ts",
     "src/init/detect.ts",
     "src/init/index.ts",
     "src/init/migrate.ts",
@@ -75,6 +74,7 @@
     "src/mcp/server.ts",
     "src/mcp/subgraph.ts",
     "src/mcp/suggest.ts",
+    "src/parser/acceptance.ts",
     "src/parser/annotation-hash.ts",
     "src/parser/annotation-mode.ts",
     "src/parser/apply-annotations.ts",
@@ -871,7 +871,7 @@
       "description": "join() constrains reads to .guardlink/",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 799
+        "line": 798
       }
     },
     {
@@ -1041,7 +1041,7 @@
       "description": "resolve() canonicalizes paths; cwd-relative by design",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 34
+        "line": 33
       }
     },
     {
@@ -1051,7 +1051,7 @@
       "description": "Output paths resolved relative to project root",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 36
+        "line": 35
       }
     },
     {
@@ -1061,7 +1061,7 @@
       "description": "maskKey() redacts keys in show output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 38
+        "line": 37
       }
     },
     {
@@ -1071,7 +1071,7 @@
       "description": "Path is the constant LEDGER_FILE under a root that must already carry .guardlink/; targets only select claims, they are never written to",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 442
+        "line": 466
       }
     },
     {
@@ -1335,36 +1335,6 @@
       }
     },
     {
-      "asset": "#cli",
-      "threat": "#arbitrary-write",
-      "control": "#path-validation",
-      "description": "Both paths are resolved under the project root and refused outside it; the edit inserts one line beneath an @exposes whose text is checked before anything is written",
-      "location": {
-        "file": "src/hypothesis/commands.ts",
-        "line": 11
-      }
-    },
-    {
-      "asset": "#cli",
-      "threat": "#insecure-deser",
-      "control": "#config-validation",
-      "description": "Only the fields the loader reads are taken, each coerced to its type; evidence goes through redactEvidence before it is stored",
-      "location": {
-        "file": "src/hypothesis/commands.ts",
-        "line": 13
-      }
-    },
-    {
-      "asset": "#cli",
-      "threat": "#arbitrary-write",
-      "control": "#path-validation",
-      "description": "The path is fixed relative to the project root (HYPOTHESES_FILE); nothing in an entry chooses where the file goes",
-      "location": {
-        "file": "src/hypothesis/ledger.ts",
-        "line": 11
-      }
-    },
-    {
       "asset": "#init",
       "threat": "#path-traversal",
       "control": "#path-validation",
@@ -1512,6 +1482,26 @@
       "location": {
         "file": "src/mcp/suggest.ts",
         "line": 15
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#config-tamper",
+      "control": "#config-validation",
+      "description": "Every field is type- and range-checked and falls back to the built-in default; an absent, unreadable or malformed config yields DEFAULT_ACCEPTANCE_POLICY rather than an off switch, so a broken config cannot disable the policy by being broken",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 48
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#insecure-deser",
+      "control": "#config-validation",
+      "description": "Parsed inside try/catch; only four scalar fields are read, each through a type guard, and nothing from the file is executed or used as a path",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 52
       }
     },
     {
@@ -1761,7 +1751,17 @@
       "description": "Only modifies files already in the parsed project",
       "location": {
         "file": "src/review/index.ts",
-        "line": 11
+        "line": 29
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "control": "#input-sanitize",
+      "description": "oneLine() collapses newlines/CR/tabs before escapeDesc on every field that reaches a built line",
+      "location": {
+        "file": "src/review/index.ts",
+        "line": 31
       }
     },
     {
@@ -1771,7 +1771,7 @@
       "description": "Anchor line must exist in the file, and callers resolve the path against the parsed project root",
       "location": {
         "file": "src/review/index.ts",
-        "line": 239
+        "line": 391
       }
     },
     {
@@ -2156,7 +2156,7 @@
       "description": "Exposes threat model findings to SARIF consumers",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 24
+        "line": 34
       }
     },
     {
@@ -2312,7 +2312,7 @@
       "description": "User-supplied dir argument resolved via path.resolve",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 33
+        "line": 32
       }
     },
     {
@@ -2325,7 +2325,7 @@
       "description": "init/report/sarif/dashboard write files to user-specified paths",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 35
+        "line": 34
       }
     },
     {
@@ -2338,7 +2338,7 @@
       "description": "API keys handled in config set/show commands",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 37
+        "line": 36
       }
     },
     {
@@ -2351,7 +2351,7 @@
       "description": "Agent launcher spawns child processes",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 39
+        "line": 38
       }
     },
     {
@@ -2364,7 +2364,7 @@
       "description": "The one command that writes .guardlink/verified.json",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 441
+        "line": 465
       }
     },
     {
@@ -2534,45 +2534,6 @@
       "location": {
         "file": "src/gate/gate.ts",
         "line": 11
-      }
-    },
-    {
-      "asset": "#cli",
-      "threat": "#arbitrary-write",
-      "severity": "medium",
-      "external_refs": [
-        "cwe:CWE-73"
-      ],
-      "description": "writeConfirmedLine() edits the source file a claim's location names; importScan() reads the scan path the user passed",
-      "location": {
-        "file": "src/hypothesis/commands.ts",
-        "line": 10
-      }
-    },
-    {
-      "asset": "#cli",
-      "threat": "#insecure-deser",
-      "severity": "low",
-      "external_refs": [
-        "cwe:CWE-502"
-      ],
-      "description": "importScan() JSON.parses a scan report",
-      "location": {
-        "file": "src/hypothesis/commands.ts",
-        "line": 12
-      }
-    },
-    {
-      "asset": "#cli",
-      "threat": "#arbitrary-write",
-      "severity": "low",
-      "external_refs": [
-        "cwe:CWE-73"
-      ],
-      "description": "writeHypotheses() writes .guardlink/hypotheses.json under the root the caller resolved",
-      "location": {
-        "file": "src/hypothesis/ledger.ts",
-        "line": 10
       }
     },
     {
@@ -2846,6 +2807,32 @@
       "location": {
         "file": "src/mcp/suggest.ts",
         "line": 16
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#config-tamper",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-15"
+      ],
+      "description": "readAcceptancePolicy reads .guardlink/config.json to decide how strict this project's acceptance rule is, so anyone who can edit that file can lower the bar their own acceptances have to clear",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 47
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#insecure-deser",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-502"
+      ],
+      "description": "JSON.parse of a repository file",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 51
       }
     },
     {
@@ -3129,7 +3116,20 @@
       "description": "Writes @accepts/@audit annotations into source files",
       "location": {
         "file": "src/review/index.ts",
-        "line": 10
+        "line": 28
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-74"
+      ],
+      "description": "Reviewer-supplied justification and author name are interpolated into annotation text, where a newline would forge a second annotation",
+      "location": {
+        "file": "src/review/index.ts",
+        "line": 30
       }
     },
     {
@@ -3142,7 +3142,7 @@
       "description": "Writes annotation lines into a caller-supplied file path",
       "location": {
         "file": "src/review/index.ts",
-        "line": 238
+        "line": 390
       }
     },
     {
@@ -3463,7 +3463,7 @@
       "description": "Reads CXG scan results for dashboard and report context",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 726
+        "line": 725
       }
     },
     {
@@ -3533,7 +3533,7 @@
       "description": "Model input",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 29
+        "line": 40
       }
     },
     {
@@ -3543,7 +3543,7 @@
       "description": "SARIF output",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 30
+        "line": 41
       }
     },
     {
@@ -3670,10 +3670,10 @@
       "source": "ThreatModel",
       "target": "#cli",
       "mechanism": "runCiChecks",
-      "description": "Parsed model checked for uncovered exposures",
+      "description": "Parsed model checked for uncovered exposures, confirmed exploits and unqualified acceptances",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 47
+        "line": 92
       }
     },
     {
@@ -3683,7 +3683,7 @@
       "description": "Diagnostics from the parse are reported, never recomputed",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 48
+        "line": 93
       }
     },
     {
@@ -3693,7 +3693,7 @@
       "description": "Recorded anchors compared against current source",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 49
+        "line": 94
       }
     },
     {
@@ -3703,7 +3703,7 @@
       "description": "Recorded claim hashes, read only",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 50
+        "line": 95
       }
     },
     {
@@ -3713,7 +3713,7 @@
       "description": "CLI argument input path",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 41
+        "line": 40
       }
     },
     {
@@ -3723,7 +3723,7 @@
       "description": "Report/config output path",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 42
+        "line": 41
       }
     },
     {
@@ -3733,7 +3733,7 @@
       "description": "Opt-in attribution; without --blame the JSON is byte-identical to before",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 252
+        "line": 253
       }
     },
     {
@@ -3743,17 +3743,7 @@
       "description": "status reports verified/stale/unverified claim counts alongside annotation coverage",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 293
-      }
-    },
-    {
-      "source": "LedgerFile",
-      "target": "#cli",
-      "mechanism": "readHypotheses",
-      "description": "status reports how many exposures were tested, and with what outcome",
-      "location": {
-        "file": "src/cli/index.ts",
-        "line": 294
+        "line": 303
       }
     },
     {
@@ -3763,7 +3753,7 @@
       "description": "status --blame reads attribution without touching the model",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 296
+        "line": 305
       }
     },
     {
@@ -3773,7 +3763,7 @@
       "description": "Read-only; a corrupt ledger becomes a validate error (ledger-corrupt) instead of being silently treated as absent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 348
+        "line": 372
       }
     },
     {
@@ -3783,7 +3773,7 @@
       "description": "Targets, --by and mode flags",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 443
+        "line": 467
       }
     },
     {
@@ -3793,7 +3783,7 @@
       "description": "Attribution read from blame, log -L and commit trailers",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 560
+        "line": 584
       }
     },
     {
@@ -3803,7 +3793,7 @@
       "description": "report --blame attaches attribution before the metadata spread, so the shared records carry it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 671
+        "line": 719
       }
     },
     {
@@ -3813,27 +3803,7 @@
       "description": "The model before and after the agent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1411
-      }
-    },
-    {
-      "source": "ThreatModel",
-      "target": "#cli",
-      "mechanism": "findUnmitigatedPaths",
-      "description": "Which assets sit on an undefended path, for the ranking",
-      "location": {
-        "file": "src/cli/index.ts",
-        "line": 1546
-      }
-    },
-    {
-      "source": "ScanReport",
-      "target": "#cli",
-      "mechanism": "importScan",
-      "description": "cxg findings recorded as confirmations, joined to claims",
-      "location": {
-        "file": "src/cli/index.ts",
-        "line": 1561
+        "line": 1459
       }
     },
     {
@@ -3843,7 +3813,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2478
+        "line": 2577
       }
     },
     {
@@ -3853,7 +3823,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2481
+        "line": 2580
       }
     },
     {
@@ -3873,7 +3843,7 @@
       "description": "Claim states for the badges and the stale-claims action",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 521
+        "line": 515
       }
     },
     {
@@ -3944,16 +3914,6 @@
       "location": {
         "file": "src/dashboard/generate.ts",
         "line": 31
-      }
-    },
-    {
-      "source": "LedgerFile",
-      "target": "#dashboard",
-      "mechanism": "readHypotheses",
-      "description": "Outcomes for the badges, the drawer and the open count",
-      "location": {
-        "file": "src/dashboard/generate.ts",
-        "line": 102
       }
     },
     {
@@ -4114,66 +4074,6 @@
       "location": {
         "file": "src/gate/lint.ts",
         "line": 8
-      }
-    },
-    {
-      "source": "ThreatModel",
-      "target": "#cli",
-      "mechanism": "classifyHypotheses",
-      "description": "Claims joined to the ledger by key",
-      "location": {
-        "file": "src/hypothesis/classify.ts",
-        "line": 10
-      }
-    },
-    {
-      "source": "#cli",
-      "target": "ThreatModel",
-      "mechanism": "attachHypotheses",
-      "description": "The state stamped onto each exposure for the dashboard, the report and the lint",
-      "location": {
-        "file": "src/hypothesis/classify.ts",
-        "line": 11
-      }
-    },
-    {
-      "source": "ScanReport",
-      "target": "#cli",
-      "mechanism": "importScan",
-      "description": "cxg findings joined to claims",
-      "location": {
-        "file": "src/hypothesis/commands.ts",
-        "line": 14
-      }
-    },
-    {
-      "source": "#cli",
-      "target": "SourceFiles",
-      "mechanism": "writeConfirmedLine",
-      "description": "The @confirmed line, on --write",
-      "location": {
-        "file": "src/hypothesis/commands.ts",
-        "line": 15
-      }
-    },
-    {
-      "source": "LedgerFile",
-      "target": "#cli",
-      "mechanism": "readHypotheses",
-      "description": "Outcomes read back for classification",
-      "location": {
-        "file": "src/hypothesis/ledger.ts",
-        "line": 12
-      }
-    },
-    {
-      "source": "#cli",
-      "target": "LedgerFile",
-      "mechanism": "writeHypotheses",
-      "description": "Outcomes recorded",
-      "location": {
-        "file": "src/hypothesis/ledger.ts",
-        "line": 13
       }
     },
     {
@@ -4353,7 +4253,7 @@
       "description": "Attribution read from blame, log -L and commit trailers for the connected agent",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1096
+        "line": 1113
       }
     },
     {
@@ -4384,6 +4284,26 @@
       "location": {
         "file": "src/mcp/suggest.ts",
         "line": 19
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#parser",
+      "mechanism": "findAcceptanceDefects",
+      "description": "Acceptances read and checked against policy",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 53
+      }
+    },
+    {
+      "source": "ConfigFile",
+      "target": "#parser",
+      "mechanism": "readAcceptancePolicy",
+      "description": "Per-project policy thresholds, read only",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 54
       }
     },
     {
@@ -4463,7 +4383,7 @@
       "description": "Every unmitigated-exposure answer in the product routes through this predicate",
       "location": {
         "file": "src/parser/coverage.ts",
-        "line": 65
+        "line": 81
       }
     },
     {
@@ -4743,7 +4663,7 @@
       "description": "Exposure list input",
       "location": {
         "file": "src/review/index.ts",
-        "line": 13
+        "line": 33
       }
     },
     {
@@ -4753,7 +4673,7 @@
       "description": "Annotation insertion output",
       "location": {
         "file": "src/review/index.ts",
-        "line": 14
+        "line": 34
       }
     },
     {
@@ -4763,7 +4683,7 @@
       "description": "Annotation insertion output",
       "location": {
         "file": "src/review/index.ts",
-        "line": 240
+        "line": 392
       }
     },
     {
@@ -5015,7 +4935,7 @@
       "description": "Trust boundary at CLI argument parsing",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 43
+        "line": 42
       }
     },
     {
@@ -5152,7 +5072,7 @@
       "description": "SARIF output intentionally reveals security findings for CI/CD integration",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 25
+        "line": 35
       }
     },
     {
@@ -5160,7 +5080,7 @@
       "description": "Child process spawning delegated to agents/launcher.ts with explicit args",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 40
+        "line": 39
       }
     },
     {
@@ -5221,6 +5141,14 @@
     },
     {
       "asset": "#parser",
+      "description": "The thresholds here are the price of an acceptance. Lowering min_justification or raising max_horizon_days in a PR is a governance change wearing a config diff, and deserves the same review as the acceptances it will admit",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 50
+      }
+    },
+    {
+      "asset": "#parser",
       "description": "Destructive operation requires explicit user confirmation via dryRun flag",
       "location": {
         "file": "src/parser/clear.ts",
@@ -5253,10 +5181,10 @@
     },
     {
       "asset": "#cli",
-      "description": "Review decisions require human justification; no empty accepts allowed",
+      "description": "Every acceptance records who decided, why, and until when; the rule is enforced in applyReviewAction so no caller can route around it",
       "location": {
         "file": "src/review/index.ts",
-        "line": 12
+        "line": 32
       }
     },
     {
@@ -5319,7 +5247,7 @@
       "description": "Processes pentest scan output (JSON/SARIF)",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 727
+        "line": 726
       }
     },
     {
@@ -5400,7 +5328,7 @@
       "description": "Processes API keys via config commands",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 44
+        "line": 43
       }
     },
     {
@@ -5409,7 +5337,7 @@
       "description": "Author identities printed or emitted as JSON; --identity hash (or blame.identity in config.json) redacts emails",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 561
+        "line": 585
       }
     },
     {
@@ -5418,7 +5346,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3205
+        "line": 3297
       }
     },
     {
@@ -5436,7 +5364,7 @@
       "description": "Author identities from git, already in the configured identity mode",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 291
+        "line": 285
       }
     },
     {
@@ -5486,33 +5414,6 @@
     },
     {
       "classification": "internal",
-      "asset": "#cli",
-      "description": "Request and response evidence from scans, redacted",
-      "location": {
-        "file": "src/hypothesis/commands.ts",
-        "line": 16
-      }
-    },
-    {
-      "classification": "internal",
-      "asset": "#cli",
-      "description": "Evidence strings printed to the terminal",
-      "location": {
-        "file": "src/hypothesis/format.ts",
-        "line": 4
-      }
-    },
-    {
-      "classification": "internal",
-      "asset": "#cli",
-      "description": "Evidence strings from tests and scans; scan evidence is redacted before it is written",
-      "location": {
-        "file": "src/hypothesis/ledger.ts",
-        "line": 14
-      }
-    },
-    {
-      "classification": "internal",
       "asset": "#init",
       "description": "Generates definitions and agent instruction content",
       "location": {
@@ -5535,7 +5436,16 @@
       "description": "Author identities, in the configured identity mode (blame.identity in config.json), reach the MCP client",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1097
+        "line": 1114
+      }
+    },
+    {
+      "classification": "internal",
+      "asset": "#parser",
+      "description": "Reads the reviewer name and justification text an acceptance carries",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 55
       }
     },
     {
@@ -5568,10 +5478,10 @@
     {
       "classification": "internal",
       "asset": "#cli",
-      "description": "Processes exposure metadata and user justification text",
+      "description": "Processes exposure metadata, reviewer identity and justification text",
       "location": {
         "file": "src/review/index.ts",
-        "line": 15
+        "line": 35
       }
     },
     {
@@ -5756,13 +5666,13 @@
       "reason": "graph/README example content, excluded from parsing",
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 386
+        "line": 497
       }
     },
     {
       "location": {
         "file": "src/artifacts/emit.ts",
-        "line": 455
+        "line": 566
       }
     },
     {
@@ -5801,33 +5711,33 @@
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 303
+        "line": 305
       }
     },
     {
       "reason": "agentInstructions renders the Quick Syntax block: verb lines at column 0 that document the grammar rather than claim anything",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 307
+        "line": 309
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 416
+        "line": 418
       }
     },
     {
       "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 904
+        "line": 906
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1202
+        "line": 1218
       }
     }
   ],
@@ -5931,21 +5841,28 @@
       "description": "Pure function: transforms ThreatModel to SARIF JSON; no I/O",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 26
+        "line": 36
+      }
+    },
+    {
+      "description": "runs[0].properties.annotation_hash stamps the export with the annotations it was cut from (R10), so a hygiene gate can tell a current SARIF from one built three commits ago — this file is the pentest surface, and a stale one decides which exposures get tested",
+      "location": {
+        "file": "src/analyzer/sarif.ts",
+        "line": 37
       }
     },
     {
       "description": "@entitles has no export semantics by design: SARIF for a model with entitlements is byte-identical to one without, so an entitlement can never hide an exposure from the pentest export (actor-entitlement design §3.2)",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 27
+        "line": 38
       }
     },
     {
       "description": "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} derived from the asset's inbound @flows route so downstream HTTP consumers (e.g. cert-x-gen) can target the endpoint; emitted verbatim from the annotation, no base path assumed",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 28
+        "line": 39
       }
     },
     {
@@ -6068,59 +5985,73 @@
       }
     },
     {
-      "description": "Exit code is a pure function of (strict, exposures, drift, demotable stale) and lives in the summary, so JSON consumers see the same verdict the shell got",
+      "description": "Exit code is a pure function of (strict, exposures, confirmed, drift, demotable stale, parse errors, unqualified acceptances) and lives in the summary, so JSON consumers see the same verdict the shell got",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 51
+        "line": 96
       }
     },
     {
       "description": "Exposures and drift are serialized as the types the parser already produces — no renamed fields, so guardlink.ci/v1 cannot drift from the model it reports",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 52
+        "line": 97
       }
     },
     {
       "description": "The third check reads .guardlink/verified.json and never writes it; a corrupt ledger is reported once and treated as absent",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 53
+        "line": 98
+      }
+    },
+    {
+      "description": "@confirmed is not filtered by acceptance state at all: @accepts does not silence a reproduced exploit anywhere else in the product and must not do so here",
+      "location": {
+        "file": "src/ci/index.ts",
+        "line": 99
+      }
+    },
+    {
+      "description": "--severity narrows risk findings only; drift, parse errors, stale claims and unqualified acceptances carry no severity and a severity threshold says nothing about them",
+      "location": {
+        "file": "src/ci/index.ts",
+        "line": 100
       }
     },
     {
       "description": "Closes the same blind spot ci's third check already closed (src/ci/index.ts) for the validate/CI-gate surface",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 349
+        "line": 373
       }
     },
     {
       "description": "Re-locking a stale claim is an assertion that the control still holds, so the default form never does it: --stale, --all or a named target is required, and each says so in its output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 444
+        "line": 468
       }
     },
     {
       "description": "Always exits 0 once the model parsed: outside a git checkout every claim reads as unattributed, which is an answer, not a failure. Only an unknown --identity is an error",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 562
+        "line": 586
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3154
+        "line": 3253
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3206
+        "line": 3298
       }
     },
     {
@@ -6155,28 +6086,28 @@
       "description": "Stats mirror the model's own scope: on a --feature model these are the feature's numbers, and the dashboard suppresses the ones that only mean something project-wide",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 99
+        "line": 95
       }
     },
     {
       "description": "Pure projection of record.blame; the summariser is shared with the CLI and the report so every surface agrees on the numbers",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 292
+        "line": 286
       }
     },
     {
       "description": "Every item points somewhere: a hash route into the filtered view, a guardlink command, or both. Nothing here is a bare number",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 390
+        "line": 384
       }
     },
     {
       "description": "Reads .guardlink/verified.json once; the classification itself is the parser's, not re-derived here",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 522
+        "line": 516
       }
     },
     {
@@ -6348,41 +6279,6 @@
       }
     },
     {
-      "description": "Pure over the model and a ledger read; no clock, no file, no git — ranking is arithmetic on facts the model already holds",
-      "location": {
-        "file": "src/hypothesis/classify.ts",
-        "line": 12
-      }
-    },
-    {
-      "description": "A confirmation is held to the same evidence bar the gate holds @confirmed to; a refutation needs evidence too, just not the same words, because 'the validator rejected it' is evidence of absence",
-      "location": {
-        "file": "src/hypothesis/commands.ts",
-        "line": 17
-      }
-    },
-    {
-      "description": "Plain padded tables like printStatus; nothing here reads a file",
-      "location": {
-        "file": "src/hypothesis/format.ts",
-        "line": 5
-      }
-    },
-    {
-      "description": "The tested state of every exposure: a ledger of outcomes with evidence, expiry by code hash, and a ranked queue",
-      "location": {
-        "file": "src/hypothesis/index.ts",
-        "line": 4
-      }
-    },
-    {
-      "description": "A corrupt file is reported, never rebuilt in place: an outcome ledger that quietly emptied itself would turn refuted findings back into open ones",
-      "location": {
-        "file": "src/hypothesis/ledger.ts",
-        "line": 15
-      }
-    },
-    {
       "description": "Detection is read-only; no file writes",
       "location": {
         "file": "src/init/detect.ts",
@@ -6456,7 +6352,7 @@
       "description": "Non-mutating: computeBlame leaves the cached model untouched, so a later guardlink_parse in the same session never carries blame unasked. Nothing is written to the repository",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1098
+        "line": 1115
       }
     },
     {
@@ -6471,6 +6367,34 @@
       "location": {
         "file": "src/mcp/suggest.ts",
         "line": 20
+      }
+    },
+    {
+      "description": "What config CANNOT reach is the point: scope and expiry semantics are not settings. A project can move a threshold; it cannot declare that an acceptance covers a file it was not written in, because that is what the word means rather than a preference",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 49
+      }
+    },
+    {
+      "description": "Pure functions apart from readAcceptancePolicy; `now` is a parameter so a test can pin the clock rather than skew it",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 56
+      }
+    },
+    {
+      "description": "Scope and expiry are enforced in coverage.ts, not here — this module defines them and answers questions about them, coverage applies them",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 57
+      }
+    },
+    {
+      "description": "acceptanceBlastRadius is read by guardlink review BEFORE the justification prompt: a reviewer typing one line sees how many exposures it removes from the gate and from the SARIF a pentest reads",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 58
       }
     },
     {
@@ -6492,6 +6416,13 @@
       "location": {
         "file": "src/parser/annotation-hash.ts",
         "line": 32
+      }
+    },
+    {
+      "description": "v3 adds an acceptance's accepted_by and expires. Those two fields decide whether an acceptance still covers anything, so a hash that could not see them would call a renewed or re-signed governance decision 'unchanged'",
+      "location": {
+        "file": "src/parser/annotation-hash.ts",
+        "line": 33
       }
     },
     {
@@ -6561,14 +6492,14 @@
       "description": "Inline annotations never carry parent_symbol (parse-file.ts populates it only from @source), so this rule is inert in every inline repo — measured: 0 of 74 exposures change state on guardlink, 0 of 61 on specter-v1, 2 of 11 on expense-api",
       "location": {
         "file": "src/parser/coverage.ts",
-        "line": 66
+        "line": 82
       }
     },
     {
       "description": "Narrowing is one-directional by construction: coversExposure starts from the (asset, threat) match the old key computed and only ever subtracts. A refactor that made it additive would be a silent-wrong-answer path in the opposite direction",
       "location": {
         "file": "src/parser/coverage.ts",
-        "line": 67
+        "line": 83
       }
     },
     {
@@ -6866,10 +6797,17 @@
       }
     },
     {
+      "description": "applyReviewAction throws rather than returning a flag: a writer that can be ignored by a caller who forgot to check is the hole this replaced",
+      "location": {
+        "file": "src/review/index.ts",
+        "line": 36
+      }
+    },
+    {
       "description": "Shared by exposure review (@accepts/@audit) and entitlement acceptance (@entitles) so both writers place annotations by the same rules",
       "location": {
         "file": "src/review/index.ts",
-        "line": 237
+        "line": 389
       }
     },
     {
@@ -6951,8 +6889,8 @@
     }
   ],
   "coverage": {
-    "annotation_count": 701,
-    "coverage_percent": 87
+    "annotation_count": 696,
+    "coverage_percent": 86
   },
   "external_refs": []
 }

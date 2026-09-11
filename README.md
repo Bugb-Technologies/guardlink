@@ -120,7 +120,9 @@ the `@flows` graph and reports routes running from an untrusted entry point to a
 with no control anywhere along them — derived from annotations already committed, with
 no LLM in the loop, so every hop cites a real `file:line`.
 
-**3. CI enforces it.** `guardlink validate` fails on syntax errors. `guardlink ci --strict` fails on unmitigated exposures and drifted anchors. `guardlink diff --fail-on-new` blocks PRs that introduce new unmitigated exposures. `guardlink sarif` exports to GitHub's Security tab. The threat model becomes a quality gate, not a checkbox.
+**3. CI enforces it.** `guardlink validate` fails on syntax errors. `guardlink ci --strict` fails on unmitigated exposures, reproduced `@confirmed` exploits, acceptances that are not real decisions, and drifted anchors — narrowed to what you are ready to gate on with `--severity critical,high` and `--scope services/api`. `guardlink diff --fail-on-new` blocks PRs that introduce new unmitigated exposures. `guardlink sarif` exports to GitHub's Security tab. The threat model becomes a quality gate, not a checkbox.
+
+And it is a gate you cannot pass by typing. An `@accepts` has to name the human who signed it, carry a horizon after which the risk comes back, give a reason rather than a category, and it silences only the file it is written in — so the same risk at a second site needs a second signature. A `@confirmed` exploit is not silenceable at all.
 
 ```
 Developer writes code

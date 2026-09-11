@@ -160,10 +160,52 @@ export function stripHeader(text: string): string {
   return lines.slice(i).join('\n');
 }
 
-/** Read the annotation_hash a `.mmd` header claims, or null if it has none. */
+/**
+ * Read the `annotation_hash` an artifact claims, or null if it carries none.
+ *
+ * Three carriers, because the artifacts are three formats and a hash that only
+ * one of them can hold is a gate that only covers one of them (R10):
+ *
+ *   `.mmd`   a `%%` provenance header — Mermaid reads it as a comment
+ *   JSON     `provenance.annotation_hash` (model.json) or `metadata.annotation_hash`
+ *            (report.json) or `runs[0].properties.annotation_hash` (SARIF)
+ *   Markdown the `- \`annotation_hash\`: \`sha256-…\`` line the synced agent block writes
+ *
+ * Sniffed rather than dispatched on extension, so an artifact renamed or piped
+ * to a different name still answers. Returns null rather than throwing on
+ * anything unreadable: "no provenance" is a finding the caller reports, not an
+ * error that stops the sweep.
+ */
 export function readArtifactHash(text: string): string | null {
-  const m = text.match(/^%% annotation_hash:\s*(\S+)\s*$/m);
-  return m ? m[1] : null;
+  const mermaid = text.match(/^%% annotation_hash:\s*(\S+)\s*$/m);
+  if (mermaid) return mermaid[1];
+
+  const trimmed = text.trimStart();
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(text) as {
+        annotation_hash?: unknown;
+        provenance?: { annotation_hash?: unknown };
+        metadata?: { annotation_hash?: unknown };
+        runs?: Array<{ properties?: { annotation_hash?: unknown } }>;
+      };
+      for (const candidate of [
+        parsed.annotation_hash,               // MANIFEST.json
+        parsed.provenance?.annotation_hash,   // model.json
+        parsed.metadata?.annotation_hash,     // report.json
+        parsed.runs?.[0]?.properties?.annotation_hash, // findings.sarif
+      ]) {
+        if (typeof candidate === 'string' && candidate) return candidate;
+      }
+    } catch {
+      // Unreadable JSON reports as unheadered, which is what it is from here.
+    }
+    return null;
+  }
+
+  // The synced agent block's freshness line (src/init/templates.ts).
+  const markdown = text.match(/^-\s+`annotation_hash`:\s*`([^`]+)`\s*$/m);
+  return markdown ? markdown[1] : null;
 }
 
 export interface EmitOptions {
@@ -274,9 +316,16 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
   // by `--blame` describes history the annotation hash cannot see and moves with
   // every commit. The reader who asked for it has it on stdout; the committed
   // artifact stays content-derived.
+  //
+  // R10: `provenance` is stamped INTO the JSON. model.json was the one artifact
+  // the drift check could only ask "does it exist?" of — every `.mmd` beside it
+  // carried a `%%` header naming its annotation hash, and the file holding the
+  // actual model carried nothing. So a `model.json` from three commits ago sat
+  // in a repo looking exactly like a current one, and `validate --artifacts`
+  // said "Artifacts are current" because the diagrams happened to be.
   const { generated_at, ...durableModel } = ordered;
   write(join(guardlinkDir, 'model.json'), '.guardlink/model.json',
-    JSON.stringify(durableModel, (key, value) => (key === 'anchor' || key === 'blame' || key === 'blame_context' || key === 'hypothesis' ? undefined : value), 2) + '\n');
+    JSON.stringify({ provenance, ...durableModel }, (key, value) => (key === 'anchor' || key === 'blame' || key === 'blame_context' || key === 'hypothesis' ? undefined : value), 2) + '\n');
 
   // Committed, so content-derived only — same rule as the .mmd headers.
   const manifestBody = JSON.stringify({
@@ -348,14 +397,18 @@ export function checkArtifactDrift(root: string, model: ThreatModel): DriftFindi
   }
 
   // 1. Everything the model says should be there, is.
+  //
+  // R10: `model.json` is hash-checked now, not merely counted. It used to be
+  // the one expected artifact this loop looked at and then skipped, because the
+  // `.endsWith('.mmd')` test was the only way it knew how to read a hash — so
+  // the file carrying the actual model was the one file whose staleness the
+  // staleness gate could not see. The check now covers the 19 diagrams AND the
+  // three artifacts anything downstream actually consumes.
   const files: string[] = [];
   for (const relative of expectedArtifactPaths(model)) {
     const absolute = join(root, relative);
-    if (!existsSync(absolute)) {
-      findings.push({ path: relative, kind: 'missing', expected });
-    } else if (relative.endsWith('.mmd')) {
-      files.push(absolute);
-    }
+    if (!existsSync(absolute)) findings.push({ path: relative, kind: 'missing', expected });
+    else files.push(absolute);
   }
 
   // 2. Plus any other .mmd sitting in graph/. A leftover from a renamed
@@ -378,8 +431,66 @@ export function checkArtifactDrift(root: string, model: ThreatModel): DriftFindi
     else if (found !== expected) findings.push({ path: relative, kind: 'stale', expected, found });
   }
 
+  // 3. Plus every OPTIONAL stamped artifact that happens to be present.
+  //
+  //    Optional in a precise sense: absence is not drift. Nothing obliges a repo
+  //    to keep a `report.json`, to have run `guardlink sarif -o`, or to carry
+  //    every agent's instruction file — but a repo that HAS one and lets it rot
+  //    is publishing a threat model that is not this one. `findings.sarif` is the
+  //    sharpest of them: it is what a pentest reads, so a stale one decides which
+  //    exposures get tested at all.
+  //
+  //    STALE only, never `unheadered`. An optional artifact with no hash makes no
+  //    claim about which annotations it came from, and it was almost certainly
+  //    written by a binary that predates the stamping — failing a repo for that
+  //    would be punishing the wrong thing, and it fixes itself the next time the
+  //    command that writes it is run. A WRONG hash is a false claim, and that is
+  //    what this catches.
+  for (const relative of OPTIONAL_STAMPED_ARTIFACTS) {
+    const absolute = join(root, relative);
+    if (!existsSync(absolute) || files.includes(absolute)) continue;
+    const found = readArtifactHash(readFileSync(absolute, 'utf-8'));
+    if (found !== null && found !== expected) {
+      findings.push({ path: relative, kind: 'stale', expected, found });
+    }
+  }
+
   return findings;
 }
+
+/**
+ * Artifacts that carry an `annotation_hash` when they exist, and are checked
+ * when they do (R10).
+ *
+ * Separate from `expectedArtifactPaths` because these are not emitted by
+ * `guardlink artifacts` — they are written by `sarif`, by `report --format
+ * json`, and by `sync`. A missing one is a repo that never ran that command; a
+ * STALE one is a published artifact that no longer describes this tree, which
+ * is the whole point of having a hash.
+ *
+ * The agent instruction files are the reason this list is not just the two JSON
+ * exports: they are the eight files a coding agent reads to learn this repo's
+ * asset and threat vocabulary, they already carry the hash in their synced
+ * block, and nothing checked it — so an agent could be reading last month's
+ * vocabulary and reusing ids the model no longer declares.
+ */
+export const OPTIONAL_STAMPED_ARTIFACTS: readonly string[] = [
+  // Machine-readable exports, at the paths the CLI's own help and the
+  // downstream tooling use.
+  '.guardlink/report.json',
+  '.guardlink/findings.sarif',
+  'threat-model.json',
+  'guardlink-pentest.sarif',
+  // The eight files `guardlink sync` writes, plus the generated graph README.
+  'CLAUDE.md',
+  'AGENTS.md',
+  '.clinerules',
+  '.windsurfrules',
+  '.cursor/rules/guardlink.mdc',
+  '.gemini/GEMINI.md',
+  '.github/copilot-instructions.md',
+  '.guardlink/README.md',
+];
 
 // ─── graph/README.md ─────────────────────────────────────────────────
 

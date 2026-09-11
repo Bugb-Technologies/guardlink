@@ -337,7 +337,7 @@ Verb keyword sets:
 | `@exposes`, `@connects` | `to` |
 | `@mitigates` | `against`, `using`, `with` |
 | `@confirmed`, `@handles` | `on` |
-| `@accepts` | `on`, `to` |
+| `@accepts` | `on`, `to`, `by`, `until` |
 | `@transfers` | `from`, `to` |
 | `@flows` | `->` |
 | `@boundary` | `between`, `and`, `\|` |
@@ -511,16 +511,48 @@ export async function handleOAuthCallback(req: Request) { ... }
 #### `@accepts` — Acknowledge a Risk
 
 ```
-@accepts <threat> on <asset> [-- "<description>"]
+@accepts <threat> on <asset> [by <who>] [until <YYYY-MM-DD>] [-- "<description>"]
 ```
 
 Declares a conscious decision to accept a known risk without mitigation. This is not negligence — it's a documented business decision with reasoning.
 
 ```ruby
-# @accepts #info-disclosure on App.API.HealthCheck -- "Health endpoint returns version info; this is public and non-sensitive"
+# @accepts #info-disclosure on App.API.HealthCheck by "Ada Lovelace" until 2027-01-31
+#     -- "Health endpoint returns version info; this is public and non-sensitive"
 get '/health' do
   { status: 'ok', version: APP_VERSION }.to_json
 end
+```
+
+`by <who>` names the human whose decision this is — quoted when it contains a space, which is
+almost always. `until <YYYY-MM-DD>` is the last day the acceptance covers anything; after it, the
+exposure returns and the gate reports it as **expired**.
+
+Both clauses are syntactically optional, so an acceptance written before they existed still parses.
+They are not optional in effect: an acceptance missing either one, or carrying a justification too
+short to be a reason, **does not count as an acceptance** to `guardlink ci --strict`, and its
+exposures are reported as unmitigated. `guardlink validate` warns about it
+(`acceptance-unqualified`). A conforming tool MUST NOT reject such a line at parse time — an
+annotation the parser drops is invisible to the check that exists to name it.
+
+**Scope.** An acceptance covers exposures **in the file it is written in**, and only those.
+
+This is the one place `@accepts` and `@mitigates` are asymmetric, and the asymmetry is the point. A
+control is code: it runs, and a filter at a trust boundary genuinely defends a handler in another
+file, which is why a mitigation matches on `(asset, threat)` regardless of where it sits (§7.3). An
+acceptance is a person saying *"I read this risk, at this site, and I sign for it"*, and that claim
+does not travel to a file they never opened. Measured on OWASP NodeGoat before this rule: one
+`@accepts` at `app/data/user-dao.js:17` also silenced the identical pair at
+`artifacts/db-reset.js:12` — in the gate **and** in the SARIF export a pentest probes from, so a
+site nobody had reviewed was removed from the set of things that would ever be tested. Two sites
+now need two signatures, which is the cost, and the cost is the point.
+
+**Policy.** Thresholds live in `.guardlink/config.json` and default to
+`{ "min_justification": 24, "require_author": true, "require_expiry": true, "max_horizon_days": 365 }`.
+A project may move a threshold; scope and expiry semantics are not settings.
+
+```json
+{ "acceptance": { "min_justification": 40, "max_horizon_days": 90 } }
 ```
 
 #### `@entitles` — Capability Held by Design
@@ -919,7 +951,9 @@ GuardLink annotations map naturally to SARIF 2.1.0 (Static Analysis Results Inte
 | `@handles` (secrets/pii) | `result` with `level: "note"` for data flow tracking |
 | `@actor` / `@entitles` | **Not exported.** No result, no suppression, no property on any result |
 
-`@entitles` is deliberately absent from this mapping. Two annotations already remove an exposure from the export (`@mitigates`, `@accepts`), and an exposure hidden from the export cannot be tested. Entitlement is a claim about *purpose* that no probe can verify, so it must never be the third such mechanism: a conforming exporter MUST produce byte-identical SARIF for a model with entitlements and the same model without them. Only the downstream *recommendation* may change (§3.2).
+`@entitles` is deliberately absent from this mapping. Two annotations already remove an exposure from the export (`@mitigates`, `@accepts`), and an exposure hidden from the export cannot be tested. Entitlement is a claim about *purpose* that no probe can verify, so it must never be the third such mechanism: a conforming exporter MUST produce **byte-identical `runs[].results` and `runs[].tool`** for a model with entitlements and the same model without them. Only the downstream *recommendation* may change (§3.2).
+
+This was previously stated as byte-identical SARIF *documents*, and the narrower wording is the accurate one rather than a relaxation. `runs[].properties` carries provenance — the `annotation_hash` naming the annotation set the export was cut from — and an `@entitles` **is** an annotation, so a hash that could not see one would report a model whose entitlements had been rewritten as unchanged. That is the silent all-clear §2 exists to prevent, and the reason the annotation hash was taught about entitlements in the first place. The invariant that matters is the one the table above states literally: no result, no suppression, and no property **on any result**. Provenance is not a finding.
 
 ### 6.2. Severity Mapping
 

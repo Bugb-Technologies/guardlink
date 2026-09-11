@@ -47,7 +47,7 @@
 import { Command } from 'commander';
 import { resolve, basename, join, isAbsolute, relative } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { runCiChecks, formatCiReport } from '../ci/index.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
@@ -70,7 +70,11 @@ import { parseFindingsBlock, validateFindings } from '../analyze/findings.js';
 import { readHypotheses, classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, confirmedLine, writeConfirmedLine, formatHypothesisList, formatQueue, formatIntake, formatOutcome, formatImport } from '../hypothesis/index.js';
 import type { HypothesisClassification } from '../hypothesis/index.js';
 import { resolveConfig, saveProjectConfig, saveGlobalConfig, loadProjectConfig, loadGlobalConfig, maskKey, describeConfigSource } from '../agents/config.js';
-import { getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview, type ReviewResult } from '../review/index.js';
+import {
+  getReviewableExposures, applyReviewAction, formatExposureForReview, summarizeReview,
+  parseReviewBatch, horizonFrom, ReviewRejected,
+  type ReviewResult, type ReviewAction, type ReviewableExposure, type ScriptedDecision,
+} from '../review/index.js';
 import {
   proposeEntitlement, listProposals, findProposal, applyProposalDecision, checkEntitlementProvenance,
   defaultDecider, formatProposalForReview, formatProposalLine, summarizeDecisions, proposalsPath,
@@ -78,7 +82,7 @@ import {
 } from '../review/entitlements.js';
 import { populateMetadata, mergeReports, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace } from '../workspace/index.js';
 import type { MergedReport, LinkResult } from '../workspace/index.js';
-import type { ThreatModel, ParseDiagnostic } from '../types/index.js';
+import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
 import type { VerificationReport } from '../parser/index.js';
 import gradient from 'gradient-string';
 import { readConfiguredProject } from '../parser/annotation-mode.js';
@@ -252,8 +256,17 @@ program
     // @flows GitRepo -> #cli via attachBlame -- "Opt-in attribution; without --blame the JSON is byte-identical to before"
     if (opts.blame) attachBlame(root, model);
 
+    // R10: stamp the export with the annotations it was cut from. `parse -o
+    // .guardlink/report.json` is how the model reaches the graph and everything
+    // downstream of it, and until now that file said nothing about which
+    // annotations produced it — so a report.json three commits old was
+    // indistinguishable from a current one, and `validate --artifacts` had
+    // nothing to compare. Additive: `metadata` is a new key beside every field
+    // this command already emitted.
+    const stamped = populateMetadata(model, root);
+
     // Output model
-    const json = JSON.stringify(model, null, opts.pretty ? 2 : 0);
+    const json = JSON.stringify(stamped, null, opts.pretty ? 2 : 0);
     if (opts.output) {
       const { writeFile } = await import('node:fs/promises');
       await writeFile(opts.output, json + '\n');
@@ -330,6 +343,21 @@ program
     // Check for @accepts without @audit (governance concern)
     const acceptAuditDiags = findAcceptedWithoutAudit(model);
 
+    // An acceptance that does not meet this project's policy. A WARNING here,
+    // an exit code in `guardlink ci --strict`: validate says what is true about
+    // the annotations, the gate decides what stops a build. Measured before
+    // this existed, `validate` on a repository whose whole exposure list had
+    // been silenced by 67 one-character acceptances printed
+    // "Validation passed" and exited 0 while merely advising the count.
+    const acceptancePolicy = readAcceptancePolicy(root);
+    const acceptanceDiags: ParseDiagnostic[] = findAcceptanceDefects(model, acceptancePolicy).map(f => ({
+      level: 'warning' as const,
+      code: 'acceptance-unqualified' as const,
+      message: `${f.message}. It does not count as an acceptance in guardlink ci --strict.`,
+      file: f.file,
+      line: f.line,
+    }));
+
     // Entitlement checks: undeclared actor (error) and uncited/inert claim (warning)
     const actorDiags = findUndeclaredActors(model);
     const inertDiags = findInertEntitlements(model);
@@ -350,7 +378,7 @@ program
     const ledgerRead = readLedger(root);
     const ledgerDiags = ledgerRead.diagnostic ? [ledgerRead.diagnostic] : [];
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags];
+    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...acceptanceDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags];
 
     // Check for unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);
@@ -596,12 +624,16 @@ program
 
 program
   .command('ci')
-  .description('Advisory CI checks — parse diagnostics, unmitigated exposures, drifted @source anchors, and stale claims (exit 0 unless --strict)')
+  .description('Advisory CI checks — parse diagnostics, unmitigated exposures, confirmed exploits, unqualified acceptances, drifted @source anchors, and stale claims (exit 0 unless --strict)')
   .argument('[dir]', 'Project directory to scan', '.')
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('-f, --format <fmt>', 'Output format: text (default) or json', 'text')
   .option('--strict', 'Exit 1 when any check finds something to gate on. Off by default — these are warnings, not a gate')
-  .action(async (dir: string, opts: { project: string; format: string; strict?: boolean }) => {
+  .option('--severity <levels>', 'Gate only on exposures and confirmed exploits at these severities (comma-separated: critical,high,medium,low). Unrated findings always count; drift and parse errors are unaffected')
+  .option('--scope <paths>', 'Gate only on findings under these root-relative paths (comma-separated). Prefix match on path segments')
+  .action(async (dir: string, opts: {
+    project: string; format: string; strict?: boolean; severity?: string; scope?: string;
+  }) => {
     const root = resolve(dir);
 
     if (opts.format !== 'text' && opts.format !== 'json') {
@@ -609,8 +641,26 @@ program
       process.exit(1);
     }
 
+    // A misspelled severity must not narrow the gate to nothing and report a
+    // pass. `--severity critcal` would otherwise match no finding and exit 0.
+    let severity: Severity[] | undefined;
+    if (opts.severity) {
+      const asked = opts.severity.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      const valid = ['critical', 'high', 'medium', 'low'];
+      const unknown = asked.filter(s => !valid.includes(s));
+      if (unknown.length > 0) {
+        console.error(`Unknown --severity '${unknown.join(', ')}'. Use ${valid.join(', ')}.`);
+        process.exit(1);
+      }
+      severity = asked as Severity[];
+    }
+    const scope = opts.scope?.split(',').map(s => s.trim()).filter(Boolean);
+
     const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
-    const report = runCiChecks(root, model, { strict: opts.strict, diagnostics });
+    const report = runCiChecks(root, model, {
+      strict: opts.strict, diagnostics, severity, scope,
+      policy: readAcceptancePolicy(root),
+    });
 
     if (report.summary.ledger === 'corrupt' && opts.format === 'text') {
       console.error(`✗ ${readLedger(root).diagnostic!.message}`);
@@ -619,7 +669,9 @@ program
     if (opts.format === 'json') {
       console.log(JSON.stringify(report, null, 2));
       console.error(`GuardLink CI: ${report.summary.parse_errors} parse error(s), ${report.summary.parse_warnings} parse warning(s), `
-        + `${report.summary.exposures} unmitigated exposure(s), ${report.summary.drift} drifted anchor(s), ${report.summary.stale} stale claim(s)`);
+        + `${report.summary.exposures} unmitigated exposure(s), ${report.summary.confirmed} confirmed exploit(s), `
+        + `${report.summary.unqualified_acceptances} unqualified acceptance(s), `
+        + `${report.summary.drift} drifted anchor(s), ${report.summary.stale} stale claim(s)`);
     } else {
       console.error(formatCiReport(report));
     }
@@ -1924,18 +1976,46 @@ program
   });
 
 // ─── review ──────────────────────────────────────────────────────────
+//
+// The other human-only verb, and until now the one with no cost.
+//
+// Measured before this: a piped `guardlink review` **exited 0 having written
+// nothing** — readline drained every line into the first `question`, the later
+// promises never resolved, and Node exited cleanly — so a bot or a PR job that
+// "ran the review" reported success for work it did not do. Through a real pty
+// it accepted a **critical** plaintext-password exposure on a **one-character**
+// justification and recorded **no author**.
+//
+// So: `--accept`/`--remediate`/`--skip` with `--by`, `--justification` and
+// `--until`, a `--from <file>` batch, and a non-TTY invocation with none of them
+// that FAILS rather than pretending. The rule itself is not here — it is in
+// `applyReviewAction`, so the MCP server and every future caller get it too.
 
 program
   .command('review')
-  .description('Interactive governance review of unmitigated exposures — accept, remediate, or skip')
+  .description('Governance review of unmitigated exposures — accept, remediate, or skip. Interactive at a TTY; scriptable with --accept/--from. Every acceptance records who, why, and until when.')
   .argument('[dir]', 'Project directory to scan', '.')
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--severity <levels>', 'Filter by severity: critical,high,medium,low', undefined)
   .option('--list', 'Just list reviewable exposures without prompting')
-  .action(async (dir: string, opts: { project: string; severity?: string; list?: boolean }) => {
+  .option('-f, --format <fmt>', 'Output format for --list: text (default) or json', 'text')
+  .option('--accept <id>', 'Accept one exposure by id (non-interactive). Needs --justification; --by defaults to git user.name')
+  .option('--remediate <id>', 'Mark one exposure for remediation by id (non-interactive). Needs --justification')
+  .option('--skip <id>', 'Record no decision for one exposure by id. Writes nothing; reported for symmetry with a batch file')
+  .option('--by <name>', 'Human recording the decision (defaults to git user.name, then the OS user)')
+  .option('--justification <text>', 'Why this risk is acceptable, or what the planned fix is')
+  .option('--until <date>', `Acceptance horizon, YYYY-MM-DD (default: ${DEFAULT_ACCEPTANCE_POLICY.max_horizon_days} days out)`)
+  .option('--from <file>', 'Apply a JSON batch of decisions: {"decisions":[{"id","decision","justification","by","until"}]}')
+  .action(async (dir: string, opts: {
+    project: string; severity?: string; list?: boolean; format: string;
+    accept?: string; remediate?: string; skip?: string;
+    by?: string; justification?: string; until?: string; from?: string;
+  }) => {
     const root = resolve(dir);
-    const { model } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
-    let exposures = getReviewableExposures(model);
+    const project = opts.project ?? readConfiguredProject(root) ?? undefined;
+    const policy = readAcceptancePolicy(root);
+    const { model } = await parseProject({ root, project });
+    let exposures = getReviewableExposures(model, { policy });
 
     // Filter by severity if requested
     if (opts.severity) {
@@ -1945,6 +2025,106 @@ program
       exposures = exposures.map((e, i) => ({ ...e, index: i + 1 }));
     }
 
+    /** Re-parse and refresh agent files after anything landed in source. */
+    const syncAfterWrite = async (results: ReviewResult[]) => {
+      if (!results.some(r => r.linesInserted > 0)) return;
+      try {
+        const { model: newModel } = await parseProject({ root, project });
+        const syncResult = syncAgentFiles({ root, model: newModel });
+        if (syncResult.updated.length > 0) console.error(`↻ Synced ${syncResult.updated.length} agent instruction file(s)`);
+      } catch {}
+    };
+
+    /**
+     * What one acceptance would silence, in both surfaces, before it is written.
+     *
+     * The gate and the SARIF cxg probes from share one coverage predicate, so
+     * this count is true of both — which is the sentence a reviewer needed and
+     * never had.
+     */
+    const blastRadiusLine = (r: ReviewableExposure): string => {
+      const e = r.exposure;
+      const radius = acceptanceBlastRadius(model, e.asset, e.threat, e.location.file);
+      return `  Silences: ${formatBlastRadius(radius)} — in the gate AND in the SARIF a pentest reads`;
+    };
+
+    // ── scripted decisions (R9) ──
+    const scripted: ScriptedDecision[] = [];
+    if (opts.from) {
+      try {
+        scripted.push(...parseReviewBatch(readFileSync(resolve(opts.from), 'utf-8'), opts.from));
+      } catch (err) {
+        console.error(`✗ ${(err as Error).message}`);
+        process.exitCode = 1;
+        return;
+      }
+    }
+    for (const [id, decision] of [
+      [opts.accept, 'accept'], [opts.remediate, 'remediate'], [opts.skip, 'skip'],
+    ] as const) {
+      if (id) scripted.push({ id, decision, justification: opts.justification, by: opts.by, until: opts.until });
+    }
+
+    if (scripted.length > 0) {
+      if (opts.list) {
+        console.error('✗ --list and a scripted decision do the opposite things. Pick one.');
+        process.exitCode = 1;
+        return;
+      }
+      // Bottom-up within a file: an acceptance inserts lines, so deciding a
+      // lower anchor first would shift every anchor above it. Same rule
+      // `guardlink entitle` follows for the same reason.
+      const byId = new Map(exposures.map(r => [r.id, r]));
+      const planned: Array<{ row: ScriptedDecision; target: ReviewableExposure }> = [];
+      for (const row of scripted) {
+        const target = byId.get(row.id);
+        if (!target) {
+          console.error(`✗ No reviewable exposure with id "${row.id}".`);
+          console.error('  Valid ids: guardlink review . --list --format json');
+          process.exitCode = 1;
+          return;
+        }
+        planned.push({ row, target });
+      }
+      planned.sort((a, b) => {
+        const fa = a.target.exposure.location.file, fb = b.target.exposure.location.file;
+        return fa === fb ? b.target.exposure.location.line - a.target.exposure.location.line : fa.localeCompare(fb);
+      });
+
+      const results: ReviewResult[] = [];
+      for (const { row, target } of planned) {
+        const action: ReviewAction = {
+          decision: row.decision,
+          justification: row.justification ?? '',
+          by: row.decision === 'skip' ? undefined : (defaultDecider(root, row.by) ?? undefined),
+          until: row.decision === 'accept'
+            ? (row.until ?? horizonFrom(policy.max_horizon_days))
+            : undefined,
+        };
+        if (row.decision === 'accept') console.error(blastRadiusLine(target));
+        try {
+          results.push(await applyReviewAction(root, target, action, { policy }));
+        } catch (err) {
+          // Stop on the first refusal rather than applying the rest: a batch
+          // that half-lands leaves a reviewer guessing which half.
+          console.error(`✗ ${row.id}: ${(err as Error).message}`);
+          if (results.length > 0) console.error(`  ${results.length} earlier decision(s) in this run were written.`);
+          process.exitCode = 1;
+          await syncAfterWrite(results);
+          return;
+        }
+        const e = target.exposure;
+        const verb = row.decision === 'accept' ? 'Accepted' : row.decision === 'remediate' ? 'Marked for remediation' : 'Skipped';
+        console.error(`✓ ${verb}: ${e.asset} → ${e.threat} [${e.severity || '?'}]`
+          + (action.by ? ` — recorded for ${action.by}` : '')
+          + (action.until ? `, expires ${action.until}` : '')
+          + (results[results.length - 1].linesInserted > 0 ? `; ${results[results.length - 1].linesInserted} line(s) written to ${results[results.length - 1].targetFile}` : ''));
+      }
+      console.error(summarizeReview(results));
+      await syncAfterWrite(results);
+      return;
+    }
+
     if (exposures.length === 0) {
       console.error('✓ No unmitigated exposures to review.');
       return;
@@ -1952,6 +2132,22 @@ program
 
     // List-only mode
     if (opts.list) {
+      if (opts.format === 'json') {
+        // Ids on stdout, so a bot can build a --from batch from this output
+        // without scraping a human-readable stream.
+        console.log(JSON.stringify(exposures.map(r => ({
+          id: r.id,
+          index: r.index,
+          asset: r.exposure.asset,
+          threat: r.exposure.threat,
+          severity: r.exposure.severity ?? null,
+          file: r.exposure.location.file,
+          line: r.exposure.location.line,
+          description: r.exposure.description ?? null,
+          silences: acceptanceBlastRadius(model, r.exposure.asset, r.exposure.threat, r.exposure.location.file).silenced.length,
+        })), null, 2));
+        return;
+      }
       console.error(`\n${exposures.length} unmitigated exposure(s):\n`);
       for (const r of exposures) {
         const e = r.exposure;
@@ -1961,18 +2157,40 @@ program
       return;
     }
 
-    // Interactive review
+    // ── interactive review ──
+    //
+    // Refuse without a TTY. This used to run anyway: readline over a pipe
+    // drained every answer into the first question, nothing was ever written,
+    // and the process exited 0 — a command reporting success for work it did
+    // not do. Failing loudly is the only honest reading of that input.
+    if (!process.stdin.isTTY) {
+      console.error('✗ guardlink review needs a terminal to prompt, and stdin is not one.');
+      console.error('  Piping answers in silently accepted nothing and exited 0 — that is why this is an error.');
+      console.error('  Non-interactively, decide explicitly:');
+      console.error('    guardlink review . --list --format json');
+      console.error('    guardlink review . --accept <id> --by "<name>" --justification "<why>" --until <YYYY-MM-DD>');
+      console.error('    guardlink review . --from decisions.json');
+      process.exitCode = 1;
+      return;
+    }
+
     const { createInterface } = await import('node:readline');
     const rl = createInterface({ input: process.stdin, output: process.stderr });
     const ask = (q: string): Promise<string> =>
       new Promise(resolve => rl.question(q, resolve));
 
-    console.error(`\n  guardlink review — ${exposures.length} unmitigated exposure(s)\n`);
+    let reviewer = defaultDecider(root, opts.by);
+    while (!reviewer) {
+      reviewer = (await ask('  Your name (recorded with every decision): ')).trim() || undefined;
+    }
+
+    console.error(`\n  guardlink review — ${exposures.length} unmitigated exposure(s), deciding as ${reviewer}\n`);
 
     const results: ReviewResult[] = [];
 
     for (const reviewable of exposures) {
       console.error(formatExposureForReview(reviewable, exposures.length));
+      console.error(blastRadiusLine(reviewable));
       console.error('');
       console.error('  (a) Accept — risk acknowledged and intentional');
       console.error('  (r) Remediate — mark as planned fix');
@@ -1987,24 +2205,37 @@ program
         break;
       }
 
-      if (choice === 'a') {
-        let justification = '';
-        while (!justification) {
-          justification = (await ask('  Justification (required): ')).trim();
-          if (!justification) console.error('  ⚠  Justification is mandatory for acceptance.');
+      if (choice === 'a' || choice === 'r') {
+        const label = choice === 'a' ? 'Justification' : 'Remediation note';
+        // Re-prompt on refusal rather than validating inline: the rule lives in
+        // applyReviewAction, so the prompt asks and the writer decides. That is
+        // what keeps the interactive path and the scripted path honest about
+        // the same rule.
+        let done = false;
+        while (!done) {
+          const text = (await ask(`  ${label} (required, min ${policy.min_justification} chars): `)).trim();
+          if (!text) { console.error(`  ⚠  ${label} is mandatory.`); continue; }
+          let until: string | undefined;
+          if (choice === 'a') {
+            const suggested = horizonFrom(policy.max_horizon_days);
+            const typed = (await ask(`  Expires [YYYY-MM-DD, blank for ${suggested}]: `)).trim();
+            until = typed || suggested;
+          }
+          try {
+            const result = await applyReviewAction(root, reviewable, {
+              decision: choice === 'a' ? 'accept' : 'remediate',
+              justification: text, by: reviewer, until,
+            }, { policy });
+            results.push(result);
+            console.error(choice === 'a'
+              ? `  ✓ Accepted by ${reviewer} until ${until} — ${result.linesInserted} line(s) written to ${result.targetFile}\n`
+              : `  ✓ Marked for remediation — ${result.linesInserted} line(s) written to ${result.targetFile}\n`);
+            done = true;
+          } catch (err) {
+            if (!(err instanceof ReviewRejected)) throw err;
+            console.error(`  ⚠  ${err.message}`);
+          }
         }
-        const result = await applyReviewAction(root, reviewable, { decision: 'accept', justification });
-        results.push(result);
-        console.error(`  ✓ Accepted — ${result.linesInserted} line(s) written to ${result.targetFile}\n`);
-      } else if (choice === 'r') {
-        let note = '';
-        while (!note) {
-          note = (await ask('  Remediation note (required): ')).trim();
-          if (!note) console.error('  ⚠  Remediation note is mandatory.');
-        }
-        const result = await applyReviewAction(root, reviewable, { decision: 'remediate', justification: note });
-        results.push(result);
-        console.error(`  ✓ Marked for remediation — ${result.linesInserted} line(s) written to ${result.targetFile}\n`);
       } else {
         results.push({ exposure: reviewable, action: { decision: 'skip', justification: '' }, linesInserted: 0, targetFile: reviewable.exposure.location.file });
         console.error('  — Skipped\n');
@@ -2015,16 +2246,7 @@ program
 
     if (results.length > 0) {
       console.error(summarizeReview(results));
-
-      // Auto-sync agent files if any annotations were written
-      if (results.some(r => r.linesInserted > 0)) {
-        try {
-          // Re-parse to get updated model
-          const { model: newModel } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
-          const syncResult = syncAgentFiles({ root, model: newModel });
-          if (syncResult.updated.length > 0) console.error(`↻ Synced ${syncResult.updated.length} agent instruction file(s)`);
-        } catch {}
-      }
+      await syncAfterWrite(results);
     }
   });
 
