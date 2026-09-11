@@ -14,11 +14,12 @@
 import { esc, chip, sortableHead, rowAttrs, sevBadge, sevRank, numCell, locCellShort, claimStateBadge, whoLink, badge, scopeLabel, sectionHead, subHead, normSev, descCell, colgroup, pager, icon } from '../html.js';
 import type { PageContext, ClaimView } from './context.js';
 
-const STATUS_LABEL: Record<string, string> = { open: 'Open', mitigated: 'Mitigated', accepted: 'Accepted', confirmed: 'Confirmed', control: 'Control' };
+const STATUS_LABEL: Record<string, string> = { open: 'Open', mitigated: 'Mitigated', accepted: 'Accepted', confirmed: 'Confirmed', control: 'Control', refuted: 'Refuted' };
 
 function statusBadge(c: ClaimView): string {
-  const tone = c.status === 'open' || c.status === 'confirmed' ? 'red' : c.status === 'mitigated' ? 'green' : c.status === 'accepted' ? 'blue' : 'neutral';
-  return badge(STATUS_LABEL[c.status] ?? c.status, tone);
+  const tone = c.status === 'open' || c.status === 'confirmed' ? 'red' : c.status === 'mitigated' ? 'green' : c.status === 'accepted' || c.status === 'refuted' ? 'blue' : 'neutral';
+  const title = c.status === 'refuted' && c.hypothesis ? `Tested and not exploitable: ${c.hypothesis.evidence ?? ''} (${c.hypothesis.by ?? ''}, ${(c.hypothesis.at ?? '').slice(0, 10)})` : undefined;
+  return badge(STATUS_LABEL[c.status] ?? c.status, tone, title) + (c.hypothesis?.state === 'retest' ? badge('retest', 'neutral', 'Confirmed before; the code beneath it changed') : '');
 }
 
 function introducedCell(c: ClaimView): string {
@@ -46,6 +47,7 @@ export function renderThreatsPage(ctx: PageContext): string {
   const open = exposures.filter(c => c.status === 'open');
   const mitigated = exposures.filter(c => c.status === 'mitigated');
   const accepted = exposures.filter(c => c.status === 'accepted');
+  const refuted = exposures.filter(c => c.status === 'refuted');
   const bySev = (k: string): number => exposures.filter(c => normSev(c.severity) === k).length;
   const showState = ledger !== null;
   const showWho = attribution !== null;
@@ -74,6 +76,7 @@ ${scope ? `  <p class="scope-note">Only exposures annotated in the files tagged 
     ${chip('status', 'open', 'Open', { count: open.length, cls: 'chip-crit' })}
     ${chip('status', 'mitigated', 'Mitigated', { count: mitigated.length })}
     ${chip('status', 'accepted', 'Accepted', { count: accepted.length })}
+    ${refuted.length > 0 ? chip('status', 'refuted', 'Refuted', { count: refuted.length }) : ''}
     ${confirmed.length > 0 ? chip('status', 'confirmed', 'Confirmed', { count: confirmed.length, cls: 'chip-crit' }) : ''}
     <span class="sep"></span>
     <span class="chips-label">Severity</span>
@@ -97,7 +100,7 @@ ${scope ? `  <p class="scope-note">Only exposures annotated in the files tagged 
   ${pager('confirmed')}
   <div class="no-match" data-count-for="confirmed" hidden>No confirmed finding matches the current filters.</div>` : ''}
 
-  ${subHead('Exposures', open.length > 0 ? 'sub-h-alert' : 'sub-h-ok', `<span class="muted">${open.length} open · ${mitigated.length} mitigated · ${accepted.length} accepted</span>`)}
+  ${subHead('Exposures', open.length > 0 ? 'sub-h-alert' : 'sub-h-ok', `<span class="muted">${open.length} open · ${mitigated.length} mitigated · ${accepted.length} accepted${refuted.length > 0 ? ` · ${refuted.length} refuted` : ''}</span>`)}
   <p class="section-note">One table, every exposure${within}, open first. <strong>Open</strong> rows have no covering control; use the chips above to narrow, or click a column header to sort.</p>
   ${exposures.length > 0 ? `
   <div class="table-wrap"><table id="exposures" class="sortable fixed" data-paginate="25">

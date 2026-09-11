@@ -45,6 +45,7 @@ import type { SinceInput } from './analytics.js';
 import type { SeverityBreakdown } from './data.js';
 import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface } from './diagrams.js';
 import { detectRepoLinks } from './links.js';
+import { readHypotheses, classifyHypotheses, attachHypotheses } from '../hypothesis/index.js';
 import { buildFileAnnotations, buildAnalysisData } from './annotations.js';
 import { esc, featureScope, scopeLabel, hostLabel, icon } from './html.js';
 import { BASE_CSS, UPGRADE_CSS } from './styles.js';
@@ -131,6 +132,10 @@ export interface DashboardOptions {
 
 export function generateDashboardHTML(rawModel: ThreatModel, root?: string, analyses?: ThreatReportWithContent[], opts: DashboardOptions = {}): string {
   const model = canonicalizeModelOrder(rawModel);
+  // The tested state of every exposure, when a ledger exists: a refuted claim is not open.
+  // @flows LedgerFile -> #dashboard via readHypotheses -- "Outcomes for the badges, the drawer and the open count"
+  const hypotheses = root ? classifyHypotheses(model, readHypotheses(root)) : null;
+  if (hypotheses) attachHypotheses(model, hypotheses);
   // Read from rawModel: canonicalisation reorders, it does not add fields.
   const scope = featureScope(rawModel);
   const { generated_at: _generatedAt, blame_context: _blameContext, ...durableModel } = model as ThreatModel & { blame_context?: unknown };
@@ -145,7 +150,7 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   const ledgerRead = root ? computeLedgerStates(model, root) : null;
   const ledger = ledgerRead && ledgerRead.report.ledger !== 'absent' ? ledgerRead : null;
   const featureNames = listFeatures(model);
-  const unmitigated = exposures.filter(e => !e.mitigated && !e.accepted);
+  const unmitigated = exposures.filter(e => !e.mitigated && !e.accepted && !e.refuted);
   const mitigatedCount = exposures.filter(e => e.mitigated).length;
   const mitigationCoveragePercent = exposures.length > 0 ? Math.round((mitigatedCount / exposures.length) * 100) : 0;
   // The grade counts what is still open: a mitigated critical is not a critical risk.
@@ -213,7 +218,7 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   const claimsData = claims.map(c => ({
     idx: c.idx, verb: c.verb, status: c.status, statusLabel: c.statusLabel, asset: c.asset, akey: assetKey(c.asset), threat: c.threat, severity: c.severity,
     description: c.description, control: c.control, refs: c.refs, file: c.file, line: c.line, url: c.url, state: c.state, verifiedBy: c.verifiedBy, verifiedAt: c.verifiedAt,
-    owners: c.owners, handles: c.handles, change: c.change, blame: c.blame,
+    owners: c.owners, handles: c.handles, change: c.change, hypothesis: c.hypothesis, blame: c.blame,
   }));
 
   return `<!DOCTYPE html>

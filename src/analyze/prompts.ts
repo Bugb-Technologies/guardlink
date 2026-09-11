@@ -60,6 +60,7 @@ You will receive:
 - **@actor** — a principal in the authorization model (a role, not a person)
 - **@entitles** — a capability an actor holds **by design**: the privilege needed to trigger the effect is a privilege that already grants that effect. It is NOT a mitigation and NOT an acceptance — the exposure is still real and still testable. Only treat it as a reason a finding is by-design when the *measured* minimum privilege matches the entitled actor, and never for an ownership question (IDOR, tenant isolation), where both peers hold the capability. An entitlement whose description cites no authorization code is inert; ignore it.
 - **@audit** — marks an asset as requiring human review
+- **hypothesis** (a field on an @exposes row, when present) — what happened when it was tested: 'confirmed' with evidence is proven; 'refuted' with evidence was tried and found not exploitable and is **not an open risk** (report it as refuted, keep it out of the priority list); 'retest' was confirmed before and the code beneath it changed since
 
 ## Critical rules
 
