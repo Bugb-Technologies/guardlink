@@ -1,0 +1,122 @@
+%%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
+graph LR
+  subgraph TZ0["Trust boundary at process spawn"]
+    agent_launcher["GuardLink.Agent_Launcher [SECRETS, INTERNAL]"]
+  end
+  subgraph TZ1["Trust boundary at external API call"]
+    llm_client["GuardLink.LLM_Client [INTERNAL, SECRETS]"]
+  end
+  subgraph TZ3["Trust boundary at CLI argument parsing"]
+    cli["GuardLink.CLI [SECRETS, PII, INTERNAL]"]
+  end
+  subgraph TZ4["Trust boundary at git command execution"]
+    diff["GuardLink.Diff"]
+  end
+  subgraph TZ5["Trust boundary at MCP protocol"]
+    mcp["GuardLink.MCP [INTERNAL, PII]"]
+  end
+  subgraph TZ7["Trust boundary between parser and disk …"]
+    parser["GuardLink.Parser [INTERNAL]"]
+  end
+  subgraph TZ8["Trust boundary at interactive input"]
+    tui["GuardLink.TUI [SECRETS, PII]"]
+  end
+  dashboard["GuardLink.Dashboard [PII, INTERNAL]"]
+  init["GuardLink.Init [INTERNAL]"]
+  suggest["GuardLink.Suggest"]
+  blame["GuardLink.Blame [PII]"]
+  gate["GuardLink.Gate"]
+  report["GuardLink.Report [PII]"]
+  api_key_exposure{{"API_Key_Exposure (cwe:CWE-798)"}}:::sev_high
+  child_proc_injection{{"Child_Process_Injection (cwe:CWE-78)"}}:::sev_crit
+  prompt_injection{{"Prompt_Injection (cwe:CWE-77)"}}:::sev_high
+  path_traversal{{"Path_Traversal (cwe:CWE-22)"}}:::sev_high
+  arbitrary_write{{"Arbitrary_File_Write (cwe:CWE-73, cwe:CWE-74)"}}:::sev_high
+  cmd_injection{{"Command_Injection (cwe:CWE-78)"}}:::sev_crit
+  xss{{"Cross_Site_Scripting (cwe:CWE-79)"}}:::sev_high
+  key_redaction(["Key_Redaction"]):::control
+  path_validation(["Path_Validation"]):::control
+  param_commands(["Parameterized_Commands"]):::control
+  glob_filtering(["Glob_Pattern_Filtering"]):::control
+  output_encoding(["Output_Encoding"]):::control
+  input_sanitize(["Input_Sanitization"]):::control
+  config_validation(["Config_Validation"]):::control
+  resource_limits(["Resource_Limits"]):::control
+  regex_anchoring(["Regex_Anchoring"]):::control
+  agent_launcher -. exposes .-> api_key_exposure
+  agent_launcher -. exposes .-> child_proc_injection
+  agent_launcher -. exposes .-> prompt_injection
+  llm_client -. exposes .-> api_key_exposure
+  cli -. exposes .-> path_traversal
+  cli -. exposes .-> arbitrary_write
+  cli -. exposes .-> api_key_exposure
+  cli -. exposes .-> cmd_injection
+  dashboard -. exposes .-> xss
+  diff -. exposes .-> cmd_injection
+  init -. exposes .-> arbitrary_write
+  mcp -. exposes .-> cmd_injection
+  mcp -. exposes .-> path_traversal
+  mcp -. exposes .-> arbitrary_write
+  suggest -. exposes .-> path_traversal
+  parser -. exposes .-> arbitrary_write
+  parser -. exposes .-> path_traversal
+  tui -. exposes .-> path_traversal
+  tui -. exposes .-> arbitrary_write
+  tui -. exposes .-> cmd_injection
+  tui -. exposes .-> api_key_exposure
+  key_redaction -- mitigates --> api_key_exposure
+  key_redaction -. protects .-> agent_launcher
+  path_validation -- mitigates --> path_traversal
+  path_validation -. protects .-> agent_launcher
+  path_validation -- mitigates --> arbitrary_write
+  param_commands -- mitigates --> child_proc_injection
+  param_commands -. protects .-> agent_launcher
+  param_commands -- mitigates --> cmd_injection
+  path_validation -. protects .-> llm_client
+  key_redaction -. protects .-> llm_client
+  glob_filtering -- mitigates --> path_traversal
+  glob_filtering -. protects .-> llm_client
+  path_validation -. protects .-> dashboard
+  path_validation -. protects .-> blame
+  param_commands -. protects .-> blame
+  path_validation -. protects .-> cli
+  key_redaction -. protects .-> cli
+  output_encoding -- mitigates --> xss
+  output_encoding -. protects .-> dashboard
+  param_commands -. protects .-> dashboard
+  input_sanitize -- mitigates --> cmd_injection
+  input_sanitize -. protects .-> diff
+  path_validation -. protects .-> diff
+  glob_filtering -. protects .-> diff
+  path_validation -. protects .-> gate
+  path_validation -. protects .-> init
+  config_validation -- mitigates --> arbitrary_write
+  config_validation -. protects .-> init
+  path_validation -. protects .-> mcp
+  key_redaction -. protects .-> mcp
+  path_validation -. protects .-> suggest
+  path_validation -. protects .-> parser
+  glob_filtering -. protects .-> parser
+  param_commands -. protects .-> cli
+  output_encoding -. protects .-> report
+  input_sanitize -- mitigates --> arbitrary_write
+  input_sanitize -. protects .-> cli
+  path_validation -. protects .-> tui
+  key_redaction -. protects .-> tui
+  resource_limits -. validates .-> mcp
+  regex_anchoring -. validates .-> parser
+  input_sanitize -. validates .-> parser
+  blame -- "formatBlameText" --> cli
+  blame -- "buildBlamePayload" --> cli
+  blame -- "summarise" --> dashboard
+  cli -- "runGate" --> gate
+  mcp -- "generateThreatReport" --> llm_client
+  tui -- "launchAgent" --> agent_launcher
+  tui -- "chatCompletion" --> llm_client
+  classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
+  classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px
+  classDef sev_crit fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.4px
+  classDef sev_high fill:#402019,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.2px
+  classDef sev_med fill:#1f3943,stroke:#55899e,color:#f0f0f0
+  classDef sev_low fill:#10263b,stroke:#0360a2,color:#f0f0f0
+  classDef sev_unset fill:#223942,stroke:#3b6779,color:#f0f0f0

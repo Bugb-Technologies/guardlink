@@ -200,21 +200,25 @@ Implementations may support additional prefixes beyond those listed here. Unreco
 
 ### 2.9. Comment Prefix Handling
 
-Parsers must strip the host language's comment prefix before matching annotations. Supported comment styles:
+Parsers must strip the host language's comment prefix before matching annotations. Supported comment styles, with the file extensions each claim covers:
 
-| Style | Languages |
-|-------|-----------|
-| `//` | C, C++, C#, Java, JavaScript, TypeScript, Go, Rust, Swift, Kotlin, Scala, Dart |
-| `#` | Python, Ruby, Bash, Perl, YAML, Terraform, R, Elixir, Nim |
-| `--` | Haskell, Lua, SQL, Ada, VHDL |
-| `/* */` | C, C++, Java, CSS (block comments) |
-| `(* *)` | OCaml, Pascal |
-| `%` | LaTeX, Erlang, MATLAB |
-| `;` | Lisp, Clojure, Assembly, INI files |
-| `<!-- -->` | HTML, XML, SVG (single line) |
-| `{- -}` | Haskell (block comments, single line) |
-| `REM` | Batch files |
-| `'` | VBA, VB.NET |
+| Style | Languages | Extensions |
+|-------|-----------|------------|
+| `//` | C, C++, C#, Java, JavaScript, TypeScript, Go, Rust, Swift, Kotlin, Scala, Dart, PHP, Objective-C | `.c` `.h` `.cpp` `.cc` `.cxx` `.hpp` `.hh` `.cs` `.java` `.js` `.jsx` `.mjs` `.cjs` `.ts` `.tsx` `.mts` `.cts` `.go` `.rs` `.swift` `.kt` `.kts` `.scala` `.dart` `.php` `.m` `.mm` |
+| `#` | Python, Ruby, Bash, Perl, YAML, Terraform, R, Elixir, Nim | `.py` `.pyi` `.rb` `.sh` `.bash` `.pl` `.pm` `.yaml` `.yml` `.tf` `.hcl` `.r` `.ex` `.exs` `.nim` |
+| `--` | Haskell, Lua, SQL, Ada, VHDL | `.hs` `.lua` `.sql` `.adb` `.ads` `.vhd` `.vhdl` |
+| `/* */` | C, C++, Java, CSS (block comments) | `.css` |
+| `(* *)` | OCaml, Pascal | `.ml` `.mli` `.pas` `.pp` |
+| `%` | LaTeX, Erlang, MATLAB | `.tex` `.erl` `.hrl` |
+| `;` | Lisp, Clojure, Assembly, INI files | `.lisp` `.cl` `.clj` `.cljs` `.cljc` `.asm` `.s` `.ini` |
+| `<!-- -->` | HTML, XML, SVG (single line) | `.html` `.htm` `.xml` `.svg` |
+| `{- -}` | Haskell (block comments, single line) | `.hs` |
+| `REM` | Batch files | `.bat` `.cmd` |
+| `'` | VBA, VB.NET | `.bas` `.vb` |
+
+**A style is only supported in the files a parser actually opens.** The extension column is normative for that reason. GuardLink recognised every style above while its scan globs listed the extensions of six of the languages that write them, so an annotation in a `.php`, `.pyi`, `.kts`, `.erl` or `.vb` file was correctly formed, correctly commented, and read by nothing — and reported by nothing either, because §2.9.3's diagnostics cannot fire on a file that was never opened. Measured on a probe repository carrying one annotated file per language named here: read in 6 of 43 extensions. A parser must be able to name the extensions it reads, and that set must be the same list the style table above is written from.
+
+`.m` is shared between Objective-C (`//`) and MATLAB (`%`). Reading does not have to choose — a conforming parser tries every recognised opener against every line — but a tool that *writes* an annotation into a `.m` file does, and should prefer the style already used beside the insertion point over any extension-keyed default.
 
 #### 2.9.1. Repeated and decorated markers
 

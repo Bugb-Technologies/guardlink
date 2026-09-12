@@ -61,14 +61,27 @@ export const GRAMMARS: Record<string, GrammarSource> = {
 export const GRAMMARS_UNAVAILABLE = ['swift', 'kotlin', 'dart'] as const;
 
 /**
- * Lower-case extension (with dot) → language id, or null for file-scope-by-design.
- * Covers every pattern in parse-project.ts DEFAULT_INCLUDE except `.gal`.
+ * Lower-case extension (with dot) → language id, or null for file scope.
+ *
+ * Covers every extension in `parser/languages.ts`, which is the list the scan
+ * glob is built from. `null` is a real answer, not a gap: the anchor layer
+ * resolves that file to file scope with reason `no-grammar`, and an annotation
+ * in it still parses and still lands in the model — it just anchors to the file
+ * rather than to the enclosing declaration.
+ *
+ * Most of the languages SPEC §2.9 names have no prebuilt tree-sitter WASM worth
+ * pinning, so they are `null` by necessity rather than by design. They are
+ * listed anyway, because the alternative — `undefined` — is the difference
+ * between "this file anchors to file scope" and "the table forgot this
+ * language", and only one of those is a bug.
  */
 export const EXTENSION_LANGUAGE: Record<string, string | null> = {
   '.ts': 'typescript', '.tsx': 'tsx', '.js': 'javascript', '.jsx': 'javascript',
-  '.py': 'python', '.rb': 'ruby', '.go': 'go', '.rs': 'rust',
+  '.mjs': 'javascript', '.cjs': 'javascript', '.mts': 'typescript', '.cts': 'typescript',
+  '.py': 'python', '.pyi': 'python', '.rb': 'ruby', '.go': 'go', '.rs': 'rust',
   '.java': 'java', '.kt': 'kotlin', '.kts': 'kotlin', '.scala': 'scala',
-  '.c': 'c', '.h': 'c', '.cpp': 'cpp', '.cc': 'cpp', '.hpp': 'cpp',
+  '.c': 'c', '.h': 'c', '.cpp': 'cpp', '.cc': 'cpp', '.cxx': 'cpp',
+  '.hpp': 'cpp', '.hh': 'cpp',
   '.cs': 'c_sharp', '.swift': 'swift', '.dart': 'dart',
   '.lua': 'lua', '.hs': 'haskell',
   '.tf': 'hcl', '.hcl': 'hcl',
@@ -76,7 +89,17 @@ export const EXTENSION_LANGUAGE: Record<string, string | null> = {
   '.sh': 'bash', '.bash': 'bash',
   '.ex': 'elixir', '.exs': 'elixir',
   // File-scope by design (spec §6.2): no meaningful declaration structure.
-  '.sql': null, '.html': null, '.xml': null, '.svg': null, '.css': null,
+  '.sql': null, '.html': null, '.htm': null, '.xml': null, '.svg': null,
+  '.css': null, '.ini': null, '.tex': null,
+  // File scope for want of a grammar. Annotations parse; anchors are file-wide.
+  '.php': null, '.m': null, '.mm': null,
+  '.pl': null, '.pm': null, '.r': null, '.nim': null,
+  '.adb': null, '.ads': null, '.vhd': null, '.vhdl': null,
+  '.ml': null, '.mli': null, '.pas': null, '.pp': null,
+  '.erl': null, '.hrl': null,
+  '.lisp': null, '.cl': null, '.clj': null, '.cljs': null, '.cljc': null,
+  '.asm': null, '.s': null,
+  '.bat': null, '.cmd': null, '.vb': null, '.bas': null,
 };
 
 /** Language id for a file extension, or null when the file is file-scoped. */

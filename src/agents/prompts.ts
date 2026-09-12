@@ -100,11 +100,31 @@ You MUST write annotations into associated standalone \`.gal\` files, not inline
 `;
   }
 
+  // "The doc-block of the function it describes" is the right instruction in
+  // every language whose doc-block is a comment, and the wrong one in Python,
+  // where it is a docstring — a string expression the parser does not read
+  // (SPEC §2.9.3). An agent that follows the instruction literally writes a
+  // correctly-formed annotation into a form nothing parses, and the round then
+  // reports success over an empty model.
+  //
+  // `init`'s generated guidance already says this, but it says it for the ONE
+  // language `init` detected. This prompt drives an agent across whatever the
+  // repository actually contains — a Python service inside a TypeScript
+  // monorepo is the common case — so the not-read forms are named here
+  // unconditionally rather than per project.
   return `## Annotation Placement Mode
 You MUST write annotations inline in the source code comments.
 
 - Place annotations in the file doc-block or directly above the security-relevant code
-- Use the host language comment syntax (\`//\`, \`#\`, \`--\`, etc.)
+- Use the host language comment syntax (\`//\`, \`#\`, \`--\`, etc.), including that
+  language's doc-comment form where it has one (\`///\` in Rust, C#, Swift; \`/** */\`
+  in Java, Kotlin, JavaScript, TypeScript)
+- **Not read, in any language:** a Python \`"""\` docstring, a Ruby \`=begin\`/\`=end\`
+  block, and multi-line \`<!-- -->\` or \`{- -}\`. Those are strings and block forms,
+  not line comments, and an annotation inside one is not part of the model — use
+  \`#\` comment lines in Python and Ruby instead. GuardLink warns
+  (\`uncommented-annotation\`) when it finds one, so a round that wrote them is
+  visible rather than silently empty.
 - Do NOT externalize annotations into \`.gal\` files when this mode is selected
 `;
 }

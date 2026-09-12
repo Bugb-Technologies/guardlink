@@ -72,6 +72,12 @@ npm run cli       # Run CLI without building (via tsx)
 - Functions over classes where possible
 - Explicit types on public APIs, inferred types internally
 
+## Adding a Language
+
+`src/parser/languages.ts` is the single registry of extension → comment marker, and everything else derives from it: the parser's scan glob, `clear`'s scan glob, the MCP context layer's "would the parser open this file", and the marker the write side falls back to. Add the extension there, add it to `EXTENSION_LANGUAGE` in `src/structure/grammars.ts` (`null` is a correct answer — file scope, reason `no-grammar`), and add its row to SPEC §2.9's extension column.
+
+There used to be four copies of that list. They drifted, and an annotation in a `.php` or `.kts` file was read by nothing and — because both §2.12 diagnostics are asked of a file's lines — reported by nothing either. `tests/scanned-languages.test.ts` now fails if the copies diverge again.
+
 ## Annotation Spec Changes
 
 Changes to the annotation grammar or ThreatModel schema require discussion in an issue first. The spec is designed to be stable — breaking changes need strong justification.

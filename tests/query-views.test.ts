@@ -25,8 +25,10 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseProject } from '../src/parser/parse-project.js';
 import { canonicalizeModelOrder } from '../src/parser/canonical-order.js';
 import { generateThreatGraph, generateDataFlowDiagram } from '../src/dashboard/diagrams.js';
@@ -174,21 +176,65 @@ describe('the legibility budget', () => {
 
 /**
  * The numbers above were independently measured in a real browser against real
- * rendered SVG geometry. This repository's own model is the one thing both the
- * measurement and this counter can be pointed at, so it is the check that the
- * counter agrees with what Mermaid actually draws.
+ * rendered SVG geometry. This is the check that the counter agrees with what
+ * Mermaid actually draws.
+ *
+ * **The measured input is frozen, not re-parsed.** This used to point at a live
+ * `parseProject('.')` — guardlink's own model — because that is the one diagram
+ * both the browser and the counter could be aimed at. But then the assertion
+ * says two things at once: "the counter agrees with the browser" and "this
+ * repository's model is still exactly the size it was the day someone opened
+ * Chrome". Only the first is a claim about the code. The second decays on the
+ * next annotation anyone adds, which `CLAUDE.md` *requires* them to add on any
+ * security-relevant change — so the suite went red for doing what the project
+ * asks, and the cheap repair (bump the literal) silently falsifies the comment
+ * beside it, which cites a real measurement.
+ *
+ * So the diagram Chrome measured is checked in as a fixture, and the live model
+ * is asserted only where the answer cannot decay: it is at least as large as
+ * the frozen one, and it is past the budget. The exact live size is not a fact
+ * about this code.
+ *
+ * `fixtures/threat-graph-browser-measured.mmd` is a **frozen input** and carries
+ * no commentary of its own, so the rule lives here: do not regenerate it to make
+ * this test pass. It is the default (high/critical-filtered) threat graph of
+ * guardlink's own model at 5c720d3, which is the tree that was measured. Replace
+ * it only alongside a new browser measurement, and change the two numbers below
+ * in the same commit — otherwise the numbers stop describing anything anyone saw.
  */
 describe('the node counter against browser-measured geometry', () => {
-  it('agrees with the rendered SVG on this repository\'s own threat graph', async () => {
-    const { model } = await parseProject({ root: '.', project: 'guardlink' });
-    const ordered = canonicalizeModelOrder(model);
-    // Measured in Chrome at 1440x900: the default (high/critical-filtered)
-    // threat graph rendered 29 `.node` elements and 70 `path.flowchart-link`s.
-    const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
+  const FROZEN = join(
+    dirname(fileURLToPath(import.meta.url)),
+    'fixtures', 'threat-graph-browser-measured.mmd',
+  );
+
+  it('agrees with the rendered SVG on the diagram the browser measured', () => {
+    // Measured in Chrome at 1440x900 against the default (high/critical-
+    // filtered) threat graph of this repository's model at 5c720d3: 29 `.node`
+    // elements and 70 `path.flowchart-link`s.
+    const m = measureLegibility(readFileSync(FROZEN, 'utf-8'));
     expect(m.nodes).toBe(29);
     expect(m.edges).toBe(70);
-    // And the whole model is 43 nodes, which is the number this work exists for.
-    expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(43);
+  });
+
+  it('still reports this repository past the budget, at whatever size it now is', async () => {
+    const { model } = await parseProject({ root: '.', project: 'guardlink' });
+    const ordered = canonicalizeModelOrder(model);
+    const frozen = measureLegibility(readFileSync(FROZEN, 'utf-8'));
+
+    // A model only grows here: annotations are added far more often than
+    // removed, and a removal that shrank the graph past the frozen size is
+    // worth a failing test and a look.
+    const live = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
+    expect(live.nodes).toBeGreaterThanOrEqual(frozen.nodes);
+    expect(live.edges).toBeGreaterThanOrEqual(frozen.edges);
+
+    // And the claim the whole of this work exists for: the whole-model diagram
+    // is far past a legibility budget of ~12 nodes. That is the durable fact —
+    // not the particular number it overshoots by this week.
+    const all = measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' }));
+    expect(all.nodes).toBeGreaterThan(frozen.nodes);
+    expect(checkLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).legible).toBe(false);
   });
 });
 
