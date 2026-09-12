@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% annotation_hash: sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 67 nodes / 156 edges, past the 12 / 16 legibility budget (67 nodes against 12, 156 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 68 nodes / 164 edges, past the 12 / 16 legibility budget (68 nodes against 12, 164 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -84,6 +84,7 @@ graph LR
   ledgerfile["🧩 LedgerFile"]
   userargs["👤 UserArgs"]
   gate["🧩 GuardLink.Gate"]
+  scanreport["🧩 ScanReport"]
   gitconfig["🧩 GitConfig"]
   html["🧩 HTML"]
   dashboardhtml["🧩 DashboardHTML"]
@@ -165,9 +166,12 @@ graph LR
   userargs -- "📡 process.argv" --> cli
   cli -- "🗄️ writeFile" --> filesystem
   gitrepo -- "📡 attachBlame" --> cli
+  ledgerfile -- "📡 readHypotheses" --> cli
   gitrepo -- "📡 computeBlame" --> cli
   userinput -- "📡 verify" --> cli
   cli -- "📡 runGate" --> gate
+  threatmodel -- "📡 findUnmitigatedPaths" --> cli
+  scanreport -- "📡 importScan" --> cli
   gitrepo -- "📡 loadSince" --> cli
   sourcefiles -- "🗄️ readFileSync" --> dashboard
   ledgerfile -- "📡 readLedger" --> dashboard
@@ -178,6 +182,7 @@ graph LR
   ledgerfile -- "📡 computeLedgerStates" --> dashboard
   gitconfig -- "📡 detectRepoLinks" --> dashboard
   dashboard -- "📡 return" --> html
+  ledgerfile -- "📡 readHypotheses" --> dashboard
   threatmodel -- "📡 generateDashboardHTML" --> dashboard
   gitconfig -- "🗄️ readFileSync" --> dashboard
   dashboard -- "📡 RepoLinks" --> dashboardhtml
@@ -196,6 +201,10 @@ graph LR
   threatmodel -- "📡 lintAnnotations" --> gate
   diagramsource -- "📡 measureLegibility" --> dashboard
   threatmodel -- "📡 growWithinBudget" --> dashboard
+  threatmodel -- "📡 classifyHypotheses" --> cli
+  cli -- "📡 attachHypotheses" --> threatmodel
+  cli -- "📡 writeConfirmedLine" --> sourcefiles
+  cli -- "📡 writeHypotheses" --> ledgerfile
   projectroot -- "📡 detectProject" --> init
   projectroot -- "📡 options.root" --> init
   init -- "🗄️ writeFileSync" --> agentfiles

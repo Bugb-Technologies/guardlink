@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        attack-surface.mmd
-%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% annotation_hash: sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -101,9 +101,9 @@ graph TB
     direction TB
     E49["✅ Command_Injection ×2"]:::sev_crit
     E50["✅ Path_Traversal"]:::sev_high
-    E51["✅ Arbitrary_File_Write ×8"]:::sev_high
+    E51["✅ Arbitrary_File_Write ×10"]:::sev_high
     E52["✅ API_Key_Exposure"]:::sev_high
-    E53["✅ Insecure_Deserialization"]:::sev_med
+    E53["✅ Insecure_Deserialization ×2"]:::sev_med
     E54["✅ ReDoS"]:::sev_low
   end
   subgraph A_dashboard["GuardLink.Dashboard · ✅ 100% covered"]

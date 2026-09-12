@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212",
+    "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 145,
-  "annotations_parsed": 717,
+  "source_files": 150,
+  "annotations_parsed": 741,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -66,6 +66,11 @@
     "src/gate/lint.ts",
     "src/graph/legibility.ts",
     "src/graph/views.ts",
+    "src/hypothesis/classify.ts",
+    "src/hypothesis/commands.ts",
+    "src/hypothesis/format.ts",
+    "src/hypothesis/index.ts",
+    "src/hypothesis/ledger.ts",
     "src/init/detect.ts",
     "src/init/index.ts",
     "src/init/migrate.ts",
@@ -877,7 +882,7 @@
       "description": "join() constrains reads to .guardlink/",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 798
+        "line": 799
       }
     },
     {
@@ -1047,7 +1052,7 @@
       "description": "resolve() canonicalizes paths; cwd-relative by design",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 33
+        "line": 34
       }
     },
     {
@@ -1057,7 +1062,7 @@
       "description": "Output paths resolved relative to project root",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 35
+        "line": 36
       }
     },
     {
@@ -1067,7 +1072,7 @@
       "description": "maskKey() redacts keys in show output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 37
+        "line": 38
       }
     },
     {
@@ -1077,7 +1082,7 @@
       "description": "Path is the constant LEDGER_FILE under a root that must already carry .guardlink/; targets only select claims, they are never written to",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 500
+        "line": 504
       }
     },
     {
@@ -1378,6 +1383,36 @@
       "location": {
         "file": "src/graph/legibility.ts",
         "line": 91
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "Both paths are resolved under the project root and refused outside it; the edit inserts one line beneath an @exposes whose text is checked before anything is written",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 11
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#insecure-deser",
+      "control": "#config-validation",
+      "description": "Only the fields the loader reads are taken, each coerced to its type; evidence goes through redactEvidence before it is stored",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 13
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "control": "#path-validation",
+      "description": "The path is fixed relative to the project root (HYPOTHESES_FILE); nothing in an entry chooses where the file goes",
+      "location": {
+        "file": "src/hypothesis/ledger.ts",
+        "line": 11
       }
     },
     {
@@ -2358,7 +2393,7 @@
       "description": "User-supplied dir argument resolved via path.resolve",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 32
+        "line": 33
       }
     },
     {
@@ -2371,7 +2406,7 @@
       "description": "init/report/sarif/dashboard write files to user-specified paths",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 34
+        "line": 35
       }
     },
     {
@@ -2384,7 +2419,7 @@
       "description": "API keys handled in config set/show commands",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 36
+        "line": 37
       }
     },
     {
@@ -2397,7 +2432,7 @@
       "description": "Agent launcher spawns child processes",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 38
+        "line": 39
       }
     },
     {
@@ -2410,7 +2445,7 @@
       "description": "The one command that writes .guardlink/verified.json",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 499
+        "line": 503
       }
     },
     {
@@ -2617,6 +2652,45 @@
       "location": {
         "file": "src/graph/legibility.ts",
         "line": 90
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "writeConfirmedLine() edits the source file a claim's location names; importScan() reads the scan path the user passed",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 10
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#insecure-deser",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-502"
+      ],
+      "description": "importScan() JSON.parses a scan report",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 12
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-73"
+      ],
+      "description": "writeHypotheses() writes .guardlink/hypotheses.json under the root the caller resolved",
+      "location": {
+        "file": "src/hypothesis/ledger.ts",
+        "line": 10
       }
     },
     {
@@ -3546,7 +3620,7 @@
       "description": "Reads CXG scan results for dashboard and report context",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 725
+        "line": 726
       }
     },
     {
@@ -3796,7 +3870,7 @@
       "description": "CLI argument input path",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 40
+        "line": 41
       }
     },
     {
@@ -3806,7 +3880,7 @@
       "description": "Report/config output path",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 41
+        "line": 42
       }
     },
     {
@@ -3816,7 +3890,7 @@
       "description": "Opt-in attribution; without --blame the JSON is byte-identical to before",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 254
+        "line": 257
       }
     },
     {
@@ -3826,7 +3900,17 @@
       "description": "status reports verified/stale/unverified claim counts alongside annotation coverage",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 304
+        "line": 307
+      }
+    },
+    {
+      "source": "LedgerFile",
+      "target": "#cli",
+      "mechanism": "readHypotheses",
+      "description": "status reports how many exposures were tested, and with what outcome",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 308
       }
     },
     {
@@ -3836,7 +3920,7 @@
       "description": "status --blame reads attribution without touching the model",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 306
+        "line": 310
       }
     },
     {
@@ -3846,7 +3930,7 @@
       "description": "Read-only; a corrupt ledger becomes a validate error (ledger-corrupt) instead of being silently treated as absent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 373
+        "line": 377
       }
     },
     {
@@ -3856,7 +3940,7 @@
       "description": "Targets, --by and mode flags",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 501
+        "line": 505
       }
     },
     {
@@ -3866,7 +3950,7 @@
       "description": "Attribution read from blame, log -L and commit trailers",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 618
+        "line": 622
       }
     },
     {
@@ -3876,7 +3960,7 @@
       "description": "report --blame attaches attribution before the metadata spread, so the shared records carry it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 753
+        "line": 757
       }
     },
     {
@@ -3886,7 +3970,27 @@
       "description": "The model before and after the agent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1509
+        "line": 1513
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#cli",
+      "mechanism": "findUnmitigatedPaths",
+      "description": "Which assets sit on an undefended path, for the ranking",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1648
+      }
+    },
+    {
+      "source": "ScanReport",
+      "target": "#cli",
+      "mechanism": "importScan",
+      "description": "cxg findings recorded as confirmations, joined to claims",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1663
       }
     },
     {
@@ -3896,7 +4000,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2627
+        "line": 2750
       }
     },
     {
@@ -3906,7 +4010,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2630
+        "line": 2753
       }
     },
     {
@@ -3926,7 +4030,7 @@
       "description": "Claim states for the badges and the stale-claims action",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 515
+        "line": 521
       }
     },
     {
@@ -4007,6 +4111,16 @@
       "location": {
         "file": "src/dashboard/generate.ts",
         "line": 31
+      }
+    },
+    {
+      "source": "LedgerFile",
+      "target": "#dashboard",
+      "mechanism": "readHypotheses",
+      "description": "Outcomes for the badges, the drawer and the open count",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 136
       }
     },
     {
@@ -4197,6 +4311,66 @@
       "location": {
         "file": "src/graph/views.ts",
         "line": 52
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#cli",
+      "mechanism": "classifyHypotheses",
+      "description": "Claims joined to the ledger by key",
+      "location": {
+        "file": "src/hypothesis/classify.ts",
+        "line": 10
+      }
+    },
+    {
+      "source": "#cli",
+      "target": "ThreatModel",
+      "mechanism": "attachHypotheses",
+      "description": "The state stamped onto each exposure for the dashboard, the report and the lint",
+      "location": {
+        "file": "src/hypothesis/classify.ts",
+        "line": 11
+      }
+    },
+    {
+      "source": "ScanReport",
+      "target": "#cli",
+      "mechanism": "importScan",
+      "description": "cxg findings joined to claims",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 14
+      }
+    },
+    {
+      "source": "#cli",
+      "target": "SourceFiles",
+      "mechanism": "writeConfirmedLine",
+      "description": "The @confirmed line, on --write",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 15
+      }
+    },
+    {
+      "source": "LedgerFile",
+      "target": "#cli",
+      "mechanism": "readHypotheses",
+      "description": "Outcomes read back for classification",
+      "location": {
+        "file": "src/hypothesis/ledger.ts",
+        "line": 12
+      }
+    },
+    {
+      "source": "#cli",
+      "target": "LedgerFile",
+      "mechanism": "writeHypotheses",
+      "description": "Outcomes recorded",
+      "location": {
+        "file": "src/hypothesis/ledger.ts",
+        "line": 13
       }
     },
     {
@@ -5058,7 +5232,7 @@
       "description": "Trust boundary at CLI argument parsing",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 42
+        "line": 43
       }
     },
     {
@@ -5203,7 +5377,7 @@
       "description": "Child process spawning delegated to agents/launcher.ts with explicit args",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 39
+        "line": 40
       }
     },
     {
@@ -5370,7 +5544,7 @@
       "description": "Processes pentest scan output (JSON/SARIF)",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 726
+        "line": 727
       }
     },
     {
@@ -5451,7 +5625,7 @@
       "description": "Processes API keys via config commands",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 43
+        "line": 44
       }
     },
     {
@@ -5460,7 +5634,7 @@
       "description": "Author identities printed or emitted as JSON; --identity hash (or blame.identity in config.json) redacts emails",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 619
+        "line": 623
       }
     },
     {
@@ -5469,7 +5643,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3347
+        "line": 3477
       }
     },
     {
@@ -5487,7 +5661,7 @@
       "description": "Author identities from git, already in the configured identity mode",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 285
+        "line": 291
       }
     },
     {
@@ -5533,6 +5707,33 @@
       "location": {
         "file": "src/dashboard/pages/context.ts",
         "line": 12
+      }
+    },
+    {
+      "classification": "internal",
+      "asset": "#cli",
+      "description": "Request and response evidence from scans, redacted",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 16
+      }
+    },
+    {
+      "classification": "internal",
+      "asset": "#cli",
+      "description": "Evidence strings printed to the terminal",
+      "location": {
+        "file": "src/hypothesis/format.ts",
+        "line": 4
+      }
+    },
+    {
+      "classification": "internal",
+      "asset": "#cli",
+      "description": "Evidence strings from tests and scans; scan evidence is redacted before it is written",
+      "location": {
+        "file": "src/hypothesis/ledger.ts",
+        "line": 14
       }
     },
     {
@@ -6159,35 +6360,35 @@
       "description": "Closes the same blind spot ci's third check already closed (src/ci/index.ts) for the validate/CI-gate surface",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 374
+        "line": 378
       }
     },
     {
       "description": "Re-locking a stale claim is an assertion that the control still holds, so the default form never does it: --stale, --all or a named target is required, and each says so in its output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 502
+        "line": 506
       }
     },
     {
       "description": "Always exits 0 once the model parsed: outside a git checkout every claim reads as unattributed, which is an answer, not a failure. Only an unknown --identity is an error",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 620
+        "line": 624
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3303
+        "line": 3426
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3348
+        "line": 3478
       }
     },
     {
@@ -6229,28 +6430,28 @@
       "description": "Stats mirror the model's own scope: on a --feature model these are the feature's numbers, and the dashboard suppresses the ones that only mean something project-wide",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 95
+        "line": 99
       }
     },
     {
       "description": "Pure projection of record.blame; the summariser is shared with the CLI and the report so every surface agrees on the numbers",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 286
+        "line": 292
       }
     },
     {
       "description": "Every item points somewhere: a hash route into the filtered view, a guardlink command, or both. Nothing here is a bare number",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 384
+        "line": 390
       }
     },
     {
       "description": "Reads .guardlink/verified.json once; the classification itself is the parser's, not re-derived here",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 516
+        "line": 522
       }
     },
     {
@@ -6468,6 +6669,41 @@
       "location": {
         "file": "src/graph/views.ts",
         "line": 54
+      }
+    },
+    {
+      "description": "Pure over the model and a ledger read; no clock, no file, no git — ranking is arithmetic on facts the model already holds",
+      "location": {
+        "file": "src/hypothesis/classify.ts",
+        "line": 12
+      }
+    },
+    {
+      "description": "A confirmation is held to the same evidence bar the gate holds @confirmed to; a refutation needs evidence too, just not the same words, because 'the validator rejected it' is evidence of absence",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 17
+      }
+    },
+    {
+      "description": "Plain padded tables like printStatus; nothing here reads a file",
+      "location": {
+        "file": "src/hypothesis/format.ts",
+        "line": 5
+      }
+    },
+    {
+      "description": "The tested state of every exposure: a ledger of outcomes with evidence, expiry by code hash, and a ranked queue",
+      "location": {
+        "file": "src/hypothesis/index.ts",
+        "line": 4
+      }
+    },
+    {
+      "description": "A corrupt file is reported, never rebuilt in place: an outcome ledger that quietly emptied itself would turn refuted findings back into open ones",
+      "location": {
+        "file": "src/hypothesis/ledger.ts",
+        "line": 15
       }
     },
     {
@@ -7081,8 +7317,8 @@
     }
   ],
   "coverage": {
-    "annotation_count": 717,
-    "coverage_percent": 86
+    "annotation_count": 741,
+    "coverage_percent": 87
   },
   "external_refs": []
 }
