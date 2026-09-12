@@ -34,6 +34,7 @@
  * @flows #cli -> SourceFiles via writeFile -- "Annotation insertion output"
  * @handles internal on #cli -- "Processes exposure metadata, reviewer identity and justification text"
  * @comment -- "applyReviewAction throws rather than returning a flag: a writer that can be ignored by a caller who forgot to check is the hole this replaced"
+ * @comment -- "assertAcceptable never SUPPLIES a missing `by` or `until`, it refuses. Defaulting either is how a signature gets forged (git user.name) or how the longest lease the policy allows becomes the cheapest one to take (the max_horizon_days ceiling) — so the choke point that enforces the rule is also the one place that will not paper over it"
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
@@ -345,14 +346,17 @@ export function assertAcceptable(
   }
   if (policy.require_author && !oneLine(action.by || '')) {
     throw new ReviewRejected(
-      'An acceptance must carry the name of the human making it. Pass --by "<name>" '
-      + '(it defaults to git user.name).',
+      'An acceptance must carry the name of the human making it. Pass --by "<name>". '
+      + 'It is not defaulted: this used to fall back to the local git user.name, which '
+      + 'signs a risk acceptance in the name of whoever last configured the laptop.',
     );
   }
   if (policy.require_expiry && !action.until) {
     throw new ReviewRejected(
       'An acceptance must carry a horizon: --until <YYYY-MM-DD>. An acceptance with no end '
-      + 'date is a permanent deletion, and this repository asked for decisions.',
+      + 'date is a permanent deletion, and this repository asked for decisions. '
+      + `It is not defaulted either — omitting it used to take the full ${policy.max_horizon_days}-day `
+      + `ceiling. ${horizonFrom(policy.default_horizon_days, now)} is ${policy.default_horizon_days} days out.`,
     );
   }
   if (action.until) {

@@ -1,12 +1,12 @@
 {
   "schema_version": 2,
-  "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+  "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
   "generator": "guardlink@2.0.0",
   "artifacts": [
     {
       "path": ".guardlink/graph/threat-graph.mmd",
       "bytes": 10681,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 9102,
@@ -16,7 +16,7 @@
     {
       "path": ".guardlink/graph/dataflow.mmd",
       "bytes": 13258,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 11255,
@@ -26,7 +26,7 @@
     {
       "path": ".guardlink/graph/attack-surface.mmd",
       "bytes": 5874,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 4235,
@@ -36,7 +36,7 @@
     {
       "path": ".guardlink/graph/by-feature/dashboard.mmd",
       "bytes": 2301,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 813,
@@ -46,7 +46,7 @@
     {
       "path": ".guardlink/graph/by-feature/mcp-integration.mmd",
       "bytes": 2749,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1235,
@@ -56,7 +56,7 @@
     {
       "path": ".guardlink/graph/by-asset/agent-launcher.threats.mmd",
       "bytes": 2270,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1437,
@@ -66,7 +66,7 @@
     {
       "path": ".guardlink/graph/by-asset/agent-launcher.flows.mmd",
       "bytes": 2168,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1318,
@@ -76,7 +76,7 @@
     {
       "path": ".guardlink/graph/by-asset/blame.threats.mmd",
       "bytes": 2211,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1477,
@@ -86,7 +86,7 @@
     {
       "path": ".guardlink/graph/by-asset/blame.flows.mmd",
       "bytes": 1621,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 803,
@@ -96,7 +96,7 @@
     {
       "path": ".guardlink/graph/by-asset/cli.threats.mmd",
       "bytes": 2147,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1335,
@@ -106,7 +106,7 @@
     {
       "path": ".guardlink/graph/by-asset/cli.flows.mmd",
       "bytes": 1832,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1004,
@@ -116,7 +116,7 @@
     {
       "path": ".guardlink/graph/by-asset/dashboard.threats.mmd",
       "bytes": 2326,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1586,
@@ -126,7 +126,7 @@
     {
       "path": ".guardlink/graph/by-asset/dashboard.flows.mmd",
       "bytes": 2011,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1167,
@@ -136,7 +136,7 @@
     {
       "path": ".guardlink/graph/by-asset/diff.threats.mmd",
       "bytes": 1764,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1044,
@@ -146,7 +146,7 @@
     {
       "path": ".guardlink/graph/by-asset/diff.flows.mmd",
       "bytes": 1559,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 751,
@@ -156,7 +156,7 @@
     {
       "path": ".guardlink/graph/by-asset/gate.threats.mmd",
       "bytes": 1274,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 566,
@@ -166,7 +166,7 @@
     {
       "path": ".guardlink/graph/by-asset/gate.flows.mmd",
       "bytes": 1720,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 906,
@@ -176,7 +176,7 @@
     {
       "path": ".guardlink/graph/by-asset/init.threats.mmd",
       "bytes": 1683,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 967,
@@ -186,7 +186,7 @@
     {
       "path": ".guardlink/graph/by-asset/init.flows.mmd",
       "bytes": 2103,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1263,
@@ -196,7 +196,7 @@
     {
       "path": ".guardlink/graph/by-asset/llm-client.threats.mmd",
       "bytes": 1876,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1056,
@@ -206,7 +206,7 @@
     {
       "path": ".guardlink/graph/by-asset/llm-client.flows.mmd",
       "bytes": 2191,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1342,
@@ -216,7 +216,7 @@
     {
       "path": ".guardlink/graph/by-asset/mcp.threats.mmd",
       "bytes": 1807,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1003,
@@ -226,7 +226,7 @@
     {
       "path": ".guardlink/graph/by-asset/mcp.flows.mmd",
       "bytes": 1976,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1144,
@@ -236,7 +236,7 @@
     {
       "path": ".guardlink/graph/by-asset/merge-engine.threats.mmd",
       "bytes": 1249,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 525,
@@ -246,7 +246,7 @@
     {
       "path": ".guardlink/graph/by-asset/merge-engine.flows.mmd",
       "bytes": 1072,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 318,
@@ -256,7 +256,7 @@
     {
       "path": ".guardlink/graph/by-asset/parser.threats.mmd",
       "bytes": 1675,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 869,
@@ -266,7 +266,7 @@
     {
       "path": ".guardlink/graph/by-asset/parser.flows.mmd",
       "bytes": 2226,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1382,
@@ -276,7 +276,7 @@
     {
       "path": ".guardlink/graph/by-asset/report.threats.mmd",
       "bytes": 1222,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 510,
@@ -286,7 +286,7 @@
     {
       "path": ".guardlink/graph/by-asset/report.flows.mmd",
       "bytes": 1795,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 979,
@@ -296,7 +296,7 @@
     {
       "path": ".guardlink/graph/by-asset/report-metadata.flows.mmd",
       "bytes": 1694,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 866,
@@ -306,7 +306,7 @@
     {
       "path": ".guardlink/graph/by-asset/sarif.threats.mmd",
       "bytes": 1134,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 428,
@@ -316,7 +316,7 @@
     {
       "path": ".guardlink/graph/by-asset/sarif.flows.mmd",
       "bytes": 1639,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 831,
@@ -326,7 +326,7 @@
     {
       "path": ".guardlink/graph/by-asset/suggest.threats.mmd",
       "bytes": 1582,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 860,
@@ -336,7 +336,7 @@
     {
       "path": ".guardlink/graph/by-asset/suggest.flows.mmd",
       "bytes": 2141,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1299,
@@ -346,7 +346,7 @@
     {
       "path": ".guardlink/graph/by-asset/tui.threats.mmd",
       "bytes": 2073,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1349,
@@ -356,7 +356,7 @@
     {
       "path": ".guardlink/graph/by-asset/tui.flows.mmd",
       "bytes": 2052,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1218,
@@ -366,7 +366,7 @@
     {
       "path": ".guardlink/graph/by-asset/workspace-config.threats.mmd",
       "bytes": 1278,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 546,
@@ -376,7 +376,7 @@
     {
       "path": ".guardlink/graph/by-asset/workspace-link.flows.mmd",
       "bytes": 1866,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1020,
@@ -386,7 +386,7 @@
     {
       "path": ".guardlink/graph/by-boundary/agent-boundary.mmd",
       "bytes": 2137,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1318,
@@ -396,7 +396,7 @@
     {
       "path": ".guardlink/graph/by-boundary/llm-api-boundary.mmd",
       "bytes": 2169,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1342,
@@ -406,7 +406,7 @@
     {
       "path": ".guardlink/graph/by-boundary/nvd-api-boundary.mmd",
       "bytes": 2156,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1342,
@@ -416,7 +416,7 @@
     {
       "path": ".guardlink/graph/by-boundary/cli-input-boundary.mmd",
       "bytes": 1884,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1069,
@@ -426,7 +426,7 @@
     {
       "path": ".guardlink/graph/by-boundary/git-boundary.mmd",
       "bytes": 1952,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1140,
@@ -436,7 +436,7 @@
     {
       "path": ".guardlink/graph/by-boundary/mcp-boundary.mmd",
       "bytes": 2165,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1353,
@@ -446,7 +446,7 @@
     {
       "path": ".guardlink/graph/by-boundary/mcp-tool-boundary.mmd",
       "bytes": 2179,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1353,
@@ -456,7 +456,7 @@
     {
       "path": ".guardlink/graph/by-boundary/fs-boundary.mmd",
       "bytes": 2022,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1195,
@@ -466,7 +466,7 @@
     {
       "path": ".guardlink/graph/by-boundary/tui-input-boundary.mmd",
       "bytes": 2028,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
       "renderable": true,
       "render": {
         "text_size": 1212,
@@ -475,8 +475,8 @@
     },
     {
       "path": ".guardlink/model.json",
-      "bytes": 214893,
-      "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b"
+      "bytes": 217508,
+      "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f"
     }
   ]
 }

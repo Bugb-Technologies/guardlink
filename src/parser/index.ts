@@ -21,6 +21,7 @@ export {
   readAcceptancePolicy, findAcceptanceDefects, acceptanceDefects, isQualified, isExpired,
   daysRemaining, parseExpiry, todayISO, acceptanceCovers, acceptanceBlastRadius,
   formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY,
+  ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_SHORT, ACCEPTANCE_REGISTER_NOTE,
 } from './acceptance.js';
 export type { AcceptancePolicy, AcceptanceDefect, AcceptanceFinding, BlastRadius } from './acceptance.js';
 export { buildCoverageIndex, normalizeRef, coversExposure } from './coverage.js';

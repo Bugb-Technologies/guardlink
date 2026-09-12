@@ -123,7 +123,7 @@ guardlink config <show|set|clear>       # Manage LLM provider / CLI agent config
 guardlink review [dir]                  # Interactive review of unmitigated exposures (accept/remediate/skip)
 guardlink review --list [--severity X]  # List reviewable exposures without prompting
 guardlink review . --list --format json # Same, with the ids a scripted decision needs
-guardlink review . --accept <id> --by "<name>" --justification "<why>" --until 2027-01-31
+guardlink review . --accept <id> --by "<name>" --justification "<why>" --until 2027-01-31   # all three required
 guardlink review . --remediate <id> --justification "<planned fix>"
 guardlink review . --from decisions.json               # {"decisions":[{id,decision,by,justification,until}]}
 guardlink entitle [dir]                 # Review proposed @entitles claims (accept/reject/defer)
@@ -411,10 +411,39 @@ it is the one the gate has to be hardest on. Four things it must be:
 
 | | Rule | Default |
 |---|---|---|
-| **attributed** | `by <who>` — a name a reviewer can go and ask | required |
+| **attributed** | `by <who>` — a name a reviewer can go and ask | required; **never defaulted** |
 | **justified** | a reason, not a category | ≥ 24 characters |
-| **expiring** | `until <YYYY-MM-DD>`; after it, the exposure returns | required, ≤ 365 days out |
+| **expiring** | `until <YYYY-MM-DD>`; after it, the exposure returns | required, ≤ 365 days out; **never defaulted** |
 | **scoped** | covers exposures **in its own file**, and no others | not configurable |
+
+**Neither `--by` nor `--until` has a default on an unattended path.** `--by` used to fall back to
+`git config user.name` and then `$USER`, which filled a signature field with whatever name a
+laptop happened to hold and rendered identically to a real one; `--until` used to default to the
+`max_horizon_days` *ceiling*, so the cheapest call took the longest lease the policy allowed. Both
+are now the caller's to state, and `applyReviewAction` refuses an acceptance without them — which
+covers the CLI, the `--from` batch and the MCP tool alike. At a TTY the prompts still help: the
+local git identity is **offered for a human to confirm**, and the expiry prompt suggests
+`acceptance.default_horizon_days` (90) rather than the ceiling.
+
+**Which register you are looking at.** Everything GuardLink reports about acceptances is read from
+`@accepts` annotations in your repository. It has never read the server decision log
+(`POST /v1/decisions`), whose author is an authenticated principal rather than free text and which
+is what the acceptance-deadline scan reads. The two guarantee opposite things, so every surface
+that shows an acceptance says which one it came from: `guardlink ci` (text and the JSON
+`summary.acceptance_register`), `guardlink validate`, `guardlink status`, `guardlink report`, the
+dashboard, `guardlink_lookup("acceptances")`, and `runs[0].properties.acceptance_register` in the
+SARIF.
+
+**Accepted is not refuted.** Since the hypothesis ledger landed, an exposure can also be `refuted`
+— tested and found not exploitable — and the two states sit side by side in `guardlink status` and
+in the dashboard's exposures table, both of them "not open". They are not the same claim and they
+do not come from the same place. A **refutation** was measured: `.guardlink/hypotheses.json` holds
+the evidence, who recorded it, when, and the hash of the code beneath the claim, and the outcome
+lapses by itself when that code moves. An **acceptance** was signed: an `@accepts` comment whose
+signer is free text nobody verified and whose expiry is a date someone typed. So each names its
+own register wherever they appear together — the `status` lines, the dashboard status labels, the
+badge tooltips and the drawer advice — because a reader who cannot tell them apart reads the weaker
+claim as the stronger one.
 
 An acceptance that fails any of the first three **does not count as an acceptance** to
 `guardlink ci --strict`: its exposures are reported as unmitigated, and the acceptance itself is

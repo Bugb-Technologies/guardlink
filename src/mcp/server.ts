@@ -61,9 +61,9 @@ import { z } from 'zod';
 // because it branched before D19 landed.
 import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
-import { readAcceptancePolicy, acceptanceBlastRadius, formatBlastRadius } from '../parser/acceptance.js';
+import { readAcceptancePolicy, acceptanceBlastRadius, formatBlastRadius, ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
 import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
-import { getReviewableExposures, applyReviewAction, horizonFrom } from '../review/index.js';
+import { getReviewableExposures, applyReviewAction } from '../review/index.js';
 import {
   proposeEntitlement, listProposals, checkEntitlementProvenance, PROPOSALS_FILE,
   type ProposalStatus,
@@ -311,6 +311,8 @@ export function createServer(): McpServer {
         exposures: model.exposures.length,
         confirmed: (model.confirmed || []).length,
         acceptances: model.acceptances.length,
+        /** Which register that count came from. Always the annotations in this repo. */
+        acceptance_register: ACCEPTANCE_REGISTER_ID,
         actors: (model.actors || []).length,
         entitlements: (model.entitlements || []).length,
         entitlements_inert: (model.entitlements || []).filter(e => e.inert).length,
@@ -973,14 +975,14 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_review_accept',
-    'Record a governance decision for an unmitigated exposure. Writes @accepts + @audit (for accept) or @audit (for remediate) directly into the source file. IMPORTANT: This modifies source files, and an acceptance removes the exposure from the SARIF a pentest reads — so it stops the risk from ever being TESTED, not just reported. Only call after explicit human confirmation, and pass that human\'s name as `by`: an acceptance with nobody\'s name on it is refused. An acceptance also expires (`until`), and its justification must be a reason rather than a category — the rule is enforced by the writer, so a short one is an error and not a warning.',
+    'Record a governance decision for an unmitigated exposure. Writes @accepts + @audit (for accept) or @audit (for remediate) directly into the source file. IMPORTANT: This modifies source files, and an acceptance removes the exposure from the SARIF a pentest reads — so it stops the risk from ever being TESTED, not just reported. Only call after explicit human confirmation, and pass that human\'s name as `by`: an acceptance with nobody\'s name on it is refused, and nothing is defaulted — this tool will not read a name off the local git config on a human\'s behalf. What it writes is an @accepts annotation in this repository\'s code, which is the annotation register and not the server decision log. An acceptance also expires (`until`), and its justification must be a reason rather than a category — the rule is enforced by the writer, so a short one is an error and not a warning.',
     {
       root: z.string().describe('Project root directory').default('.'),
       exposure_id: z.string().describe('Exposure ID from guardlink_review_list'),
       decision: z.enum(['accept', 'remediate', 'skip']).describe('accept = risk acknowledged; remediate = planned fix; skip = no action'),
       justification: z.string().describe('Required explanation. For accept it must be a real reason (minimum length is enforced): what compensates for the risk, who is exposed, what would change the answer.'),
       by: z.string().optional().describe('REQUIRED for accept: the name of the HUMAN who made this decision. Never your own name — you are not the decider, and a decision recorded under an agent\'s name is worse than one recorded under none.'),
-      until: z.string().optional().describe('Acceptance horizon as YYYY-MM-DD. Defaults to the project ceiling. An acceptance stops covering anything after this date.'),
+      until: z.string().optional().describe('REQUIRED for accept: the acceptance horizon as YYYY-MM-DD. Not defaulted — it used to fall back to the project CEILING, so the cheapest call took the longest lease available. Ask the human how long they are signing for. An acceptance stops covering anything after this date.'),
     },
     async ({ root, exposure_id, decision, justification, by, until }) => {
       if (decision !== 'skip' && !justification.trim()) {
@@ -1001,7 +1003,11 @@ export function createServer(): McpServer {
       try {
         result = await applyReviewAction(root, target, {
           decision, justification, by,
-          until: decision === 'accept' ? (until ?? horizonFrom(policy.max_horizon_days)) : undefined,
+          // No default for either `by` or `until` on this path. An agent is the
+          // least attended caller there is: a signer it did not have and a
+          // horizon nobody chose would both be invented here and then read back
+          // as a human's decision. applyReviewAction refuses without them.
+          until: decision === 'accept' ? (until?.trim() || undefined) : undefined,
         }, { policy });
       } catch (err) {
         // The rule lives in applyReviewAction, so this path gets it too — which
@@ -1025,7 +1031,7 @@ export function createServer(): McpServer {
         ? `\nSilenced: ${formatBlastRadius(acceptanceBlastRadius(model, target.exposure.asset, target.exposure.threat, target.exposure.location.file))}`
         : '';
       return {
-        content: [{ type: 'text', text: `${verb}: ${target.exposure.asset} → ${target.exposure.threat} [${target.exposure.severity}]\nJustification: ${justification}${decision === 'accept' ? `\nRecorded for: ${by}` : ''}${radius}\n${result.linesInserted} annotation line(s) written to ${result.targetFile}` }],
+        content: [{ type: 'text', text: `${verb}: ${target.exposure.asset} → ${target.exposure.threat} [${target.exposure.severity}]\nJustification: ${justification}${decision === 'accept' ? `\nRecorded for: ${by}` : ''}${radius}\n${result.linesInserted} annotation line(s) written to ${result.targetFile}${decision === 'accept' ? `\n${ACCEPTANCE_REGISTER_NOTE}` : ''}` }],
       };
     },
   );

@@ -844,17 +844,36 @@ export async function checkEntitlementProvenance(
 // ─── Display ────────────────────────────────────────────────────────
 
 /**
- * Resolve the name a decision is recorded under: an explicit name wins, then
- * git's configured identity, then $USER. Returns undefined when nothing
- * identifies a person — better to ask than to record "unknown" as the
- * maintainer who granted a privilege.
+ * The name a governance decision is recorded under — and ONLY the name someone
+ * actually supplied.
+ *
+ * This used to be `defaultDecider(root, explicit)`: an explicit name, then git's
+ * `user.name`, then `$USER`. The two fallbacks were the defect. A signature on a
+ * risk acceptance or an entitlement is a claim that a named human read the risk
+ * and signed for it; a field filled in from whatever identity a laptop's git
+ * config happens to hold is a fabricated attribution that renders identically to
+ * a real one, and nothing downstream — the annotation, the SARIF, the dashboard,
+ * an auditor's evidence pack — can tell the two apart. A blank field is honest;
+ * an invented one is worse than nothing, because it is believed.
+ *
+ * So there is no fallback. Callers that cannot get a name refuse the decision
+ * and say so. The git identity is still readable — as a *suggestion* offered to
+ * a human at a terminal who then confirms it (`identitySuggestion`) — because a
+ * human pressing Enter on a name they can see is supplying it.
+ */
+export function explicitDecider(explicit?: string): string | undefined {
+  return oneLine(explicit || '') || undefined;
+}
+
+/**
+ * The local git/OS identity, offered to a human at a TTY as something to
+ * confirm. NEVER recorded without that confirmation — see `explicitDecider`.
  *
  * @mitigates #cli against #cmd-injection using #param-commands -- "execFileSync with a fixed argv and no shell; nothing user-supplied reaches the command"
- * @flows GitConfig -> #cli via execFileSync -- "Reads the local git identity to attribute a decision"
+ * @flows GitConfig -> #cli via execFileSync -- "Reads the local git identity to offer it as a prompt suggestion; never recorded unconfirmed"
+ * @comment -- "Suggestion only. The unattended paths (scripted --accept, --from batch, MCP) do not call this at all: a name nobody confirmed is a forged signature, and the caller refuses instead"
  */
-export function defaultDecider(root: string, explicit?: string): string | undefined {
-  const given = oneLine(explicit || '');
-  if (given) return given;
+export function identitySuggestion(root: string): string | undefined {
   try {
     const name = execFileSync('git', ['config', 'user.name'], {
       cwd: root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],

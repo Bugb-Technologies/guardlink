@@ -156,7 +156,17 @@ export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger:
     const b = e.blame;
     push({
       verb: 'exposes', status,
-      statusLabel: status === 'open' ? 'Open — no mitigation' : status === 'mitigated' ? 'Mitigated' : status === 'refuted' ? 'Refuted — tested, not exploitable' : 'Accepted',
+      // Both non-open, non-mitigated states name the register they were read
+      // from, because they now sit side by side and their guarantees are not
+      // the same. `refuted` comes from the hypothesis ledger and carries
+      // evidence, an author recorded at the time and a code hash. `accepted`
+      // comes from an @accepts comment whose signer is free text nobody
+      // verified. A reader who cannot tell them apart reads the weaker one as
+      // the stronger.
+      statusLabel: status === 'open' ? 'Open — no mitigation'
+        : status === 'mitigated' ? 'Mitigated'
+        : status === 'refuted' ? 'Refuted — tested, not exploitable (evidence in the hypothesis ledger)'
+        : 'Accepted (@accepts in code)',
       hypothesis: e.hypothesis ?? null,
       asset: e.asset, threat: e.threat, severity: e.severity || 'unset', description: e.description || '', control: null,
       refs: e.external_refs || [], file: e.location.file, line: e.location.line, url: url(e.location.file, e.location.line),

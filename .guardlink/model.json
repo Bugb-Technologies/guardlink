@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+    "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 150,
-  "annotations_parsed": 741,
+  "annotations_parsed": 747,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -1082,7 +1082,7 @@
       "description": "Path is the constant LEDGER_FILE under a root that must already carry .guardlink/; targets only select claims, they are never written to",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 504
+        "line": 505
       }
     },
     {
@@ -1822,7 +1822,7 @@
       "description": "execFileSync with a fixed argv and no shell; nothing user-supplied reaches the command",
       "location": {
         "file": "src/review/entitlements.ts",
-        "line": 852
+        "line": 872
       }
     },
     {
@@ -1852,7 +1852,7 @@
       "description": "Anchor line must exist in the file, and callers resolve the path against the parsed project root",
       "location": {
         "file": "src/review/index.ts",
-        "line": 391
+        "line": 395
       }
     },
     {
@@ -2445,7 +2445,7 @@
       "description": "The one command that writes .guardlink/verified.json",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 503
+        "line": 504
       }
     },
     {
@@ -3299,7 +3299,7 @@
       "description": "Writes annotation lines into a caller-supplied file path",
       "location": {
         "file": "src/review/index.ts",
-        "line": 390
+        "line": 394
       }
     },
     {
@@ -3690,7 +3690,7 @@
       "description": "Model input",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 40
+        "line": 41
       }
     },
     {
@@ -3700,7 +3700,7 @@
       "description": "SARIF output",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 41
+        "line": 42
       }
     },
     {
@@ -3940,7 +3940,7 @@
       "description": "Targets, --by and mode flags",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 505
+        "line": 506
       }
     },
     {
@@ -3950,7 +3950,7 @@
       "description": "Attribution read from blame, log -L and commit trailers",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 622
+        "line": 623
       }
     },
     {
@@ -3960,7 +3960,7 @@
       "description": "report --blame attaches attribution before the metadata spread, so the shared records carry it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 757
+        "line": 758
       }
     },
     {
@@ -3970,7 +3970,7 @@
       "description": "The model before and after the agent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1513
+        "line": 1514
       }
     },
     {
@@ -3980,7 +3980,7 @@
       "description": "Which assets sit on an undefended path, for the ranking",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1648
+        "line": 1649
       }
     },
     {
@@ -3990,7 +3990,7 @@
       "description": "cxg findings recorded as confirmations, joined to claims",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1663
+        "line": 1664
       }
     },
     {
@@ -4000,7 +4000,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2750
+        "line": 2777
       }
     },
     {
@@ -4010,7 +4010,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2753
+        "line": 2780
       }
     },
     {
@@ -4550,7 +4550,7 @@
       "description": "Attribution read from blame, log -L and commit trailers for the connected agent",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1113
+        "line": 1119
       }
     },
     {
@@ -4947,10 +4947,10 @@
       "source": "GitConfig",
       "target": "#cli",
       "mechanism": "execFileSync",
-      "description": "Reads the local git identity to attribute a decision",
+      "description": "Reads the local git identity to offer it as a prompt suggestion; never recorded unconfirmed",
       "location": {
         "file": "src/review/entitlements.ts",
-        "line": 853
+        "line": 873
       }
     },
     {
@@ -4980,7 +4980,7 @@
       "description": "Annotation insertion output",
       "location": {
         "file": "src/review/index.ts",
-        "line": 392
+        "line": 396
       }
     },
     {
@@ -5060,7 +5060,7 @@
       "description": "Attribution read from blame, log -L and commit trailers",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 995
+        "line": 998
       }
     },
     {
@@ -5634,7 +5634,7 @@
       "description": "Author identities printed or emitted as JSON; --identity hash (or blame.identity in config.json) redacts emails",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 623
+        "line": 624
       }
     },
     {
@@ -5643,7 +5643,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3477
+        "line": 3507
       }
     },
     {
@@ -5760,7 +5760,7 @@
       "description": "Author identities, in the configured identity mode (blame.identity in config.json), reach the MCP client",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1114
+        "line": 1120
       }
     },
     {
@@ -5787,7 +5787,7 @@
       "description": "Author identities from git, in the configured identity mode",
       "location": {
         "file": "src/report/report.ts",
-        "line": 1514
+        "line": 1519
       }
     },
     {
@@ -5823,7 +5823,7 @@
       "description": "Author identities printed to the terminal in the configured identity mode",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 996
+        "line": 999
       }
     },
     {
@@ -6182,24 +6182,31 @@
       }
     },
     {
-      "description": "runs[0].properties.annotation_hash stamps the export with the annotations it was cut from (R10), so a hygiene gate can tell a current SARIF from one built three commits ago — this file is the pentest surface, and a stale one decides which exposures get tested",
+      "description": "runs[0].properties.acceptance_register names the register whose acceptances removed results from this export — the annotations in this repo, never the server decision log. Envelope only: results and tool stay byte-identical, the same §3.2 line annotation_hash sits on",
       "location": {
         "file": "src/analyzer/sarif.ts",
         "line": 37
       }
     },
     {
-      "description": "@entitles has no export semantics by design: SARIF for a model with entitlements is byte-identical to one without, so an entitlement can never hide an exposure from the pentest export (actor-entitlement design §3.2)",
+      "description": "runs[0].properties.annotation_hash stamps the export with the annotations it was cut from (R10), so a hygiene gate can tell a current SARIF from one built three commits ago — this file is the pentest surface, and a stale one decides which exposures get tested",
       "location": {
         "file": "src/analyzer/sarif.ts",
         "line": 38
       }
     },
     {
-      "description": "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} derived from the asset's inbound @flows route so downstream HTTP consumers (e.g. cert-x-gen) can target the endpoint; emitted verbatim from the annotation, no base path assumed",
+      "description": "@entitles has no export semantics by design: SARIF for a model with entitlements is byte-identical to one without, so an entitlement can never hide an exposure from the pentest export (actor-entitlement design §3.2)",
       "location": {
         "file": "src/analyzer/sarif.ts",
         "line": 39
+      }
+    },
+    {
+      "description": "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} derived from the asset's inbound @flows route so downstream HTTP consumers (e.g. cert-x-gen) can target the endpoint; emitted verbatim from the annotation, no base path assumed",
+      "location": {
+        "file": "src/analyzer/sarif.ts",
+        "line": 40
       }
     },
     {
@@ -6367,28 +6374,28 @@
       "description": "Re-locking a stale claim is an assertion that the control still holds, so the default form never does it: --stale, --all or a named target is required, and each says so in its output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 506
+        "line": 507
       }
     },
     {
       "description": "Always exits 0 once the model parsed: outside a git checkout every claim reads as unattributed, which is an answer, not a failure. Only an unknown --identity is an error",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 624
+        "line": 625
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3426
+        "line": 3453
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3478
+        "line": 3508
       }
     },
     {
@@ -6417,6 +6424,13 @@
       "location": {
         "file": "src/dashboard/client-legacy.ts",
         "line": 10
+      }
+    },
+    {
+      "description": "Second exception, same kind: ACCEPTANCE_REGISTER_NOTE is interpolated as a JSON literal so the Accepted Risks block names the register it read — one sentence, one definition, shared with the CLI and the server-rendered pages",
+      "location": {
+        "file": "src/dashboard/client-legacy.ts",
+        "line": 11
       }
     },
     {
@@ -6780,7 +6794,7 @@
       "description": "Non-mutating: computeBlame leaves the cached model untouched, so a later guardlink_parse in the same session never carries blame unasked. Nothing is written to the repository",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1115
+        "line": 1121
       }
     },
     {
@@ -6823,6 +6837,20 @@
       "location": {
         "file": "src/parser/acceptance.ts",
         "line": 58
+      }
+    },
+    {
+      "description": "ACCEPTANCE_REGISTER_* name the ONE register this codebase reads — @accepts in the repository's own source. The server decision log (POST /v1/decisions), whose author is an authenticated principal and which the acceptance-deadline scan reads, is a different register with opposite guarantees and is not read here. Every surface that shows an acceptance says which one it is showing, from these constants, so there is one sentence to change when that answer changes",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 59
+      }
+    },
+    {
+      "description": "Neither the signer nor the horizon is defaulted on an unattended path: --by used to fall back to git user.name (a fabricated attribution that renders identically to a real signature) and --until used to default to max_horizon_days, the ceiling. default_horizon_days is a SUGGESTION offered at a TTY, never applied silently",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 60
       }
     },
     {
@@ -7193,7 +7221,7 @@
       "description": "AI credit is what a commit declared in a trailer, never detected from code; a claim whose commits carry no trailer stays human. Every degraded status is listed so the reader never mistakes an unattributed claim for a clean one",
       "location": {
         "file": "src/report/report.ts",
-        "line": 1515
+        "line": 1520
       }
     },
     {
@@ -7225,6 +7253,13 @@
       }
     },
     {
+      "description": "Suggestion only. The unattended paths (scripted --accept, --from batch, MCP) do not call this at all: a name nobody confirmed is a forged signature, and the caller refuses instead",
+      "location": {
+        "file": "src/review/entitlements.ts",
+        "line": 874
+      }
+    },
+    {
       "description": "applyReviewAction throws rather than returning a flag: a writer that can be ignored by a caller who forgot to check is the hole this replaced",
       "location": {
         "file": "src/review/index.ts",
@@ -7232,10 +7267,17 @@
       }
     },
     {
+      "description": "assertAcceptable never SUPPLIES a missing `by` or `until`, it refuses. Defaulting either is how a signature gets forged (git user.name) or how the longest lease the policy allows becomes the cheapest one to take (the max_horizon_days ceiling) — so the choke point that enforces the rule is also the one place that will not paper over it",
+      "location": {
+        "file": "src/review/index.ts",
+        "line": 37
+      }
+    },
+    {
       "description": "Shared by exposure review (@accepts/@audit) and entitlement acceptance (@entitles) so both writers place annotations by the same rules",
       "location": {
         "file": "src/review/index.ts",
-        "line": 389
+        "line": 393
       }
     },
     {
@@ -7284,14 +7326,14 @@
       "description": "Non-mutating on purpose: ctx.model is reused by every later command, and /blame must not make /report carry attribution unasked",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 997
+        "line": 1000
       }
     },
     {
       "description": "Derived query over @flows and @mitigates; every hop it prints is an existing annotation location, so a finding here cannot cite a line that was never written",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 1069
+        "line": 1072
       }
     },
     {
@@ -7317,7 +7359,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 741,
+    "annotation_count": 747,
     "coverage_percent": 87
   },
   "external_refs": []

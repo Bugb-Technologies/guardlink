@@ -47,7 +47,7 @@
 import { Command } from 'commander';
 import { resolve, basename, join, isAbsolute, relative } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { runCiChecks, formatCiReport } from '../ci/index.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
@@ -68,7 +68,7 @@ import { selectAnnotatePlaybook, selectReportShape, ANNOTATE_PLAYBOOKS, REPORT_S
 import { lintAnnotations, runGate, formatGateReport, buildGateFollowUp, stripViolations, RULE_FIX } from '../gate/index.js';
 import { relationRecords } from '../parser/claim-key.js';
 import { parseFindingsBlock, validateFindings } from '../analyze/findings.js';
-import { readHypotheses, classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, confirmedLine, writeConfirmedLine, formatHypothesisList, formatQueue, formatIntake, formatOutcome, formatImport } from '../hypothesis/index.js';
+import { readHypotheses, classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, confirmedLine, writeConfirmedLine, formatHypothesisList, formatQueue, formatIntake, formatOutcome, formatImport, HYPOTHESES_FILE } from '../hypothesis/index.js';
 import type { HypothesisClassification } from '../hypothesis/index.js';
 import { resolveConfig, saveProjectConfig, saveGlobalConfig, loadProjectConfig, loadGlobalConfig, maskKey, describeConfigSource } from '../agents/config.js';
 import {
@@ -78,7 +78,7 @@ import {
 } from '../review/index.js';
 import {
   proposeEntitlement, listProposals, findProposal, applyProposalDecision, checkEntitlementProvenance,
-  defaultDecider, formatProposalForReview, formatProposalLine, summarizeDecisions, proposalsPath,
+  explicitDecider, identitySuggestion, formatProposalForReview, formatProposalLine, summarizeDecisions, proposalsPath,
   type DecisionResult, type EntitlementProposal, type ProposalStatus,
 } from '../review/entitlements.js';
 import { populateMetadata, mergeReports, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace } from '../workspace/index.js';
@@ -398,6 +398,7 @@ program
 
     if (acceptedOnly.length > 0) {
       console.error(`\n⚡ ${acceptedOnly.length} accepted-but-unmitigated exposure(s) (risk accepted, no control in code):`);
+      console.error(`   ${ACCEPTANCE_REGISTER_NOTE}`);
       for (const a of acceptedOnly) {
         console.error(`   ${a.asset} → ${a.threat} [${a.severity || 'unset'}] (${a.location.file}:${a.location.line})`);
       }
@@ -2049,12 +2050,12 @@ program
   .option('--severity <levels>', 'Filter by severity: critical,high,medium,low', undefined)
   .option('--list', 'Just list reviewable exposures without prompting')
   .option('-f, --format <fmt>', 'Output format for --list: text (default) or json', 'text')
-  .option('--accept <id>', 'Accept one exposure by id (non-interactive). Needs --justification; --by defaults to git user.name')
+  .option('--accept <id>', 'Accept one exposure by id (non-interactive). Needs --by, --justification and --until — none of the three is defaulted')
   .option('--remediate <id>', 'Mark one exposure for remediation by id (non-interactive). Needs --justification')
   .option('--skip <id>', 'Record no decision for one exposure by id. Writes nothing; reported for symmetry with a batch file')
-  .option('--by <name>', 'Human recording the decision (defaults to git user.name, then the OS user)')
+  .option('--by <name>', 'Human recording the decision. Never defaulted: a name nobody supplied is a fabricated signature')
+  .option('--until <date>', `Acceptance horizon, YYYY-MM-DD. Required — omitting it used to hand out the ${DEFAULT_ACCEPTANCE_POLICY.max_horizon_days}-day ceiling. At a TTY the prompt suggests ${DEFAULT_ACCEPTANCE_POLICY.default_horizon_days} days`)
   .option('--justification <text>', 'Why this risk is acceptable, or what the planned fix is')
-  .option('--until <date>', `Acceptance horizon, YYYY-MM-DD (default: ${DEFAULT_ACCEPTANCE_POLICY.max_horizon_days} days out)`)
   .option('--from <file>', 'Apply a JSON batch of decisions: {"decisions":[{"id","decision","justification","by","until"}]}')
   .action(async (dir: string, opts: {
     project: string; severity?: string; list?: boolean; format: string;
@@ -2146,10 +2147,12 @@ program
         const action: ReviewAction = {
           decision: row.decision,
           justification: row.justification ?? '',
-          by: row.decision === 'skip' ? undefined : (defaultDecider(root, row.by) ?? undefined),
-          until: row.decision === 'accept'
-            ? (row.until ?? horizonFrom(policy.max_horizon_days))
-            : undefined,
+          // Neither field is defaulted on an unattended path. A signer read off
+          // the local git config is a forged attribution, and an omitted horizon
+          // used to silently take the longest lease the policy allows — so both
+          // are the caller's to state, and `assertAcceptable` refuses without them.
+          by: row.decision === 'skip' ? undefined : explicitDecider(row.by),
+          until: row.decision === 'accept' ? (row.until?.trim() || undefined) : undefined,
         };
         if (row.decision === 'accept') console.error(blastRadiusLine(target));
         try {
@@ -2203,6 +2206,9 @@ program
         const e = r.exposure;
         console.error(`  ${r.index}. ${e.asset} → ${e.threat} [${e.severity || '?'}]  (${e.location.file}:${e.location.line})`);
       }
+      // Which register decided that these are still open. `@accepts` in this
+      // repository's code is the only one this command reads.
+      console.error(`\n${ACCEPTANCE_REGISTER_NOTE}`);
       console.error('');
       return;
     }
@@ -2219,6 +2225,7 @@ program
       console.error('  Non-interactively, decide explicitly:');
       console.error('    guardlink review . --list --format json');
       console.error('    guardlink review . --accept <id> --by "<name>" --justification "<why>" --until <YYYY-MM-DD>');
+      console.error('    (all three are required — none of them is defaulted; see --help)');
       console.error('    guardlink review . --from decisions.json');
       process.exitCode = 1;
       return;
@@ -2229,12 +2236,22 @@ program
     const ask = (q: string): Promise<string> =>
       new Promise(resolve => rl.question(q, resolve));
 
-    let reviewer = defaultDecider(root, opts.by);
+    // A name is either typed here or confirmed here. What it is never again is
+    // read off the machine and written down as a signature without anyone
+    // seeing it — that is the difference between this prompt and the scripted
+    // path above, and it is why the git identity appears as text to confirm
+    // rather than as a value already chosen.
+    let reviewer = explicitDecider(opts.by);
+    const suggestion = reviewer ? undefined : identitySuggestion(root);
     while (!reviewer) {
-      reviewer = (await ask('  Your name (recorded with every decision): ')).trim() || undefined;
+      const q = suggestion
+        ? `  Your name — recorded with every decision.\n    git on this machine says "${suggestion}". Enter to sign as that, or type another name: `
+        : '  Your name (recorded with every decision): ';
+      reviewer = (await ask(q)).trim() || suggestion;
     }
 
-    console.error(`\n  guardlink review — ${exposures.length} unmitigated exposure(s), deciding as ${reviewer}\n`);
+    console.error(`\n  guardlink review — ${exposures.length} unmitigated exposure(s), deciding as ${reviewer}`);
+    console.error(`  ${ACCEPTANCE_REGISTER_NOTE}\n`);
 
     const results: ReviewResult[] = [];
 
@@ -2267,8 +2284,12 @@ program
           if (!text) { console.error(`  ⚠  ${label} is mandatory.`); continue; }
           let until: string | undefined;
           if (choice === 'a') {
-            const suggested = horizonFrom(policy.max_horizon_days);
-            const typed = (await ask(`  Expires [YYYY-MM-DD, blank for ${suggested}]: `)).trim();
+            // The suggestion is the SHORT horizon, not the ceiling. It used to
+            // be the ceiling, which made "press Enter" the way to take the
+            // longest lease the policy permits.
+            const suggested = horizonFrom(policy.default_horizon_days);
+            const typed = (await ask(`  Expires [YYYY-MM-DD, blank for ${suggested}`
+              + ` — ${policy.default_horizon_days} days; the ceiling is ${policy.max_horizon_days}]: `)).trim();
             until = typed || suggested;
           }
           try {
@@ -2384,9 +2405,9 @@ program
     const decisionId = opts.accept || opts.reject || opts.defer;
     if (decisionId) {
       const status = opts.accept ? 'accepted' : opts.reject ? 'rejected' : 'deferred';
-      const by = defaultDecider(root, opts.by);
+      const by = explicitDecider(opts.by);
       if (!by) {
-        console.error('✗ Could not work out who is deciding. Pass --by "<name>" — an entitlement carries a human\'s name.');
+        console.error('✗ Pass --by "<name>" — an entitlement carries a human\'s name, and this used to fall back to the local git identity, which signs a privilege grant for someone who never saw it.');
         process.exitCode = 1;
         return;
       }
@@ -2463,9 +2484,15 @@ program
     const rl = createInterface({ input: process.stdin, output: process.stderr });
     const ask = (q: string): Promise<string> => new Promise(res => rl.question(q, res));
 
-    let resolvedBy = defaultDecider(root, opts.by);
+    // Typed or confirmed at this prompt — never read off the machine unseen.
+    // Same rule as `guardlink review`, same reason: see `explicitDecider`.
+    let resolvedBy = explicitDecider(opts.by);
+    const suggestion = resolvedBy ? undefined : identitySuggestion(root);
     while (!resolvedBy) {
-      resolvedBy = (await ask('  Your name (recorded with every decision): ')).trim() || undefined;
+      const q = suggestion
+        ? `  Your name — recorded with every decision.\n    git on this machine says "${suggestion}". Enter to sign as that, or type another name: `
+        : '  Your name (recorded with every decision): ';
+      resolvedBy = (await ask(q)).trim() || suggestion;
     }
     const by: string = resolvedBy;
 
@@ -3443,13 +3470,16 @@ function printStatus(model: ThreatModel, verification?: VerificationReport, hypo
   const refuted = hypotheses ? hypotheses.summary.refuted : 0;
   console.log(`Exposures:        ${model.exposures.length}${refuted > 0 ? ` (${refuted} refuted with evidence)` : ''}`);
   if ((model.confirmed || []).length > 0) console.log(`Confirmed:        ${model.confirmed.length} 🔴`);
+  // Two neighbouring lines, two different registers. Each says which one it is:
+  // the tested outcomes come from the hypothesis ledger, the acceptances from
+  // @accepts comments in this repository, and neither is the server decision log.
   if (hypotheses && hypotheses.ledger !== 'absent') {
     const h = hypotheses.summary;
     console.log(hypotheses.ledger === 'corrupt'
-      ? 'Hypotheses:       ledger unreadable (.guardlink/hypotheses.json)'
-      : `Hypotheses:       ${h.untested} untested, ${h.confirmed} confirmed, ${h.refuted} refuted, ${h.retest} retest`);
+      ? `Hypotheses:       ledger unreadable (${HYPOTHESES_FILE})`
+      : `Hypotheses:       ${h.untested} untested, ${h.confirmed} confirmed, ${h.refuted} refuted, ${h.retest} retest  (source: ${HYPOTHESES_FILE})`);
   }
-  console.log(`Acceptances:      ${model.acceptances.length}`);
+  console.log(`Acceptances:      ${model.acceptances.length}  (${ACCEPTANCE_REGISTER_SHORT})`);
   if ((model.entitlements || []).length > 0) {
     const inert = model.entitlements!.filter(e => e.inert).length;
     console.log(`Entitlements:     ${model.entitlements!.length}${inert > 0 ? ` (${inert} inert — no citation)` : ''}`);
