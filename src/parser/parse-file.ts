@@ -192,7 +192,10 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
  * distinct tokens × files touched rather than by total lines.
  *
  * The first occurrence keeps the line, because that is where you start reading.
- * The count rides in the message so nothing is silently hidden.
+ * The count rides in the message so nothing is silently hidden, and in
+ * `occurrences` so a consumer can add it up instead of parsing the English: a
+ * count of diagnostics and a count of dropped annotations are different numbers,
+ * and only the second says how much of the model is missing.
  *
  * `COLLAPSE_TOKEN` names, per code, the thing a reader would go and fix.
  * `unknown-verb` reads its token back out of its own message, which is where
@@ -232,7 +235,7 @@ function collapsePerFileToken(diagnostics: ParseDiagnostic[]): ParseDiagnostic[]
     if (!kept.has(d)) continue;
     const n = count.get(key) ?? 1;
     out.push(n > 1
-      ? { ...d, message: `${d.message} (${n} occurrences in this file; first at line ${d.line})` }
+      ? { ...d, message: `${d.message} (${n} occurrences in this file; first at line ${d.line})`, occurrences: n }
       : d);
   }
   return out;

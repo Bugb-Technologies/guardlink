@@ -118,6 +118,16 @@ export interface MergeTotals {
   mitigations: number;
   exposures: number;
   unmitigated_exposures: number;
+  /**
+   * Reproduced exploits — `@confirmed` records in the combined model.
+   *
+   * Counted because `merge --strict` gates on it, and for the same reason
+   * `guardlink ci` does: an `@accepts` does not silence a `@confirmed` anywhere
+   * in the product, so an estate can hold verified exploits while
+   * `unmitigated_exposures` reads 0. Additive to the merged JSON — a reader of
+   * the previous shape finds every key it had, unrenamed.
+   */
+  confirmed: number;
   acceptances: number;
   flows: number;
   boundaries: number;

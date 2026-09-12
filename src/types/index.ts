@@ -715,6 +715,21 @@ export interface ParseDiagnostic {
   raw?: string;
   /** Present on diagnostics that have a defined kind; absent on ad-hoc ones. */
   code?: DiagnosticCode;
+  /**
+   * How many annotation lines this one diagnostic stands for.
+   *
+   * Present only where the parser collapsed repeats (`collapsePerFileToken`),
+   * and then always > 1; absent means one line, which is why every existing
+   * consumer keeps working and why a clean parse serializes exactly as before.
+   *
+   * It exists because the collapsed count was reachable only by reading English
+   * out of `message`. A repository with one house convention the parser cannot
+   * read reported "1 warning" for 1,340 dropped annotations, and no consumer —
+   * `ci`'s JSON included — could recover the real number. A diagnostic count and
+   * an annotations-dropped count are different numbers and the second is the one
+   * that says how much of the model is missing.
+   */
+  occurrences?: number;
 }
 
 export interface ParseResult {

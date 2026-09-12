@@ -406,6 +406,93 @@ describe('parse diagnostics are reported, and advisory unless --strict', () => {
   });
 });
 
+/**
+ * The count, as distinct from the number of diagnostics.
+ *
+ * The parser collapses repeats of the same problem in the same file, so a house
+ * convention it cannot read is one warning rather than a flood — 1,340 lines to
+ * one on the repository this fleet demos from, where `guardlink status` reported
+ * **287 malformed annotations** (117 `@mitigates`, 105 `@exposes`). A reader told
+ * "1 warning" concludes one annotation is missing. So `ci` reports both numbers,
+ * and this fixture pins the one that says how much of the model is gone: three
+ * annotations inside a Python docstring the parser does not read (one diagnostic)
+ * plus two malformed lines (two diagnostics) is **3 diagnostics and 5 unreadable
+ * annotations**.
+ *
+ * The counts are asserted against the fixture's own arithmetic rather than
+ * against a literal, so a fixture edited later cannot leave a stale number green.
+ */
+const DOCSTRING_BLOCK_SOURCE = `def a():
+    """
+    @exposes #api to #sqli [critical] -- "one"
+    @mitigates #api against #sqli using #prepared-stmts -- "two"
+    @exposes #api to #sqli [medium] -- "three"
+    """
+    return 1
+`;
+
+const MALFORMED_PAIR_SOURCE = `/**
+ * @exposes #api to
+ * @mitigates #api against
+ */
+export function b() { return 1; }
+`;
+
+/** Annotation lines in the fixture above that the parser cannot read. */
+const UNREADABLE_LINES = 5;
+/** Distinct problems it reports them as: one collapsed docstring block, two malformed lines. */
+const DIAGNOSTICS = 3;
+
+describe('the count is of annotations, not of diagnostics', () => {
+  let root: string;
+  let runs: Record<'advisory' | 'json' | 'status', Run>;
+
+  beforeAll(async () => {
+    root = await scaffold('gl-ci-unparsed-', MALFORMED_PAIR_SOURCE);
+    await writeFile(join(root, 'src', 'docblock.py'), DOCSTRING_BLOCK_SOURCE);
+    runs = await warm(root, {
+      advisory: ['ci', '.'],
+      json: ['ci', '.', '--format', 'json'],
+      status: ['status', '.'],
+    });
+  }, 60_000);
+  afterAll(async () => { await rm(root, { recursive: true, force: true }); });
+
+  it('reports the diagnostics, and then how many annotation lines they stand for', () => {
+    expect(runs.advisory.stderr).toContain(`Annotations the parser could not read: ${UNREADABLE_LINES}`);
+    expect(runs.advisory.stderr).toContain(`more than the ${DIAGNOSTICS} diagnostic(s) above`);
+  });
+
+  it('breaks the line count down by code, and the breakdown adds up', () => {
+    const { summary } = JSON.parse(runs.json.stdout);
+    expect(summary.unparsed_annotations).toBe(UNREADABLE_LINES);
+    expect(summary.parse_errors + summary.parse_warnings).toBe(DIAGNOSTICS);
+    const total = Object.values(summary.unparsed_by_code as Record<string, number>)
+      .reduce((a, b) => a + b, 0);
+    expect(total).toBe(UNREADABLE_LINES);
+  });
+
+  it('carries the collapsed count on the diagnostic itself, not only in its English', () => {
+    // Before this, the number was reachable only by parsing the message text,
+    // so no consumer of guardlink.ci/v1 could add it up.
+    const { parse } = JSON.parse(runs.json.stdout);
+    const collapsed = parse.find((d: { occurrences?: number }) => d.occurrences !== undefined);
+    expect(collapsed.occurrences).toBe(3);
+    expect(collapsed.code).toBe('uncommented-annotation');
+  });
+
+  it('`status` agrees with `ci` about the same repository', () => {
+    // The defect report's complaint was that the two surfaces disagreed about
+    // whether unparsed annotations existed at all. They must not now disagree
+    // about how many.
+    expect(runs.status.stderr).toContain(`${UNREADABLE_LINES} annotation line(s) affected`);
+  });
+
+  it('is still advisory: an unreadable annotation does not fail a default run', () => {
+    expect(runs.advisory.status).toBe(0);
+  });
+});
+
 describe('a clean repo says so about the parse too', () => {
   let root: string;
   let run: Run;
