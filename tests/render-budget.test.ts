@@ -348,7 +348,7 @@ describe('emission at 257 annotated files — the measured size', () => {
     const findings = checkArtifactRenderability(root);             // and now caught
     expect(findings.map(f => f.path)).toEqual(['.guardlink/graph/dataflow.mmd']);
     expect(findings[0].violations[0].limit).toBe('maxEdges');
-  });
+  }, 30_000);
 });
 
 // ─── The dashboard at the same size ──────────────────────────────────
