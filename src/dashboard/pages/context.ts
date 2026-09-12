@@ -12,7 +12,7 @@
  * @handles pii on #dashboard -- "Author identities from attribution, already in the configured identity mode"
  * @comment -- "Pure; every string here is raw and is escaped by the page that renders it"
  */
-import type { ThreatModel } from '../../types/index.js';
+import type { ExposureHypothesis, ThreatModel } from '../../types/index.js';
 import type { ClaimState, VerificationReport } from '../../parser/verification.js';
 import { buildCoverageIndex } from '../../parser/coverage.js';
 import type { CommitRef, IntroducedBy } from '../../blame/types.js';
@@ -23,7 +23,7 @@ import type { ChangeSummary, FileRisk } from '../analytics.js';
 import type { DashboardStats, SeverityBreakdown, ExposureRow, ConfirmedRow, AssetHeatmapEntry, AttributionData, DashboardAction } from '../data.js';
 import type { FileAnnotationGroup } from '../annotations.js';
 
-export type ClaimStatus = 'open' | 'mitigated' | 'accepted' | 'confirmed' | 'control';
+export type ClaimStatus = 'open' | 'mitigated' | 'accepted' | 'confirmed' | 'control' | 'refuted';
 
 export interface DrawerRef {
   sha: string;
@@ -66,6 +66,8 @@ export interface ClaimView {
   handles: string[];
   /** 'new' when the claim was added since the --since ref. */
   change: 'new' | null;
+  /** The tested state from the hypothesis ledger, when one exists. */
+  hypothesis: ExposureHypothesis | null;
   /** Who locked the claim in the ledger, and when (ISO date), when the ledger holds it. */
   verifiedBy: string | null;
   verifiedAt: string | null;
@@ -149,11 +151,13 @@ export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger:
   };
 
   for (const e of model.exposures) {
-    const status: ClaimStatus = coverage.isMitigated(e) ? 'mitigated' : coverage.isAccepted(e) ? 'accepted' : 'open';
+    // Tested and not exploitable outranks 'open': the ledger holds the evidence. It never outranks a control or an acceptance.
+    const status: ClaimStatus = coverage.isMitigated(e) ? 'mitigated' : coverage.isAccepted(e) ? 'accepted' : e.hypothesis?.state === 'refuted' ? 'refuted' : 'open';
     const b = e.blame;
     push({
       verb: 'exposes', status,
-      statusLabel: status === 'open' ? 'Open — no mitigation' : status === 'mitigated' ? 'Mitigated' : 'Accepted',
+      statusLabel: status === 'open' ? 'Open — no mitigation' : status === 'mitigated' ? 'Mitigated' : status === 'refuted' ? 'Refuted — tested, not exploitable' : 'Accepted',
+      hypothesis: e.hypothesis ?? null,
       asset: e.asset, threat: e.threat, severity: e.severity || 'unset', description: e.description || '', control: null,
       refs: e.external_refs || [], file: e.location.file, line: e.location.line, url: url(e.location.file, e.location.line),
       state: state(e.location), ...entry(e.location), owners: ix.ownersOf(e.asset), handles: ix.handlesOf(e.asset), change: change('exposes', e.location.file, e.location.line),
@@ -164,7 +168,7 @@ export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger:
   for (const c of model.confirmed || []) {
     const b = c.blame;
     push({
-      verb: 'confirmed', status: 'confirmed', statusLabel: 'Confirmed exploitable',
+      verb: 'confirmed', status: 'confirmed', statusLabel: 'Confirmed exploitable', hypothesis: null,
       asset: c.asset, threat: c.threat, severity: c.severity || 'unset', description: c.description || '', control: null,
       refs: c.external_refs || [], file: c.location.file, line: c.location.line, url: url(c.location.file, c.location.line),
       state: state(c.location), ...entry(c.location), owners: ix.ownersOf(c.asset), handles: ix.handlesOf(c.asset), change: change('confirmed', c.location.file, c.location.line),
@@ -175,7 +179,7 @@ export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger:
   for (const m of model.mitigations) {
     const b = m.blame;
     push({
-      verb: 'mitigates', status: 'control', statusLabel: 'Control declared',
+      verb: 'mitigates', status: 'control', statusLabel: 'Control declared', hypothesis: null,
       asset: m.asset, threat: m.threat, severity: 'unset', description: m.description || '', control: m.control ?? null,
       refs: [], file: m.location.file, line: m.location.line, url: url(m.location.file, m.location.line),
       state: state(m.location), ...entry(m.location), owners: ix.ownersOf(m.asset), handles: ix.handlesOf(m.asset), change: null,

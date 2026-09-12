@@ -139,7 +139,7 @@ export function buildFileAnnotations(model: ThreatModel, root?: string, join: An
 /** The three exposure subsets the legacy drawer and feature filter index into. */
 export function buildAnalysisData(exposures: ExposureRow[]): { openExposures: ExposureRow[]; mitigatedExposures: ExposureRow[]; acceptedExposures: ExposureRow[] } {
   return {
-    openExposures: exposures.filter(e => !e.mitigated && !e.accepted),
+    openExposures: exposures.filter(e => !e.mitigated && !e.accepted && !e.refuted),
     mitigatedExposures: exposures.filter(e => e.mitigated),
     acceptedExposures: exposures.filter(e => e.accepted),
   };

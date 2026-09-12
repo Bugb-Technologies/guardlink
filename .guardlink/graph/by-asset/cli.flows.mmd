@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/cli.flows.mmd
-%% scope:           PARTIAL — #cli and its flow neighbourhood, grown until the drawing stopped fitting — 14 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% scope:           PARTIAL — #cli and its flow neighbourhood, grown until the drawing stopped fitting — 17 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -14,26 +14,24 @@ graph LR
   blame["🧩 GuardLink.Blame"]
   cli["🧩 GuardLink.CLI"]
   gitrepo["🧩 GitRepo"]
-  parsediagnostics["🧩 ParseDiagnostics"]
   ledgerfile["🧩 LedgerFile"]
   filesystem["🧩 FileSystem"]
   gate["🧩 GuardLink.Gate"]
   agentproposal["🧩 AgentProposal"]
   gitconfig["🧩 GitConfig"]
-  packagejson["🧩 PackageJson"]
   blame -- "📡 formatBlameText" --> cli
   gitrepo -- "🗄️ execFileSync" --> blame
   gitrepo -- "📡 listCommits" --> blame
   blame -- "🗄️ buildBlamePayload" --> cli
-  parsediagnostics -- "📡 runCiChecks" --> cli
   ledgerfile -- "📡 readLedger" --> cli
   cli -- "🗄️ writeFile" --> filesystem
   gitrepo -- "📡 attachBlame" --> cli
+  ledgerfile -- "📡 readHypotheses" --> cli
   gitrepo -- "📡 computeBlame" --> cli
   cli -- "📡 runGate" --> gate
   gitrepo -- "📡 loadSince" --> cli
+  cli -- "📡 writeHypotheses" --> ledgerfile
   cli -- "📡 writeLedger" --> ledgerfile
   cli -- "📡 applyVerification" --> ledgerfile
   agentproposal -- "📡 proposeEntitlement" --> cli
   gitconfig -- "🗄️ execFileSync" --> cli
-  packagejson -- "🗄️ readFileSync" --> cli

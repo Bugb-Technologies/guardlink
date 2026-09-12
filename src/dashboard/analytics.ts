@@ -31,7 +31,7 @@ const byName = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 export interface ClaimLike {
   idx: number;
   verb: 'exposes' | 'confirmed' | 'mitigates';
-  status: 'open' | 'mitigated' | 'accepted' | 'confirmed' | 'control';
+  status: 'open' | 'mitigated' | 'accepted' | 'confirmed' | 'control' | 'refuted';
   asset: string;
   threat: string;
   severity: string;
@@ -303,7 +303,9 @@ export interface MatrixCell {
   mitigated: number;
   accepted: number;
   confirmed: number;
-  worst: 'confirmed' | 'open' | 'mitigated' | 'accepted';
+  /** Tested and not exploitable (hypothesis ledger). */
+  refuted: number;
+  worst: 'confirmed' | 'open' | 'mitigated' | 'refuted' | 'accepted';
   maxSev: SevKey;
 }
 
@@ -315,7 +317,7 @@ export interface AssetThreatMatrix {
   cells: MatrixCell[];
 }
 
-const WORST: Record<MatrixCell['worst'], number> = { confirmed: 0, open: 1, mitigated: 2, accepted: 3 };
+const WORST: Record<MatrixCell['worst'], number> = { confirmed: 0, open: 1, mitigated: 2, refuted: 3, accepted: 4 };
 
 /** Exposures per (asset, threat) pair with the worst status and highest severity among them. */
 export function computeAssetThreatMatrix(claims: ClaimLike[]): AssetThreatMatrix {
@@ -325,7 +327,7 @@ export function computeAssetThreatMatrix(claims: ClaimLike[]): AssetThreatMatrix
     const k = `${c.asset} ${c.threat}`;
     let cell = cells.get(k);
     if (!cell) {
-      cell = { asset: c.asset, threat: c.threat, total: 0, open: 0, mitigated: 0, accepted: 0, confirmed: 0, worst: 'accepted', maxSev: 'unset' };
+      cell = { asset: c.asset, threat: c.threat, total: 0, open: 0, mitigated: 0, accepted: 0, confirmed: 0, refuted: 0, worst: 'accepted', maxSev: 'unset' };
       cells.set(k, cell);
     }
     cell.total++;
@@ -378,7 +380,7 @@ export function computeControlCoverage(model: ThreatModel): ControlCoverage[] {
   return [...rows.values()].sort((a, b) => Number(a.unused) - Number(b.unused) || b.mitigations - a.mitigations || byName(a.control, b.control));
 }
 
-export type StatusKey = 'open' | 'mitigated' | 'accepted' | 'confirmed';
+export type StatusKey = 'open' | 'mitigated' | 'accepted' | 'confirmed' | 'refuted';
 
 export interface SeverityStatus {
   rows: SevKey[];
@@ -389,8 +391,8 @@ export interface SeverityStatus {
 }
 
 export function computeSeverityStatus(claims: ClaimLike[]): SeverityStatus {
-  const cols: StatusKey[] = ['open', 'mitigated', 'accepted', 'confirmed'];
-  const blank = (): Record<StatusKey, number> => ({ open: 0, mitigated: 0, accepted: 0, confirmed: 0 });
+  const cols: StatusKey[] = ['open', 'mitigated', 'refuted', 'accepted', 'confirmed'];
+  const blank = (): Record<StatusKey, number> => ({ open: 0, mitigated: 0, refuted: 0, accepted: 0, confirmed: 0 });
   const counts: Record<SevKey, Record<StatusKey, number>> = { critical: blank(), high: blank(), medium: blank(), low: blank(), unset: blank() };
   const totals = blank();
   const bySeverity: Record<SevKey, number> = { critical: 0, high: 0, medium: 0, low: 0, unset: 0 };
@@ -407,7 +409,7 @@ export function computeSeverityStatus(claims: ClaimLike[]): SeverityStatus {
 export interface AssetDetail {
   name: string;
   riskLevel: AssetHeatmapEntry['riskLevel'];
-  exposures: { total: number; open: number; mitigated: number; accepted: number; confirmed: number };
+  exposures: { total: number; open: number; mitigated: number; accepted: number; confirmed: number; refuted: number };
   /** Open exposures by severity. */
   bySeverity: Record<SevKey, number>;
   threats: { threat: string; open: number; total: number }[];
@@ -438,7 +440,7 @@ export function computeAssetDetails(model: ThreatModel, claims: ClaimLike[], hea
     const is = (ref: string | undefined | null): boolean => names.has(key(ref || ''));
     const mine = claims.filter(c => is(c.asset));
     const exp = mine.filter(c => c.verb !== 'mitigates');
-    const exposures = { total: exp.length, open: 0, mitigated: 0, accepted: 0, confirmed: 0 };
+    const exposures = { total: exp.length, open: 0, mitigated: 0, accepted: 0, confirmed: 0, refuted: 0 };
     const bySeverity: Record<SevKey, number> = { critical: 0, high: 0, medium: 0, low: 0, unset: 0 };
     const threatMap = new Map<string, { threat: string; open: number; total: number }>();
     for (const c of exp) {

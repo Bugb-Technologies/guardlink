@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/gate.flows.mmd
-%% scope:           PARTIAL — #gate and its flow neighbourhood, grown until the drawing stopped fitting — 20 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% scope:           PARTIAL — #gate and its flow neighbourhood, grown until the drawing stopped fitting — 21 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -19,10 +19,14 @@ graph LR
   threatmodel -- "📡 runCiChecks" --> cli
   sourcefiles -- "📡 findAnchorDrift" --> cli
   cli -- "📡 runGate" --> gate
+  threatmodel -- "📡 findUnmitigatedPaths" --> cli
   threatmodel -- "📡 runGate" --> gate
   gate -- "📡 buildGateFollowUp" --> agentprompt
   gate -- "📡 stripViolations" --> sourcefiles
   threatmodel -- "📡 lintAnnotations" --> gate
+  threatmodel -- "📡 classifyHypotheses" --> cli
+  cli -- "📡 attachHypotheses" --> threatmodel
+  cli -- "📡 writeConfirmedLine" --> sourcefiles
   cli -- "📡 applyProposalDecision" --> sourcefiles
   threatmodel -- "📡 getReviewableExposures" --> cli
   cli -- "🗄️ writeFile" --> sourcefiles

@@ -88,6 +88,9 @@ const CODE_REF = [
 ];
 export const hasCodeReference = (d: string): boolean => CODE_REF.some(r => r.test(d));
 
+/** Words that mark evidence in hand: a request and response, a reproduction, a scan with proof. Shared with the hypothesis ledger. */
+export const hasEvidenceWords = (d: string): boolean => EVIDENCE.test(d);
+
 const EVIDENCE = /\b(request|response|http|status \d{3}|payload|reproduc\w*|pentest|scan(ned|ner)?|poc|proof|observed|returned|evidence|curl|cxg|exploited|verified)\b/i;
 
 const bare = (ref: string): string => ref.trim().replace(/^#/, '').toLowerCase();
@@ -143,7 +146,8 @@ export function lintAnnotations(model: ThreatModel, opts: LintOptions = {}): Vio
     if (!under(e.location)) continue;
     const d = e.description ?? '';
     if (isVague(d) || !hasCodeReference(d)) push('exposes-no-code-reference', 'error', 'exposes', e, `"${d || '(no description)'}" names no entry point, input, sink or absent control from the code`);
-    const paired = coverage.isCovered(e) || transferred.has(`${canon(e.asset)}::${bare(e.threat)}`) || audited.has(canon(e.asset));
+    // A refuted hypothesis (tested, not exploitable, evidence in the ledger) pairs the exposure without covering it.
+    const paired = coverage.isCovered(e) || transferred.has(`${canon(e.asset)}::${bare(e.threat)}`) || audited.has(canon(e.asset)) || e.hypothesis?.state === 'refuted';
     if (!paired) push('exposes-unpaired', 'error', 'exposes', e, `${e.asset} → ${e.threat} has no @mitigates, @audit, @accepts or @transfers beside it`);
     const er = sevRank(e.severity), tr = threatSev(e.threat);
     if (er !== null && tr !== null && er > tr) push('exposes-severity-above-threat', 'error', 'exposes', e, `severity ${e.severity} outranks ${e.threat}'s declared severity (${model.threats.find(t => bare(t.id ?? '') === bare(e.threat) || t.name.toLowerCase() === bare(e.threat))?.severity ?? 'unset'})`);

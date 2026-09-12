@@ -377,6 +377,7 @@ export function serializeModel(model: ThreatModel): string {
     refs: e.external_refs.length ? e.external_refs : undefined,
     description: e.description,
     file: e.location.file, line: e.location.line,
+    ...(e.hypothesis && e.hypothesis.state !== 'untested' ? { hypothesis: { state: e.hypothesis.state, evidence: e.hypothesis.evidence, by: e.hypothesis.by, at: e.hypothesis.at } } : {}),
   }));
   if (model.confirmed.length) compact.confirmed = model.confirmed.map(c => ({
     threat: c.threat, asset: c.asset, severity: c.severity,

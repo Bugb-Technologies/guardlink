@@ -471,6 +471,24 @@ export interface ThreatModelExposure {
   location: SourceLocation;
   /** Git attribution, present only after `attachBlame` (CLI `--blame`). See ThreatModelMitigation.blame. */
   blame?: import('../blame/types.js').ExposureBlame;
+  /**
+   * What happened when this exposure was tested, present only after
+   * `attachHypotheses` (read from .guardlink/hypotheses.json). Like `anchor`
+   * and `blame` it describes the world, not the claim: invisible to the
+   * annotation hash and stripped from the committed model.json.
+   */
+  hypothesis?: ExposureHypothesis;
+}
+
+/** The tested state of an exposure. `untested` is the absence of a ledger entry. */
+export interface ExposureHypothesis {
+  state: 'untested' | 'confirmed' | 'refuted' | 'retest';
+  evidence: string | null;
+  by: string | null;
+  at: string | null;
+  /** The recorded outcome no longer applies: the code beneath the claim changed. */
+  expired: boolean;
+  previous_outcome: 'confirmed' | 'refuted' | null;
 }
 
 export interface ThreatModelConfirmed {

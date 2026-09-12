@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:b10b9b82814d10eaf5e208ad2519d24f8932b6a85e33cb74b1a69295f5acb212
+%% annotation_hash: sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -113,6 +113,7 @@ graph LR
   diff -. exposes .-> arbitrary_write
   diff -. exposes .-> path_traversal
   gate -. exposes .-> arbitrary_write
+  cli -. exposes .-> insecure_deser
   init -. exposes .-> path_traversal
   init -. exposes .-> arbitrary_write
   init -. exposes .-> data_exposure
@@ -136,7 +137,6 @@ graph LR
   parser -. exposes .-> dos
   parser -. exposes .-> data_exposure
   cli -. exposes .-> redos
-  cli -. exposes .-> insecure_deser
   tui -. exposes .-> path_traversal
   tui -. exposes .-> arbitrary_write
   tui -. exposes .-> cmd_injection
@@ -184,6 +184,7 @@ graph LR
   path_validation -. protects .-> diff
   glob_filtering -. protects .-> diff
   path_validation -. protects .-> gate
+  config_validation -. protects .-> cli
   path_validation -. protects .-> init
   config_validation -- mitigates --> arbitrary_write
   config_validation -. protects .-> init
@@ -207,7 +208,6 @@ graph LR
   param_commands -. protects .-> cli
   regex_anchoring -. protects .-> cli
   output_encoding -. protects .-> report
-  config_validation -. protects .-> cli
   resource_limits -- mitigates --> insecure_deser
   resource_limits -. protects .-> cli
   input_sanitize -- mitigates --> arbitrary_write
