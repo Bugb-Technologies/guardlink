@@ -194,6 +194,13 @@ describe('the legibility budget', () => {
  * is asserted only where the answer cannot decay: it is at least as large as
  * the frozen one, and it is past the budget. The exact live size is not a fact
  * about this code.
+ *
+ * `fixtures/threat-graph-browser-measured.mmd` is a **frozen input** and carries
+ * no commentary of its own, so the rule lives here: do not regenerate it to make
+ * this test pass. It is the default (high/critical-filtered) threat graph of
+ * guardlink's own model at 5c720d3, which is the tree that was measured. Replace
+ * it only alongside a new browser measurement, and change the two numbers below
+ * in the same commit — otherwise the numbers stop describing anything anyone saw.
  */
 describe('the node counter against browser-measured geometry', () => {
   const FROZEN = join(

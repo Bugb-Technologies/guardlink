@@ -152,11 +152,20 @@ describe('SPEC §2.9 — every language it names is a language the scan opens', 
     expect(read.size).toBe(SPEC_LANGUAGES.length);
   });
 
-  it('scans every extension §2.9 names', () => {
+  it('scans every extension §2.9 names, and no extension it does not', () => {
+    // Both directions. The forward one is the bug this test exists for. The
+    // reverse one is what keeps the spec honest afterwards: an extension added
+    // to the registry with no row in §2.9 is a language GuardLink reads and
+    // does not admit to reading, which is the same class of surprise as one it
+    // admits to and does not read.
     const missing = SPEC_LANGUAGES
       .filter(([ext]) => !SCANNED_EXTENSIONS.includes(ext))
       .map(([ext]) => ext);
-    expect(missing, `not in the scan set: ${missing.join(' ')}`).toEqual([]);
+    expect(missing, `§2.9 names these, the scan set omits them: ${missing.join(' ')}`).toEqual([]);
+
+    const specExts = SPEC_LANGUAGES.map(([ext]) => ext);
+    const undeclared = SCANNED_EXTENSIONS.filter(ext => !specExts.includes(ext));
+    expect(undeclared, `scanned but absent from §2.9: ${undeclared.join(' ')}`).toEqual([]);
   });
 
   it('prefers the marker §2.9 assigns the language when writing one', () => {
