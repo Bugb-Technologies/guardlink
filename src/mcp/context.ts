@@ -23,6 +23,7 @@
 
 import { lookup, type LookupResult } from './lookup.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
+import { isScannedPath } from '../parser/languages.js';
 import type {
   ThreatModel, SourceLocation,
 } from '../types/index.js';
@@ -93,18 +94,16 @@ export interface FileContext {
   hint?: string;
 }
 
-/** Extensions the parser scans, derived from the parser's own DEFAULT_INCLUDE. */
-const SCANNED_EXTENSIONS = new Set([
-  'ts', 'tsx', 'js', 'jsx', 'py', 'rb', 'go', 'rs', 'java', 'kt', 'scala',
-  'c', 'cpp', 'cc', 'h', 'hpp', 'cs', 'swift', 'dart', 'sql', 'lua', 'hs',
-  'tf', 'hcl', 'yaml', 'yml', 'sh', 'bash', 'html', 'xml', 'svg', 'css',
-  'ex', 'exs', 'gal',
-]);
-
-function hasScannedExtension(path: string): boolean {
-  const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase();
-  return SCANNED_EXTENSIONS.has(ext);
-}
+/**
+ * Whether the parser would open this file — asked of the parser's own list.
+ *
+ * This was a hand-copied set of 35 bare extensions, and it decided which kind
+ * of empty `guardlink_context` reports. A `.php` file came back `not_scanned`
+ * while the parser's glob had it too, and after the glob was fixed this copy
+ * would have kept saying `not_scanned` about a file that now parses — the
+ * answer that tells an agent "the parser never read this" when it did.
+ */
+const hasScannedExtension = isScannedPath;
 
 /**
  * Reduce any caller-supplied path to the repo-relative form the model uses.

@@ -20,6 +20,7 @@ import fg from 'fast-glob';
 import { readFile, writeFile } from 'node:fs/promises';
 import { relative } from 'node:path';
 import { isStandaloneAnnotationFile, stripCommentPrefix } from './comment-strip.js';
+import { GAL_GLOB, sourceGlobs } from './languages.js';
 
 // ─── Known GuardLink verbs ──────────────────────────────────────────
 
@@ -32,21 +33,10 @@ const GUARDLINK_VERBS = new Set([
   'review', 'connects',
 ]);
 
-const DEFAULT_INCLUDE = [
-  '**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx',
-  '**/*.py', '**/*.rb', '**/*.go', '**/*.rs',
-  '**/*.java', '**/*.kt', '**/*.scala',
-  '**/*.c', '**/*.cpp', '**/*.cc', '**/*.h', '**/*.hpp',
-  '**/*.cs', '**/*.swift', '**/*.dart',
-  '**/*.sql', '**/*.lua', '**/*.hs',
-  '**/*.tf', '**/*.hcl',
-  '**/*.yaml', '**/*.yml',
-  '**/*.sh', '**/*.bash',
-  '**/*.html', '**/*.xml', '**/*.svg',
-  '**/*.css',
-  '**/*.ex', '**/*.exs',
-  '**/*.[gG][aA][lL]',
-];
+// The same scan set the parser reads, from the same list. A `clear` that swept
+// fewer languages than `parse` reads would leave annotations behind in exactly
+// the files whose annotations are hardest to find by hand.
+const DEFAULT_INCLUDE = [...sourceGlobs(), GAL_GLOB];
 
 const DEFAULT_EXCLUDE = [
   '**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**',

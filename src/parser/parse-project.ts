@@ -15,6 +15,7 @@
  */
 
 import fg from 'fast-glob';
+import { GAL_GLOB, sourceGlobs } from './languages.js';
 import { isAbsolute, relative } from 'node:path';
 import type {
   Annotation, ThreatModel, ParseDiagnostic,
@@ -56,21 +57,16 @@ export interface ParseProjectOptions {
   anchors?: boolean;
 }
 
-export const DEFAULT_INCLUDE = [
-  '**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx',
-  '**/*.py', '**/*.rb', '**/*.go', '**/*.rs',
-  '**/*.java', '**/*.kt', '**/*.scala',
-  '**/*.c', '**/*.cpp', '**/*.cc', '**/*.h', '**/*.hpp',
-  '**/*.cs', '**/*.swift', '**/*.dart',
-  '**/*.sql', '**/*.lua', '**/*.hs',
-  '**/*.tf', '**/*.hcl',
-  '**/*.yaml', '**/*.yml',
-  '**/*.sh', '**/*.bash',
-  '**/*.html', '**/*.xml', '**/*.svg',
-  '**/*.css',
-  '**/*.ex', '**/*.exs',
-  '**/*.[gG][aA][lL]',
-];
+/**
+ * Every file the parser opens by default: one glob per language in the marker
+ * table, plus standalone GAL sidecars.
+ *
+ * Derived rather than listed. This used to be a hand-maintained list that had
+ * drifted from `stripCommentPrefix`'s marker set, so an annotation in a `.php`
+ * or `.kts` file was read by nothing and reported by nothing — see
+ * `parser/languages.ts` for the measurement.
+ */
+export const DEFAULT_INCLUDE = [...sourceGlobs(), GAL_GLOB];
 
 /**
  * Files GuardLink itself writes. Never scan input.

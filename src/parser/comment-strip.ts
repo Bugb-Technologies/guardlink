@@ -1,4 +1,5 @@
 import { extname } from 'node:path';
+import { COMMENT_STYLE_BY_EXT } from './languages.js';
 
 /**
  * Comment prefix stripping per §2.9.
@@ -165,18 +166,40 @@ const BLOCK_FORMS: ReadonlyArray<{ open: string; close: string; continuation: st
  * the C-family closer as well as its own.
  *
  * Languages whose only comment form is a line comment need no entry — a line
- * comment ends at a newline, and a written description is already one line.
+ * comment ends at a newline, and a written description is already one line. That
+ * is why Python, Ruby, Bash, YAML, Erlang, Ada, LaTeX, INI and Batch are absent
+ * and must stay absent: they are scanned, and they have no block form to break.
+ *
+ * **This table has to keep pace with the scan set.** The entry exists so a
+ * description written into a claim's comment cannot end that comment; a claim can
+ * only exist in a file the parser opens; so every extension in
+ * `parser/languages.ts` whose language HAS a block form needs a row here, and a
+ * language added to the scan set with a block form and no row is a comment-escape
+ * that is reachable the moment someone annotates such a file.
+ *
+ * `.mjs` `.cjs` `.cxx` `.hh` `.m` `.mm` `.htm` `.pp` `.vhd` `.vhdl` were added
+ * for exactly that reason: widening the scan set to every language §2.9 names
+ * made claims possible in files this table did not cover. `.scss`, `.less` and
+ * `.vue` are the other direction — listed but not scanned, which costs nothing
+ * and is left alone, because a safety table wider than the scan set is safe and a
+ * thinner one is not. `tests/scanned-languages.test.ts` pins the direction that
+ * matters.
  */
 const BLOCK_CLOSERS: Readonly<Record<string, readonly string[]>> = {
   '.ts': ['*/'], '.tsx': ['*/'], '.js': ['*/'], '.jsx': ['*/'], '.mts': ['*/'], '.cts': ['*/'],
+  '.mjs': ['*/'], '.cjs': ['*/'],
   '.java': ['*/'], '.c': ['*/'], '.h': ['*/'], '.cpp': ['*/'], '.cc': ['*/'], '.hpp': ['*/'],
+  '.cxx': ['*/'], '.hh': ['*/'],
   '.cs': ['*/'], '.go': ['*/'], '.rs': ['*/'], '.swift': ['*/'], '.kt': ['*/'], '.kts': ['*/'],
   '.scala': ['*/'], '.dart': ['*/'], '.php': ['*/'],
+  '.m': ['*/'], '.mm': ['*/'],
   '.css': ['*/'], '.scss': ['*/'], '.less': ['*/'],
   '.sql': ['*/'], '.tf': ['*/'], '.hcl': ['*/'],
+  '.vhd': ['*/'], '.vhdl': ['*/'],
   '.hs': ['-}'],
-  '.ml': ['*)'], '.mli': ['*)'], '.pas': ['*)'],
-  '.html': ['-->', '*/'], '.xml': ['-->'], '.svg': ['-->', '*/'], '.vue': ['-->', '*/'],
+  '.ml': ['*)'], '.mli': ['*)'], '.pas': ['*)'], '.pp': ['*)'],
+  '.html': ['-->', '*/'], '.htm': ['-->', '*/'], '.xml': ['-->'], '.svg': ['-->', '*/'],
+  '.vue': ['-->', '*/'],
 };
 
 /** Closers this file could carry, when the line itself cannot settle the form. */
@@ -309,25 +332,21 @@ function closesItself(line: string, form: { open: string; close: string }): bool
 }
 
 /**
- * Detect file's primary comment style from extension.
- * Used for multi-line continuation detection.
+ * The comment marker a *writer* should use for this file's language.
+ *
+ * Used for multi-line continuation detection, and by `guardlink review` and
+ * `guardlink migrate` when there is no neighbouring comment whose style they
+ * can copy. Reading never depends on it — `stripCommentPrefix` tries every
+ * recognised opener against every line.
+ *
+ * Answers from `COMMENT_STYLE_BY_EXT`, the one list that also decides which
+ * files the scan opens. This was a second, drifted copy of that table: it knew
+ * `.php` was not in it, `.pyi` was not in it, and `.ada` was in it under an
+ * extension Ada does not use (`.adb`/`.ads`).
+ *
+ * `//` remains the fallback for an unknown extension, which is what the
+ * majority of source files in circulation write.
  */
 export function commentStyleForExt(ext: string): string {
-  const map: Record<string, string> = {
-    '.ts': '//', '.tsx': '//', '.js': '//', '.jsx': '//',
-    '.java': '//', '.c': '//', '.cpp': '//', '.cc': '//',
-    '.cs': '//', '.go': '//', '.rs': '//', '.swift': '//',
-    '.kt': '//', '.scala': '//', '.dart': '//',
-    '.py': '#', '.rb': '#', '.sh': '#', '.bash': '#',
-    '.yml': '#', '.yaml': '#', '.tf': '#', '.r': '#',
-    '.ex': '#', '.exs': '#', '.nim': '#', '.pl': '#',
-    '.hs': '--', '.lua': '--', '.sql': '--', '.ada': '--',
-    '.html': '<!--', '.xml': '<!--', '.svg': '<!--',
-    '.css': '/*',
-    '.tex': '%', '.erl': '%', '.m': '%',
-    '.lisp': ';', '.cl': ';', '.clj': ';', '.asm': ';',
-    '.bat': 'REM', '.cmd': 'REM',
-    '.vb': "'", '.bas': "'",
-  };
-  return map[ext.toLowerCase()] || '//';
+  return COMMENT_STYLE_BY_EXT[ext.toLowerCase()] ?? '//';
 }
