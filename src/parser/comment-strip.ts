@@ -1,4 +1,5 @@
 import { extname } from 'node:path';
+import { COMMENT_STYLE_BY_EXT } from './languages.js';
 
 /**
  * Comment prefix stripping per §2.9.
@@ -134,25 +135,21 @@ export function isStandaloneAnnotationFile(filePath: string): boolean {
 }
 
 /**
- * Detect file's primary comment style from extension.
- * Used for multi-line continuation detection.
+ * The comment marker a *writer* should use for this file's language.
+ *
+ * Used for multi-line continuation detection, and by `guardlink review` and
+ * `guardlink migrate` when there is no neighbouring comment whose style they
+ * can copy. Reading never depends on it — `stripCommentPrefix` tries every
+ * recognised opener against every line.
+ *
+ * Answers from `COMMENT_STYLE_BY_EXT`, the one list that also decides which
+ * files the scan opens. This was a second, drifted copy of that table: it knew
+ * `.php` was not in it, `.pyi` was not in it, and `.ada` was in it under an
+ * extension Ada does not use (`.adb`/`.ads`).
+ *
+ * `//` remains the fallback for an unknown extension, which is what the
+ * majority of source files in circulation write.
  */
 export function commentStyleForExt(ext: string): string {
-  const map: Record<string, string> = {
-    '.ts': '//', '.tsx': '//', '.js': '//', '.jsx': '//',
-    '.java': '//', '.c': '//', '.cpp': '//', '.cc': '//',
-    '.cs': '//', '.go': '//', '.rs': '//', '.swift': '//',
-    '.kt': '//', '.scala': '//', '.dart': '//',
-    '.py': '#', '.rb': '#', '.sh': '#', '.bash': '#',
-    '.yml': '#', '.yaml': '#', '.tf': '#', '.r': '#',
-    '.ex': '#', '.exs': '#', '.nim': '#', '.pl': '#',
-    '.hs': '--', '.lua': '--', '.sql': '--', '.ada': '--',
-    '.html': '<!--', '.xml': '<!--', '.svg': '<!--',
-    '.css': '/*',
-    '.tex': '%', '.erl': '%', '.m': '%',
-    '.lisp': ';', '.cl': ';', '.clj': ';', '.asm': ';',
-    '.bat': 'REM', '.cmd': 'REM',
-    '.vb': "'", '.bas': "'",
-  };
-  return map[ext.toLowerCase()] || '//';
+  return COMMENT_STYLE_BY_EXT[ext.toLowerCase()] ?? '//';
 }

@@ -184,9 +184,16 @@ describe('the node counter against browser-measured geometry', () => {
     const ordered = canonicalizeModelOrder(model);
     // Measured in Chrome at 1440x900: the default (high/critical-filtered)
     // threat graph rendered 29 `.node` elements and 70 `path.flowchart-link`s.
+    //
+    // The edge count is 71 rather than the 70 measured, and the difference is
+    // one relationship this repository gained afterwards, not a drift in the
+    // counter: `parser/languages.ts` declares `@validates #glob-filtering for
+    // #parser`, which draws `glob_filtering -. validates .-> parser`. The node
+    // counts are untouched, so the geometry the browser agreed with still holds
+    // — a new edge between two nodes that were both already drawn.
     const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
     expect(m.nodes).toBe(29);
-    expect(m.edges).toBe(70);
+    expect(m.edges).toBe(71);
     // And the whole model is 43 nodes, which is the number this work exists for.
     expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(43);
   });
