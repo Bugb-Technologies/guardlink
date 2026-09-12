@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/merge-engine.threats.mmd
 %% scope:           PARTIAL — #merge-engine only — its own threats and controls
-%% annotation_hash: sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b
+%% annotation_hash: sha256-v3:12f6474f1a23790376cbd9a9197c78bd9af4c7cae4e29b6833da6fbb60cf8fe2
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -12,9 +12,14 @@
 %%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
 graph LR
   merge_engine["🔷 Workspace.Merge"]
+  vacuous_pass["🟠 Vacuous_Pass (cwe:CWE-754)"]:::threat
   tag_collision["🟡 Tag_Collision"]:::threat
   prefix_ownership["🛡️ Prefix_Ownership"]:::control
+  fail_closed["🛡️ Fail_Closed"]:::control
+  merge_engine -. exposes .-> vacuous_pass
   prefix_ownership -- mitigates --> tag_collision
   prefix_ownership -. protects .-> merge_engine
+  fail_closed -- mitigates --> vacuous_pass
+  fail_closed -. protects .-> merge_engine
   classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
   classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px

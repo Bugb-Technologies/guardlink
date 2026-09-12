@@ -4,15 +4,40 @@
  * Takes N per-repo report JSONs and produces a unified MergedReport
  * with cross-repo tag resolution, warning detection, and aggregated stats.
  *
+ * ── Zero repositories is never a pass ──────────────────────────────
+ *
+ * `merge` is the estate-wide surface, and the path a user reaches it by is the
+ * "Next steps" text `link-project` prints for them. Measured before this change:
+ * `guardlink merge` given a quoted per-repo wildcard — a `*` for the repository
+ * directory, then `guardlink-report.json` — loaded **0 of 1** repositories,
+ * printed `0 unmitigated`, wrote a dashboard reading clean, and **exited 0** —
+ * because nothing expanded the glob its own `--help` advertises, and because the
+ * command had no verdict, only a summary. A user following GuardLink's own
+ * printed instructions got a clean bill of health for an estate that was never
+ * opened.
+ *
+ * Two answers, and they are separate on purpose:
+ *
+ *   `resolveReportPaths` makes the glob work, and says when it could not.
+ *   `mergeVerdict` decides the exit code, in one place, from the merged report.
+ *
+ * An empty read fails whether or not `--strict` was passed, because it is not a
+ * finding about the estate — it is the absence of one. `--strict` is the opt-in
+ * for gating on what the estate actually says.
+ *
  * @asset Workspace.Merge (#merge-engine) -- "Cross-repo threat model unification"
  * @threat Tag_Collision (#tag-collision) [medium] -- "Duplicate tag definitions across repos"
  * @mitigates #merge-engine against #tag-collision using #prefix-ownership -- "Tag prefix determines owning repo"
+ * @exposes #merge-engine to #vacuous-pass [high] cwe:CWE-754 -- "A glob that expanded to nothing, or a report set that loaded nothing, produced a merged model with zero of everything — and the summary of an empty model is indistinguishable from the summary of a clean estate"
+ * @mitigates #merge-engine against #vacuous-pass using #fail-closed -- "mergeVerdict fails on zero repos loaded and on any glob that matched no file, regardless of --strict; the count it reports is of repositories actually read"
  * @flows ReportJSON -> #merge-engine via mergeReports -- "Per-repo reports feed into merge"
  * @flows #merge-engine -> MergedReport via mergeReports -- "Unified output"
+ * @flows #merge-engine -> #cli via mergeVerdict -- "The exit code, decided once from the merged report and the paths that produced it"
  */
 
 import { readFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, dirname, resolve as resolvePath } from 'node:path';
+import fg from 'fast-glob';
 import type {
   ThreatModel,
 
@@ -61,6 +86,106 @@ export async function loadReportJson(filePath: string): Promise<LoadedReport> {
 }
 
 /**
+ * What `resolveReportPaths` made of the patterns it was handed.
+ *
+ * `unmatched` is the field that exists because of the defect: a pattern with
+ * glob syntax in it that matched no file on disk. It is kept separate from a
+ * plain path that does not exist, because the two are different statements. A
+ * plain path names one report and `loadAllReports` can say which one is missing;
+ * a glob names *however many repositories there are*, and a glob that matched
+ * nothing means the caller's description of their estate found no estate — so
+ * there is no per-repo error to report, only the fact that nothing was read.
+ */
+export interface ResolvedReportPaths {
+  /** Absolute paths, in a stable order: pattern order, then sorted within a pattern. */
+  files: string[];
+  /** Glob patterns that matched no file. Never a plain path — those go to `files`. */
+  unmatched: string[];
+  /** Patterns that were expanded rather than taken literally. For the "N reports from M pattern(s)" line. */
+  globbed: string[];
+}
+
+/**
+ * Expand the file arguments `merge` was given, globs included.
+ *
+ * `merge --help` has always said "glob supported" and nothing ever expanded
+ * one. Unquoted, the shell did it and the claim looked true; quoted — which is
+ * what anyone writes who has been bitten by shell expansion once, and what the
+ * documentation examples show — the pattern arrived here intact, went to
+ * `readFile` as a literal filename, and came back ENOENT. The command then
+ * reported `0/1 repos loaded`, `0 unmitigated`, wrote a dashboard saying the
+ * estate was clean, and exited 0.
+ *
+ * So the expansion happens here, in the library rather than in the CLI action,
+ * for the same reason the rest of this module is not in the CLI: a test can call
+ * it, and the MCP surface can reach it without shelling out.
+ *
+ * Non-dynamic arguments are passed through untouched — `fg.isDynamicPattern`
+ * decides, so `reports/orders.json` is still resolved against `cwd` and still
+ * reaches `loadAllReports`, which still reports it as a missing repo by name.
+ * The only paths that become `unmatched` are ones that asked the filesystem a
+ * question and got nothing back.
+ *
+ * Order is made deterministic (sorted within each pattern) because `fast-glob`
+ * does not promise one, and a merged dashboard whose repo list reorders between
+ * runs on identical input is a diff nobody can read.
+ *
+ * @flows FileSystem -> #merge-engine via resolveReportPaths -- "Report paths discovered by expanding the caller's glob patterns against cwd"
+ * @comment -- "A literal filename containing glob metacharacters is read as a pattern; it lands in unmatched rather than in a false ENOENT, and the CLI's message names the pattern verbatim so the cause is visible"
+ */
+export async function resolveReportPaths(
+  patterns: string[],
+  cwd: string = process.cwd(),
+): Promise<ResolvedReportPaths> {
+  const files: string[] = [];
+  const unmatched: string[] = [];
+  const globbed: string[] = [];
+  const seen = new Set<string>();
+
+  const keep = (abs: string): void => {
+    if (seen.has(abs)) return;
+    seen.add(abs);
+    files.push(abs);
+  };
+
+  for (const pattern of patterns) {
+    if (!fg.isDynamicPattern(pattern, { cwd })) {
+      keep(resolvePath(cwd, pattern));
+      continue;
+    }
+    globbed.push(pattern);
+    // fast-glob speaks POSIX separators in patterns on every platform.
+    const matches = await fg(pattern.replaceAll('\\', '/'), {
+      cwd, absolute: true, dot: true, onlyFiles: true, suppressErrors: true,
+    });
+    if (matches.length === 0) {
+      unmatched.push(pattern);
+      continue;
+    }
+    for (const m of matches.sort()) keep(resolvePath(m));
+  }
+
+  return { files, unmatched, globbed };
+}
+
+/**
+ * The repository a report path belongs to, for a report that could not be opened.
+ *
+ * A loaded report names itself (`metadata.repo`), so this is only ever reached on
+ * the failure path — which is exactly where a name matters most, because it is the
+ * name the warning and the `--strict` failure print. Stripping `guardlink-report`
+ * off `orders-api/guardlink-report.json` leaves nothing, so the previous fallback
+ * was the whole path: a 120-character temp path where the reader wanted
+ * `orders-api`. The filename carries no identity in the layout `link-project`
+ * tells every repo to use, so the directory does.
+ */
+function repoNameFromPath(filePath: string): string {
+  const fromFile = basename(filePath, '.json').replace(/^guardlink-report-?/, '');
+  if (fromFile) return fromFile;
+  return basename(dirname(filePath)) || filePath;
+}
+
+/**
  * Attempt to load multiple report files. Returns loaded reports + statuses.
  * Missing or invalid files produce a RepoStatus with loaded=false rather than throwing.
  */
@@ -83,9 +208,8 @@ export async function loadAllReports(
         annotation_count: report.model.annotations_parsed,
       });
     } catch (err) {
-      const name = basename(fp, '.json').replace(/^guardlink-report-?/, '') || fp;
       statuses.push({
-        name,
+        name: repoNameFromPath(fp),
         loaded: false,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -539,12 +663,158 @@ export function computeTotals(
     mitigations: model.mitigations.length,
     exposures: model.exposures.length,
     unmitigated_exposures: countUnmitigated(model),
+    confirmed: (model.confirmed || []).length,
     acceptances: model.acceptances.length,
     flows: model.flows.length,
     boundaries: model.boundaries.length,
     external_refs_resolved: resolvedCount,
     external_refs_unresolved: unresolvedCount,
   };
+}
+
+// ─── Verdict ─────────────────────────────────────────────────────────
+
+/** Why a `merge` run failed, in the order a reader should be told. */
+export type MergeFailureCode =
+  | 'unmatched_pattern'   // A glob matched no file — part of the estate was never located.
+  | 'nothing_loaded'      // Zero repositories read. Every count below is the empty model's.
+  | 'repo_not_loaded'     // --strict: a named report could not be read, so the estate is partial.
+  | 'unmitigated'         // --strict: an exposure no control, acceptance or transfer covers.
+  | 'confirmed';          // --strict: a reproduced exploit. No acceptance silences one.
+
+export interface MergeFailure {
+  code: MergeFailureCode;
+  message: string;
+  /** Whether this failure needed `--strict` to count. */
+  strict_only: boolean;
+}
+
+export interface MergeVerdict {
+  /** Everything wrong with this run, worst first. Empty on a pass. */
+  failures: MergeFailure[];
+  /** Whether `--strict` was in effect. */
+  strict: boolean;
+  /** The exit code the command must use. */
+  exit_code: 0 | 1;
+}
+
+export interface MergeVerdictOptions {
+  /** Gate on what the estate says: unmitigated exposures, confirmed exploits, partial loads. */
+  strict?: boolean;
+  /** Glob patterns that matched no file, from `resolveReportPaths`. */
+  unmatched?: string[];
+}
+
+/**
+ * Decide whether this `merge` run passed — the only place the exit code is
+ * decided, for the reason `ci`'s predicate lives in one function: two callers
+ * with two copies of the rule are two commands that disagree about the same
+ * estate.
+ *
+ * Two classes of failure, and the split is the whole point:
+ *
+ *   **Unconditional** — the run did not read the estate. A glob that matched
+ *   nothing, or zero repositories loaded. No flag gates these, because they are
+ *   not opinions about risk: the numbers printed beside them are an empty model's
+ *   numbers, and a zero that means "nothing was read" must never leave the
+ *   process as a 0. This is the defect, not a policy.
+ *
+ *   **`--strict`** — the estate was read and it says something. Unmitigated
+ *   exposures, reproduced exploits, and reports that were named and could not be
+ *   read. Opt-in, for the same reason `guardlink ci --strict` is opt-in: an estate
+ *   mid-annotation has unmitigated exposures by construction, and a gate that
+ *   fails the day the annotations land is a gate that gets deleted.
+ *
+ * `confirmed` gates under `--strict` alongside `unmitigated` rather than being
+ * folded into it, because `@accepts` does not silence a `@confirmed` anywhere
+ * else in the product: an estate can read `0 unmitigated` with reproduced
+ * exploits in it, which is exactly how eight of them passed a strict gate on
+ * NodeGoat before `ci` grew the same term.
+ *
+ * A partially loaded estate gates only under `--strict`: it is a real blind spot,
+ * but it is one the summary already names per repository, and failing on it
+ * unconditionally would turn a pipeline red the first week a fifth repository
+ * joins the workspace and has not run `report` yet.
+ */
+export function mergeVerdict(
+  merged: MergedReport,
+  options: MergeVerdictOptions = {},
+): MergeVerdict {
+  const strict = options.strict === true;
+  const unmatched = options.unmatched ?? [];
+  const t = merged.totals;
+  const failures: MergeFailure[] = [];
+
+  for (const pattern of unmatched) {
+    failures.push({
+      code: 'unmatched_pattern',
+      message: `No report file matched "${pattern}" — the repositories it was meant to name were never read`,
+      strict_only: false,
+    });
+  }
+
+  // Reported only when there was something to load. When every argument was a
+  // glob that matched nothing, `unmatched_pattern` above has already said so and
+  // said it more usefully; a second line adding "and therefore nothing loaded"
+  // is the same fact with the cause removed.
+  if (t.repos_loaded === 0 && t.repos > 0) {
+    failures.push({
+      code: 'nothing_loaded',
+      message: `0 of ${t.repos} repositories loaded — the counts above are an empty model's, not this estate's`,
+      strict_only: false,
+    });
+  } else if (t.repos === 0 && unmatched.length === 0) {
+    failures.push({
+      code: 'nothing_loaded',
+      message: 'No report files to merge — nothing was read, so there is nothing to report',
+      strict_only: false,
+    });
+  }
+
+  if (strict) {
+    const missing = merged.repo_statuses.filter(s => !s.loaded);
+    // Only when something DID load: otherwise `nothing_loaded` above says it
+    // better, and repeating it per repo buries the one line that matters.
+    if (missing.length > 0 && t.repos_loaded > 0) {
+      failures.push({
+        code: 'repo_not_loaded',
+        message: `${missing.length} of ${t.repos} repositories could not be read (${missing.map(s => s.name).join(', ')})`
+          + ' — this estate was answered in part',
+        strict_only: true,
+      });
+    }
+    if (t.confirmed > 0) {
+      failures.push({
+        code: 'confirmed',
+        message: `${t.confirmed} confirmed exploit(s) across the estate — reproduced, and no acceptance silences one`,
+        strict_only: true,
+      });
+    }
+    if (t.unmitigated_exposures > 0) {
+      failures.push({
+        code: 'unmitigated',
+        message: `${t.unmitigated_exposures} unmitigated exposure(s) across ${t.repos_loaded} repositories`,
+        strict_only: true,
+      });
+    }
+  }
+
+  return { failures, strict, exit_code: failures.length > 0 ? 1 : 0 };
+}
+
+/** The human rendering of a verdict: the reasons, then what to do about them. */
+export function formatMergeVerdict(verdict: MergeVerdict): string {
+  if (verdict.failures.length === 0) {
+    return verdict.strict
+      ? '✓ Estate clean — every repository read, nothing unmitigated, nothing confirmed.'
+      : '';
+  }
+  const out = verdict.failures.map(f => `✗ ${f.message}`);
+  if (verdict.failures.some(f => f.code === 'unmatched_pattern')) {
+    out.push('  The pattern was expanded against the current directory. Check you are in the'
+      + ' workspace root, and that each repo has run `guardlink report --format json`.');
+  }
+  return out.join('\n');
 }
 
 // ─── Top-Level Merge Orchestrator ────────────────────────────────────
@@ -689,7 +959,7 @@ function emptyMergedReport(workspace: string, statuses: RepoStatus[]): MergedRep
     totals: {
       repos: statuses.length, repos_loaded: 0, annotations: 0, assets: 0,
       threats: 0, controls: 0, mitigations: 0, exposures: 0,
-      unmitigated_exposures: 0, acceptances: 0, flows: 0, boundaries: 0,
+      unmitigated_exposures: 0, confirmed: 0, acceptances: 0, flows: 0, boundaries: 0,
       external_refs_resolved: 0, external_refs_unresolved: 0,
     },
     model: {

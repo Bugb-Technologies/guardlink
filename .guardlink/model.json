@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+    "annotation_hash": "sha256-v3:12f6474f1a23790376cbd9a9197c78bd9af4c7cae4e29b6833da6fbb60cf8fe2",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 150,
-  "annotations_parsed": 741,
+  "annotations_parsed": 748,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -327,7 +327,7 @@
       "description": "Checks what an annotating agent added against the evidence bar: lints, re-prompts, strips what still fails",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 62
+        "line": 64
       }
     },
     {
@@ -351,7 +351,7 @@
       "description": "Cross-repo threat model unification",
       "location": {
         "file": "src/workspace/merge.ts",
-        "line": 7
+        "line": 28
       }
     },
     {
@@ -563,6 +563,20 @@
       }
     },
     {
+      "name": "Vacuous_Pass",
+      "canonical_name": "vacuous_pass",
+      "id": "vacuous-pass",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-754"
+      ],
+      "description": "A check reports success without having read what it was asked to check: zero repositories loaded, a glob that matched nothing, annotations the parser dropped. An input nobody read contributes to no count, so every number above it looks healthier for its absence, and the exit code says the estate is clean",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 45
+      }
+    },
+    {
       "name": "Tag_Collision",
       "canonical_name": "tag_collision",
       "id": "tag-collision",
@@ -571,7 +585,7 @@
       "description": "Duplicate tag definitions across repos",
       "location": {
         "file": "src/workspace/merge.ts",
-        "line": 8
+        "line": 29
       }
     },
     {
@@ -597,7 +611,7 @@
       "description": "Validates file paths using resolve() + startsWith() to ensure access within allowed directories",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 49
+        "line": 50
       }
     },
     {
@@ -607,7 +621,7 @@
       "description": "Input validation with anchored regex patterns and length limits",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 50
+        "line": 51
       }
     },
     {
@@ -617,7 +631,7 @@
       "description": "HTML entity encoding for untrusted data in generated output",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 51
+        "line": 52
       }
     },
     {
@@ -627,7 +641,7 @@
       "description": "Masking API keys in logs and error messages",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 52
+        "line": 53
       }
     },
     {
@@ -637,7 +651,7 @@
       "description": "Controlled child process spawning with explicit args array, no shell",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 53
+        "line": 54
       }
     },
     {
@@ -647,7 +661,7 @@
       "description": "Schema validation for configuration files before use",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 54
+        "line": 55
       }
     },
     {
@@ -657,7 +671,7 @@
       "description": "File size limits, recursion depth limits, timeout constraints",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 55
+        "line": 56
       }
     },
     {
@@ -667,7 +681,7 @@
       "description": "Using spawn with args array instead of shell string interpolation",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 56
+        "line": 57
       }
     },
     {
@@ -677,7 +691,7 @@
       "description": "Filtering files using glob patterns with explicit excludes",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 57
+        "line": 58
       }
     },
     {
@@ -687,7 +701,7 @@
       "description": "Using anchored regex patterns (^...$) to prevent backtracking",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 58
+        "line": 59
       }
     },
     {
@@ -697,7 +711,7 @@
       "description": "Tag prefix determines owning repo, preventing cross-repo tag collisions",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 59
+        "line": 60
       }
     },
     {
@@ -707,7 +721,7 @@
       "description": "Schema validation for workspace.yaml configuration files",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 60
+        "line": 61
       }
     },
     {
@@ -717,7 +731,17 @@
       "description": "Hashes or drops author emails before attribution leaves the machine",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 61
+        "line": 62
+      }
+    },
+    {
+      "name": "Fail_Closed",
+      "canonical_name": "fail_closed",
+      "id": "fail-closed",
+      "description": "A command that could not read what it was asked to read exits non-zero and names what it could not read, rather than reporting the empty result as a clean one. Distinct from a gate: this fires on the absence of input, not on a finding, so it is not behind an opt-in flag",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 63
       }
     }
   ],
@@ -729,7 +753,7 @@
       "description": "Runs the guardlink binary from a shell on the project; already holds write access to the same working tree guardlink edits, and has an interactive TTY that can answer a confirmation prompt",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 72
+        "line": 74
       }
     },
     {
@@ -739,7 +763,7 @@
       "description": "AI coding agent calling guardlink tools over stdio through the MCP server; acts only with the tool set src/mcp/server.ts exposes, not with the operator's shell",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 73
+        "line": 75
       }
     },
     {
@@ -749,7 +773,7 @@
       "description": "GitHub Actions job invoking the built CLI (see .github/workflows/ci.yml); has no TTY, so it cannot answer a confirmation prompt, and is deliberately granted no entitlement",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 74
+        "line": 76
       }
     }
   ],
@@ -1952,7 +1976,17 @@
       "description": "Tag prefix determines owning repo",
       "location": {
         "file": "src/workspace/merge.ts",
-        "line": 9
+        "line": 30
+      }
+    },
+    {
+      "asset": "#merge-engine",
+      "threat": "#vacuous-pass",
+      "control": "#fail-closed",
+      "description": "mergeVerdict fails on zero repos loaded and on any glob that matched no file, regardless of --strict; the count it reports is of repositories actually read",
+      "location": {
+        "file": "src/workspace/merge.ts",
+        "line": 32
       }
     },
     {
@@ -3457,6 +3491,19 @@
         "file": "src/tui/input.ts",
         "line": 15
       }
+    },
+    {
+      "asset": "#merge-engine",
+      "threat": "#vacuous-pass",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-754"
+      ],
+      "description": "A glob that expanded to nothing, or a report set that loaded nothing, produced a merged model with zero of everything — and the summary of an empty model is indistinguishable from the summary of a clean estate",
+      "location": {
+        "file": "src/workspace/merge.ts",
+        "line": 31
+      }
     }
   ],
   "confirmed": [],
@@ -3830,7 +3877,7 @@
       "description": "Parsed model checked for uncovered exposures, confirmed exploits and unqualified acceptances",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 92
+        "line": 102
       }
     },
     {
@@ -3840,7 +3887,7 @@
       "description": "Diagnostics from the parse are reported, never recomputed",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 93
+        "line": 103
       }
     },
     {
@@ -3850,7 +3897,7 @@
       "description": "Recorded anchors compared against current source",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 94
+        "line": 104
       }
     },
     {
@@ -3860,7 +3907,7 @@
       "description": "Recorded claim hashes, read only",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 95
+        "line": 105
       }
     },
     {
@@ -5160,7 +5207,7 @@
       "description": "Per-repo reports feed into merge",
       "location": {
         "file": "src/workspace/merge.ts",
-        "line": 10
+        "line": 33
       }
     },
     {
@@ -5170,7 +5217,27 @@
       "description": "Unified output",
       "location": {
         "file": "src/workspace/merge.ts",
-        "line": 11
+        "line": 34
+      }
+    },
+    {
+      "source": "#merge-engine",
+      "target": "#cli",
+      "mechanism": "mergeVerdict",
+      "description": "The exit code, decided once from the merged report and the paths that produced it",
+      "location": {
+        "file": "src/workspace/merge.ts",
+        "line": 35
+      }
+    },
+    {
+      "source": "FileSystem",
+      "target": "#merge-engine",
+      "mechanism": "resolveReportPaths",
+      "description": "Report paths discovered by expanding the caller's glob patterns against cwd",
+      "location": {
+        "file": "src/workspace/merge.ts",
+        "line": 133
       }
     },
     {
@@ -5643,7 +5710,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3477
+        "line": 3524
       }
     },
     {
@@ -6325,35 +6392,35 @@
       "description": "Exit code is a pure function of (strict, exposures, confirmed, drift, demotable stale, parse errors, unqualified acceptances) and lives in the summary, so JSON consumers see the same verdict the shell got",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 96
+        "line": 106
       }
     },
     {
       "description": "Exposures and drift are serialized as the types the parser already produces — no renamed fields, so guardlink.ci/v1 cannot drift from the model it reports",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 97
+        "line": 107
       }
     },
     {
       "description": "The third check reads .guardlink/verified.json and never writes it; a corrupt ledger is reported once and treated as absent",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 98
+        "line": 108
       }
     },
     {
       "description": "@confirmed is not filtered by acceptance state at all: @accepts does not silence a reproduced exploit anywhere else in the product and must not do so here",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 99
+        "line": 109
       }
     },
     {
       "description": "--severity narrows risk findings only; drift, parse errors, stale claims and unqualified acceptances carry no severity and a severity threshold says nothing about them",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 100
+        "line": 110
       }
     },
     {
@@ -6381,14 +6448,14 @@
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3426
+        "line": 3473
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3478
+        "line": 3525
       }
     },
     {
@@ -7314,10 +7381,17 @@
         "file": "src/workspace/index.ts",
         "line": 4
       }
+    },
+    {
+      "description": "A literal filename containing glob metacharacters is read as a pattern; it lands in unmatched rather than in a false ENOENT, and the CLI's message names the pattern verbatim so the cause is visible",
+      "location": {
+        "file": "src/workspace/merge.ts",
+        "line": 134
+      }
     }
   ],
   "coverage": {
-    "annotation_count": 741,
+    "annotation_count": 748,
     "coverage_percent": 87
   },
   "external_refs": []

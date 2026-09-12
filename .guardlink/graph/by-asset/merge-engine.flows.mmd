@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/merge-engine.flows.mmd
-%% scope:           PARTIAL — #merge-engine and its flow neighbourhood, grown until the drawing stopped fitting
-%% annotation_hash: sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b
+%% scope:           PARTIAL — #merge-engine and its flow neighbourhood, grown until the drawing stopped fitting — 29 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:12f6474f1a23790376cbd9a9197c78bd9af4c7cae4e29b6833da6fbb60cf8fe2
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -11,8 +11,34 @@
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
 graph LR
+  subgraph Z0["🧱 GuardLink.Parser · Trust boundary between parser and disk I/O"]
+    parser["🧩 GuardLink.Parser"]
+  end
+  subgraph Z1["🧱 FileSystem · Trust boundary between parser and disk I/O"]
+    filesystem["🧩 FileSystem"]
+  end
+  dashboard["🧩 GuardLink.Dashboard"]
+  blame["🧩 GuardLink.Blame"]
+  cli["🧩 GuardLink.CLI"]
+  gate["🧩 GuardLink.Gate"]
+  mcp["🧩 GuardLink.MCP"]
+  agentproposal["🧩 AgentProposal"]
+  tui["👤 GuardLink.TUI"]
   reportjson["🧩 ReportJSON"]
   merge_engine["🧩 Workspace.Merge"]
   mergedreport["🧩 MergedReport"]
+  parser -.-|🧱 Trust boundary between parser and disk I/O| filesystem
+  dashboard -- "🗄️ writeFileSync" --> filesystem
+  blame -- "📡 formatBlameText" --> cli
+  blame -- "🗄️ buildBlamePayload" --> cli
+  blame -- "📡 summarise" --> dashboard
+  cli -- "🗄️ writeFile" --> filesystem
+  cli -- "📡 runGate" --> gate
+  mcp -- "🗄️ writeFile" --> filesystem
+  parser -- "🗄️ writeFileSync" --> filesystem
+  agentproposal -- "📡 proposeEntitlement" --> cli
+  tui -- "🗄️ writeFile" --> filesystem
   reportjson -- "📡 mergeReports" --> merge_engine
   merge_engine -- "📡 mergeReports" --> mergedreport
+  merge_engine -- "📡 mergeVerdict" --> cli
+  filesystem -- "📡 resolveReportPaths" --> merge_engine

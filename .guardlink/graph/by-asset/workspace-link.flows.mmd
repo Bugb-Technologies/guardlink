@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/workspace-link.flows.mmd
-%% scope:           PARTIAL — #workspace-link and its flow neighbourhood, grown until the drawing stopped fitting — 31 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b
+%% scope:           PARTIAL — #workspace-link and its flow neighbourhood, grown until the drawing stopped fitting — 34 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:12f6474f1a23790376cbd9a9197c78bd9af4c7cae4e29b6833da6fbb60cf8fe2
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -21,8 +21,8 @@ graph LR
   tui["👤 GuardLink.TUI"]
   agent_launcher["🧩 GuardLink.Agent_Launcher"]
   llm_client["👤 GuardLink.LLM_Client"]
-  commands["🧩 Commands"]
   workspace_link["🧩 Workspace.Link"]
+  merge_engine["🧩 Workspace.Merge"]
   blame -- "📡 formatBlameText" --> cli
   blame -- "🗄️ buildBlamePayload" --> cli
   userargs -- "📡 process.argv" --> cli
@@ -32,6 +32,6 @@ graph LR
   userargs -- "📡 args" --> tui
   tui -- "📡 launchAgent" --> agent_launcher
   tui -- "📡 chatCompletion" --> llm_client
-  tui -- "📡 dispatch" --> commands
   userargs -- "📡 linkProject" --> workspace_link
   workspace_link -- "📡 updateAgentWorkspaceContext" --> agentfiles
+  merge_engine -- "📡 mergeVerdict" --> cli

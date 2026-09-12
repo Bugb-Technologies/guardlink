@@ -20,11 +20,17 @@ export {
 
 export {
   mergeReports,
+  resolveReportPaths,
+  mergeVerdict,
+  formatMergeVerdict,
   formatMergeSummary,
   diffMergedReports,
   formatDiffSummary,
 } from './merge.js';
-export type { MergeOptions } from './merge.js';
+export type {
+  MergeOptions, ResolvedReportPaths,
+  MergeVerdict, MergeVerdictOptions, MergeFailure, MergeFailureCode,
+} from './merge.js';
 
 export { linkProject, addToWorkspace, removeFromWorkspace, buildWorkspaceContextBlock, detectRepoName } from './link.js';
 export type { LinkProjectOptions, AddToWorkspaceOptions, RemoveFromWorkspaceOptions, LinkResult } from './link.js';
