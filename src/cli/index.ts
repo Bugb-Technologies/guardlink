@@ -81,7 +81,7 @@ import {
   defaultDecider, formatProposalForReview, formatProposalLine, summarizeDecisions, proposalsPath,
   type DecisionResult, type EntitlementProposal, type ProposalStatus,
 } from '../review/entitlements.js';
-import { populateMetadata, mergeReports, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace } from '../workspace/index.js';
+import { populateMetadata, mergeReports, resolveReportPaths, mergeVerdict, formatMergeVerdict, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace } from '../workspace/index.js';
 import type { MergedReport, LinkResult } from '../workspace/index.js';
 import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
 import type { VerificationReport } from '../parser/index.js';
@@ -2929,42 +2929,58 @@ program
 program
   .command('merge')
   .description('Merge multiple repo report JSONs into a unified workspace threat model')
-  .argument('<files...>', 'Report JSON file paths (glob supported)')
+  .argument('<files...>', 'Report JSON file paths. Globs are expanded here, so quote them: \'*/guardlink-report.json\'')
   .option('-o, --output <file>', 'Output file for merged dashboard HTML (default: workspace-dashboard.html)')
   .option('--json <file>', 'Also write merged report JSON to this file')
   .option('--diff-against <file>', 'Compare against a previous merged JSON for weekly summary')
   .option('-w, --workspace <name>', 'Workspace name (auto-detected from reports if not set)')
   .option('--summary-only', 'Print only the text summary, skip dashboard generation')
+  .option('--strict', 'Exit 1 when the estate has unmitigated exposures, confirmed exploits, or a repository that could not be read. Off by default')
   .action(async (
     files: string[],
-    opts: { output?: string; json?: string; diffAgainst?: string; workspace?: string; summaryOnly?: boolean },
+    opts: {
+      output?: string; json?: string; diffAgainst?: string; workspace?: string;
+      summaryOnly?: boolean; strict?: boolean;
+    },
   ) => {
     const { writeFile, readFile } = await import('node:fs/promises');
     const { resolve: resolvePath } = await import('node:path');
 
-    // Resolve file paths (support globs via shell expansion — files already expanded by shell)
-    const resolvedFiles = files.map(f => resolvePath(f));
+    // Expand globs here rather than relying on the shell. `--help` has always
+    // advertised them; a quoted pattern used to arrive intact, fail to open as a
+    // literal filename, and leave the command reporting an empty estate as clean.
+    const { files: resolvedFiles, unmatched, globbed } = await resolveReportPaths(files, process.cwd());
 
-    if (resolvedFiles.length === 0) {
+    if (resolvedFiles.length === 0 && unmatched.length === 0) {
       console.error('✗ No report files provided.');
       process.exit(1);
     }
 
-    console.error(`Merging ${resolvedFiles.length} report(s)...`);
+    console.error(globbed.length > 0
+      ? `Merging ${resolvedFiles.length} report(s) (${globbed.length} pattern(s) expanded)...`
+      : `Merging ${resolvedFiles.length} report(s)...`);
 
     // Run merge
     const merged = await mergeReports(resolvedFiles, {
       workspace: opts.workspace,
     });
 
+    // One verdict, decided before anything is written, so the exit code and the
+    // text below cannot disagree about the same estate.
+    const verdict = mergeVerdict(merged, { strict: opts.strict, unmatched });
+
     const t = merged.totals;
+
+    // An estate nobody read has no summary worth leading with, so the headline
+    // tick is spent only when at least one repository was actually loaded.
+    const readNothing = verdict.failures.some(f => !f.strict_only);
 
     // Print summary to stderr
     console.error('');
-    console.error(`✓ ${merged.workspace} — ${t.repos_loaded}/${t.repos} repos loaded`);
+    console.error(`${readNothing ? '✗' : '✓'} ${merged.workspace} — ${t.repos_loaded}/${t.repos} repos loaded`);
     console.error(`  ${t.annotations} annotations | ${t.assets} assets | ${t.threats} threats | ${t.controls} controls`);
     console.error(`  ${t.mitigations} mitigations | ${t.exposures} exposures | ${t.unmitigated_exposures} unmitigated`);
-    console.error(`  ${t.flows} flows | ${t.external_refs_resolved} refs resolved | ${t.external_refs_unresolved} unresolved`);
+    console.error(`  ${t.confirmed} confirmed | ${t.flows} flows | ${t.external_refs_resolved} refs resolved | ${t.external_refs_unresolved} unresolved`);
 
     // Print warnings
     for (const w of merged.warnings) {
@@ -2972,6 +2988,19 @@ program
       console.error(`  ${icon} ${w.message}`);
     }
     console.error('');
+
+    // Nothing was read, so nothing is written. A dashboard on disk outlives the
+    // exit code that qualified it: whoever opens `workspace-dashboard.html`
+    // tomorrow sees "0 unmitigated" and no trace of the fact that the merge it
+    // came from never opened a repository.
+    if (readNothing) {
+      console.error(formatMergeVerdict(verdict));
+      console.error('');
+      console.error('  Nothing written — a dashboard reading "0 unmitigated" for an estate that was');
+      console.error('  never read is the failure this exit code exists to prevent.');
+      process.exitCode = verdict.exit_code;
+      return;
+    }
 
     // Write merged JSON
     if (opts.json) {
@@ -3016,6 +3045,18 @@ program
 
     // Print full markdown summary to stdout (pipeable)
     console.log(formatMergeSummary(merged));
+
+    // The verdict last, under everything it is a verdict on. Advisory unless
+    // --strict, exactly as `guardlink ci` is.
+    const rendered = formatMergeVerdict(verdict);
+    if (rendered) console.error('\n' + rendered);
+    else if (!opts.strict && (t.unmitigated_exposures > 0 || t.confirmed > 0)) {
+      console.error('\nAdvisory — nothing here failed the build. Run with --strict to gate on it.');
+    }
+
+    // Set the code and let the process end on its own: process.exit() would
+    // truncate the stdout summary above at the pipe buffer before it has flushed.
+    process.exitCode = verdict.exit_code;
   });
 
 // ─── feature ──────────────────────────────────────────────────────────
@@ -3412,7 +3453,13 @@ function printDiagnostics(diagnostics: ParseDiagnostic[]) {
     const parts: string[] = [];
     if (fatals > 0) parts.push(`${fatals} fatal(s)`);
     parts.push(`${errors} error(s)`, `${warnings} warning(s)`);
-    console.error(`\n${parts.join(', ')}\n`);
+    // A diagnostic can stand for many lines: the parser collapses repeats of the
+    // same problem in the same file so one house convention is one warning rather
+    // than a flood. Said out loud only when the two numbers differ, because
+    // otherwise it is the same number twice.
+    const lines = diagnostics.reduce((n, d) => n + (d.occurrences && d.occurrences > 1 ? d.occurrences : 1), 0);
+    console.error(`\n${parts.join(', ')}`
+      + (lines === diagnostics.length ? '' : ` — ${lines} annotation line(s) affected`) + '\n');
   }
 }
 

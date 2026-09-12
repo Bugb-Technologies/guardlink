@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-boundary/fs-boundary.mmd
 %% scope:           PARTIAL — the Trust boundary between parser and disk I/O between parser and filesystem, and what flows across it
-%% annotation_hash: sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b
+%% annotation_hash: sha256-v3:12f6474f1a23790376cbd9a9197c78bd9af4c7cae4e29b6833da6fbb60cf8fe2
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -25,6 +25,7 @@ graph LR
   annotations["🧩 Annotations"]
   grammarfile["🧩 GrammarFile"]
   tui["👤 GuardLink.TUI"]
+  merge_engine["🧩 Workspace.Merge"]
   parser -.-|🧱 Trust boundary between parser and disk I/O| filesystem
   dashboard -- "🗄️ writeFileSync" --> filesystem
   cli -- "🗄️ writeFile" --> filesystem
@@ -38,3 +39,5 @@ graph LR
   tui -- "🗄️ writeFile" --> filesystem
   configfile -- "📡 loadProjectConfig" --> tui
   tui -- "📡 saveProjectConfig" --> configfile
+  merge_engine -- "📡 mergeVerdict" --> cli
+  filesystem -- "📡 resolveReportPaths" --> merge_engine

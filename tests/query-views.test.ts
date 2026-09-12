@@ -174,21 +174,48 @@ describe('the legibility budget', () => {
 
 /**
  * The numbers above were independently measured in a real browser against real
- * rendered SVG geometry. This repository's own model is the one thing both the
- * measurement and this counter can be pointed at, so it is the check that the
- * counter agrees with what Mermaid actually draws.
+ * rendered SVG geometry, on this repository's own threat graph.
+ *
+ * That measurement is pinned against the **exact Mermaid source that was
+ * rendered**, committed as a fixture, rather than against a fresh parse of the
+ * working tree. It used to be the latter, and the claim it made then — "the
+ * counter agrees with what Chrome drew" — quietly decayed into "this repository's
+ * model is still precisely the size it was the day someone opened a browser".
+ * Those are different claims, and only the first is worth a test: every
+ * annotation added to this repository changed the second, and CLAUDE.md requires
+ * annotations on security-relevant changes, so the assertion was red by design
+ * for anyone doing the thing the project asks for.
+ *
+ * The live model keeps a check of its own below, stated as the fact the work
+ * exists for rather than as a number that ages.
  */
 describe('the node counter against browser-measured geometry', () => {
-  it('agrees with the rendered SVG on this repository\'s own threat graph', async () => {
-    const { model } = await parseProject({ root: '.', project: 'guardlink' });
-    const ordered = canonicalizeModelOrder(model);
+  const measured = (name: string): Promise<string> =>
+    readFile(join('tests', 'fixtures', name), 'utf-8');
+
+  it('agrees with the rendered SVG for the graph that was rendered', async () => {
     // Measured in Chrome at 1440x900: the default (high/critical-filtered)
     // threat graph rendered 29 `.node` elements and 70 `path.flowchart-link`s.
-    const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
+    const m = measureLegibility(await measured('threat-graph-browser-measured.mmd'));
     expect(m.nodes).toBe(29);
     expect(m.edges).toBe(70);
-    // And the whole model is 43 nodes, which is the number this work exists for.
-    expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(43);
+    // And the whole model was 43 nodes, which is the number this work exists for.
+    expect(measureLegibility(await measured('threat-graph-browser-measured.all.mmd')).nodes).toBe(43);
+  });
+
+  it('still produces that shape from this repository\'s live model', async () => {
+    const { model } = await parseProject({ root: '.', project: 'guardlink' });
+    const ordered = canonicalizeModelOrder(model);
+    const dflt = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
+    const all = measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' }));
+
+    // The relationships, not the counts: the model only ever grows, the default
+    // view is the severity-filtered subset of the whole one, and the whole-model
+    // diagram is past the legibility budget — which is the premise of every view
+    // in this file. A count would be a snapshot; these are the invariants.
+    expect(dflt.nodes).toBeGreaterThanOrEqual(29);
+    expect(all.nodes).toBeGreaterThanOrEqual(dflt.nodes);
+    expect(checkLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).legible).toBe(false);
   });
 });
 

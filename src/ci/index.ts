@@ -40,6 +40,16 @@
  * is a claim someone wrote and nobody is holding, which is exactly what the
  * other three checks are for.
  *
+ * Two numbers, because they are two facts. `parse_errors + parse_warnings` counts
+ * DIAGNOSTICS, and the parser collapses repeats per (file, token) so that one
+ * unreadable house convention is one line of output rather than a flood — on this
+ * fleet's flagship repository, one convention stood for 1,340 annotations.
+ * `unparsed_annotations` counts the LINES those diagnostics stand for, which is
+ * the number that says how much of the model is missing. Reporting only the first
+ * is how "1 warning" came to mean "1,340 claims are not in your threat model".
+ * The exit code reads the diagnostics, not the lines: one problem is one problem
+ * however many times it was typed.
+ *
  * ── The fifth and sixth checks: what a gate is bought with ──────────
  *
  * Measured on OWASP NodeGoat: one generated file of 67 blanket `@accepts` lines
@@ -194,8 +204,26 @@ export interface CiSummary {
    */
   parse_errors: number;
   parse_warnings: number;
+  /**
+   * Annotation lines the parse could not read — the number that says how much of
+   * the model is missing.
+   *
+   * Not the same as `parse_errors + parse_warnings`, and that is the point. The
+   * parser collapses repeats per (file, token) so one house convention it cannot
+   * read is one diagnostic rather than a flood; measured on this fleet's own
+   * flagship repository, a single convention accounted for 1,340 lines. A reader
+   * told "1 warning" reasonably concludes one annotation is missing. This is the
+   * honest denominator: every diagnostic counted once, or `occurrences` times
+   * where the parser collapsed it.
+   */
+  unparsed_annotations: number;
   /** Every diagnostic code that occurred, with its count. Empty when the parse was clean. */
   parse_by_code: Partial<Record<DiagnosticCode | 'uncoded', number>>;
+  /**
+   * The same breakdown counted in annotation lines rather than in diagnostics.
+   * Identical to `parse_by_code` for every code the parser does not collapse.
+   */
+  unparsed_by_code: Partial<Record<DiagnosticCode | 'uncoded', number>>;
   /** Whether `--strict` was in effect for this run. */
   strict: boolean;
   /** What this run was narrowed to, and what that narrowing dropped. */
@@ -304,6 +332,28 @@ function countByCode(diagnostics: ParseDiagnostic[]): Partial<Record<DiagnosticC
   for (const d of diagnostics) {
     const key = d.code ?? 'uncoded';
     counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/**
+ * Annotation lines a diagnostic stands for: `occurrences` where the parser
+ * collapsed repeats, one otherwise. The absence of the field is one line, not
+ * an unknown — `collapsePerFileToken` only ever sets it above 1.
+ */
+function linesFor(d: ParseDiagnostic): number {
+  return d.occurrences && d.occurrences > 1 ? d.occurrences : 1;
+}
+
+function countLines(diagnostics: ParseDiagnostic[]): number {
+  return diagnostics.reduce((n, d) => n + linesFor(d), 0);
+}
+
+function countLinesByCode(diagnostics: ParseDiagnostic[]): Partial<Record<DiagnosticCode | 'uncoded', number>> {
+  const counts: Partial<Record<DiagnosticCode | 'uncoded', number>> = {};
+  for (const d of diagnostics) {
+    const key = d.code ?? 'uncoded';
+    counts[key] = (counts[key] ?? 0) + linesFor(d);
   }
   return counts;
 }
@@ -426,7 +476,9 @@ export function runCiChecks(root: string, model: ThreatModel, opts: CiOptions = 
       demote_stale: false,
       parse_errors: parseErrors.length,
       parse_warnings: parse.length - parseErrors.length,
+      unparsed_annotations: countLines(parse),
       parse_by_code: countByCode(parse),
+      unparsed_by_code: countLinesByCode(parse),
       ledger: read.status,
       strict,
       filters: {
@@ -492,10 +544,22 @@ export function formatCiReport(report: CiReport): string {
 
   // Then, because it qualifies every count under it: a line the parser could
   // not read contributes to none of them.
-  out.push(summary.parse_errors + summary.parse_warnings === 0
-    ? 'Parse diagnostics: 0'
-    : `Parse diagnostics: ${summary.parse_errors} error(s), ${summary.parse_warnings} warning(s)`
+  if (summary.parse_errors + summary.parse_warnings === 0) {
+    out.push('Parse diagnostics: 0');
+  } else {
+    out.push(`Parse diagnostics: ${summary.parse_errors} error(s), ${summary.parse_warnings} warning(s)`
       + codeBreakdown(summary.parse_by_code));
+    // The number that says how much of the model is missing, whenever it differs
+    // from the number of diagnostics above it. It differs exactly when the parser
+    // collapsed repeats, which is the case where the diagnostic count is most
+    // misleading: one house convention, one warning, hundreds of lines dropped.
+    out.push(`Annotations the parser could not read: ${summary.unparsed_annotations}`
+      + (summary.unparsed_annotations === summary.parse_errors + summary.parse_warnings
+        ? ''
+        : ` — more than the ${summary.parse_errors + summary.parse_warnings} diagnostic(s) above,`
+          + ' which collapse repeats of the same problem'
+          + codeBreakdown(summary.unparsed_by_code)));
+  }
   out.push(`Unmitigated exposures: ${summary.exposures}${severityBreakdown(summary.by_severity)}`);
   out.push(`Confirmed exploits: ${summary.confirmed}`);
   out.push(summary.acceptances === 0

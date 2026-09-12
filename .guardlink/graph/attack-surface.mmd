@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        attack-surface.mmd
-%% annotation_hash: sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b
+%% annotation_hash: sha256-v3:12f6474f1a23790376cbd9a9197c78bd9af4c7cae4e29b6833da6fbb60cf8fe2
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. attack-surface.mmd is 65 nodes / 0 edges, past the 12 / 16 legibility budget (65 nodes against 12).
+%% DRAWS, BUT IS TOO BIG TO READ. attack-surface.mmd is 66 nodes / 0 edges, past the 12 / 16 legibility budget (66 nodes against 12).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -124,6 +124,10 @@ graph TB
   subgraph A_gate["GuardLink.Gate · ✅ 100% covered"]
     direction TB
     E64["✅ Arbitrary_File_Write"]:::sev_med
+  end
+  subgraph A_merge_engine["Workspace.Merge · ✅ 100% covered"]
+    direction TB
+    E65["✅ Vacuous_Pass"]:::sev_high
   end
   classDef sev_crit fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.4px
   classDef sev_high fill:#402019,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.2px

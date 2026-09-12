@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-boundary/cli-input-boundary.mmd
 %% scope:           PARTIAL — the Trust boundary at CLI argument parsing between cli and userinput, and what flows across it
-%% annotation_hash: sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b
+%% annotation_hash: sha256-v3:12f6474f1a23790376cbd9a9197c78bd9af4c7cae4e29b6833da6fbb60cf8fe2
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -25,6 +25,7 @@ graph LR
   gate["🧩 GuardLink.Gate"]
   agentproposal["🧩 AgentProposal"]
   gitconfig["🧩 GitConfig"]
+  merge_engine["🧩 Workspace.Merge"]
   cli -.-|🧱 Trust boundary at CLI argument parsing| userinput
   tui -.-|🧱 Trust boundary at interactive input| userinput
   blame -- "📡 formatBlameText" --> cli
@@ -36,3 +37,5 @@ graph LR
   gitconfig -- "🗄️ execFileSync" --> cli
   tui -- "🗄️ writeFile" --> filesystem
   userinput -- "📡 readline" --> tui
+  merge_engine -- "📡 mergeVerdict" --> cli
+  filesystem -- "📡 resolveReportPaths" --> merge_engine

@@ -1,85 +1,62 @@
-%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
-%% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:12f6474f1a23790376cbd9a9197c78bd9af4c7cae4e29b6833da6fbb60cf8fe2
-%% generator:       guardlink@2.0.0
-%% ---
-%% This diagram is derived from the annotations in this repository. If
-%% annotation_hash above differs from what `guardlink status .` reports, the
-%% diagram is STALE — regenerate rather than trusting it.
-%% When it was generated and at which commit: ask git. Those move for reasons
-%% unrelated to the diagram, so they are reported at emission time, not stored.
-%% ---
-%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 45 nodes / 154 edges, past the 12 / 16 legibility budget (45 nodes against 12, 154 edges against 16).
-%% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
-%% label size; past it a layered layout grows taller than the panel and
-%% fitting it shrinks the labels below reading size. Mermaid will draw this
-%% — it is well inside the limits in the header above — so nothing will
-%% report an error. It is simply not a picture anyone can use.
-%% This is the whole model in one frame, which is the right thing on a small
-%% repository. For one that is not: by-asset/ has this component's threats
-%% and its flow neighbourhood as separate, budgeted diagrams, by-boundary/
-%% has one per trust line, and index.md says which question each answers.
 %%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
 graph LR
-  subgraph TZ0["🧱 Trust boundary at process spawn"]
-    agent_launcher["🔷 GuardLink.Agent_Launcher [SECRETS, INTERNAL]"]
+  subgraph TZ0["Trust boundary at process spawn"]
+    agent_launcher["GuardLink.Agent_Launcher [SECRETS, INTERNAL]"]
   end
-  subgraph TZ1["🧱 Trust boundary at external API call"]
-    llm_client["🔷 GuardLink.LLM_Client [INTERNAL, SECRETS]"]
+  subgraph TZ1["Trust boundary at external API call"]
+    llm_client["GuardLink.LLM_Client [INTERNAL, SECRETS]"]
   end
-  subgraph TZ3["🧱 Trust boundary at CLI argument parsing"]
-    cli["🔷 GuardLink.CLI [SECRETS, PII, INTERNAL]"]
+  subgraph TZ3["Trust boundary at CLI argument parsing"]
+    cli["GuardLink.CLI [SECRETS, PII, INTERNAL]"]
   end
-  subgraph TZ4["🧱 Trust boundary at git command execution"]
-    diff["🔷 GuardLink.Diff"]
+  subgraph TZ4["Trust boundary at git command execution"]
+    diff["GuardLink.Diff"]
   end
-  subgraph TZ5["🧱 Trust boundary at MCP protocol"]
-    mcp["🔷 GuardLink.MCP [INTERNAL, PII]"]
+  subgraph TZ5["Trust boundary at MCP protocol"]
+    mcp["GuardLink.MCP [INTERNAL, PII]"]
   end
-  subgraph TZ7["🧱 Trust boundary between parser and disk …"]
-    parser["🔷 GuardLink.Parser [INTERNAL]"]
+  subgraph TZ7["Trust boundary between parser and disk …"]
+    parser["GuardLink.Parser [INTERNAL]"]
   end
-  subgraph TZ8["🧱 Trust boundary at interactive input"]
-    tui["🔷 GuardLink.TUI [SECRETS, PII]"]
+  subgraph TZ8["Trust boundary at interactive input"]
+    tui["GuardLink.TUI [SECRETS, PII]"]
   end
-  sarif["🔷 GuardLink.SARIF"]
-  dashboard["🔷 GuardLink.Dashboard [PII, INTERNAL]"]
-  blame["🔷 GuardLink.Blame [PII]"]
-  gate["🔷 GuardLink.Gate"]
-  init["🔷 GuardLink.Init [INTERNAL]"]
-  suggest["🔷 GuardLink.Suggest"]
-  merge_engine["🔷 Workspace.Merge"]
-  report["🔷 GuardLink.Report [PII]"]
-  workspace_config["🔷 Workspace.Config"]
-  api_key_exposure["🟠 API_Key_Exposure (cwe:CWE-798)"]:::threat
-  path_traversal["🟠 Path_Traversal (cwe:CWE-22)"]:::threat
-  arbitrary_write["🟠 Arbitrary_File_Write (cwe:CWE-73, cwe:CWE-74)"]:::threat
-  child_proc_injection["🔴 Child_Process_Injection (cwe:CWE-78)"]:::threat
-  prompt_injection["🟠 Prompt_Injection (cwe:CWE-77)"]:::threat
-  dos["🟡 Denial_of_Service (cwe:CWE-400)"]:::threat
-  config_tamper["🟡 Config_Tampering (cwe:CWE-15)"]:::threat
-  insecure_deser["🟡 Insecure_Deserialization (cwe:CWE-502, cwe:CWE-20)"]:::threat
-  data_exposure["🟡 Sensitive_Data_Exposure (cwe:CWE-200)"]:::threat
-  ssrf["🟡 Server_Side_Request_Forgery (cwe:CWE-918)"]:::threat
-  redos["🟡 ReDoS (cwe:CWE-1333)"]:::threat
-  cmd_injection["🔴 Command_Injection (cwe:CWE-78)"]:::threat
-  xss["🟠 Cross_Site_Scripting (cwe:CWE-79)"]:::threat
-  info_disclosure["🔵 Information_Disclosure (cwe:CWE-200)"]:::threat
-  vacuous_pass["🟠 Vacuous_Pass (cwe:CWE-754)"]:::threat
-  tag_collision["🟡 Tag_Collision"]:::threat
-  key_redaction["🛡️ Key_Redaction"]:::control
-  path_validation["🛡️ Path_Validation"]:::control
-  param_commands["🛡️ Parameterized_Commands"]:::control
-  resource_limits["🛡️ Resource_Limits"]:::control
-  config_validation["🛡️ Config_Validation"]:::control
-  input_sanitize["🛡️ Input_Sanitization"]:::control
-  glob_filtering["🛡️ Glob_Pattern_Filtering"]:::control
-  regex_anchoring["🛡️ Regex_Anchoring"]:::control
-  identity_redaction["🛡️ Identity_Redaction"]:::control
-  output_encoding["🛡️ Output_Encoding"]:::control
-  prefix_ownership["🛡️ Prefix_Ownership"]:::control
-  fail_closed["🛡️ Fail_Closed"]:::control
-  yaml_validation["🛡️ YAML_Validation"]:::control
+  sarif["GuardLink.SARIF"]
+  dashboard["GuardLink.Dashboard [PII, INTERNAL]"]
+  blame["GuardLink.Blame [PII]"]
+  gate["GuardLink.Gate"]
+  init["GuardLink.Init [INTERNAL]"]
+  suggest["GuardLink.Suggest"]
+  report["GuardLink.Report [PII]"]
+  merge_engine["Workspace.Merge"]
+  workspace_config["Workspace.Config"]
+  api_key_exposure{{"API_Key_Exposure (cwe:CWE-798)"}}:::sev_high
+  path_traversal{{"Path_Traversal (cwe:CWE-22)"}}:::sev_high
+  arbitrary_write{{"Arbitrary_File_Write (cwe:CWE-73, cwe:CWE-74)"}}:::sev_high
+  child_proc_injection{{"Child_Process_Injection (cwe:CWE-78)"}}:::sev_crit
+  prompt_injection{{"Prompt_Injection (cwe:CWE-77)"}}:::sev_high
+  dos{{"Denial_of_Service (cwe:CWE-400)"}}:::sev_med
+  config_tamper{{"Config_Tampering (cwe:CWE-15)"}}:::sev_med
+  insecure_deser{{"Insecure_Deserialization (cwe:CWE-502, cwe:CWE-20)"}}:::sev_med
+  data_exposure{{"Sensitive_Data_Exposure (cwe:CWE-200)"}}:::sev_med
+  ssrf{{"Server_Side_Request_Forgery (cwe:CWE-918)"}}:::sev_med
+  redos{{"ReDoS (cwe:CWE-1333)"}}:::sev_med
+  cmd_injection{{"Command_Injection (cwe:CWE-78)"}}:::sev_crit
+  xss{{"Cross_Site_Scripting (cwe:CWE-79)"}}:::sev_high
+  info_disclosure{{"Information_Disclosure (cwe:CWE-200)"}}:::sev_low
+  tag_collision{{"Tag_Collision"}}:::sev_med
+  key_redaction(["Key_Redaction"]):::control
+  path_validation(["Path_Validation"]):::control
+  param_commands(["Parameterized_Commands"]):::control
+  resource_limits(["Resource_Limits"]):::control
+  config_validation(["Config_Validation"]):::control
+  input_sanitize(["Input_Sanitization"]):::control
+  glob_filtering(["Glob_Pattern_Filtering"]):::control
+  regex_anchoring(["Regex_Anchoring"]):::control
+  identity_redaction(["Identity_Redaction"]):::control
+  output_encoding(["Output_Encoding"]):::control
+  prefix_ownership(["Prefix_Ownership"]):::control
+  yaml_validation(["YAML_Validation"]):::control
   agent_launcher -. exposes .-> api_key_exposure
   agent_launcher -. exposes .-> path_traversal
   agent_launcher -. exposes .-> arbitrary_write
@@ -145,7 +122,6 @@ graph LR
   tui -. exposes .-> api_key_exposure
   tui -. exposes .-> prompt_injection
   tui -. exposes .-> dos
-  merge_engine -. exposes .-> vacuous_pass
   key_redaction -- mitigates --> api_key_exposure
   key_redaction -. protects .-> agent_launcher
   path_validation -- mitigates --> path_traversal
@@ -219,20 +195,22 @@ graph LR
   key_redaction -. protects .-> tui
   resource_limits -. protects .-> tui
   prefix_ownership -. protects .-> merge_engine
-  fail_closed -- mitigates --> vacuous_pass
-  fail_closed -. protects .-> merge_engine
   yaml_validation -- mitigates --> config_tamper
   yaml_validation -. protects .-> workspace_config
   resource_limits -. validates .-> mcp
   regex_anchoring -. validates .-> parser
   input_sanitize -. validates .-> parser
-  blame -- "📡 formatBlameText" --> cli
-  blame -- "🗄️ buildBlamePayload" --> cli
-  blame -- "📡 summarise" --> dashboard
-  cli -- "📡 runGate" --> gate
-  mcp -- "📡 generateThreatReport" --> llm_client
-  tui -- "📡 launchAgent" --> agent_launcher
-  tui -- "📡 chatCompletion" --> llm_client
-  merge_engine -- "📡 mergeVerdict" --> cli
+  blame -- "formatBlameText" --> cli
+  blame -- "buildBlamePayload" --> cli
+  blame -- "summarise" --> dashboard
+  cli -- "runGate" --> gate
+  mcp -- "generateThreatReport" --> llm_client
+  tui -- "launchAgent" --> agent_launcher
+  tui -- "chatCompletion" --> llm_client
   classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
   classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px
+  classDef sev_crit fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.4px
+  classDef sev_high fill:#402019,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.2px
+  classDef sev_med fill:#1f3943,stroke:#55899e,color:#f0f0f0
+  classDef sev_low fill:#10263b,stroke:#0360a2,color:#f0f0f0
+  classDef sev_unset fill:#223942,stroke:#3b6779,color:#f0f0f0
