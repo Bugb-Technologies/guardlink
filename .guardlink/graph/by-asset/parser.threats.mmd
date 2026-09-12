@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/parser.threats.mmd
-%% scope:           PARTIAL — #parser only — its own threats and controls, narrowed to high and critical (27 lower-severity claim(s) omitted to keep it readable)
-%% annotation_hash: sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b
+%% scope:           PARTIAL — #parser only — its own threats and controls, narrowed to high and critical (29 lower-severity claim(s) omitted to keep it readable)
+%% annotation_hash: sha256-v3:29e380de25776fbe4fa3bf5a7228f41094049c5dd8a27d5fa8079d1aa70c1c8b
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -23,5 +23,6 @@ graph LR
   glob_filtering -- mitigates --> path_traversal
   glob_filtering -. protects .-> parser
   path_validation -- mitigates --> path_traversal
+  glob_filtering -. validates .-> parser
   classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
   classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px

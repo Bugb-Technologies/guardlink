@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:ca74b92523750363f251957f3d2b050a6022493c649939fcbdb63ffea13faa0b",
+    "annotation_hash": "sha256-v3:29e380de25776fbe4fa3bf5a7228f41094049c5dd8a27d5fa8079d1aa70c1c8b",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 150,
-  "annotations_parsed": 741,
+  "source_files": 153,
+  "annotations_parsed": 745,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -98,6 +98,7 @@
     "src/parser/feature-filter.ts",
     "src/parser/fingerprint.ts",
     "src/parser/gal-path.ts",
+    "src/parser/languages.ts",
     "src/parser/ledger.ts",
     "src/parser/migrate-mode.ts",
     "src/parser/parse-file.ts",
@@ -151,6 +152,8 @@
     "examples/ci/workspace-merge.yml",
     "examples/github-action.yml",
     "scripts/build-grammars.ts",
+    "scripts/postbuild-chmod.mjs",
+    "scripts/query-set.mjs",
     "src/analyze/format.ts",
     "src/graph/index.ts",
     "src/index.ts",
@@ -1632,7 +1635,7 @@
       "description": "Every pattern is anchored at ^ and bounded — decoration is {1,3}, the marker tail is a character-by-character scan, and no pattern nests a quantifier",
       "location": {
         "file": "src/parser/comment-strip.ts",
-        "line": 8
+        "line": 9
       }
     },
     {
@@ -1642,7 +1645,7 @@
       "description": "consumeMarkerTail is linear in the marker, not the line: it stops at the first character that is not the marker's own",
       "location": {
         "file": "src/parser/comment-strip.ts",
-        "line": 9
+        "line": 10
       }
     },
     {
@@ -1653,6 +1656,16 @@
       "location": {
         "file": "src/parser/fingerprint.ts",
         "line": 21
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "The set is bounded by SPEC §2.9's own table rather than open-ended, DEFAULT_EXCLUDE still prunes node_modules/dist/vendor/target, and no extension here matches a lock file, a bundle or a binary",
+      "location": {
+        "file": "src/parser/languages.ts",
+        "line": 24
       }
     },
     {
@@ -3054,7 +3067,7 @@
       "description": "Marker and decoration matching runs on every line of every scanned file, including attacker-supplied source",
       "location": {
         "file": "src/parser/comment-strip.ts",
-        "line": 7
+        "line": 8
       }
     },
     {
@@ -3068,6 +3081,19 @@
       "location": {
         "file": "src/parser/fingerprint.ts",
         "line": 20
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "Widening the scan set grows the file count a single parse walks; every added extension is another glob fast-glob expands and another file read into memory",
+      "location": {
+        "file": "src/parser/languages.ts",
+        "line": 23
       }
     },
     {
@@ -5302,7 +5328,16 @@
       "description": "tests/comment-forms.test.ts pins every §2.9.1 form and, negatively, that a non-comment still returns null",
       "location": {
         "file": "src/parser/comment-strip.ts",
-        "line": 11
+        "line": 12
+      }
+    },
+    {
+      "control": "#glob-filtering",
+      "asset": "#parser",
+      "description": "tests/scanned-languages.test.ts writes an annotation in every language named here and asserts the model read it, and asserts the scan set and the marker table are the same list",
+      "location": {
+        "file": "src/parser/languages.ts",
+        "line": 26
       }
     },
     {
@@ -5860,72 +5895,59 @@
       "reason": "Example annotation block for reference, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 268
-      }
-    },
-    {
-      "location": {
-        "file": "src/agents/prompts.ts",
-        "line": 281
-      }
-    },
-    {
-      "reason": "Description examples, excluded from parsing",
-      "location": {
-        "file": "src/agents/prompts.ts",
         "line": 288
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 298
+        "line": 301
+      }
+    },
+    {
+      "reason": "Description examples, excluded from parsing",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 308
+      }
+    },
+    {
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 318
       }
     },
     {
       "reason": "Flow examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 305
+        "line": 325
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 314
+        "line": 334
       }
     },
     {
       "reason": "Boundary examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 321
+        "line": 341
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 327
+        "line": 347
       }
     },
     {
       "reason": "Actor example, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 388
-      }
-    },
-    {
-      "location": {
-        "file": "src/agents/prompts.ts",
-        "line": 390
-      }
-    },
-    {
-      "reason": "Entitlement example, excluded from parsing",
-      "location": {
-        "file": "src/agents/prompts.ts",
-        "line": 407
+        "line": 408
       }
     },
     {
@@ -5935,55 +5957,68 @@
       }
     },
     {
-      "reason": "@accepts alternative examples, excluded from parsing",
+      "reason": "Entitlement example, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 425
+        "line": 427
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 435
+        "line": 430
+      }
+    },
+    {
+      "reason": "@accepts alternative examples, excluded from parsing",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 445
+      }
+    },
+    {
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 455
       }
     },
     {
       "reason": "Definition syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 462
+        "line": 482
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 466
+        "line": 486
       }
     },
     {
       "reason": "Relationship syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 471
+        "line": 491
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 487
+        "line": 507
       }
     },
     {
       "reason": "Externalized relationship examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 492
+        "line": 512
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 497
+        "line": 517
       }
     },
     {
@@ -6129,7 +6164,7 @@
       "description": "The method sits above the generic rules on purpose: the agent reads it first, and the evidence bar it carries is what the gate later checks",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 121
+        "line": 141
       }
     },
     {
@@ -6913,7 +6948,7 @@
       "description": "Widening what is consumed AFTER a recognised marker is safe; widening the marker set would not be. The openers in LINE_MARKERS are unchanged from the single-marker version, so no line that was code became a comment",
       "location": {
         "file": "src/parser/comment-strip.ts",
-        "line": 10
+        "line": 11
       }
     },
     {
@@ -6977,6 +7012,13 @@
       "location": {
         "file": "src/parser/gal-path.ts",
         "line": 21
+      }
+    },
+    {
+      "description": "Widening which FILES are opened is safe; widening what counts as a COMMENT would not be. This module adds no marker: every style here was already recognised by stripCommentPrefix, which is why tests/scanned-languages.test.ts pins the negative direction — a bare @exposes in a newly-scanned .php file is still not an annotation",
+      "location": {
+        "file": "src/parser/languages.ts",
+        "line": 25
       }
     },
     {
@@ -7317,8 +7359,8 @@
     }
   ],
   "coverage": {
-    "annotation_count": 741,
-    "coverage_percent": 87
+    "annotation_count": 745,
+    "coverage_percent": 86
   },
   "external_refs": []
 }
