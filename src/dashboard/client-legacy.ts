@@ -8,8 +8,10 @@
  *
  * @comment -- "Verbatim from the previous generate.ts; behaviour unchanged. Model data never reaches these strings at generation time — they read the embedded arrays at run time"
  * @comment -- "One exception to 'no generation-time data': MERMAID_LIMITS is interpolated into mermaid.initialize, so the renderer is configured with the same two numbers the render budget measured against"
+ * @comment -- "Second exception, same kind: ACCEPTANCE_REGISTER_NOTE is interpolated as a JSON literal so the Accepted Risks block names the register it read — one sentence, one definition, shared with the CLI and the server-rendered pages"
  */
 import { MERMAID_LIMITS } from './render-budget.js';
+import { ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
 
 export const FEATURE_FILTER_JS = `/* ===== FEATURE FILTER ===== */
 var _activeFeature = '';
@@ -713,6 +715,7 @@ export const LEGACY_DRAWER_JS = `function openLegacyDrawer(type, idx) {
     const acceptedForAsset = threatModel.acceptances.filter(ac => ac.asset === a.name);
     if (acceptedForAsset.length > 0) {
       h += '<div class="sub-h" style="color:var(--yellow);margin-top:1.5rem">Accepted Risks</div>';
+      h += '<div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.4rem">' + esc(${JSON.stringify(ACCEPTANCE_REGISTER_NOTE)}) + '</div>';
       h += '<div style="display:flex;flex-direction:column;gap:0.5rem">';
       acceptedForAsset.forEach(ac => {
         h += '<div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--yellow);padding:0.5rem 0.8rem;border-radius:4px">';

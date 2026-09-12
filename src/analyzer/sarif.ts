@@ -34,6 +34,7 @@
  * @exposes #sarif to #data-exposure [low] cwe:CWE-200 -- "Exposes threat model findings to SARIF consumers"
  * @audit #sarif -- "SARIF output intentionally reveals security findings for CI/CD integration"
  * @comment -- "Pure function: transforms ThreatModel to SARIF JSON; no I/O"
+ * @comment -- "runs[0].properties.acceptance_register names the register whose acceptances removed results from this export — the annotations in this repo, never the server decision log. Envelope only: results and tool stay byte-identical, the same §3.2 line annotation_hash sits on"
  * @comment -- "runs[0].properties.annotation_hash stamps the export with the annotations it was cut from (R10), so a hygiene gate can tell a current SARIF from one built three commits ago — this file is the pentest surface, and a stale one decides which exposures get tested"
  * @comment -- "@entitles has no export semantics by design: SARIF for a model with entitlements is byte-identical to one without, so an entitlement can never hide an exposure from the pentest export (actor-entitlement design §3.2)"
  * @comment -- "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} derived from the asset's inbound @flows route so downstream HTTP consumers (e.g. cert-x-gen) can target the endpoint; emitted verbatim from the annotation, no base path assumed"
@@ -45,6 +46,7 @@ import { createHash } from 'node:crypto';
 
 import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
+import { ACCEPTANCE_REGISTER_ID } from '../parser/acceptance.js';
 import { computeAnnotationHash, ANNOTATION_HASH_VERSION } from '../parser/annotation-hash.js';
 import { getPackageVersion } from '../version.js';
 
@@ -78,6 +80,20 @@ interface SarifRun {
     annotation_hash: string;
     annotation_hash_version: number;
     generator: string;
+    /**
+     * Which register the acceptances that removed results from this export came
+     * from. Always `code-annotations`: this exporter reads `@accepts` out of
+     * source and has never read the server decision log.
+     *
+     * It belongs in the envelope and NOT on a result, for the same reason
+     * `annotation_hash` does — §3.2's invariant is "no result, no suppression,
+     * no property on any result", and provenance is not a finding. `results`
+     * and `tool` are byte-identical with and without this field. A consumer
+     * that reads this SARIF to decide what to probe is entitled to know that
+     * the things missing from it were removed by comments in a repository
+     * rather than by an authenticated decision.
+     */
+    acceptance_register: typeof ACCEPTANCE_REGISTER_ID;
   };
 }
 
@@ -307,6 +323,7 @@ export function generateSarif(
         annotation_hash: computeAnnotationHash(model),
         annotation_hash_version: ANNOTATION_HASH_VERSION,
         generator: `guardlink@${getPackageVersion()}`,
+        acceptance_register: ACCEPTANCE_REGISTER_ID,
       },
     }],
   };

@@ -56,6 +56,8 @@
  * @comment -- "Pure functions apart from readAcceptancePolicy; `now` is a parameter so a test can pin the clock rather than skew it"
  * @comment -- "Scope and expiry are enforced in coverage.ts, not here — this module defines them and answers questions about them, coverage applies them"
  * @comment -- "acceptanceBlastRadius is read by guardlink review BEFORE the justification prompt: a reviewer typing one line sees how many exposures it removes from the gate and from the SARIF a pentest reads"
+ * @comment -- "ACCEPTANCE_REGISTER_* name the ONE register this codebase reads — @accepts in the repository's own source. The server decision log (POST /v1/decisions), whose author is an authenticated principal and which the acceptance-deadline scan reads, is a different register with opposite guarantees and is not read here. Every surface that shows an acceptance says which one it is showing, from these constants, so there is one sentence to change when that answer changes"
+ * @comment -- "Neither the signer nor the horizon is defaulted on an unattended path: --by used to fall back to git user.name (a fabricated attribution that renders identically to a real signature) and --until used to default to max_horizon_days, the ceiling. default_horizon_days is a SUGGESTION offered at a TTY, never applied silently"
  */
 
 import { readFileSync } from 'node:fs';
@@ -95,6 +97,24 @@ export interface AcceptancePolicy {
    * reported by the gate, never rewritten underneath its author.
    */
   max_horizon_days: number;
+  /**
+   * The horizon an interactive prompt SUGGESTS when the reviewer gives none, in
+   * days. Never applied silently — see `guardlink review`, where a scripted
+   * acceptance with no `--until` is refused outright.
+   *
+   * 90, and the gap between this and `max_horizon_days` is the whole point. The
+   * two used to be the same number: `--until` defaulted to 365 days out and 365
+   * was also the ceiling, so the path of least effort took the longest lease the
+   * policy allowed — the exact inversion of what a default is for. A default
+   * should be the cheap, conservative answer that a deliberate reviewer
+   * overrides upward, not the maximum handed out to whoever did not think about
+   * it. A quarter is short enough that a risk which is still there gets looked
+   * at again while the code it was signed against is still recognisable.
+   *
+   * Clamped to `max_horizon_days`: a project that lowers the ceiling below the
+   * suggestion gets the ceiling, never a suggestion its own rule would refuse.
+   */
+  default_horizon_days: number;
 }
 
 export const DEFAULT_ACCEPTANCE_POLICY: AcceptancePolicy = {
@@ -102,13 +122,44 @@ export const DEFAULT_ACCEPTANCE_POLICY: AcceptancePolicy = {
   require_author: true,
   require_expiry: true,
   max_horizon_days: 365,
+  default_horizon_days: 90,
 };
+
+// ─── Which register a number came from ──────────────────────────────
+
+/**
+ * Every acceptance this tool can see comes from ONE register: `@accepts`
+ * annotations in this repository's source. There is a second register — the
+ * server's decision log, `POST /v1/decisions {action:accept}`, whose author is
+ * the authenticated principal and which is the only thing the acceptance
+ * deadline scan reads — and nothing in this codebase reads it.
+ *
+ * The two guarantee opposite things, so a count from one is not interchangeable
+ * with a count from the other, and today a reader of `guardlink ci` or the
+ * dashboard cannot tell which they are looking at. These constants exist so that
+ * every surface says the same sentence rather than each inventing its own, and
+ * so that when the server register becomes authoritative there is one place to
+ * change rather than nine.
+ *
+ * Machine-readable field (`acceptance_register` in the CI JSON, in the SARIF run
+ * properties) is `REGISTER_ID`; the human strings are the other two.
+ */
+export const ACCEPTANCE_REGISTER_ID = 'code-annotations' as const;
+
+/** Parenthetical for a count line. Short enough to append anywhere. */
+export const ACCEPTANCE_REGISTER_SHORT = 'source: @accepts annotations in this repository';
+
+/** The full sentence, for a surface with room for one. */
+export const ACCEPTANCE_REGISTER_NOTE =
+  'Acceptances shown here are read from @accepts annotations in this repository, '
+  + 'not from the server decision log. An annotation is a proposal signed in a commit; '
+  + 'the signer is free text and is not verified.';
 
 /**
  * Per-project overrides from `.guardlink/config.json`:
  *
  * ```json
- * { "acceptance": { "min_justification": 40, "max_horizon_days": 90 } }
+ * { "acceptance": { "min_justification": 40, "max_horizon_days": 90, "default_horizon_days": 30 } }
  * ```
  *
  * Same shape as `readConfiguredMode` and `readDisabledDiagnostics` — one way to
@@ -128,11 +179,17 @@ export function readAcceptancePolicy(root: string): AcceptancePolicy {
     const num = (v: unknown, fallback: number): number =>
       typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : fallback;
     const bool = (v: unknown, fallback: boolean): boolean => (typeof v === 'boolean' ? v : fallback);
+    const max_horizon_days = num(raw.max_horizon_days, DEFAULT_ACCEPTANCE_POLICY.max_horizon_days);
     return {
       min_justification: num(raw.min_justification, DEFAULT_ACCEPTANCE_POLICY.min_justification),
       require_author: bool(raw.require_author, DEFAULT_ACCEPTANCE_POLICY.require_author),
       require_expiry: bool(raw.require_expiry, DEFAULT_ACCEPTANCE_POLICY.require_expiry),
-      max_horizon_days: num(raw.max_horizon_days, DEFAULT_ACCEPTANCE_POLICY.max_horizon_days),
+      max_horizon_days,
+      // Never suggest a horizon this project's own ceiling would refuse.
+      default_horizon_days: Math.min(
+        num(raw.default_horizon_days, DEFAULT_ACCEPTANCE_POLICY.default_horizon_days),
+        max_horizon_days,
+      ),
     };
   } catch {
     return DEFAULT_ACCEPTANCE_POLICY;

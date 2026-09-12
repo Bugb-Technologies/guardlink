@@ -15,6 +15,9 @@
  * @mitigates #dashboard against #xss using #output-encoding -- "Every value the drawer renders from the embedded data passes through the client esc(); URLs are pre-built server-side and attribute-escaped here"
  * @comment -- "No network: the clipboard API with a textarea fallback, history.replaceState for filters, localStorage only for theme and sidebar state"
  */
+import { ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
+import { HYPOTHESES_FILE } from '../hypothesis/ledger.js';
+
 export const CLIENT_JS = `
 /* ===== HELPERS ===== */
 function esc(s) { return s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -291,8 +294,8 @@ function advice(c) {
   if (c.status === 'confirmed') return '<strong>Immediate action required.</strong> This threat has been verified exploitable. Apply a <code>@mitigates</code> control urgently, or <code>@accepts</code> with explicit risk sign-off from security.';
   if (c.status === 'open') return '<strong>Recommended:</strong> add a <code>@mitigates</code> annotation naming the control that addresses this threat, or <code>@accepts</code> if the risk is intentionally accepted. Then <code>guardlink verify</code> the claim.';
   if (c.status === 'mitigated') return c.state === 'stale' ? '<strong>Stale:</strong> the code beneath this mitigation changed after it was verified. Re-check that the control still holds, then re-lock with <code>guardlink verify --stale</code>.' : 'Mitigated. Keep the control and its claim verified as the code moves.';
-  if (c.status === 'accepted') return 'Accepted by a human. Revisit the acceptance when the asset or the threat changes.';
-  if (c.status === 'refuted') return 'Tested and not exploitable, with the evidence above. The claim stays in the source so the risk class is documented; the outcome expires by itself when the code beneath it changes.';
+  if (c.status === 'accepted') return 'Accepted. ' + ${JSON.stringify(ACCEPTANCE_REGISTER_NOTE)} + ' Revisit the acceptance when the asset or the threat changes.';
+  if (c.status === 'refuted') return 'Tested and not exploitable, with the evidence above, recorded in <code>${HYPOTHESES_FILE}</code>. Unlike an acceptance this outcome was measured rather than signed: the claim stays in the source so the risk class is documented, and the outcome expires by itself when the code beneath it changes.';
   return 'A declared control. Verify it so a later edit beneath it is flagged as stale.';
 }
 

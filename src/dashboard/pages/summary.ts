@@ -12,6 +12,7 @@
 import { esc, kpi, statCard, sevBadge, sevRank, scopeLabel, sectionHead, subHead, copyButton, locInline, whoLink, plural, normSev, icon, routeWithQuery } from '../html.js';
 import type { PageContext } from './context.js';
 import type { ChangeSummary, ChangedClaim } from '../analytics.js';
+import { ACCEPTANCE_REGISTER_NOTE } from '../../parser/acceptance.js';
 
 function severityBar(label: string, count: number, total: number, cls: string): string {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
@@ -74,7 +75,11 @@ export function renderSummaryPage(ctx: PageContext): string {
     kpi({ value: severeOpen, label: 'Critical / high open', href: '#threats?sev=critical,high&status=open', tone: severeOpen > 0 ? 'danger' : 'success', hint: `${severity.critical} critical · ${severity.high} high in total` }),
     stats.confirmed > 0
       ? kpi({ value: stats.confirmed, label: 'Confirmed exploitable', href: '#threats?status=confirmed', tone: 'danger', hint: 'verified by test or scan' })
-      : kpi({ value: accepted, label: 'Accepted risks', href: '#threats?status=accepted', tone: 'muted', hint: 'signed off by a human' }),
+      // "signed off by a human" was a claim nothing here can support: the
+      // signer on an @accepts is free text in a comment, and this dashboard has
+      // never read the server decision log where an author is an authenticated
+      // principal. Name the register instead of asserting the guarantee.
+      : kpi({ value: accepted, label: 'Accepted risks', href: '#threats?status=accepted', tone: 'muted', hint: 'from @accepts in code' }),
     kpi({ value: `${mitigationCoveragePercent}%`, label: 'Mitigation coverage', href: '#threats?status=mitigated', tone: mitigationCoveragePercent >= 70 ? 'success' : mitigationCoveragePercent >= 40 ? 'warn' : 'danger', hint: `${mitigatedCount} of ${exposures.length} exposures` }),
     verified
       ? kpi({ value: `${verifiedPct}%`, label: 'Verified claims', href: '#threats?state=verified', tone: verified.stale > 0 ? 'warn' : verifiedPct >= 70 ? 'success' : 'muted', hint: lockedHint ?? `${verified.stale} stale · ${verified.unverified} unverified` })
@@ -131,7 +136,7 @@ ${changes ? sinceStrip(changes) : ''}
           <span class="panel-muted">${mitigatedCount} of ${exposures.length} exposures mitigated</span>
         </div>
         <div class="posture-bar"><div class="posture-fill ${mitigationCoveragePercent >= 70 ? 'good' : mitigationCoveragePercent >= 40 ? 'warn' : 'bad'}" style="width:${Math.min(mitigationCoveragePercent, 100)}%"></div></div>
-        <p class="guide" style="margin-top:.6rem">An exposure counts as mitigated when a <code>@mitigates</code> on the same asset and threat covers it. Accepted risks are not mitigations.</p>
+        <p class="guide" style="margin-top:.6rem">An exposure counts as mitigated when a <code>@mitigates</code> on the same asset and threat covers it. Accepted risks are not mitigations. ${esc(ACCEPTANCE_REGISTER_NOTE)}</p>
       </div>
       <div class="panel">
         ${subHead(`Severity breakdown${scope ? ' <span class="scope-tag">this feature</span>' : ''}`, '', 'all exposures')}

@@ -106,6 +106,7 @@ import type {
 import { findUnmitigatedExposures } from '../parser/coverage.js';
 import {
   findAcceptanceDefects, DEFAULT_ACCEPTANCE_POLICY,
+  ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_SHORT, ACCEPTANCE_REGISTER_NOTE,
   type AcceptanceFinding, type AcceptancePolicy,
 } from '../parser/acceptance.js';
 import { findAnchorDrift, type AnchorDrift } from '../parser/reanchor.js';
@@ -122,7 +123,7 @@ import type { ClaimVerb } from '../parser/claim-key.js';
  * `summary.exposures` gets a larger number on a repo whose acceptances do not
  * qualify, which is a change in the ANSWER and not in the shape — and it is the
  * change the gate exists to make. New keys (`confirmed`, `unqualified_acceptances`,
- * `filters`) are additive.
+ * `filters`, `acceptance_register`) are additive.
  */
 export const CI_SCHEMA = 'guardlink.ci/v1';
 
@@ -163,6 +164,15 @@ export interface CiSummary {
   unqualified_acceptances: number;
   /** Every `@accepts` in the model, qualified or not. The denominator for the line above. */
   acceptances: number;
+  /**
+   * WHICH REGISTER the two counts above came from. Always `code-annotations`
+   * here: this tool reads `@accepts` out of source and has never read the
+   * server's decision log, whose author is an authenticated principal rather
+   * than free text. The field is constant today and is emitted anyway, because
+   * a consumer that has to guess which register a number describes will guess,
+   * and the two registers guarantee opposite things.
+   */
+  acceptance_register: typeof ACCEPTANCE_REGISTER_ID;
   /** Drifted `@source` blocks — `drift.length`. */
   drift: number;
   /**
@@ -413,6 +423,7 @@ export function runCiChecks(root: string, model: ThreatModel, opts: CiOptions = 
       confirmed: confirmed.length,
       unqualified_acceptances: unqualified.length,
       acceptances: model.acceptances.length,
+      acceptance_register: ACCEPTANCE_REGISTER_ID,
       drift: drift.length,
       anchors: countAnchors(model),
       by_severity: countBySeverity(exposures),
@@ -499,10 +510,11 @@ export function formatCiReport(report: CiReport): string {
   out.push(`Unmitigated exposures: ${summary.exposures}${severityBreakdown(summary.by_severity)}`);
   out.push(`Confirmed exploits: ${summary.confirmed}`);
   out.push(summary.acceptances === 0
-    ? 'Acceptances: 0'
+    ? `Acceptances: 0 (${ACCEPTANCE_REGISTER_SHORT})`
     : `Acceptances: ${summary.acceptances} in the model; `
       + `${summary.unqualified_acceptances} do not count as acceptances`
-      + `${summary.filters.scope ? ' (in scope)' : ''}`);
+      + `${summary.filters.scope ? ' (in scope)' : ''}`
+      + ` — ${ACCEPTANCE_REGISTER_SHORT}`);
   out.push(summary.anchors === 0
     ? 'Anchor drift: 0 (no anchored @source blocks to check)'
     : `Anchor drift: ${summary.drift}${kindBreakdown(summary.by_kind)}`
@@ -559,6 +571,7 @@ export function formatCiReport(report: CiReport): string {
     }
     out.push('   Re-decide them with: guardlink review . --accept <id> --by "<name>"'
       + ' --justification "<why>" --until <YYYY-MM-DD>');
+    out.push(`   ${ACCEPTANCE_REGISTER_NOTE}`);
   }
 
   if (drift.length > 0) {

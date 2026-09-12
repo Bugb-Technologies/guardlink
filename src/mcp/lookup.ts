@@ -23,6 +23,7 @@
  */
 
 import { buildCoverageIndex, findUnmitigatedExposures } from '../parser/coverage.js';
+import { ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
 import type {
   ThreatModel, ThreatModelAsset, ThreatModelThreat, ThreatModelControl,
   ThreatModelTransfer, ThreatModelAcceptance,
@@ -311,8 +312,17 @@ export function lookup(model: ThreatModel, query: string): LookupResult {
   // "acceptances" / "acceptances for X" — governance decisions, human-only to write
   const acceptsQ = q.match(/^(?:acceptances?|accepted)(?:\s+(?:for|on)\s+(.+))?$/);
   if (acceptsQ) {
+    // `register` on every row, and the two fields that decide whether the row
+    // still covers anything. An agent reading "accepted" needs to know it is
+    // reading @accepts out of this repository's code — free-text signer, no
+    // server-side authentication behind it — and not the decision log.
     const project = (a: ThreatModelAcceptance) =>
-      ({ asset: a.asset, threat: a.threat, description: a.description, ...loc(a.location) });
+      ({
+        asset: a.asset, threat: a.threat, description: a.description,
+        accepted_by: a.accepted_by ?? null, expires: a.expires ?? null,
+        register: ACCEPTANCE_REGISTER_ID, register_note: ACCEPTANCE_REGISTER_NOTE,
+        ...loc(a.location),
+      });
     if (!acceptsQ[1]) {
       return { query, type: 'acceptances', count: model.acceptances.length, results: model.acceptances.map(project) };
     }

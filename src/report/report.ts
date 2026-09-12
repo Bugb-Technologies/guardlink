@@ -19,6 +19,7 @@ import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 import { entriesFromModel, summarise } from '../blame/summary.js';
 import type { CommitRef } from '../blame/types.js';
 import { findUnmitigatedExposures, normalizeRef } from '../parser/coverage.js';
+import { ACCEPTANCE_REGISTER_SHORT, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
 import { normalizeName } from '../parser/normalize.js';
 import { entitlementDemotionBlockers } from '../parser/parse-project.js';
 
@@ -251,7 +252,7 @@ export function generateReport(rawModel: ThreatModel): string {
   lines.push(`| Threats defined | ${model.threats.length} |`);
   lines.push(`| Controls defined | ${model.controls.length} |`);
   lines.push(`| Active mitigations | ${model.mitigations.length} |`);
-  lines.push(`| Accepted risks | ${model.acceptances.length} |`);
+  lines.push(`| Accepted risks <sub>${ACCEPTANCE_REGISTER_SHORT}</sub> | ${model.acceptances.length} |`);
   lines.push(`| **Unmitigated exposures** | **${unmitigated.length}** |`);
   if ((model.confirmed || []).length > 0) lines.push(`| **🔴 Confirmed exploitable** | **${model.confirmed.length}** |`);
   if (severityCounts.critical > 0) lines.push(`| ↳ Critical (P0) | ${severityCounts.critical} |`);
@@ -314,6 +315,10 @@ export function generateReport(rawModel: ThreatModel): string {
   // ── Accepted Risks ──
   if (model.acceptances.length > 0) {
     lines.push(h2('Accepted Risks', slice));
+    lines.push('');
+    // This section travels into an evidence pack, where "accepted" reads as a
+    // signed decision. Say which register it was read from before the table.
+    lines.push(`_${ACCEPTANCE_REGISTER_NOTE}_`);
     lines.push('');
     lines.push('| Asset | Threat | Rationale | Location |');
     lines.push('|-------|--------|-----------|----------|');

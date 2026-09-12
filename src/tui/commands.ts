@@ -40,7 +40,9 @@ import { C, severityBadge, severityText, severityTextPad, severityOrder, compute
 import { resolveLLMConfig, saveTuiConfig, loadTuiConfig } from './config.js';
 import { AGENTS, parseAgentFlag, parseAnnotationModeFlag, launchAgent, launchAgentInline, copyToClipboard, buildAnnotatePrompt, type AgentEntry } from '../agents/index.js';
 import { describeConfigSource } from '../agents/config.js';
-import { getReviewableExposures, applyReviewAction, summarizeReview, type ReviewResult } from '../review/index.js';
+import { getReviewableExposures, applyReviewAction, summarizeReview, horizonFrom, ReviewRejected, type ReviewResult } from '../review/index.js';
+import { readAcceptancePolicy, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
+import { explicitDecider, identitySuggestion } from '../review/entitlements.js';
 import { loadWorkspaceConfig, linkProject, addToWorkspace, removeFromWorkspace, mergeReports, formatMergeSummary, diffMergedReports } from '../workspace/index.js';
 import type { MergedReport } from '../workspace/index.js';
 import { describeCoverage } from '../parser/coverage.js';
@@ -931,6 +933,7 @@ export async function cmdValidate(ctx: TuiContext): Promise<void> {
     if (acceptedOnly.length > 0) {
       console.log('');
       console.log(C.warn(`  ⚡ ${acceptedOnly.length} accepted-but-unmitigated exposure(s) (no control in code):`));
+      console.log(`  ${C.dim(ACCEPTANCE_REGISTER_NOTE)}`);
       for (const a of acceptedOnly) {
         const sev = a.severity ? severityBadge(a.severity) : C.dim('unset');
         console.log(`    ${sev} ${a.asset} → ${a.threat}  ${C.dim(fileLink(a.location.file, a.location.line, ctx.root))}`);
@@ -1866,7 +1869,22 @@ export async function cmdReview(args: string, ctx: TuiContext): Promise<void> {
     return;
   }
 
-  console.log(`\n  ${C.bold('guardlink review')} — ${exposures.length} unmitigated exposure(s)\n`);
+  // A name and a horizon, once, up front. Neither is defaulted for the reviewer:
+  // this path used to hand `applyReviewAction` an acceptance with no author and
+  // no expiry at all, which the writer refuses — so /review could not accept
+  // anything. Asking is the fix, and asking is also the rule: an acceptance is a
+  // named human signing for a risk until a date they chose.
+  const policy = readAcceptancePolicy(ctx.root);
+  const suggestion = identitySuggestion(ctx.root);
+  let reviewer: string | undefined;
+  while (!reviewer) {
+    reviewer = explicitDecider(await ask(ctx, suggestion
+      ? `    Your name — recorded with every decision. git says "${suggestion}", Enter to sign as that: `
+      : '    Your name (recorded with every decision): ')) || suggestion;
+  }
+
+  console.log(`\n  ${C.bold('guardlink review')} — ${exposures.length} unmitigated exposure(s), deciding as ${reviewer}`);
+  console.log(`  ${C.dim(ACCEPTANCE_REGISTER_NOTE)}\n`);
 
   const results: ReviewResult[] = [];
 
@@ -1891,21 +1909,39 @@ export async function cmdReview(args: string, ctx: TuiContext): Promise<void> {
     }
 
     if (choice === 'a') {
-      let justification = '';
-      while (!justification) {
-        justification = await ask(ctx, '    Justification (required): ');
-        if (!justification) console.log(C.warn('    ⚠  Justification is mandatory for acceptance.'));
+      // Re-prompt on refusal rather than validating here: the rule lives in
+      // applyReviewAction, so every writer gets the same one.
+      let accepted = false;
+      while (!accepted) {
+        let justification = '';
+        while (!justification) {
+          justification = await ask(ctx, `    Justification (required, min ${policy.min_justification} chars): `);
+          if (!justification) console.log(C.warn('    ⚠  Justification is mandatory for acceptance.'));
+        }
+        // The suggestion is the SHORT horizon, never the ceiling: pressing Enter
+        // must not be the way to take the longest lease the policy allows.
+        const suggested = horizonFrom(policy.default_horizon_days);
+        const typed = await ask(ctx, `    Expires [YYYY-MM-DD, blank for ${suggested}`
+          + ` — ${policy.default_horizon_days} days; the ceiling is ${policy.max_horizon_days}]: `);
+        const until = typed || suggested;
+        try {
+          const result = await applyReviewAction(ctx.root, reviewable,
+            { decision: 'accept', justification, by: reviewer, until }, { policy });
+          results.push(result);
+          console.log(`    ${C.success('✓')} Accepted by ${reviewer} until ${until} — ${result.linesInserted} line(s) written\n`);
+          accepted = true;
+        } catch (err) {
+          if (!(err instanceof ReviewRejected)) throw err;
+          console.log(C.warn(`    ⚠  ${err.message}`));
+        }
       }
-      const result = await applyReviewAction(ctx.root, reviewable, { decision: 'accept', justification });
-      results.push(result);
-      console.log(`    ${C.success('✓')} Accepted — ${result.linesInserted} line(s) written\n`);
     } else if (choice === 'r') {
       let note = '';
       while (!note) {
         note = await ask(ctx, '    Remediation note (required): ');
         if (!note) console.log(C.warn('    ⚠  Remediation note is mandatory.'));
       }
-      const result = await applyReviewAction(ctx.root, reviewable, { decision: 'remediate', justification: note });
+      const result = await applyReviewAction(ctx.root, reviewable, { decision: 'remediate', justification: note, by: reviewer }, { policy });
       results.push(result);
       console.log(`    ${C.success('✓')} Marked for remediation — ${result.linesInserted} line(s) written\n`);
     } else {
