@@ -26,11 +26,12 @@ claim was tested against reality.
 
 - Testing. GuardLink never fires traffic; bugb and cxg do.
 - A GAL verb for "refuted". The claim stays `@exposes`; the ledger carries the outcome.
-- Importing which hypothesis a probe attached to when cxg does not say (SEAM-12). Until then the
-  join is by annotation location, then by asset and threat, then by CWE, and an ambiguous match
-  is reported, not guessed. When cxg does say — a finding carrying the `guardlink/claimKey`
-  the SARIF export stamped — the join is resolved to the claim holding that key, and a
-  mismatch is reported as stale rather than confirmed.
+- Importing which hypothesis a probe attached to when cxg does not say (SEAM-12). When cxg does
+  not say, the join is by annotation location, then by asset and threat, then by CWE, and an
+  ambiguous match is reported, not guessed. When cxg does say — a finding carrying the
+  `guardlink/claimKey` the SARIF export stamped on the `@exposes` — that key is resolved against
+  the whole model first and those coarser joins do not run at all; a key naming no claim is
+  reported as stale rather than confirmed.
 
 ## Architecture
 
@@ -81,16 +82,22 @@ guardlink hypothesis confirm --from-scan <report.json> [dir] [--by <name>] [--wr
 
 `refute` and `confirm` refuse without `--evidence`; `confirm` refuses evidence with no evidence
 words. `--write` inserts the offered `@confirmed` line directly beneath the `@exposes`, with the
-same comment prefix, and reports the file and line. `--from-scan` joins each finding to a claim
-(annotation location → asset and threat → CWE), records the confirmed ones, and lists the
-unmatched, the ambiguous and the stale. A finding carrying `claim_key` joins only to the claim
-whose key is that key — the same key this ledger already keys its entries on, so the join and
-the ledger name a claim the same way. It holds across a line move and an edit to the code
-beneath the claim, and it separates a sibling claim that came to sit on the tested line, where
-file, line, asset, threat and threat id all match. The bound is repeats: two byte-identical
-claims in one file share a digest and are separated only by an ordinal in document order, so
-deleting the earlier one hands its key to the survivor. `--intake` prints the ranked queue as a
-brief for `bugb intake`.
+same comment prefix, and reports the file and line. `--from-scan` joins each finding to a claim,
+records the confirmed ones, and lists the unmatched, the ambiguous and the stale.
+
+A finding carrying `claim_key` (or `claimKey`) is resolved against the whole record set first:
+that key is the one this ledger already keys its entries on, so the join and the ledger name a
+claim the same way, and a key matches at most one claim. It holds across a line move and an edit
+to the code beneath the claim, and it separates a sibling claim that came to sit on the tested
+line, where file, line, asset, threat and threat id all match. A key naming no claim is stale.
+Only an unstamped finding falls to the coarse joins (annotation location → asset and threat →
+CWE); letting those run first would let a live-but-moved claim be called stale and a key-only
+finding be called unmatched. Each recorded outcome keeps the identity that joined it in
+`source.joined_by`, so a key-verified confirmation is not mistaken for a coarse one.
+
+The bound is repeats: two byte-identical claims in one file share a digest and are separated
+only by an ordinal in document order, so deleting the earlier one hands its key to the survivor.
+`--intake` prints the ranked queue as a brief for `bugb intake`.
 
 ### Where the state shows
 

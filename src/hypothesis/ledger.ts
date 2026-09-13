@@ -24,9 +24,19 @@ export const HYPOTHESES_SCHEMA = 'guardlink.hypotheses/v1';
 
 export type HypothesisOutcome = 'confirmed' | 'refuted';
 
+/**
+ * Which identity joined a scan finding to its claim. `claim-key` is the only one
+ * that names the claim itself; the other three match something the claim merely
+ * sits at or near, so a claim that moved onto the tested line satisfies them.
+ * Recorded so a reader can tell a key-verified confirmation from one taken on
+ * the weaker match — an unmarked pair of those is the failure GAP-58 describes.
+ */
+export type JoinedBy = 'claim-key' | 'location' | 'asset-threat' | 'cwe';
+
 export type HypothesisSource =
   | { kind: 'manual' }
-  | { kind: 'scan'; scan_id: string; template_id: string; confidence: number | string | null };
+  /** `joined_by` is absent on entries written before it existed; treat that as unknown, not as verified. */
+  | { kind: 'scan'; scan_id: string; template_id: string; confidence: number | string | null; joined_by?: JoinedBy };
 
 export interface HypothesisAnchor { scope: AnchorScope; symbol: string | null; hash: string }
 

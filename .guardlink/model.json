@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:56741d4df240881d22c616cc673c0cfe203a76f73a42cc5718b4d25288513168",
+    "annotation_hash": "sha256-v3:93e4751107963ea21ef228589363a22ca6462a97fe3846268d422741e6683197",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 150,
-  "annotations_parsed": 752,
+  "annotations_parsed": 755,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -3690,7 +3690,7 @@
       "description": "Model input",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 42
+        "line": 43
       }
     },
     {
@@ -3700,7 +3700,7 @@
       "description": "SARIF output",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 43
+        "line": 44
       }
     },
     {
@@ -5288,6 +5288,15 @@
   ],
   "validations": [
     {
+      "control": "#config-validation",
+      "asset": "#cli",
+      "description": "tests/hypothesis.test.ts forwards a real generateSarif result's properties into the scan finding without naming a field, so the emitted name and the read name cannot drift apart unnoticed",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 20
+      }
+    },
+    {
       "control": "#resource-limits",
       "asset": "#mcp",
       "description": "tests/graph-sparse-repo.test.ts builds two repos differing only in unannotated file count and pins that payload size does not follow it",
@@ -5390,10 +5399,10 @@
     },
     {
       "asset": "#cli",
-      "description": "The stale bucket refuses a join rather than guessing it; a human decides whether to re-test or record the outcome by hand, and needs to see these — the CLI exits non-zero when any finding lands there",
+      "description": "The stale bucket refuses a join rather than guessing it, and offers no by-hand target on purpose: the claims the coarse tiers would have named are different claims, so recording this evidence against one is the confirmation the key just refused. The CLI exits non-zero when any finding lands there",
       "location": {
         "file": "src/hypothesis/commands.ts",
-        "line": 19
+        "line": 21
       }
     },
     {
@@ -6218,10 +6227,17 @@
       }
     },
     {
-      "description": "Exposure and confirmed results carry the claim key as partialFingerprints['guardlink/claimKey'], mirrored to properties.claimKey — the same identity the hypothesis ledger keys an entry on (src/parser/claim-key.ts), so every claim has one and there is no absent case. The threat id is derived from (asset, threat, file) and so is shared by siblings in one file; the claim key digests the claim's own words, so it separates those siblings and is unchanged by any edit that is not the claim — including a line move and an edit to the code beneath it",
+      "description": "EXPOSURE results carry the claim key as partialFingerprints['guardlink/claimKey'], mirrored to properties.claimKey — the same identity the hypothesis ledger keys an entry on (src/parser/claim-key.ts). The threat id is derived from (asset, threat, file) and so is shared by siblings in one file; the claim key digests the claim's own words, so it separates those siblings and is unchanged by any edit that is not the claim — including a line move and an edit to the code beneath it",
       "location": {
         "file": "src/analyzer/sarif.ts",
         "line": 41
+      }
+    },
+    {
+      "description": "CONFIRMED results carry threatId and no claim key, on purpose: the verb is part of the key digest, so an @exposes and the @confirmed proving it hold different keys, and the ledger keys entries by exposure only. A key stamped from a confirmed result could join to nothing, so guardlink does not emit one rather than emitting an identifier that cannot be used",
+      "location": {
+        "file": "src/analyzer/sarif.ts",
+        "line": 42
       }
     },
     {
@@ -6722,10 +6738,17 @@
       }
     },
     {
-      "description": "importScan() joins a finding carrying a claim_key only to the claim whose key is that key, and reports the rest as stale rather than confirming them; the key names the claim itself, so it survives a line move and an edit to the code beneath it, and separates a sibling claim that landed on the tested line. Two byte-identical claims in one file share a digest and are told apart only by an ordinal in document order, so deleting the earlier one hands its key to the survivor",
+      "description": "importScan() resolves a finding carrying a claim_key against the whole record set BEFORE the location/asset-threat/CWE tiers, which run only for an unstamped finding; a key that names no claim is stale, never re-joined by a coarser tier. The key names the claim itself, so it survives a line move and an edit to the code beneath it, and separates a sibling claim that landed on the tested line. Two byte-identical claims in one file share a digest and are told apart only by an ordinal in document order, so deleting the earlier one hands its key to the survivor",
       "location": {
         "file": "src/hypothesis/commands.ts",
         "line": 18
+      }
+    },
+    {
+      "description": "The claim key is read as claim_key OR claimKey, top level or inside the annotation object, because guardlink sarif emits it as properties.claimKey and a consumer that forwards that name verbatim must not be silently ignored — an unrecognised stamp takes the weaker join and prints the same thing a verified one does",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 19
       }
     },
     {
@@ -6736,7 +6759,7 @@
       }
     },
     {
-      "description": "formatImport() prints the stale bucket beside ambiguous and unmatched: a finding whose stamped claim key matches no candidate names the claims it was refused against and the command to record it by hand",
+      "description": "formatImport() prints the stale bucket beside ambiguous and unmatched: a finding whose stamped claim key names no claim in the model says so and offers no by-hand target, because every claim it could name there is a different claim. Each confirmation is labelled with the identity that joined it, and a report carrying no stamps at all says that the weaker join was used — a key-verified confirmation and an unverified one must not read the same",
       "location": {
         "file": "src/hypothesis/format.ts",
         "line": 6
@@ -7395,7 +7418,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 752,
+    "annotation_count": 755,
     "coverage_percent": 87
   },
   "external_refs": []

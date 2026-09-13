@@ -38,7 +38,8 @@
  * @comment -- "runs[0].properties.annotation_hash stamps the export with the annotations it was cut from (R10), so a hygiene gate can tell a current SARIF from one built three commits ago — this file is the pentest surface, and a stale one decides which exposures get tested"
  * @comment -- "@entitles has no export semantics by design: SARIF for a model with entitlements is byte-identical to one without, so an entitlement can never hide an exposure from the pentest export (actor-entitlement design §3.2)"
  * @comment -- "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} derived from the asset's inbound @flows route so downstream HTTP consumers (e.g. cert-x-gen) can target the endpoint; emitted verbatim from the annotation, no base path assumed"
- * @comment -- "Exposure and confirmed results carry the claim key as partialFingerprints['guardlink/claimKey'], mirrored to properties.claimKey — the same identity the hypothesis ledger keys an entry on (src/parser/claim-key.ts), so every claim has one and there is no absent case. The threat id is derived from (asset, threat, file) and so is shared by siblings in one file; the claim key digests the claim's own words, so it separates those siblings and is unchanged by any edit that is not the claim — including a line move and an edit to the code beneath it"
+ * @comment -- "EXPOSURE results carry the claim key as partialFingerprints['guardlink/claimKey'], mirrored to properties.claimKey — the same identity the hypothesis ledger keys an entry on (src/parser/claim-key.ts). The threat id is derived from (asset, threat, file) and so is shared by siblings in one file; the claim key digests the claim's own words, so it separates those siblings and is unchanged by any edit that is not the claim — including a line move and an edit to the code beneath it"
+ * @comment -- "CONFIRMED results carry threatId and no claim key, on purpose: the verb is part of the key digest, so an @exposes and the @confirmed proving it hold different keys, and the ledger keys entries by exposure only. A key stamped from a confirmed result could join to nothing, so guardlink does not emit one rather than emitting an identifier that cannot be used"
  * @flows ThreatModel -> #sarif via generateSarif -- "Model input"
  * @flows #sarif -> SarifLog via return -- "SARIF output"
  */
@@ -121,12 +122,16 @@ interface SarifResult {
    * guardlink threat id here so a result can be tracked across exports independently of its
    * line/order. Mirrored into `properties.threatId` for consumers without a SARIF library.
    *
-   * `guardlink/claimKey` is the second key: the claim's own identity, the one the hypothesis
-   * ledger keys an entry on. The threat id is derived from (asset, threat, file), so two
-   * exposures in one file naming the same pair carry ONE id; the claim key digests the claim's
-   * words — verb, identity arguments, external refs, description, file — so it separates them,
-   * and it is unchanged by every edit that is not the claim itself. Every claim has one.
-   * Mirrored into `properties.claimKey` the same way.
+   * `guardlink/claimKey` is the second key, on EXPOSURE results only: the claim's own
+   * identity, the one the hypothesis ledger keys an entry on. The threat id is derived from
+   * (asset, threat, file), so two exposures in one file naming the same pair carry ONE id; the
+   * claim key digests the claim's words — verb, identity arguments, external refs, description,
+   * file — so it separates them, and it is unchanged by every edit that is not the claim
+   * itself. Mirrored into `properties.claimKey` the same way.
+   *
+   * A consumer forwarding this to `guardlink hypothesis confirm --from-scan` may use either
+   * spelling — `claimKey` as named here, or `claim_key` — and either at the finding's top level
+   * or inside its annotation object. All four are read.
    */
   partialFingerprints?: Record<string, string>;
   properties?: Record<string, unknown>;
@@ -232,13 +237,23 @@ export function generateSarif(
     return route ? { codegraph_reachability: { http_method: route.method, http_path: route.path } } : {};
   };
 
-  // Claim keys, by the location object each record carries. `relationRecords`
-  // walks the very arrays iterated below, so every exposure and every confirmed
-  // reached here is in this map — the same location identity `classifyHypotheses`
-  // joins the ledger on, which is what makes the stamp and the ledger agree.
+  // Claim keys for EXPOSURES ONLY, by the location object each record carries.
+  // `relationRecords` walks the very array iterated below, so every exposure
+  // reached here is in this map — the same location identity
+  // `classifyHypotheses` joins the ledger on, which is what makes the stamp and
+  // the ledger agree.
+  //
+  // A @confirmed result deliberately gets no claim key. The verb is part of the
+  // digest, so an @exposes and the @confirmed that proves it hold DIFFERENT
+  // keys, and the hypothesis ledger only ever keys entries by exposure — it
+  // returns early for a confirmed claim before it ever reads an entry. A key
+  // stamped from a confirmed result could therefore never join to anything: it
+  // would be an identifier that looks usable and is not. Stamping the sibling
+  // exposure's key instead would be worse, asserting a link between the two
+  // claims that the model does not declare.
   const claimKeys = new Map<object, string>();
   for (const src of relationRecords(model)) {
-    if (src.verb === 'exposes' || src.verb === 'confirmed') claimKeys.set(src.location, src.key);
+    if (src.verb === 'exposes') claimKeys.set(src.location, src.key);
   }
 
   for (const e of model.exposures) {
@@ -283,17 +298,15 @@ export function generateSarif(
 
     const messageText = `CONFIRMED: ${c.asset} exploitable via ${threat}${desc}`;
     const id = threatId(c.asset, c.threat, c.location.file);
-    const claimKey = claimKeys.get(c.location);
 
     results.push({
       ruleId: 'guardlink/confirmed-exploitable',
       level: 'error',
       message: { text: messageText },
       locations: [locationFrom(c.location.file, c.location.line)],
-      partialFingerprints: { 'guardlink/threatId': id, ...(claimKey ? { 'guardlink/claimKey': claimKey } : {}) },
+      partialFingerprints: { 'guardlink/threatId': id },
       properties: {
         threatId: id,
-        ...(claimKey ? { claimKey } : {}),
         severity: c.severity || 'unset',
         asset: c.asset,
         threat: c.threat,

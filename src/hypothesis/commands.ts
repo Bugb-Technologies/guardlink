@@ -15,15 +15,17 @@
  * @flows #cli -> SourceFiles via writeConfirmedLine -- "The @confirmed line, on --write"
  * @handles internal on #cli -- "Request and response evidence from scans, redacted"
  * @comment -- "A confirmation is held to the same evidence bar the gate holds @confirmed to; a refutation needs evidence too, just not the same words, because 'the validator rejected it' is evidence of absence"
- * @comment -- "importScan() joins a finding carrying a claim_key only to the claim whose key is that key, and reports the rest as stale rather than confirming them; the key names the claim itself, so it survives a line move and an edit to the code beneath it, and separates a sibling claim that landed on the tested line. Two byte-identical claims in one file share a digest and are told apart only by an ordinal in document order, so deleting the earlier one hands its key to the survivor"
- * @audit #cli -- "The stale bucket refuses a join rather than guessing it; a human decides whether to re-test or record the outcome by hand, and needs to see these — the CLI exits non-zero when any finding lands there"
+ * @comment -- "importScan() resolves a finding carrying a claim_key against the whole record set BEFORE the location/asset-threat/CWE tiers, which run only for an unstamped finding; a key that names no claim is stale, never re-joined by a coarser tier. The key names the claim itself, so it survives a line move and an edit to the code beneath it, and separates a sibling claim that landed on the tested line. Two byte-identical claims in one file share a digest and are told apart only by an ordinal in document order, so deleting the earlier one hands its key to the survivor"
+ * @comment -- "The claim key is read as claim_key OR claimKey, top level or inside the annotation object, because guardlink sarif emits it as properties.claimKey and a consumer that forwards that name verbatim must not be silently ignored — an unrecognised stamp takes the weaker join and prints the same thing a verified one does"
+ * @validates #config-validation for #cli -- "tests/hypothesis.test.ts forwards a real generateSarif result's properties into the scan finding without naming a field, so the emitted name and the read name cannot drift apart unnoticed"
+ * @audit #cli -- "The stale bucket refuses a join rather than guessing it, and offers no by-hand target on purpose: the claims the coarse tiers would have named are different claims, so recording this evidence against one is the confirmation the key just refused. The CLI exits non-zero when any finding lands there"
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import type { ThreatModel } from '../types/index.js';
 import { hasEvidenceWords } from '../gate/lint.js';
 import { redactEvidence } from '../analyze/format.js';
-import { readHypotheses, writeHypotheses, emptyHypotheses, type HypothesisEntry, type HypothesisOutcome, type HypothesisSource, type HypothesesLedger } from './ledger.js';
+import { readHypotheses, writeHypotheses, emptyHypotheses, type HypothesisEntry, type HypothesisOutcome, type HypothesisSource, type HypothesesLedger, type JoinedBy } from './ledger.js';
 import { classifyHypotheses, type HypothesisRecord } from './classify.js';
 
 export interface OutcomeInput {
@@ -103,19 +105,30 @@ export interface ScanFinding {
   annotation: { file: string; line: number } | null;
   asset: string | null;
   threat: string | null;
-  /** The claim key the export stamped onto the finding (`guardlink/claimKey`), when it carries one. */
+  /**
+   * The claim key the export stamped onto the finding, when it carries one.
+   * Read under both spellings a consumer plausibly forwards: `claim_key` (this
+   * report's own casing) and `claimKey` (the name `guardlink sarif` puts on
+   * `properties`). A stamp guardlink fails to recognise is worse than no stamp,
+   * because it silently takes the weaker join and looks identical doing it.
+   */
   claim_key: string | null;
   evidence: { request: string | null; response: string | null; matched_patterns: string[]; data: Record<string, unknown> };
 }
 
-export type JoinedBy = 'location' | 'asset-threat' | 'cwe';
+export type { JoinedBy } from './ledger.js';
 
 export interface ImportResult {
   scanId: string;
   confirmed: { finding: ScanFinding; record: HypothesisRecord; entry: HypothesisEntry; joinedBy: JoinedBy }[];
   ambiguous: { finding: ScanFinding; candidates: HypothesisRecord[] }[];
-  /** The finding's claim key matches no candidate's: the claim it was tested against is not in the model any more. */
-  stale: { finding: ScanFinding; candidates: HypothesisRecord[] }[];
+  /**
+   * The finding's claim key names no claim in the model: the claim it was tested
+   * against is gone. No candidates are offered — whatever the coarse tiers would
+   * have matched is a different claim, and recording this evidence against it by
+   * hand is the exact confirmation the key just refused.
+   */
+  stale: { finding: ScanFinding }[];
   unmatched: ScanFinding[];
 }
 
@@ -138,7 +151,7 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
     annotation: ann && typeof ann.file === 'string' && typeof ann.line === 'number' ? { file: ann.file, line: ann.line } : null,
     asset: str(o.asset) ?? str(ann?.asset),
     threat: str(o.threat) ?? str(ann?.threat),
-    claim_key: str(o.claim_key) ?? str(ann?.claim_key),
+    claim_key: str(o.claim_key) ?? str(o.claimKey) ?? str(ann?.claim_key) ?? str(ann?.claimKey),
     evidence: {
       request: str(ev.request), response: str(ev.response),
       matched_patterns: Array.isArray(ev.matched_patterns) ? ev.matched_patterns.filter((p): p is string => typeof p === 'string') : [],
@@ -158,25 +171,30 @@ export function scanEvidence(scanId: string, f: ScanFinding): string {
 }
 
 /**
- * Join each finding to a claim — by annotation location, then by asset and
- * threat, then by CWE — and record the confirmed ones. A finding that fits
- * more than one claim is reported as ambiguous, never guessed.
+ * Join each finding to a claim and record the confirmed ones.
  *
- * A finding that carries a claim key joins only to the claim whose key is that
- * key. The key comes from the SARIF export (`guardlink/claimKey`) and is the
- * one the ledger already keys an entry on: a digest of the claim's own words,
- * so it survives every edit that is not the claim — a line move, and an edit to
- * the code beneath it. That is what separates a finding from a sibling claim
- * that landed on the line it was tested at: same file, same line, same asset,
- * same threat, therefore the same threat id, and nothing else on the finding
- * tells them apart. Every claim has a key, so there is no unstamped-claim case:
- * a key that matches nothing means the claim it named is gone, and the finding
- * is reported as stale rather than joined to whatever else is standing there.
+ * A claim key RESOLVES the join; it does not narrow one. A finding that carries
+ * a key is looked up against the whole record set, and that lookup is the whole
+ * answer: it hits exactly one claim (keys are unique within a model) or it hits
+ * none, in which case the claim it named is gone and the finding is stale. The
+ * coarse tiers — annotation location, then asset and threat, then CWE — run
+ * ONLY for a finding that carries no key, and a finding that fits more than one
+ * of them is reported as ambiguous, never guessed.
  *
- * Two consequences worth naming. A key matches at most one claim — keys are
- * unique within a model — so this never leaves an ambiguous set behind; and it
- * can narrow a set that the asset-and-threat join had left ambiguous down to
- * the one claim the stamp names.
+ * The order matters and is not an optimisation. Were the tiers to run first,
+ * the location tier would pick whatever claim now sits on the tested line and
+ * the key would only get to veto it — so a claim that merely DRIFTED (its file
+ * edited above it, moving its line) would be reported stale while it is alive
+ * and holding the stamped key, and a finding carrying nothing but a key — the
+ * most precise identifier in the system — would be reported unmatched. A wrong
+ * location match must never beat a correct key.
+ *
+ * The key is the one the ledger already keys an entry on: a digest of the
+ * claim's own words, so it survives every edit that is not the claim — a line
+ * move, and an edit to the code beneath it. That is what separates a finding
+ * from a sibling claim that landed on the line it was tested at: same file,
+ * same line, same asset, same threat, therefore the same threat id, and nothing
+ * else on the finding tells them apart.
  *
  * The bound: two BYTE-IDENTICAL claims in one file — same verb, asset, threat,
  * external refs and description — share a digest and are told apart only by an
@@ -185,6 +203,10 @@ export function scanEvidence(scanId: string, f: ScanFinding): string {
  * joins to the second. That is the shape this function exists to refuse,
  * surviving at a strictly narrower population. Separately, rewording a claim's
  * own description re-keys it, so a stamp from before the rewording is refused.
+ *
+ * Every confirmation records WHICH identity joined it (`joined_by`), because a
+ * key-verified confirmation and one taken on the coarse tiers must not be
+ * indistinguishable after the fact.
  */
 export function importScan(root: string, model: ThreatModel, scanPath: string, input: { by: string; at: string }): ImportResult {
   const abs = inside(root, scanPath);
@@ -218,34 +240,37 @@ export function importScan(root: string, model: ThreatModel, scanPath: string, i
 
   const result: ImportResult = { scanId, confirmed: [], ambiguous: [], stale: [], unmatched: [] };
   const ledger = loadForWrite(root);
+  const byKey = new Map(records.map(r => [r.key, r]));
   for (const f of findings) {
     let candidates: HypothesisRecord[] = [];
     let joinedBy: JoinedBy | null = null;
-    if (f.annotation) {
-      const file = f.annotation.file.replace(/\\/g, '/');
-      candidates = records.filter(r => r.file === file && r.line === f.annotation!.line);
-      if (candidates.length > 0) joinedBy = 'location';
-    }
-    if (!joinedBy && (f.asset || f.threat)) {
-      candidates = records.filter(r => (!f.asset || assetOf(r.asset) === assetOf(f.asset)) && (!f.threat || threatOf(r.threat) === threatOf(f.threat)));
-      if (candidates.length > 0) joinedBy = 'asset-threat';
-    }
-    if (!joinedBy && f.cwe_ids.length > 0) {
-      const want = new Set(f.cwe_ids.map(c => c.toUpperCase()));
-      candidates = records.filter(r => [...cwesOf(r)].some(c => want.has(c)));
-      if (candidates.length > 0) joinedBy = 'cwe';
-    }
-    if (!joinedBy) { result.unmatched.push(f); continue; }
     if (f.claim_key) {
-      const same = candidates.filter(r => r.key === f.claim_key);
-      if (same.length === 0) { result.stale.push({ finding: f, candidates }); continue; }
-      candidates = same;
+      const named = byKey.get(f.claim_key);
+      if (!named) { result.stale.push({ finding: f }); continue; }
+      candidates = [named];
+      joinedBy = 'claim-key';
+    } else {
+      if (f.annotation) {
+        const file = f.annotation.file.replace(/\\/g, '/');
+        candidates = records.filter(r => r.file === file && r.line === f.annotation!.line);
+        if (candidates.length > 0) joinedBy = 'location';
+      }
+      if (!joinedBy && (f.asset || f.threat)) {
+        candidates = records.filter(r => (!f.asset || assetOf(r.asset) === assetOf(f.asset)) && (!f.threat || threatOf(r.threat) === threatOf(f.threat)));
+        if (candidates.length > 0) joinedBy = 'asset-threat';
+      }
+      if (!joinedBy && f.cwe_ids.length > 0) {
+        const want = new Set(f.cwe_ids.map(c => c.toUpperCase()));
+        candidates = records.filter(r => [...cwesOf(r)].some(c => want.has(c)));
+        if (candidates.length > 0) joinedBy = 'cwe';
+      }
+      if (!joinedBy) { result.unmatched.push(f); continue; }
+      if (candidates.length > 1) { result.ambiguous.push({ finding: f, candidates }); continue; }
     }
-    if (candidates.length > 1) { result.ambiguous.push({ finding: f, candidates }); continue; }
     const record = candidates[0];
     const entry = upsert(ledger, record, 'confirmed', {
       evidence: scanEvidence(scanId, f), by: `${input.by}:${f.template_id}`, at: input.at,
-      source: { kind: 'scan', scan_id: scanId, template_id: f.template_id, confidence: f.confidence },
+      source: { kind: 'scan', scan_id: scanId, template_id: f.template_id, confidence: f.confidence, joined_by: joinedBy },
     });
     result.confirmed.push({ finding: f, record, entry, joinedBy });
   }

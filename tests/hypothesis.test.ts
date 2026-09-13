@@ -13,7 +13,7 @@ import { parseProject } from '../src/parser/parse-project.js';
 import { relationRecords } from '../src/parser/claim-key.js';
 import {
   HYPOTHESES_FILE, readHypotheses, writeHypotheses, emptyHypotheses,
-  classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, resolveTarget, confirmedLine, writeConfirmedLine,
+  classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, resolveTarget, confirmedLine, writeConfirmedLine, formatImport,
 } from '../src/hypothesis/index.js';
 import { lintAnnotations } from '../src/gate/index.js';
 import { generateDashboardHTML } from '../src/dashboard/index.js';
@@ -172,7 +172,8 @@ describe('scan import', () => {
     const sqli = entries.find(e => e.line === 4)!;
     expect(sqli.outcome).toBe('confirmed');
     expect(sqli.by).toBe('cxg:login-sqli');
-    expect(sqli.source).toEqual({ kind: 'scan', scan_id: 'cxg-1', template_id: 'login-sqli', confidence: 0.94 });
+    // These findings carry no claim key, so the weaker join is recorded as such.
+    expect(sqli.source).toEqual({ kind: 'scan', scan_id: 'cxg-1', template_id: 'login-sqli', confidence: 0.94, joined_by: 'location' });
     expect(sqli.evidence).toContain('HTTP 200');
     expect(sqli.evidence).not.toContain('secrettoken123456');
     // A finding that joins by CWE alone.
@@ -297,10 +298,16 @@ async function siblings(source: string): Promise<string> {
   return root;
 }
 
-/** What cxg stamps onto a finding: the exported result's location and its fingerprints. */
-function stamp(sarif: ReturnType<typeof generateSarif>, line: number) {
+/** The exported result at a line, as cxg would find it in the SARIF. */
+function exported(sarif: ReturnType<typeof generateSarif>, line: number) {
   const r = sarif.runs[0].results.find(x => x.locations[0].physicalLocation.region.startLine === line);
   if (!r) throw new Error(`no exported result at line ${line}`);
+  return r;
+}
+
+/** What cxg stamps onto a finding: the exported result's location and its fingerprints. */
+function stamp(sarif: ReturnType<typeof generateSarif>, line: number) {
+  const r = exported(sarif, line);
   return {
     file: r.locations[0].physicalLocation.artifactLocation.uri,
     line: r.locations[0].physicalLocation.region.startLine,
@@ -340,7 +347,11 @@ describe('scan import — the claim key as a discriminator', () => {
     expect(r.confirmed).toHaveLength(1);
     expect(`${r.confirmed[0].record.file}:${r.confirmed[0].record.line}`).toBe('src/a.ts:4');
     expect(r.confirmed[0].record.key).toBe(resolveTarget(model, 'src/a.ts:4').key);
+    expect(r.confirmed[0].joinedBy).toBe('claim-key');
     expect(r.stale).toEqual([]);
+    // The provenance is persisted, so the confirmation stays distinguishable later.
+    const source = readHypotheses(root).ledger!.entries[0].source;
+    expect(source).toMatchObject({ kind: 'scan', joined_by: 'claim-key' });
   }, 60000);
 
   it('refuses the sibling that landed on the tested line', async () => {
@@ -362,9 +373,11 @@ describe('scan import — the claim key as a discriminator', () => {
 
     expect(r.confirmed).toEqual([]);
     expect(r.stale.map(s => s.finding.id)).toEqual(['f1']);
-    expect(r.stale[0].candidates.map(c => `${c.file}:${c.line}`)).toEqual(['src/a.ts:4']);
     // Nothing was written: no entry, and B is still untested.
     expect(readHypotheses(root).status).toBe('absent');
+    // B is not offered as a by-hand target: recording A's evidence there is the
+    // very confirmation the key just refused.
+    expect(formatImport(r)).not.toMatch(/guardlink hypothesis confirm src\/a\.ts:4/);
   }, 60000);
 
   it('joins as before when the finding carries no claim key', async () => {
@@ -378,11 +391,18 @@ describe('scan import — the claim key as a discriminator', () => {
     expect(r.confirmed).toHaveLength(1);
     expect(r.confirmed[0].joinedBy).toBe('location');
     expect(r.stale).toEqual([]);
+
+    // But it does not look like a key-verified confirmation, and the report says
+    // once that the weaker join was used throughout.
+    const out = formatImport(r);
+    expect(out).toMatch(/NOT key-verified/);
+    expect(out).toMatch(/No finding in this report carried a claim key/);
+    expect(readHypotheses(root).ledger!.entries[0].source).toMatchObject({ kind: 'scan', joined_by: 'location' });
   }, 60000);
 
   it('resolves an otherwise ambiguous join to the claim the stamp names', async () => {
-    // No location on the finding, so the join falls to asset and threat and fits both
-    // siblings. The stamp names one claim, and a key matches at most one claim.
+    // Asset and threat alone fit both siblings. The key names one claim, so the
+    // coarse tier never runs and nothing is handed back as ambiguous.
     const root = await siblings(SIBLINGS);
     const model = await parse(root);
     const a = stamp(generateSarif(model), 4);
@@ -392,7 +412,28 @@ describe('scan import — the claim key as a discriminator', () => {
 
     expect(r.ambiguous).toEqual([]);
     expect(r.confirmed).toHaveLength(1);
-    expect(r.confirmed[0].joinedBy).toBe('asset-threat');
+    expect(r.confirmed[0].joinedBy).toBe('claim-key');
+    expect(r.confirmed[0].record.key).toBe(resolveTarget(model, 'src/a.ts:4').key);
+  }, 60000);
+
+  it('resolves a finding that carries nothing but a claim key', async () => {
+    // No location, no asset, no threat, no CWE — only the most precise identifier
+    // in the system. Every coarse tier would call this unmatched and tell the
+    // operator to annotate it first.
+    const root = await siblings(SIBLINGS);
+    const model = await parse(root);
+    const a = stamp(generateSarif(model), 4);
+
+    const path = await writeScan(root, { scan_id: 'cxg-keyonly', findings: [{
+      id: 'f1', template_id: 'login-sqli', severity: 'critical', confidence: 0.9,
+      title: 'SQLi', cwe_ids: [], claim_key: a.claim_key,
+      evidence: { request: 'POST /u', response: 'HTTP 200 3 rows', matched_patterns: [], data: {} },
+    }] });
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    expect(r.unmatched).toEqual([]);
+    expect(r.confirmed).toHaveLength(1);
+    expect(r.confirmed[0].joinedBy).toBe('claim-key');
     expect(r.confirmed[0].record.key).toBe(resolveTarget(model, 'src/a.ts:4').key);
   }, 60000);
 
@@ -412,16 +453,16 @@ describe('scan import — the claim key as a discriminator', () => {
     expect(run.code).toBe(1);
     expect(run.stdout).toContain('1 stale');
     expect(run.stdout).toMatch(/tested against a claim that is no longer in the model/);
-    // The claim it names is offered for a by-hand record, and is not described as the tested one.
-    expect(run.stdout).toMatch(/The claim at src\/a\.ts:4 is not it/);
-    expect(run.stdout).toMatch(/guardlink hypothesis confirm src\/a\.ts:4 --evidence/);
+    expect(run.stdout).toMatch(/Any claim standing there now is a different claim/);
+    // B is never offered as a by-hand target — that would be the refused confirmation.
+    expect(run.stdout).not.toMatch(/guardlink hypothesis confirm src\/a\.ts:4/);
     expect(existsSync(join(root, HYPOTHESES_FILE))).toBe(false);
   }, 120_000);
 
-  it('refusing a multi-candidate set costs no confirmation — that join was ambiguous either way', async () => {
-    // Candidates span two files and the stamp matches none of them. Refusing here
-    // removes nothing: without the stamp the same three candidates were reported
-    // ambiguous, never confirmed.
+  it('a key naming no claim is stale, and that costs no confirmation the coarse join would have made', async () => {
+    // Three claims across two files all fit asset-and-threat, so without a stamp
+    // this was ambiguous and nothing was recorded. With a stamp that names no
+    // claim it is stale — also nothing recorded. Refusing removes no confirmation.
     const root = await siblings(SIBLINGS);
     await writeFile(join(root, 'src', 'b.ts'), `import y from 'y';
 
@@ -435,11 +476,11 @@ export function findAccount(id: string) { return id; }
     const keys = relationRecords(model).filter(r => r.verb === 'exposes').map(r => r.key);
     expect(keys).not.toContain(UNRELATED_KEY);
 
-    // Joined by asset and threat, so all three claims are candidates.
     const stamped = await writeScan(root, gap58Scan({ asset: '#api', threat: '#sqli', claim_key: UNRELATED_KEY }));
     const withStamp = importScan(root, model, stamped, { by: 'cxg', at: NOW });
     expect(withStamp.confirmed).toEqual([]);
-    expect(withStamp.stale.map(x => x.candidates.length)).toEqual([3]);
+    expect(withStamp.ambiguous).toEqual([]);
+    expect(withStamp.stale.map(x => x.finding.id)).toEqual(['f1']);
 
     const bare = await writeScan(root, gap58Scan({ asset: '#api', threat: '#sqli' }));
     const withoutStamp = importScan(root, model, bare, { by: 'cxg', at: NOW });
@@ -483,6 +524,44 @@ export function unrelatedHelper(n: number) { return n + 1; }
     expect(r.stale).toEqual([]);
     expect(r.confirmed).toHaveLength(1);
     expect(r.confirmed[0].record.key).toBe(a.claim_key);
+    expect(r.confirmed[0].joinedBy).toBe('claim-key');
+  }, 60000);
+
+  it('resolves a claim whose LINE moved while another claim took the tested line', async () => {
+    // The displaced shape, which a key used only to veto the coarse tiers gets
+    // backwards. A is stamped at src/a.ts:30. Five lines are removed above it, so
+    // A is alive at :25 holding the same key while C now sits on :30. Resolving by
+    // key first finds A; letting the location tier win first finds C, fails the
+    // veto, and calls a live correctly-stamped finding stale.
+    const filler = (n: number) => Array.from({ length: n }, (_, i) => `const filler${i} = ${i};`).join('\n');
+    const two = (lead: number) => `${filler(lead)}
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "A: findUser concatenates email"
+ */
+export function findUser(email: string) { return email; }
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "C: findAccount concatenates id"
+ */
+export function findAccount(id: string) { return id; }
+`;
+    const tested = await siblings(two(28));
+    const testedModel = await parse(tested);
+    const a = stamp(generateSarif(testedModel), 30);
+
+    const root = await siblings(two(23));
+    const model = await parse(root);
+    // A moved to :25 and kept its key; C now sits on :30, the tested line.
+    expect(resolveTarget(model, 'src/a.ts:25').key).toBe(a.claim_key);
+    expect(resolveTarget(model, 'src/a.ts:30').key).not.toBe(a.claim_key);
+
+    const path = await writeScan(root, gap58Scan({ file: a.file, line: a.line, claim_key: a.claim_key }));
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    expect(r.stale).toEqual([]);
+    expect(r.confirmed).toHaveLength(1);
+    expect(r.confirmed[0].joinedBy).toBe('claim-key');
+    expect(`${r.confirmed[0].record.file}:${r.confirmed[0].record.line}`).toBe('src/a.ts:25');
   }, 60000);
 
   it('separates two @exposes that share one doc-block', async () => {
@@ -587,5 +666,113 @@ export function findUser(email: string) { return email; }
     const r = importScan(root, model, path, { by: 'cxg', at: NOW });
     expect(r.confirmed).toEqual([]);
     expect(r.stale.map(s => s.finding.id)).toEqual(['f1']);
+  }, 60000);
+});
+
+/**
+ * The export and the import must agree on what the stamp is CALLED, and the
+ * agreement has to be asserted without either side naming the field — a fixture
+ * that hardcodes the name on both sides encodes the same assumption twice and
+ * cannot catch a mismatch. These tests behave like the consumer that exposed
+ * one: they take a real `generateSarif` result and forward its emitted
+ * `properties` into the scan finding verbatim, then run the real `importScan`.
+ *
+ * Both fixtures are shapes where the coarse tiers give the WRONG answer, so a
+ * silently-ignored stamp cannot pass by falling through to the location tier.
+ */
+describe('scan import — the stamp the export emits is the stamp the import reads', () => {
+  /** Everything the exporter put on the result, forwarded under its own names. */
+  const forward = (sarif: ReturnType<typeof generateSarif>, line: number) => {
+    const r = exported(sarif, line);
+    return {
+      id: 'f1', template_id: 'login-sqli', severity: 'critical', confidence: 0.94,
+      title: 'SQLi in findUser', cwe_ids: ['CWE-89'],
+      annotation: {
+        file: r.locations[0].physicalLocation.artifactLocation.uri,
+        line: r.locations[0].physicalLocation.region.startLine,
+      },
+      ...(r.properties as Record<string, unknown>),
+      evidence: { request: "POST /u email=' OR 1=1--", response: 'HTTP 200 3 rows', matched_patterns: ['rows'], data: {} },
+    };
+  };
+
+  it('refuses the sibling that landed on the tested line', async () => {
+    const tested = await siblings(SIBLINGS);
+    const finding = forward(generateSarif(await parse(tested)), 4);
+
+    const root = await siblings(B_ON_A_LINE);
+    const model = await parse(root);
+    const path = await writeScan(root, { scan_id: 'cxg-fwd', findings: [finding] });
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    // The location tier alone would have confirmed B here.
+    expect(r.confirmed).toEqual([]);
+    expect(r.stale.map(s => s.finding.id)).toEqual(['f1']);
+  }, 60000);
+
+  it('resolves the claim that moved, not the one now on the tested line', async () => {
+    const filler = (n: number) => Array.from({ length: n }, (_, i) => `const filler${i} = ${i};`).join('\n');
+    const two = (lead: number) => `${filler(lead)}
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "A: findUser concatenates email"
+ */
+export function findUser(email: string) { return email; }
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "C: findAccount concatenates id"
+ */
+export function findAccount(id: string) { return id; }
+`;
+    const tested = await siblings(two(28));
+    const finding = forward(generateSarif(await parse(tested)), 30);
+
+    const root = await siblings(two(23));
+    const model = await parse(root);
+    const path = await writeScan(root, { scan_id: 'cxg-fwd', findings: [finding] });
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    // The location tier alone would have confirmed C at :30.
+    expect(r.stale).toEqual([]);
+    expect(r.confirmed).toHaveLength(1);
+    expect(r.confirmed[0].joinedBy).toBe('claim-key');
+    expect(`${r.confirmed[0].record.file}:${r.confirmed[0].record.line}`).toBe('src/a.ts:25');
+  }, 60000);
+
+  it('every exported result that carries a claim key resolves — nothing stamped is unjoinable', async () => {
+    // The verb is part of the key digest, so a key stamped from a @confirmed
+    // result could never match an exposure record. This asserts the two sides
+    // agree about WHICH results are stamped, not just about the field name.
+    const root = await siblings(`import x from 'x';
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "A: findUser concatenates email"
+ * @confirmed #sqli on #api [critical] cwe:CWE-89 -- "POST /u returned HTTP 200 and three rows; reproduced twice"
+ */
+export function findUser(email: string) { return email; }
+
+/**
+ * @exposes #web to #xss [high] cwe:CWE-79 -- "bio rendered via innerHTML"
+ */
+export function render(bio: string) { return bio; }
+`);
+    const model = await parse(root);
+    const results = generateSarif(model).runs[0].results;
+    const keyed = results.filter(r => (r.properties as Record<string, unknown>).claimKey !== undefined);
+
+    // There is something to check, and the confirmed result is deliberately not in it.
+    expect(keyed.length).toBeGreaterThan(0);
+    expect(keyed.map(r => r.ruleId)).not.toContain('guardlink/confirmed-exploitable');
+    expect(results.some(r => r.ruleId === 'guardlink/confirmed-exploitable')).toBe(true);
+
+    for (const r of keyed) {
+      const line = r.locations[0].physicalLocation.region.startLine;
+      const path = await writeScan(root, { scan_id: 'cxg-all', findings: [forward(generateSarif(model), line)] });
+      const out = importScan(root, model, path, { by: 'cxg', at: NOW });
+      expect(out.stale, `result at line ${line} went stale`).toEqual([]);
+      expect(out.unmatched, `result at line ${line} went unmatched`).toEqual([]);
+      expect(out.confirmed, `result at line ${line} did not resolve`).toHaveLength(1);
+      expect(out.confirmed[0].joinedBy).toBe('claim-key');
+      expect(out.confirmed[0].record.key).toBe((r.properties as Record<string, unknown>).claimKey);
+    }
   }, 60000);
 });

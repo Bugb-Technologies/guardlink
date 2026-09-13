@@ -184,11 +184,11 @@ describe('generateSarif — threat id (partialFingerprints + properties.threatId
 });
 
 /**
- * The claim key on each result. It is the identity of the CLAIM — the same key the
- * hypothesis ledger keys an entry on — not of the location and not of the code
- * beneath it, which is the property a consumer joining a finding back to a claim
- * needs: two siblings that share a threat id (same asset, same threat, same file)
- * are separable by it, and it does not move when the claim does.
+ * The claim key on each exposure result. It is the identity of the CLAIM — the same
+ * key the hypothesis ledger keys an entry on — not of the location and not of the
+ * code beneath it, which is the property a consumer joining a finding back to a
+ * claim needs: two siblings that share a threat id (same asset, same threat, same
+ * file) are separable by it, and it does not move when the claim does.
  */
 describe('generateSarif — claim key (partialFingerprints + properties.claimKey)', () => {
   const exposure = (over: Record<string, unknown> = {}) => ({
@@ -199,23 +199,35 @@ describe('generateSarif — claim key (partialFingerprints + properties.claimKey
   const keyOf = (sarif: ReturnType<typeof generateSarif>, i: number) =>
     (sarif.runs[0].results[i].properties as Record<string, unknown>).claimKey as string | undefined;
 
-  it('emits the fingerprint and properties.claimKey, equal, on exposure and confirmed results', () => {
-    const sarif = generateSarif(model({
-      exposures: [exposure()],
-      confirmed: [exposure()],
-    }));
-    expect(sarif.runs[0].results.length).toBe(2);
-    for (const r of sarif.runs[0].results) {
-      const fromProps = (r.properties as Record<string, unknown>).claimKey;
-      expect(fromProps).toMatch(/^[0-9a-f]{64}:\d+$/);
-      expect(r.partialFingerprints?.['guardlink/claimKey']).toBe(fromProps);
-    }
-    // The verb is part of the key, so the @exposes and the @confirmed proving it
-    // are distinct claims even when every argument matches.
-    expect(keyOf(sarif, 0)).not.toBe(keyOf(sarif, 1));
+  it('emits the fingerprint and properties.claimKey, equal, on exposure results', () => {
+    const sarif = generateSarif(model({ exposures: [exposure()] }));
+    const r = sarif.runs[0].results[0];
+    const fromProps = (r.properties as Record<string, unknown>).claimKey;
+    expect(fromProps).toMatch(/^[0-9a-f]{64}:\d+$/);
+    expect(r.partialFingerprints?.['guardlink/claimKey']).toBe(fromProps);
   });
 
-  it('is present on a claim with no anchor — every claim has a key, so there is no absent case', () => {
+  it('emits NO claim key on a confirmed result — a key stamped from one could join to nothing', () => {
+    // The verb is part of the key digest, so an @exposes and the @confirmed that
+    // proves it hold different keys; and the ledger keys entries by exposure only.
+    // A key on a confirmed result would be an identifier that looks usable and is
+    // not, so none is emitted — and the sibling exposure's key is NOT borrowed,
+    // which would assert a link the model does not declare.
+    const sarif = generateSarif(model({ exposures: [exposure()], confirmed: [exposure()] }));
+    expect(sarif.runs[0].results.length).toBe(2);
+    const conf = sarif.runs[0].results.find(r => r.ruleId === 'guardlink/confirmed-exploitable')!;
+    const exp = sarif.runs[0].results.find(r => r.ruleId !== 'guardlink/confirmed-exploitable')!;
+
+    expect(conf.properties).not.toHaveProperty('claimKey');
+    expect(conf.partialFingerprints).not.toHaveProperty('guardlink/claimKey');
+    // The threat id is untouched, and is still shared across the claim's lifecycle.
+    expect(conf.partialFingerprints?.['guardlink/threatId']).toBe(exp.partialFingerprints?.['guardlink/threatId']);
+    // The exposure still carries its own.
+    expect((exp.properties as Record<string, unknown>).claimKey).toMatch(/^[0-9a-f]{64}:\d+$/);
+    expect(Object.values(conf.partialFingerprints ?? {})).not.toContain((exp.properties as Record<string, unknown>).claimKey);
+  });
+
+  it('is present on a claim with no anchor — the key does not depend on one', () => {
     const sarif = generateSarif(model({ exposures: [exposure()] }));
     const r = sarif.runs[0].results[0];
     expect(r.locations[0].physicalLocation.region.startLine).toBe(4);

@@ -105,7 +105,7 @@ guardlink ci . --strict --scope services/api       # Gate on findings under thes
 # Reports & Export
 guardlink report [dir]                  # Generate threat-model.md + optional JSON
 guardlink dashboard [dir]               # Interactive HTML dashboard with Mermaid diagrams
-guardlink sarif [dir] [-o file]         # SARIF 2.1.0 for GitHub Advanced Security / VS Code; each result carries guardlink/threatId and guardlink/claimKey
+guardlink sarif [dir] [-o file]         # SARIF 2.1.0 for GitHub Advanced Security / VS Code; every result carries guardlink/threatId, and @exposes results also carry guardlink/claimKey
 guardlink diff [ref]                    # Compare threat model against a git ref (default: HEAD~1)
 guardlink paths [dir] [--all]           # Undefended source-to-sink routes, derived from @flows (no LLM)
 
@@ -227,29 +227,41 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
 - **The queue.** `next` puts retests first, then untested exposures by severity, then those on an
   undefended path (`guardlink paths`), then unowned ones. No AI: the ledger is bookkeeping and
   the ranking is arithmetic. Testing stays with bugb and cxg.
-- **Scan import joins** by the finding's annotation location, then by asset and threat, then by
-  CWE. A finding that fits more than one claim is reported as ambiguous, never guessed; one that
-  fits none is listed as unmatched.
-- **A stamped claim key resolves that join.** A finding carrying `claim_key` — the
-  `guardlink/claimKey` fingerprint the SARIF export puts on each result — joins only to the claim
-  whose key is that key. Anything else is reported as **stale**: the claim the finding was tested
-  against is not in the model any more, having been deleted or had its asset, threat, refs,
-  description or file edited. Nothing is recorded for a stale finding, and the command exits
-  non-zero. This is what separates a finding from a sibling claim that came to sit on the tested
-  line: same file, same line, same asset, same threat, so the same `threatId`, and nothing else on
-  the finding tells them apart. A key matches at most one claim, so it can also resolve a join
-  that asset-and-threat had left ambiguous. A report with no stamp joins exactly as before.
-- **What the refusal costs, and the bound.** The key names the claim, not the code, so it is
-  unmoved by a line shift and by any edit to the code beneath it — the ordinary drift that makes
-  the ledger expire an outcome costs no confirmation here. Measured on GuardLink's own model at
-  `899b815`: 115 exposures, **115 distinct claim keys**, no collisions. The bound is repeats —
-  two byte-identical claims in one file (same verb, asset, threat, refs *and* description) share
-  a digest and are told apart only by an ordinal in document order, so deleting the earlier one
+- **A stamped claim key resolves the join, before anything coarser is tried.** A finding carrying
+  `claim_key` — the `guardlink/claimKey` fingerprint `guardlink sarif` puts on each `@exposes`
+  result, also accepted as `claimKey`, top level or inside the annotation object — is looked up
+  across the whole model. A key matches at most one claim, so that lookup is the answer. If it
+  names no claim the finding is **stale**: the claim it was tested against is not in the model any
+  more, deleted or with its asset, threat, refs, description or file edited. Nothing is recorded,
+  no by-hand target is offered (any claim standing there now is a *different* claim), and the
+  command exits non-zero.
+- **Only an unstamped finding falls to the coarse joins** — annotation location, then asset and
+  threat, then CWE — where one that fits more than one claim is reported as ambiguous, never
+  guessed, and one that fits none is listed as unmatched. Those match where a claim *sits*, not
+  which claim it *is*, so a sibling that came to occupy the tested line satisfies them: same file,
+  same line, same asset, same threat, hence the same `threatId`. The order is the point. Were a
+  coarse join allowed to run first and the key left only a veto, a claim whose file was edited
+  above it — same claim, same key, new line — would be declared stale while it is alive, and a
+  finding carrying nothing but a key would be called unmatched.
+- **Every confirmation says which identity joined it.** `joined by claim-key` is key-verified;
+  anything else is labelled *NOT key-verified*, and a report that carried no stamps at all says so
+  once at the top. The provenance is persisted on the ledger entry's scan source (`joined_by`), so
+  the distinction survives the import. A key-verified confirmation and one taken on a coarse match
+  must not read the same — that identity is exactly how GAP-58 would reopen unnoticed.
+- **What it costs, and the bound.** The key names the claim, not the code, so it is unmoved by a
+  line shift and by any edit to the code beneath it — the ordinary drift that makes the ledger
+  expire an outcome costs no confirmation here. Measured on GuardLink's own model at `899b815`:
+  115 exposures, **115 distinct claim keys**, no collisions. The bound is repeats — two
+  byte-identical claims in one file (same verb, asset, threat, refs *and* description) share a
+  digest and are told apart only by an ordinal in document order, so deleting the earlier one
   hands `<digest>:0` to the survivor and a stamp against the first joins to the second. Of those
   115 exposures, **none** relies on an ordinal above zero; across all 669 claims in the model
   exactly one does, and it is not an exposure. Separately, rewording a claim's own description
-  re-keys it, so a stamp from before the rewording is reported as stale with the command to
-  record it by hand, never dropped.
+  re-keys it, so a stamp from before the rewording is reported as stale.
+- **A `@confirmed` result carries no claim key.** The verb is part of the digest, so an `@exposes`
+  and the `@confirmed` proving it hold different keys, and the ledger keys entries by exposure
+  only — a confirmed claim's state comes from the annotation, never from an entry. A key stamped
+  from a confirmed result could join to nothing, so none is emitted.
 
 ## Threat Report Frameworks
 

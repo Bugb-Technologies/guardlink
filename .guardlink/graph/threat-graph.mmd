@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:56741d4df240881d22c616cc673c0cfe203a76f73a42cc5718b4d25288513168
+%% annotation_hash: sha256-v3:93e4751107963ea21ef228589363a22ca6462a97fe3846268d422741e6683197
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 43 nodes / 150 edges, past the 12 / 16 legibility budget (43 nodes against 12, 150 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 43 nodes / 151 edges, past the 12 / 16 legibility budget (43 nodes against 12, 151 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -218,6 +218,7 @@ graph LR
   prefix_ownership -. protects .-> merge_engine
   yaml_validation -- mitigates --> config_tamper
   yaml_validation -. protects .-> workspace_config
+  config_validation -. validates .-> cli
   resource_limits -. validates .-> mcp
   regex_anchoring -. validates .-> parser
   input_sanitize -. validates .-> parser

@@ -1050,13 +1050,13 @@ When uploaded to GitHub via the Code Scanning API, `@exposes` annotations appear
 
 ### 6.5. Result Identity
 
-Each `@exposes` and `@confirmed` result carries its identity in SARIF's own
-`partialFingerprints`, mirrored into `properties` for consumers without a SARIF library:
+Each result carries its identity in SARIF's own `partialFingerprints`, mirrored into
+`properties` for consumers without a SARIF library:
 
-| Key | `properties` mirror | Over |
-|---|---|---|
-| `guardlink/threatId` | `threatId` | `(asset, threat, file)` |
-| `guardlink/claimKey` | `claimKey` | the claim's own words — verb, identity arguments, external refs, description — plus the file, with an ordinal for repeats |
+| Key | `properties` mirror | On | Over |
+|---|---|---|---|
+| `guardlink/threatId` | `threatId` | `@exposes` and `@confirmed` | `(asset, threat, file)` |
+| `guardlink/claimKey` | `claimKey` | `@exposes` only | the claim's own words — verb, identity arguments, external refs, description — plus the file, with an ordinal for repeats |
 
 `guardlink/threatId` is the coarse, stable identity: one threat keeps one id across its
 lifecycle, so the `@exposes` and the `@confirmed` that later proves it mint the same id, and
@@ -1064,17 +1064,32 @@ the id does not move when the claim changes line. The line is therefore not in i
 is the message.
 
 `guardlink/claimKey` is the fine identity: the same key the hypothesis ledger keys an entry on
-(`src/parser/claim-key.ts`). Every claim has one, so the field is always present on an
-`@exposes` or `@confirmed` result. It names the claim across every edit that is not the claim —
-the line it sits on, and the code beneath it. Two exposures sharing `(asset, threat, file)`
+(`src/parser/claim-key.ts`). It names the claim across every edit that is not the claim — the
+line it sits on, and the code beneath it. Two exposures sharing `(asset, threat, file)`
 therefore share one `threatId` and are told apart by `claimKey`.
 
+**A `@confirmed` result carries no `claimKey`, deliberately.** The verb is part of the digest,
+so an `@exposes` and the `@confirmed` that proves it hold *different* keys; and the hypothesis
+ledger keys entries by exposure only — it resolves a confirmed claim's state from the source
+annotation and never reads a ledger entry for it. A key stamped from a confirmed result could
+therefore join to nothing, and emitting an identifier that cannot be used is worse than
+emitting none. Stamping the sibling exposure's key onto it instead would be worse still: it
+would assert a link between two claims that the model does not declare.
+
 A consumer that stamps a result's identity onto a finding and later joins that finding back to
-a claim MUST treat a mismatched `claimKey` as a non-match. Without it, a sibling exposure that
-comes to occupy the tested line matches every other stamped value and the finding joins to a
-claim that was never tested. `guardlink hypothesis confirm --from-scan` implements exactly this
-rule. A key matches at most one claim in a model, so the rule resolves such a join rather than
-merely narrowing it.
+a claim MUST **resolve** on `claimKey` rather than filter on it: look the key up across the
+whole model *before* any coarser match, because a key matches at most one claim. If it resolves,
+that is the answer; if it resolves to nothing, the claim is gone and the finding is stale. A
+coarser match must never be allowed to win first and leave the key only a veto — a claim whose
+file was edited above it keeps its key but changes line, so a location match would send a live,
+correctly-stamped finding to `stale`, while a sibling that came to occupy the tested line would
+be matched before the key could speak. `guardlink hypothesis confirm --from-scan` implements
+exactly this rule, and records which identity joined each outcome so a key-verified confirmation
+is distinguishable from one taken on the coarser match.
+
+Consumers vary in casing, and an unrecognised stamp is worse than an absent one because it
+silently degrades to the coarser join. `--from-scan` therefore accepts `claimKey` and
+`claim_key`, at a finding's top level or inside its annotation object.
 
 **Bound.** Two BYTE-IDENTICAL claims in one file — same verb, same identity arguments, same
 external refs *and* the same description — share a digest and are told apart only by an ordinal
