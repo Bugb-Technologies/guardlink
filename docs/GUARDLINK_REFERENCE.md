@@ -105,7 +105,7 @@ guardlink ci . --strict --scope services/api       # Gate on findings under thes
 # Reports & Export
 guardlink report [dir]                  # Generate threat-model.md + optional JSON
 guardlink dashboard [dir]               # Interactive HTML dashboard with Mermaid diagrams
-guardlink sarif [dir] [-o file]         # SARIF 2.1.0 for GitHub Advanced Security / VS Code
+guardlink sarif [dir] [-o file]         # SARIF 2.1.0 for GitHub Advanced Security / VS Code; each result carries guardlink/threatId and guardlink/anchorHash
 guardlink diff [ref]                    # Compare threat model against a git ref (default: HEAD~1)
 guardlink paths [dir] [--all]           # Undefended source-to-sink routes, derived from @flows (no LLM)
 
@@ -230,6 +230,25 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
 - **Scan import joins** by the finding's annotation location, then by asset and threat, then by
   CWE. A finding that fits more than one claim is reported as ambiguous, never guessed; one that
   fits none is listed as unmatched.
+- **A stamped anchor hash narrows that join.** A finding carrying `anchor_hash` — the
+  `guardlink/anchorHash` fingerprint the SARIF export puts on each result — joins only to a claim
+  whose anchor hash is that hash. Anything else is reported as **stale**: the code the finding was
+  tested against is not at that location any more. Nothing is recorded for a stale finding, and
+  the command exits non-zero. This is what separates a finding from a sibling claim that came to
+  sit on the tested line: same file, same asset, same threat, so the same `threatId`, and nothing
+  else on the finding tells them apart. It cannot separate two byte-identical anchors — two
+  `@exposes` on one doc-block carry one hash — so it narrows the join rather than closing it.
+  When no candidate claim carries an anchor at all there is nothing to compare and the join is
+  left as it was, so a report with no stamp behaves exactly as before.
+- **What the refusal can and cannot cost.** It removes a confirmation in exactly one shape: a
+  single candidate claim, anchored, whose hash is not the stamp. With two or more candidates the
+  join was already ambiguous rather than a confirmation; with none anchored the rule does not run.
+  Note that a claim anchored at **file** scope — what a module-level doc-block resolves to, and
+  108 of GuardLink's own 115 exposures at `283d41e` — moves its hash on *any* edit to that file,
+  so a stamp taken before an unrelated edit there is refused. That is the same change
+  `guardlink hypothesis list` already expires an outcome on (`retest`), so the refusal declines to
+  record what would immediately be marked for re-testing; it is reported as stale with the command
+  to record it by hand, never dropped.
 
 ## Threat Report Frameworks
 

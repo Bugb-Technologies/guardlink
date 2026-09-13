@@ -182,3 +182,81 @@ describe('generateSarif — threat id (partialFingerprints + properties.threatId
     expect(confirmedId).toBe(exposedId);
   });
 });
+
+/**
+ * The anchor hash on each result. It is a hash of the ANCHORED CODE, not of the
+ * location, which is the property a consumer joining on the stamped identity
+ * needs: two siblings that share a threat id — same asset, same threat, same
+ * file — are separable by it, and it does not move when the code does.
+ */
+describe('generateSarif — anchor hash (partialFingerprints + properties.anchorHash)', () => {
+  const anchored = (file: string, line: number, symbol: string, hash: string) => ({
+    file, line, anchor: { scope: 'symbol' as const, symbol, start_line: line + 2, end_line: line + 2, hash },
+  });
+  const A = 'sha256-v1:8c2aa1520479a9530f4f85770a2d2770076bf6450f7cb4a764fead7ad324e81a';
+  const B = 'sha256-v1:ad546572adc53463c970c562c03fcf7dd321e7c055c996f62009afd8006f2eba';
+
+  const exposure = (over: Record<string, unknown> = {}) => ({
+    asset: '#api', threat: '#sqli', severity: 'critical', external_refs: [],
+    description: 'findUser concatenates email', location: anchored('src/a.ts', 4, 'findUser', A), ...over,
+  } as never);
+
+  const hashOf = (sarif: ReturnType<typeof generateSarif>, i: number) =>
+    (sarif.runs[0].results[i].properties as Record<string, unknown>).anchorHash as string | undefined;
+
+  it('emits the fingerprint and properties.anchorHash, equal, on exposure and confirmed results', () => {
+    const sarif = generateSarif(model({
+      exposures: [exposure()],
+      confirmed: [exposure()],
+    }));
+    expect(sarif.runs[0].results.length).toBe(2);
+    for (const r of sarif.runs[0].results) {
+      const fromProps = (r.properties as Record<string, unknown>).anchorHash;
+      expect(fromProps).toBe(A);
+      expect(r.partialFingerprints?.['guardlink/anchorHash']).toBe(fromProps);
+    }
+  });
+
+  it('omits both when the location carries no anchor — never a null', () => {
+    const sarif = generateSarif(model({ exposures: [exposure({ location: loc('src/a.ts', 4) })] }));
+    const r = sarif.runs[0].results[0];
+    expect((r.properties as Record<string, unknown>)).not.toHaveProperty('anchorHash');
+    expect(r.partialFingerprints).not.toHaveProperty('guardlink/anchorHash');
+    // The threat id is untouched by the anchor being absent.
+    expect(r.partialFingerprints?.['guardlink/threatId']).toMatch(/^gl-[0-9a-f]{12}$/);
+  });
+
+  it('separates two siblings that share one threat id but anchor different code', () => {
+    // GAP-58: same asset, same threat, same file, so the threat id cannot tell them apart.
+    const sarif = generateSarif(model({
+      exposures: [
+        exposure(),
+        exposure({ description: 'findOrder concatenates id', location: anchored('src/a.ts', 9, 'findOrder', B) }),
+      ],
+    }));
+    const ids = sarif.runs[0].results.map(r => (r.properties as Record<string, unknown>).threatId);
+    expect(ids[0]).toBe(ids[1]);
+    expect(hashOf(sarif, 0)).not.toBe(hashOf(sarif, 1));
+  });
+
+  it('does not move when only the line moves', () => {
+    const early = generateSarif(model({ exposures: [exposure()] }));
+    const drifted = generateSarif(model({ exposures: [exposure({ location: anchored('src/a.ts', 87, 'findUser', A) })] }));
+    expect(hashOf(early, 0)).toBe(A);
+    expect(hashOf(drifted, 0)).toBe(A);
+  });
+
+  it('is the same for two siblings whose anchored code is byte-identical — the bound on this discriminator', () => {
+    // The hash covers the anchor's code tokens. Two exposures on one doc-block anchor the same
+    // code, so they carry one hash and nothing here separates them. Stated so the claim is not
+    // read as "the join is now unambiguous".
+    const sarif = generateSarif(model({
+      exposures: [
+        exposure(),
+        exposure({ description: 'a second claim on the same function', location: anchored('src/a.ts', 5, 'findUser', A) }),
+      ],
+    }));
+    expect(hashOf(sarif, 0)).toBe(A);
+    expect(hashOf(sarif, 1)).toBe(A);
+  });
+});

@@ -12,10 +12,11 @@ import { createRequire } from 'node:module';
 import { parseProject } from '../src/parser/parse-project.js';
 import {
   HYPOTHESES_FILE, readHypotheses, writeHypotheses, emptyHypotheses,
-  classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, confirmedLine, writeConfirmedLine,
+  classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, resolveTarget, confirmedLine, writeConfirmedLine,
 } from '../src/hypothesis/index.js';
 import { lintAnnotations } from '../src/gate/index.js';
 import { generateDashboardHTML } from '../src/dashboard/index.js';
+import { generateSarif } from '../src/analyzer/sarif.js';
 
 const DEFINITIONS = `/**
  * @asset App.API (#api) -- "API surface"
@@ -254,4 +255,280 @@ describe('the CLI', () => {
     expect(status.stdout).toMatch(/Hypotheses:\s+2 untested, 0 confirmed, 1 refuted, 0 retest/);
     expect(status.stdout).toMatch(/Exposures:\s+3 \(1 refuted with evidence\)/);
   }, 120_000);
+});
+
+// ─── GAP-58: the stamp and the sibling that landed on its line ────────
+
+/**
+ * Two exposures with the same asset, the same threat and the same file. GuardLink
+ * derives the threat id from exactly that tuple, so both carry ONE id, and the
+ * only thing on a stamped finding that tells them apart is the anchor hash.
+ */
+const SIBLINGS = `import x from 'x';
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "A: findUser concatenates email"
+ */
+export function findUser(email: string) { return email; }
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "B: findOrder concatenates id"
+ */
+export function findOrder(id: string) { return id; }
+`;
+
+/** A is gone and B's @exposes now sits on line 4 — the line A was tested at. */
+const B_ON_A_LINE = `import x from 'x';
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "B: findOrder concatenates id"
+ */
+export function findOrder(id: string) { return id; }
+`;
+
+async function siblings(source: string): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), 'guardlink-gap58-'));
+  await mkdir(join(root, '.guardlink'), { recursive: true });
+  await mkdir(join(root, 'src'), { recursive: true });
+  await writeFile(join(root, '.guardlink', 'definitions.ts'), DEFINITIONS);
+  await writeFile(join(root, 'src', 'a.ts'), source);
+  return root;
+}
+
+/** What cxg stamps onto a finding: the exported result's location and its fingerprints. */
+function stamp(sarif: ReturnType<typeof generateSarif>, line: number) {
+  const r = sarif.runs[0].results.find(x => x.locations[0].physicalLocation.region.startLine === line);
+  if (!r) throw new Error(`no exported result at line ${line}`);
+  return {
+    file: r.locations[0].physicalLocation.artifactLocation.uri,
+    line: r.locations[0].physicalLocation.region.startLine,
+    threat_id: r.partialFingerprints!['guardlink/threatId'],
+    anchor_hash: r.partialFingerprints!['guardlink/anchorHash'],
+  };
+}
+
+const gap58Scan = (annotation: Record<string, unknown>) => ({
+  scan_id: 'cxg-gap58',
+  findings: [{
+    id: 'f1', template_id: 'login-sqli', severity: 'critical', confidence: 0.94,
+    title: 'SQLi in findUser', cwe_ids: ['CWE-89'], annotation,
+    evidence: { request: "POST /u email=' OR 1=1--", response: 'HTTP 200 3 rows', matched_patterns: ['rows'], data: {} },
+  }],
+});
+
+/** A well-formed anchor hash that no claim in these fixtures carries. */
+const UNRELATED_HASH = 'sha256-v1:' + '0'.repeat(64);
+
+async function writeScan(root: string, scan: unknown): Promise<string> {
+  const path = join(root, 'scan.json');
+  await writeFile(path, JSON.stringify(scan));
+  return path;
+}
+
+describe('scan import — the anchor hash as a discriminator', () => {
+  it('still confirms when nothing moved: the stamped claim is the claim that is there', async () => {
+    const root = await siblings(SIBLINGS);
+    const model = await parse(root);
+    const a = stamp(generateSarif(model), 4);
+    expect(a.anchor_hash).toMatch(/^sha256-v1:[0-9a-f]{64}$/);
+
+    const path = await writeScan(root, gap58Scan({ file: a.file, line: a.line, anchor_hash: a.anchor_hash }));
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    expect(r.confirmed).toHaveLength(1);
+    expect(`${r.confirmed[0].record.file}:${r.confirmed[0].record.line}`).toBe('src/a.ts:4');
+    expect(r.confirmed[0].record.key).toBe(resolveTarget(model, 'src/a.ts:4').key);
+    expect(r.confirmed[0].record.location.anchor?.symbol).toBe('findUser');
+    expect(r.stale).toEqual([]);
+  }, 60000);
+
+  it('refuses the sibling that landed on the tested line', async () => {
+    // A was tested at src/a.ts:4, then deleted; B now sits on line 4. B matches every
+    // other stamped value — same file, same line, same asset, same threat, so the same
+    // threat id — and differs only in the code it is anchored to.
+    const tested = await siblings(SIBLINGS);
+    const testedModel = await parse(tested);
+    const a = stamp(generateSarif(testedModel), 4);
+
+    const root = await siblings(B_ON_A_LINE);
+    const model = await parse(root);
+    const b = stamp(generateSarif(model), 4);
+    expect(b.threat_id).toBe(a.threat_id);
+    expect(b.anchor_hash).not.toBe(a.anchor_hash);
+
+    const path = await writeScan(root, gap58Scan({ file: a.file, line: a.line, anchor_hash: a.anchor_hash }));
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    expect(r.confirmed).toEqual([]);
+    expect(r.stale.map(s => s.finding.id)).toEqual(['f1']);
+    expect(r.stale[0].candidates.map(c => `${c.file}:${c.line}`)).toEqual(['src/a.ts:4']);
+    // Nothing was written: no entry, and B is still untested.
+    expect(readHypotheses(root).status).toBe('absent');
+  }, 60000);
+
+  it('joins as before when the finding carries no anchor hash', async () => {
+    // The same scan without the stamp. Older reports keep the behaviour they had —
+    // and this is the join the stamp exists to narrow.
+    const root = await siblings(B_ON_A_LINE);
+    const model = await parse(root);
+    const path = await writeScan(root, gap58Scan({ file: 'src/a.ts', line: 4 }));
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    expect(r.confirmed).toHaveLength(1);
+    expect(r.confirmed[0].joinedBy).toBe('location');
+    expect(r.stale).toEqual([]);
+  }, 60000);
+
+  it('narrows an otherwise ambiguous join to the claim the stamp names', async () => {
+    // No location on the finding, so the join falls to asset and threat and fits both
+    // siblings. The stamp says which code was tested, so there is one candidate left.
+    const root = await siblings(SIBLINGS);
+    const model = await parse(root);
+    const a = stamp(generateSarif(model), 4);
+
+    const path = await writeScan(root, gap58Scan({ asset: '#api', threat: '#sqli', anchor_hash: a.anchor_hash }));
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    expect(r.ambiguous).toEqual([]);
+    expect(r.confirmed).toHaveLength(1);
+    expect(r.confirmed[0].joinedBy).toBe('asset-threat');
+    expect(r.confirmed[0].record.key).toBe(resolveTarget(model, 'src/a.ts:4').key);
+  }, 60000);
+
+  it('the CLI refuses it too: nothing recorded, and it says why', async () => {
+    const tsx = createRequire(import.meta.url).resolve('tsx/cli');
+    const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
+    const tested = await siblings(SIBLINGS);
+    const a = stamp(generateSarif(await parse(tested)), 4);
+
+    const root = await siblings(B_ON_A_LINE);
+    await writeScan(root, gap58Scan({ file: a.file, line: a.line, anchor_hash: a.anchor_hash }));
+    const run = await new Promise<{ code: number; stdout: string }>((res) =>
+      execFile(process.execPath, [tsx, cli, 'hypothesis', 'confirm', '.', '--from-scan', 'scan.json'],
+        { cwd: root, maxBuffer: 64 * 1024 * 1024 },
+        (err, stdout) => res({ code: (err as { code?: number } | null)?.code ?? 0, stdout })));
+
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain('1 stale');
+    expect(run.stdout).toMatch(/tested against code that is no longer at src\/a\.ts:4/);
+    expect(existsSync(join(root, HYPOTHESES_FILE))).toBe(false);
+  }, 120_000);
+
+  it('joins as before when no candidate claim carries an anchor', async () => {
+    // Anchors are attached per file and go null all-or-nothing for a file that is
+    // outside the root, unreadable, or fails to parse (src/structure/attach.ts).
+    // With nothing to compare against, a stamped finding must not be refused.
+    const root = await siblings(B_ON_A_LINE);
+    const model = (await parseProject({ root, project: 'h', anchors: false })).model;
+    expect(model.exposures[0].location.anchor).toBeUndefined();
+
+    const path = await writeScan(root, gap58Scan({ file: 'src/a.ts', line: 4, anchor_hash: UNRELATED_HASH }));
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    expect(r.stale).toEqual([]);
+    expect(r.confirmed).toHaveLength(1);
+  }, 60000);
+
+  it('refusing a mixed candidate set costs no confirmation — that join was ambiguous either way', async () => {
+    // Candidates span two files, and one file's anchors are null (the state
+    // attach.ts leaves for a file it could not read). The stamp matches neither
+    // anchored candidate. Refusing here removes nothing: without the stamp the
+    // same three candidates were reported ambiguous, never confirmed.
+    const root = await siblings(SIBLINGS);
+    await writeFile(join(root, 'src', 'b.ts'), `import y from 'y';
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "C: findAccount concatenates id"
+ */
+export function findAccount(id: string) { return id; }
+`);
+    const model = await parse(root);
+    const inB = model.exposures.find(e => e.location.file === 'src/b.ts')!;
+    inB.location.anchor = null;
+    // Mixed by construction: two claims anchored, one not.
+    expect(model.exposures).toHaveLength(3);
+    expect(model.exposures.filter(e => e.location.anchor?.hash)).toHaveLength(2);
+    expect(model.exposures.map(e => e.location.anchor?.hash ?? null)).not.toContain(UNRELATED_HASH);
+
+    // Joined by asset and threat, so all three claims are candidates.
+    const stamped = await writeScan(root, gap58Scan({ asset: '#api', threat: '#sqli', anchor_hash: UNRELATED_HASH }));
+    const withStamp = importScan(root, model, stamped, { by: 'cxg', at: NOW });
+    expect(withStamp.confirmed).toEqual([]);
+    expect(withStamp.stale.map(x => x.candidates.length)).toEqual([3]);
+
+    const bare = await writeScan(root, gap58Scan({ asset: '#api', threat: '#sqli' }));
+    const withoutStamp = importScan(root, model, bare, { by: 'cxg', at: NOW });
+    expect(withoutStamp.confirmed).toEqual([]);
+    expect(withoutStamp.ambiguous.map(x => x.candidates.length)).toEqual([3]);
+  }, 60000);
+
+  it('a file-scope anchor refuses after any edit to that file — the same edit the ledger already expires on', async () => {
+    // A module-level doc-block anchors the whole FILE (scope "file", reason
+    // "first-node"): 108 of this repository's 115 exposures at 283d41e are that
+    // shape. Its hash therefore moves on an unrelated edit elsewhere in the file,
+    // and a stamp taken before that edit is refused. That is not a new judgement:
+    // the ledger already expires an outcome the moment the hash moves, so the
+    // refusal declines to write exactly what would be marked `retest` on sight.
+    const MODULE = `/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "the query builder concatenates"
+ */
+import x from 'x';
+
+export function findUser(email: string) { return email; }
+`;
+    const root = await siblings(MODULE);
+    const before = await parse(root);
+    expect(before.exposures[0].location.anchor).toMatchObject({ scope: 'file', reason: 'first-node' });
+    const a = stamp(generateSarif(before), 2);
+
+    // The ledger's existing rule, on this exact edit: a confirmation recorded now
+    // becomes `retest` once the file changes.
+    recordOutcome(root, before, 'src/a.ts:2', 'confirmed', { evidence: CONFIRM, by: 'human:test', at: NOW });
+    await writeFile(join(root, 'src', 'a.ts'), `${MODULE}
+export function unrelatedHelper(n: number) { return n + 1; }
+`);
+    const after = await parse(root);
+    expect(after.exposures[0].location.anchor!.hash).not.toBe(a.anchor_hash);
+    const c = classifyHypotheses(after, readHypotheses(root));
+    expect(c.records.find(r => r.verb === 'exposes')!.state).toBe('retest');
+
+    // And the join refuses a stamp from before that edit.
+    const path = await writeScan(root, gap58Scan({ file: a.file, line: a.line, anchor_hash: a.anchor_hash }));
+    const r = importScan(root, after, path, { by: 'cxg', at: NOW });
+    expect(r.confirmed).toEqual([]);
+    expect(r.stale.map(x => x.finding.id)).toEqual(['f1']);
+  }, 60000);
+
+  it('does not separate siblings that anchor the same code — the bound on this discriminator', async () => {
+    // NOT desired behaviour: the limit of what a hash over the anchor's code tokens
+    // can do. Two @exposes in one doc-block anchor the same function, so they carry
+    // one anchor hash. Delete the first and the second moves onto its line carrying a
+    // hash equal to the stamp, and the stamp cannot tell that this is a different
+    // claim. Separating these needs an identity the anchor hash does not hold.
+    const shared = (claims: string) => `import x from 'x';
+
+/**
+${claims}
+ */
+export function findUser(email: string) { return email; }
+`;
+    const A = ' * @exposes #api to #sqli [critical] cwe:CWE-89 -- "A: findUser concatenates email"';
+    const B = ' * @exposes #api to #sqli [critical] cwe:CWE-89 -- "B: findUser skips the allowlist"';
+
+    const tested = await siblings(shared(`${A}\n${B}`));
+    const testedModel = await parse(tested);
+    const a = stamp(generateSarif(testedModel), 4);
+
+    const root = await siblings(shared(B));
+    const model = await parse(root);
+    const b = stamp(generateSarif(model), 4);
+    expect(b.anchor_hash).toBe(a.anchor_hash);
+
+    const path = await writeScan(root, gap58Scan({ file: a.file, line: a.line, anchor_hash: a.anchor_hash }));
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    // The confirmation lands on a claim that is not the one the probe tested.
+    expect(r.confirmed).toHaveLength(1);
+    expect(r.confirmed[0].record.key).not.toBe(resolveTarget(testedModel, 'src/a.ts:4').key);
+  }, 60000);
 });

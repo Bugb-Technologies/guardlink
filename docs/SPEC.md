@@ -1048,6 +1048,38 @@ CWE references additionally populate the `cwe` property on SARIF results, which 
 
 When uploaded to GitHub via the Code Scanning API, `@exposes` annotations appear as inline security alerts on the relevant lines in pull requests.
 
+### 6.5. Result Identity
+
+Each `@exposes` and `@confirmed` result carries its identity in SARIF's own
+`partialFingerprints`, mirrored into `properties` for consumers without a SARIF library:
+
+| Key | `properties` mirror | Over |
+|---|---|---|
+| `guardlink/threatId` | `threatId` | `(asset, threat, file)` |
+| `guardlink/anchorHash` | `anchorHash` | the anchored code's non-comment leaf tokens, in order |
+
+`guardlink/threatId` is the coarse, stable identity: one threat keeps one id across its
+lifecycle, so the `@exposes` and the `@confirmed` that later proves it mint the same id, and
+the id does not move when the claim changes line. The line is therefore not in it, and neither
+is the message.
+
+`guardlink/anchorHash` is present when the claim has an anchor and absent otherwise — never
+null. It is the same hash the hypothesis ledger records an outcome against. Because it is over
+the anchored CODE rather than the location, it holds when a claim moves lines and differs when
+the claim sits on different code. Two exposures sharing `(asset, threat, file)` therefore share
+one `threatId` and are told apart by `anchorHash`.
+
+A consumer that stamps a result's identity onto a finding and later joins that finding back to
+a claim MUST treat a mismatched `anchorHash` as a non-match. Without it, a sibling exposure that
+comes to occupy the tested line matches every other stamped value and the finding joins to a
+claim that was never tested. `guardlink hypothesis confirm --from-scan` implements exactly this
+rule.
+
+**Bound.** The hash covers the anchor's code tokens, so it separates siblings whose anchored code
+differs and **cannot** separate two byte-identical anchors — two `@exposes` in one doc-block
+anchor the same code and carry one hash. This narrows such a join; it does not make it
+unambiguous.
+
 ---
 
 ## 7. Diff and Change Detection

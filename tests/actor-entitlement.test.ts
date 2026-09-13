@@ -540,6 +540,35 @@ describe('§9.8 uncited and imprecise are independent', () => {
   });
 });
 
+describe('§3.2 still holds with the anchor hash on every result', () => {
+  // The anchor hash is a second keyed fingerprint on each result. §3.2 has to be
+  // re-proved for anything new a result carries: an entitlement must not change a
+  // byte of it either.
+  const anchored = {
+    asset: '#archival-fs', threat: '#path-traversal', severity: 'high' as const,
+    external_refs: [], description: 'archival URI is used as a filesystem path',
+    location: {
+      ...loc('common/archiver/filestore/archiver.go', 61),
+      anchor: { scope: 'symbol' as const, symbol: 'Archive', start_line: 63, end_line: 71, hash: 'sha256-v1:ad546572adc53463c970c562c03fcf7dd321e7c055c996f62009afd8006f2eba' },
+    },
+  };
+
+  it('produces byte-identical SARIF when the results carry an anchor hash', () => {
+    const without = generateSarif(model({ exposures: [anchored] }));
+    const with_ = generateSarif(model({
+      exposures: [anchored],
+      actors: [actor('ns-admin', 'Namespace_Admin')],
+      entitlements: [effective()],
+    }));
+    // The hash is present, so this is not passing on an absent field.
+    expect(without.runs[0].results[0].partialFingerprints?.['guardlink/anchorHash']).toBe(anchored.location.anchor.hash);
+    expect(JSON.stringify(with_.runs[0].results)).toBe(JSON.stringify(without.runs[0].results));
+    expect(JSON.stringify(with_.runs[0].tool)).toBe(JSON.stringify(without.runs[0].tool));
+    expect(with_.runs[0].properties.annotation_hash)
+      .not.toBe(without.runs[0].properties.annotation_hash);
+  });
+});
+
 describe('§3.2 still holds with the threat slot', () => {
   const exposure = {
     asset: '#archival-fs', threat: '#path-traversal', severity: 'high' as const,

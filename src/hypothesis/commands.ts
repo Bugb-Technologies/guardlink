@@ -15,6 +15,8 @@
  * @flows #cli -> SourceFiles via writeConfirmedLine -- "The @confirmed line, on --write"
  * @handles internal on #cli -- "Request and response evidence from scans, redacted"
  * @comment -- "A confirmation is held to the same evidence bar the gate holds @confirmed to; a refutation needs evidence too, just not the same words, because 'the validator rejected it' is evidence of absence"
+ * @comment -- "importScan() joins a finding carrying an anchor_hash only to a claim whose anchor hash is that hash, and reports the rest as stale rather than confirming them; the hash is over the anchored code, so it holds across a line move and separates a sibling claim that landed on the tested line. Two byte-identical anchors carry one hash and are not separated. A candidate set with no anchors leaves the join as it was"
+ * @audit #cli -- "The stale bucket refuses a join rather than guessing it; a human decides whether to re-test or record the outcome by hand, and needs to see these — the CLI exits non-zero when any finding lands there"
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
@@ -101,6 +103,8 @@ export interface ScanFinding {
   annotation: { file: string; line: number } | null;
   asset: string | null;
   threat: string | null;
+  /** The anchor hash the export stamped onto the finding (`guardlink/anchorHash`), when it carries one. */
+  anchor_hash: string | null;
   evidence: { request: string | null; response: string | null; matched_patterns: string[]; data: Record<string, unknown> };
 }
 
@@ -110,6 +114,8 @@ export interface ImportResult {
   scanId: string;
   confirmed: { finding: ScanFinding; record: HypothesisRecord; entry: HypothesisEntry; joinedBy: JoinedBy }[];
   ambiguous: { finding: ScanFinding; candidates: HypothesisRecord[] }[];
+  /** The finding's anchor hash matches no candidate's: the code it was tested against is not here. */
+  stale: { finding: ScanFinding; candidates: HypothesisRecord[] }[];
   unmatched: ScanFinding[];
 }
 
@@ -132,6 +138,7 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
     annotation: ann && typeof ann.file === 'string' && typeof ann.line === 'number' ? { file: ann.file, line: ann.line } : null,
     asset: str(o.asset) ?? str(ann?.asset),
     threat: str(o.threat) ?? str(ann?.threat),
+    anchor_hash: str(o.anchor_hash) ?? str(ann?.anchor_hash),
     evidence: {
       request: str(ev.request), response: str(ev.response),
       matched_patterns: Array.isArray(ev.matched_patterns) ? ev.matched_patterns.filter((p): p is string => typeof p === 'string') : [],
@@ -154,6 +161,26 @@ export function scanEvidence(scanId: string, f: ScanFinding): string {
  * Join each finding to a claim — by annotation location, then by asset and
  * threat, then by CWE — and record the confirmed ones. A finding that fits
  * more than one claim is reported as ambiguous, never guessed.
+ *
+ * A finding that carries an anchor hash joins only to a claim whose anchor hash
+ * is that hash. The hash comes from the SARIF export (`guardlink/anchorHash`)
+ * and is over the anchored CODE, so it holds when the claim moves lines and
+ * differs when the claim is a different piece of code. That is what separates a
+ * finding from a sibling claim that landed on the line it was tested at: same
+ * file, same asset, same threat, therefore the same threat id, and nothing else
+ * on the finding tells them apart. It cannot separate two byte-identical anchors
+ * — two @exposes on one doc-block carry one hash — so this narrows the join
+ * rather than closing it. When no candidate carries an anchor at all there is
+ * nothing to compare and the join is left as it was.
+ *
+ * The rule removes a confirmation in exactly one shape: a single candidate,
+ * anchored, whose hash is not the stamp. With two or more candidates the join
+ * was already ambiguous rather than a confirmation, so refusing costs nothing;
+ * with none anchored the rule does not run. A claim anchored at FILE scope —
+ * the shape a module doc-block resolves to — moves its hash on any edit to that
+ * file, so a stamp from before such an edit is refused; that is the same change
+ * `classifyHypotheses` already expires an outcome on, so this declines to write
+ * what would be marked `retest` on sight rather than making a new judgement.
  */
 export function importScan(root: string, model: ThreatModel, scanPath: string, input: { by: string; at: string }): ImportResult {
   const abs = inside(root, scanPath);
@@ -185,7 +212,7 @@ export function importScan(root: string, model: ThreatModel, scanPath: string, i
     return own;
   };
 
-  const result: ImportResult = { scanId, confirmed: [], ambiguous: [], unmatched: [] };
+  const result: ImportResult = { scanId, confirmed: [], ambiguous: [], stale: [], unmatched: [] };
   const ledger = loadForWrite(root);
   for (const f of findings) {
     let candidates: HypothesisRecord[] = [];
@@ -205,6 +232,14 @@ export function importScan(root: string, model: ThreatModel, scanPath: string, i
       if (candidates.length > 0) joinedBy = 'cwe';
     }
     if (!joinedBy) { result.unmatched.push(f); continue; }
+    if (f.anchor_hash) {
+      const anchored = candidates.filter(r => r.location.anchor?.hash);
+      if (anchored.length > 0) {
+        const same = anchored.filter(r => r.location.anchor!.hash === f.anchor_hash);
+        if (same.length === 0) { result.stale.push({ finding: f, candidates }); continue; }
+        candidates = same;
+      }
+    }
     if (candidates.length > 1) { result.ambiguous.push({ finding: f, candidates }); continue; }
     const record = candidates[0];
     const entry = upsert(ledger, record, 'confirmed', {

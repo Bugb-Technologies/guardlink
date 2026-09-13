@@ -1672,7 +1672,8 @@ const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: strin
       } else if (r.confirmed.length > 0) {
         console.log('\nadd --write to insert an @confirmed line beneath each joined @exposes');
       }
-      if (r.ambiguous.length > 0 || r.unmatched.length > 0) process.exitCode = 1;
+      // @comment -- "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped code is not there) and unmatched each need a human, and a silent 0 would read as 'all imported'"
+      if (r.ambiguous.length > 0 || r.stale.length > 0 || r.unmatched.length > 0) process.exitCode = 1;
       return;
     }
     if (!target) { console.error('Name the exposure as file:line, or pass --from-scan <report.json>.'); process.exitCode = 1; return; }
@@ -1707,7 +1708,7 @@ hypothesis
   .argument('[dir]', 'Project directory', '.')
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--evidence <text>', 'The request and response, the reproduction, or the scan proof (required without --from-scan)')
-  .option('--from-scan <file>', 'A cxg scan report (JSON); each finding is joined to a claim by location, then asset and threat, then CWE')
+  .option('--from-scan <file>', 'A cxg scan report (JSON); each finding is joined to a claim by location, then asset and threat, then CWE. A finding carrying an anchor_hash joins only to a claim anchoring that code')
   .option('--by <name>', 'Who tested it (default: human:<git user.name>; cxg for --from-scan)')
   .option('--write', 'Also insert the @confirmed line beneath the @exposes in the source')
   .action(outcomeAction('confirmed'));

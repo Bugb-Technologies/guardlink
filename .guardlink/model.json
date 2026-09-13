@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:85be6b3207b3d6aec41e498d2a333a3662d08af23628dc76dc3000142784729f",
+    "annotation_hash": "sha256-v3:880d24e291319bb664abb289cbabe5a2913cdd1dfb85cd0fbee443df25398ee2",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 150,
-  "annotations_parsed": 747,
+  "annotations_parsed": 752,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -3690,7 +3690,7 @@
       "description": "Model input",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 41
+        "line": 42
       }
     },
     {
@@ -3700,7 +3700,7 @@
       "description": "SARIF output",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 42
+        "line": 43
       }
     },
     {
@@ -4000,7 +4000,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2777
+        "line": 2778
       }
     },
     {
@@ -4010,7 +4010,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2780
+        "line": 2781
       }
     },
     {
@@ -5389,6 +5389,14 @@
       }
     },
     {
+      "asset": "#cli",
+      "description": "The stale bucket refuses a join rather than guessing it; a human decides whether to re-test or record the outcome by hand, and needs to see these — the CLI exits non-zero when any finding lands there",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 19
+      }
+    },
+    {
       "asset": "#init",
       "description": "Config file may contain API keys; .gitignore entry added automatically",
       "location": {
@@ -5643,7 +5651,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3507
+        "line": 3508
       }
     },
     {
@@ -6210,6 +6218,13 @@
       }
     },
     {
+      "description": "Exposure and confirmed results carry the claim's anchor hash as partialFingerprints['guardlink/anchorHash'], mirrored to properties.anchorHash, omitted when the claim has no anchor. The threat id is derived from (asset, threat, file) and so is shared by siblings in one file; the anchor hash is over the anchored code, so it separates siblings whose code differs and is unchanged by a line move. It cannot separate two byte-identical anchors — exposures sharing one doc-block carry one hash",
+      "location": {
+        "file": "src/analyzer/sarif.ts",
+        "line": 41
+      }
+    },
+    {
       "description": "Artifacts carry a provenance header so a stale one is detectable rather than merely wrong",
       "location": {
         "file": "src/artifacts/emit.ts",
@@ -6385,17 +6400,24 @@
       }
     },
     {
+      "description": "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped code is not there) and unmatched each need a human, and a silent 0 would read as 'all imported'",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1675
+      }
+    },
+    {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3453
+        "line": 3454
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3508
+        "line": 3509
       }
     },
     {
@@ -6700,10 +6722,24 @@
       }
     },
     {
+      "description": "importScan() joins a finding carrying an anchor_hash only to a claim whose anchor hash is that hash, and reports the rest as stale rather than confirming them; the hash is over the anchored code, so it holds across a line move and separates a sibling claim that landed on the tested line. Two byte-identical anchors carry one hash and are not separated. A candidate set with no anchors leaves the join as it was",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 18
+      }
+    },
+    {
       "description": "Plain padded tables like printStatus; nothing here reads a file",
       "location": {
         "file": "src/hypothesis/format.ts",
         "line": 5
+      }
+    },
+    {
+      "description": "formatImport() prints the stale bucket beside ambiguous and unmatched: a finding whose stamped anchor hash matches no candidate names the claims it was refused against and the command to record it by hand",
+      "location": {
+        "file": "src/hypothesis/format.ts",
+        "line": 6
       }
     },
     {
@@ -7359,7 +7395,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 747,
+    "annotation_count": 752,
     "coverage_percent": 87
   },
   "external_refs": []

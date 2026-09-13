@@ -38,6 +38,7 @@
  * @comment -- "runs[0].properties.annotation_hash stamps the export with the annotations it was cut from (R10), so a hygiene gate can tell a current SARIF from one built three commits ago — this file is the pentest surface, and a stale one decides which exposures get tested"
  * @comment -- "@entitles has no export semantics by design: SARIF for a model with entitlements is byte-identical to one without, so an entitlement can never hide an exposure from the pentest export (actor-entitlement design §3.2)"
  * @comment -- "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} derived from the asset's inbound @flows route so downstream HTTP consumers (e.g. cert-x-gen) can target the endpoint; emitted verbatim from the annotation, no base path assumed"
+ * @comment -- "Exposure and confirmed results carry the claim's anchor hash as partialFingerprints['guardlink/anchorHash'], mirrored to properties.anchorHash, omitted when the claim has no anchor. The threat id is derived from (asset, threat, file) and so is shared by siblings in one file; the anchor hash is over the anchored code, so it separates siblings whose code differs and is unchanged by a line move. It cannot separate two byte-identical anchors — exposures sharing one doc-block carry one hash"
  * @flows ThreatModel -> #sarif via generateSarif -- "Model input"
  * @flows #sarif -> SarifLog via return -- "SARIF output"
  */
@@ -118,6 +119,12 @@ interface SarifResult {
    * SARIF-native stable-identity mechanism, understood by other SARIF tooling. We put the
    * guardlink threat id here so a result can be tracked across exports independently of its
    * line/order. Mirrored into `properties.threatId` for consumers without a SARIF library.
+   *
+   * `guardlink/anchorHash` is the second key: the hash of the code the claim is anchored to,
+   * absent when the claim has no anchor. The threat id is derived from (asset, threat, file),
+   * so two exposures that differ only in which code they sit on carry ONE id; the anchor hash
+   * is over the anchored code, so it separates them and does not move when the line does.
+   * Mirrored into `properties.anchorHash` the same way.
    */
   partialFingerprints?: Record<string, string>;
   properties?: Record<string, unknown>;
@@ -238,15 +245,17 @@ export function generateSarif(
 
     const messageText = `${e.asset} is exposed to ${threat}${desc}`;
     const id = threatId(e.asset, e.threat, e.location.file);
+    const anchorHash = e.location.anchor?.hash;
 
     results.push({
       ruleId,
       level,
       message: { text: messageText },
       locations: [locationFrom(e.location.file, e.location.line)],
-      partialFingerprints: { 'guardlink/threatId': id },
+      partialFingerprints: { 'guardlink/threatId': id, ...(anchorHash ? { 'guardlink/anchorHash': anchorHash } : {}) },
       properties: {
         threatId: id,
+        ...(anchorHash ? { anchorHash } : {}),
         severity: e.severity || 'unset',
         asset: e.asset,
         threat: e.threat,
@@ -263,15 +272,17 @@ export function generateSarif(
 
     const messageText = `CONFIRMED: ${c.asset} exploitable via ${threat}${desc}`;
     const id = threatId(c.asset, c.threat, c.location.file);
+    const anchorHash = c.location.anchor?.hash;
 
     results.push({
       ruleId: 'guardlink/confirmed-exploitable',
       level: 'error',
       message: { text: messageText },
       locations: [locationFrom(c.location.file, c.location.line)],
-      partialFingerprints: { 'guardlink/threatId': id },
+      partialFingerprints: { 'guardlink/threatId': id, ...(anchorHash ? { 'guardlink/anchorHash': anchorHash } : {}) },
       properties: {
         threatId: id,
+        ...(anchorHash ? { anchorHash } : {}),
         severity: c.severity || 'unset',
         asset: c.asset,
         threat: c.threat,

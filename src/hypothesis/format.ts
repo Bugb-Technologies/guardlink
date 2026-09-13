@@ -3,6 +3,7 @@
  *
  * @handles internal on #cli -- "Evidence strings printed to the terminal"
  * @comment -- "Plain padded tables like printStatus; nothing here reads a file"
+ * @comment -- "formatImport() prints the stale bucket beside ambiguous and unmatched: a finding whose stamped anchor hash matches no candidate names the claims it was refused against and the command to record it by hand"
  */
 import type { HypothesisClassification, HypothesisRecord, RankedHypothesis } from './classify.js';
 import type { HypothesisEntry } from './ledger.js';
@@ -64,11 +65,16 @@ export function formatOutcome(record: HypothesisRecord, entry: HypothesisEntry, 
 }
 
 export function formatImport(r: ImportResult): string {
-  const lines = [`${r.confirmed.length} ${r.confirmed.length === 1 ? 'finding' : 'findings'} joined to a claim, ${r.ambiguous.length} ambiguous, ${r.unmatched.length} unmatched  (scan ${r.scanId})`];
+  const lines = [`${r.confirmed.length} ${r.confirmed.length === 1 ? 'finding' : 'findings'} joined to a claim, ${r.ambiguous.length} ambiguous, ${r.stale.length} stale, ${r.unmatched.length} unmatched  (scan ${r.scanId})`];
   for (const c of r.confirmed) lines.push('', formatOutcome(c.record, c.entry), `  joined    by ${c.joinedBy}`);
   for (const a of r.ambiguous) {
     lines.push('', `Ambiguous  ${a.finding.id} (${a.finding.template_id}) fits ${a.candidates.length} claims — pick one and record it by hand:`);
     for (const c of a.candidates) lines.push(`  guardlink hypothesis confirm ${c.file}:${c.line} --evidence "…"`);
+  }
+  for (const s of r.stale) {
+    const where = s.candidates.map(c => `${c.file}:${c.line}`).join(', ');
+    lines.push('', `Stale      ${s.finding.id} (${s.finding.template_id}) was tested against code that is no longer at ${where}; the ${s.candidates.length === 1 ? 'claim' : 'claims'} there now ${s.candidates.length === 1 ? 'anchors' : 'anchor'} different code. Re-test against the tree as it is, or record it by hand:`);
+    for (const c of s.candidates) lines.push(`  guardlink hypothesis confirm ${c.file}:${c.line} --evidence "…"`);
   }
   for (const u of r.unmatched) lines.push('', `Unmatched  ${u.id} (${u.template_id}, ${u.title || 'no title'}): no claim carries this location, asset/threat or CWE. If it is real, annotate it first.`);
   return lines.join('\n');

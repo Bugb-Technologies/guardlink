@@ -28,7 +28,9 @@ claim was tested against reality.
 - A GAL verb for "refuted". The claim stays `@exposes`; the ledger carries the outcome.
 - Importing which hypothesis a probe attached to when cxg does not say (SEAM-12). Until then the
   join is by annotation location, then by asset and threat, then by CWE, and an ambiguous match
-  is reported, not guessed.
+  is reported, not guessed. When cxg does say — a finding carrying the `guardlink/anchorHash`
+  the SARIF export stamped — the join is narrowed to the claim anchoring that code, and a
+  mismatch is reported as stale rather than confirmed.
 
 ## Architecture
 
@@ -81,7 +83,12 @@ guardlink hypothesis confirm --from-scan <report.json> [dir] [--by <name>] [--wr
 words. `--write` inserts the offered `@confirmed` line directly beneath the `@exposes`, with the
 same comment prefix, and reports the file and line. `--from-scan` joins each finding to a claim
 (annotation location → asset and threat → CWE), records the confirmed ones, and lists the
-unmatched and the ambiguous. `--intake` prints the ranked queue as a brief for `bugb intake`.
+unmatched, the ambiguous and the stale. A finding carrying `anchor_hash` joins only to a claim
+whose anchor hash is that hash: the hash is over the anchored code, so it holds across a line
+move and separates a sibling claim that came to sit on the tested line, where file, line, asset,
+threat and threat id all match. It cannot separate two byte-identical anchors — two `@exposes`
+on one doc-block carry one hash — and where no candidate carries an anchor the join is
+unchanged. `--intake` prints the ranked queue as a brief for `bugb intake`.
 
 ### Where the state shows
 
