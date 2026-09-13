@@ -111,5 +111,13 @@ export function formatImport(r: ImportResult): string {
     lines.push(`           Nothing was recorded and no weaker join was tried: the value says nothing about which claim was tested, so a confirmation from it would rest on what was just rejected. Whatever produced this report is emitting something else under a guardlink name — fix that, or drop the field and the coarse joins apply again.`);
   }
   for (const u of r.unmatched) lines.push('', `Unmatched  ${u.id} (${u.template_id}, ${u.title || 'no title'}): no claim carries this location, asset/threat or CWE. If it is real, annotate it first.`);
+  // A note, never a refusal: the valid key was used and the join stands. But a
+  // producer putting something else under a guardlink name is worth saying out
+  // loud — selecting the good key silently is the hiding already rejected once.
+  const junk = findings.flatMap(f => f.junk_stamps.map(s => ({ f, s })));
+  if (junk.length > 0) {
+    lines.push('', `Note       a valid claim key was used, but ${junk.length} other ${junk.length === 1 ? 'value' : 'values'} arrived under a guardlink name and ${junk.length === 1 ? 'is' : 'are'} not claim keys. The joins above are unaffected; whatever wrote these should stop:`);
+    for (const { f, s } of junk) lines.push(`  ${f.id}: ${JSON.stringify(short(s.value, 40))} in ${s.field}`);
+  }
   return lines.join('\n');
 }

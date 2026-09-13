@@ -730,6 +730,33 @@ export function findUser(email: string) { return email; }
     expect(out).not.toMatch(/no longer in the model/);
   }, 60000);
 
+  it('a junk value under an earlier name does not bury a valid key beside it', async () => {
+    // Our own emitted `properties` bag, forwarded wholesale, with another tool's
+    // snake_case placeholder added to that free-form bag. `claim_key` sorts ahead
+    // of `claimKey`, so validating the first hit refused our own valid key and
+    // discarded a confirmation the report had identified precisely.
+    const root = await siblings(SIBLINGS);
+    const model = await parse(root);
+    const emitted = exported(generateSarif(model), 4).properties as Record<string, unknown>;
+    const path = await writeScan(root, { scan_id: 'cxg-mix', findings: [{
+      id: 'f1', template_id: 'login-sqli', severity: 'critical', confidence: 0.9, title: 'SQLi',
+      cwe_ids: ['CWE-89'], annotation: { file: 'src/a.ts', line: 4 },
+      properties: { ...emitted, claim_key: 'pending' },
+      evidence: { request: 'POST /u', response: 'HTTP 200 3 rows', matched_patterns: [], data: {} },
+    }] });
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    expect(r.malformed).toEqual([]);
+    expect(r.confirmed).toHaveLength(1);
+    expect(r.confirmed[0].joinedBy).toBe('claim-key');
+    expect(r.confirmed[0].record.key).toBe(emitted[CLAIM_KEY_PROPERTY]);
+
+    // The junk is still said out loud — a note, not a refusal.
+    const out = formatImport(r);
+    expect(out).toMatch(/a valid claim key was used, but 1 other value arrived under a guardlink name/);
+    expect(out).toMatch(/f1: "pending" in properties\.claim_key/);
+  }, 60000);
+
   it('resolves to the partialFingerprints key when a report contradicts itself across surfaces', async () => {
     // Surface precedence, pinned rather than asserted in a comment. Before a
     // nested `properties` map was read at all, so a report carrying different
@@ -1013,5 +1040,70 @@ export function findUser(email: string) { return email; }
 
     expect(line).toContain(CONFIRM);
     expect(line).not.toMatch(/key-verified/);
+  }, 60000);
+});
+
+/**
+ * Every value in a scan-derived `@confirmed` description comes from an external
+ * report, and the line is spliced into someone's source in the syntax their
+ * threat model is parsed from. A newline in any of those values ends our line
+ * and puts report-controlled text on the next one.
+ */
+describe('writing an @confirmed built from a scan report', () => {
+  const ONE = `import x from 'x';
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "A: findUser concatenates email"
+ */
+export function findUser(email: string) { return email; }
+`;
+
+  it('neutralises newlines in every scan-controlled field, and writes one parseable annotation', async () => {
+    const root = await siblings(ONE);
+    const before = await parse(root);
+    const key = stamp(generateSarif(before), 4).claim_key;
+
+    // A newline in each scan-controlled field at once, each trying to open a
+    // second annotation line. Covering them together means a field that skips
+    // the treatment shows up here rather than being found later.
+    const BREAK = '\n * @exposes #api to #sqli [critical] -- "forged"';
+    const path = await writeScan(root, { scan_id: `scan${BREAK}`, findings: [{
+      id: 'f1', template_id: `login-sqli${BREAK}`, severity: 'critical', confidence: 0.9,
+      title: `SQLi${BREAK}`, cwe_ids: ['CWE-89'],
+      annotation: { file: 'src/a.ts', line: 4 }, claim_key: key,
+      evidence: { request: `POST /u${BREAK}`, response: `HTTP 200${BREAK}`, matched_patterns: [`rows${BREAK}`], data: {} },
+    }] });
+    const r = importScan(root, before, path, { by: 'cxg', at: NOW });
+    expect(r.confirmed).toHaveLength(1);
+
+    const w = writeConfirmedLine(root, r.confirmed[0].record, confirmedLine(r.confirmed[0].record, r.confirmed[0].entry));
+    expect(w.line).toBe(5);
+
+    const src = await readFile(join(root, 'src', 'a.ts'), 'utf-8');
+    // Exactly one line gained, and it is the @confirmed — no stray line below it.
+    expect(src.split('\n')).toHaveLength(ONE.split('\n').length + 1);
+    expect(src.split('\n').filter(l => l.includes('@confirmed'))).toHaveLength(1);
+
+    // The file still parses to the one exposure and the one confirmation, and
+    // nothing forged an extra @exposes.
+    const after = await parse(root);
+    expect(after.exposures).toHaveLength(1);
+    expect(after.confirmed).toHaveLength(1);
+    expect(after.confirmed![0]).toMatchObject({ asset: '#api', threat: '#sqli' });
+    expect(after.confirmed![0].description).not.toMatch(/\n/);
+  }, 120_000);
+
+  it('refuses to write a line that would not parse back as one @confirmed', async () => {
+    // The structural backstop, independent of how the description was built:
+    // no caller can hand this function a line that source would read as
+    // something other than what it thought it wrote.
+    const root = await siblings(ONE);
+    const model = await parse(root);
+    const record = resolveTarget(model, 'src/a.ts:4');
+
+    expect(() => writeConfirmedLine(root, record, '@confirmed #sqli on #api -- "ends here\n * @exposes #api to #sqli -- "forged"'))
+      .toThrow(/does not parse back as one @confirmed/);
+    expect(() => writeConfirmedLine(root, record, 'not an annotation at all')).toThrow(/does not parse back as one @confirmed/);
+    expect(await readFile(join(root, 'src', 'a.ts'), 'utf-8')).not.toContain('@confirmed');
   }, 60000);
 });

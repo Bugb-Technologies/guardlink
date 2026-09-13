@@ -1132,11 +1132,19 @@ situations follow, and a consumer MUST NOT collapse them:
 |---|---|---|
 | no stamp | nothing claimed which claim was tested | the coarse joins apply |
 | a well-formed key naming no claim | the claim it was tested against is gone | **stale**: reported, never re-joined |
-| a stamp that is not a claim key | a producer is emitting something else under a guardlink name | **malformed**: reported with the value and the field, never joined |
+| no well-formed key, and at least one unshaped value | a producer is emitting something else under a guardlink name | **malformed**: reported with the value and the field, never joined |
+| a well-formed key *and* unshaped values beside it | the report is usable; something else is also writing under our names | joins by key, and the unshaped values are **noted** |
 
 A malformed stamp is not treated as absent: falling back to the coarse joins would confirm on the
 strength of a value just rejected, and folding it into "unstamped" hides the one thing worth
 knowing. It is not treated as stale either — nothing about it says a claim is gone.
+
+The shape check runs **after** every candidate has been collected, never on whichever one the
+precedence happened to reach first. Validating a single selected candidate validates the wrong
+thing: these containers are shared bags, so a foreign `claim_key` placeholder sorting ahead of our
+own emitted `claimKey` — in the same object, from the same forwarded map — would bury a valid key
+and refuse a confirmation the report had identified precisely. The key is the first **valid**
+candidate in precedence order.
 
 **Writing an `@confirmed` back to source requires a key-verified join.** The annotation is a claim
 in the repository that the exposure was tested and proven; later scans, reviewers and this export
@@ -1145,6 +1153,16 @@ a different exposure than the probe tested, so `--from-scan --write` inserts onl
 ones, names each one it skipped and how to record it deliberately, and states the provenance in
 the line it does write. A manual confirmation is unaffected: it is human evidence about a named
 target, with no join to qualify.
+
+**A written description is external text, and is treated as such.** Every value in a scan-derived
+`@confirmed` — the template id, the title, the matched patterns, the request and the response —
+comes from the report, and the line is spliced into a file whose annotations are line-oriented. So
+all of them are collapsed to one line at the single boundary they enter through, then quote- and
+backslash-escaped, and the assembled line is **re-parsed** before anything is written: a line that
+does not read back as exactly one `@confirmed` is refused rather than written. Collapsing per field
+at each interpolation is what left the title and the matched patterns raw while the request and
+response were handled, and a newline in any of them ends the annotation and puts report-controlled
+text on the next line of someone's doc-block.
 
 **Bound.** Two BYTE-IDENTICAL claims in one file — same verb, same identity arguments, same
 external refs *and* the same description — share a digest and are told apart only by an ordinal

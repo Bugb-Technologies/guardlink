@@ -252,7 +252,14 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
   coarse joins apply), a well-formed key naming no claim (**stale**), and a value that is not a key
   at all (**malformed** — reported with the value and the field it arrived in, never joined,
   because guessing from the coarse tiers would confirm on what was just rejected). All of
-  ambiguous, stale, malformed and unmatched exit non-zero.
+  ambiguous, stale, malformed and unmatched exit non-zero. Every candidate is collected before the
+  check runs, so a foreign `claim_key` sitting beside our own emitted `claimKey` in a forwarded bag
+  cannot bury it: the key is the first *valid* candidate in precedence order, and the unshaped ones
+  are reported as a note that changes neither the join nor the exit status.
+- **A scan-derived `@confirmed` is built from external text.** Every value in its description comes
+  from the report, and the line goes into a file whose annotations are line-oriented, so all of them
+  are collapsed to one line at a single boundary, quote-escaped, and the finished line is re-parsed
+  before it is written — a line that does not read back as exactly one `@confirmed` is refused.
 - **`--write` only inserts a key-verified confirmation.** An `@confirmed` in source is a claim that
   the exposure was tested and proven — later scans, reviewers and `guardlink sarif` read it, and
   unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a

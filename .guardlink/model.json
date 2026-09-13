@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:6fbddbd8a4a22295712a63d2a40c9e78053a4d63e97e19ae966eaf2ce595c101",
+    "annotation_hash": "sha256-v3:4e7d10fff5374da94d459a21acd126d669aae0645f8d5010c8a48fb726ee3fe9",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 150,
-  "annotations_parsed": 759,
+  "annotations_parsed": 762,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -1408,6 +1408,16 @@
     {
       "asset": "#cli",
       "threat": "#arbitrary-write",
+      "control": "#input-sanitize",
+      "description": "Every scan-controlled value passes through oneLine() at the one boundary it enters through (scanEvidence) rather than per interpolation, then escapeDesc() for quotes and backslashes; and writeConfirmedLine() re-parses the assembled line with parseLine and refuses anything that is not exactly one @confirmed, so a value that broke out of its quotes or its line is never written",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 25
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
       "control": "#path-validation",
       "description": "The path is fixed relative to the project root (HYPOTHESES_FILE); nothing in an entry chooses where the file goes",
       "location": {
@@ -2678,6 +2688,19 @@
       "location": {
         "file": "src/hypothesis/commands.ts",
         "line": 12
+      }
+    },
+    {
+      "asset": "#cli",
+      "threat": "#arbitrary-write",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-74"
+      ],
+      "description": "scanEvidence() interpolates scan-report-controlled strings — template_id, title, matched_patterns, request, response — into the @confirmed description writeConfirmedLine() splices into a source file; a newline in any of them ends the annotation and places report-controlled text on the next line of someone's doc-block, in the syntax their threat model is parsed from",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 24
       }
     },
     {
@@ -5297,6 +5320,15 @@
       }
     },
     {
+      "control": "#input-sanitize",
+      "asset": "#cli",
+      "description": "tests/hypothesis.test.ts drives a scan finding whose title, template_id and matched_patterns each carry a real newline through the real write path and asserts the file gains one annotation line that parses back as one @confirmed",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 26
+      }
+    },
+    {
       "control": "#resource-limits",
       "asset": "#mcp",
       "description": "tests/graph-sparse-repo.test.ts builds two repos differing only in unannotated file count and pins that payload size does not follow it",
@@ -5402,7 +5434,7 @@
       "description": "The stale bucket refuses a join rather than guessing it, and offers no by-hand target on purpose: the claims the coarse tiers would have named are different claims, so recording this evidence against one is the confirmation the key just refused. The malformed bucket refuses for the same reason one level earlier. The CLI exits non-zero when any finding lands in either",
       "location": {
         "file": "src/hypothesis/commands.ts",
-        "line": 24
+        "line": 27
       }
     },
     {
@@ -6766,7 +6798,7 @@
       }
     },
     {
-      "description": "A stamp is only taken as ours when it matches CLAIM_KEY_PATTERN; three names across six containers include free-form bags another tool may also write a claim_key into, and any non-empty string being read as a key diverts a joinable finding to stale on the strength of a value nobody checked. A present-but-unshaped stamp gets its own reported state — not unstamped, not stale — because a producer emitting something else under our name is worth knowing and cannot be recovered later",
+      "description": "A stamp is only taken as ours when it matches CLAIM_KEY_PATTERN; three names across six containers include free-form bags another tool may also write a claim_key into. All candidates are collected first and the shape check partitions them AFTER, because validating only the first hit checked the wrong candidate — a foreign placeholder sorting ahead of our own emitted claimKey in the same forwarded bag buried a valid key. The key is the first VALID candidate in precedence order; only when none is valid is the finding refused as malformed, and unshaped values found beside a good key are reported as a note that changes neither the join nor the exit status",
       "location": {
         "file": "src/hypothesis/commands.ts",
         "line": 22
@@ -7446,7 +7478,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 759,
+    "annotation_count": 762,
     "coverage_percent": 87
   },
   "external_refs": []

@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/cli.threats.mmd
 %% scope:           PARTIAL — #cli only — its own threats and controls, narrowed to high and critical (13 lower-severity claim(s) omitted to keep it readable)
-%% annotation_hash: sha256-v3:6fbddbd8a4a22295712a63d2a40c9e78053a4d63e97e19ae966eaf2ce595c101
+%% annotation_hash: sha256-v3:4e7d10fff5374da94d459a21acd126d669aae0645f8d5010c8a48fb726ee3fe9
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -18,8 +18,8 @@ graph LR
   cmd_injection["🔴 Command_Injection (cwe:CWE-78)"]:::threat
   path_validation["🛡️ Path_Validation"]:::control
   key_redaction["🛡️ Key_Redaction"]:::control
-  param_commands["🛡️ Parameterized_Commands"]:::control
   input_sanitize["🛡️ Input_Sanitization"]:::control
+  param_commands["🛡️ Parameterized_Commands"]:::control
   cli -. exposes .-> path_traversal
   cli -. exposes .-> arbitrary_write
   cli -. exposes .-> api_key_exposure
@@ -29,9 +29,10 @@ graph LR
   path_validation -- mitigates --> arbitrary_write
   key_redaction -- mitigates --> api_key_exposure
   key_redaction -. protects .-> cli
-  param_commands -- mitigates --> cmd_injection
-  param_commands -. protects .-> cli
   input_sanitize -- mitigates --> arbitrary_write
   input_sanitize -. protects .-> cli
+  param_commands -- mitigates --> cmd_injection
+  param_commands -. protects .-> cli
+  input_sanitize -. validates .-> cli
   classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
   classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px

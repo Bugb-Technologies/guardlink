@@ -19,8 +19,11 @@
  * @comment -- "The claim key is read under every name in CLAIM_KEY_NAMES and from every container generated from CLAIM_KEY_SURFACES (src/parser/claim-key.ts) — the same definition guardlink sarif emits through — so the finding's top level, its annotation object, and either emitted surface nested under its own name at either level all resolve. Names AND surfaces live in that one definition because each time only one dimension was shared the disagreement simply moved to the other, and an unrecognised stamp takes the weaker join while the output tells the operator to start sending the stamp they already sent"
  * @comment -- "The @validates below sits here rather than on its test on purpose: .guardlink/config.json excludes the tests directory and every nested one from the scan, so an annotation moved into tests/hypothesis.test.ts is never parsed — it would leave the threat model entirely and a lookup of the validations for #cli would answer nothing instead of pointing anywhere. Every validation in this repo lives with the implementation it proves and names its test in the description; see src/parser/parse-file.ts, src/parser/comment-strip.ts and src/mcp/subgraph.ts. Do not move it"
  * @validates #config-validation for #cli -- "tests/hypothesis.test.ts forwards a real generateSarif result's emitted surfaces into the scan finding without naming a field, in every placement generated from CLAIM_KEY_SURFACES, so neither the names nor the containers the reader accepts can drift from what the export writes"
- * @comment -- "A stamp is only taken as ours when it matches CLAIM_KEY_PATTERN; three names across six containers include free-form bags another tool may also write a claim_key into, and any non-empty string being read as a key diverts a joinable finding to stale on the strength of a value nobody checked. A present-but-unshaped stamp gets its own reported state — not unstamped, not stale — because a producer emitting something else under our name is worth knowing and cannot be recovered later"
+ * @comment -- "A stamp is only taken as ours when it matches CLAIM_KEY_PATTERN; three names across six containers include free-form bags another tool may also write a claim_key into. All candidates are collected first and the shape check partitions them AFTER, because validating only the first hit checked the wrong candidate — a foreign placeholder sorting ahead of our own emitted claimKey in the same forwarded bag buried a valid key. The key is the first VALID candidate in precedence order; only when none is valid is the finding refused as malformed, and unshaped values found beside a good key are reported as a note that changes neither the join nor the exit status"
  * @comment -- "confirmedLine() states the join provenance in a scan-derived @confirmed, because that line is a claim in someone's repository that this exposure was tested, not a report line. The CLI refuses to write one that was not key-verified; the provenance in the text is what keeps that refusal meaningful after the caller changes"
+ * @exposes #cli to #arbitrary-write [high] cwe:CWE-74 -- "scanEvidence() interpolates scan-report-controlled strings — template_id, title, matched_patterns, request, response — into the @confirmed description writeConfirmedLine() splices into a source file; a newline in any of them ends the annotation and places report-controlled text on the next line of someone's doc-block, in the syntax their threat model is parsed from"
+ * @mitigates #cli against #arbitrary-write using #input-sanitize -- "Every scan-controlled value passes through oneLine() at the one boundary it enters through (scanEvidence) rather than per interpolation, then escapeDesc() for quotes and backslashes; and writeConfirmedLine() re-parses the assembled line with parseLine and refuses anything that is not exactly one @confirmed, so a value that broke out of its quotes or its line is never written"
+ * @validates #input-sanitize for #cli -- "tests/hypothesis.test.ts drives a scan finding whose title, template_id and matched_patterns each carry a real newline through the real write path and asserts the file gains one annotation line that parses back as one @confirmed"
  * @audit #cli -- "The stale bucket refuses a join rather than guessing it, and offers no by-hand target on purpose: the claims the coarse tiers would have named are different claims, so recording this evidence against one is the confirmation the key just refused. The malformed bucket refuses for the same reason one level earlier. The CLI exits non-zero when any finding lands in either"
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -29,6 +32,11 @@ import type { ThreatModel } from '../types/index.js';
 import { hasEvidenceWords } from '../gate/lint.js';
 import { redactEvidence } from '../analyze/format.js';
 import { CLAIM_KEY_NAMES, CLAIM_KEY_SURFACES, isClaimKey } from '../parser/claim-key.js';
+import { parseLine } from '../parser/parse-line.js';
+// `oneLine` and `escapeDesc` are the treatment this repo already applies at every
+// annotation write site; reused rather than re-implemented so a third copy cannot
+// drift. No cycle: src/review only imports parser modules and types.
+import { oneLine, escapeDesc } from '../review/index.js';
 import { readHypotheses, writeHypotheses, emptyHypotheses, type HypothesisEntry, type HypothesisOutcome, type HypothesisSource, type HypothesesLedger, type JoinedBy } from './ledger.js';
 import { classifyHypotheses, type HypothesisRecord } from './classify.js';
 
@@ -116,18 +124,25 @@ export interface ScanFinding {
    * worse than no stamp: it takes the weaker join, and the report that carried
    * the discriminator gets told to start sending one.
    *
-   * Null when the finding carried no stamp AND when the stamp it carried is not
-   * shaped like a claim key — the latter lands in `malformed_stamp` instead, so
-   * the two are never confused for each other.
+   * Null when the finding carried no stamp AND when EVERY stamp it carried is
+   * unshaped — the latter lands in `malformed_stamp` instead, so the two are
+   * never confused for each other.
    */
   claim_key: string | null;
   /**
-   * A stamp was present under one of our names but is not a claim key at all.
-   * Its own state: a producer emitting something else under our name is neither
-   * "unstamped" nor "the claim is gone", and folding it into either loses the
-   * one thing worth knowing about it.
+   * Candidates were present under our names and NONE was shaped like a claim
+   * key. Its own state: a producer emitting something else under our name is
+   * neither "unstamped" nor "the claim is gone", and folding it into either
+   * loses the one thing worth knowing about it.
    */
   malformed_stamp: ScanStamp | null;
+  /**
+   * Unshaped candidates found ALONGSIDE a valid key, which was used. Reported as
+   * a note and nothing more: selecting the good key must not silently hide that
+   * something is emitting garbage under a guardlink name, but it is not grounds
+   * to refuse a join the report identified precisely.
+   */
+  junk_stamps: ScanStamp[];
   evidence: { request: string | null; response: string | null; matched_patterns: string[]; data: Record<string, unknown> };
 }
 
@@ -177,11 +192,19 @@ const bag = (v: unknown): Record<string, unknown> | undefined => (v && typeof v 
  * A hand-written list is how the reader came to refuse a shape the export
  * advertised.
  *
- * First match wins, in the precedence those two definitions fix. A well-formed
- * report carries exactly one, so the order only decides a report that
- * contradicts itself.
+ * EVERY candidate is collected, in the precedence those two definitions fix,
+ * and the shape check partitions them afterwards. Validating only the first hit
+ * checked the wrong candidate: several of these containers are free-form bags
+ * another tool may also write a `claim_key` into, so a foreign placeholder
+ * sorting earlier than our own emitted `claimKey` — in the same object, from the
+ * same forwarded bag — buried a perfectly good key and the finding was refused.
+ * A validity check placed after a selection step validates the wrong thing.
+ *
+ * The key is therefore the first VALID candidate in precedence order, so a
+ * report that contradicts itself resolves the way it always did.
  */
-function findingStamp(o: Record<string, unknown>, ann: Record<string, unknown> | undefined): ScanStamp | null {
+function findingStamps(o: Record<string, unknown>, ann: Record<string, unknown> | undefined): ScanStamp[] {
+  const found: ScanStamp[] = [];
   for (const [level, at] of [[o, ''], [ann, 'annotation.']] as const) {
     if (!level) continue;
     const containers: [Record<string, unknown> | undefined, string][] = [[level, at]];
@@ -190,11 +213,11 @@ function findingStamp(o: Record<string, unknown>, ann: Record<string, unknown> |
       if (!c) continue;
       for (const name of CLAIM_KEY_NAMES) {
         const v = str(c[name]);
-        if (v) return { value: v, field: `${prefix}${name}` };
+        if (v) found.push({ value: v, field: `${prefix}${name}` });
       }
     }
   }
-  return null;
+  return found;
 }
 
 function coerceFinding(raw: unknown, i: number): ScanFinding | null {
@@ -203,7 +226,9 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
   const ann = (o.annotation ?? o.location) as Record<string, unknown> | undefined;
   const ev = (o.evidence ?? {}) as Record<string, unknown>;
   const cwe = Array.isArray(o.cwe_ids) ? o.cwe_ids.filter((c): c is string => typeof c === 'string') : [];
-  const stamp = findingStamp(o, ann);
+  const stamps = findingStamps(o, ann);
+  const valid = stamps.filter(s => isClaimKey(s.value));
+  const invalid = stamps.filter(s => !isClaimKey(s.value));
   return {
     id: str(o.id) ?? `finding-${i + 1}`,
     template_id: str(o.template_id) ?? 'unknown-template',
@@ -214,8 +239,9 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
     annotation: ann && typeof ann.file === 'string' && typeof ann.line === 'number' ? { file: ann.file, line: ann.line } : null,
     asset: str(o.asset) ?? str(ann?.asset),
     threat: str(o.threat) ?? str(ann?.threat),
-    claim_key: stamp && isClaimKey(stamp.value) ? stamp.value : null,
-    malformed_stamp: stamp && !isClaimKey(stamp.value) ? stamp : null,
+    claim_key: valid[0]?.value ?? null,
+    malformed_stamp: valid.length === 0 ? invalid[0] ?? null : null,
+    junk_stamps: valid.length > 0 ? invalid : [],
     evidence: {
       request: str(ev.request), response: str(ev.response),
       matched_patterns: Array.isArray(ev.matched_patterns) ? ev.matched_patterns.filter((p): p is string => typeof p === 'string') : [],
@@ -224,13 +250,32 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
   };
 }
 
-/** Evidence text for the ledger: what the template sent and what came back, redacted, plus the scan id. */
+/**
+ * Evidence text for the ledger: what the template sent and what came back,
+ * redacted, plus the scan id.
+ *
+ * EVERY value here comes out of a scan report, and this string can be written
+ * into someone's source as an `@confirmed` description. So all of them go
+ * through `one()` — the single boundary they can enter through — rather than
+ * each interpolation remembering. A per-field helper is exactly how
+ * `template_id`, `title` and `matched_patterns` came to be interpolated raw
+ * while only `request` and `response` were collapsed, and a newline in any of
+ * them ends our line and puts report-controlled text on the next one, in the
+ * syntax the threat model is parsed from.
+ */
 export function scanEvidence(scanId: string, f: ScanFinding): string {
   const red = redactEvidence({ ...f.evidence, timestamp: undefined }) as { request: string | null; response: string | null; matched_patterns: string[] };
-  const cut = (s: string | null): string => (s ? s.replace(/\s+/g, ' ').trim().slice(0, 240) : '(none)');
-  const parts = [`${f.template_id}: ${f.title || 'finding'}`, `request: ${cut(red.request)}`, `response: ${cut(red.response)}`];
-  if (red.matched_patterns.length > 0) parts.push(`matched: ${red.matched_patterns.join(', ')}`);
-  parts.push(`(scan ${scanId})`);
+  const one = (s: string | null | undefined, fallback: string): string => {
+    const flat = oneLine(s ?? '').slice(0, 240);
+    return flat.length > 0 ? flat : fallback;
+  };
+  const parts = [
+    `${one(f.template_id, 'unknown-template')}: ${one(f.title, 'finding')}`,
+    `request: ${one(red.request, '(none)')}`,
+    `response: ${one(red.response, '(none)')}`,
+  ];
+  if (red.matched_patterns.length > 0) parts.push(`matched: ${one(red.matched_patterns.join(', '), '(none)')}`);
+  parts.push(`(scan ${one(scanId, 'scan')})`);
   return parts.join('; ');
 }
 
@@ -347,7 +392,7 @@ export function importScan(root: string, model: ThreatModel, scanPath: string, i
 export function confirmedLine(record: HypothesisRecord, entry: HypothesisEntry): string {
   const cwe = record.refs;
   const sev = record.severity && record.severity !== 'unset' ? ` [${record.severity}]` : '';
-  const desc = `${entry.evidence}${writtenProvenance(entry)}`.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const desc = escapeDesc(oneLine(`${entry.evidence}${writtenProvenance(entry)}`));
   return `@confirmed ${record.threat} on ${record.asset}${sev}${cwe.length ? ` ${cwe.join(' ')}` : ''} -- "${desc}"`;
 }
 
@@ -372,9 +417,21 @@ function writtenProvenance(entry: HypothesisEntry): string {
 
 /**
  * Insert the line directly beneath the @exposes, with the same comment
- * prefix. Refuses when a @confirmed for the pair already sits there.
+ * prefix. Refuses when a @confirmed for the pair already sits there, and
+ * refuses a line that does not parse back as one `@confirmed`.
+ *
+ * The re-parse is the structural half of the same guard `confirmedLine`'s
+ * collapse gives: the description is assembled from a scan report, and a value
+ * that broke out of its quotes or its line would land in source as something
+ * the next parse reads differently from what we thought we wrote. Checking here
+ * rather than in the caller means no caller can skip it. Same reason, and the
+ * same pairing, as `buildAcceptLines` in `src/review/index.ts`.
  */
 export function writeConfirmedLine(root: string, record: HypothesisRecord, line: string): { file: string; line: number } {
+  const parsed = parseLine(line, { file: record.file, line: record.line + 1 });
+  if (parsed.annotation?.verb !== 'confirmed') {
+    throw new Error(`Refusing to write a line that does not parse back as one @confirmed: ${JSON.stringify(line.slice(0, 120))}`);
+  }
   const abs = inside(root, record.file);
   const lines = readFileSync(abs, 'utf-8').split('\n');
   const idx = record.line - 1;
