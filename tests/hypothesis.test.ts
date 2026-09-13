@@ -400,6 +400,37 @@ describe('scan import — the claim key as a discriminator', () => {
     expect(readHypotheses(root).ledger!.entries[0].source).toMatchObject({ kind: 'scan', joined_by: 'location' });
   }, 60000);
 
+  it('does not call a report unstamped when its stamped finding went stale', async () => {
+    // A mixed report: f1 carries A's key and A is gone (stale), f2 carries no key
+    // and joins by location. Whether the report was stamped is a fact about the
+    // findings, not about the ones that confirmed — reading it off `confirmed`
+    // alone announces an unstamped scanner directly above the key it prints.
+    const tested = await siblings(SIBLINGS);
+    const a = stamp(generateSarif(await parse(tested)), 4);
+
+    const root = await siblings(B_ON_A_LINE);
+    const model = await parse(root);
+    const ev = { request: "POST /u email=' OR 1=1--", response: 'HTTP 200 3 rows', matched_patterns: ['rows'], data: {} };
+    const path = await writeScan(root, { scan_id: 'cxg-mixed', findings: [
+      { id: 'f1', template_id: 'login-sqli', severity: 'critical', confidence: 0.94, title: 'SQLi', cwe_ids: ['CWE-89'],
+        annotation: { file: a.file, line: a.line }, claim_key: a.claim_key, evidence: ev },
+      { id: 'f2', template_id: 'order-sqli', severity: 'critical', confidence: 0.9, title: 'SQLi', cwe_ids: ['CWE-89'],
+        annotation: { file: 'src/a.ts', line: 4 }, evidence: ev },
+    ] });
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    expect(r.stale.map(s => s.finding.id)).toEqual(['f1']);
+    expect(r.confirmed.map(c => [c.finding.id, c.joinedBy])).toEqual([['f2', 'location']]);
+
+    const out = formatImport(r);
+    // The stale entry prints the key the report carried, so the report was stamped.
+    expect(out).toContain(a.claim_key.slice(0, 23));
+    expect(out).not.toMatch(/No finding in this report carried a claim key/);
+    // The accurate statement is the one scoped to how the confirmations were reached.
+    expect(out).toMatch(/1 of 1 findings carried no claim key/);
+    expect(out).toMatch(/NOT key-verified: this finding carried no claim key/);
+  }, 60000);
+
   it('resolves an otherwise ambiguous join to the claim the stamp names', async () => {
     // Asset and threat alone fit both siblings. The key names one claim, so the
     // coarse tier never runs and nothing is handed back as ambiguous.

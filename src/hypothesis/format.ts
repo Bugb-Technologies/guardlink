@@ -61,7 +61,7 @@ function joinNote(source: HypothesisEntry['source']): string | null {
   switch (source.joined_by) {
     case 'claim-key': return '  joined    by claim-key — the stamp named this exact claim';
     case undefined: return '  joined    by an unrecorded match — NOT key-verified';
-    default: return `  joined    by ${source.joined_by} — NOT key-verified: the scan carried no claim key, so this matches where the claim sits, not which claim it is`;
+    default: return `  joined    by ${source.joined_by} — NOT key-verified: this finding carried no claim key, so it matches where the claim sits, not which claim it is`;
   }
 }
 
@@ -83,8 +83,13 @@ export function formatOutcome(record: HypothesisRecord, entry: HypothesisEntry, 
 
 export function formatImport(r: ImportResult): string {
   const lines = [`${r.confirmed.length} ${r.confirmed.length === 1 ? 'finding' : 'findings'} joined to a claim, ${r.ambiguous.length} ambiguous, ${r.stale.length} stale, ${r.unmatched.length} unmatched  (scan ${r.scanId})`];
+  // Whether the REPORT carried a stamp is a property of every finding the import
+  // saw, not of the ones that happened to confirm: a stamped finding whose claim
+  // is gone lands in `stale`, never in `confirmed`.
+  const findings = [...r.confirmed.map(c => c.finding), ...r.ambiguous.map(a => a.finding), ...r.stale.map(s => s.finding), ...r.unmatched];
+  const anyStamp = findings.some(f => f.claim_key);
   const stamped = r.confirmed.filter(c => c.joinedBy === 'claim-key').length;
-  if (r.confirmed.length > 0 && stamped === 0) {
+  if (r.confirmed.length > 0 && !anyStamp) {
     lines.push('', `⚠  No finding in this report carried a claim key, so every join below matched where a claim sits rather than which claim it is. A claim that came to occupy a tested line cannot be told from the claim that was tested. Have the scanner forward guardlink/claimKey from the SARIF export.`);
   } else if (stamped < r.confirmed.length) {
     lines.push('', `⚠  ${r.confirmed.length - stamped} of ${r.confirmed.length} findings carried no claim key and were joined on the weaker match; each is labelled below.`);
