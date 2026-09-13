@@ -22,8 +22,8 @@
  * @comment -- "A stamp is only taken as ours when it matches CLAIM_KEY_PATTERN; three names across six containers include free-form bags another tool may also write a claim_key into. All candidates are collected first and the shape check partitions them AFTER, because validating only the first hit checked the wrong candidate — a foreign placeholder sorting ahead of our own emitted claimKey in the same forwarded bag buried a valid key. The key is the first VALID candidate in precedence order; only when none is valid is the finding refused as malformed, and unshaped values found beside a good key are reported as a note that changes neither the join nor the exit status"
  * @comment -- "confirmedLine() states the join provenance in a scan-derived @confirmed, because that line is a claim in someone's repository that this exposure was tested, not a report line. The CLI refuses to write one that was not key-verified; the provenance in the text is what keeps that refusal meaningful after the caller changes"
  * @exposes #cli to #arbitrary-write [high] cwe:CWE-74 -- "scanEvidence() interpolates scan-report-controlled strings — template_id, title, matched_patterns, request, response — into the @confirmed description writeConfirmedLine() splices into a source file; a newline in any of them ends the annotation and places report-controlled text on the next line of someone's doc-block, in the syntax their threat model is parsed from"
- * @mitigates #cli against #arbitrary-write using #input-sanitize -- "Sanitisation covers every grammar the text passes through, not only ours. GuardLink's: every scan-controlled value goes through oneLine() at the one boundary it enters through (scanEvidence) rather than per interpolation, then escapeDesc() for quotes and backslashes, and writeConfirmedLine() re-parses the assembled line and refuses anything that is not exactly one @confirmed. The HOST language's: hostSafe() breaks the block-comment closer of the target file's form (blockCommentCloser, derived per extension from the block forms the parser recognises), because the re-parse reads the bare annotation outside the comment it is spliced into and cannot see a closer that ends the doc-block and puts report text in code position"
- * @validates #input-sanitize for #cli -- "tests/hypothesis.test.ts drives a scan finding whose title, template_id and matched_patterns each carry a real newline through the real write path and asserts the file gains one annotation line that parses back as one @confirmed"
+ * @mitigates #cli against #arbitrary-write using #input-sanitize -- "Sanitisation covers every grammar the text passes through, not only ours. GuardLink's: every scan-controlled value goes through oneLine() at the one boundary it enters through (scanEvidence) rather than per interpolation, then escapeDesc() for quotes and backslashes, and the line that will actually be written is re-parsed and refused unless it reads back as exactly one @confirmed. The HOST language's: commentFormAt() derives the comment form from the SOURCE LINE being written into — not from the file extension, which is a proxy the stripper does not share — and that one derivation both breaks the closer that would end the comment and reproduces the terminator when the @exposes closes its own comment, since the re-parse reads the bare annotation outside the comment it is spliced into and is blind to either"
+ * @validates #input-sanitize for #cli -- "tests/hypothesis.test.ts drives scan-controlled newlines and each host block closer through the real write path — including a language absent from the extension fallback and a self-closing comment — and asserts with src/structure that the host file still resolves the symbol it documents, which the annotation re-parse alone cannot see"
  * @audit #cli -- "The stale bucket refuses a join rather than guessing it, and offers no by-hand target on purpose: the claims the coarse tiers would have named are different claims, so recording this evidence against one is the confirmation the key just refused. The malformed bucket refuses for the same reason one level earlier. The CLI exits non-zero when any finding lands in either"
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -33,7 +33,7 @@ import { hasEvidenceWords } from '../gate/lint.js';
 import { redactEvidence } from '../analyze/format.js';
 import { CLAIM_KEY_NAMES, CLAIM_KEY_SURFACES, isClaimKey } from '../parser/claim-key.js';
 import { parseLine } from '../parser/parse-line.js';
-import { blockCommentCloser, stripCommentPrefix } from '../parser/comment-strip.js';
+import { blockCommentClosers, commentFormAt, isStandaloneAnnotationFile, stripCommentPrefix } from '../parser/comment-strip.js';
 // `oneLine` and `escapeDesc` are the treatment this repo already applies at every
 // annotation write site; reused rather than re-implemented so a third copy cannot
 // drift. No cycle: src/review only imports parser modules and types.
@@ -420,11 +420,14 @@ export function confirmedLine(record: HypothesisRecord, entry: HypothesisEntry):
  * A space after the closer's first character is enough to break it and still
  * shows the reader what the report said. Line comments need nothing here — they
  * end at a newline, which `oneLine` has already removed.
+ *
+ * This pass works from the extension, because the offered line is built without
+ * reading the file and may be pasted anywhere in it. `writeConfirmedLine` runs
+ * the authoritative pass from the form it derives out of the source line; the
+ * two are idempotent, so a closer this one already broke is simply absent there.
  */
 function hostSafe(desc: string, file: string): string {
-  const closer = blockCommentCloser(file);
-  if (!closer || !desc.includes(closer)) return desc;
-  return desc.split(closer).join(`${closer.charAt(0)} ${closer.slice(1)}`);
+  return blockCommentClosers(file).reduce((s, c) => s.split(c).join(`${c.charAt(0)} ${c.slice(1)}`), desc);
 }
 
 /**
@@ -467,10 +470,6 @@ function writtenProvenance(entry: HypothesisEntry): string {
  * and cannot be forgotten halfway.
  */
 export function writeConfirmedLine(root: string, record: HypothesisRecord, line: string): { file: string; line: number } {
-  const parsed = parseLine(line, { file: record.file, line: record.line + 1 });
-  if (parsed.annotation?.verb !== 'confirmed') {
-    throw new Error(`Refusing to write a line that does not parse back as one @confirmed: ${JSON.stringify(line.slice(0, 120))}`);
-  }
   const abs = inside(root, record.file);
   const lines = readFileSync(abs, 'utf-8').split('\n');
   const idx = record.line - 1;
@@ -485,14 +484,33 @@ export function writeConfirmedLine(root: string, record: HypothesisRecord, line:
   // line belongs to THAT claim, and stop on leaving the comment block. A fixed
   // six-line window was a guess about layout that swallowed the sibling below and
   // refused a confirmation nothing else could write.
+  // In a standalone `.gal` file the line's content IS the line; reading it
+  // through `stripCommentPrefix` returns null on the first bare annotation and
+  // breaks the scan before it compares anything, which disabled the guard for
+  // external mode entirely. Same asymmetry, same branch, as `parseFile`.
+  const bare = isStandaloneAnnotationFile(record.file);
   const pair = `@confirmed ${record.threat} on ${record.asset}`;
   for (let i = idx + 1; i < lines.length; i++) {
-    const inner = stripCommentPrefix(lines[i]);
-    if (inner === null || inner.includes('@exposes')) break;
+    const inner = bare ? lines[i] : stripCommentPrefix(lines[i]);
+    // A `@source` starts a new anchoring block, so anything past it describes a
+    // different location — the `.gal` counterpart of the next `@exposes`.
+    if (inner === null || inner.includes('@exposes') || inner.includes('@source')) break;
     if (inner.includes(pair)) throw new Error(`${record.file}:${i + 1} already carries ${pair}`);
   }
+  // One derivation of the comment form being written into answers both host-
+  // grammar questions: which sequence would end this comment, and whether the
+  // line closes itself. A self-closing `@exposes` inherits its opener into the
+  // inserted line, so without reproducing the terminator the file is left inside
+  // an unterminated comment and everything below it silently leaves the compile.
+  const form = commentFormAt(lines, idx, record.file);
+  const safe = form.closers.reduce((s, c) => s.split(c).join(`${c.charAt(0)} ${c.slice(1)}`), line);
+  const reparsed = parseLine(safe, { file: record.file, line: record.line + 1 });
+  if (reparsed.annotation?.verb !== 'confirmed') {
+    throw new Error(`Refusing to write a line that does not parse back as one @confirmed: ${JSON.stringify(safe.slice(0, 120))}`);
+  }
   const prefix = src.slice(0, src.indexOf('@exposes'));
-  lines.splice(idx + 1, 0, `${prefix}${line}`);
+  const close = form.selfClosing ? ` ${form.closers[0]}` : '';
+  lines.splice(idx + 1, 0, `${prefix}${safe}${close}`);
   writeFileSync(abs, lines.join('\n'));
   return { file: record.file, line: record.line + 1 };
 }

@@ -134,33 +134,91 @@ export function isStandaloneAnnotationFile(filePath: string): boolean {
 }
 
 /**
- * The sequence that ends a block comment, per extension — one entry per block
- * form `stripCommentPrefix` above recognises.
- *
- * Anything WRITTEN into a comment passes through two grammars: GuardLink's, and
- * the host language's comment syntax. Escaping only ours leaves the host's
- * intact, and one of these sequences inside a description ends the comment early
- * and puts the rest of the line in code position — in a file we are editing on
- * someone else's behalf. Line comments need no entry: they end at a newline, and
- * a written description is already collapsed to one line.
- *
- * Keyed by extension because the damage is language-specific. A `*` followed by
- * `/` is inert in a Python file and fatal in a TypeScript one, and mangling text
- * that was never dangerous loses evidence for nothing.
+ * Every block form `stripCommentPrefix` above recognises, opener paired with the
+ * sequence that ends it. One definition: the stripper's forms and the closers a
+ * writer must neutralise are the same set, and a set written twice drifts.
  */
-const BLOCK_CLOSERS: Readonly<Record<string, string>> = {
-  '.ts': '*/', '.tsx': '*/', '.js': '*/', '.jsx': '*/', '.mts': '*/', '.cts': '*/',
-  '.java': '*/', '.c': '*/', '.h': '*/', '.cpp': '*/', '.cc': '*/', '.hpp': '*/',
-  '.cs': '*/', '.go': '*/', '.rs': '*/', '.swift': '*/', '.kt': '*/', '.kts': '*/',
-  '.scala': '*/', '.dart': '*/', '.php': '*/', '.css': '*/', '.scss': '*/', '.less': '*/',
-  '.hs': '-}',
-  '.ml': '*)', '.mli': '*)', '.pas': '*)',
-  '.html': '-->', '.xml': '-->', '.svg': '-->', '.vue': '-->',
+const BLOCK_FORMS: ReadonlyArray<{ open: string; close: string }> = [
+  { open: '/*', close: '*/' },
+  { open: '<!--', close: '-->' },
+  { open: '{-', close: '-}' },
+  { open: '(*', close: '*)' },
+];
+
+/**
+ * Block closers a file could plausibly carry, for a line that does not show its
+ * own opener — the LAST resort behind `commentFormAt`, which reads the source.
+ *
+ * At least as wide as what the stripper accepts for that language, because a
+ * table thinner than the stripper leaves the host-grammar defect reachable
+ * exactly where it is thin. Markup carries two: an annotation in an inline
+ * `<script>` or `<style>` doc-block is stripped the same way and is exposed to
+ * the C-family closer as well as its own.
+ *
+ * Languages whose only comment form is a line comment need no entry — a line
+ * comment ends at a newline, and a written description is already one line.
+ */
+const BLOCK_CLOSERS: Readonly<Record<string, readonly string[]>> = {
+  '.ts': ['*/'], '.tsx': ['*/'], '.js': ['*/'], '.jsx': ['*/'], '.mts': ['*/'], '.cts': ['*/'],
+  '.java': ['*/'], '.c': ['*/'], '.h': ['*/'], '.cpp': ['*/'], '.cc': ['*/'], '.hpp': ['*/'],
+  '.cs': ['*/'], '.go': ['*/'], '.rs': ['*/'], '.swift': ['*/'], '.kt': ['*/'], '.kts': ['*/'],
+  '.scala': ['*/'], '.dart': ['*/'], '.php': ['*/'],
+  '.css': ['*/'], '.scss': ['*/'], '.less': ['*/'],
+  '.sql': ['*/'], '.tf': ['*/'], '.hcl': ['*/'],
+  '.hs': ['-}'],
+  '.ml': ['*)'], '.mli': ['*)'], '.pas': ['*)'],
+  '.html': ['-->', '*/'], '.xml': ['-->'], '.svg': ['-->', '*/'], '.vue': ['-->', '*/'],
 };
 
-/** The block-comment closer that could end a comment in this file, if it has one. */
-export function blockCommentCloser(filePath: string): string | null {
-  return BLOCK_CLOSERS[extname(filePath).toLowerCase()] ?? null;
+/** Closers this file could carry, when the line itself cannot settle the form. */
+export function blockCommentClosers(filePath: string): readonly string[] {
+  return BLOCK_CLOSERS[extname(filePath).toLowerCase()] ?? [];
+}
+
+/** The comment form an annotation line sits in. */
+export interface LineCommentForm {
+  /** Sequences that would end this comment — empty for a line comment. */
+  closers: readonly string[];
+  /** The line opens AND closes its own comment, so a line added after it needs its own terminator. */
+  selfClosing: boolean;
+}
+
+/**
+ * The comment form of `lines[idx]`, derived from the SOURCE rather than guessed
+ * from the path.
+ *
+ * Writing into a comment raises two questions and they have one answer: which
+ * sequence would end this comment (so a description carrying it is neutralised),
+ * and does this line close itself (so a line inserted after it must reopen and
+ * close its own). The file extension answers neither reliably — the stripper
+ * accepts `/* … *` + `/` in any file with no language gate, so the extension is
+ * a proxy that is thinner than reality in one direction and wrong in the other.
+ *
+ * Read in order: the line's own opener settles it; a line-comment marker means
+ * no closer at all; otherwise the line is a continuation, so look back for the
+ * block that opened it; and only when even that is absent fall back to the
+ * extension.
+ */
+export function commentFormAt(lines: readonly string[], idx: number, filePath: string): LineCommentForm {
+  const own = blockFormOpenedBy(lines[idx] ?? '');
+  if (own) return { closers: [own.close], selfClosing: closesItself(lines[idx], own) };
+  const trimmed = (lines[idx] ?? '').trimStart();
+  if (LINE_MARKERS.some(m => trimmed.startsWith(m.prefix))) return { closers: [], selfClosing: false };
+  for (let i = idx - 1; i >= 0; i--) {
+    const open = blockFormOpenedBy(lines[i]);
+    if (open && !closesItself(lines[i], open)) return { closers: [open.close], selfClosing: false };
+  }
+  return { closers: blockCommentClosers(filePath), selfClosing: false };
+}
+
+function blockFormOpenedBy(line: string): { open: string; close: string } | undefined {
+  const trimmed = line.trimStart();
+  return BLOCK_FORMS.find(f => trimmed.startsWith(f.open));
+}
+
+function closesItself(line: string, form: { open: string; close: string }): boolean {
+  const body = line.trim();
+  return body.length >= form.open.length + form.close.length && body.endsWith(form.close);
 }
 
 /**

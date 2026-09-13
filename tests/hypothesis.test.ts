@@ -1189,6 +1189,123 @@ export function login(email: string) { return email; }
     expect(after.confirmed).toHaveLength(1);
     expect(after.exposures).toHaveLength(1);
   }, 120_000);
+
+  it('breaks the closer in a language the extension fallback never listed', async () => {
+    // The extension table was a proxy for the comment form, and thinner than the
+    // stripper: it accepts a C-family block comment in ANY file with no language
+    // gate, so an annotation in a `.sql` block comment is in the model while the
+    // table returned nothing for `.sql` and the closer went in verbatim. The form
+    // now comes from the source line, so the table's width stops mattering here.
+    const root = await siblings(ONE);
+    const CLOSER = '*' + '/';
+    await writeFile(join(root, 'q.sql'), `/*\n * @exposes #api to #sqli [critical] cwe:CWE-89 -- "id concatenated into the predicate"\n ${CLOSER}\nSELECT id FROM users WHERE id = 1;\n`);
+    const model = await parse(root);
+    const sql = model.exposures.find(e => e.location.file === 'q.sql');
+    expect(sql, 'the .sql annotation should be in the model').toBeDefined();
+
+    const key = stamp(generateSarif(model), sql!.location.line).claim_key;
+    await writeScan(root, { scan_id: 'cxg-sql', findings: [finding({
+      claim_key: key, evidence: { request: 'r', response: `HTTP 200 <style>a{}</style> ${CLOSER} x`, matched_patterns: [], data: {} },
+    })] });
+    const run = await runCli(root);
+    expect(run.code).toBe(0);
+
+    const src = await readFile(join(root, 'q.sql'), 'utf-8');
+    const written = src.split('\n').filter(l => l.includes('@confirmed'));
+    expect(written).toHaveLength(1);
+    expect(written[0]).not.toContain(CLOSER);
+    // The block comment still ends where it did, so the statement below it is
+    // still a statement: exactly one closer line, and the SQL is outside it.
+    expect(src.split('\n').filter(l => l.trim() === CLOSER)).toHaveLength(1);
+    expect(src.split('\n').indexOf('SELECT id FROM users WHERE id = 1;')).toBeGreaterThan(
+      src.split('\n').findIndex(l => l.trim() === CLOSER));
+  }, 120_000);
+
+  it('reproduces the terminator when the @exposes closes its own comment', async () => {
+    // A self-closing single-line comment — a form stripCommentPrefix accepts.
+    // The inserted line inherits the opener from it, so without reproducing the
+    // terminator the file is left inside an unterminated comment and everything
+    // below silently leaves the compile.
+    const CLOSER = '*' + '/';
+    const SELF = `import x from 'x';
+
+/** @exposes #api to #sqli [critical] cwe:CWE-89 -- "findUser concatenates email" ${CLOSER}
+export function findUser(email: string) { return email; }
+`;
+    const root = await siblings(SELF);
+    const before = await parse(root);
+    expect(before.exposures).toHaveLength(1);
+    await writeScan(root, { scan_id: 'cxg-self', findings: [finding({ claim_key: stamp(generateSarif(before), 3).claim_key })] });
+    const run = await runCli(root);
+    expect(run.code).toBe(0);
+
+    const src = await readFile(join(root, 'src', 'a.ts'), 'utf-8');
+    const confirmedAt = src.split('\n').findIndex(l => l.includes('@confirmed')) + 1;
+
+    // The host file must still be the language it claims to be: ask the
+    // structural parser, which is what an unterminated comment actually breaks.
+    // The annotation re-parse reads the bare line and is blind to this.
+    const st = await parseStructure(join(root, 'src', 'a.ts'), src);
+    expect(st.language).toBe('typescript');
+    expect(st.anchorForLine(confirmedAt)).toMatchObject({ symbol: 'findUser' });
+    st.dispose();
+
+    const after = await parse(root);
+    expect(after.confirmed).toHaveLength(1);
+    expect(after.exposures).toHaveLength(1);
+  }, 120_000);
+});
+
+/**
+ * External (`.gal`) mode stores annotations as bare lines with no host-language
+ * comment prefix, so a guard that reads each line through `stripCommentPrefix`
+ * sees null on the first one and stops before comparing anything.
+ */
+describe('writing an @confirmed into a .gal file', () => {
+  const GAL = '.guardlink/annotations/src/a.ts.gal';
+  const galProject = async (galBody: string) => {
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-gal-'));
+    await mkdir(join(root, '.guardlink', 'annotations', 'src'), { recursive: true });
+    await mkdir(join(root, 'src'), { recursive: true });
+    await writeFile(join(root, '.guardlink', 'definitions.ts'), DEFINITIONS);
+    await writeFile(join(root, GAL), galBody);
+    await writeFile(join(root, 'src', 'a.ts'), 'export function findUser(email: string) { return email; }\n');
+    return root;
+  };
+
+  it('refuses a second @confirmed for a claim that already carries one', async () => {
+    const root = await galProject(`@source file:src/a.ts line:1\n@exposes #api to #sqli [critical] cwe:CWE-89 -- "findUser concatenates email"\n`);
+    const model = await parse(root);
+    const target = `${GAL}:2`;
+    const first = recordOutcome(root, model, target, 'confirmed', { evidence: CONFIRM, by: 'human:test', at: NOW });
+    writeConfirmedLine(root, first.record, confirmedLine(first.record, first.entry));
+
+    // The claim now carries its confirmation; asking again must be refused, not
+    // appended. Every repeat run used to add another copy.
+    const again = recordOutcome(root, await parse(root), target, 'confirmed', { evidence: CONFIRM, by: 'human:test', at: NOW });
+    expect(() => writeConfirmedLine(root, again.record, confirmedLine(again.record, again.entry)))
+      .toThrow(/already carries @confirmed #sqli on #api/);
+    expect((await readFile(join(root, GAL), 'utf-8')).split('\n').filter(l => l.includes('@confirmed'))).toHaveLength(1);
+  }, 120_000);
+
+  it('still permits a different claim below it, and stops at the next @source', async () => {
+    // The bound is semantic in this mode too: the next @exposes owns what follows,
+    // and a @source starts a new anchoring block describing another location.
+    const root = await galProject(`@source file:src/a.ts line:1\n@exposes #api to #sqli [critical] cwe:CWE-89 -- "A: email param"\n@exposes #api to #sqli [critical] cwe:CWE-89 -- "B: name param"\n@source file:src/b.ts line:1\n@exposes #api to #sqli [critical] cwe:CWE-89 -- "C: other file"\n`);
+    await writeFile(join(root, 'src', 'b.ts'), 'export function findOrder(id: string) { return id; }\n');
+
+    // Descending, as the CLI applies them, so an insertion cannot shift a target.
+    for (const line of [5, 3, 2]) {
+      const o = recordOutcome(root, await parse(root), `${GAL}:${line}`, 'confirmed', { evidence: CONFIRM, by: 'human:test', at: NOW });
+      writeConfirmedLine(root, o.record, confirmedLine(o.record, o.entry));
+    }
+    const gal = (await readFile(join(root, GAL), 'utf-8')).split('\n');
+    expect(gal.filter(l => l.includes('@confirmed'))).toHaveLength(3);
+    // Each confirmation sits directly beneath the claim it belongs to.
+    for (const marker of ['"A: email param"', '"B: name param"', '"C: other file"']) {
+      expect(gal[gal.findIndex(l => l.includes(marker)) + 1]).toMatch(/@confirmed #sqli on #api/);
+    }
+  }, 120_000);
 });
 
 /**
