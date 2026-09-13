@@ -56,8 +56,12 @@ export const DEMOTABLE_VERBS: ReadonlySet<AnnotationVerb> = new Set(['mitigates'
  * scan-report convention uses.
  *
  * Both orders are the reader's precedence for a report that contradicts itself,
- * and keep the names and surfaces that were accepted earliest in front, so
- * widening cannot change what an already-accepted report resolves to.
+ * and each keeps what was accepted earliest in front, so widening cannot change
+ * what an already-accepted report resolves to. The two are therefore SEPARATE
+ * orders: `partialFingerprints` was read before `properties` was, while the
+ * name `claimKey` was accepted before `guardlink/claimKey` was. Deriving one
+ * order from the other satisfies whichever half it happens to match and
+ * silently inverts the other.
  */
 export const CLAIM_KEY_FINGERPRINT = 'guardlink/claimKey';
 export const CLAIM_KEY_PROPERTY = 'claimKey';
@@ -69,12 +73,24 @@ export interface ClaimKeySurface {
   name: string;
 }
 
+/** Surfaces, in the order each became readable. */
 export const CLAIM_KEY_SURFACES: readonly ClaimKeySurface[] = [
-  { container: 'properties', name: CLAIM_KEY_PROPERTY },
   { container: 'partialFingerprints', name: CLAIM_KEY_FINGERPRINT },
+  { container: 'properties', name: CLAIM_KEY_PROPERTY },
 ];
 
-export const CLAIM_KEY_NAMES: readonly string[] = ['claim_key', ...CLAIM_KEY_SURFACES.map(s => s.name)];
+/** Names, in the order each became accepted. */
+const NAME_PRECEDENCE: readonly string[] = ['claim_key', CLAIM_KEY_PROPERTY, CLAIM_KEY_FINGERPRINT];
+
+/**
+ * Every accepted name: the ones above in acceptance order, then any surface
+ * name not among them — a surface added later is newest, so appending it keeps
+ * the order honest while still making the set derive from the surfaces.
+ */
+export const CLAIM_KEY_NAMES: readonly string[] = [
+  ...NAME_PRECEDENCE,
+  ...CLAIM_KEY_SURFACES.map(s => s.name).filter(n => !NAME_PRECEDENCE.includes(n)),
+];
 
 export interface ClaimSource {
   verb: ClaimVerb;
@@ -175,6 +191,21 @@ function allRecords(model: ThreatModel): Rec[] {
   for (const r of model.entitlements ?? []) out.push(['entitles', r]);
   return out;
 }
+
+/**
+ * The shape `relationRecords` mints below — a sha256 digest in lowercase hex,
+ * then the ordinal. It lives here, next to the `${base}:${ordinal}` that
+ * produces it, so a checker cannot drift from the thing it checks.
+ *
+ * A reader accepts the key under three names in six containers, several of them
+ * free-form bags another tool may also write a `claim_key` into. Without this,
+ * any non-empty string is taken as our stamp, and a value that was never a
+ * claim key diverts a finding that would otherwise have joined.
+ */
+export const CLAIM_KEY_PATTERN = /^[0-9a-f]{64}:\d+$/;
+
+/** Whether a value is shaped like a key this module mints. */
+export const isClaimKey = (v: string): boolean => CLAIM_KEY_PATTERN.test(v);
 
 /** Every relationship record with its stable key, in model order. */
 export function relationRecords(model: ThreatModel): ClaimSource[] {

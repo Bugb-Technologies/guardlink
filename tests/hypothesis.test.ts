@@ -698,6 +698,62 @@ export function findUser(email: string) { return email; }
     expect(r.confirmed).toEqual([]);
     expect(r.stale.map(s => s.finding.id)).toEqual(['f1']);
   }, 60000);
+
+  it('a stamp that is not a claim key gets its own state — not unstamped, not stale', async () => {
+    // A placeholder, or a same-named field from another tool, landing in a
+    // free-form bag we now read. Taking any non-empty string as our stamp sent
+    // this finding to `stale` with a definitively wrong cause, destroying a
+    // confirmation the location tier would have made. The three situations —
+    // no stamp, a key naming no claim, a value that is not a key — have three
+    // different right actions and must not collapse into two.
+    const root = await siblings(SIBLINGS);
+    const model = await parse(root);
+    const path = await writeScan(root, { scan_id: 'cxg-bad', findings: [{
+      id: 'f1', template_id: 'login-sqli', severity: 'critical', confidence: 0.9, title: 'SQLi',
+      cwe_ids: ['CWE-89'], annotation: { file: 'src/a.ts', line: 4 },
+      properties: { claim_key: 'pending' },
+      evidence: { request: 'POST /u', response: 'HTTP 200 3 rows', matched_patterns: [], data: {} },
+    }] });
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    expect(r.malformed.map(m => [m.finding.id, m.stamp.value, m.stamp.field])).toEqual([['f1', 'pending', 'properties.claim_key']]);
+    // Its own state: neither of the two it used to be confused with.
+    expect(r.stale).toEqual([]);
+    expect(r.unmatched).toEqual([]);
+    // And never joined: the coarse tiers do not get to confirm on a value we rejected.
+    expect(r.confirmed).toEqual([]);
+    expect(readHypotheses(root).status).toBe('absent');
+
+    const out = formatImport(r);
+    expect(out).toMatch(/1 malformed/);
+    expect(out).toMatch(/carried "pending" in properties\.claim_key, which is not a claim key/);
+    expect(out).not.toMatch(/no longer in the model/);
+  }, 60000);
+
+  it('resolves to the partialFingerprints key when a report contradicts itself across surfaces', async () => {
+    // Surface precedence, pinned rather than asserted in a comment. Before a
+    // nested `properties` map was read at all, so a report carrying different
+    // keys in the two surfaces resolved to the partialFingerprints one — and
+    // widening the reader must not change that.
+    const root = await siblings(SIBLINGS);
+    const model = await parse(root);
+    const a = stamp(generateSarif(model), 4);   // the claim at src/a.ts:4
+    const b = stamp(generateSarif(model), 9);   // the claim at src/a.ts:9
+    expect(a.claim_key).not.toBe(b.claim_key);
+
+    const path = await writeScan(root, { scan_id: 'cxg-both', findings: [{
+      id: 'f1', template_id: 'login-sqli', severity: 'critical', confidence: 0.9, title: 'SQLi',
+      cwe_ids: ['CWE-89'],
+      partialFingerprints: { 'guardlink/claimKey': a.claim_key },
+      properties: { claimKey: b.claim_key },
+      evidence: { request: 'POST /u', response: 'HTTP 200 3 rows', matched_patterns: [], data: {} },
+    }] });
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    expect(r.confirmed).toHaveLength(1);
+    expect(r.confirmed[0].record.key).toBe(a.claim_key);
+    expect(`${r.confirmed[0].record.file}:${r.confirmed[0].record.line}`).toBe('src/a.ts:4');
+  }, 60000);
 });
 
 /**
@@ -884,4 +940,78 @@ export function render(bio: string) { return bio; }
       }
     }
   }, 120_000);
+});
+
+/**
+ * An `@confirmed` written into source is not a report line — it is a claim in
+ * the repository that this exposure was tested and proven, read by later scans,
+ * by reviewers and by `guardlink sarif`, and unlike a ledger entry it never
+ * expires. A coarse-joined confirmation may be about a different exposure than
+ * the probe tested, so `--write` must not put one there.
+ */
+describe('hypothesis confirm --from-scan --write', () => {
+  const EV = { request: "POST /u email=' OR 1=1--", response: 'HTTP 200 3 rows', matched_patterns: ['rows'], data: {} };
+  const ONE = `import x from 'x';
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "A: findUser concatenates email"
+ */
+export function findUser(email: string) { return email; }
+`;
+  const finding = (over: Record<string, unknown>) => ({
+    id: 'f1', template_id: 'login-sqli', severity: 'critical', confidence: 0.94,
+    title: 'SQLi in findUser', cwe_ids: ['CWE-89'], evidence: EV, ...over,
+  });
+
+  const runCli = async (root: string) => {
+    const tsx = createRequire(import.meta.url).resolve('tsx/cli');
+    const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
+    return new Promise<{ code: number; out: string }>((res) =>
+      execFile(process.execPath, [tsx, cli, 'hypothesis', 'confirm', '.', '--from-scan', 'scan.json', '--write'],
+        { cwd: root, maxBuffer: 64 * 1024 * 1024 },
+        (err, stdout, stderr) => res({ code: (err as { code?: number } | null)?.code ?? 0, out: stdout + stderr })));
+  };
+
+  it('refuses to write a confirmation that was not key-verified, and says how to do it deliberately', async () => {
+    const root = await siblings(ONE);
+    await writeScan(root, { scan_id: 'cxg-w', findings: [finding({ annotation: { file: 'src/a.ts', line: 4 } })] });
+    const run = await runCli(root);
+
+    // It did join — the ledger has it — but nothing was written to the source.
+    expect(readHypotheses(root).ledger!.entries[0].source).toMatchObject({ kind: 'scan', joined_by: 'location' });
+    expect(await readFile(join(root, 'src', 'a.ts'), 'utf-8')).not.toContain('@confirmed');
+    expect(run.out).toMatch(/skipped src\/a\.ts:4 — joined by location, not key-verified/);
+    expect(run.out).toMatch(/guardlink hypothesis confirm src\/a\.ts:4 --evidence/);
+    expect(run.out).not.toMatch(/wrote src\/a\.ts/);
+  }, 120_000);
+
+  it('writes a key-verified confirmation, and the line says how it was established', async () => {
+    const root = await siblings(ONE);
+    const a = stamp(generateSarif(await parse(root)), 4);
+    await writeScan(root, { scan_id: 'cxg-w', findings: [finding({ annotation: { file: 'src/a.ts', line: 4 }, claim_key: a.claim_key })] });
+    const run = await runCli(root);
+
+    expect(run.code).toBe(0);
+    expect(run.out).toMatch(/wrote src\/a\.ts:5/);
+    const src = await readFile(join(root, 'src', 'a.ts'), 'utf-8');
+    const line = src.split('\n').find(l => l.includes('@confirmed'))!;
+    expect(line).toMatch(/key-verified: the scan stamped this claim's own claim key/);
+
+    // It is a real annotation, not just text: it parses back as a @confirmed on
+    // the same pair, and it satisfies the gate's evidence bar.
+    const after = await parse(root);
+    expect(after.confirmed).toHaveLength(1);
+    expect(after.confirmed![0]).toMatchObject({ asset: '#api', threat: '#sqli' });
+    expect(lintAnnotations(after).filter(v => v.rule === 'confirmed-without-evidence')).toEqual([]);
+  }, 120_000);
+
+  it('leaves the manual path rendering unchanged — human evidence, no join to qualify', async () => {
+    const root = await siblings(ONE);
+    const model = await parse(root);
+    const { record, entry } = recordOutcome(root, model, 'src/a.ts:4', 'confirmed', { evidence: CONFIRM, by: 'human:test', at: NOW });
+    const line = confirmedLine(record, entry);
+
+    expect(line).toContain(CONFIRM);
+    expect(line).not.toMatch(/key-verified/);
+  }, 60000);
 });

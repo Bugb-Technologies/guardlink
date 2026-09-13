@@ -208,7 +208,7 @@ guardlink hypothesis list [dir] [--state untested|confirmed|refuted|retest] [--j
 guardlink hypothesis next [dir] [-n 10] [--intake]           # what to test next; --intake prints a brief for bugb intake
 guardlink hypothesis refute  src/x.ts:12 --evidence "POST /login with payload X returned 400 from validateEmail()"
 guardlink hypothesis confirm src/x.ts:12 --evidence "request … response …" [--write]   # --write inserts the @confirmed line beneath the @exposes
-guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--write]     # cxg findings joined to claims
+guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--write]     # cxg findings joined to claims; --write inserts only key-verified ones
 ```
 
 - **Evidence is required.** A refutation needs what was tried and what came back; a confirmation
@@ -243,7 +243,23 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
   at either level. One shared definition (`CLAIM_KEY_NAMES` and `CLAIM_KEY_SURFACES` in
   `src/parser/claim-key.ts`) backs the emitter, the reader's accepted placements and the hint text
   — names *and* surfaces, because sharing only the names left the containers written twice and the
-  disagreement moved there. What the product advertises is always what the reader takes.
+  disagreement moved there. What the product advertises is always what the reader takes. The two
+  precedence orders are separate, each keeping the earliest-accepted first, so a report carrying a
+  key in both surfaces resolves to the `partialFingerprints` one, as it always did.
+- **A stamp has to look like a claim key.** Those names include free-form bags another tool may
+  also write a `claim_key` into, so a value counts as the stamp only if it is shaped like one —
+  sha256 hex, then the ordinal. That splits three situations the output keeps apart: no stamp (the
+  coarse joins apply), a well-formed key naming no claim (**stale**), and a value that is not a key
+  at all (**malformed** — reported with the value and the field it arrived in, never joined,
+  because guessing from the coarse tiers would confirm on what was just rejected). All of
+  ambiguous, stale, malformed and unmatched exit non-zero.
+- **`--write` only inserts a key-verified confirmation.** An `@confirmed` in source is a claim that
+  the exposure was tested and proven — later scans, reviewers and `guardlink sarif` read it, and
+  unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a
+  different exposure than the probe tested, so `--from-scan --write` skips it, names it and prints
+  the by-hand command; the outcome is still in the ledger. The line it does write states that the
+  scan stamped the claim's own key, so the reason survives the code that enforces it. The manual
+  `confirm <file:line> --evidence … --write` path is unchanged.
 - **Only an unstamped finding falls to the coarse joins** — annotation location, then asset and
   threat, then CWE — where one that fits more than one claim is reported as ambiguous, never
   guessed, and one that fits none is listed as unmatched. Those match where a claim *sits*, not

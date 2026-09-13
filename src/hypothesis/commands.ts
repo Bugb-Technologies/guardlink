@@ -19,14 +19,16 @@
  * @comment -- "The claim key is read under every name in CLAIM_KEY_NAMES and from every container generated from CLAIM_KEY_SURFACES (src/parser/claim-key.ts) — the same definition guardlink sarif emits through — so the finding's top level, its annotation object, and either emitted surface nested under its own name at either level all resolve. Names AND surfaces live in that one definition because each time only one dimension was shared the disagreement simply moved to the other, and an unrecognised stamp takes the weaker join while the output tells the operator to start sending the stamp they already sent"
  * @comment -- "The @validates below sits here rather than on its test on purpose: .guardlink/config.json excludes the tests directory and every nested one from the scan, so an annotation moved into tests/hypothesis.test.ts is never parsed — it would leave the threat model entirely and a lookup of the validations for #cli would answer nothing instead of pointing anywhere. Every validation in this repo lives with the implementation it proves and names its test in the description; see src/parser/parse-file.ts, src/parser/comment-strip.ts and src/mcp/subgraph.ts. Do not move it"
  * @validates #config-validation for #cli -- "tests/hypothesis.test.ts forwards a real generateSarif result's emitted surfaces into the scan finding without naming a field, in every placement generated from CLAIM_KEY_SURFACES, so neither the names nor the containers the reader accepts can drift from what the export writes"
- * @audit #cli -- "The stale bucket refuses a join rather than guessing it, and offers no by-hand target on purpose: the claims the coarse tiers would have named are different claims, so recording this evidence against one is the confirmation the key just refused. The CLI exits non-zero when any finding lands there"
+ * @comment -- "A stamp is only taken as ours when it matches CLAIM_KEY_PATTERN; three names across six containers include free-form bags another tool may also write a claim_key into, and any non-empty string being read as a key diverts a joinable finding to stale on the strength of a value nobody checked. A present-but-unshaped stamp gets its own reported state — not unstamped, not stale — because a producer emitting something else under our name is worth knowing and cannot be recovered later"
+ * @comment -- "confirmedLine() states the join provenance in a scan-derived @confirmed, because that line is a claim in someone's repository that this exposure was tested, not a report line. The CLI refuses to write one that was not key-verified; the provenance in the text is what keeps that refusal meaningful after the caller changes"
+ * @audit #cli -- "The stale bucket refuses a join rather than guessing it, and offers no by-hand target on purpose: the claims the coarse tiers would have named are different claims, so recording this evidence against one is the confirmation the key just refused. The malformed bucket refuses for the same reason one level earlier. The CLI exits non-zero when any finding lands in either"
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import type { ThreatModel } from '../types/index.js';
 import { hasEvidenceWords } from '../gate/lint.js';
 import { redactEvidence } from '../analyze/format.js';
-import { CLAIM_KEY_NAMES, CLAIM_KEY_SURFACES } from '../parser/claim-key.js';
+import { CLAIM_KEY_NAMES, CLAIM_KEY_SURFACES, isClaimKey } from '../parser/claim-key.js';
 import { readHypotheses, writeHypotheses, emptyHypotheses, type HypothesisEntry, type HypothesisOutcome, type HypothesisSource, type HypothesesLedger, type JoinedBy } from './ledger.js';
 import { classifyHypotheses, type HypothesisRecord } from './classify.js';
 
@@ -110,12 +112,30 @@ export interface ScanFinding {
   /**
    * The claim key the export stamped onto the finding, when it carries one, read
    * under every name in `CLAIM_KEY_NAMES` and from every container a consumer
-   * puts it in — see `findingClaimKey`. A stamp guardlink fails to recognise is
+   * puts it in — see `findingStamp`. A stamp guardlink fails to recognise is
    * worse than no stamp: it takes the weaker join, and the report that carried
    * the discriminator gets told to start sending one.
+   *
+   * Null when the finding carried no stamp AND when the stamp it carried is not
+   * shaped like a claim key — the latter lands in `malformed_stamp` instead, so
+   * the two are never confused for each other.
    */
   claim_key: string | null;
+  /**
+   * A stamp was present under one of our names but is not a claim key at all.
+   * Its own state: a producer emitting something else under our name is neither
+   * "unstamped" nor "the claim is gone", and folding it into either loses the
+   * one thing worth knowing about it.
+   */
+  malformed_stamp: ScanStamp | null;
   evidence: { request: string | null; response: string | null; matched_patterns: string[]; data: Record<string, unknown> };
+}
+
+/** A value found under one of the claim key's accepted names, and where. */
+export interface ScanStamp {
+  value: string;
+  /** The path it arrived under, e.g. `annotation.properties.claimKey`. */
+  field: string;
 }
 
 export type { JoinedBy } from './ledger.js';
@@ -131,6 +151,12 @@ export interface ImportResult {
    * hand is the exact confirmation the key just refused.
    */
   stale: { finding: ScanFinding }[];
+  /**
+   * A stamp arrived under one of our names that is not a claim key. Reported,
+   * never joined: it says nothing about which claim was tested, so guessing from
+   * the coarse tiers would be a confirmation resting on a value we rejected.
+   */
+  malformed: { finding: ScanFinding; stamp: ScanStamp }[];
   unmatched: ScanFinding[];
 }
 
@@ -139,8 +165,9 @@ const bare = (r: string): string => r.trim().replace(/^#/, '').toLowerCase();
 const bag = (v: unknown): Record<string, unknown> | undefined => (v && typeof v === 'object' ? v as Record<string, unknown> : undefined);
 
 /**
- * The claim key a scan report carries, under any name in `CLAIM_KEY_NAMES` and
- * in any container a real consumer puts it in.
+ * The stamp a scan report carries, under any name in `CLAIM_KEY_NAMES` and in
+ * any container a real consumer puts it in, with the field it arrived in so a
+ * value that is not a claim key can be reported precisely.
  *
  * The containers are GENERATED, not listed: each level a key can sit at — the
  * finding itself, its `annotation` object — carrying the key directly, or
@@ -150,17 +177,20 @@ const bag = (v: unknown): Record<string, unknown> | undefined => (v && typeof v 
  * A hand-written list is how the reader came to refuse a shape the export
  * advertised.
  *
- * First match wins. A well-formed report carries exactly one, so the order only
- * decides a report that contradicts itself.
+ * First match wins, in the precedence those two definitions fix. A well-formed
+ * report carries exactly one, so the order only decides a report that
+ * contradicts itself.
  */
-function findingClaimKey(o: Record<string, unknown>, ann: Record<string, unknown> | undefined): string | null {
-  for (const level of [o, ann]) {
+function findingStamp(o: Record<string, unknown>, ann: Record<string, unknown> | undefined): ScanStamp | null {
+  for (const [level, at] of [[o, ''], [ann, 'annotation.']] as const) {
     if (!level) continue;
-    for (const c of [level, ...CLAIM_KEY_SURFACES.map(s => bag(level[s.container]))]) {
+    const containers: [Record<string, unknown> | undefined, string][] = [[level, at]];
+    for (const s of CLAIM_KEY_SURFACES) containers.push([bag(level[s.container]), `${at}${s.container}.`]);
+    for (const [c, prefix] of containers) {
       if (!c) continue;
       for (const name of CLAIM_KEY_NAMES) {
         const v = str(c[name]);
-        if (v) return v;
+        if (v) return { value: v, field: `${prefix}${name}` };
       }
     }
   }
@@ -173,6 +203,7 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
   const ann = (o.annotation ?? o.location) as Record<string, unknown> | undefined;
   const ev = (o.evidence ?? {}) as Record<string, unknown>;
   const cwe = Array.isArray(o.cwe_ids) ? o.cwe_ids.filter((c): c is string => typeof c === 'string') : [];
+  const stamp = findingStamp(o, ann);
   return {
     id: str(o.id) ?? `finding-${i + 1}`,
     template_id: str(o.template_id) ?? 'unknown-template',
@@ -183,7 +214,8 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
     annotation: ann && typeof ann.file === 'string' && typeof ann.line === 'number' ? { file: ann.file, line: ann.line } : null,
     asset: str(o.asset) ?? str(ann?.asset),
     threat: str(o.threat) ?? str(ann?.threat),
-    claim_key: findingClaimKey(o, ann),
+    claim_key: stamp && isClaimKey(stamp.value) ? stamp.value : null,
+    malformed_stamp: stamp && !isClaimKey(stamp.value) ? stamp : null,
     evidence: {
       request: str(ev.request), response: str(ev.response),
       matched_patterns: Array.isArray(ev.matched_patterns) ? ev.matched_patterns.filter((p): p is string => typeof p === 'string') : [],
@@ -270,12 +302,13 @@ export function importScan(root: string, model: ThreatModel, scanPath: string, i
     return own;
   };
 
-  const result: ImportResult = { scanId, confirmed: [], ambiguous: [], stale: [], unmatched: [] };
+  const result: ImportResult = { scanId, confirmed: [], ambiguous: [], stale: [], malformed: [], unmatched: [] };
   const ledger = loadForWrite(root);
   const byKey = new Map(records.map(r => [r.key, r]));
   for (const f of findings) {
     let candidates: HypothesisRecord[] = [];
     let joinedBy: JoinedBy | null = null;
+    if (f.malformed_stamp) { result.malformed.push({ finding: f, stamp: f.malformed_stamp }); continue; }
     if (f.claim_key) {
       const named = byKey.get(f.claim_key);
       if (!named) { result.stale.push({ finding: f }); continue; }
@@ -314,8 +347,27 @@ export function importScan(root: string, model: ThreatModel, scanPath: string, i
 export function confirmedLine(record: HypothesisRecord, entry: HypothesisEntry): string {
   const cwe = record.refs;
   const sev = record.severity && record.severity !== 'unset' ? ` [${record.severity}]` : '';
-  const desc = entry.evidence.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const desc = `${entry.evidence}${writtenProvenance(entry)}`.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   return `@confirmed ${record.threat} on ${record.asset}${sev}${cwe.length ? ` ${cwe.join(' ')}` : ''} -- "${desc}"`;
+}
+
+/**
+ * What an `@confirmed` written from a scan says about how it was established.
+ *
+ * An `@confirmed` in source is not a report line — it is a claim in the
+ * repository that this exposure was tested and proven, read by every later scan
+ * and by reviewers, and a coarse-joined one may be about a different exposure
+ * entirely. So a scan-derived line states that its evidence reached this claim
+ * by the claim's own key. Without that, the rule refusing to write the others
+ * lives only in the caller, and the next person to loosen the join silently
+ * reuses a path that writes unmarked claims into someone's source.
+ *
+ * A manual confirmation renders unchanged: it is human evidence about a named
+ * target, there is no join, and nothing about it is in question.
+ */
+function writtenProvenance(entry: HypothesisEntry): string {
+  if (entry.source.kind !== 'scan' || entry.source.joined_by !== 'claim-key') return '';
+  return '; key-verified: the scan stamped this claim\'s own claim key';
 }
 
 /**

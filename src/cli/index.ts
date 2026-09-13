@@ -1665,15 +1665,21 @@ const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: strin
       const r = importScan(root, model, opts.fromScan, { by: opts.by || 'cxg', at });
       console.log(formatImport(r));
       if (opts.write) {
+        // @comment -- "--write only inserts a KEY-VERIFIED confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), so writing one back is how a false @confirmed enters a corpus. Losing that throughput is the point: those are exactly the joins that can be wrong"
         for (const c of r.confirmed) {
+          if (c.joinedBy !== 'claim-key') {
+            console.error(`  ! skipped ${c.record.file}:${c.record.line} — joined by ${c.joinedBy}, not key-verified, so it may be about a different exposure than the probe tested. The outcome is in the ledger; if you judge it right, record it deliberately:`);
+            console.error(`      guardlink hypothesis confirm ${c.record.file}:${c.record.line} --evidence "…" --write`);
+            continue;
+          }
           try { const w = writeConfirmedLine(root, c.record, confirmedLine(c.record, c.entry)); console.log(`  wrote ${w.file}:${w.line}`); }
           catch (e) { console.error(`  ! ${(e as Error).message}`); }
         }
-      } else if (r.confirmed.length > 0) {
-        console.log('\nadd --write to insert an @confirmed line beneath each joined @exposes');
+      } else if (r.confirmed.some(c => c.joinedBy === 'claim-key')) {
+        console.log('\nadd --write to insert an @confirmed line beneath each key-verified @exposes');
       }
-      // @comment -- "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more) and unmatched each need a human, and a silent 0 would read as 'all imported'"
-      if (r.ambiguous.length > 0 || r.stale.length > 0 || r.unmatched.length > 0) process.exitCode = 1;
+      // @comment -- "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'"
+      if (r.ambiguous.length > 0 || r.stale.length > 0 || r.malformed.length > 0 || r.unmatched.length > 0) process.exitCode = 1;
       return;
     }
     if (!target) { console.error('Name the exposure as file:line, or pass --from-scan <report.json>.'); process.exitCode = 1; return; }

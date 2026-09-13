@@ -83,7 +83,13 @@ guardlink hypothesis confirm --from-scan <report.json> [dir] [--by <name>] [--wr
 `refute` and `confirm` refuse without `--evidence`; `confirm` refuses evidence with no evidence
 words. `--write` inserts the offered `@confirmed` line directly beneath the `@exposes`, with the
 same comment prefix, and reports the file and line. `--from-scan` joins each finding to a claim,
-records the confirmed ones, and lists the unmatched, the ambiguous and the stale.
+records the confirmed ones, and lists the unmatched, the ambiguous, the stale and the malformed.
+
+On `--from-scan`, `--write` inserts only the confirmations that were key-verified, and says what
+it skipped and how to record it by hand. An `@confirmed` in source is a claim that the exposure
+was tested and proven, and it never expires the way a ledger entry does, so a coarse-joined one —
+which may be about a different exposure than the probe tested — is not written there. The line it
+does write states that the scan stamped the claim's own key.
 
 A finding carrying the claim key — under any of `guardlink/claimKey`, `claimKey` or `claim_key`,
 at the finding's top level or in its `annotation`, spread onto that level or left as a forwarded
@@ -91,7 +97,9 @@ at the finding's top level or in its `annotation`, spread onto that level or lef
 that key is the one this ledger already keys its entries on, so the join and the ledger name a
 claim the same way, and a key matches at most one claim. It holds across a line move and an edit
 to the code beneath the claim, and it separates a sibling claim that came to sit on the tested
-line, where file, line, asset, threat and threat id all match. A key naming no claim is stale.
+line, where file, line, asset, threat and threat id all match. A key naming no claim is stale, and
+a stamp that is not shaped like a key at all is malformed — reported with the value and the field,
+never joined, since those names include bags another tool may also write a `claim_key` into.
 Only an unstamped finding falls to the coarse joins (annotation location → asset and threat →
 CWE); letting those run first would let a live-but-moved claim be called stale and a key-only
 finding be called unmatched. Each recorded outcome keeps the identity that joined it in

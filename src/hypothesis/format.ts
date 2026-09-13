@@ -3,12 +3,12 @@
  *
  * @handles internal on #cli -- "Evidence strings printed to the terminal"
  * @comment -- "Plain padded tables like printStatus; nothing here reads a file"
- * @comment -- "formatImport() prints the stale bucket beside ambiguous and unmatched: a finding whose stamped claim key names no claim in the model says so and offers no by-hand target, because every claim it could name there is a different claim. Each confirmation is labelled with the identity that joined it, and a report carrying no stamps at all says that the weaker join was used — a key-verified confirmation and an unverified one must not read the same"
+ * @comment -- "formatImport() prints the stale and malformed buckets beside ambiguous and unmatched. A finding whose stamped claim key names no claim in the model says so and offers no by-hand target, because every claim it could name there is a different claim; a finding whose stamp is not a claim key at all names the value and the field it arrived in, so the producer can be fixed. Each confirmation is labelled with the identity that joined it, and a report carrying no stamps at all says that the weaker join was used — a key-verified confirmation and an unverified one must not read the same"
  */
 import type { HypothesisClassification, HypothesisRecord, RankedHypothesis } from './classify.js';
 import type { HypothesisEntry } from './ledger.js';
 import type { ImportResult } from './commands.js';
-import { CLAIM_KEY_FINGERPRINT } from '../parser/claim-key.js';
+import { CLAIM_KEY_FINGERPRINT, CLAIM_KEY_PATTERN } from '../parser/claim-key.js';
 
 const pad = (s: string, n: number): string => (s.length >= n ? s : s + ' '.repeat(n - s.length));
 const short = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -83,11 +83,11 @@ export function formatOutcome(record: HypothesisRecord, entry: HypothesisEntry, 
 }
 
 export function formatImport(r: ImportResult): string {
-  const lines = [`${r.confirmed.length} ${r.confirmed.length === 1 ? 'finding' : 'findings'} joined to a claim, ${r.ambiguous.length} ambiguous, ${r.stale.length} stale, ${r.unmatched.length} unmatched  (scan ${r.scanId})`];
+  const lines = [`${r.confirmed.length} ${r.confirmed.length === 1 ? 'finding' : 'findings'} joined to a claim, ${r.ambiguous.length} ambiguous, ${r.stale.length} stale, ${r.malformed.length} malformed, ${r.unmatched.length} unmatched  (scan ${r.scanId})`];
   // Whether the REPORT carried a stamp is a property of every finding the import
   // saw, not of the ones that happened to confirm: a stamped finding whose claim
   // is gone lands in `stale`, never in `confirmed`.
-  const findings = [...r.confirmed.map(c => c.finding), ...r.ambiguous.map(a => a.finding), ...r.stale.map(s => s.finding), ...r.unmatched];
+  const findings = [...r.confirmed.map(c => c.finding), ...r.ambiguous.map(a => a.finding), ...r.stale.map(s => s.finding), ...r.malformed.map(m => m.finding), ...r.unmatched];
   const anyStamp = findings.some(f => f.claim_key);
   const stamped = r.confirmed.filter(c => c.joinedBy === 'claim-key').length;
   if (r.confirmed.length > 0 && !anyStamp) {
@@ -105,6 +105,10 @@ export function formatImport(r: ImportResult): string {
     lines.push('', `Stale      ${s.finding.id} (${s.finding.template_id}) was tested against a claim that is no longer in the model — deleted, or its asset, threat, refs, description or file edited.`);
     lines.push(`           claim key ${short(s.finding.claim_key ?? '', 24)}${at}`);
     lines.push(`           Nothing was recorded. Any claim standing there now is a different claim, so this evidence does not belong to it — re-test against the tree as it is (guardlink hypothesis next).`);
+  }
+  for (const m of r.malformed) {
+    lines.push('', `Malformed  ${m.finding.id} (${m.finding.template_id}) carried ${JSON.stringify(short(m.stamp.value, 40))} in ${m.stamp.field}, which is not a claim key (expected ${CLAIM_KEY_PATTERN.source}).`);
+    lines.push(`           Nothing was recorded and no weaker join was tried: the value says nothing about which claim was tested, so a confirmation from it would rest on what was just rejected. Whatever produced this report is emitting something else under a guardlink name — fix that, or drop the field and the coarse joins apply again.`);
   }
   for (const u of r.unmatched) lines.push('', `Unmatched  ${u.id} (${u.template_id}, ${u.title || 'no title'}): no claim carries this location, asset/threat or CWE. If it is real, annotate it first.`);
   return lines.join('\n');

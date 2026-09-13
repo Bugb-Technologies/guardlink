@@ -1119,7 +1119,32 @@ Names and surfaces are **one** definition (`CLAIM_KEY_NAMES` and `CLAIM_KEY_SURF
 placements from, and the operator-facing text interpolates. Both dimensions on purpose: sharing
 only the names left the containers written twice, and the disagreement simply moved there. A name
 or a surface the reader does not accept therefore cannot be advertised, and adding a surface
-widens the reader with no edit to it.
+widens the reader with no edit to it. The two precedence orders are separate, each keeping what
+was accepted earliest in front, so a report that contradicts itself resolves the way it always
+did — a key in both surfaces resolves to the `partialFingerprints` one.
+
+**A stamp must look like a claim key.** The accepted names include free-form bags another tool may
+also write a `claim_key` into, so a value is only taken as the stamp when it matches the shape the
+key is minted in — a sha256 digest in lowercase hex, then the ordinal (`CLAIM_KEY_PATTERN`). Three
+situations follow, and a consumer MUST NOT collapse them:
+
+| The finding carries | Meaning | What happens |
+|---|---|---|
+| no stamp | nothing claimed which claim was tested | the coarse joins apply |
+| a well-formed key naming no claim | the claim it was tested against is gone | **stale**: reported, never re-joined |
+| a stamp that is not a claim key | a producer is emitting something else under a guardlink name | **malformed**: reported with the value and the field, never joined |
+
+A malformed stamp is not treated as absent: falling back to the coarse joins would confirm on the
+strength of a value just rejected, and folding it into "unstamped" hides the one thing worth
+knowing. It is not treated as stale either — nothing about it says a claim is gone.
+
+**Writing an `@confirmed` back to source requires a key-verified join.** The annotation is a claim
+in the repository that the exposure was tested and proven; later scans, reviewers and this export
+all read it, and unlike a ledger entry it never expires. A coarse-joined confirmation may be about
+a different exposure than the probe tested, so `--from-scan --write` inserts only key-verified
+ones, names each one it skipped and how to record it deliberately, and states the provenance in
+the line it does write. A manual confirmation is unaffected: it is human evidence about a named
+target, with no join to qualify.
 
 **Bound.** Two BYTE-IDENTICAL claims in one file — same verb, same identity arguments, same
 external refs *and* the same description — share a digest and are told apart only by an ordinal
