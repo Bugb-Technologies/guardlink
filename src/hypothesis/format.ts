@@ -8,6 +8,7 @@
 import type { HypothesisClassification, HypothesisRecord, RankedHypothesis } from './classify.js';
 import type { HypothesisEntry } from './ledger.js';
 import type { ImportResult } from './commands.js';
+import { CLAIM_KEY_FINGERPRINT } from '../parser/claim-key.js';
 
 const pad = (s: string, n: number): string => (s.length >= n ? s : s + ' '.repeat(n - s.length));
 const short = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -90,7 +91,7 @@ export function formatImport(r: ImportResult): string {
   const anyStamp = findings.some(f => f.claim_key);
   const stamped = r.confirmed.filter(c => c.joinedBy === 'claim-key').length;
   if (r.confirmed.length > 0 && !anyStamp) {
-    lines.push('', `⚠  No finding in this report carried a claim key, so every join below matched where a claim sits rather than which claim it is. A claim that came to occupy a tested line cannot be told from the claim that was tested. Have the scanner forward guardlink/claimKey from the SARIF export.`);
+    lines.push('', `⚠  No finding in this report carried a claim key, so every join below matched where a claim sits rather than which claim it is. A claim that came to occupy a tested line cannot be told from the claim that was tested. Have the scanner forward ${CLAIM_KEY_FINGERPRINT} from the SARIF export.`);
   } else if (stamped < r.confirmed.length) {
     lines.push('', `⚠  ${r.confirmed.length - stamped} of ${r.confirmed.length} findings carried no claim key and were joined on the weaker match; each is labelled below.`);
   }

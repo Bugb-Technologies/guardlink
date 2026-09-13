@@ -35,6 +35,27 @@ export type ClaimVerb =
 /** Verbs whose staleness can hide an exposure: the two that remove one from the export. */
 export const DEMOTABLE_VERBS: ReadonlySet<AnnotationVerb> = new Set(['mitigates', 'accepts']);
 
+/**
+ * The wire names the claim key travels under, defined once so the exporter, the
+ * reader and the operator-facing text cannot drift apart. They already have:
+ * the key was emitted under two conventions and read under one, and each gap
+ * silently demoted a stamped finding to the join the stamp exists to replace.
+ *
+ * `CLAIM_KEY_FINGERPRINT` is the mechanism — SARIF's own stable-identity map,
+ * which other SARIF tooling understands. `CLAIM_KEY_PROPERTY` is the mirror in
+ * `properties`, for consumers without a SARIF library. `CLAIM_KEY_NAMES` is
+ * every name a scan report may carry it under, including the snake_case the
+ * scan-report convention uses.
+ *
+ * Emit through the first two; accept all of `CLAIM_KEY_NAMES`. The order is the
+ * reader's precedence for a report that contradicts itself, and puts the two
+ * names that were accepted first so widening the set cannot change what an
+ * already-accepted report resolves to.
+ */
+export const CLAIM_KEY_FINGERPRINT = 'guardlink/claimKey';
+export const CLAIM_KEY_PROPERTY = 'claimKey';
+export const CLAIM_KEY_NAMES: readonly string[] = ['claim_key', CLAIM_KEY_PROPERTY, CLAIM_KEY_FINGERPRINT];
+
 export interface ClaimSource {
   verb: ClaimVerb;
   /** `<sha256 hex>:<ordinal>` — see module note. */

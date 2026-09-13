@@ -228,13 +228,20 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
   undefended path (`guardlink paths`), then unowned ones. No AI: the ledger is bookkeeping and
   the ranking is arithmetic. Testing stays with bugb and cxg.
 - **A stamped claim key resolves the join, before anything coarser is tried.** A finding carrying
-  `claim_key` — the `guardlink/claimKey` fingerprint `guardlink sarif` puts on each `@exposes`
-  result, also accepted as `claimKey`, top level or inside the annotation object — is looked up
-  across the whole model. A key matches at most one claim, so that lookup is the answer. If it
-  names no claim the finding is **stale**: the claim it was tested against is not in the model any
-  more, deleted or with its asset, threat, refs, description or file edited. Nothing is recorded,
-  no by-hand target is offered (any claim standing there now is a *different* claim), and the
-  command exits non-zero.
+  the claim key is looked up across the whole model. A key matches at most one claim, so that
+  lookup is the answer. If it names no claim the finding is **stale**: the claim it was tested
+  against is not in the model any more, deleted or with its asset, threat, refs, description or
+  file edited. Nothing is recorded, no by-hand target is offered (any claim standing there now is
+  a *different* claim), and the command exits non-zero.
+- **Forward it however your scanner already holds it.** `guardlink sarif` emits the key twice per
+  `@exposes` result: as `partialFingerprints['guardlink/claimKey']` — the mechanism, SARIF's own
+  stable-identity map and the only stamp location SARIF defines — and as `properties.claimKey`,
+  the mirror for consumers without a SARIF library. `--from-scan` accepts it under any of
+  `guardlink/claimKey`, `claimKey` or `claim_key`, from a finding's top level, its `annotation`
+  object, or a `partialFingerprints` map at either level. So copying either emitted surface
+  wholesale works, spread or nested. One shared definition (`CLAIM_KEY_NAMES` in
+  `src/parser/claim-key.ts`) backs the emitter, the reader and the hint text, so the name the
+  product advertises is always a name the reader takes.
 - **Only an unstamped finding falls to the coarse joins** — annotation location, then asset and
   threat, then CWE — where one that fits more than one claim is reported as ambiguous, never
   guessed, and one that fits none is listed as unmatched. Those match where a claim *sits*, not

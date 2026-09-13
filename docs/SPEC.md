@@ -1087,9 +1087,25 @@ be matched before the key could speak. `guardlink hypothesis confirm --from-scan
 exactly this rule, and records which identity joined each outcome so a key-verified confirmation
 is distinguishable from one taken on the coarser match.
 
-Consumers vary in casing, and an unrecognised stamp is worse than an absent one because it
-silently degrades to the coarser join. `--from-scan` therefore accepts `claimKey` and
-`claim_key`, at a finding's top level or inside its annotation object.
+**Accepted wire names.** An unrecognised stamp is worse than an absent one: it degrades to the
+coarser join while the report *did* carry the discriminator. The mechanism is
+`partialFingerprints['guardlink/claimKey']` — SARIF's own stable-identity map, which other SARIF
+tooling understands and which is the only stamp location SARIF itself defines;
+`properties.claimKey` is the mirror for consumers without a SARIF library. `--from-scan`
+therefore accepts the key under **any** of these names:
+
+| Name | Where it comes from |
+|---|---|
+| `guardlink/claimKey` | the fingerprint key, forwarded as emitted |
+| `claimKey` | the `properties` mirror, forwarded as emitted |
+| `claim_key` | the scan-report convention's own casing |
+
+and from **any** of these containers on a finding: its top level, its `annotation` object, or a
+`partialFingerprints` map at either level — so a consumer may copy either emitted surface
+wholesale, spread or nested, without knowing which name the key arrived under. The set is one
+definition (`CLAIM_KEY_NAMES` in `src/parser/claim-key.ts`) that the exporter, the reader and the
+operator-facing text all derive from; a name the reader does not accept can therefore not be
+advertised.
 
 **Bound.** Two BYTE-IDENTICAL claims in one file — same verb, same identity arguments, same
 external refs *and* the same description — share a digest and are told apart only by an ordinal

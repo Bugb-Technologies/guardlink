@@ -1708,7 +1708,7 @@ hypothesis
   .argument('[dir]', 'Project directory', '.')
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--evidence <text>', 'The request and response, the reproduction, or the scan proof (required without --from-scan)')
-  .option('--from-scan <file>', 'A cxg scan report (JSON). A finding carrying a claim_key (or claimKey) resolves to the claim with that key, or is reported stale; only an unstamped finding falls to the weaker joins — location, then asset and threat, then CWE')
+  .option('--from-scan <file>', 'A cxg scan report (JSON). A finding carrying the claim key (guardlink/claimKey, claimKey or claim_key — top level, in annotation, or in a forwarded partialFingerprints map) resolves to the claim with that key, or is reported stale; only an unstamped finding falls to the weaker joins — location, then asset and threat, then CWE')
   .option('--by <name>', 'Who tested it (default: human:<git user.name>; cxg for --from-scan)')
   .option('--write', 'Also insert the @confirmed line beneath the @exposes in the source')
   .action(outcomeAction('confirmed'));

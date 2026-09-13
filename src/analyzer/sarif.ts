@@ -50,7 +50,7 @@ import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
 import { ACCEPTANCE_REGISTER_ID } from '../parser/acceptance.js';
 import { computeAnnotationHash, ANNOTATION_HASH_VERSION } from '../parser/annotation-hash.js';
-import { relationRecords } from '../parser/claim-key.js';
+import { relationRecords, CLAIM_KEY_FINGERPRINT, CLAIM_KEY_PROPERTY } from '../parser/claim-key.js';
 import { getPackageVersion } from '../version.js';
 
 // ─── SARIF 2.1.0 types (subset) ─────────────────────────────────────
@@ -129,9 +129,11 @@ interface SarifResult {
    * file — so it separates them, and it is unchanged by every edit that is not the claim
    * itself. Mirrored into `properties.claimKey` the same way.
    *
-   * A consumer forwarding this to `guardlink hypothesis confirm --from-scan` may use either
-   * spelling — `claimKey` as named here, or `claim_key` — and either at the finding's top level
-   * or inside its annotation object. All four are read.
+   * Both names come from `CLAIM_KEY_NAMES` in `../parser/claim-key.js`, which is also the set
+   * `guardlink hypothesis confirm --from-scan` accepts — so a consumer may forward this map
+   * wholesale, forward `properties` wholesale, or copy the value out under any of those names,
+   * and the reader takes it either way. Defined once on purpose: the emitter and the reader
+   * drifting apart is how a stamped finding gets silently demoted to the weaker join.
    */
   partialFingerprints?: Record<string, string>;
   properties?: Record<string, unknown>;
@@ -278,10 +280,10 @@ export function generateSarif(
       level,
       message: { text: messageText },
       locations: [locationFrom(e.location.file, e.location.line)],
-      partialFingerprints: { 'guardlink/threatId': id, ...(claimKey ? { 'guardlink/claimKey': claimKey } : {}) },
+      partialFingerprints: { 'guardlink/threatId': id, ...(claimKey ? { [CLAIM_KEY_FINGERPRINT]: claimKey } : {}) },
       properties: {
         threatId: id,
-        ...(claimKey ? { claimKey } : {}),
+        ...(claimKey ? { [CLAIM_KEY_PROPERTY]: claimKey } : {}),
         severity: e.severity || 'unset',
         asset: e.asset,
         threat: e.threat,

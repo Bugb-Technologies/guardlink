@@ -16,7 +16,7 @@
  * @handles internal on #cli -- "Request and response evidence from scans, redacted"
  * @comment -- "A confirmation is held to the same evidence bar the gate holds @confirmed to; a refutation needs evidence too, just not the same words, because 'the validator rejected it' is evidence of absence"
  * @comment -- "importScan() resolves a finding carrying a claim_key against the whole record set BEFORE the location/asset-threat/CWE tiers, which run only for an unstamped finding; a key that names no claim is stale, never re-joined by a coarser tier. The key names the claim itself, so it survives a line move and an edit to the code beneath it, and separates a sibling claim that landed on the tested line. Two byte-identical claims in one file share a digest and are told apart only by an ordinal in document order, so deleting the earlier one hands its key to the survivor"
- * @comment -- "The claim key is read as claim_key OR claimKey, top level or inside the annotation object, because guardlink sarif emits it as properties.claimKey and a consumer that forwards that name verbatim must not be silently ignored — an unrecognised stamp takes the weaker join and prints the same thing a verified one does"
+ * @comment -- "The claim key is read under every name in CLAIM_KEY_NAMES (src/parser/claim-key.ts) — the same set guardlink sarif emits through — from the finding's top level, its annotation object, or a partialFingerprints map copied wholesale from the SARIF result at either level. One definition shared by emitter, reader and the operator-facing banner, because an unrecognised stamp takes the weaker join while the output tells the operator to start sending the stamp they already sent"
  * @validates #config-validation for #cli -- "tests/hypothesis.test.ts forwards a real generateSarif result's properties into the scan finding without naming a field, so the emitted name and the read name cannot drift apart unnoticed"
  * @audit #cli -- "The stale bucket refuses a join rather than guessing it, and offers no by-hand target on purpose: the claims the coarse tiers would have named are different claims, so recording this evidence against one is the confirmation the key just refused. The CLI exits non-zero when any finding lands there"
  */
@@ -25,6 +25,7 @@ import { resolve, sep } from 'node:path';
 import type { ThreatModel } from '../types/index.js';
 import { hasEvidenceWords } from '../gate/lint.js';
 import { redactEvidence } from '../analyze/format.js';
+import { CLAIM_KEY_NAMES } from '../parser/claim-key.js';
 import { readHypotheses, writeHypotheses, emptyHypotheses, type HypothesisEntry, type HypothesisOutcome, type HypothesisSource, type HypothesesLedger, type JoinedBy } from './ledger.js';
 import { classifyHypotheses, type HypothesisRecord } from './classify.js';
 
@@ -106,11 +107,11 @@ export interface ScanFinding {
   asset: string | null;
   threat: string | null;
   /**
-   * The claim key the export stamped onto the finding, when it carries one.
-   * Read under both spellings a consumer plausibly forwards: `claim_key` (this
-   * report's own casing) and `claimKey` (the name `guardlink sarif` puts on
-   * `properties`). A stamp guardlink fails to recognise is worse than no stamp,
-   * because it silently takes the weaker join and looks identical doing it.
+   * The claim key the export stamped onto the finding, when it carries one, read
+   * under every name in `CLAIM_KEY_NAMES` and from every container a consumer
+   * puts it in — see `findingClaimKey`. A stamp guardlink fails to recognise is
+   * worse than no stamp: it takes the weaker join, and the report that carried
+   * the discriminator gets told to start sending one.
    */
   claim_key: string | null;
   evidence: { request: string | null; response: string | null; matched_patterns: string[]; data: Record<string, unknown> };
@@ -134,6 +135,28 @@ export interface ImportResult {
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
 const bare = (r: string): string => r.trim().replace(/^#/, '').toLowerCase();
+const bag = (v: unknown): Record<string, unknown> | undefined => (v && typeof v === 'object' ? v as Record<string, unknown> : undefined);
+
+/**
+ * The claim key a scan report carries, under any name in `CLAIM_KEY_NAMES` and
+ * in any container a real consumer puts it in: the finding's top level, its
+ * `annotation` object, and a `partialFingerprints` map copied wholesale from the
+ * SARIF result at either level — what a consumer using a SARIF library does,
+ * since that map is the only stamp location SARIF itself defines.
+ *
+ * First match wins. A well-formed report carries exactly one, so the order only
+ * decides a report that contradicts itself.
+ */
+function findingClaimKey(o: Record<string, unknown>, ann: Record<string, unknown> | undefined): string | null {
+  for (const c of [o, bag(o.partialFingerprints), ann, bag(ann?.partialFingerprints)]) {
+    if (!c) continue;
+    for (const name of CLAIM_KEY_NAMES) {
+      const v = str(c[name]);
+      if (v) return v;
+    }
+  }
+  return null;
+}
 
 function coerceFinding(raw: unknown, i: number): ScanFinding | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -151,7 +174,7 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
     annotation: ann && typeof ann.file === 'string' && typeof ann.line === 'number' ? { file: ann.file, line: ann.line } : null,
     asset: str(o.asset) ?? str(ann?.asset),
     threat: str(o.threat) ?? str(ann?.threat),
-    claim_key: str(o.claim_key) ?? str(o.claimKey) ?? str(ann?.claim_key) ?? str(ann?.claimKey),
+    claim_key: findingClaimKey(o, ann),
     evidence: {
       request: str(ev.request), response: str(ev.response),
       matched_patterns: Array.isArray(ev.matched_patterns) ? ev.matched_patterns.filter((p): p is string => typeof p === 'string') : [],
