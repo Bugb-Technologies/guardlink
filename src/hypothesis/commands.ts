@@ -15,7 +15,7 @@
  * @flows #cli -> SourceFiles via writeConfirmedLine -- "The @confirmed line, on --write"
  * @handles internal on #cli -- "Request and response evidence from scans, redacted"
  * @comment -- "A confirmation is held to the same evidence bar the gate holds @confirmed to; a refutation needs evidence too, just not the same words, because 'the validator rejected it' is evidence of absence"
- * @comment -- "importScan() joins a finding carrying an anchor_hash only to a claim whose anchor hash is that hash, and reports the rest as stale rather than confirming them; the hash is over the anchored code, so it holds across a line move and separates a sibling claim that landed on the tested line. Two byte-identical anchors carry one hash and are not separated. A candidate set with no anchors leaves the join as it was"
+ * @comment -- "importScan() joins a finding carrying a claim_key only to the claim whose key is that key, and reports the rest as stale rather than confirming them; the key names the claim itself, so it survives a line move and an edit to the code beneath it, and separates a sibling claim that landed on the tested line. Two byte-identical claims in one file share a digest and are told apart only by an ordinal in document order, so deleting the earlier one hands its key to the survivor"
  * @audit #cli -- "The stale bucket refuses a join rather than guessing it; a human decides whether to re-test or record the outcome by hand, and needs to see these — the CLI exits non-zero when any finding lands there"
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -103,8 +103,8 @@ export interface ScanFinding {
   annotation: { file: string; line: number } | null;
   asset: string | null;
   threat: string | null;
-  /** The anchor hash the export stamped onto the finding (`guardlink/anchorHash`), when it carries one. */
-  anchor_hash: string | null;
+  /** The claim key the export stamped onto the finding (`guardlink/claimKey`), when it carries one. */
+  claim_key: string | null;
   evidence: { request: string | null; response: string | null; matched_patterns: string[]; data: Record<string, unknown> };
 }
 
@@ -114,7 +114,7 @@ export interface ImportResult {
   scanId: string;
   confirmed: { finding: ScanFinding; record: HypothesisRecord; entry: HypothesisEntry; joinedBy: JoinedBy }[];
   ambiguous: { finding: ScanFinding; candidates: HypothesisRecord[] }[];
-  /** The finding's anchor hash matches no candidate's: the code it was tested against is not here. */
+  /** The finding's claim key matches no candidate's: the claim it was tested against is not in the model any more. */
   stale: { finding: ScanFinding; candidates: HypothesisRecord[] }[];
   unmatched: ScanFinding[];
 }
@@ -138,7 +138,7 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
     annotation: ann && typeof ann.file === 'string' && typeof ann.line === 'number' ? { file: ann.file, line: ann.line } : null,
     asset: str(o.asset) ?? str(ann?.asset),
     threat: str(o.threat) ?? str(ann?.threat),
-    anchor_hash: str(o.anchor_hash) ?? str(ann?.anchor_hash),
+    claim_key: str(o.claim_key) ?? str(ann?.claim_key),
     evidence: {
       request: str(ev.request), response: str(ev.response),
       matched_patterns: Array.isArray(ev.matched_patterns) ? ev.matched_patterns.filter((p): p is string => typeof p === 'string') : [],
@@ -162,25 +162,29 @@ export function scanEvidence(scanId: string, f: ScanFinding): string {
  * threat, then by CWE — and record the confirmed ones. A finding that fits
  * more than one claim is reported as ambiguous, never guessed.
  *
- * A finding that carries an anchor hash joins only to a claim whose anchor hash
- * is that hash. The hash comes from the SARIF export (`guardlink/anchorHash`)
- * and is over the anchored CODE, so it holds when the claim moves lines and
- * differs when the claim is a different piece of code. That is what separates a
- * finding from a sibling claim that landed on the line it was tested at: same
- * file, same asset, same threat, therefore the same threat id, and nothing else
- * on the finding tells them apart. It cannot separate two byte-identical anchors
- * — two @exposes on one doc-block carry one hash — so this narrows the join
- * rather than closing it. When no candidate carries an anchor at all there is
- * nothing to compare and the join is left as it was.
+ * A finding that carries a claim key joins only to the claim whose key is that
+ * key. The key comes from the SARIF export (`guardlink/claimKey`) and is the
+ * one the ledger already keys an entry on: a digest of the claim's own words,
+ * so it survives every edit that is not the claim — a line move, and an edit to
+ * the code beneath it. That is what separates a finding from a sibling claim
+ * that landed on the line it was tested at: same file, same line, same asset,
+ * same threat, therefore the same threat id, and nothing else on the finding
+ * tells them apart. Every claim has a key, so there is no unstamped-claim case:
+ * a key that matches nothing means the claim it named is gone, and the finding
+ * is reported as stale rather than joined to whatever else is standing there.
  *
- * The rule removes a confirmation in exactly one shape: a single candidate,
- * anchored, whose hash is not the stamp. With two or more candidates the join
- * was already ambiguous rather than a confirmation, so refusing costs nothing;
- * with none anchored the rule does not run. A claim anchored at FILE scope —
- * the shape a module doc-block resolves to — moves its hash on any edit to that
- * file, so a stamp from before such an edit is refused; that is the same change
- * `classifyHypotheses` already expires an outcome on, so this declines to write
- * what would be marked `retest` on sight rather than making a new judgement.
+ * Two consequences worth naming. A key matches at most one claim — keys are
+ * unique within a model — so this never leaves an ambiguous set behind; and it
+ * can narrow a set that the asset-and-threat join had left ambiguous down to
+ * the one claim the stamp names.
+ *
+ * The bound: two BYTE-IDENTICAL claims in one file — same verb, asset, threat,
+ * external refs and description — share a digest and are told apart only by an
+ * ordinal in document order. Delete the earlier one and the survivor inherits
+ * `…:0`, the deleted claim's exact key, so a finding stamped against the first
+ * joins to the second. That is the shape this function exists to refuse,
+ * surviving at a strictly narrower population. Separately, rewording a claim's
+ * own description re-keys it, so a stamp from before the rewording is refused.
  */
 export function importScan(root: string, model: ThreatModel, scanPath: string, input: { by: string; at: string }): ImportResult {
   const abs = inside(root, scanPath);
@@ -232,13 +236,10 @@ export function importScan(root: string, model: ThreatModel, scanPath: string, i
       if (candidates.length > 0) joinedBy = 'cwe';
     }
     if (!joinedBy) { result.unmatched.push(f); continue; }
-    if (f.anchor_hash) {
-      const anchored = candidates.filter(r => r.location.anchor?.hash);
-      if (anchored.length > 0) {
-        const same = anchored.filter(r => r.location.anchor!.hash === f.anchor_hash);
-        if (same.length === 0) { result.stale.push({ finding: f, candidates }); continue; }
-        candidates = same;
-      }
+    if (f.claim_key) {
+      const same = candidates.filter(r => r.key === f.claim_key);
+      if (same.length === 0) { result.stale.push({ finding: f, candidates }); continue; }
+      candidates = same;
     }
     if (candidates.length > 1) { result.ambiguous.push({ finding: f, candidates }); continue; }
     const record = candidates[0];

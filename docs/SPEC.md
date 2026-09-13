@@ -1056,29 +1056,32 @@ Each `@exposes` and `@confirmed` result carries its identity in SARIF's own
 | Key | `properties` mirror | Over |
 |---|---|---|
 | `guardlink/threatId` | `threatId` | `(asset, threat, file)` |
-| `guardlink/anchorHash` | `anchorHash` | the anchored code's non-comment leaf tokens, in order |
+| `guardlink/claimKey` | `claimKey` | the claim's own words — verb, identity arguments, external refs, description — plus the file, with an ordinal for repeats |
 
 `guardlink/threatId` is the coarse, stable identity: one threat keeps one id across its
 lifecycle, so the `@exposes` and the `@confirmed` that later proves it mint the same id, and
 the id does not move when the claim changes line. The line is therefore not in it, and neither
 is the message.
 
-`guardlink/anchorHash` is present when the claim has an anchor and absent otherwise — never
-null. It is the same hash the hypothesis ledger records an outcome against. Because it is over
-the anchored CODE rather than the location, it holds when a claim moves lines and differs when
-the claim sits on different code. Two exposures sharing `(asset, threat, file)` therefore share
-one `threatId` and are told apart by `anchorHash`.
+`guardlink/claimKey` is the fine identity: the same key the hypothesis ledger keys an entry on
+(`src/parser/claim-key.ts`). Every claim has one, so the field is always present on an
+`@exposes` or `@confirmed` result. It names the claim across every edit that is not the claim —
+the line it sits on, and the code beneath it. Two exposures sharing `(asset, threat, file)`
+therefore share one `threatId` and are told apart by `claimKey`.
 
 A consumer that stamps a result's identity onto a finding and later joins that finding back to
-a claim MUST treat a mismatched `anchorHash` as a non-match. Without it, a sibling exposure that
+a claim MUST treat a mismatched `claimKey` as a non-match. Without it, a sibling exposure that
 comes to occupy the tested line matches every other stamped value and the finding joins to a
 claim that was never tested. `guardlink hypothesis confirm --from-scan` implements exactly this
-rule.
+rule. A key matches at most one claim in a model, so the rule resolves such a join rather than
+merely narrowing it.
 
-**Bound.** The hash covers the anchor's code tokens, so it separates siblings whose anchored code
-differs and **cannot** separate two byte-identical anchors — two `@exposes` in one doc-block
-anchor the same code and carry one hash. This narrows such a join; it does not make it
-unambiguous.
+**Bound.** Two BYTE-IDENTICAL claims in one file — same verb, same identity arguments, same
+external refs *and* the same description — share a digest and are told apart only by an ordinal
+in document order, `<digest>:0` and `<digest>:1`. Delete the earlier one and the survivor
+inherits `<digest>:0`, which is the deleted claim's exact key, so a finding stamped against the
+first joins to the second. Separately: rewording a claim's own description re-keys it, so a
+stamp taken before the rewording is refused as stale.
 
 ---
 

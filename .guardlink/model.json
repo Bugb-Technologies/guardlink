@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:880d24e291319bb664abb289cbabe5a2913cdd1dfb85cd0fbee443df25398ee2",
+    "annotation_hash": "sha256-v3:56741d4df240881d22c616cc673c0cfe203a76f73a42cc5718b4d25288513168",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
@@ -6218,7 +6218,7 @@
       }
     },
     {
-      "description": "Exposure and confirmed results carry the claim's anchor hash as partialFingerprints['guardlink/anchorHash'], mirrored to properties.anchorHash, omitted when the claim has no anchor. The threat id is derived from (asset, threat, file) and so is shared by siblings in one file; the anchor hash is over the anchored code, so it separates siblings whose code differs and is unchanged by a line move. It cannot separate two byte-identical anchors — exposures sharing one doc-block carry one hash",
+      "description": "Exposure and confirmed results carry the claim key as partialFingerprints['guardlink/claimKey'], mirrored to properties.claimKey — the same identity the hypothesis ledger keys an entry on (src/parser/claim-key.ts), so every claim has one and there is no absent case. The threat id is derived from (asset, threat, file) and so is shared by siblings in one file; the claim key digests the claim's own words, so it separates those siblings and is unchanged by any edit that is not the claim — including a line move and an edit to the code beneath it",
       "location": {
         "file": "src/analyzer/sarif.ts",
         "line": 41
@@ -6400,7 +6400,7 @@
       }
     },
     {
-      "description": "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped code is not there) and unmatched each need a human, and a silent 0 would read as 'all imported'",
+      "description": "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more) and unmatched each need a human, and a silent 0 would read as 'all imported'",
       "location": {
         "file": "src/cli/index.ts",
         "line": 1675
@@ -6722,7 +6722,7 @@
       }
     },
     {
-      "description": "importScan() joins a finding carrying an anchor_hash only to a claim whose anchor hash is that hash, and reports the rest as stale rather than confirming them; the hash is over the anchored code, so it holds across a line move and separates a sibling claim that landed on the tested line. Two byte-identical anchors carry one hash and are not separated. A candidate set with no anchors leaves the join as it was",
+      "description": "importScan() joins a finding carrying a claim_key only to the claim whose key is that key, and reports the rest as stale rather than confirming them; the key names the claim itself, so it survives a line move and an edit to the code beneath it, and separates a sibling claim that landed on the tested line. Two byte-identical claims in one file share a digest and are told apart only by an ordinal in document order, so deleting the earlier one hands its key to the survivor",
       "location": {
         "file": "src/hypothesis/commands.ts",
         "line": 18
@@ -6736,7 +6736,7 @@
       }
     },
     {
-      "description": "formatImport() prints the stale bucket beside ambiguous and unmatched: a finding whose stamped anchor hash matches no candidate names the claims it was refused against and the command to record it by hand",
+      "description": "formatImport() prints the stale bucket beside ambiguous and unmatched: a finding whose stamped claim key matches no candidate names the claims it was refused against and the command to record it by hand",
       "location": {
         "file": "src/hypothesis/format.ts",
         "line": 6

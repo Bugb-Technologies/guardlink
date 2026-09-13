@@ -184,79 +184,84 @@ describe('generateSarif — threat id (partialFingerprints + properties.threatId
 });
 
 /**
- * The anchor hash on each result. It is a hash of the ANCHORED CODE, not of the
- * location, which is the property a consumer joining on the stamped identity
- * needs: two siblings that share a threat id — same asset, same threat, same
- * file — are separable by it, and it does not move when the code does.
+ * The claim key on each result. It is the identity of the CLAIM — the same key the
+ * hypothesis ledger keys an entry on — not of the location and not of the code
+ * beneath it, which is the property a consumer joining a finding back to a claim
+ * needs: two siblings that share a threat id (same asset, same threat, same file)
+ * are separable by it, and it does not move when the claim does.
  */
-describe('generateSarif — anchor hash (partialFingerprints + properties.anchorHash)', () => {
-  const anchored = (file: string, line: number, symbol: string, hash: string) => ({
-    file, line, anchor: { scope: 'symbol' as const, symbol, start_line: line + 2, end_line: line + 2, hash },
-  });
-  const A = 'sha256-v1:8c2aa1520479a9530f4f85770a2d2770076bf6450f7cb4a764fead7ad324e81a';
-  const B = 'sha256-v1:ad546572adc53463c970c562c03fcf7dd321e7c055c996f62009afd8006f2eba';
-
+describe('generateSarif — claim key (partialFingerprints + properties.claimKey)', () => {
   const exposure = (over: Record<string, unknown> = {}) => ({
     asset: '#api', threat: '#sqli', severity: 'critical', external_refs: [],
-    description: 'findUser concatenates email', location: anchored('src/a.ts', 4, 'findUser', A), ...over,
+    description: 'findUser concatenates email', location: loc('src/a.ts', 4), ...over,
   } as never);
 
-  const hashOf = (sarif: ReturnType<typeof generateSarif>, i: number) =>
-    (sarif.runs[0].results[i].properties as Record<string, unknown>).anchorHash as string | undefined;
+  const keyOf = (sarif: ReturnType<typeof generateSarif>, i: number) =>
+    (sarif.runs[0].results[i].properties as Record<string, unknown>).claimKey as string | undefined;
 
-  it('emits the fingerprint and properties.anchorHash, equal, on exposure and confirmed results', () => {
+  it('emits the fingerprint and properties.claimKey, equal, on exposure and confirmed results', () => {
     const sarif = generateSarif(model({
       exposures: [exposure()],
       confirmed: [exposure()],
     }));
     expect(sarif.runs[0].results.length).toBe(2);
     for (const r of sarif.runs[0].results) {
-      const fromProps = (r.properties as Record<string, unknown>).anchorHash;
-      expect(fromProps).toBe(A);
-      expect(r.partialFingerprints?.['guardlink/anchorHash']).toBe(fromProps);
+      const fromProps = (r.properties as Record<string, unknown>).claimKey;
+      expect(fromProps).toMatch(/^[0-9a-f]{64}:\d+$/);
+      expect(r.partialFingerprints?.['guardlink/claimKey']).toBe(fromProps);
     }
+    // The verb is part of the key, so the @exposes and the @confirmed proving it
+    // are distinct claims even when every argument matches.
+    expect(keyOf(sarif, 0)).not.toBe(keyOf(sarif, 1));
   });
 
-  it('omits both when the location carries no anchor — never a null', () => {
-    const sarif = generateSarif(model({ exposures: [exposure({ location: loc('src/a.ts', 4) })] }));
+  it('is present on a claim with no anchor — every claim has a key, so there is no absent case', () => {
+    const sarif = generateSarif(model({ exposures: [exposure()] }));
     const r = sarif.runs[0].results[0];
-    expect((r.properties as Record<string, unknown>)).not.toHaveProperty('anchorHash');
-    expect(r.partialFingerprints).not.toHaveProperty('guardlink/anchorHash');
-    // The threat id is untouched by the anchor being absent.
+    expect(r.locations[0].physicalLocation.region.startLine).toBe(4);
+    expect((r.properties as Record<string, unknown>).claimKey).toMatch(/^[0-9a-f]{64}:\d+$/);
+    expect(r.partialFingerprints?.['guardlink/claimKey']).toMatch(/^[0-9a-f]{64}:\d+$/);
+    // The threat id is untouched.
     expect(r.partialFingerprints?.['guardlink/threatId']).toMatch(/^gl-[0-9a-f]{12}$/);
   });
 
-  it('separates two siblings that share one threat id but anchor different code', () => {
+  it('separates two siblings that share one threat id', () => {
     // GAP-58: same asset, same threat, same file, so the threat id cannot tell them apart.
     const sarif = generateSarif(model({
       exposures: [
         exposure(),
-        exposure({ description: 'findOrder concatenates id', location: anchored('src/a.ts', 9, 'findOrder', B) }),
+        exposure({ description: 'findOrder concatenates id', location: loc('src/a.ts', 9) }),
       ],
     }));
     const ids = sarif.runs[0].results.map(r => (r.properties as Record<string, unknown>).threatId);
     expect(ids[0]).toBe(ids[1]);
-    expect(hashOf(sarif, 0)).not.toBe(hashOf(sarif, 1));
+    expect(keyOf(sarif, 0)).not.toBe(keyOf(sarif, 1));
   });
 
   it('does not move when only the line moves', () => {
     const early = generateSarif(model({ exposures: [exposure()] }));
-    const drifted = generateSarif(model({ exposures: [exposure({ location: anchored('src/a.ts', 87, 'findUser', A) })] }));
-    expect(hashOf(early, 0)).toBe(A);
-    expect(hashOf(drifted, 0)).toBe(A);
+    const drifted = generateSarif(model({ exposures: [exposure({ location: loc('src/a.ts', 87) })] }));
+    expect(keyOf(drifted, 0)).toBe(keyOf(early, 0));
   });
 
-  it('is the same for two siblings whose anchored code is byte-identical — the bound on this discriminator', () => {
-    // The hash covers the anchor's code tokens. Two exposures on one doc-block anchor the same
-    // code, so they carry one hash and nothing here separates them. Stated so the claim is not
-    // read as "the join is now unambiguous".
+  it('moves when the claim itself changes — the description is part of it', () => {
+    const before = generateSarif(model({ exposures: [exposure()] }));
+    const reworded = generateSarif(model({ exposures: [exposure({ description: 'findUser concatenates the email' })] }));
+    expect(keyOf(reworded, 0)).not.toBe(keyOf(before, 0));
+  });
+
+  it('separates two byte-identical claims in one file only by an ordinal — the bound on this discriminator', () => {
+    // Same verb, asset, threat, refs AND description: one digest, told apart in
+    // document order. Delete the first and the survivor inherits `<digest>:0`.
+    // Stated so the claim is not read as "every claim key is permanent".
     const sarif = generateSarif(model({
-      exposures: [
-        exposure(),
-        exposure({ description: 'a second claim on the same function', location: anchored('src/a.ts', 5, 'findUser', A) }),
-      ],
+      exposures: [exposure(), exposure({ location: loc('src/a.ts', 5) })],
     }));
-    expect(hashOf(sarif, 0)).toBe(A);
-    expect(hashOf(sarif, 1)).toBe(A);
+    const [first, second] = [keyOf(sarif, 0)!, keyOf(sarif, 1)!];
+    expect(first.split(':')[0]).toBe(second.split(':')[0]);
+    expect([first.split(':')[1], second.split(':')[1]]).toEqual(['0', '1']);
+
+    const survivorAlone = generateSarif(model({ exposures: [exposure({ location: loc('src/a.ts', 5) })] }));
+    expect(keyOf(survivorAlone, 0)).toBe(first);
   });
 });

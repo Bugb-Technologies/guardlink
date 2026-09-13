@@ -112,21 +112,26 @@ function baseKey(rec: Rec): string {
 
 function allRecords(model: ThreatModel): Rec[] {
   const out: Rec[] = [];
-  for (const r of model.mitigations) out.push(['mitigates', r]);
-  for (const r of model.exposures) out.push(['exposes', r]);
-  for (const r of model.confirmed || []) out.push(['confirmed', r]);
-  for (const r of model.acceptances) out.push(['accepts', r]);
-  for (const r of model.transfers) out.push(['transfers', r]);
-  for (const r of model.flows) out.push(['flows', r]);
-  for (const r of model.boundaries) out.push(['boundary', r]);
-  for (const r of model.validations) out.push(['validates', r]);
-  for (const r of model.audits) out.push(['audit', r]);
-  for (const r of model.ownership) out.push(['owns', r]);
-  for (const r of model.data_handling) out.push(['handles', r]);
-  for (const r of model.assumptions) out.push(['assumes', r]);
-  for (const r of model.features) out.push(['feature', r]);
-  for (const r of model.comments) out.push(['comment', r]);
-  for (const r of model.entitlements || []) out.push(['entitles', r]);
+  // Every collection is read through `?? []`, for the reason
+  // `canonicalAnnotationRecords` states: `ThreatModel` declares most of them
+  // required and `parseProject` always populates them, but this is now reached
+  // from `generateSarif`, a pure transform callers hand partial models to. An
+  // absent collection contributes no claims, which is what an empty one gives.
+  for (const r of model.mitigations ?? []) out.push(['mitigates', r]);
+  for (const r of model.exposures ?? []) out.push(['exposes', r]);
+  for (const r of model.confirmed ?? []) out.push(['confirmed', r]);
+  for (const r of model.acceptances ?? []) out.push(['accepts', r]);
+  for (const r of model.transfers ?? []) out.push(['transfers', r]);
+  for (const r of model.flows ?? []) out.push(['flows', r]);
+  for (const r of model.boundaries ?? []) out.push(['boundary', r]);
+  for (const r of model.validations ?? []) out.push(['validates', r]);
+  for (const r of model.audits ?? []) out.push(['audit', r]);
+  for (const r of model.ownership ?? []) out.push(['owns', r]);
+  for (const r of model.data_handling ?? []) out.push(['handles', r]);
+  for (const r of model.assumptions ?? []) out.push(['assumes', r]);
+  for (const r of model.features ?? []) out.push(['feature', r]);
+  for (const r of model.comments ?? []) out.push(['comment', r]);
+  for (const r of model.entitlements ?? []) out.push(['entitles', r]);
   return out;
 }
 

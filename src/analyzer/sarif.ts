@@ -38,7 +38,7 @@
  * @comment -- "runs[0].properties.annotation_hash stamps the export with the annotations it was cut from (R10), so a hygiene gate can tell a current SARIF from one built three commits ago — this file is the pentest surface, and a stale one decides which exposures get tested"
  * @comment -- "@entitles has no export semantics by design: SARIF for a model with entitlements is byte-identical to one without, so an entitlement can never hide an exposure from the pentest export (actor-entitlement design §3.2)"
  * @comment -- "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} derived from the asset's inbound @flows route so downstream HTTP consumers (e.g. cert-x-gen) can target the endpoint; emitted verbatim from the annotation, no base path assumed"
- * @comment -- "Exposure and confirmed results carry the claim's anchor hash as partialFingerprints['guardlink/anchorHash'], mirrored to properties.anchorHash, omitted when the claim has no anchor. The threat id is derived from (asset, threat, file) and so is shared by siblings in one file; the anchor hash is over the anchored code, so it separates siblings whose code differs and is unchanged by a line move. It cannot separate two byte-identical anchors — exposures sharing one doc-block carry one hash"
+ * @comment -- "Exposure and confirmed results carry the claim key as partialFingerprints['guardlink/claimKey'], mirrored to properties.claimKey — the same identity the hypothesis ledger keys an entry on (src/parser/claim-key.ts), so every claim has one and there is no absent case. The threat id is derived from (asset, threat, file) and so is shared by siblings in one file; the claim key digests the claim's own words, so it separates those siblings and is unchanged by any edit that is not the claim — including a line move and an edit to the code beneath it"
  * @flows ThreatModel -> #sarif via generateSarif -- "Model input"
  * @flows #sarif -> SarifLog via return -- "SARIF output"
  */
@@ -49,6 +49,7 @@ import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
 import { ACCEPTANCE_REGISTER_ID } from '../parser/acceptance.js';
 import { computeAnnotationHash, ANNOTATION_HASH_VERSION } from '../parser/annotation-hash.js';
+import { relationRecords } from '../parser/claim-key.js';
 import { getPackageVersion } from '../version.js';
 
 // ─── SARIF 2.1.0 types (subset) ─────────────────────────────────────
@@ -120,11 +121,12 @@ interface SarifResult {
    * guardlink threat id here so a result can be tracked across exports independently of its
    * line/order. Mirrored into `properties.threatId` for consumers without a SARIF library.
    *
-   * `guardlink/anchorHash` is the second key: the hash of the code the claim is anchored to,
-   * absent when the claim has no anchor. The threat id is derived from (asset, threat, file),
-   * so two exposures that differ only in which code they sit on carry ONE id; the anchor hash
-   * is over the anchored code, so it separates them and does not move when the line does.
-   * Mirrored into `properties.anchorHash` the same way.
+   * `guardlink/claimKey` is the second key: the claim's own identity, the one the hypothesis
+   * ledger keys an entry on. The threat id is derived from (asset, threat, file), so two
+   * exposures in one file naming the same pair carry ONE id; the claim key digests the claim's
+   * words — verb, identity arguments, external refs, description, file — so it separates them,
+   * and it is unchanged by every edit that is not the claim itself. Every claim has one.
+   * Mirrored into `properties.claimKey` the same way.
    */
   partialFingerprints?: Record<string, string>;
   properties?: Record<string, unknown>;
@@ -230,6 +232,15 @@ export function generateSarif(
     return route ? { codegraph_reachability: { http_method: route.method, http_path: route.path } } : {};
   };
 
+  // Claim keys, by the location object each record carries. `relationRecords`
+  // walks the very arrays iterated below, so every exposure and every confirmed
+  // reached here is in this map — the same location identity `classifyHypotheses`
+  // joins the ledger on, which is what makes the stamp and the ledger agree.
+  const claimKeys = new Map<object, string>();
+  for (const src of relationRecords(model)) {
+    if (src.verb === 'exposes' || src.verb === 'confirmed') claimKeys.set(src.location, src.key);
+  }
+
   for (const e of model.exposures) {
     if (coverage.isCovered(e)) continue;
 
@@ -245,17 +256,17 @@ export function generateSarif(
 
     const messageText = `${e.asset} is exposed to ${threat}${desc}`;
     const id = threatId(e.asset, e.threat, e.location.file);
-    const anchorHash = e.location.anchor?.hash;
+    const claimKey = claimKeys.get(e.location);
 
     results.push({
       ruleId,
       level,
       message: { text: messageText },
       locations: [locationFrom(e.location.file, e.location.line)],
-      partialFingerprints: { 'guardlink/threatId': id, ...(anchorHash ? { 'guardlink/anchorHash': anchorHash } : {}) },
+      partialFingerprints: { 'guardlink/threatId': id, ...(claimKey ? { 'guardlink/claimKey': claimKey } : {}) },
       properties: {
         threatId: id,
-        ...(anchorHash ? { anchorHash } : {}),
+        ...(claimKey ? { claimKey } : {}),
         severity: e.severity || 'unset',
         asset: e.asset,
         threat: e.threat,
@@ -272,17 +283,17 @@ export function generateSarif(
 
     const messageText = `CONFIRMED: ${c.asset} exploitable via ${threat}${desc}`;
     const id = threatId(c.asset, c.threat, c.location.file);
-    const anchorHash = c.location.anchor?.hash;
+    const claimKey = claimKeys.get(c.location);
 
     results.push({
       ruleId: 'guardlink/confirmed-exploitable',
       level: 'error',
       message: { text: messageText },
       locations: [locationFrom(c.location.file, c.location.line)],
-      partialFingerprints: { 'guardlink/threatId': id, ...(anchorHash ? { 'guardlink/anchorHash': anchorHash } : {}) },
+      partialFingerprints: { 'guardlink/threatId': id, ...(claimKey ? { 'guardlink/claimKey': claimKey } : {}) },
       properties: {
         threatId: id,
-        ...(anchorHash ? { anchorHash } : {}),
+        ...(claimKey ? { claimKey } : {}),
         severity: c.severity || 'unset',
         asset: c.asset,
         threat: c.threat,

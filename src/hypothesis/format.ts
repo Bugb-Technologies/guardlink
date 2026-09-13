@@ -3,7 +3,7 @@
  *
  * @handles internal on #cli -- "Evidence strings printed to the terminal"
  * @comment -- "Plain padded tables like printStatus; nothing here reads a file"
- * @comment -- "formatImport() prints the stale bucket beside ambiguous and unmatched: a finding whose stamped anchor hash matches no candidate names the claims it was refused against and the command to record it by hand"
+ * @comment -- "formatImport() prints the stale bucket beside ambiguous and unmatched: a finding whose stamped claim key matches no candidate names the claims it was refused against and the command to record it by hand"
  */
 import type { HypothesisClassification, HypothesisRecord, RankedHypothesis } from './classify.js';
 import type { HypothesisEntry } from './ledger.js';
@@ -73,7 +73,8 @@ export function formatImport(r: ImportResult): string {
   }
   for (const s of r.stale) {
     const where = s.candidates.map(c => `${c.file}:${c.line}`).join(', ');
-    lines.push('', `Stale      ${s.finding.id} (${s.finding.template_id}) was tested against code that is no longer at ${where}; the ${s.candidates.length === 1 ? 'claim' : 'claims'} there now ${s.candidates.length === 1 ? 'anchors' : 'anchor'} different code. Re-test against the tree as it is, or record it by hand:`);
+    const one = s.candidates.length === 1;
+    lines.push('', `Stale      ${s.finding.id} (${s.finding.template_id}) was tested against a claim that is no longer in the model — deleted, or its asset, threat, refs, description or file edited. ${one ? `The claim at ${where} is not it` : `None of the claims at ${where} is it`}. Re-test against the tree as it is, or record it by hand:`);
     for (const c of s.candidates) lines.push(`  guardlink hypothesis confirm ${c.file}:${c.line} --evidence "…"`);
   }
   for (const u of r.unmatched) lines.push('', `Unmatched  ${u.id} (${u.template_id}, ${u.title || 'no title'}): no claim carries this location, asset/threat or CWE. If it is real, annotate it first.`);
