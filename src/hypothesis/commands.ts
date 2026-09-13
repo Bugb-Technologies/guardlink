@@ -144,6 +144,15 @@ export interface ScanFinding {
    * to refuse a join the report identified precisely.
    */
   junk_stamps: ScanStamp[];
+  /**
+   * Well-formed keys that DISAGREE with the one selected — the report claiming
+   * two different exposures at once. Deterministic precedence still picks the
+   * winner, because a widening must not change what an already-accepted report
+   * resolves to; what changes is that the disagreement is no longer discarded.
+   * A conflicting VALID extra is likelier to be trusted than an obviously
+   * malformed one, so hiding it is worse than hiding junk, not equally bad.
+   */
+  rival_stamps: ScanStamp[];
   evidence: { request: string | null; response: string | null; matched_patterns: string[]; data: Record<string, unknown> };
 }
 
@@ -230,6 +239,10 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
   const stamps = findingStamps(o, ann);
   const valid = stamps.filter(s => isClaimKey(s.value));
   const invalid = stamps.filter(s => !isClaimKey(s.value));
+  // Forwarding both emitted surfaces carries the SAME key twice, which is the
+  // ordinary shape and agreement, not a conflict. Only a DIFFERENT well-formed
+  // key is a rival: the report contradicting itself about which claim was tested.
+  const rivals = valid.filter(s => s.value !== valid[0]?.value);
   return {
     id: str(o.id) ?? `finding-${i + 1}`,
     template_id: str(o.template_id) ?? 'unknown-template',
@@ -243,6 +256,7 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
     claim_key: valid[0]?.value ?? null,
     malformed_stamp: valid.length === 0 ? invalid[0] ?? null : null,
     junk_stamps: valid.length > 0 ? invalid : [],
+    rival_stamps: rivals,
     evidence: {
       request: str(ev.request), response: str(ev.response),
       matched_patterns: Array.isArray(ev.matched_patterns) ? ev.matched_patterns.filter((p): p is string => typeof p === 'string') : [],
@@ -359,7 +373,8 @@ export function importScan(root: string, model: ThreatModel, scanPath: string, i
       const named = byKey.get(f.claim_key);
       if (!named) { result.stale.push({ finding: f }); continue; }
       candidates = [named];
-      joinedBy = 'claim-key';
+      // Identity in doubt: the key won a tiebreak rather than standing alone.
+      joinedBy = f.rival_stamps.length > 0 ? 'claim-key-contested' : 'claim-key';
     } else {
       if (f.annotation) {
         const file = f.annotation.file.replace(/\\/g, '/');

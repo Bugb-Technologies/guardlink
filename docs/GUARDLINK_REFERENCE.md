@@ -264,13 +264,15 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
   closes a block comment is broken as well, derived from the target file's form: left intact it ends
   the doc-block and puts report text in code position, and the re-parse cannot see it because it
   reads the annotation outside the comment it lands in.
-- **`--write` only inserts a key-verified confirmation.** An `@confirmed` in source is a claim that
-  the exposure was tested and proven — later scans, reviewers and `guardlink sarif` read it, and
-  unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a
-  different exposure than the probe tested, so `--from-scan --write` skips it, names it and prints
-  the by-hand command; the outcome is still in the ledger. The line it does write states that the
-  scan stamped the claim's own key, so the reason survives the code that enforces it. The manual
-  `confirm <file:line> --evidence … --write` path is unchanged.
+- **`--write` only inserts an uncontested key-verified confirmation.** An `@confirmed` in source is
+  a claim that the exposure was tested and proven — later scans, reviewers and `guardlink sarif`
+  read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be
+  about a different exposure than the probe tested, and a **contested** one (two well-formed keys
+  naming different claims, resolved by precedence) leaves identity in doubt, so `--from-scan
+  --write` skips either, names it and prints the by-hand command; the outcome is still in the
+  ledger. The line it does write states that the scan stamped the claim's own key, so the reason
+  survives the code that enforces it. The manual `confirm <file:line> --evidence … --write` path is
+  unchanged.
 - **Only an unstamped finding falls to the coarse joins** — annotation location, then asset and
   threat, then CWE — where one that fits more than one claim is reported as ambiguous, never
   guessed, and one that fits none is listed as unmatched. Those match where a claim *sits*, not

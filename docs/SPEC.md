@@ -1154,6 +1154,12 @@ ones, names each one it skipped and how to record it deliberately, and states th
 the line it does write. A manual confirmation is unaffected: it is human evidence about a named
 target, with no join to qualify.
 
+A join is **contested** when the finding carried more than one well-formed claim key naming
+different claims. Precedence still picks the winner deterministically, but the outcome is recorded
+and reported as `claim-key-contested`, the losing keys are named with the field each arrived in,
+and the write is withheld — a label asserting more verification than was performed is itself a
+false claim, and this is the one surface that writes into a repository.
+
 **A written description is external text, and is treated as such.** Every value in a scan-derived
 `@confirmed` — the template id, the title, the matched patterns, the request and the response —
 comes from the report, and the line is spliced into a file whose annotations are line-oriented. So
@@ -1169,12 +1175,20 @@ description also passes through the host language's comment syntax, and those ar
 grammars: collapsing newlines and escaping quotes neutralises ours and leaves the host's intact, so
 the sequence that closes a block comment — ordinary in a probe's response when it echoes CSS or JS
 — ends the doc-block early and puts report-controlled text in **code** position in the file being
-edited. The closer is therefore broken too, derived from the target file's block form rather than
-from one fixed spelling, because the damage is language-specific: a sequence that is fatal in one
-language is inert in another, and mangling text that was never dangerous loses evidence for
-nothing. Line comments need no treatment of their own — they end at a newline, which the collapse
-has already removed. The re-parse cannot stand in for this: it reads the bare annotation, outside
-the comment it is about to be spliced into.
+edited. The closer is therefore broken too, and the comment form it belongs to is derived from the
+**source line being written into** — the line's own opener when it has one, no closer at all for a
+line comment, the block that opened it for a continuation line, and only then a per-extension
+fallback. The extension alone is a proxy: a C-family block comment is accepted in any file with no
+language gate, so a table keyed by extension is thinner than the parser in one direction and
+irrelevant in the other. The damage is language-specific — a sequence that is fatal in one language
+is inert in another, and mangling text that was never dangerous loses evidence for nothing.
+
+That derivation settles a second question with the same information: when the `@exposes` line
+**closes its own comment**, the inserted line inherits its opener, so the terminator is reproduced
+on it. Without that the file is left inside an unterminated comment and the declaration the
+doc-block described silently leaves the compile. Line comments need no treatment of their own —
+they end at a newline, which the collapse has already removed. The re-parse cannot stand in for
+any of this: it reads the bare annotation, outside the comment it is about to be spliced into.
 
 **Bound.** Two BYTE-IDENTICAL claims in one file — same verb, same identity arguments, same
 external refs *and* the same description — share a digest and are told apart only by an ordinal

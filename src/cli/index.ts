@@ -1665,9 +1665,12 @@ const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: strin
       const r = importScan(root, model, opts.fromScan, { by: opts.by || 'cxg', at });
       console.log(formatImport(r));
       if (opts.write) {
-        // @comment -- "--write only inserts a KEY-VERIFIED confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), so writing one back is how a false @confirmed enters a corpus. Losing that throughput is the point: those are exactly the joins that can be wrong"
+        // @comment -- "--write only inserts an UNCONTESTED key-verified confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), and a contested one came from a report that named two different claims at once, so identity is in doubt in both cases. Losing that throughput is the point: those are exactly the joins that can be wrong"
         for (const c of r.confirmed.filter(c => c.joinedBy !== 'claim-key')) {
-          console.error(`  ! skipped ${c.record.file}:${c.record.line} — joined by ${c.joinedBy}, not key-verified, so it may be about a different exposure than the probe tested. The outcome is in the ledger; if you judge it right, record it deliberately:`);
+          const why = c.joinedBy === 'claim-key-contested'
+            ? 'the report carried more than one claim key naming different claims, so this one won on precedence rather than agreement — which exposure was tested is in doubt'
+            : `joined by ${c.joinedBy}, not key-verified, so it may be about a different exposure than the probe tested`;
+          console.error(`  ! skipped ${c.record.file}:${c.record.line} — ${why}. The outcome is in the ledger; if you judge it right, record it deliberately:`);
           console.error(`      guardlink hypothesis confirm ${c.record.file}:${c.record.line} --evidence "…" --write`);
         }
         // @comment -- "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet"

@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:09ebdbfa82e846280117843a9b00dffbfed0dfc5a3cbdfd3fcd6cc3e2552bb7c",
+    "annotation_hash": "sha256-v3:f783bf0a1b8212a84e58e95fae378926f845040f492f3ee04fd8d25f97e7c308",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 150,
-  "annotations_parsed": 763,
+  "annotations_parsed": 764,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -4023,7 +4023,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2792
+        "line": 2795
       }
     },
     {
@@ -4033,7 +4033,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2795
+        "line": 2798
       }
     },
     {
@@ -5692,7 +5692,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3522
+        "line": 3525
       }
     },
     {
@@ -6448,7 +6448,7 @@
       }
     },
     {
-      "description": "--write only inserts a KEY-VERIFIED confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), so writing one back is how a false @confirmed enters a corpus. Losing that throughput is the point: those are exactly the joins that can be wrong",
+      "description": "--write only inserts an UNCONTESTED key-verified confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), and a contested one came from a report that named two different claims at once, so identity is in doubt in both cases. Losing that throughput is the point: those are exactly the joins that can be wrong",
       "location": {
         "file": "src/cli/index.ts",
         "line": 1668
@@ -6458,28 +6458,28 @@
       "description": "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1673
+        "line": 1676
       }
     },
     {
       "description": "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1689
+        "line": 1692
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3468
+        "line": 3471
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3523
+        "line": 3526
       }
     },
     {
@@ -6826,10 +6826,17 @@
       }
     },
     {
-      "description": "formatImport() prints the stale and malformed buckets beside ambiguous and unmatched. A finding whose stamped claim key names no claim in the model says so and offers no by-hand target, because every claim it could name there is a different claim; a finding whose stamp is not a claim key at all names the value and the field it arrived in, so the producer can be fixed. Each confirmation is labelled with the identity that joined it, and a report carrying no stamps at all says that the weaker join was used — a key-verified confirmation and an unverified one must not read the same",
+      "description": "A contested join — more than one well-formed claim key on one finding, naming different claims — is labelled with its own words and its losing keys are listed, because 'key-verified' is a claim about what happened and a precedence tiebreak establishes less than agreement does",
       "location": {
         "file": "src/hypothesis/format.ts",
         "line": 6
+      }
+    },
+    {
+      "description": "formatImport() prints the stale and malformed buckets beside ambiguous and unmatched. A finding whose stamped claim key names no claim in the model says so and offers no by-hand target, because every claim it could name there is a different claim; a finding whose stamp is not a claim key at all names the value and the field it arrived in, so the producer can be fixed. Each confirmation is labelled with the identity that joined it, and a report carrying no stamps at all says that the weaker join was used — a key-verified confirmation and an unverified one must not read the same",
+      "location": {
+        "file": "src/hypothesis/format.ts",
+        "line": 7
       }
     },
     {
@@ -7485,7 +7492,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 763,
+    "annotation_count": 764,
     "coverage_percent": 87
   },
   "external_refs": []

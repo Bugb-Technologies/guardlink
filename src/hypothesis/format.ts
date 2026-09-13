@@ -3,6 +3,7 @@
  *
  * @handles internal on #cli -- "Evidence strings printed to the terminal"
  * @comment -- "Plain padded tables like printStatus; nothing here reads a file"
+ * @comment -- "A contested join — more than one well-formed claim key on one finding, naming different claims — is labelled with its own words and its losing keys are listed, because 'key-verified' is a claim about what happened and a precedence tiebreak establishes less than agreement does"
  * @comment -- "formatImport() prints the stale and malformed buckets beside ambiguous and unmatched. A finding whose stamped claim key names no claim in the model says so and offers no by-hand target, because every claim it could name there is a different claim; a finding whose stamp is not a claim key at all names the value and the field it arrived in, so the producer can be fixed. Each confirmation is labelled with the identity that joined it, and a report carrying no stamps at all says that the weaker join was used — a key-verified confirmation and an unverified one must not read the same"
  */
 import type { HypothesisClassification, HypothesisRecord, RankedHypothesis } from './classify.js';
@@ -56,11 +57,17 @@ export function formatIntake(q: RankedHypothesis[], project: string): string {
  * a token. `claim-key` named the claim; the rest matched something it sits at,
  * which a claim that moved onto the tested line also matches — so those are
  * labelled as unverified rather than printed identically to a verified join.
+ *
+ * A contested join gets its own words for the same reason. "Key-verified" is a
+ * claim about what happened, and a winner picked by precedence from keys that
+ * disagreed establishes less than an uncontested stamp; printing both the same
+ * way would overstate one of them.
  */
 function joinNote(source: HypothesisEntry['source']): string | null {
   if (source.kind !== 'scan') return null;
   switch (source.joined_by) {
     case 'claim-key': return '  joined    by claim-key — the stamp named this exact claim';
+    case 'claim-key-contested': return '  joined    by claim-key, CONTESTED — the report carried more than one claim key and they named different claims; this one won on precedence, not agreement';
     case undefined: return '  joined    by an unrecorded match — NOT key-verified';
     default: return `  joined    by ${source.joined_by} — NOT key-verified: this finding carried no claim key, so it matches where the claim sits, not which claim it is`;
   }
@@ -89,7 +96,7 @@ export function formatImport(r: ImportResult): string {
   // is gone lands in `stale`, never in `confirmed`.
   const findings = [...r.confirmed.map(c => c.finding), ...r.ambiguous.map(a => a.finding), ...r.stale.map(s => s.finding), ...r.malformed.map(m => m.finding), ...r.unmatched];
   const anyStamp = findings.some(f => f.claim_key);
-  const stamped = r.confirmed.filter(c => c.joinedBy === 'claim-key').length;
+  const stamped = r.confirmed.filter(c => c.joinedBy === 'claim-key' || c.joinedBy === 'claim-key-contested').length;
   if (r.confirmed.length > 0 && !anyStamp) {
     lines.push('', `⚠  No finding in this report carried a claim key, so every join below matched where a claim sits rather than which claim it is. A claim that came to occupy a tested line cannot be told from the claim that was tested. Have the scanner forward ${CLAIM_KEY_FINGERPRINT} from the SARIF export.`);
   } else if (stamped < r.confirmed.length) {
@@ -118,6 +125,15 @@ export function formatImport(r: ImportResult): string {
   if (junk.length > 0) {
     lines.push('', `Note       a valid claim key was used, but ${junk.length} other ${junk.length === 1 ? 'value' : 'values'} arrived under a guardlink name and ${junk.length === 1 ? 'is' : 'are'} not claim keys. The joins above are unaffected; whatever wrote these should stop:`);
     for (const { f, s } of junk) lines.push(`  ${f.id}: ${JSON.stringify(short(s.value, 40))} in ${s.field}`);
+  }
+  // A conflict is louder than junk: an extra key that is WELL-FORMED is likelier
+  // to be trusted than an obviously broken one, and it names a different claim,
+  // so it changes which exposure gets confirmed rather than merely being noise.
+  const rivals = findings.flatMap(f => f.rival_stamps.map(s => ({ f, s })));
+  if (rivals.length > 0) {
+    lines.push('', `⚠  Contested  ${rivals.length === 1 ? 'a finding' : 'findings'} carried more than one claim key, naming different claims — the report contradicts itself about which exposure was tested. The winner above was chosen by precedence, not by agreement, so it is labelled CONTESTED and no @confirmed is written to source for it. The key used is listed on the outcome; the ones it beat:`);
+    for (const { f, s } of rivals) lines.push(`  ${f.id}: also claimed ${short(s.value, 24)} in ${s.field}`);
+    lines.push(`           Fix whatever emits two keys for one finding. To record one of these deliberately: guardlink hypothesis confirm <file:line> --evidence "…" --write`);
   }
   return lines.join('\n');
 }

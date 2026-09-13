@@ -781,6 +781,36 @@ export function findUser(email: string) { return email; }
     expect(r.confirmed).toHaveLength(1);
     expect(r.confirmed[0].record.key).toBe(a.claim_key);
     expect(`${r.confirmed[0].record.file}:${r.confirmed[0].record.line}`).toBe('src/a.ts:4');
+
+    // Deterministic, but not silent: the report named two different claims, so
+    // the win came from precedence rather than agreement and says so.
+    expect(r.confirmed[0].joinedBy).toBe('claim-key-contested');
+    expect(r.confirmed[0].finding.rival_stamps.map(x => [x.value, x.field])).toEqual([[b.claim_key, 'properties.claimKey']]);
+    const out = formatImport(r);
+    expect(out).toMatch(/Contested/);
+    expect(out).toMatch(/CONTESTED — the report carried more than one claim key/);
+    expect(out).toContain(b.claim_key!.slice(0, 23));
+    // And the ledger keeps it, so a later reader of the entry can tell too.
+    expect(readHypotheses(root).ledger!.entries[0].source).toMatchObject({ kind: 'scan', joined_by: 'claim-key-contested' });
+  }, 60000);
+
+  it('treats the same key in both surfaces as agreement, not a conflict', async () => {
+    // The ordinary forwarded shape: a consumer copies both emitted surfaces, so
+    // the same key arrives twice. Nothing is contested and nothing is withheld.
+    const root = await siblings(SIBLINGS);
+    const model = await parse(root);
+    const a = stamp(generateSarif(model), 4);
+    const path = await writeScan(root, { scan_id: 'cxg-agree', findings: [{
+      id: 'f1', template_id: 'login-sqli', severity: 'critical', confidence: 0.9, title: 'SQLi', cwe_ids: [],
+      partialFingerprints: { 'guardlink/claimKey': a.claim_key }, properties: { claimKey: a.claim_key },
+      evidence: { request: 'POST /u', response: 'HTTP 200 3 rows', matched_patterns: [], data: {} },
+    }] });
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    expect(r.confirmed).toHaveLength(1);
+    expect(r.confirmed[0].joinedBy).toBe('claim-key');
+    expect(r.confirmed[0].finding.rival_stamps).toEqual([]);
+    expect(formatImport(r)).not.toMatch(/Contested/);
   }, 60000);
 });
 
@@ -1110,6 +1140,50 @@ export function login(email: string) { return email; }
     const after = await parse(root);
     expect(after.confirmed).toHaveLength(1);
     expect(after.confirmed![0]).toMatchObject({ asset: '#api', threat: '#sqli' });
+  }, 120_000);
+
+  it('withholds the write for a contested key while an uncontested one in the same run is written', async () => {
+    // Identity in doubt must not be spliced into source as "key-verified": that
+    // label would describe a stronger verification than was actually performed,
+    // in the highest-consequence place this code writes.
+    const TWO = `import x from 'x';
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "A: email param"
+ */
+export function findUser(email: string) { return email; }
+
+/**
+ * @exposes #web to #xss [high] cwe:CWE-79 -- "B: bio via innerHTML"
+ */
+export function render(bio: string) { return bio; }
+`;
+    const root = await siblings(TWO);
+    const sarif = generateSarif(await parse(root));
+    const a = stamp(sarif, 4), b = stamp(sarif, 9);
+    await writeScan(root, { scan_id: 'cxg-mix', findings: [
+      // Contested: two well-formed keys naming two live claims.
+      { ...finding({ id: 'fContested', template_id: 'tC' }),
+        partialFingerprints: { 'guardlink/claimKey': a.claim_key }, properties: { claimKey: b.claim_key } },
+      // Uncontested, a different claim — must still be written in the same run.
+      finding({ id: 'fClean', template_id: 'tK', claim_key: b.claim_key }),
+    ] });
+    const run = await runCli(root);
+
+    const src = await readFile(join(root, 'src', 'a.ts'), 'utf-8');
+    const written = src.split('\n').filter(l => l.includes('@confirmed'));
+    expect(written).toHaveLength(1);
+    // The one that was written is the uncontested claim, and it is the only
+    // line carrying the key-verified marker.
+    const after = await parse(root);
+    expect(after.confirmed).toHaveLength(1);
+    expect(after.confirmed![0]).toMatchObject({ asset: '#web', threat: '#xss' });
+    expect(written[0]).toMatch(/key-verified/);
+
+    expect(run.out).toMatch(/skipped src\/a\.ts:4 — the report carried more than one claim key naming different claims/);
+    expect(run.out).toMatch(/guardlink hypothesis confirm src\/a\.ts:4 --evidence/);
+    // Both outcomes are still in the ledger; only the source write was withheld.
+    expect(readHypotheses(root).ledger!.entries).toHaveLength(2);
   }, 120_000);
 
   it('writes both confirmations when two same-asset, same-threat siblings share a doc-block', async () => {
