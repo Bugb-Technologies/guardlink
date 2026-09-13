@@ -237,11 +237,13 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
   `@exposes` result: as `partialFingerprints['guardlink/claimKey']` — the mechanism, SARIF's own
   stable-identity map and the only stamp location SARIF defines — and as `properties.claimKey`,
   the mirror for consumers without a SARIF library. `--from-scan` accepts it under any of
-  `guardlink/claimKey`, `claimKey` or `claim_key`, from a finding's top level, its `annotation`
-  object, or a `partialFingerprints` map at either level. So copying either emitted surface
-  wholesale works, spread or nested. One shared definition (`CLAIM_KEY_NAMES` in
-  `src/parser/claim-key.ts`) backs the emitter, the reader and the hint text, so the name the
-  product advertises is always a name the reader takes.
+  `guardlink/claimKey`, `claimKey` or `claim_key`, and from either level — a finding's top level or
+  its `annotation` object — either spread onto that level or left as a nested `properties` or
+  `partialFingerprints` map. So copying either emitted surface wholesale works, spread or nested,
+  at either level. One shared definition (`CLAIM_KEY_NAMES` and `CLAIM_KEY_SURFACES` in
+  `src/parser/claim-key.ts`) backs the emitter, the reader's accepted placements and the hint text
+  — names *and* surfaces, because sharing only the names left the containers written twice and the
+  disagreement moved there. What the product advertises is always what the reader takes.
 - **Only an unstamped finding falls to the coarse joins** — annotation location, then asset and
   threat, then CWE — where one that fits more than one claim is reported as ambiguous, never
   guessed, and one that fits none is listed as unmatched. Those match where a claim *sits*, not

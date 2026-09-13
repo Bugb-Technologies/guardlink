@@ -1100,12 +1100,26 @@ therefore accepts the key under **any** of these names:
 | `claimKey` | the `properties` mirror, forwarded as emitted |
 | `claim_key` | the scan-report convention's own casing |
 
-and from **any** of these containers on a finding: its top level, its `annotation` object, or a
-`partialFingerprints` map at either level — so a consumer may copy either emitted surface
-wholesale, spread or nested, without knowing which name the key arrived under. The set is one
-definition (`CLAIM_KEY_NAMES` in `src/parser/claim-key.ts`) that the exporter, the reader and the
-operator-facing text all derive from; a name the reader does not accept can therefore not be
-advertised.
+and from **any** container these placements produce — each level the key can sit at (the finding
+itself, its `annotation` object) carrying it directly, or carrying either emitted surface nested
+under that surface's own name:
+
+| Level | Placement |
+|---|---|
+| the finding | the key spread onto it under any accepted name |
+| the finding | `properties` or `partialFingerprints`, forwarded as a nested map |
+| `annotation` | the key spread onto it under any accepted name |
+| `annotation` | `properties` or `partialFingerprints`, forwarded as a nested map |
+
+So a consumer may copy either emitted surface wholesale, spread or nested, at either level,
+without knowing which name the key arrived under.
+
+Names and surfaces are **one** definition (`CLAIM_KEY_NAMES` and `CLAIM_KEY_SURFACES` in
+`src/parser/claim-key.ts`), which the exporter emits through, the reader generates its accepted
+placements from, and the operator-facing text interpolates. Both dimensions on purpose: sharing
+only the names left the containers written twice, and the disagreement simply moved there. A name
+or a surface the reader does not accept therefore cannot be advertised, and adding a surface
+widens the reader with no edit to it.
 
 **Bound.** Two BYTE-IDENTICAL claims in one file — same verb, same identity arguments, same
 external refs *and* the same description — share a digest and are told apart only by an ordinal

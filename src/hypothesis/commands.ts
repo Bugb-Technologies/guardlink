@@ -16,8 +16,9 @@
  * @handles internal on #cli -- "Request and response evidence from scans, redacted"
  * @comment -- "A confirmation is held to the same evidence bar the gate holds @confirmed to; a refutation needs evidence too, just not the same words, because 'the validator rejected it' is evidence of absence"
  * @comment -- "importScan() resolves a finding carrying a claim_key against the whole record set BEFORE the location/asset-threat/CWE tiers, which run only for an unstamped finding; a key that names no claim is stale, never re-joined by a coarser tier. The key names the claim itself, so it survives a line move and an edit to the code beneath it, and separates a sibling claim that landed on the tested line. Two byte-identical claims in one file share a digest and are told apart only by an ordinal in document order, so deleting the earlier one hands its key to the survivor"
- * @comment -- "The claim key is read under every name in CLAIM_KEY_NAMES (src/parser/claim-key.ts) — the same set guardlink sarif emits through — from the finding's top level, its annotation object, or a partialFingerprints map copied wholesale from the SARIF result at either level. One definition shared by emitter, reader and the operator-facing banner, because an unrecognised stamp takes the weaker join while the output tells the operator to start sending the stamp they already sent"
- * @validates #config-validation for #cli -- "tests/hypothesis.test.ts forwards a real generateSarif result's properties into the scan finding without naming a field, so the emitted name and the read name cannot drift apart unnoticed"
+ * @comment -- "The claim key is read under every name in CLAIM_KEY_NAMES and from every container generated from CLAIM_KEY_SURFACES (src/parser/claim-key.ts) — the same definition guardlink sarif emits through — so the finding's top level, its annotation object, and either emitted surface nested under its own name at either level all resolve. Names AND surfaces live in that one definition because each time only one dimension was shared the disagreement simply moved to the other, and an unrecognised stamp takes the weaker join while the output tells the operator to start sending the stamp they already sent"
+ * @comment -- "The @validates below sits here rather than on its test on purpose: .guardlink/config.json excludes the tests directory and every nested one from the scan, so an annotation moved into tests/hypothesis.test.ts is never parsed — it would leave the threat model entirely and a lookup of the validations for #cli would answer nothing instead of pointing anywhere. Every validation in this repo lives with the implementation it proves and names its test in the description; see src/parser/parse-file.ts, src/parser/comment-strip.ts and src/mcp/subgraph.ts. Do not move it"
+ * @validates #config-validation for #cli -- "tests/hypothesis.test.ts forwards a real generateSarif result's emitted surfaces into the scan finding without naming a field, in every placement generated from CLAIM_KEY_SURFACES, so neither the names nor the containers the reader accepts can drift from what the export writes"
  * @audit #cli -- "The stale bucket refuses a join rather than guessing it, and offers no by-hand target on purpose: the claims the coarse tiers would have named are different claims, so recording this evidence against one is the confirmation the key just refused. The CLI exits non-zero when any finding lands there"
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -25,7 +26,7 @@ import { resolve, sep } from 'node:path';
 import type { ThreatModel } from '../types/index.js';
 import { hasEvidenceWords } from '../gate/lint.js';
 import { redactEvidence } from '../analyze/format.js';
-import { CLAIM_KEY_NAMES } from '../parser/claim-key.js';
+import { CLAIM_KEY_NAMES, CLAIM_KEY_SURFACES } from '../parser/claim-key.js';
 import { readHypotheses, writeHypotheses, emptyHypotheses, type HypothesisEntry, type HypothesisOutcome, type HypothesisSource, type HypothesesLedger, type JoinedBy } from './ledger.js';
 import { classifyHypotheses, type HypothesisRecord } from './classify.js';
 
@@ -139,20 +140,28 @@ const bag = (v: unknown): Record<string, unknown> | undefined => (v && typeof v 
 
 /**
  * The claim key a scan report carries, under any name in `CLAIM_KEY_NAMES` and
- * in any container a real consumer puts it in: the finding's top level, its
- * `annotation` object, and a `partialFingerprints` map copied wholesale from the
- * SARIF result at either level — what a consumer using a SARIF library does,
- * since that map is the only stamp location SARIF itself defines.
+ * in any container a real consumer puts it in.
+ *
+ * The containers are GENERATED, not listed: each level a key can sit at — the
+ * finding itself, its `annotation` object — carrying the key directly, or
+ * carrying any emitted surface in `CLAIM_KEY_SURFACES` nested under that
+ * surface's own name, which is what copying a SARIF result member wholesale
+ * produces. Adding a surface to that definition widens this with no edit here.
+ * A hand-written list is how the reader came to refuse a shape the export
+ * advertised.
  *
  * First match wins. A well-formed report carries exactly one, so the order only
  * decides a report that contradicts itself.
  */
 function findingClaimKey(o: Record<string, unknown>, ann: Record<string, unknown> | undefined): string | null {
-  for (const c of [o, bag(o.partialFingerprints), ann, bag(ann?.partialFingerprints)]) {
-    if (!c) continue;
-    for (const name of CLAIM_KEY_NAMES) {
-      const v = str(c[name]);
-      if (v) return v;
+  for (const level of [o, ann]) {
+    if (!level) continue;
+    for (const c of [level, ...CLAIM_KEY_SURFACES.map(s => bag(level[s.container]))]) {
+      if (!c) continue;
+      for (const name of CLAIM_KEY_NAMES) {
+        const v = str(c[name]);
+        if (v) return v;
+      }
     }
   }
   return null;

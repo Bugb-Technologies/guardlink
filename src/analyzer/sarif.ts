@@ -129,11 +129,13 @@ interface SarifResult {
    * file — so it separates them, and it is unchanged by every edit that is not the claim
    * itself. Mirrored into `properties.claimKey` the same way.
    *
-   * Both names come from `CLAIM_KEY_NAMES` in `../parser/claim-key.js`, which is also the set
-   * `guardlink hypothesis confirm --from-scan` accepts — so a consumer may forward this map
-   * wholesale, forward `properties` wholesale, or copy the value out under any of those names,
-   * and the reader takes it either way. Defined once on purpose: the emitter and the reader
-   * drifting apart is how a stamped finding gets silently demoted to the weaker join.
+   * Both surfaces and both names come from `CLAIM_KEY_SURFACES` in `../parser/claim-key.js`,
+   * which is also what `guardlink hypothesis confirm --from-scan` generates the placements it
+   * accepts from — so a consumer may forward either map wholesale, spread or left nested under
+   * its own name, at the finding's top level or inside its `annotation`, or copy the value out
+   * under any accepted name, and the reader takes it. Defined once on purpose, names and
+   * surfaces together: the emitter and the reader drifting apart on either dimension is how a
+   * stamped finding gets demoted to the weaker join.
    */
   partialFingerprints?: Record<string, string>;
   properties?: Record<string, unknown>;

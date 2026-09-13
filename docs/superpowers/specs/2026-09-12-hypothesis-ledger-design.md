@@ -86,8 +86,8 @@ same comment prefix, and reports the file and line. `--from-scan` joins each fin
 records the confirmed ones, and lists the unmatched, the ambiguous and the stale.
 
 A finding carrying the claim key — under any of `guardlink/claimKey`, `claimKey` or `claim_key`,
-at the finding's top level, in its `annotation`, or in a forwarded `partialFingerprints` map at
-either level — is resolved against the whole record set first:
+at the finding's top level or in its `annotation`, spread onto that level or left as a forwarded
+`properties` or `partialFingerprints` map — is resolved against the whole record set first:
 that key is the one this ledger already keys its entries on, so the join and the ledger name a
 claim the same way, and a key matches at most one claim. It holds across a line move and an edit
 to the code beneath the claim, and it separates a sibling claim that came to sit on the tested

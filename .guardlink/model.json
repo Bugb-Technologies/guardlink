@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:e6696d2ae7e12d311a137d8ddb45527974ea67fd2bc635b050d73b61899777d7",
+    "annotation_hash": "sha256-v3:31fa9f3c17e977ab7e8f880454f187c09ed15d8fa9b17e8ffbb86fe04bdc9d8c",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 150,
-  "annotations_parsed": 755,
+  "annotations_parsed": 756,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -5290,10 +5290,10 @@
     {
       "control": "#config-validation",
       "asset": "#cli",
-      "description": "tests/hypothesis.test.ts forwards a real generateSarif result's properties into the scan finding without naming a field, so the emitted name and the read name cannot drift apart unnoticed",
+      "description": "tests/hypothesis.test.ts forwards a real generateSarif result's emitted surfaces into the scan finding without naming a field, in every placement generated from CLAIM_KEY_SURFACES, so neither the names nor the containers the reader accepts can drift from what the export writes",
       "location": {
         "file": "src/hypothesis/commands.ts",
-        "line": 20
+        "line": 21
       }
     },
     {
@@ -5402,7 +5402,7 @@
       "description": "The stale bucket refuses a join rather than guessing it, and offers no by-hand target on purpose: the claims the coarse tiers would have named are different claims, so recording this evidence against one is the confirmation the key just refused. The CLI exits non-zero when any finding lands there",
       "location": {
         "file": "src/hypothesis/commands.ts",
-        "line": 21
+        "line": 22
       }
     },
     {
@@ -6745,10 +6745,17 @@
       }
     },
     {
-      "description": "The claim key is read under every name in CLAIM_KEY_NAMES (src/parser/claim-key.ts) — the same set guardlink sarif emits through — from the finding's top level, its annotation object, or a partialFingerprints map copied wholesale from the SARIF result at either level. One definition shared by emitter, reader and the operator-facing banner, because an unrecognised stamp takes the weaker join while the output tells the operator to start sending the stamp they already sent",
+      "description": "The claim key is read under every name in CLAIM_KEY_NAMES and from every container generated from CLAIM_KEY_SURFACES (src/parser/claim-key.ts) — the same definition guardlink sarif emits through — so the finding's top level, its annotation object, and either emitted surface nested under its own name at either level all resolve. Names AND surfaces live in that one definition because each time only one dimension was shared the disagreement simply moved to the other, and an unrecognised stamp takes the weaker join while the output tells the operator to start sending the stamp they already sent",
       "location": {
         "file": "src/hypothesis/commands.ts",
         "line": 19
+      }
+    },
+    {
+      "description": "The @validates below sits here rather than on its test on purpose: .guardlink/config.json excludes the tests directory and every nested one from the scan, so an annotation moved into tests/hypothesis.test.ts is never parsed — it would leave the threat model entirely and a lookup of the validations for #cli would answer nothing instead of pointing anywhere. Every validation in this repo lives with the implementation it proves and names its test in the description; see src/parser/parse-file.ts, src/parser/comment-strip.ts and src/mcp/subgraph.ts. Do not move it",
+      "location": {
+        "file": "src/hypothesis/commands.ts",
+        "line": 20
       }
     },
     {
@@ -7418,7 +7425,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 755,
+    "annotation_count": 756,
     "coverage_percent": 87
   },
   "external_refs": []

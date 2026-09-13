@@ -36,25 +36,45 @@ export type ClaimVerb =
 export const DEMOTABLE_VERBS: ReadonlySet<AnnotationVerb> = new Set(['mitigates', 'accepts']);
 
 /**
- * The wire names the claim key travels under, defined once so the exporter, the
- * reader and the operator-facing text cannot drift apart. They already have:
- * the key was emitted under two conventions and read under one, and each gap
- * silently demoted a stamped finding to the join the stamp exists to replace.
+ * How the claim key travels on the wire, defined once so the exporter, the
+ * reader and the operator-facing text cannot drift apart.
  *
- * `CLAIM_KEY_FINGERPRINT` is the mechanism — SARIF's own stable-identity map,
- * which other SARIF tooling understands. `CLAIM_KEY_PROPERTY` is the mirror in
- * `properties`, for consumers without a SARIF library. `CLAIM_KEY_NAMES` is
- * every name a scan report may carry it under, including the snake_case the
+ * They already have, four times, and each time the gap moved to whichever
+ * dimension was still written twice: the key was emitted under two name
+ * conventions and read under one, then emitted into two surfaces and read from
+ * one. So both dimensions live here — the names AND the surfaces — and the
+ * reader derives its container list rather than listing it. Adding a surface
+ * below must widen what the reader accepts with no edit to the reader; a
+ * dimension written twice is a dimension that will disagree.
+ *
+ * `CLAIM_KEY_FINGERPRINT` is the mechanism — the name inside SARIF's own
+ * stable-identity map, which other SARIF tooling understands.
+ * `CLAIM_KEY_PROPERTY` is the mirror in `properties`, for consumers without a
+ * SARIF library. `CLAIM_KEY_SURFACES` pairs each emitted SARIF result member
+ * with the name the key carries inside it. `CLAIM_KEY_NAMES` is every name a
+ * scan report may carry the key under: those, plus the snake_case the
  * scan-report convention uses.
  *
- * Emit through the first two; accept all of `CLAIM_KEY_NAMES`. The order is the
- * reader's precedence for a report that contradicts itself, and puts the two
- * names that were accepted first so widening the set cannot change what an
- * already-accepted report resolves to.
+ * Both orders are the reader's precedence for a report that contradicts itself,
+ * and keep the names and surfaces that were accepted earliest in front, so
+ * widening cannot change what an already-accepted report resolves to.
  */
 export const CLAIM_KEY_FINGERPRINT = 'guardlink/claimKey';
 export const CLAIM_KEY_PROPERTY = 'claimKey';
-export const CLAIM_KEY_NAMES: readonly string[] = ['claim_key', CLAIM_KEY_PROPERTY, CLAIM_KEY_FINGERPRINT];
+
+export interface ClaimKeySurface {
+  /** The SARIF result member the export writes the key into. */
+  container: string;
+  /** The name the key carries inside that member. */
+  name: string;
+}
+
+export const CLAIM_KEY_SURFACES: readonly ClaimKeySurface[] = [
+  { container: 'properties', name: CLAIM_KEY_PROPERTY },
+  { container: 'partialFingerprints', name: CLAIM_KEY_FINGERPRINT },
+];
+
+export const CLAIM_KEY_NAMES: readonly string[] = ['claim_key', ...CLAIM_KEY_SURFACES.map(s => s.name)];
 
 export interface ClaimSource {
   verb: ClaimVerb;

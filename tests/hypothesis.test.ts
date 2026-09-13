@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { parseProject } from '../src/parser/parse-project.js';
-import { relationRecords } from '../src/parser/claim-key.js';
+import { relationRecords, CLAIM_KEY_SURFACES, CLAIM_KEY_PROPERTY } from '../src/parser/claim-key.js';
 import {
   HYPOTHESES_FILE, readHypotheses, writeHypotheses, emptyHypotheses,
   classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, resolveTarget, confirmedLine, writeConfirmedLine, formatImport,
@@ -715,40 +715,41 @@ describe('scan import — the stamp the export emits is the stamp the import rea
   const EV = { request: "POST /u email=' OR 1=1--", response: 'HTTP 200 3 rows', matched_patterns: ['rows'], data: {} };
 
   /**
-   * The writer emits the key into TWO surfaces. Covering one of them is not a
-   * weaker pin, it is a false assurance — it reports the agreement verified
-   * while the other path is unverified. So every case below runs once per
-   * surface, and each forwards that surface WHOLESALE, naming no field: whatever
-   * the exporter calls the key, the reader must accept it.
+   * Every placement a real consumer can produce, GENERATED from the shared
+   * definition rather than listed here: each level the key can sit at (the
+   * finding, its `annotation`) × each emitted surface, spread onto that level or
+   * left nested under the surface's own name — what copying a SARIF result
+   * member wholesale gives you.
+   *
+   * Listing these by hand is what let the gap survive: the previous matrix
+   * wrapped BOTH surfaces under the single literal name `partialFingerprints`,
+   * so its (properties, nested) cell exercised a shape no consumer emits and
+   * reported coverage it did not have. Deriving the matrix means adding a
+   * surface extends it automatically, and a reader missing a container is red.
    */
-  const SURFACES: { surface: string; pick: (r: ReturnType<typeof exported>) => Record<string, unknown> }[] = [
-    { surface: 'partialFingerprints', pick: r => r.partialFingerprints as Record<string, unknown> },
-    { surface: 'properties', pick: r => r.properties as Record<string, unknown> },
-  ];
+  const PLACEMENTS: { label: string; place: (r: ReturnType<typeof exported>) => { top: Record<string, unknown>; ann: Record<string, unknown> } }[] = [];
+  for (const level of ['finding', 'annotation'] as const) {
+    for (const { container } of CLAIM_KEY_SURFACES) {
+      const at = (m: Record<string, unknown>) => level === 'finding' ? { top: m, ann: {} } : { top: {}, ann: m };
+      const emitted = (r: ReturnType<typeof exported>) => (r as unknown as Record<string, unknown>)[container] as Record<string, unknown>;
+      PLACEMENTS.push({ label: `${container} spread onto the ${level}`, place: r => at({ ...emitted(r) }) });
+      PLACEMENTS.push({ label: `${container} nested under ${container} on the ${level}`, place: r => at({ [container]: emitted(r) }) });
+    }
+  }
 
-  /**
-   * Where a consumer puts what it copied: spread onto the finding, or left as a
-   * nested map (what a SARIF library hands you).
-   */
-  const CONTAINERS: { container: string; wrap: (m: Record<string, unknown>) => Record<string, unknown> }[] = [
-    { container: 'spread onto the finding', wrap: m => ({ ...m }) },
-    { container: 'nested under partialFingerprints', wrap: m => ({ partialFingerprints: m }) },
-  ];
-
-  const forward = (
-    sarif: ReturnType<typeof generateSarif>, line: number,
-    pick: (r: ReturnType<typeof exported>) => Record<string, unknown>,
-    wrap: (m: Record<string, unknown>) => Record<string, unknown> = m => ({ ...m }),
-  ) => {
+  /** Forwards what the exporter emitted, naming no field, into one placement. */
+  const forward = (sarif: ReturnType<typeof generateSarif>, line: number, place: (typeof PLACEMENTS)[number]['place']) => {
     const r = exported(sarif, line);
+    const { top, ann } = place(r);
     return {
       id: 'f1', template_id: 'login-sqli', severity: 'critical', confidence: 0.94,
       title: 'SQLi in findUser', cwe_ids: ['CWE-89'],
       annotation: {
         file: r.locations[0].physicalLocation.artifactLocation.uri,
         line: r.locations[0].physicalLocation.region.startLine,
+        ...ann,
       },
-      ...wrap(pick(r)),
+      ...top,
       evidence: EV,
     };
   };
@@ -767,57 +768,41 @@ export function findUser(email: string) { return email; }
 export function findAccount(id: string) { return id; }
 `;
 
-  for (const { surface, pick } of SURFACES) {
-    for (const { container, wrap } of CONTAINERS) {
-      it(`refuses the sibling that landed on the tested line — ${surface}, ${container}`, async () => {
-        const tested = await siblings(SIBLINGS);
-        const finding = forward(generateSarif(await parse(tested)), 4, pick, wrap);
+  it('every generated placement refuses the sibling that landed on the tested line', async () => {
+    // The location tier alone would confirm B in every one of these.
+    const tested = await siblings(SIBLINGS);
+    const testedSarif = generateSarif(await parse(tested));
 
-        const root = await siblings(B_ON_A_LINE);
-        const model = await parse(root);
-        const path = await writeScan(root, { scan_id: 'cxg-fwd', findings: [finding] });
-        const r = importScan(root, model, path, { by: 'cxg', at: NOW });
-
-        // The location tier alone would have confirmed B here.
-        expect(r.confirmed).toEqual([]);
-        expect(r.stale.map(s => s.finding.id)).toEqual(['f1']);
-      }, 60000);
-
-      it(`resolves the claim that moved, not the one now on the tested line — ${surface}, ${container}`, async () => {
-        const tested = await siblings(two(28));
-        const finding = forward(generateSarif(await parse(tested)), 30, pick, wrap);
-
-        const root = await siblings(two(23));
-        const model = await parse(root);
-        const path = await writeScan(root, { scan_id: 'cxg-fwd', findings: [finding] });
-        const r = importScan(root, model, path, { by: 'cxg', at: NOW });
-
-        // The location tier alone would have confirmed C at :30.
-        expect(r.stale).toEqual([]);
-        expect(r.confirmed).toHaveLength(1);
-        expect(r.confirmed[0].joinedBy).toBe('claim-key');
-        expect(`${r.confirmed[0].record.file}:${r.confirmed[0].record.line}`).toBe('src/a.ts:25');
-      }, 60000);
+    const got: string[] = [];
+    for (const p of PLACEMENTS) {
+      const root = await siblings(B_ON_A_LINE);
+      const model = await parse(root);
+      const path = await writeScan(root, { scan_id: 'cxg-fwd', findings: [forward(testedSarif, 4, p.place)] });
+      const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+      got.push(`${p.label}: confirmed=${r.confirmed.length} stale=${r.stale.length}`);
     }
-  }
 
-  it('accepts a forwarded surface left inside the annotation object', async () => {
+    expect(PLACEMENTS.length).toBeGreaterThanOrEqual(8);
+    expect(got).toEqual(PLACEMENTS.map(p => `${p.label}: confirmed=0 stale=1`));
+  }, 120_000);
+
+  it('every generated placement resolves the claim that moved, not the one now on the tested line', async () => {
+    // The location tier alone would confirm C at :30 in every one of these.
     const tested = await siblings(two(28));
-    const res = exported(generateSarif(await parse(tested)), 30);
-    const root = await siblings(two(23));
-    const model = await parse(root);
-    const path = await writeScan(root, { scan_id: 'cxg-ann', findings: [{
-      id: 'f1', template_id: 'login-sqli', severity: 'critical', confidence: 0.94, title: 'SQLi', cwe_ids: ['CWE-89'],
-      annotation: { file: 'src/a.ts', line: 30, partialFingerprints: res.partialFingerprints },
-      evidence: EV,
-    }] });
-    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+    const testedSarif = generateSarif(await parse(tested));
 
-    expect(r.stale).toEqual([]);
-    expect(r.confirmed).toHaveLength(1);
-    expect(r.confirmed[0].joinedBy).toBe('claim-key');
-    expect(`${r.confirmed[0].record.file}:${r.confirmed[0].record.line}`).toBe('src/a.ts:25');
-  }, 60000);
+    const got: string[] = [];
+    for (const p of PLACEMENTS) {
+      const root = await siblings(two(23));
+      const model = await parse(root);
+      const path = await writeScan(root, { scan_id: 'cxg-fwd', findings: [forward(testedSarif, 30, p.place)] });
+      const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+      const c = r.confirmed[0];
+      got.push(`${p.label}: ${c ? `${c.joinedBy} -> ${c.record.file}:${c.record.line}` : `unresolved (stale=${r.stale.length})`}`);
+    }
+
+    expect(got).toEqual(PLACEMENTS.map(p => `${p.label}: claim-key -> src/a.ts:25`));
+  }, 120_000);
 
   it('reads the key under the very name the no-stamp banner tells operators to forward', async () => {
     // Derived from the operator-facing text, not from a list written here: a
@@ -870,26 +855,33 @@ export function render(bio: string) { return bio; }
     const model = await parse(root);
     const results = generateSarif(model).runs[0].results;
 
-    for (const { surface, pick } of SURFACES) {
-      const keyed = results.filter(r => Object.values(pick(r) ?? {}).includes(
-        (r.properties as Record<string, unknown>).claimKey as string));
-      const stampedResults = keyed.filter(r => (r.properties as Record<string, unknown>).claimKey !== undefined);
+    const sarif = generateSarif(model);
+    const stampedResults = results.filter(r => (r.properties as Record<string, unknown>)[CLAIM_KEY_PROPERTY] !== undefined);
 
-      // There is something to check, and the confirmed result is deliberately not in it.
-      expect(stampedResults.length, surface).toBeGreaterThan(0);
-      expect(stampedResults.map(r => r.ruleId)).not.toContain('guardlink/confirmed-exploitable');
-      expect(results.some(r => r.ruleId === 'guardlink/confirmed-exploitable')).toBe(true);
-
-      for (const r of stampedResults) {
-        const line = r.locations[0].physicalLocation.region.startLine;
-        const path = await writeScan(root, { scan_id: 'cxg-all', findings: [forward(generateSarif(model), line, pick)] });
-        const out = importScan(root, model, path, { by: 'cxg', at: NOW });
-        expect(out.stale, `${surface} result at line ${line} went stale`).toEqual([]);
-        expect(out.unmatched, `${surface} result at line ${line} went unmatched`).toEqual([]);
-        expect(out.confirmed, `${surface} result at line ${line} did not resolve`).toHaveLength(1);
-        expect(out.confirmed[0].joinedBy).toBe('claim-key');
-        expect(out.confirmed[0].record.key).toBe((r.properties as Record<string, unknown>).claimKey);
+    // There is something to check, and the confirmed result is deliberately not in it.
+    expect(stampedResults.length).toBeGreaterThan(0);
+    expect(stampedResults.map(r => r.ruleId)).not.toContain('guardlink/confirmed-exploitable');
+    expect(results.some(r => r.ruleId === 'guardlink/confirmed-exploitable')).toBe(true);
+    // Every stamped result carries the key on every surface the definition names.
+    for (const r of stampedResults) {
+      for (const { container, name } of CLAIM_KEY_SURFACES) {
+        expect(((r as unknown as Record<string, Record<string, unknown>>)[container])[name]).toBe(
+          (r.properties as Record<string, unknown>)[CLAIM_KEY_PROPERTY]);
       }
     }
-  }, 60000);
+
+    for (const r of stampedResults) {
+      const line = r.locations[0].physicalLocation.region.startLine;
+      for (const p of PLACEMENTS) {
+        const path = await writeScan(root, { scan_id: 'cxg-all', findings: [forward(sarif, line, p.place)] });
+        const out = importScan(root, model, path, { by: 'cxg', at: NOW });
+        const where = `${p.label}, result at line ${line}`;
+        expect(out.stale, `${where} went stale`).toEqual([]);
+        expect(out.unmatched, `${where} went unmatched`).toEqual([]);
+        expect(out.confirmed, `${where} did not resolve`).toHaveLength(1);
+        expect(out.confirmed[0].joinedBy, where).toBe('claim-key');
+        expect(out.confirmed[0].record.key, where).toBe((r.properties as Record<string, unknown>)[CLAIM_KEY_PROPERTY]);
+      }
+    }
+  }, 120_000);
 });
