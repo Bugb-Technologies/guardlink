@@ -259,7 +259,11 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
 - **A scan-derived `@confirmed` is built from external text.** Every value in its description comes
   from the report, and the line goes into a file whose annotations are line-oriented, so all of them
   are collapsed to one line at a single boundary, quote-escaped, and the finished line is re-parsed
-  before it is written — a line that does not read back as exactly one `@confirmed` is refused.
+  before it is written — a line that does not read back as exactly one `@confirmed` is refused. The
+  host language's comment syntax is a second grammar the text passes through, so the sequence that
+  closes a block comment is broken as well, derived from the target file's form: left intact it ends
+  the doc-block and puts report text in code position, and the re-parse cannot see it because it
+  reads the annotation outside the comment it lands in.
 - **`--write` only inserts a key-verified confirmation.** An `@confirmed` in source is a claim that
   the exposure was tested and proven — later scans, reviewers and `guardlink sarif` read it, and
   unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a

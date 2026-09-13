@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:81bb60619c00ffea28774f34130b35cd54246d9a2b42740ab8081ccaf175dee6",
+    "annotation_hash": "sha256-v3:4be22e1a0237a3478190cbdf11084bb669f914c56574a660d7c154761bca57bc",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
@@ -1409,7 +1409,7 @@
       "asset": "#cli",
       "threat": "#arbitrary-write",
       "control": "#input-sanitize",
-      "description": "Every scan-controlled value passes through oneLine() at the one boundary it enters through (scanEvidence) rather than per interpolation, then escapeDesc() for quotes and backslashes; and writeConfirmedLine() re-parses the assembled line with parseLine and refuses anything that is not exactly one @confirmed, so a value that broke out of its quotes or its line is never written",
+      "description": "Sanitisation covers every grammar the text passes through, not only ours. GuardLink's: every scan-controlled value goes through oneLine() at the one boundary it enters through (scanEvidence) rather than per interpolation, then escapeDesc() for quotes and backslashes, and writeConfirmedLine() re-parses the assembled line and refuses anything that is not exactly one @confirmed. The HOST language's: hostSafe() breaks the block-comment closer of the target file's form (blockCommentCloser, derived per extension from the block forms the parser recognises), because the re-parse reads the bare annotation outside the comment it is spliced into and cannot see a closer that ends the doc-block and puts report text in code position",
       "location": {
         "file": "src/hypothesis/commands.ts",
         "line": 25

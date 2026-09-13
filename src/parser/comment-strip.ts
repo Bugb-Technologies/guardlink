@@ -134,6 +134,36 @@ export function isStandaloneAnnotationFile(filePath: string): boolean {
 }
 
 /**
+ * The sequence that ends a block comment, per extension — one entry per block
+ * form `stripCommentPrefix` above recognises.
+ *
+ * Anything WRITTEN into a comment passes through two grammars: GuardLink's, and
+ * the host language's comment syntax. Escaping only ours leaves the host's
+ * intact, and one of these sequences inside a description ends the comment early
+ * and puts the rest of the line in code position — in a file we are editing on
+ * someone else's behalf. Line comments need no entry: they end at a newline, and
+ * a written description is already collapsed to one line.
+ *
+ * Keyed by extension because the damage is language-specific. A `*` followed by
+ * `/` is inert in a Python file and fatal in a TypeScript one, and mangling text
+ * that was never dangerous loses evidence for nothing.
+ */
+const BLOCK_CLOSERS: Readonly<Record<string, string>> = {
+  '.ts': '*/', '.tsx': '*/', '.js': '*/', '.jsx': '*/', '.mts': '*/', '.cts': '*/',
+  '.java': '*/', '.c': '*/', '.h': '*/', '.cpp': '*/', '.cc': '*/', '.hpp': '*/',
+  '.cs': '*/', '.go': '*/', '.rs': '*/', '.swift': '*/', '.kt': '*/', '.kts': '*/',
+  '.scala': '*/', '.dart': '*/', '.php': '*/', '.css': '*/', '.scss': '*/', '.less': '*/',
+  '.hs': '-}',
+  '.ml': '*)', '.mli': '*)', '.pas': '*)',
+  '.html': '-->', '.xml': '-->', '.svg': '-->', '.vue': '-->',
+};
+
+/** The block-comment closer that could end a comment in this file, if it has one. */
+export function blockCommentCloser(filePath: string): string | null {
+  return BLOCK_CLOSERS[extname(filePath).toLowerCase()] ?? null;
+}
+
+/**
  * Detect file's primary comment style from extension.
  * Used for multi-line continuation detection.
  */

@@ -18,6 +18,7 @@ import {
 import { lintAnnotations } from '../src/gate/index.js';
 import { generateDashboardHTML } from '../src/dashboard/index.js';
 import { generateSarif } from '../src/analyzer/sarif.js';
+import { parseStructure } from '../src/structure/index.js';
 
 const DEFINITIONS = `/**
  * @asset App.API (#api) -- "API surface"
@@ -1109,6 +1110,84 @@ export function login(email: string) { return email; }
     const after = await parse(root);
     expect(after.confirmed).toHaveLength(1);
     expect(after.confirmed![0]).toMatchObject({ asset: '#api', threat: '#sqli' });
+  }, 120_000);
+
+  it('writes both confirmations when two same-asset, same-threat siblings share a doc-block', async () => {
+    // The GAP-58 population itself: two @exposes identical but for their
+    // description. A written @confirmed carries only (threat, asset), so the
+    // duplicate guard could not tell the two apart and refused one of the pair —
+    // whichever order the writes went in. Unwritable by any supported path,
+    // including the by-hand command the CLI offers.
+    const SIB = `import x from 'x';
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "A: email param"
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "B: name param"
+ */
+export function login(email: string) { return email; }
+`;
+    const root = await siblings(SIB);
+    const sarif = generateSarif(await parse(root));
+    await writeScan(root, { scan_id: 'cxg-sib', findings: [
+      finding({ id: 'fA', template_id: 'tplA', claim_key: stamp(sarif, 4).claim_key }),
+      finding({ id: 'fB', template_id: 'tplB', claim_key: stamp(sarif, 5).claim_key }),
+    ] });
+    const run = await runCli(root);
+
+    expect(run.code).toBe(0);
+    expect(run.out).not.toMatch(/already carries/);
+
+    // Both written, and each directly beneath ITS OWN @exposes. The pair cannot
+    // tell them apart, so the evidence's template id is what identifies each.
+    const lines = (await readFile(join(root, 'src', 'a.ts'), 'utf-8')).split('\n');
+    const at = (needle: string) => lines.findIndex(l => l.includes(needle));
+    expect(lines.filter(l => l.includes('@confirmed'))).toHaveLength(2);
+    expect(lines[at('"A: email param"') + 1]).toMatch(/@confirmed .*tplA/);
+    expect(lines[at('"B: name param"') + 1]).toMatch(/@confirmed .*tplB/);
+
+    const after = await parse(root);
+    expect(after.exposures).toHaveLength(2);
+    expect(after.confirmed).toHaveLength(2);
+  }, 120_000);
+
+  it('breaks a block-comment closer from the report so the host file still parses', async () => {
+    // Sanitisation must cover the HOST grammar too. A probe echoing CSS or JS
+    // returns the sequence that ends a TypeScript doc-block; spliced verbatim it
+    // terminated the comment and put report-controlled text in code position.
+    // The re-parse guard cannot see this — it reads the bare annotation, outside
+    // the comment it is about to land in — so assert on the STRUCTURE of the
+    // host file, not on our annotation re-reading.
+    const root = await siblings(ONE);
+    const key = stamp(generateSarif(await parse(root)), 4).claim_key;
+    const CLOSER = '*' + '/';
+    await writeScan(root, { scan_id: 'cxg-1', findings: [finding({
+      title: `t ${CLOSER} in the title`, claim_key: key,
+      evidence: { request: 'r', response: `HTTP 200 <style>a{}</style> ${CLOSER} x`, matched_patterns: [`m ${CLOSER} p`], data: {} },
+    })] });
+    const run = await runCli(root);
+    expect(run.code).toBe(0);
+
+    const src = await readFile(join(root, 'src', 'a.ts'), 'utf-8');
+    const confirmedAt = src.split('\n').findIndex(l => l.includes('@confirmed')) + 1;
+
+    // The blind spot the re-parse guard has: ask the structural parser what the
+    // host file means, not whether our line re-reads. A doc-block terminated
+    // early no longer documents the declaration below it, so the annotation's
+    // anchor loses the symbol — that is the difference this asserts.
+    const st = await parseStructure(join(root, 'src', 'a.ts'), src);
+    expect(st.language).toBe('typescript');
+    expect(st.anchorForLine(confirmedAt)).toMatchObject({ symbol: 'findUser' });
+    st.dispose();
+
+    // The closer is gone but the report's text is still legible, and the
+    // annotation still reads back as one confirmation.
+    const written = src.split('\n').filter(l => l.includes('@confirmed'));
+    expect(written).toHaveLength(1);
+    expect(written[0]).not.toContain(CLOSER);
+    expect(written[0]).toContain('<style>a{}</style>');
+    const after = await parse(root);
+    expect(after.confirmed).toHaveLength(1);
+    expect(after.exposures).toHaveLength(1);
   }, 120_000);
 });
 

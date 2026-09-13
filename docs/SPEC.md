@@ -1164,6 +1164,18 @@ at each interpolation is what left the title and the matched patterns raw while 
 response were handled, and a newline in any of them ends the annotation and puts report-controlled
 text on the next line of someone's doc-block.
 
+Sanitisation covers **every grammar the text passes through, not only GuardLink's.** A written
+description also passes through the host language's comment syntax, and those are different
+grammars: collapsing newlines and escaping quotes neutralises ours and leaves the host's intact, so
+the sequence that closes a block comment — ordinary in a probe's response when it echoes CSS or JS
+— ends the doc-block early and puts report-controlled text in **code** position in the file being
+edited. The closer is therefore broken too, derived from the target file's block form rather than
+from one fixed spelling, because the damage is language-specific: a sequence that is fatal in one
+language is inert in another, and mangling text that was never dangerous loses evidence for
+nothing. Line comments need no treatment of their own — they end at a newline, which the collapse
+has already removed. The re-parse cannot stand in for this: it reads the bare annotation, outside
+the comment it is about to be spliced into.
+
 **Bound.** Two BYTE-IDENTICAL claims in one file — same verb, same identity arguments, same
 external refs *and* the same description — share a digest and are told apart only by an ordinal
 in document order, `<digest>:0` and `<digest>:1`. Delete the earlier one and the survivor
