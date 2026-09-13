@@ -392,7 +392,15 @@ export function importScan(root: string, model: ThreatModel, scanPath: string, i
 export function confirmedLine(record: HypothesisRecord, entry: HypothesisEntry): string {
   const cwe = record.refs;
   const sev = record.severity && record.severity !== 'unset' ? ` [${record.severity}]` : '';
-  const desc = escapeDesc(oneLine(`${entry.evidence}${writtenProvenance(entry)}`));
+  // The provenance marker is appended AFTER `oneLine`'s cap, so the description
+  // can exceed that cap by the marker's length. That is deliberate: the cap
+  // exists to bound SCAN-CONTROLLED text, the marker is our own fixed words, and
+  // it is the one part that must survive — it says how this confirmation was
+  // established. Collapsing the two together put the marker inside the cap, so
+  // evidence near 1000 characters (reachable from ordinary scan data, five
+  // fields at 240 each) silently dropped it and the written line read exactly
+  // like an unverified one.
+  const desc = escapeDesc(`${oneLine(entry.evidence)}${writtenProvenance(entry)}`);
   return `@confirmed ${record.threat} on ${record.asset}${sev}${cwe.length ? ` ${cwe.join(' ')}` : ''} -- "${desc}"`;
 }
 
@@ -426,6 +434,14 @@ function writtenProvenance(entry: HypothesisEntry): string {
  * the next parse reads differently from what we thought we wrote. Checking here
  * rather than in the caller means no caller can skip it. Same reason, and the
  * same pairing, as `buildAcceptLines` in `src/review/index.ts`.
+ *
+ * `record.line` is resolved from a model parsed BEFORE this call, and this call
+ * splices a line into the file — so applying several of these to one file must
+ * go in DESCENDING line order. Ascending, each insertion shifts every later
+ * target down by one, and where the shifted line is itself an `@exposes` every
+ * guard below passes and the confirmation lands against a claim that was never
+ * tested. Re-resolving between writes would work too; the ordering is cheaper
+ * and cannot be forgotten halfway.
  */
 export function writeConfirmedLine(root: string, record: HypothesisRecord, line: string): { file: string; line: number } {
   const parsed = parseLine(line, { file: record.file, line: record.line + 1 });

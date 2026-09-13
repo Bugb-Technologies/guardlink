@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:4e7d10fff5374da94d459a21acd126d669aae0645f8d5010c8a48fb726ee3fe9",
+    "annotation_hash": "sha256-v3:81bb60619c00ffea28774f34130b35cd54246d9a2b42740ab8081ccaf175dee6",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 150,
-  "annotations_parsed": 762,
+  "annotations_parsed": 763,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -4023,7 +4023,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2784
+        "line": 2792
       }
     },
     {
@@ -4033,7 +4033,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2787
+        "line": 2795
       }
     },
     {
@@ -5692,7 +5692,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3514
+        "line": 3522
       }
     },
     {
@@ -6455,24 +6455,31 @@
       }
     },
     {
+      "description": "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1673
+      }
+    },
+    {
       "description": "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1681
+        "line": 1689
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3460
+        "line": 3468
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3515
+        "line": 3523
       }
     },
     {
@@ -7478,7 +7485,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 762,
+    "annotation_count": 763,
     "coverage_percent": 87
   },
   "external_refs": []

@@ -1041,6 +1041,75 @@ export function findUser(email: string) { return email; }
     expect(line).toContain(CONFIRM);
     expect(line).not.toMatch(/key-verified/);
   }, 60000);
+
+  it('attaches each @confirmed to its own @exposes when several are written to one file', async () => {
+    // Three consecutive @exposes, confirming the first and the LAST. Each write
+    // splices a line and every record.line came from the pre-write model, so an
+    // ascending pass shifts the second target down by one — onto the middle
+    // claim's @exposes, where every guard passes and the confirmation lands
+    // against a claim the probe never tested.
+    const THREE = `import x from 'x';
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "A: findUser concatenates email"
+ * @exposes #api to #dos [medium] -- "B: parseBody has no size cap"
+ * @exposes #web to #xss [high] cwe:CWE-79 -- "C: bio rendered via innerHTML"
+ */
+export function login(email: string) { return email; }
+`;
+    const root = await siblings(THREE);
+    const model = await parse(root);
+    const sarif = generateSarif(model);
+    await writeScan(root, { scan_id: 'cxg-multi', findings: [
+      finding({ id: 'fA', template_id: 'tA', claim_key: stamp(sarif, 4).claim_key }),
+      finding({ id: 'fC', template_id: 'tC', claim_key: stamp(sarif, 6).claim_key }),
+    ] });
+    const run = await runCli(root);
+    expect(run.code).toBe(0);
+    expect(run.out).not.toMatch(/!/);
+    // The reported lines are where the confirmations ended up, in reading order —
+    // writing descending means an earlier write gets pushed down by a later one.
+    expect(run.out.match(/wrote \S+/g)).toEqual(['wrote src/a.ts:5', 'wrote src/a.ts:8']);
+
+    // The pairing is what matters: re-parse and require every @confirmed to sit
+    // directly beneath an @exposes naming the SAME asset and threat.
+    const after = await parse(root);
+    expect(after.confirmed).toHaveLength(2);
+    const exposureAt = new Map(after.exposures.map(e => [e.location.line, e]));
+    for (const c of after.confirmed!) {
+      const above = exposureAt.get(c.location.line - 1);
+      expect(above, `@confirmed at :${c.location.line} does not sit beneath an @exposes`).toBeDefined();
+      expect({ asset: above!.asset, threat: above!.threat }).toEqual({ asset: c.asset, threat: c.threat });
+    }
+    // Both intended claims got one, and the untested middle claim got none.
+    expect(after.confirmed!.map(c => `${c.asset}/${c.threat}`).sort()).toEqual(['#api/#sqli', '#web/#xss']);
+  }, 120_000);
+
+  it('keeps the key-verified marker when the evidence reaches its cap', async () => {
+    // scanEvidence caps each field at 240, so five fields plus the joins exceed
+    // 1000 characters of ordinary scan data. Collapsing the marker together with
+    // the evidence put it inside that cap and dropped it, leaving a key-verified
+    // line that read exactly like an unverified one.
+    const root = await siblings(ONE);
+    const key = stamp(generateSarif(await parse(root)), 4).claim_key;
+    const big = 'x'.repeat(240);
+    await writeScan(root, { scan_id: 'scan12chars', findings: [finding({
+      id: 'f1', template_id: 'y'.repeat(40), title: 'z'.repeat(200), claim_key: key,
+      evidence: { request: big, response: big, matched_patterns: [big], data: {} },
+    })] });
+    const run = await runCli(root);
+
+    expect(run.code).toBe(0);
+    expect(readHypotheses(root).ledger!.entries[0].evidence.length).toBeGreaterThan(1000);
+    const written = (await readFile(join(root, 'src', 'a.ts'), 'utf-8')).split('\n').filter(l => l.includes('@confirmed'));
+    expect(written).toHaveLength(1);
+    expect(written[0]).toMatch(/key-verified: the scan stamped this claim's own claim key/);
+
+    // Still one annotation, and it still parses back as the confirmation.
+    const after = await parse(root);
+    expect(after.confirmed).toHaveLength(1);
+    expect(after.confirmed![0]).toMatchObject({ asset: '#api', threat: '#sqli' });
+  }, 120_000);
 });
 
 /**
