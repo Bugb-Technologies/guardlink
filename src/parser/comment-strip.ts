@@ -135,14 +135,23 @@ export function isStandaloneAnnotationFile(filePath: string): boolean {
 
 /**
  * Every block form `stripCommentPrefix` above recognises, opener paired with the
- * sequence that ends it. One definition: the stripper's forms and the closers a
- * writer must neutralise are the same set, and a set written twice drifts.
+ * sequence that ends it and with the marker a line INSIDE it must begin with.
+ * One definition: the stripper's forms, the closers a writer must neutralise and
+ * the prefix a writer must use to stay inside one are the same set, and a set
+ * written twice drifts.
+ *
+ * Only the C-family has a continuation marker — the Javadoc `*`, which the
+ * stripper reads a few lines above. The other three have none, and that is not a
+ * gap: `stripCommentPrefix` recognises `<!-- … -->`, `{- … -}` and `(* … *)` only
+ * as COMPLETE single-line comments, so an annotation on an open-ended opener line
+ * of those forms is not a comment to the parser and never reaches the model. The
+ * `null` is the honest answer to a question that cannot arise, rather than a hole.
  */
-const BLOCK_FORMS: ReadonlyArray<{ open: string; close: string }> = [
-  { open: '/*', close: '*/' },
-  { open: '<!--', close: '-->' },
-  { open: '{-', close: '-}' },
-  { open: '(*', close: '*)' },
+const BLOCK_FORMS: ReadonlyArray<{ open: string; close: string; continuation: string | null }> = [
+  { open: '/*', close: '*/', continuation: '* ' },
+  { open: '<!--', close: '-->', continuation: null },
+  { open: '{-', close: '-}', continuation: null },
+  { open: '(*', close: '*)', continuation: null },
 ];
 
 /**
@@ -230,6 +239,21 @@ export interface LineCommentForm {
   delimiters: readonly string[];
   /** The line opens AND closes its own comment, so a line added after it needs its own terminator. */
   selfClosing: boolean;
+  /**
+   * The line OPENS a block comment and does not close it, so its own prefix IS an
+   * opener and a line inserted after it must not reuse that prefix.
+   *
+   * Copying it opens a SECOND comment: where block comments nest (Rust, Swift,
+   * Kotlin, Scala, Dart, Haskell, OCaml) the block's own closer then closes only the
+   * inner one and the file runs on inside an unterminated comment, silently dropping
+   * the declaration it documents and everything below it from the compile. No
+   * report-controlled text is needed to reach it — an `@exposes` on a `/**` opening
+   * line is enough. Reproducing the closer instead is not the answer: balanced inside
+   * a nesting host, it ends the OUTER block early in a non-nesting one.
+   */
+  opensUnclosedBlock: boolean;
+  /** The marker a line inserted inside this form must begin with, or null when the form has none a reader could strip. */
+  continuation: string | null;
 }
 
 /**
@@ -249,10 +273,13 @@ export interface LineCommentForm {
  * extension.
  */
 export function commentFormAt(lines: readonly string[], idx: number, filePath: string): LineCommentForm {
-  const asForm = (closers: readonly string[], selfClosing: boolean): LineCommentForm =>
-    ({ closers, delimiters: delimitersFor(closers), selfClosing });
+  const asForm = (closers: readonly string[], selfClosing: boolean, opensUnclosedBlock = false): LineCommentForm =>
+    ({ closers, delimiters: delimitersFor(closers), selfClosing, opensUnclosedBlock, continuation: continuationFor(closers) });
   const own = blockFormOpenedBy(lines[idx] ?? '');
-  if (own) return asForm([own.close], closesItself(lines[idx], own));
+  if (own) {
+    const closes = closesItself(lines[idx], own);
+    return asForm([own.close], closes, !closes);
+  }
   const trimmed = (lines[idx] ?? '').trimStart();
   if (LINE_MARKERS.some(m => trimmed.startsWith(m.prefix))) return asForm([], false);
   for (let i = idx - 1; i >= 0; i--) {
@@ -260,6 +287,15 @@ export function commentFormAt(lines: readonly string[], idx: number, filePath: s
     if (open && !closesItself(lines[i], open)) return asForm([open.close], false);
   }
   return asForm(blockCommentClosers(filePath), false);
+}
+
+/** The first continuation marker among these closers' forms, or null when none has one. */
+function continuationFor(closers: readonly string[]): string | null {
+  for (const close of closers) {
+    const form = BLOCK_FORMS.find(f => f.close === close);
+    if (form?.continuation) return form.continuation;
+  }
+  return null;
 }
 
 function blockFormOpenedBy(line: string): { open: string; close: string } | undefined {

@@ -550,7 +550,23 @@ export function writeConfirmedLine(root: string, record: HypothesisRecord, line:
   if (reparsed.annotation?.verb !== 'confirmed') {
     throw new Error(`Refusing to write a line that does not parse back as one @confirmed: ${JSON.stringify(safe.slice(0, 120))}`);
   }
-  const prefix = src.slice(0, src.indexOf('@exposes'));
+  // The treatment belongs to the LINE, not to the value that is obviously
+  // external. The prefix used to be copied off the source line verbatim, so an
+  // `@exposes` on the line that OPENS a multi-line block comment re-injected that
+  // opener into the inserted line — no scan-controlled text required — and where
+  // comments nest the block's own closer then closed only the inner one. What is
+  // being inserted is a CONTINUATION of an existing comment, so the prefix is that
+  // form's continuation marker, derived from the same `commentFormAt` that answers
+  // every other host-grammar question here. A self-closing line is the one case
+  // whose prefix is an opener on purpose, balanced by the terminator below.
+  let prefix = src.slice(0, src.indexOf('@exposes'));
+  if (form.opensUnclosedBlock) {
+    if (form.continuation === null) {
+      throw new Error(`${record.file}:${record.line} opens a block comment it does not close, and that comment form has no continuation marker to insert under; close the comment on this line, or move the annotation to a continuation line`);
+    }
+    prefix = `${prefix.match(/^[ \t]*/)![0]} ${form.continuation}`;
+  }
+  if (!form.selfClosing) prefix = breakCommentDelimiters(prefix, form.delimiters);
   const close = form.selfClosing ? ` ${form.closers[0]}` : '';
   lines.splice(idx + 1, 0, `${prefix}${safe}${close}`);
   writeFileSync(abs, lines.join('\n'));

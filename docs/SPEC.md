@@ -1175,7 +1175,17 @@ description also passes through the host language's comment syntax, and those ar
 grammars: collapsing newlines and escaping quotes neutralises ours and leaves the host's intact, so
 the sequence that closes a block comment — ordinary in a probe's response when it echoes CSS or JS
 — ends the doc-block early and puts report-controlled text in **code** position in the file being
-edited. The closer is therefore broken too, and the comment form it belongs to is derived from the
+edited. **Both** delimiters of that form are therefore broken, not only the closer. Block comments
+**nest** in Rust, Swift, Kotlin, Scala, Dart, Haskell and OCaml, and there an injected **opener**
+starts a nested comment: the block's own closer then closes only that inner level and the file runs
+on inside an unterminated comment, so the declaration the doc-block documents and everything below
+it silently leave the compile — the same damage as the closer case, entered from the other end, and
+equally invisible to a writer that re-parses the bare annotation outside the comment it lands in.
+Breaking the opener is **unconditional**, not gated on a table of which grammars nest: it is inert
+where they do not nest and fatal where they do, so it always costs nothing and sometimes saves the
+file, and one more per-language fact modelled in one place and relied on in another is the drift
+this section exists to prevent. Both ends are taken from the same form pair, so neither can be
+widened without the other. The comment form itself is derived from the
 **source line being written into** — the line's own opener when it has one, no closer at all for a
 line comment, the block that opened it for a continuation line, and only then a per-extension
 fallback. The extension alone is a proxy: a C-family block comment is accepted in any file with no
@@ -1183,10 +1193,20 @@ language gate, so a table keyed by extension is thinner than the parser in one d
 irrelevant in the other. The damage is language-specific — a sequence that is fatal in one language
 is inert in another, and mangling text that was never dangerous loses evidence for nothing.
 
-That derivation settles a second question with the same information: when the `@exposes` line
+That derivation settles two further questions with the same information. When the `@exposes` line
 **closes its own comment**, the inserted line inherits its opener, so the terminator is reproduced
 on it. Without that the file is left inside an unterminated comment and the declaration the
 doc-block described silently leaves the compile.
+
+And when the `@exposes` line **opens a block it does not close**, its prefix is an opener, so the
+inserted line is given that form's **continuation marker** instead of a copy of it. Copying the
+prefix is the same nesting failure reached without any report-controlled text at all: an ordinary
+`/** @exposes …` opening line was enough. Reproducing the closer there is not the alternative —
+balanced inside a nesting host, it ends the **outer** block early in a non-nesting one. A form with
+no continuation marker a reader could strip refuses the write rather than guessing, which is
+unreachable in practice because such an opener line is not a comment to the parser and never
+reaches the model. Sanitisation belongs to the **whole line that is written**, prefix and
+terminator included, not only to the value that is obviously external.
 
 Line comments need no closer of their own, but the reason is the collapse, not the absence of a
 terminator: a line comment ends at **any** character its grammar treats as ending a line, and

@@ -1551,6 +1551,53 @@ export function login(email: string) { return email; }
     expect(after.exposures).toHaveLength(1);
   }, 120_000);
 
+  it('inserts under an opening-line @exposes without repeating its opener', async () => {
+    // No scan-controlled text is involved: an ordinary `/** @exposes …` opening
+    // line is enough. The prefix used to be copied off that line, so the inserted
+    // @confirmed carried `/** ` — and Rust NESTS, so the block's own ` */` closed
+    // only the inner comment and everything below ran on inside the outer one.
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-rust-open-'));
+    await mkdir(join(root, '.guardlink'), { recursive: true });
+    await mkdir(join(root, 'src'), { recursive: true });
+    await writeFile(join(root, '.guardlink', 'definitions.ts'), DEFINITIONS);
+    await writeFile(join(root, 'src', 'lib.rs'),
+      `/** @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into the query"\n * more context\n */\npub fn find_user(email: &str) -> &str { email }\n`);
+
+    const model = await parse(root);
+    expect(model.exposures, 'the opening-line annotation should be in the model').toHaveLength(1);
+    await writeScan(root, { scan_id: 'cxg-rust-open', findings: [finding({
+      claim_key: stamp(generateSarif(model), 1).claim_key,
+      evidence: { request: 'r', response: 'HTTP 200 3 rows', matched_patterns: [], data: {} },
+    })] });
+    const run = await runCli(root);
+    expect(run.code).toBe(0);
+
+    const after = (await readFile(join(root, 'src', 'lib.rs'), 'utf-8')).split('\n');
+    const written = after.filter(l => l.includes('@confirmed'));
+    expect(written).toHaveLength(1);
+    // A continuation of the comment, not a second one.
+    expect(written[0]).not.toContain('/*');
+    expect(written[0].trimStart().startsWith('*')).toBe(true);
+
+    // The block still terminates where it did — one closer line, and the
+    // declaration is still below it.
+    expect(after.filter(l => l.trim() === '*/')).toHaveLength(1);
+    expect(after.findIndex(l => l.startsWith('pub fn find_user')))
+      .toBeGreaterThan(after.findIndex(l => l.trim() === '*/'));
+
+    // And the host file still means what it did: an unterminated comment would
+    // swallow the declaration and this comes back null.
+    const st = await parseStructure(join(root, 'src', 'lib.rs'), after.join('\n'));
+    expect(st.language).toBe('rust');
+    expect(st.symbolNamed('find_user')).toMatchObject({ scope: 'symbol' });
+    st.dispose();
+
+    // The annotation is still readable, so the confirmation is not lost to the model.
+    const reparsed = await parse(root);
+    expect(reparsed.confirmed).toHaveLength(1);
+    expect(reparsed.exposures).toHaveLength(1);
+  }, 120_000);
+
   it('breaks a block-comment OPENER too, so a nesting host is not left inside a comment', async () => {
     // The other end of the same hole. Rust NESTS block comments: an injected `/*`
     // opens a nested comment, the doc-block's own `*/` closes only that nested
