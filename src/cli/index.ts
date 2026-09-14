@@ -1668,11 +1668,17 @@ const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: strin
       const withheld = r.confirmed.filter(c => c.joinedBy !== 'claim-key');
       if (opts.write) {
         // @comment -- "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet"
-        const writes = r.confirmed.filter(c => c.joinedBy === 'claim-key')
+        // @comment -- "ONE CLAIM, ONE WRITE. Two findings can carry the same claim key — the ordinary shape when two cxg templates probe one exposure — and both resolve to the same record and fold into ONE ledger entry, so writing per finding attempted the same insertion twice and the second was refused as a failure. Keyed by record.key, keeping the LAST occurrence: upsert replaces the entry object on every call, so only the final one is the entry the ledger actually holds"
+        const writes = [...new Map(r.confirmed.filter(c => c.joinedBy === 'claim-key').map(c => [c.record.key, c])).values()]
           .sort((a, b) => (a.record.file < b.record.file ? -1 : a.record.file > b.record.file ? 1 : b.record.line - a.record.line));
+        // @comment -- "An exit code is a claim about what happened, and it has to be true in BOTH directions: honest about an under-write and honest about a success. A confirmation already in the source is the state we were asked to reach — from an earlier run, or a re-import of the same report — so it is separated from a real failure by the TYPE writeConfirmedLine returns, never by matching the wording of an error. Every remaining throw is a failure and still exits non-zero"
         const done: { file: string; line: number }[] = [];
+        const present: { file: string; line: number }[] = [];
         for (const c of writes) {
-          try { done.push(writeConfirmedLine(root, c.record, confirmedLine(c.record, c.entry))); }
+          try {
+            const w = writeConfirmedLine(root, c.record, confirmedLine(c.record, c.entry));
+            (w.outcome === 'inserted' ? done : present).push({ file: w.file, line: w.line });
+          }
           catch (e) { console.error(`  ! ${(e as Error).message}`); process.exitCode = 1; }
         }
         // @comment -- "THE one calculation of where a line sits once the writes are done, used by both the confirmations that landed and the by-hand commands for the ones withheld. Each done.line is a PRE-write coordinate — descending order guarantees nothing at or above a target had been spliced when it was written — so an insertion at or at a lower number than a pre-write position pushes that position down by one. Only SUCCESSFUL writes are in `done`, so a write that threw shifts nothing. Two sites computing this independently is the shape that disagrees silently, and this file has already produced that defect once"
@@ -1680,6 +1686,8 @@ const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: strin
         // @comment -- "An inserted @confirmed comes to rest directly above the line it displaced, so it is that line's new position less one — derived from afterWrites rather than counted a second way. Printed in reading order, not in the order the writes went in"
         const landed = done.map(w => ({ file: w.file, line: afterWrites(w.file, w.line) - 1 }));
         for (const w of landed.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line))) console.log(`  wrote ${w.file}:${w.line}`);
+        // @comment -- "Said in terms of what is true rather than as an error: the confirmation is there. The line an already-present @confirmed was found at is a pre-write coordinate like any other — the scan that found it stops at the next @exposes, and descending order means every insertion so far sits below that — so it goes through the same afterWrites"
+        for (const w of present.map(p => ({ file: p.file, line: afterWrites(p.file, p.line) })).sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line))) console.log(`  already confirmed ${w.file}:${w.line}`);
         // @comment -- "--write only inserts an UNCONTESTED key-verified confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), and a contested one came from a report that named two different claims at once, so identity is in doubt in both cases. Losing that throughput is the point: those are exactly the joins that can be wrong"
         // @comment -- "Reported AFTER the writes, at the line the withheld claim occupies once they have landed. Printing pre-write lines here handed the operator a command naming a line that this same run then moved: with consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator writes a confirmation against an exposure the probe never tested — GAP-58 one layer out, in a human's fingers instead of ours. Documenting the hazard one block down was not guarding against it"
         // @comment -- "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so every command printed here is position-dependent and is correct AT THE MOMENT OF PRINTING and no longer — a later write, or an edit, moves the target again. Tracked there, not widened here"
@@ -1705,8 +1713,9 @@ const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: strin
     const offered = outcome === 'confirmed' ? confirmedLine(record, entry) : undefined;
     console.log(formatOutcome(record, entry, opts.write ? undefined : offered));
     if (outcome === 'confirmed' && opts.write) {
+      // @comment -- "The by-hand path reads the same typed outcome as --from-scan. A claim whose source already carries this confirmation is in the state that was asked for, so it is reported and exits 0; it used to throw into the ✗ handler and exit non-zero on a run that changed nothing and needed to change nothing"
       const w = writeConfirmedLine(root, record, offered!);
-      console.log(`\nWrote ${w.file}:${w.line}`);
+      console.log(w.outcome === 'already-present' ? `\n${w.file}:${w.line} already carries this confirmation` : `\nWrote ${w.file}:${w.line}`);
     }
   } catch (e) {
     console.error(`✗ ${(e as Error).message}`);

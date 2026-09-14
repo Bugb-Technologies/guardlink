@@ -118,11 +118,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-770 annotations, 18 assets, 15 threats, 13 controls, 116 exposures, 0 confirmed, 120 mitigations, 3 actors, 1 entitlements, 173 flows, 2 features
+774 annotations, 18 assets, 15 threats, 13 controls, 116 exposures, 0 confirmed, 120 mitigations, 3 actors, 1 entitlements, 173 flows, 2 features
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v3:5580c741fc8edc7861f7eae40716ead26f21fecd430d8c41be1459bc04e83203`
+- `annotation_hash`: `sha256-v3:2125c72649f302cf0542f0d7e44237aabe4962954145625cc5ac500ed2809dcb`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.

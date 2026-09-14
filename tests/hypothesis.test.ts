@@ -194,14 +194,30 @@ describe('writing the @confirmed line', () => {
     const line = confirmedLine(record, entry);
     expect(line).toBe(`@confirmed #sqli on #api [critical] cwe:CWE-89 -- "${CONFIRM}"`);
     const w = writeConfirmedLine(root, record, line);
-    expect(w).toEqual({ file: 'src/a.ts', line: 5 });
+    expect(w).toEqual({ file: 'src/a.ts', line: 5, outcome: 'inserted' });
     const text = await readFile(join(root, 'src', 'a.ts'), 'utf8');
     expect(text.split('\n')[4]).toBe(` * ${line}`);
     const again = await parse(root);
     expect(again.confirmed).toHaveLength(1);
     expect(lintAnnotations(again).filter(v => v.rule === 'confirmed-without-evidence')).toEqual([]);
-    // Writing twice does not duplicate.
-    expect(() => writeConfirmedLine(root, record, line)).toThrow(/already/i);
+    // Writing twice does not duplicate, and is not a failure: the claim is in
+    // the state that was asked for, reported as where the confirmation already is.
+    expect(writeConfirmedLine(root, record, line)).toEqual({ file: 'src/a.ts', line: 5, outcome: 'already-present' });
+    expect(await readFile(join(root, 'src', 'a.ts'), 'utf8')).toBe(text);
+  });
+
+  it('still throws when the @exposes has moved — already-present did not become a catch-all', async () => {
+    // The classification separates one correct outcome from failures; it must not
+    // have swallowed the rest. Unreachable from the CLI by design (it parses the
+    // model itself and writes descending), so it is pinned on the function.
+    const root = await project();
+    const model = await parse(root);
+    const { record, entry } = recordOutcome(root, model, SQLI, 'confirmed', { evidence: CONFIRM, by: 'human:test', at: NOW });
+    const line = confirmedLine(record, entry);
+    const moved = { ...record, line: 1 };
+
+    expect(() => writeConfirmedLine(root, moved, line)).toThrow(/does not carry an @exposes any more/);
+    expect(await readFile(join(root, 'src', 'a.ts'), 'utf8')).not.toContain('@confirmed');
   });
 });
 
@@ -1175,6 +1191,59 @@ export function parseBody(body: string) { return body; }
     expect(run.code).not.toBe(0);
   }, 120_000);
 
+  it('writes one @confirmed for two findings carrying the same claim key, and exits 0', async () => {
+    // Two cxg templates probing one exposure is the ordinary shape. Both key-join
+    // to the same claim and fold into one ledger entry, so writing per finding
+    // attempted the same insertion twice and the second was reported as a failure
+    // — a run whose source ended up exactly as intended, exiting non-zero.
+    const root = await siblings(ONE);
+    const a = stamp(generateSarif(await parse(root)), 4);
+    await writeScan(root, { scan_id: 'cxg-dup', findings: [
+      finding({ id: 'f-union', template_id: 'sqli-union', claim_key: a.claim_key }),
+      finding({ id: 'f-boolean', template_id: 'sqli-boolean', claim_key: a.claim_key }),
+    ] });
+    const run = await runCli(root);
+
+    expect(run.code).toBe(0);
+    expect(run.out).not.toMatch(/^ {2}! /m);
+    expect(run.out.match(/wrote \S+/g)).toEqual(['wrote src/a.ts:5']);
+    // One claim, one write ATTEMPT — not a write plus a redundant report that the
+    // claim it just wrote is already confirmed.
+    expect(run.out).not.toMatch(/already confirmed/);
+
+    const src = await readFile(join(root, 'src', 'a.ts'), 'utf-8');
+    expect(src.split('\n').filter(l => l.includes('@confirmed'))).toHaveLength(1);
+    expect(await parse(root).then(m => m.confirmed)).toHaveLength(1);
+
+    // One claim, one ledger entry — and the written line carries the evidence the
+    // ledger ended up holding, not the superseded first probe's.
+    const entries = readHypotheses(root).ledger!.entries;
+    expect(entries).toHaveLength(1);
+    expect(entries[0].source).toMatchObject({ template_id: 'sqli-boolean' });
+    expect(src).toContain('sqli-boolean');
+  }, 120_000);
+
+  it('re-importing the same report writes nothing more and still exits 0', async () => {
+    // The claim key digests the claim's words, so the line the first run inserted
+    // does not re-key it: the report joins again and asks for the same write. The
+    // confirmation being already there is the state that was asked for.
+    const root = await siblings(ONE);
+    const a = stamp(generateSarif(await parse(root)), 4);
+    await writeScan(root, { scan_id: 'cxg-again', findings: [finding({ claim_key: a.claim_key })] });
+
+    const first = await runCli(root);
+    expect(first.code).toBe(0);
+    expect(first.out).toMatch(/wrote src\/a\.ts:5/);
+    const afterFirst = await readFile(join(root, 'src', 'a.ts'), 'utf-8');
+
+    const second = await runCli(root);
+    expect(second.code).toBe(0);
+    expect(second.out).toMatch(/already confirmed src\/a\.ts:5/);
+    expect(second.out).not.toMatch(/^ {2}! /m);
+    expect(second.out).not.toMatch(/wrote src\/a\.ts/);
+    expect(await readFile(join(root, 'src', 'a.ts'), 'utf-8')).toBe(afterFirst);
+  }, 120_000);
+
   it('hands out a by-hand target that survives its own writes, and it resolves to the withheld claim', async () => {
     // The by-hand command is the dangerous output: the operator runs it AFTER
     // the run, and the run moved the line. With consecutive @exposes the
@@ -1611,18 +1680,18 @@ describe('writing an @confirmed into a .gal file', () => {
     return root;
   };
 
-  it('refuses a second @confirmed for a claim that already carries one', async () => {
+  it('reports a claim that already carries its @confirmed rather than appending a second', async () => {
     const root = await galProject(`@source file:src/a.ts line:1\n@exposes #api to #sqli [critical] cwe:CWE-89 -- "findUser concatenates email"\n`);
     const model = await parse(root);
     const target = `${GAL}:2`;
     const first = recordOutcome(root, model, target, 'confirmed', { evidence: CONFIRM, by: 'human:test', at: NOW });
     writeConfirmedLine(root, first.record, confirmedLine(first.record, first.entry));
 
-    // The claim now carries its confirmation; asking again must be refused, not
-    // appended. Every repeat run used to add another copy.
+    // The claim now carries its confirmation; asking again must not append a
+    // second. Every repeat run used to add another copy.
     const again = recordOutcome(root, await parse(root), target, 'confirmed', { evidence: CONFIRM, by: 'human:test', at: NOW });
-    expect(() => writeConfirmedLine(root, again.record, confirmedLine(again.record, again.entry)))
-      .toThrow(/already carries @confirmed #sqli on #api/);
+    expect(writeConfirmedLine(root, again.record, confirmedLine(again.record, again.entry)))
+      .toEqual({ file: GAL, line: 3, outcome: 'already-present' });
     expect((await readFile(join(root, GAL), 'utf-8')).split('\n').filter(l => l.includes('@confirmed'))).toHaveLength(1);
   }, 120_000);
 

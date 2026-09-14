@@ -474,9 +474,24 @@ function writtenProvenance(entry: HypothesisEntry): string {
 }
 
 /**
+ * Where the `@confirmed` for a claim ended up, and whether this call put it there.
+ *
+ * `already-present` is a correct outcome, not a failure. A claim whose source
+ * already carries its confirmation is in exactly the state the caller asked for,
+ * and the ordinary paths reach it: two cxg templates probing one exposure stamp
+ * the same claim key, and re-importing a report is idempotent because the key
+ * digests the claim's words and is unmoved by the line already inserted. The
+ * caller has to tell that from a real write failure to report honestly, and the
+ * distinction is a TYPE rather than the wording of an error string — a caller
+ * matching on English is a defect waiting for a reword. Every other refusal below
+ * stays a throw: nothing landed and nothing is going to.
+ */
+export type ConfirmedWrite = { file: string; line: number; outcome: 'inserted' | 'already-present' };
+
+/**
  * Insert the line directly beneath the @exposes, with the same comment
- * prefix. Refuses when a @confirmed for the pair already sits there, and
- * refuses a line that does not parse back as one `@confirmed`.
+ * prefix. Reports `already-present` when a @confirmed for the pair already sits
+ * there, and refuses a line that does not parse back as one `@confirmed`.
  *
  * The re-parse is the structural half of the same guard `confirmedLine`'s
  * collapse gives: the description is assembled from a scan report, and a value
@@ -493,7 +508,7 @@ function writtenProvenance(entry: HypothesisEntry): string {
  * tested. Re-resolving between writes would work too; the ordering is cheaper
  * and cannot be forgotten halfway.
  */
-export function writeConfirmedLine(root: string, record: HypothesisRecord, line: string): { file: string; line: number } {
+export function writeConfirmedLine(root: string, record: HypothesisRecord, line: string): ConfirmedWrite {
   const abs = inside(root, record.file);
   const lines = readFileSync(abs, 'utf-8').split('\n');
   const idx = record.line - 1;
@@ -519,7 +534,7 @@ export function writeConfirmedLine(root: string, record: HypothesisRecord, line:
     // A `@source` starts a new anchoring block, so anything past it describes a
     // different location — the `.gal` counterpart of the next `@exposes`.
     if (inner === null || inner.includes('@exposes') || inner.includes('@source')) break;
-    if (inner.includes(pair)) throw new Error(`${record.file}:${i + 1} already carries ${pair}`);
+    if (inner.includes(pair)) return { file: record.file, line: i + 1, outcome: 'already-present' };
   }
   // One derivation of the comment form being written into answers both host-
   // grammar questions: which sequence would end this comment, and whether the
@@ -536,5 +551,5 @@ export function writeConfirmedLine(root: string, record: HypothesisRecord, line:
   const close = form.selfClosing ? ` ${form.closers[0]}` : '';
   lines.splice(idx + 1, 0, `${prefix}${safe}${close}`);
   writeFileSync(abs, lines.join('\n'));
-  return { file: record.file, line: record.line + 1 };
+  return { file: record.file, line: record.line + 1, outcome: 'inserted' };
 }
