@@ -183,14 +183,23 @@ describe('the node counter against browser-measured geometry', () => {
     const { model } = await parseProject({ root: '.', project: 'guardlink' });
     const ordered = canonicalizeModelOrder(model);
     // Measured in Chrome at 1440x900: the default (high/critical-filtered)
-    // threat graph rendered 29 `.node` elements and 72 `path.flowchart-link`s.
+    // threat graph rendered 29 `.node` elements and 73 `path.flowchart-link`s,
+    // and the whole-model graph 43 and 153.
     // Annotating this repository moves these numbers — the two @validates on
-    // #cli that GAP-58 declared took the edges from 70 to 72. When they move,
-    // re-render the diagram in a browser and count the SVG again; never bump
-    // them to whatever the counter says, which leaves it checking itself.
+    // #cli that GAP-58 declared took the edges from 70 to 72, and the
+    // @validates #glob-filtering for #parser that came with the scan-set widening
+    // took them from 72 to 73. When they move, re-render the diagram in a browser
+    // and count the SVG again; never bump them to whatever the counter says,
+    // which leaves it checking itself.
+    //
+    // Re-measured for 73: both diagrams rendered with mermaid@11 under the
+    // dashboard's own initialize options (dagre-d3, htmlLabels:false,
+    // useMaxWidth:false, maxTextSize 50000, maxEdges 500) at 1440x900, counting
+    // `.node` and `path.flowchart-link` in the SVG. Chrome and measureLegibility
+    // agree on both pairs.
     const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
     expect(m.nodes).toBe(29);
-    expect(m.edges).toBe(72);
+    expect(m.edges).toBe(73);
     // And the whole model is 43 nodes, which is the number this work exists for.
     expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(43);
   });
