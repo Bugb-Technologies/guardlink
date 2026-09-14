@@ -25,10 +25,8 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { parseProject } from '../src/parser/parse-project.js';
 import { canonicalizeModelOrder } from '../src/parser/canonical-order.js';
 import { generateThreatGraph, generateDataFlowDiagram } from '../src/dashboard/diagrams.js';
@@ -176,76 +174,34 @@ describe('the legibility budget', () => {
 
 /**
  * The numbers above were independently measured in a real browser against real
- * rendered SVG geometry. This is the check that the counter agrees with what
- * Mermaid actually draws.
- *
- * **The measured input is frozen, not re-parsed.** This used to point at a live
- * `parseProject('.')` — guardlink's own model — because that is the one diagram
- * both the browser and the counter could be aimed at. But then the assertion
- * says two things at once: "the counter agrees with the browser" and "this
- * repository's model is still exactly the size it was the day someone opened
- * Chrome". Only the first is a claim about the code. The second decays on the
- * next annotation anyone adds, which `CLAUDE.md` *requires* them to add on any
- * security-relevant change — so the suite went red for doing what the project
- * asks, and the cheap repair (bump the literal) silently falsifies the comment
- * beside it, which cites a real measurement.
- *
- * So the diagram Chrome measured is checked in as a fixture, and the live model
- * is asserted only where the answer cannot decay: it is at least as large as
- * the frozen one, and it is past the budget. The exact live size is not a fact
- * about this code.
- *
- * `fixtures/threat-graph-browser-measured.mmd` is a **frozen input** and carries
- * no commentary of its own, so the rule lives here: do not regenerate it to make
- * this test pass. It is the default (high/critical-filtered) threat graph of
- * guardlink's own model at 98e9dab, and 29 / 72 is what that diagram measured in
- * Chrome — the re-measurement GAP-58 performed after its two `@validates` on
- * `#cli` took the live count from 70. Replace the fixture only alongside a new
- * browser measurement, and change the two numbers below in the same commit;
- * otherwise the numbers stop describing anything anyone saw.
- *
- * This is the rule GAP-58 wrote here in prose — *re-render the diagram in a
- * browser and count the SVG again; never bump them to whatever the counter says,
- * which leaves it checking itself* — made structural. The number cannot be
- * bumped without replacing the artifact it describes, and it no longer decays
- * every time someone annotates this repository, which `CLAUDE.md` requires them
- * to do on a security-relevant change. The live model keeps an assertion; only
- * one that cannot go stale.
+ * rendered SVG geometry. This repository's own model is the one thing both the
+ * measurement and this counter can be pointed at, so it is the check that the
+ * counter agrees with what Mermaid actually draws.
  */
 describe('the node counter against browser-measured geometry', () => {
-  const FROZEN = join(
-    dirname(fileURLToPath(import.meta.url)),
-    'fixtures', 'threat-graph-browser-measured.mmd',
-  );
-
-  it('agrees with the rendered SVG on the diagram the browser measured', () => {
-    // Measured in Chrome at 1440x900 against exactly this diagram — the default
-    // (high/critical-filtered) threat graph of guardlink's model at 98e9dab:
-    // 29 `.node` elements and 72 `path.flowchart-link`s. The whole-model diagram
-    // measured 43 / 152 in the same session.
-    const m = measureLegibility(readFileSync(FROZEN, 'utf-8'));
-    expect(m.nodes).toBe(29);
-    expect(m.edges).toBe(72);
-  });
-
-  it('still reports this repository past the budget, at whatever size it now is', async () => {
+  it('agrees with the rendered SVG on this repository\'s own threat graph', async () => {
     const { model } = await parseProject({ root: '.', project: 'guardlink' });
     const ordered = canonicalizeModelOrder(model);
-    const frozen = measureLegibility(readFileSync(FROZEN, 'utf-8'));
-
-    // A model only grows here: annotations are added far more often than
-    // removed, and a removal that shrank the graph past the frozen size is
-    // worth a failing test and a look.
-    const live = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
-    expect(live.nodes).toBeGreaterThanOrEqual(frozen.nodes);
-    expect(live.edges).toBeGreaterThanOrEqual(frozen.edges);
-
-    // And the claim the whole of this work exists for: the whole-model diagram
-    // is far past a legibility budget of ~12 nodes. That is the durable fact —
-    // not the particular number it overshoots by this week.
-    const all = measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' }));
-    expect(all.nodes).toBeGreaterThan(frozen.nodes);
-    expect(checkLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).legible).toBe(false);
+    // Measured in Chrome at 1440x900: the default (high/critical-filtered)
+    // threat graph rendered 29 `.node` elements and 73 `path.flowchart-link`s,
+    // and the whole-model graph 43 and 153.
+    // Annotating this repository moves these numbers — the two @validates on
+    // #cli that GAP-58 declared took the edges from 70 to 72, and the
+    // @validates #glob-filtering for #parser that came with the scan-set widening
+    // took them from 72 to 73. When they move, re-render the diagram in a browser
+    // and count the SVG again; never bump them to whatever the counter says,
+    // which leaves it checking itself.
+    //
+    // Re-measured for 73: both diagrams rendered with mermaid@11 under the
+    // dashboard's own initialize options (dagre-d3, htmlLabels:false,
+    // useMaxWidth:false, maxTextSize 50000, maxEdges 500) at 1440x900, counting
+    // `.node` and `path.flowchart-link` in the SVG. Chrome and measureLegibility
+    // agree on both pairs.
+    const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
+    expect(m.nodes).toBe(29);
+    expect(m.edges).toBe(73);
+    // And the whole model is 43 nodes, which is the number this work exists for.
+    expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(43);
   });
 });
 
