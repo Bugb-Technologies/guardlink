@@ -1053,6 +1053,51 @@ export function findAccount(id: string) { return id; }
     expect(formatImport(r)).not.toMatch(/No finding in this report carried a claim key/);
   }, 60000);
 
+  it('reads the key under every name and container the --from-scan help advertises', async () => {
+    // The generated `--help` text is an operator-facing contract, exactly like the
+    // no-stamp banner above, and it is the other place the product advertises what
+    // it accepts. The names are taken OUT of it rather than listed here: a list
+    // written in a test can only hold names someone thought of, and advertising a
+    // spelling the reader refuses is the failure the shared definition exists to
+    // make impossible. The claim is settled by running the real reader.
+    const tsx = createRequire(import.meta.url).resolve('tsx/cli');
+    const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
+    const help = await new Promise<string>((res) =>
+      execFile(process.execPath, [tsx, cli, 'hypothesis', 'confirm', '--help'], { maxBuffer: 64 * 1024 * 1024 },
+        (_e, stdout, stderr) => res(stdout + stderr)));
+    const flat = help.replace(/\s+/g, ' ');
+
+    const names = /carrying the claim key \(([^—]+)—/.exec(flat)?.[1].split(',').map(s => s.trim()).filter(Boolean) ?? [];
+    const containers = /forwarded (\S+) map/.exec(flat)?.[1].split('/') ?? [];
+    expect(names.length, `no claim-key names advertised in:\n${help}`).toBeGreaterThan(0);
+    expect(containers.length, `no containers advertised in:\n${help}`).toBeGreaterThan(0);
+
+    // Every advertised placement, on the GAP-58 shape where the coarse tiers give
+    // the WRONG answer: A was tested, A is gone, and B now sits on A's line. Only
+    // a stamp the reader actually takes refuses it.
+    const tested = await siblings(SIBLINGS);
+    const a = stamp(generateSarif(await parse(tested)), 4);
+    const placements: { label: string; stamp: Record<string, unknown> }[] = [];
+    for (const name of names) {
+      placements.push({ label: `${name} spread onto the finding`, stamp: { [name]: a.claim_key } });
+      for (const container of containers) {
+        placements.push({ label: `${name} nested under ${container}`, stamp: { [container]: { [name]: a.claim_key } } });
+      }
+    }
+
+    for (const p of placements) {
+      const root = await siblings(B_ON_A_LINE);
+      const model = await parse(root);
+      const path = await writeScan(root, { scan_id: 'cxg-help', findings: [{
+        id: 'f1', template_id: 'login-sqli', severity: 'critical', confidence: 0.94, title: 'SQLi', cwe_ids: ['CWE-89'],
+        annotation: { file: a.file, line: a.line }, ...p.stamp, evidence: EV,
+      }] });
+      const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+      expect(r.stale.map(s => s.finding.id), `${p.label}: the reader did not take the advertised stamp`).toEqual(['f1']);
+      expect(r.confirmed, `${p.label}: the reader fell through to a coarse tier`).toEqual([]);
+    }
+  }, 120_000);
+
   it('every exported result that carries a claim key resolves — nothing stamped is unjoinable', async () => {
     // The verb is part of the key digest, so a key stamped from a @confirmed
     // result could never match an exposure record. This asserts the two sides
@@ -1280,6 +1325,52 @@ export function parseBody(body: string) { return body; }
     expect(second.out).not.toMatch(/^ {2}! /m);
     expect(second.out).not.toMatch(/wrote src\/a\.ts/);
     expect(await readFile(join(root, 'src', 'a.ts'), 'utf-8')).toBe(afterFirst);
+  }, 120_000);
+
+  it('offers AMBIGUOUS candidates at the line they occupy after this run, and each resolves to its own claim', async () => {
+    // Same hazard as the withheld block, at its sibling site: the candidate list
+    // is a by-hand target, and a key-verified write higher up the same file moves
+    // it. With consecutive @exposes the shifted line holds a DIFFERENT claim, and
+    // both candidates here are #api → #dos, so only which @exposes the
+    // confirmation lands beneath can tell them apart.
+    const THREE = `import x from 'x';
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "A: findUser concatenates email"
+ * @exposes #api to #dos [medium] -- "B: parseBody has no size cap"
+ * @exposes #api to #dos [medium] -- "C: uploadAvatar has no size cap"
+ */
+export function login(email: string) { return email; }
+`;
+    const root = await siblings(THREE);
+    const a = stamp(generateSarif(await parse(root)), 4);
+    await writeScan(root, { scan_id: 'cxg-ambig', findings: [
+      finding({ id: 'fA', template_id: 'tA', claim_key: a.claim_key }),
+      // No stamp and no location, so it falls to the asset/threat tier and fits
+      // both #dos claims.
+      finding({ id: 'fDos', template_id: 'tDos', cwe_ids: [], asset: '#api', threat: '#dos' }),
+    ] });
+    const run = await runCli(root);
+
+    // A's @confirmed took line 5, so B moved 5→6 and C moved 6→7. Pre-write
+    // numbering would have offered 5 and 6 — and 6 is B, not C.
+    expect(run.out).toMatch(/wrote src\/a\.ts:5/);
+    const offered = [...run.out.matchAll(/guardlink hypothesis confirm (\S+) --evidence/g)].map(m => m[1]);
+    expect(offered.sort()).toEqual(['src/a.ts:6', 'src/a.ts:7']);
+    // Ambiguity needs a human, so the run says so.
+    expect(run.code).not.toBe(0);
+
+    // Run the command we printed for the LAST candidate and require the
+    // confirmation to attach to C, the claim that actually stands there.
+    const byHand = await runArgs(root, 'hypothesis', 'confirm', 'src/a.ts:7', '.', '--evidence', CONFIRM, '--by', 'human:test', '--write');
+    expect(byHand.code).toBe(0);
+
+    const src = (await readFile(join(root, 'src', 'a.ts'), 'utf-8')).split('\n');
+    const cAt = src.findIndex(l => l.includes('"C: uploadAvatar has no size cap"'));
+    expect(src[cAt + 1]).toMatch(/@confirmed #dos on #api/);
+    // B did not get one — the stale line would have hit it.
+    const bAt = src.findIndex(l => l.includes('"B: parseBody has no size cap"'));
+    expect(src[bAt + 1]).not.toMatch(/@confirmed/);
   }, 120_000);
 
   it('hands out a by-hand target that survives its own writes, and it resolves to the withheld claim', async () => {

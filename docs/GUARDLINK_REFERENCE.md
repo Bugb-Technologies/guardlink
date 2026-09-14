@@ -294,7 +294,10 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
   complete one. The manual `confirm <file:line> --evidence … --write` path is unchanged.
 - **Only an unstamped finding falls to the coarse joins** — annotation location, then asset and
   threat, then CWE — where one that fits more than one claim is reported as ambiguous, never
-  guessed, and one that fits none is listed as unmatched. Those match where a claim *sits*, not
+  guessed, and one that fits none is listed as unmatched. An ambiguous finding's candidates are
+  by-hand targets like the withheld ones, so they are printed **after** the writes, at the line each
+  candidate occupies once this run has landed — a key-verified write higher up the same file moves
+  them, and with consecutive `@exposes` the shifted line holds a different claim. Those match where a claim *sits*, not
   which claim it *is*, so a sibling that came to occupy the tested line satisfies them: same file,
   same line, same asset, same threat, hence the same `threatId`. The order is the point. Were a
   coarse join allowed to run first and the key left only a veto, a claim whose file was edited

@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:9d2c6943a5718716de4a98143503b530250b5761e2e5d59ae236baaf5cc13add",
+    "annotation_hash": "sha256-v3:1dd38dea394213bdfc996a3819481d19a7333c7f437d598c0dd1402da23dca3d",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 150,
-  "annotations_parsed": 776,
+  "annotations_parsed": 779,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -4023,7 +4023,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2815
+        "line": 2822
       }
     },
     {
@@ -4033,7 +4033,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2818
+        "line": 2825
       }
     },
     {
@@ -5692,7 +5692,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3545
+        "line": 3552
       }
     },
     {
@@ -6455,35 +6455,35 @@
       }
     },
     {
+      "description": "THE one calculation of where a line sits once the writes are done, used by every coordinate this command hands a user: the confirmations that landed, the ones already present, and the by-hand commands for both the withheld and the ambiguous. Each done.line is a PRE-write coordinate — descending order guarantees nothing at or above a target had been spliced when it was written — so an insertion at or at a lower number than a pre-write position pushes that position down by one. Only SUCCESSFUL writes are in `done`, so a write that threw shifts nothing, and with no --write it is empty and this is the identity. Two sites computing this independently is the shape that disagrees silently, and this command has already produced that defect twice",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1670
+      }
+    },
+    {
       "description": "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1671
+        "line": 1674
       }
     },
     {
       "description": "ONE CLAIM, ONE WRITE. Two findings can carry the same claim key — the ordinary shape when two cxg templates probe one exposure — and both resolve to the same record and fold into ONE ledger entry, so writing per finding attempted the same insertion twice and the second was refused as a failure. Keyed by record.key, keeping the LAST occurrence: upsert replaces the entry object on every call, so only the final one is the entry the ledger actually holds",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1672
+        "line": 1675
       }
     },
     {
       "description": "An exit code is a claim about what happened, and it has to be true in BOTH directions: honest about an under-write and honest about a success. A confirmation already in the source is the state we were asked to reach — from an earlier run, or a re-import of the same report — so it is separated from a real failure by the TYPE writeConfirmedLine returns, never by matching the wording of an error. Every remaining throw is a failure and still exits non-zero",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1675
+        "line": 1678
       }
     },
     {
       "description": "Reconciled against what the writes actually did. A claim whose confirmation IS in the source — inserted just now or already there — was not withheld, whatever else joined to it coarsely, so it is neither told to the operator as skipped nor counted toward the exit status. The rule it serves is the one the exit check states: the code is a claim about what happened and has to be true in BOTH directions, and reporting a claim as withheld in the run that wrote it is the half that was still false",
-      "location": {
-        "file": "src/cli/index.ts",
-        "line": 1687
-      }
-    },
-    {
-      "description": "THE one calculation of where a line sits once the writes are done, used by both the confirmations that landed and the by-hand commands for the ones withheld. Each done.line is a PRE-write coordinate — descending order guarantees nothing at or above a target had been spliced when it was written — so an insertion at or at a lower number than a pre-write position pushes that position down by one. Only SUCCESSFUL writes are in `done`, so a write that threw shifts nothing. Two sites computing this independently is the shape that disagrees silently, and this file has already produced that defect once",
       "location": {
         "file": "src/cli/index.ts",
         "line": 1689
@@ -6525,31 +6525,52 @@
       }
     },
     {
-      "description": "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'. A --write that withheld any confirmation is the same fact about the same run, so it exits non-zero too — PARTIALLY written included, not only the all-withheld case. The reader of this exit code is bravos, which orchestrates this loop and never sees the `! skipped` lines on stderr: give 0 two meanings and a half-written run is indistinguishable from a complete one, and the orchestrator proceeds believing the corpus carries confirmations that are not in it",
+      "description": "The candidates for an ambiguous finding are by-hand targets like the withheld ones, so they are emitted here rather than inside formatImport: that formatter runs BEFORE the writes, and a key-verified write higher up the same file moves an ambiguous candidate exactly as it moves a withheld claim. With consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator records a confirmation against an exposure the probe never tested — GAP-58 through a human's fingers, on our own instruction. Stays on stdout, where it was",
       "location": {
         "file": "src/cli/index.ts",
         "line": 1710
       }
     },
     {
+      "description": "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so these are correct AT THE MOMENT OF PRINTING and no longer. That residue is the addressing scheme and is tracked there; a command this run itself invalidated is a different problem and is fixed here",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1711
+      }
+    },
+    {
+      "description": "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'. A --write that withheld any confirmation is the same fact about the same run, so it exits non-zero too — PARTIALLY written included, not only the all-withheld case. The reader of this exit code is bravos, which orchestrates this loop and never sees the `! skipped` lines on stderr: give 0 two meanings and a half-written run is indistinguishable from a complete one, and the orchestrator proceeds believing the corpus carries confirmations that are not in it",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1716
+      }
+    },
+    {
       "description": "The by-hand path reads the same typed outcome as --from-scan. A claim whose source already carries this confirmation is in the state that was asked for, so it is reported and exits 0; it used to throw into the ✗ handler and exit non-zero on a run that changed nothing and needed to change nothing",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1721
+        "line": 1727
+      }
+    },
+    {
+      "description": "The accepted names and containers are INTERPOLATED from the one shared definition, not written out here. A hand-written copy drifts benignly when the definition widens (the help under-advertises) and harmfully when it narrows: the help then advertises a name the reader refuses, which is the one thing this definition exists to make impossible. The no-stamp banner in format.ts interpolates for the same reason, and both are pinned by tests that take the names out of the text and require the reader to accept them",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1754
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3491
+        "line": 3498
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3546
+        "line": 3553
       }
     },
     {
@@ -6913,14 +6934,14 @@
       "description": "One block per FINDING, deliberately — the header counts findings and two probes hitting one claim is worth seeing. So a claim several findings joined to appears more than once, each block showing the entry that finding produced. Withholding and the exit code are the opposite case: those are decisions about a CLAIM, are derived per claim in the CLI, and must not be read off a per-finding list",
       "location": {
         "file": "src/hypothesis/format.ts",
-        "line": 105
+        "line": 117
       }
     },
     {
-      "description": "GAP-77: every file:line in this report, here and in the formatOutcome blocks above, is the PRE-write position — this formatter runs before --write splices anything and has no way to know what will land. An ambiguous finding is never written, so its candidates cannot be moved by a write to themselves, but a key-verified write higher up the same file does move them. The CLI's withheld-write block prints its own targets AFTER the writes for exactly that reason; these are the remaining position-dependent commands, and the fix for them is an addressing scheme that is not a line number",
+      "description": "This formatter emits NO model coordinate. It runs before --write splices anything, so every line it could name is a pre-write position, and a target handed to an operator has to name where the claim is once this run is finished — a key-verified write higher up the same file moves an ambiguous candidate as readily as it moves a withheld one. The by-hand commands for an ambiguous finding therefore live in the CLI beside the withheld ones, after the writes, through the one afterWrites calculation. The only file:line left below is the SCAN REPORT's own, which is correct as the report's claim about what it tested and is not ours to shift",
       "location": {
         "file": "src/hypothesis/format.ts",
-        "line": 107
+        "line": 119
       }
     },
     {
@@ -7576,7 +7597,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 776,
+    "annotation_count": 779,
     "coverage_percent": 87
   },
   "external_refs": []

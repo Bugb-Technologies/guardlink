@@ -73,10 +73,22 @@ function joinNote(source: HypothesisEntry['source']): string | null {
   }
 }
 
+/**
+ * One outcome, as a block.
+ *
+ * The header names the CLAIM and not a position. `record.line` is a pre-write
+ * coordinate — this runs before `--write` splices anything — and the authoritative
+ * post-write positions are the `wrote` and `already confirmed` lines the CLI prints
+ * once the writes have landed. Printing a second coordinate for the same thing asks
+ * the reader to hold two and pick correctly, and the two WILL disagree in the run
+ * that moves one of them; the asset, threat and key identify the claim without one.
+ * `offered` is the exception and is safe: it is shown only when nothing is being
+ * written, so no insertion can move it.
+ */
 export function formatOutcome(record: HypothesisRecord, entry: HypothesisEntry, offered?: string): string {
   const head = entry.outcome === 'confirmed' ? 'Confirmed' : 'Refuted';
   const lines = [
-    `${head}  ${record.asset} → ${record.threat}  (${record.file}:${record.line})`,
+    `${head}  ${record.asset} → ${record.threat}`,
     `  by        ${entry.by}  on ${entry.at.slice(0, 10)}${entry.source.kind === 'scan' ? `  (scan ${entry.source.scan_id}, confidence ${entry.source.confidence ?? 'n/a'})` : ''}`,
     `  evidence  ${short(entry.evidence, 160)}`,
     `  code      ${entry.anchor ? `${entry.anchor.hash.slice(0, 22)}…  (the outcome is tied to this version of the code)` : 'no anchor — the outcome cannot expire on its own'}`,
@@ -104,11 +116,7 @@ export function formatImport(r: ImportResult): string {
   }
   // @comment -- "One block per FINDING, deliberately — the header counts findings and two probes hitting one claim is worth seeing. So a claim several findings joined to appears more than once, each block showing the entry that finding produced. Withholding and the exit code are the opposite case: those are decisions about a CLAIM, are derived per claim in the CLI, and must not be read off a per-finding list"
   for (const c of r.confirmed) lines.push('', formatOutcome(c.record, c.entry));
-  // @comment -- "GAP-77: every file:line in this report, here and in the formatOutcome blocks above, is the PRE-write position — this formatter runs before --write splices anything and has no way to know what will land. An ambiguous finding is never written, so its candidates cannot be moved by a write to themselves, but a key-verified write higher up the same file does move them. The CLI's withheld-write block prints its own targets AFTER the writes for exactly that reason; these are the remaining position-dependent commands, and the fix for them is an addressing scheme that is not a line number"
-  for (const a of r.ambiguous) {
-    lines.push('', `Ambiguous  ${a.finding.id} (${a.finding.template_id}) fits ${a.candidates.length} claims — pick one and record it by hand:`);
-    for (const c of a.candidates) lines.push(`  guardlink hypothesis confirm ${c.file}:${c.line} --evidence "…"`);
-  }
+  // @comment -- "This formatter emits NO model coordinate. It runs before --write splices anything, so every line it could name is a pre-write position, and a target handed to an operator has to name where the claim is once this run is finished — a key-verified write higher up the same file moves an ambiguous candidate as readily as it moves a withheld one. The by-hand commands for an ambiguous finding therefore live in the CLI beside the withheld ones, after the writes, through the one afterWrites calculation. The only file:line left below is the SCAN REPORT's own, which is correct as the report's claim about what it tested and is not ours to shift"
   for (const s of r.stale) {
     const at = s.finding.annotation ? `, stamped at ${s.finding.annotation.file}:${s.finding.annotation.line}` : '';
     lines.push('', `Stale      ${s.finding.id} (${s.finding.template_id}) was tested against a claim that is no longer in the model — deleted, or its asset, threat, refs, description or file edited.`);
