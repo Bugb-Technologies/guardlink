@@ -105,7 +105,7 @@ guardlink ci . --strict --scope services/api       # Gate on findings under thes
 # Reports & Export
 guardlink report [dir]                  # Generate threat-model.md + optional JSON
 guardlink dashboard [dir]               # Interactive HTML dashboard with Mermaid diagrams
-guardlink sarif [dir] [-o file]         # SARIF 2.1.0 for GitHub Advanced Security / VS Code; every result carries guardlink/threatId, and @exposes results also carry guardlink/claimKey
+guardlink sarif [dir] [-o file]         # SARIF 2.1.0 for GitHub Advanced Security / VS Code; @exposes and @confirmed results carry guardlink/threatId, and @exposes results also carry guardlink/claimKey
 guardlink diff [ref]                    # Compare threat model against a git ref (default: HEAD~1)
 guardlink paths [dir] [--all]           # Undefended source-to-sink routes, derived from @flows (no LLM)
 
@@ -291,7 +291,10 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
   `--write` that skipped anything exits non-zero**, a
   partially written run included: the reader of that exit code is an orchestrator that never sees
   the skip lines on stderr, and a `0` after a half-landed write is indistinguishable from a
-  complete one. The manual `confirm <file:line> --evidence … --write` path is unchanged.
+  complete one. The manual `confirm <file:line> --evidence … --write` path is never withheld —
+  it is human evidence about a named target, with no join to qualify — and it reads the same typed
+  outcome, so re-running it against a claim whose source already carries the confirmation says so
+  and exits 0.
 - **Only an unstamped finding falls to the coarse joins** — annotation location, then asset and
   threat, then CWE — where one that fits more than one claim is reported as ambiguous, never
   guessed, and one that fits none is listed as unmatched. An ambiguous finding's candidates are

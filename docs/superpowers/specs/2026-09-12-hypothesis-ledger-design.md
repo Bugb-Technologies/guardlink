@@ -47,7 +47,7 @@ Schema `guardlink.hypotheses/v1`, a sibling of `verified.json`. One entry per cl
 | `evidence` | required; for a confirmation it must carry evidence words (request, response, reproduced, scan, …), the same bar the gate holds `@confirmed` to |
 | `by`, `at` | `human:<name>` / `cxg:<template>`, ISO date |
 | `anchor` | the claim's anchor `{scope, symbol, hash}` at test time |
-| `source` | `{kind: 'manual'}` or `{kind: 'scan', scan_id, template_id, confidence}` |
+| `source` | `{kind: 'manual'}` or `{kind: 'scan', scan_id, template_id, confidence, joined_by?}` — `joined_by` names the identity that joined the finding to the claim (`claim-key`, `claim-key-contested`, `location`, `asset-threat`, `cwe`); absent on entries written before it existed, which is unknown rather than verified |
 | `history` | every earlier outcome for the key, newest first |
 
 Untested is the absence of an entry. Evidence from a scan goes through `redactEvidence` before
@@ -81,9 +81,12 @@ guardlink hypothesis confirm --from-scan <report.json> [dir] [--by <name>] [--wr
 ```
 
 `refute` and `confirm` refuse without `--evidence`; `confirm` refuses evidence with no evidence
-words. `--write` inserts the offered `@confirmed` line directly beneath the `@exposes`, with the
-same comment prefix, and reports the file and line. `--from-scan` joins each finding to a claim,
-records the confirmed ones, and lists the unmatched, the ambiguous, the stale and the malformed.
+words. `--write` inserts the offered `@confirmed` line directly beneath the `@exposes`, as a
+continuation of that comment — the marker and any terminator derived from the line being written
+into rather than copied from it (docs/SPEC.md §6.5) — and reports the file and line; a claim whose
+source already carries the confirmation is reported as such and is a success. `--from-scan` joins
+each finding to a claim, records the confirmed ones, and lists the unmatched, the ambiguous, the
+stale and the malformed.
 
 On `--from-scan`, `--write` inserts only the confirmations that were key-verified AND uncontested,
 and says what it skipped and how to record it by hand. An `@confirmed` in source is a claim that
