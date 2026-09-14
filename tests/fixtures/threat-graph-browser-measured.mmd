@@ -89,6 +89,8 @@ graph LR
   path_validation -. protects .-> diff
   glob_filtering -. protects .-> diff
   path_validation -. protects .-> gate
+  input_sanitize -- mitigates --> arbitrary_write
+  input_sanitize -. protects .-> cli
   path_validation -. protects .-> init
   config_validation -- mitigates --> arbitrary_write
   config_validation -. protects .-> init
@@ -99,10 +101,10 @@ graph LR
   glob_filtering -. protects .-> parser
   param_commands -. protects .-> cli
   output_encoding -. protects .-> report
-  input_sanitize -- mitigates --> arbitrary_write
-  input_sanitize -. protects .-> cli
   path_validation -. protects .-> tui
   key_redaction -. protects .-> tui
+  config_validation -. validates .-> cli
+  input_sanitize -. validates .-> cli
   resource_limits -. validates .-> mcp
   regex_anchoring -. validates .-> parser
   input_sanitize -. validates .-> parser

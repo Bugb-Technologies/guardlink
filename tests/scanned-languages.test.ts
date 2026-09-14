@@ -33,7 +33,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseProject } from '../src/parser/parse-project.js';
 import { SCANNED_EXTENSIONS } from '../src/parser/languages.js';
-import { commentStyleForExt } from '../src/parser/comment-strip.js';
+import {
+  commentStyleForExt, blockCommentDelimiters, breakCommentDelimiters,
+} from '../src/parser/comment-strip.js';
 import { languageForExtension } from '../src/structure/grammars.js';
 
 const EXPOSES = '@exposes #api to #sqli [high] cwe:CWE-89 -- "query built by concatenation"';
@@ -253,5 +255,68 @@ describe('widening the glob did not widen what counts as an annotation', () => {
       .map(g => g.replace('**/*', ''))
       .filter(e => !/\[/.test(e)); // the case-insensitive .gal pattern
     expect(new Set(globbed)).toEqual(new Set(SCANNED_EXTENSIONS));
+  });
+});
+
+/**
+ * Every scanned language that HAS a block comment form, and the sequence that
+ * ends it.
+ *
+ * This is the safety half of widening the scan set, and it is why the widening
+ * could not be a one-line glob change. `guardlink hypothesis confirm --write`
+ * splices a scan-controlled description into the comment above a claim, and
+ * neutralises the closer that would end that comment — asking the FILE EXTENSION
+ * which closer that is (`blockCommentDelimiters`, used by `describeFor` in
+ * `hypothesis/commands.ts`). A claim can only exist in a file the parser opens.
+ * So every extension the scan set gains, whose language has a block form, must
+ * gain a row in `BLOCK_CLOSERS` in the same change — or the description is
+ * written with nothing broken and can close the comment it sits in.
+ *
+ * `.mjs` `.cjs` `.cxx` `.hh` `.m` `.mm` `.htm` `.pp` `.vhd` `.vhdl` are the rows
+ * this branch added, for exactly that reason: they became annotatable here.
+ */
+const BLOCK_FORM_LANGUAGES: ReadonlyArray<[ext: string, closer: string]> = [
+  ...['.c', '.h', '.cpp', '.cc', '.cxx', '.hpp', '.hh', '.cs', '.java',
+      '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts',
+      '.go', '.rs', '.swift', '.kt', '.kts', '.scala', '.dart', '.php',
+      '.m', '.mm', '.css', '.sql', '.tf', '.hcl', '.vhd', '.vhdl',
+     ].map((e): [string, string] => [e, '*/']),
+  ['.hs', '-}'],
+  ...['.ml', '.mli', '.pas', '.pp'].map((e): [string, string] => [e, '*)']),
+  ...['.html', '.htm', '.xml', '.svg'].map((e): [string, string] => [e, '-->']),
+];
+
+describe('a claim can only exist where a written confirmation is safe to put', () => {
+  for (const [ext, closer] of BLOCK_FORM_LANGUAGES) {
+    it(`breaks ${closer} in a ${ext} description`, () => {
+      // The scan-controlled text a finding could carry.
+      const hostile = `payload ${closer} ${ext === '.html' || ext === '.htm' ? '<!--' : ''} rest`;
+      const delimiters = blockCommentDelimiters(`probe${ext}`);
+      expect(delimiters, `${ext} has no closers — a description would be written intact`)
+        .not.toEqual([]);
+      expect(breakCommentDelimiters(hostile, delimiters)).not.toContain(closer);
+    });
+  }
+
+  it('covers every scanned extension whose language has a block form', () => {
+    const missing = BLOCK_FORM_LANGUAGES
+      .filter(([ext]) => !SCANNED_EXTENSIONS.includes(ext))
+      .map(([ext]) => ext);
+    expect(missing, `listed here but not scanned: ${missing.join(' ')}`).toEqual([]);
+
+    const unbroken = SCANNED_EXTENSIONS.filter(ext => {
+      const known = BLOCK_FORM_LANGUAGES.find(([e]) => e === ext);
+      return known && blockCommentDelimiters(`probe${ext}`).length === 0;
+    });
+    expect(unbroken, `scanned with a block form and no closers: ${unbroken.join(' ')}`).toEqual([]);
+  });
+
+  it('leaves line-comment-only languages without closers, which is correct', () => {
+    // A line comment ends at a newline and a written description is one line,
+    // so there is nothing to break. An entry here would be noise, not safety.
+    for (const ext of ['.py', '.rb', '.sh', '.yaml', '.erl', '.tex', '.ini', '.bat']) {
+      expect(SCANNED_EXTENSIONS).toContain(ext);
+      expect(blockCommentDelimiters(`probe${ext}`)).toEqual([]);
+    }
   });
 });

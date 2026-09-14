@@ -198,9 +198,19 @@ describe('the legibility budget', () => {
  * `fixtures/threat-graph-browser-measured.mmd` is a **frozen input** and carries
  * no commentary of its own, so the rule lives here: do not regenerate it to make
  * this test pass. It is the default (high/critical-filtered) threat graph of
- * guardlink's own model at 5c720d3, which is the tree that was measured. Replace
- * it only alongside a new browser measurement, and change the two numbers below
- * in the same commit — otherwise the numbers stop describing anything anyone saw.
+ * guardlink's own model at 98e9dab, and 29 / 72 is what that diagram measured in
+ * Chrome — the re-measurement GAP-58 performed after its two `@validates` on
+ * `#cli` took the live count from 70. Replace the fixture only alongside a new
+ * browser measurement, and change the two numbers below in the same commit;
+ * otherwise the numbers stop describing anything anyone saw.
+ *
+ * This is the rule GAP-58 wrote here in prose — *re-render the diagram in a
+ * browser and count the SVG again; never bump them to whatever the counter says,
+ * which leaves it checking itself* — made structural. The number cannot be
+ * bumped without replacing the artifact it describes, and it no longer decays
+ * every time someone annotates this repository, which `CLAUDE.md` requires them
+ * to do on a security-relevant change. The live model keeps an assertion; only
+ * one that cannot go stale.
  */
 describe('the node counter against browser-measured geometry', () => {
   const FROZEN = join(
@@ -209,12 +219,13 @@ describe('the node counter against browser-measured geometry', () => {
   );
 
   it('agrees with the rendered SVG on the diagram the browser measured', () => {
-    // Measured in Chrome at 1440x900 against the default (high/critical-
-    // filtered) threat graph of this repository's model at 5c720d3: 29 `.node`
-    // elements and 70 `path.flowchart-link`s.
+    // Measured in Chrome at 1440x900 against exactly this diagram — the default
+    // (high/critical-filtered) threat graph of guardlink's model at 98e9dab:
+    // 29 `.node` elements and 72 `path.flowchart-link`s. The whole-model diagram
+    // measured 43 / 152 in the same session.
     const m = measureLegibility(readFileSync(FROZEN, 'utf-8'));
     expect(m.nodes).toBe(29);
-    expect(m.edges).toBe(70);
+    expect(m.edges).toBe(72);
   });
 
   it('still reports this repository past the budget, at whatever size it now is', async () => {
