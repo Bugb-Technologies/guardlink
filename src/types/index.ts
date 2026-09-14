@@ -289,6 +289,35 @@ export interface ReportMetadata {
    * derived artifact still describes the current model.
    */
   annotation_hash?: string;
+  /**
+   * What the parse that produced this report could not read.
+   *
+   * Optional, and its ABSENCE is a third state rather than a zero. A report cut
+   * by a GuardLink that predates this field says nothing about its own parse,
+   * and a consumer that reads that silence as "clean" has invented the answer —
+   * which is the whole failure this field exists to close one level up. `merge`
+   * reports such a repository as "parse state unknown" and never folds it into
+   * a clean estate.
+   *
+   * `ci` already reports the same three numbers for a single repository; this
+   * is how they survive `report --format json` and reach an estate-wide merge,
+   * where nothing else can see them.
+   */
+  parse?: ReportParseState;
+}
+
+/** Diagnostics from the parse behind a report, carried into the report itself. */
+export interface ReportParseState {
+  /** Diagnostics at level `error` or `fatal`. */
+  errors: number;
+  /** Diagnostics at level `warning`. */
+  warnings: number;
+  /**
+   * Annotation lines those diagnostics stand for — `occurrences` where the
+   * parser collapsed repeats, one otherwise. Not the same number as
+   * `errors + warnings`, and the one that says how much of the model is missing.
+   */
+  unparsed_annotations: number;
 }
 
 // ─── External References ─────────────────────────────────────────────

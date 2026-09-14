@@ -264,7 +264,7 @@ program
     // indistinguishable from a current one, and `validate --artifacts` had
     // nothing to compare. Additive: `metadata` is a new key beside every field
     // this command already emitted.
-    const stamped = populateMetadata(model, root);
+    const stamped = populateMetadata(model, root, diagnostics);
 
     // Output model
     const json = JSON.stringify(stamped, null, opts.pretty ? 2 : 0);
@@ -759,7 +759,7 @@ program
     if (opts.blame) attachBlame(root, model);
 
     // Enrich with provenance metadata (git SHA, branch, workspace, schema version)
-    const enrichedModel = populateMetadata(model, root);
+    const enrichedModel = populateMetadata(model, root, diagnostics);
 
     // Auto-create .guardlink/prompt.md if a v1.4.x project doesn't have it
     // (`init` short-circuits when .guardlink/ exists, so upgrades skip the
@@ -3055,6 +3055,15 @@ program
     console.error(`  ${t.annotations} annotations | ${t.assets} assets | ${t.threats} threats | ${t.controls} controls`);
     console.error(`  ${t.mitigations} mitigations | ${t.exposures} exposures | ${t.unmitigated_exposures} unmitigated`);
     console.error(`  ${t.confirmed} confirmed | ${t.flows} flows | ${t.external_refs_resolved} refs resolved | ${t.external_refs_unresolved} unresolved`);
+    // Reported beside the model counts because it qualifies every one of them:
+    // an annotation a member repo's parser could not read is in none of them.
+    // The unknown repos are named rather than summed in, so a 0 here cannot be
+    // read as "the estate parsed cleanly" when part of it never said.
+    if (t.repos_loaded > 0) {
+      console.error(`  ${t.unparsed_annotations} unreadable annotation(s)`
+        + ` (${t.parse_errors} error(s))`
+        + (t.repos_parse_unknown > 0 ? ` | ${t.repos_parse_unknown} repo(s) did not say` : ''));
+    }
 
     // Print warnings
     for (const w of merged.warnings) {
@@ -3122,7 +3131,7 @@ program
 
     // The verdict last, under everything it is a verdict on. Advisory unless
     // --strict, exactly as `guardlink ci` is.
-    const rendered = formatMergeVerdict(verdict);
+    const rendered = formatMergeVerdict(verdict, t);
     if (rendered) console.error('\n' + rendered);
     else if (!opts.strict && (t.unmitigated_exposures > 0 || t.confirmed > 0)) {
       console.error('\nAdvisory — nothing here failed the build. Run with --strict to gate on it.');

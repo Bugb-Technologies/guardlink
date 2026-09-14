@@ -25,6 +25,23 @@
  * finding about the estate — it is the absence of one. `--strict` is the opt-in
  * for gating on what the estate actually says.
  *
+ * ── What a member repository could not read ────────────────────────
+ *
+ * The same defect has a second scale. `guardlink ci` reports, per repository,
+ * the annotations its parse could not read — and those annotations are in none
+ * of the counts beside them, so a repository can reach zero unmitigated by
+ * having been unreadable. A merged estate could not see any of that: it reads
+ * report JSONs, and a report said nothing about the parse behind it.
+ *
+ * So `ReportMetadata.parse` carries those three numbers across, and the merge
+ * keeps **three** states rather than two. A repo that reported its parse
+ * contributes its counts; a repo whose report predates the field is counted in
+ * `repos_parse_unknown` and contributes nothing to either side. Absence is not
+ * zero: reading "this report cannot say" as "it read everything" is the same
+ * invented answer as reading "no repositories loaded" as "nothing is wrong",
+ * one level down. Parse ERRORS gate under `--strict`; warnings never do, which
+ * is the split `ci` already makes about the same numbers.
+ *
  * @asset Workspace.Merge (#merge-engine) -- "Cross-repo threat model unification"
  * @threat Tag_Collision (#tag-collision) [medium] -- "Duplicate tag definitions across repos"
  * @mitigates #merge-engine against #tag-collision using #prefix-ownership -- "Tag prefix determines owning repo"
@@ -206,6 +223,11 @@ export async function loadAllReports(
         generated_at: report.model.metadata?.generated_at || report.model.generated_at,
         commit_sha: report.model.metadata?.commit_sha ?? undefined,
         annotation_count: report.model.annotations_parsed,
+        // Left undefined when the report carries none. `?? { errors: 0, ... }`
+        // here would turn "this report cannot say" into "it read everything",
+        // which is the merge-scale version of the defect this module's header
+        // describes.
+        parse: report.model.metadata?.parse,
       });
     } catch (err) {
       statuses.push({
@@ -653,9 +675,10 @@ export function computeTotals(
   resolvedCount: number,
   unresolvedCount: number,
 ): MergeTotals {
+  const loadedStatuses = statuses.filter(s => s.loaded);
   return {
     repos: statuses.length,
-    repos_loaded: statuses.filter(s => s.loaded).length,
+    repos_loaded: loadedStatuses.length,
     annotations: model.annotations_parsed,
     assets: model.assets.length,
     threats: model.threats.length,
@@ -664,6 +687,11 @@ export function computeTotals(
     exposures: model.exposures.length,
     unmitigated_exposures: countUnmitigated(model),
     confirmed: (model.confirmed || []).length,
+    // Summed over the repos that answered; the ones that did not are counted
+    // separately rather than contributing a zero.
+    unparsed_annotations: loadedStatuses.reduce((n, s) => n + (s.parse?.unparsed_annotations ?? 0), 0),
+    parse_errors: loadedStatuses.reduce((n, s) => n + (s.parse?.errors ?? 0), 0),
+    repos_parse_unknown: loadedStatuses.filter(s => !s.parse).length,
     acceptances: model.acceptances.length,
     flows: model.flows.length,
     boundaries: model.boundaries.length,
@@ -680,7 +708,8 @@ export type MergeFailureCode =
   | 'nothing_loaded'      // Zero repositories read. Every count below is the empty model's.
   | 'repo_not_loaded'     // --strict: a named report could not be read, so the estate is partial.
   | 'unmitigated'         // --strict: an exposure no control, acceptance or transfer covers.
-  | 'confirmed';          // --strict: a reproduced exploit. No acceptance silences one.
+  | 'confirmed'           // --strict: a reproduced exploit. No acceptance silences one.
+  | 'parse_errors';       // --strict: annotations a member repo's parser could not read.
 
 export interface MergeFailure {
   code: MergeFailureCode;
@@ -797,17 +826,45 @@ export function mergeVerdict(
         strict_only: true,
       });
     }
+    // Errors only, never warnings, and never the unknown repos — the same split
+    // `guardlink ci --strict` makes about the same numbers, one repository at a
+    // time. A claim the parser could not read is in no count above this line,
+    // so an estate can reach zero unmitigated by having been unreadable.
+    if (t.parse_errors > 0) {
+      failures.push({
+        code: 'parse_errors',
+        message: `${t.parse_errors} parse error(s) across the estate`
+          + ` — ${t.unparsed_annotations} annotation line(s) are in no count above`,
+        strict_only: true,
+      });
+    }
   }
 
   return { failures, strict, exit_code: failures.length > 0 ? 1 : 0 };
 }
 
 /** The human rendering of a verdict: the reasons, then what to do about them. */
-export function formatMergeVerdict(verdict: MergeVerdict): string {
+export function formatMergeVerdict(verdict: MergeVerdict, totals?: MergeTotals): string {
   if (verdict.failures.length === 0) {
-    return verdict.strict
-      ? '✓ Estate clean — every repository read, nothing unmitigated, nothing confirmed.'
-      : '';
+    if (!verdict.strict) return '';
+    // The tick enumerates what was checked, and stops there. Repositories whose
+    // report cannot say whether its own parse dropped anything are named in the
+    // same breath rather than absorbed into the word "clean": this command's
+    // whole subject is a green tick that meant less than it looked like.
+    const unknown = totals?.repos_parse_unknown ?? 0;
+    const warnings = (totals ? totals.unparsed_annotations - totals.parse_errors : 0);
+    const notes: string[] = [];
+    if (unknown > 0) {
+      notes.push(`  ${unknown} repo(s) did not report their parse state — whether their`
+        + ' annotations were all read is unknown, not clean. Re-run `guardlink report'
+        + ' --format json` in them with a current GuardLink.');
+    }
+    if (warnings > 0) {
+      notes.push(`  ${totals!.unparsed_annotations} annotation line(s) were unreadable across the estate`
+        + ' at warning level, so they are in none of the counts above. Warnings do not gate.');
+    }
+    return ['✓ Estate clean — every repository read, nothing unmitigated, nothing confirmed,'
+      + ' no parse errors.', ...notes].join('\n');
   }
   const out = verdict.failures.map(f => `✗ ${f.message}`);
   if (verdict.failures.some(f => f.code === 'unmatched_pattern')) {
@@ -959,7 +1016,8 @@ function emptyMergedReport(workspace: string, statuses: RepoStatus[]): MergedRep
     totals: {
       repos: statuses.length, repos_loaded: 0, annotations: 0, assets: 0,
       threats: 0, controls: 0, mitigations: 0, exposures: 0,
-      unmitigated_exposures: 0, confirmed: 0, acceptances: 0, flows: 0, boundaries: 0,
+      unmitigated_exposures: 0, confirmed: 0, unparsed_annotations: 0, parse_errors: 0,
+      repos_parse_unknown: 0, acceptances: 0, flows: 0, boundaries: 0,
       external_refs_resolved: 0, external_refs_unresolved: 0,
     },
     model: {

@@ -27,7 +27,7 @@
  * real" the same assertion rather than two.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtemp, mkdir, rm, writeFile, access } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile, readFile, access } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -267,6 +267,93 @@ describe('--strict fails a partially read estate, and only --strict does', () =>
   });
 });
 
+// ─── what a member repository could not read ─────────────────────────
+
+/**
+ * The estate-scale version of the defect `ci` already reports per repository.
+ *
+ * An annotation the parser could not read is in none of the counts beside it, so
+ * a repository can reach zero unmitigated by having been unreadable — and a
+ * merged estate could not see any of it, because a report JSON said nothing
+ * about the parse behind it. Three states now survive the merge, and the third
+ * is the one that matters: a report that cannot say is not a report that says
+ * everything was read.
+ */
+const UNREADABLE = `/**
+ * @exposes #listing to
+ */
+export function broken() { return 1; }
+`;
+
+describe('annotations a member repo could not read reach the estate', () => {
+  let root: string;
+  let runs: Record<'strict' | 'advisory', Run>;
+
+  beforeAll(async () => {
+    root = await scaffoldEstate('gl-merge-parse-', {
+      'orders-api': EXPOSED + UNREADABLE, 'platform-authz': MITIGATED,
+    });
+    const [strict, advisory] = await Promise.all([
+      guardlink(root, 'merge', '*/guardlink-report.json', '--summary-only', '--strict'),
+      guardlink(root, 'merge', '*/guardlink-report.json', '--summary-only'),
+    ]);
+    runs = { strict, advisory };
+  }, 120_000);
+  afterAll(async () => { await rm(root, { recursive: true, force: true }); });
+
+  it('the report carries what its own parse could not read', async () => {
+    const report = JSON.parse(await readFile(join(root, 'orders-api', 'guardlink-report.json'), 'utf-8'));
+    expect(report.metadata.parse).toMatchObject({ errors: 1 });
+    expect(report.metadata.parse.unparsed_annotations).toBeGreaterThanOrEqual(1);
+  });
+
+  it('the merge reports it beside the counts it qualifies', () => {
+    expect(runs.advisory.stderr).toMatch(/\d+ unreadable annotation\(s\) \(1 error\(s\)\)/);
+  });
+
+  it('--strict gates on a parse error, and says the lines are in no count above', () => {
+    expect(runs.strict.status).toBe(1);
+    expect(runs.strict.stderr).toContain('1 parse error(s) across the estate');
+    expect(runs.strict.stderr).toContain('in no count above');
+  });
+
+  it('is advisory without --strict, like every other finding about the estate', () => {
+    expect(runs.advisory.status).toBe(0);
+  });
+});
+
+describe('a report that cannot say is not a report that says everything was read', () => {
+  let root: string;
+  let run: Run;
+
+  beforeAll(async () => {
+    root = await scaffoldEstate('gl-merge-parse-unknown-', {
+      'orders-api': EXPOSED, 'platform-authz': MITIGATED,
+    });
+    // What a GuardLink older than `metadata.parse` produces.
+    const older = join(root, 'platform-authz', 'guardlink-report.json');
+    const model = JSON.parse(await readFile(older, 'utf-8'));
+    delete model.metadata.parse;
+    await writeFile(older, JSON.stringify(model, null, 2) + '\n');
+    run = await guardlink(root, 'merge', '*/guardlink-report.json', '--summary-only', '--strict');
+  }, 120_000);
+  afterAll(async () => { await rm(root, { recursive: true, force: true }); });
+
+  it('counts it as unknown rather than adding a zero to either side', () => {
+    expect(run.stderr).toContain('1 repo(s) did not say');
+  });
+
+  it('does not fail on it — an old report is not a finding', () => {
+    expect(run.status).toBe(0);
+  });
+
+  it('but refuses to let the green tick absorb it', () => {
+    // The whole subject of this command is a tick that meant less than it looked
+    // like. "Estate clean" may not quietly include a repository that never said.
+    expect(run.stderr).toContain('unknown, not clean');
+  });
+});
+
 // ─── the units that are awkward to reach through a shell ─────────────
 
 describe('resolveReportPaths', () => {
@@ -318,6 +405,7 @@ describe('mergeVerdict', () => {
         repos: statuses.length, repos_loaded: statuses.filter(s => s.loaded).length,
         annotations: 0, assets: 0, threats: 0, controls: 0, mitigations: 0,
         exposures: 0, unmitigated_exposures: 0, confirmed: 0, acceptances: 0,
+        unparsed_annotations: 0, parse_errors: 0, repos_parse_unknown: 0,
         flows: 0, boundaries: 0, external_refs_resolved: 0, external_refs_unresolved: 0,
         ...totals,
       },
@@ -354,5 +442,17 @@ describe('mergeVerdict', () => {
     expect(v.exit_code).toBe(1);
     expect(v.failures.map(f => f.code)).toEqual(['confirmed', 'unmitigated']);
     expect(v.failures.every(f => f.strict_only)).toBe(true);
+  });
+
+  it('gates on parse errors but never on warnings or on repos that did not say', () => {
+    const warningsOnly = report({ unparsed_annotations: 40, parse_errors: 0 }, loaded);
+    expect(mergeVerdict(warningsOnly, { strict: true }).exit_code).toBe(0);
+
+    const unknown = report({ repos_parse_unknown: 3 }, loaded);
+    expect(mergeVerdict(unknown, { strict: true }).exit_code).toBe(0);
+
+    const errors = report({ unparsed_annotations: 40, parse_errors: 2 }, loaded);
+    expect(mergeVerdict(errors).exit_code).toBe(0);
+    expect(mergeVerdict(errors, { strict: true }).failures.map(f => f.code)).toEqual(['parse_errors']);
   });
 });
