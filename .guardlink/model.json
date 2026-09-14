@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:1dd38dea394213bdfc996a3819481d19a7333c7f437d598c0dd1402da23dca3d",
+    "annotation_hash": "sha256-v3:8f947e89fcfa760360be34d7363c73154a7152f8d5e3973f8808f34d2cbbb267",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 150,
-  "annotations_parsed": 779,
+  "annotations_parsed": 780,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -4023,7 +4023,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2822
+        "line": 2823
       }
     },
     {
@@ -4033,7 +4033,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2825
+        "line": 2826
       }
     },
     {
@@ -5692,7 +5692,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3552
+        "line": 3553
       }
     },
     {
@@ -6560,17 +6560,24 @@
       }
     },
     {
+      "description": "ONE string stating BOTH behaviours, because --write sits on `confirm` and genuinely serves both paths. An author writing against this flag reads --help, not our runtime output: 'inserts the @confirmed line' alone over-promises on the one surface that writes into someone else's repository, and an operator who believes every joined confirmation landed stops checking the ones that did not — which is exactly the knowledge the withholding rule exists to give them. Two per-path wordings were rejected for the reason this branch has already corrected on names, containers, grammars and positions: two descriptions of one thing can disagree, and one string cannot contradict itself",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1757
+      }
+    },
+    {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3498
+        "line": 3499
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3553
+        "line": 3554
       }
     },
     {
@@ -7597,7 +7604,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 779,
+    "annotation_count": 780,
     "coverage_percent": 87
   },
   "external_refs": []
