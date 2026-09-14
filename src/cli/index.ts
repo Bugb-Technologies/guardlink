@@ -1657,7 +1657,8 @@ hypothesis
 
 const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: string | undefined, dir: string, opts: { project?: string; evidence?: string; by?: string; write?: boolean; fromScan?: string }) => {
   const { root, model } = await hypothesisContext(dir, opts.project);
-  const by = opts.by || `human:${defaultVerifier(root)}`;
+  // @comment -- "`defaultVerifier` already returns `human:<name>` (src/parser/verify.ts:172), so prefixing it here recorded `human:human:<name>` — the form the ledger schema and this command's own --by help both say it is not. Do NOT 'repair' older entries that carry the doubled form: `by` is display and provenance metadata, never a join key — upsert and every reader match on the claim key — so pre-fix and post-fix entries coexist in one ledger and nothing stops matching. An explicit --by is passed through verbatim on this path, which is how `--by cxg:login-sqli` names its scheme"
+  const by = opts.by || defaultVerifier(root);
   const at = nowIso();
   try {
     if (outcome === 'confirmed' && opts.fromScan) {

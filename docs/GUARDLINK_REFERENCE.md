@@ -208,7 +208,7 @@ guardlink hypothesis list [dir] [--state untested|confirmed|refuted|retest] [--j
 guardlink hypothesis next [dir] [-n 10] [--intake]           # what to test next; --intake prints a brief for bugb intake
 guardlink hypothesis refute  src/x.ts:12 --evidence "POST /login with payload X returned 400 from validateEmail()"
 guardlink hypothesis confirm src/x.ts:12 --evidence "request … response …" [--write]   # --write inserts the @confirmed line beneath the @exposes
-guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--write]     # cxg findings joined to claims; --write inserts only key-verified ones
+guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--write]     # cxg findings joined to claims; --write inserts only uncontested key-verified ones
 ```
 
 - **Evidence is required.** A refutation needs what was tried and what came back; a confirmation
