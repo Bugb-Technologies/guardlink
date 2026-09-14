@@ -271,8 +271,10 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
   naming different claims, resolved by precedence) leaves identity in doubt, so `--from-scan
   --write` skips either, names it and prints the by-hand command; the outcome is still in the
   ledger. The line it does write states that the scan stamped the claim's own key, so the reason
-  survives the code that enforces it. The manual `confirm <file:line> --evidence … --write` path is
-  unchanged.
+  survives the code that enforces it. **A `--write` that skipped anything exits non-zero**, a
+  partially written run included: the reader of that exit code is an orchestrator that never sees
+  the skip lines on stderr, and a `0` after a half-landed write is indistinguishable from a
+  complete one. The manual `confirm <file:line> --evidence … --write` path is unchanged.
 - **Only an unstamped finding falls to the coarse joins** — annotation location, then asset and
   threat, then CWE — where one that fits more than one claim is reported as ambiguous, never
   guessed, and one that fits none is listed as unmatched. Those match where a claim *sits*, not

@@ -1129,6 +1129,49 @@ export function findUser(email: string) { return email; }
     expect(run.out).toMatch(/skipped src\/a\.ts:4 — joined by location, not key-verified/);
     expect(run.out).toMatch(/guardlink hypothesis confirm src\/a\.ts:4 --evidence/);
     expect(run.out).not.toMatch(/wrote src\/a\.ts/);
+
+    // bravos orchestrates this loop and reads the exit code, not stderr. A
+    // requested write that put nothing in source must not report success.
+    expect(run.code).not.toBe(0);
+  }, 120_000);
+
+  it('exits non-zero when a write PARTIALLY landed — one key-verified, one withheld', async () => {
+    // The dangerous case is not "nothing was written", it is "half was". If the
+    // exit code is 0 here, a run where one confirmation reached source and
+    // another did not is indistinguishable from a complete one, and nothing
+    // downstream goes looking.
+    const MIXED = `import x from 'x';
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "A: findUser concatenates email"
+ */
+export function findUser(email: string) { return email; }
+
+/**
+ * @exposes #api to #dos [medium] -- "B: parseBody has no size cap"
+ */
+export function parseBody(body: string) { return body; }
+`;
+    const root = await siblings(MIXED);
+    const a = stamp(generateSarif(await parse(root)), 4);
+    await writeScan(root, { scan_id: 'cxg-mixed', findings: [
+      finding({ id: 'fA', template_id: 'tA', claim_key: a.claim_key }),
+      finding({ id: 'fB', template_id: 'tB', annotation: { file: 'src/a.ts', line: 9 } }),
+    ] });
+    const run = await runCli(root);
+
+    // The key-verified one landed, and only it.
+    expect(run.out).toMatch(/wrote src\/a\.ts:5/);
+    expect(run.out).toMatch(/skipped src\/a\.ts:9 — joined by location, not key-verified/);
+    const after = await parse(root);
+    expect(after.confirmed).toHaveLength(1);
+    expect(after.confirmed![0]).toMatchObject({ asset: '#api', threat: '#sqli' });
+
+    // Both outcomes are in the ledger — withholding the write never drops one.
+    expect(readHypotheses(root).ledger!.entries).toHaveLength(2);
+
+    // And the run still reports that the write it was asked for did not fully happen.
+    expect(run.code).not.toBe(0);
   }, 120_000);
 
   it('writes a key-verified confirmation, and the line says how it was established', async () => {

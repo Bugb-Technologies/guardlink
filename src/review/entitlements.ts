@@ -30,7 +30,7 @@
  * @mitigates #cli against #insecure-deser using #config-validation -- "parseLedger validates shape field by field and drops nothing silently — a malformed ledger is an error, not a partial read; `inert` is recomputed from the citation rather than trusted from the file"
  * @mitigates #cli against #insecure-deser using #resource-limits -- "Ledger reads are capped at MAX_LEDGER_BYTES"
  * @exposes #cli to #arbitrary-write [high] cwe:CWE-74 -- "Agent-supplied rationale and human decision notes are interpolated into annotation text, where a newline would forge a second annotation"
- * @mitigates #cli against #arbitrary-write using #input-sanitize -- "oneLine() collapses newlines/CR/tabs before escapeDesc, and every built line is re-parsed with parseLine before it is written"
+ * @mitigates #cli against #arbitrary-write using #input-sanitize -- "oneLine() — the one definition in review/index.ts, re-exported here rather than copied — collapses every character a host grammar treats as ending a line: the Unicode mandatory breaks LF, CR, NEL, LS and PS, plus VT, FF and TAB, not the ASCII three. It runs before escapeDesc, and every built line is re-parsed with parseLine before it is written"
  * @flows AgentProposal -> #cli via proposeEntitlement -- "Agent-side proposal input"
  * @flows #cli -> ProposalLedger via writeFile -- "Proposal artifact output"
  * @flows ProposalLedger -> #cli via readFile -- "Proposal artifact input"

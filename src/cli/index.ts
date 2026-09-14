@@ -1664,9 +1664,11 @@ const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: strin
       // @flows ScanReport -> #cli via importScan -- "cxg findings recorded as confirmations, joined to claims"
       const r = importScan(root, model, opts.fromScan, { by: opts.by || 'cxg', at });
       console.log(formatImport(r));
+      // @comment -- "Recorded in the ledger but withheld from source: the coarse and contested joins. One list, so the skip messages and the exit code below cannot disagree about which findings --write declined"
+      const withheld = r.confirmed.filter(c => c.joinedBy !== 'claim-key');
       if (opts.write) {
         // @comment -- "--write only inserts an UNCONTESTED key-verified confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), and a contested one came from a report that named two different claims at once, so identity is in doubt in both cases. Losing that throughput is the point: those are exactly the joins that can be wrong"
-        for (const c of r.confirmed.filter(c => c.joinedBy !== 'claim-key')) {
+        for (const c of withheld) {
           const why = c.joinedBy === 'claim-key-contested'
             ? 'the report carried more than one claim key naming different claims, so this one won on precedence rather than agreement — which exposure was tested is in doubt'
             : `joined by ${c.joinedBy}, not key-verified, so it may be about a different exposure than the probe tested`;
@@ -1689,8 +1691,9 @@ const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: strin
       } else if (r.confirmed.some(c => c.joinedBy === 'claim-key')) {
         console.log('\nadd --write to insert an @confirmed line beneath each key-verified @exposes');
       }
-      // @comment -- "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'"
-      if (r.ambiguous.length > 0 || r.stale.length > 0 || r.malformed.length > 0 || r.unmatched.length > 0) process.exitCode = 1;
+      // @comment -- "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'. A --write that withheld any confirmation is the same fact about the same run, so it exits non-zero too — PARTIALLY written included, not only the all-withheld case. The reader of this exit code is bravos, which orchestrates this loop and never sees the `! skipped` lines on stderr: give 0 two meanings and a half-written run is indistinguishable from a complete one, and the orchestrator proceeds believing the corpus carries confirmations that are not in it"
+      if (r.ambiguous.length > 0 || r.stale.length > 0 || r.malformed.length > 0 || r.unmatched.length > 0
+        || (opts.write && withheld.length > 0)) process.exitCode = 1;
       return;
     }
     if (!target) { console.error('Name the exposure as file:line, or pass --from-scan <report.json>.'); process.exitCode = 1; return; }

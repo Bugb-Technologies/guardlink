@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:cbec3ceeb6421c10df0a72ef5cbc7f78e6084e6de1b0977a85ba8ebf16963633",
+    "annotation_hash": "sha256-v3:91d0165bf205ffafaf60b642758403b4edbcefade41dc5ab3bbdc24268e828f2",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 150,
-  "annotations_parsed": 764,
+  "annotations_parsed": 765,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -1819,7 +1819,7 @@
       "asset": "#cli",
       "threat": "#arbitrary-write",
       "control": "#input-sanitize",
-      "description": "oneLine() collapses newlines/CR/tabs before escapeDesc, and every built line is re-parsed with parseLine before it is written",
+      "description": "oneLine() — the one definition in review/index.ts, re-exported here rather than copied — collapses every character a host grammar treats as ending a line: the Unicode mandatory breaks LF, CR, NEL, LS and PS, plus VT, FF and TAB, not the ASCII three. It runs before escapeDesc, and every built line is re-parsed with parseLine before it is written",
       "location": {
         "file": "src/review/entitlements.ts",
         "line": 33
@@ -4023,7 +4023,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2795
+        "line": 2798
       }
     },
     {
@@ -4033,7 +4033,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2798
+        "line": 2801
       }
     },
     {
@@ -5692,7 +5692,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3525
+        "line": 3528
       }
     },
     {
@@ -6448,38 +6448,45 @@
       }
     },
     {
+      "description": "Recorded in the ledger but withheld from source: the coarse and contested joins. One list, so the skip messages and the exit code below cannot disagree about which findings --write declined",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1667
+      }
+    },
+    {
       "description": "--write only inserts an UNCONTESTED key-verified confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), and a contested one came from a report that named two different claims at once, so identity is in doubt in both cases. Losing that throughput is the point: those are exactly the joins that can be wrong",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1668
+        "line": 1670
       }
     },
     {
       "description": "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1676
+        "line": 1678
       }
     },
     {
-      "description": "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'",
+      "description": "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'. A --write that withheld any confirmation is the same fact about the same run, so it exits non-zero too — PARTIALLY written included, not only the all-withheld case. The reader of this exit code is bravos, which orchestrates this loop and never sees the `! skipped` lines on stderr: give 0 two meanings and a half-written run is indistinguishable from a complete one, and the orchestrator proceeds believing the corpus carries confirmations that are not in it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1692
+        "line": 1694
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3471
+        "line": 3474
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3526
+        "line": 3529
       }
     },
     {
@@ -7492,7 +7499,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 764,
+    "annotation_count": 765,
     "coverage_percent": 87
   },
   "external_refs": []
