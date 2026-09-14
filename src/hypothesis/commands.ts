@@ -215,7 +215,12 @@ const bag = (v: unknown): Record<string, unknown> | undefined => (v && typeof v 
  */
 function findingStamps(o: Record<string, unknown>, ann: Record<string, unknown> | undefined): ScanStamp[] {
   const found: ScanStamp[] = [];
-  for (const [level, at] of [[o, ''], [ann, 'annotation.']] as const) {
+  // The second level is `o.annotation ?? o.location`, so the path has to name
+  // the key the value actually arrived under. Hard-coding `annotation.` sent an
+  // operator looking for a field their report does not contain — in the one
+  // message whose whole purpose is telling them what to fix.
+  const at2 = o.annotation ? 'annotation.' : 'location.';
+  for (const [level, at] of [[o, ''], [ann, at2]] as const) {
     if (!level) continue;
     const containers: [Record<string, unknown> | undefined, string][] = [[level, at]];
     for (const s of CLAIM_KEY_SURFACES) containers.push([bag(level[s.container]), `${at}${s.container}.`]);
@@ -433,8 +438,12 @@ export function confirmedLine(record: HypothesisRecord, entry: HypothesisEntry):
  * bare annotation, outside the comment it is about to be spliced into.
  *
  * A space after the closer's first character is enough to break it and still
- * shows the reader what the report said. Line comments need nothing here — they
- * end at a newline, which `oneLine` has already removed.
+ * shows the reader what the report said. Line comments need no closer of their
+ * own — but only because `oneLine` removes every character a host grammar
+ * treats as ending a line, not merely the newline. An ECMAScript line comment
+ * ends at ANY LineTerminator, and a lone U+2028 once survived a collapse that
+ * covered `[\r\n\t]`, leaving report text in code position. Narrow that
+ * collapse and this function stops being sufficient for a `//` host.
  *
  * This pass works from the extension, because the offered line is built without
  * reading the file and may be pasted anywhere in it. `writeConfirmedLine` runs

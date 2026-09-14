@@ -134,17 +134,28 @@ export function formatImport(r: ImportResult): string {
   // an outcome above, labelled CONTESTED, with its write withheld. A contest on
   // one that did not confirm has none of those — its own bucket above already
   // said what became of it — so it must not be told it has an outcome.
-  const rivalsOf = (fs: ScanFinding[]) => fs.flatMap(f => f.rival_stamps.map(s => ({ f, s })));
+  //
+  // One rival KEY is one disagreement, however many surfaces carried it — the
+  // winner path already treats the same key in two surfaces as agreement, and
+  // the rivals have to be read the same way. The headers count findings, which
+  // is what they say they count.
+  const rivalsOf = (fs: ScanFinding[]) => fs.flatMap(f => {
+    const fieldsByValue = new Map<string, string[]>();
+    for (const s of f.rival_stamps) fieldsByValue.set(s.value, [...(fieldsByValue.get(s.value) ?? []), s.field]);
+    return [...fieldsByValue].map(([value, fields]) => ({ f, value, fields }));
+  });
   const decided = rivalsOf(r.confirmed.map(c => c.finding));
   const undecided = rivalsOf(findings.filter(f => !r.confirmed.some(c => c.finding === f)));
+  const count = (g: { f: ScanFinding }[]) => new Set(g.map(x => x.f)).size;
   if (decided.length > 0) {
-    lines.push('', `⚠  Contested  ${decided.length === 1 ? 'a finding' : 'findings'} carried more than one claim key, naming different claims — the report contradicts itself about which exposure was tested. The winner above was chosen by precedence, not by agreement, so it is labelled CONTESTED and no @confirmed is written to source for it. The key used is listed on the outcome; the ones it beat:`);
-    for (const { f, s } of decided) lines.push(`  ${f.id}: also claimed ${short(s.value, 24)} in ${s.field}`);
+    lines.push('', `⚠  Contested  ${count(decided) === 1 ? 'a finding' : `${count(decided)} findings`} carried more than one claim key, naming different claims — the report contradicts itself about which exposure was tested. The winner above was chosen by precedence, not by agreement, so it is labelled CONTESTED and no @confirmed is written to source for it. The key used is listed on the outcome; the ones it beat:`);
+    for (const { f, value, fields } of decided) lines.push(`  ${f.id}: also claimed ${short(value, 24)} in ${fields.join(', ')}`);
     lines.push(`           Fix whatever emits two keys for one finding. To record one of these deliberately: guardlink hypothesis confirm <file:line> --evidence "…" --write`);
   }
   if (undecided.length > 0) {
-    lines.push('', `⚠  Contested  ${undecided.length === 1 ? 'a finding that was not recorded' : 'findings that were not recorded'} also carried more than one claim key, naming different claims. Nothing was confirmed for ${undecided.length === 1 ? 'it' : 'them'} — see above for why — so there is no outcome and no write to withhold; the contest is reported because whatever emits two keys for one finding is still wrong:`);
-    for (const { f, s } of undecided) lines.push(`  ${f.id}: used ${short(f.claim_key ?? '', 24)}, also claimed ${short(s.value, 24)} in ${s.field}`);
+    const n = count(undecided);
+    lines.push('', `⚠  Contested  ${n === 1 ? 'a finding that was not recorded' : `${n} findings that were not recorded`} also carried more than one claim key, naming different claims. Nothing was confirmed for ${n === 1 ? 'it' : 'them'} — see above for why — so there is no outcome and no write to withhold; the contest is reported because whatever emits two keys for one finding is still wrong:`);
+    for (const { f, value, fields } of undecided) lines.push(`  ${f.id}: used ${short(f.claim_key ?? '', 24)}, also claimed ${short(value, 24)} in ${fields.join(', ')}`);
   }
   return lines.join('\n');
 }

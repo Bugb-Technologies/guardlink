@@ -11,6 +11,7 @@ import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { parseProject } from '../src/parser/parse-project.js';
 import { relationRecords, CLAIM_KEY_SURFACES, CLAIM_KEY_PROPERTY } from '../src/parser/claim-key.js';
+import { blockCommentClosers, commentFormAt } from '../src/parser/comment-strip.js';
 import {
   HYPOTHESES_FILE, readHypotheses, writeHypotheses, emptyHypotheses,
   classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, resolveTarget, confirmedLine, writeConfirmedLine, formatImport,
@@ -827,6 +828,60 @@ export function findUser(email: string) { return email; }
     expect(out).not.toMatch(/no @confirmed is written to source for it/);
   }, 60000);
 
+  it('names the field a stamp actually arrived in, even when the report uses `location`', async () => {
+    // The second level the reader searches is `annotation ?? location`, so a
+    // report using `location` was told its bad value sat in `annotation.claim_key`
+    // — a field it does not contain. The one message whose purpose is telling a
+    // producer what to fix has to name the real path.
+    const root = await siblings(SIBLINGS);
+    const model = await parse(root);
+    const path = await writeScan(root, { scan_id: 'cxg-loc', findings: [{
+      id: 'f1', template_id: 'login-sqli', severity: 'critical', confidence: 0.9, title: 'SQLi', cwe_ids: ['CWE-89'],
+      location: { file: 'src/a.ts', line: 4, claim_key: 'pending' },
+      evidence: { request: 'POST /u', response: 'HTTP 200 3 rows', matched_patterns: [], data: {} },
+    }] });
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    expect(r.malformed.map(m => m.stamp.field)).toEqual(['location.claim_key']);
+    expect(formatImport(r)).toMatch(/in location\.claim_key/);
+    expect(formatImport(r)).not.toMatch(/annotation\.claim_key/);
+  }, 60000);
+
+  it('counts one rival key forwarded in two surfaces as one disagreement', async () => {
+    // The winner path already treats the same key in two surfaces as agreement;
+    // the rivals have to read the same way. Two copies of one rival key were
+    // reported as two conflicts, under a header that pluralised as if it were
+    // counting findings rather than stamps.
+    const root = await siblings(SIBLINGS);
+    const model = await parse(root);
+    const sarif = generateSarif(model);
+    const a = stamp(sarif, 4), b = stamp(sarif, 9);
+    const path = await writeScan(root, { scan_id: 'cxg-dupe', findings: [{
+      id: 'f1', template_id: 'login-sqli', severity: 'critical', confidence: 0.9, title: 'SQLi', cwe_ids: [],
+      partialFingerprints: { 'guardlink/claimKey': a.claim_key },
+      annotation: {
+        file: 'src/a.ts', line: 4,
+        partialFingerprints: { 'guardlink/claimKey': b.claim_key },
+        properties: { claimKey: b.claim_key },
+      },
+      evidence: { request: 'POST /u', response: 'HTTP 200 3 rows', matched_patterns: [], data: {} },
+    }] });
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    expect(r.confirmed).toHaveLength(1);
+    expect(r.confirmed[0].record.key).toBe(a.claim_key);
+    // Two raw stamps carry the one rival value; the report must say so once.
+    expect(r.confirmed[0].finding.rival_stamps).toHaveLength(2);
+    const out = formatImport(r);
+    expect(out).toMatch(/Contested {2}a finding carried more than one claim key/);
+    expect(out).not.toMatch(/Contested {2}\d+ findings/);
+    expect(out.split('\n').filter(l => l.includes('also claimed'))).toHaveLength(1);
+    // And that one line names both fields the value arrived in.
+    const line = out.split('\n').find(l => l.includes('also claimed'))!;
+    expect(line).toContain('annotation.partialFingerprints.guardlink/claimKey');
+    expect(line).toContain('annotation.properties.claimKey');
+  }, 60000);
+
   it('treats the same key in both surfaces as agreement, not a conflict', async () => {
     // The ordinary forwarded shape: a consumer copies both emitted surfaces, so
     // the same key arrives twice. Nothing is contested and nothing is withheld.
@@ -1297,35 +1352,79 @@ export function login(email: string) { return email; }
     expect(after.exposures).toHaveLength(1);
   }, 120_000);
 
-  it('breaks the closer in a language the extension fallback never listed', async () => {
-    // The extension table was a proxy for the comment form, and thinner than the
-    // stripper: it accepts a C-family block comment in ANY file with no language
-    // gate, so an annotation in a `.sql` block comment is in the model while the
-    // table returned nothing for `.sql` and the closer went in verbatim. The form
-    // now comes from the source line, so the table's width stops mattering here.
-    const root = await siblings(ONE);
+  it('breaks the closer from the SOURCE form, for an extension the table does not list', async () => {
+    // The derivation pin. `commentFormAt` reads the form off the source: this
+    // annotation is a ` * ` continuation, so it looks back, finds the `/*` that
+    // opened the block, and returns that form's closer.
+    //
+    // `.proto` is what makes this test able to fail. The extension table has no
+    // entry for it, so `blockCommentClosers('.proto')` is empty and `hostSafe`
+    // contributes nothing — the closer can ONLY be broken by the form derived
+    // from the line. Bypass `commentFormAt` and the sequence goes in verbatim
+    // and ends the comment early. `.sql` cannot pin this: the table answers
+    // `*\u002f` for it too, so both routes agree and neither is isolated.
+    //
+    // Driven through importScan/confirmedLine/writeConfirmedLine rather than the
+    // CLI because the CLI parses with DEFAULT_INCLUDE, which does not reach
+    // `.proto`; these are the same functions the CLI calls.
     const CLOSER = '*' + '/';
-    await writeFile(join(root, 'q.sql'), `/*\n * @exposes #api to #sqli [critical] cwe:CWE-89 -- "id concatenated into the predicate"\n ${CLOSER}\nSELECT id FROM users WHERE id = 1;\n`);
-    const model = await parse(root);
-    const sql = model.exposures.find(e => e.location.file === 'q.sql');
-    expect(sql, 'the .sql annotation should be in the model').toBeDefined();
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-proto-'));
+    await mkdir(join(root, '.guardlink'), { recursive: true });
+    await writeFile(join(root, '.guardlink', 'definitions.ts'), DEFINITIONS);
+    await writeFile(join(root, 'q.proto'), `/*\n * @exposes #api to #sqli [critical] cwe:CWE-89 -- "id concatenated into the predicate"\n ${CLOSER}\nmessage Lookup { int64 id = 1; }\n`);
+    const include = ['**/*.ts', '**/*.proto'];
+    const model = (await parseProject({ root, project: 'h', include })).model;
+    const claim = model.exposures.find(e => e.location.file === 'q.proto');
+    expect(claim, 'the .proto annotation should be in the model').toBeDefined();
+    expect(blockCommentClosers('q.proto'), 'the table must not answer for .proto, or this pins nothing').toEqual([]);
 
-    const key = stamp(generateSarif(model), sql!.location.line).claim_key;
-    await writeScan(root, { scan_id: 'cxg-sql', findings: [finding({
+    const key = stamp(generateSarif(model), claim!.location.line).claim_key;
+    await writeScan(root, { scan_id: 'cxg-proto', findings: [finding({
       claim_key: key, evidence: { request: 'r', response: `HTTP 200 <style>a{}</style> ${CLOSER} x`, matched_patterns: [], data: {} },
+    })] });
+    const r = importScan(root, model, join(root, 'scan.json'), { by: 'cxg', at: NOW });
+    expect(r.confirmed).toHaveLength(1);
+    writeConfirmedLine(root, r.confirmed[0].record, confirmedLine(r.confirmed[0].record, r.confirmed[0].entry));
+
+    const src = await readFile(join(root, 'q.proto'), 'utf-8');
+    const written = src.split('\n').filter(l => l.includes('@confirmed'));
+    expect(written).toHaveLength(1);
+    expect(written[0]).not.toContain(CLOSER);
+    // The block comment still ends where it did, so the message below it is
+    // still a message: exactly one closer line, and the schema is outside it.
+    expect(src.split('\n').filter(l => l.trim() === CLOSER)).toHaveLength(1);
+    expect(src.split('\n').indexOf('message Lookup { int64 id = 1; }')).toBeGreaterThan(
+      src.split('\n').findIndex(l => l.trim() === CLOSER));
+    // And the annotation still reads back as one confirmation.
+    const after = (await parseProject({ root, project: 'h', include })).model;
+    expect(after.confirmed).toHaveLength(1);
+    expect(after.exposures).toHaveLength(1);
+  }, 120_000);
+
+  it('falls back to the extension when the source line settles no form', async () => {
+    // The fallback pin, the other route through `commentFormAt`. This annotation
+    // is a ` * ` continuation with NO opener above it anywhere, so the line
+    // settles nothing and no block opened it — the only thing left to go on is
+    // the file's extension, and `.ts` answers with the C-family closer.
+    const CLOSER = '*' + '/';
+    const root = await siblings(` * @exposes #api to #sqli [critical] cwe:CWE-89 -- "email param"\nexport function findUser(email: string) { return email; }\n`);
+    const model = await parse(root);
+    expect(model.exposures).toHaveLength(1);
+    expect(commentFormAt([' * @exposes x'], 0, 'src/a.ts').closers, 'no opener above, so this must come from the extension').toEqual([CLOSER]);
+
+    await writeScan(root, { scan_id: 'cxg-fallback', findings: [finding({
+      claim_key: stamp(generateSarif(model), 1).claim_key,
+      evidence: { request: 'r', response: `HTTP 200 <style>a{}</style> ${CLOSER} x`, matched_patterns: [], data: {} },
     })] });
     const run = await runCli(root);
     expect(run.code).toBe(0);
 
-    const src = await readFile(join(root, 'q.sql'), 'utf-8');
+    const src = await readFile(join(root, 'src', 'a.ts'), 'utf-8');
     const written = src.split('\n').filter(l => l.includes('@confirmed'));
     expect(written).toHaveLength(1);
     expect(written[0]).not.toContain(CLOSER);
-    // The block comment still ends where it did, so the statement below it is
-    // still a statement: exactly one closer line, and the SQL is outside it.
-    expect(src.split('\n').filter(l => l.trim() === CLOSER)).toHaveLength(1);
-    expect(src.split('\n').indexOf('SELECT id FROM users WHERE id = 1;')).toBeGreaterThan(
-      src.split('\n').findIndex(l => l.trim() === CLOSER));
+    const after = await parse(root);
+    expect(after.confirmed).toHaveLength(1);
   }, 120_000);
 
   it('collapses a line separator the report smuggled in, so a line-comment host still parses', async () => {

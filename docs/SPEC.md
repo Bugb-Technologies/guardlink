@@ -1186,9 +1186,15 @@ is inert in another, and mangling text that was never dangerous loses evidence f
 That derivation settles a second question with the same information: when the `@exposes` line
 **closes its own comment**, the inserted line inherits its opener, so the terminator is reproduced
 on it. Without that the file is left inside an unterminated comment and the declaration the
-doc-block described silently leaves the compile. Line comments need no treatment of their own —
-they end at a newline, which the collapse has already removed. The re-parse cannot stand in for
-any of this: it reads the bare annotation, outside the comment it is about to be spliced into.
+doc-block described silently leaves the compile.
+
+Line comments need no closer of their own, but the reason is the collapse, not the absence of a
+terminator: a line comment ends at **any** character its grammar treats as ending a line, and
+ECMAScript counts U+2028 and U+2029 among those. The collapse therefore removes every one of them
+— the Unicode mandatory line breaks, not the ASCII two — and that is what makes a `//` host safe.
+A collapse narrowed back to `\r\n\t` would reopen it, with report-controlled text landing in code
+position. The re-parse cannot stand in for any of this: it reads the bare annotation, outside the
+comment it is about to be spliced into.
 
 **Bound.** Two BYTE-IDENTICAL claims in one file — same verb, same identity arguments, same
 external refs *and* the same description — share a digest and are told apart only by an ordinal
