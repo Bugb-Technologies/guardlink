@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:96b5e046610905578780c457ae147944c6688cb16e66a505a4b359eeea689ea1",
+    "annotation_hash": "sha256-v3:39b3f1e648d4b08fe8632ac7a8b74a62ad0afa5170f3345766b66901d4a244e1",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 153,
-  "annotations_parsed": 792,
+  "source_files": 155,
+  "annotations_parsed": 804,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -134,10 +134,12 @@
     "src/tui/index.ts",
     "src/tui/input.ts",
     "src/version.ts",
+    "src/workspace/estate.ts",
     "src/workspace/index.ts",
     "src/workspace/link.ts",
     "src/workspace/merge.ts",
     "src/workspace/metadata.ts",
+    "src/workspace/owner-scope.ts",
     "src/workspace/types.ts"
   ],
   "unannotated_files": [
@@ -331,6 +333,18 @@
       "location": {
         "file": ".guardlink/definitions.ts",
         "line": 64
+      }
+    },
+    {
+      "path": [
+        "Workspace",
+        "Estate"
+      ],
+      "id": "estate-view",
+      "description": "Estate-wide open-risk read-back over a merged report",
+      "location": {
+        "file": "src/workspace/estate.ts",
+        "line": 56
       }
     },
     {
@@ -1109,7 +1123,7 @@
       "description": "Path is the constant LEDGER_FILE under a root that must already carry .guardlink/; targets only select claims, they are never written to",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 505
+        "line": 506
       }
     },
     {
@@ -1993,6 +2007,26 @@
       }
     },
     {
+      "asset": "#estate-view",
+      "threat": "#vacuous-pass",
+      "control": "#fail-closed",
+      "description": "Per-repo parse errors and unknown parse state are read from repo_statuses and rendered as themselves; parse errors exit 1 under --strict, matching mergeVerdict's split over the same fields",
+      "location": {
+        "file": "src/workspace/estate.ts",
+        "line": 58
+      }
+    },
+    {
+      "asset": "#estate-view",
+      "threat": "#insecure-deser",
+      "control": "#config-validation",
+      "description": "readMergedReport refuses any payload missing the merged-report shape rather than answering from a partial parse",
+      "location": {
+        "file": "src/workspace/estate.ts",
+        "line": 63
+      }
+    },
+    {
       "asset": "#merge-engine",
       "threat": "#tag-collision",
       "control": "#prefix-ownership",
@@ -2502,7 +2536,7 @@
       "description": "The one command that writes .guardlink/verified.json",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 504
+        "line": 505
       }
     },
     {
@@ -3542,6 +3576,32 @@
       }
     },
     {
+      "asset": "#estate-view",
+      "threat": "#vacuous-pass",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-754"
+      ],
+      "description": "Ticked a repository green on open/confirmed counts alone, so a repo whose parse errored — its @mitigates lines never read — and a repo whose report cannot say either way both rendered as a clean bill of health",
+      "location": {
+        "file": "src/workspace/estate.ts",
+        "line": 57
+      }
+    },
+    {
+      "asset": "#estate-view",
+      "threat": "#insecure-deser",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-502"
+      ],
+      "description": "Parses a merged report JSON supplied by path, which may come from another team's pipeline artifact",
+      "location": {
+        "file": "src/workspace/estate.ts",
+        "line": 62
+      }
+    },
+    {
       "asset": "#merge-engine",
       "threat": "#vacuous-pass",
       "severity": "high",
@@ -3926,7 +3986,7 @@
       "description": "Parsed model checked for uncovered exposures, confirmed exploits and unqualified acceptances",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 102
+        "line": 132
       }
     },
     {
@@ -3936,7 +3996,7 @@
       "description": "Diagnostics from the parse are reported, never recomputed",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 103
+        "line": 133
       }
     },
     {
@@ -3946,7 +4006,7 @@
       "description": "Recorded anchors compared against current source",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 104
+        "line": 134
       }
     },
     {
@@ -3956,7 +4016,7 @@
       "description": "Recorded claim hashes, read only",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 105
+        "line": 135
       }
     },
     {
@@ -3986,7 +4046,7 @@
       "description": "Opt-in attribution; without --blame the JSON is byte-identical to before",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 257
+        "line": 258
       }
     },
     {
@@ -3996,7 +4056,7 @@
       "description": "status reports verified/stale/unverified claim counts alongside annotation coverage",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 307
+        "line": 308
       }
     },
     {
@@ -4006,7 +4066,7 @@
       "description": "status reports how many exposures were tested, and with what outcome",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 308
+        "line": 309
       }
     },
     {
@@ -4016,7 +4076,7 @@
       "description": "status --blame reads attribution without touching the model",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 310
+        "line": 311
       }
     },
     {
@@ -4026,7 +4086,7 @@
       "description": "Read-only; a corrupt ledger becomes a validate error (ledger-corrupt) instead of being silently treated as absent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 377
+        "line": 378
       }
     },
     {
@@ -4036,7 +4096,7 @@
       "description": "Targets, --by and mode flags",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 506
+        "line": 507
       }
     },
     {
@@ -4046,7 +4106,7 @@
       "description": "Attribution read from blame, log -L and commit trailers",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 623
+        "line": 624
       }
     },
     {
@@ -4056,7 +4116,7 @@
       "description": "report --blame attaches attribution before the metadata spread, so the shared records carry it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 758
+        "line": 782
       }
     },
     {
@@ -4066,7 +4126,7 @@
       "description": "The model before and after the agent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1514
+        "line": 1538
       }
     },
     {
@@ -4076,7 +4136,7 @@
       "description": "Which assets sit on an undefended path, for the ranking",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1649
+        "line": 1673
       }
     },
     {
@@ -4086,7 +4146,7 @@
       "description": "cxg findings recorded as confirmations, joined to claims",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1665
+        "line": 1689
       }
     },
     {
@@ -4096,7 +4156,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2824
+        "line": 2848
       }
     },
     {
@@ -4106,7 +4166,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2827
+        "line": 2851
       }
     },
     {
@@ -5230,6 +5290,36 @@
       }
     },
     {
+      "source": "RepoParseState",
+      "target": "#estate-view",
+      "mechanism": "estateReport",
+      "description": "Each member repo's parse errors, warnings and unread annotation lines, carried from the merged report onto the estate answer",
+      "location": {
+        "file": "src/workspace/estate.ts",
+        "line": 59
+      }
+    },
+    {
+      "source": "MergedReportFile",
+      "target": "#estate-view",
+      "mechanism": "readMergedReport",
+      "description": "The JSON `guardlink merge --json` wrote, read back",
+      "location": {
+        "file": "src/workspace/estate.ts",
+        "line": 60
+      }
+    },
+    {
+      "source": "#estate-view",
+      "target": "#cli",
+      "mechanism": "estateReport",
+      "description": "Open exposures, reproduced exploits, and how much of the estate was actually read",
+      "location": {
+        "file": "src/workspace/estate.ts",
+        "line": 61
+      }
+    },
+    {
       "source": "UserArgs",
       "target": "#workspace-link",
       "mechanism": "linkProject",
@@ -5286,7 +5376,7 @@
       "description": "Report paths discovered by expanding the caller's glob patterns against cwd",
       "location": {
         "file": "src/workspace/merge.ts",
-        "line": 150
+        "line": 151
       }
     },
     {
@@ -5307,6 +5397,16 @@
       "location": {
         "file": "src/workspace/metadata.ts",
         "line": 9
+      }
+    },
+    {
+      "source": "TagRegistry",
+      "target": "#merge-engine",
+      "mechanism": "buildOwnerScope",
+      "description": "Recorded tag ownership becomes the namespace the coverage join is scoped by",
+      "location": {
+        "file": "src/workspace/owner-scope.ts",
+        "line": 65
       }
     }
   ],
@@ -5785,7 +5885,7 @@
       "description": "Author identities printed or emitted as JSON; --identity hash (or blame.identity in config.json) redacts emails",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 624
+        "line": 625
       }
     },
     {
@@ -5794,7 +5894,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3610
+        "line": 3694
       }
     },
     {
@@ -6497,196 +6597,196 @@
       "description": "Exit code is a pure function of (strict, exposures, confirmed, drift, demotable stale, parse errors, unqualified acceptances) and lives in the summary, so JSON consumers see the same verdict the shell got",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 106
+        "line": 136
       }
     },
     {
       "description": "Exposures and drift are serialized as the types the parser already produces — no renamed fields, so guardlink.ci/v1 cannot drift from the model it reports",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 107
+        "line": 137
       }
     },
     {
       "description": "The third check reads .guardlink/verified.json and never writes it; a corrupt ledger is reported once and treated as absent",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 108
+        "line": 138
       }
     },
     {
       "description": "@confirmed is not filtered by acceptance state at all: @accepts does not silence a reproduced exploit anywhere else in the product and must not do so here",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 109
+        "line": 139
       }
     },
     {
       "description": "--severity narrows risk findings only; drift, parse errors, stale claims and unqualified acceptances carry no severity and a severity threshold says nothing about them",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 110
+        "line": 140
       }
     },
     {
       "description": "Closes the same blind spot ci's third check already closed (src/ci/index.ts) for the validate/CI-gate surface",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 378
+        "line": 379
       }
     },
     {
       "description": "Re-locking a stale claim is an assertion that the control still holds, so the default form never does it: --stale, --all or a named target is required, and each says so in its output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 507
+        "line": 508
       }
     },
     {
       "description": "Always exits 0 once the model parsed: outside a git checkout every claim reads as unattributed, which is an answer, not a failure. Only an unknown --identity is an error",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 625
+        "line": 626
       }
     },
     {
       "description": "`defaultVerifier` already returns `human:<name>` (src/parser/verify.ts:172), so prefixing it here recorded `human:human:<name>` — the form the ledger schema and this command's own --by help both say it is not. Do NOT 'repair' older entries that carry the doubled form: `by` is display and provenance metadata, never a join key — upsert and every reader match on the claim key — so pre-fix and post-fix entries coexist in one ledger and nothing stops matching. An explicit --by is passed through verbatim on this path, which is how `--by cxg:login-sqli` names its scheme",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1660
+        "line": 1684
       }
     },
     {
       "description": "Withheld is a fact about a CLAIM, not about a finding. Several findings can join to one claim — a stamped one beside an unstamped one during a cxg stamp rollout, or two templates probing the same exposure — so a per-finding list printed one claim's remediation command twice and, worse, could report a claim as skipped in the very run that wrote it. Keyed by record.key on the same rule `writes` uses, last occurrence kept because that is the entry the ledger ends up holding",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1668
+        "line": 1692
       }
     },
     {
       "description": "THE one calculation of where a line sits once the writes are done, used by every coordinate this command hands a user: the confirmations that landed, the ones already present, and the by-hand commands for both the withheld and the ambiguous. Each done.line is a PRE-write coordinate — descending order guarantees nothing at or above a target had been spliced when it was written — so an insertion at or at a lower number than a pre-write position pushes that position down by one. Only SUCCESSFUL writes are in `done`, so a write that threw shifts nothing, and with no --write it is empty and this is the identity. Two sites computing this independently is the shape that disagrees silently, and this command has already produced that defect twice",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1671
+        "line": 1695
       }
     },
     {
       "description": "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1675
+        "line": 1699
       }
     },
     {
       "description": "ONE CLAIM, ONE WRITE. Two findings can carry the same claim key — the ordinary shape when two cxg templates probe one exposure — and both resolve to the same record and fold into ONE ledger entry, so writing per finding attempted the same insertion twice and the second was refused as a failure. Keyed by record.key, keeping the LAST occurrence: upsert replaces the entry object on every call, so only the final one is the entry the ledger actually holds",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1676
+        "line": 1700
       }
     },
     {
       "description": "An exit code is a claim about what happened, and it has to be true in BOTH directions: honest about an under-write and honest about a success. A confirmation already in the source is the state we were asked to reach — from an earlier run, or a re-import of the same report — so it is separated from a real failure by the TYPE writeConfirmedLine returns, never by matching the wording of an error. Every remaining throw is a failure and still exits non-zero",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1679
+        "line": 1703
       }
     },
     {
       "description": "Reconciled against what the writes actually did. A claim whose confirmation IS in the source — inserted just now or already there — was not withheld, whatever else joined to it coarsely, so it is neither told to the operator as skipped nor counted toward the exit status. The rule it serves is the one the exit check states: the code is a claim about what happened and has to be true in BOTH directions, and reporting a claim as withheld in the run that wrote it is the half that was still false",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1690
+        "line": 1714
       }
     },
     {
       "description": "An inserted @confirmed comes to rest directly above the line it displaced, so it is that line's new position less one — derived from afterWrites rather than counted a second way. Printed in reading order, not in the order the writes went in",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1692
+        "line": 1716
       }
     },
     {
       "description": "Said in terms of what is true rather than as an error: the confirmation is there. The line an already-present @confirmed was found at is a pre-write coordinate like any other — the scan that found it stops at the next @exposes, and descending order means every insertion so far sits below that — so it goes through the same afterWrites",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1695
+        "line": 1719
       }
     },
     {
       "description": "--write only inserts an UNCONTESTED key-verified confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), and a contested one came from a report that named two different claims at once, so identity is in doubt in both cases. Losing that throughput is the point: those are exactly the joins that can be wrong",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1697
+        "line": 1721
       }
     },
     {
       "description": "Reported AFTER the writes, at the line the withheld claim occupies once they have landed. Printing pre-write lines here handed the operator a command naming a line that this same run then moved: with consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator writes a confirmation against an exposure the probe never tested — GAP-58 one layer out, in a human's fingers instead of ours. Documenting the hazard one block down was not guarding against it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1698
+        "line": 1722
       }
     },
     {
       "description": "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so every command printed here is position-dependent and is correct AT THE MOMENT OF PRINTING and no longer — a later write, or an edit, moves the target again. Tracked there, not widened here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1699
+        "line": 1723
       }
     },
     {
       "description": "The candidates for an ambiguous finding are by-hand targets like the withheld ones, so they are emitted here rather than inside formatImport: that formatter runs BEFORE the writes, and a key-verified write higher up the same file moves an ambiguous candidate exactly as it moves a withheld claim. With consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator records a confirmation against an exposure the probe never tested — GAP-58 through a human's fingers, on our own instruction. Stays on stdout, where it was",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1711
+        "line": 1735
       }
     },
     {
       "description": "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so these are correct AT THE MOMENT OF PRINTING and no longer. That residue is the addressing scheme and is tracked there; a command this run itself invalidated is a different problem and is fixed here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1712
+        "line": 1736
       }
     },
     {
       "description": "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'. A --write that withheld any confirmation is the same fact about the same run, so it exits non-zero too — PARTIALLY written included, not only the all-withheld case. The reader of this exit code is bravos, which orchestrates this loop and never sees the `! skipped` lines on stderr: give 0 two meanings and a half-written run is indistinguishable from a complete one, and the orchestrator proceeds believing the corpus carries confirmations that are not in it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1717
+        "line": 1741
       }
     },
     {
       "description": "The by-hand path reads the same typed outcome as --from-scan. A claim whose source already carries this confirmation is in the state that was asked for, so it is reported and exits 0; it used to throw into the ✗ handler and exit non-zero on a run that changed nothing and needed to change nothing",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1728
+        "line": 1752
       }
     },
     {
       "description": "The accepted names and containers are INTERPOLATED from the one shared definition, not written out here. A hand-written copy drifts benignly when the definition widens (the help under-advertises) and harmfully when it narrows: the help then advertises a name the reader refuses, which is the one thing this definition exists to make impossible. The no-stamp banner in format.ts interpolates for the same reason, and both are pinned by tests that take the names out of the text and require the reader to accept them",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1755
+        "line": 1779
       }
     },
     {
       "description": "ONE string stating BOTH behaviours, because --write sits on `confirm` and genuinely serves both paths. An author writing against this flag reads --help, not our runtime output: 'inserts the @confirmed line' alone over-promises on the one surface that writes into someone else's repository, and an operator who believes every joined confirmation landed stops checking the ones that did not — which is exactly the knowledge the withholding rule exists to give them. Two per-path wordings were rejected for the reason this branch has already corrected on names, containers, grammars and positions: two descriptions of one thing can disagree, and one string cannot contradict itself",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1758
+        "line": 1782
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3556
+        "line": 3640
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3611
+        "line": 3695
       }
     },
     {
@@ -7712,6 +7812,13 @@
       }
     },
     {
+      "description": "A report written before tag_registry carried also_defined_in scopes to nothing and answers exactly as the build that wrote it did — stated rather than silently assumed",
+      "location": {
+        "file": "src/workspace/estate.ts",
+        "line": 64
+      }
+    },
+    {
       "description": "Workspace module: config loading, merge engine, link-project setup",
       "location": {
         "file": "src/workspace/index.ts",
@@ -7722,12 +7829,26 @@
       "description": "A literal filename containing glob metacharacters is read as a pattern; it lands in unmatched rather than in a false ENOENT, and the CLI's message names the pattern verbatim so the cause is visible",
       "location": {
         "file": "src/workspace/merge.ts",
-        "line": 151
+        "line": 152
+      }
+    },
+    {
+      "description": "Reads also_defined_in and definitions_differ, so a merged report written before those fields existed scopes to nothing and answers exactly as the build that wrote it did",
+      "location": {
+        "file": "src/workspace/owner-scope.ts",
+        "line": 66
+      }
+    },
+    {
+      "description": "A tag declared identically in every repo that declares it is one shared vocabulary, not a collision: scoping it would invent a finding in every workspace that ships one definitions file to all repos",
+      "location": {
+        "file": "src/workspace/owner-scope.ts",
+        "line": 67
       }
     }
   ],
   "coverage": {
-    "annotation_count": 792,
+    "annotation_count": 804,
     "coverage_percent": 86
   },
   "external_refs": []

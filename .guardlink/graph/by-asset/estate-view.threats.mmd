@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
-%% artifact:        by-asset/merge-engine.threats.mmd
-%% scope:           PARTIAL — #merge-engine only — its own threats and controls
+%% artifact:        by-asset/estate-view.threats.mmd
+%% scope:           PARTIAL — #estate-view only — its own threats and controls
 %% annotation_hash: sha256-v3:39b3f1e648d4b08fe8632ac7a8b74a62ad0afa5170f3345766b66901d4a244e1
 %% generator:       guardlink@2.0.0
 %% ---
@@ -11,15 +11,16 @@
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
 graph LR
-  merge_engine["🔷 Workspace.Merge"]
+  estate_view["🔷 Workspace.Estate"]
   vacuous_pass["🟠 Vacuous_Pass (cwe:CWE-754)"]:::threat
-  tag_collision["🟡 Tag_Collision"]:::threat
-  prefix_ownership["🛡️ Prefix_Ownership"]:::control
+  insecure_deser["🟡 Insecure_Deserialization (cwe:CWE-502)"]:::threat
   fail_closed["🛡️ Fail_Closed"]:::control
-  merge_engine -. exposes .-> vacuous_pass
-  prefix_ownership -- mitigates --> tag_collision
-  prefix_ownership -. protects .-> merge_engine
+  config_validation["🛡️ Config_Validation"]:::control
+  estate_view -. exposes .-> vacuous_pass
+  estate_view -. exposes .-> insecure_deser
   fail_closed -- mitigates --> vacuous_pass
-  fail_closed -. protects .-> merge_engine
+  fail_closed -. protects .-> estate_view
+  config_validation -- mitigates --> insecure_deser
+  config_validation -. protects .-> estate_view
   classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
   classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px

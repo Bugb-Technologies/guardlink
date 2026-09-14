@@ -45,6 +45,38 @@ export interface TagOwnership {
   owner_repo: string;
   /** What it defines: asset, threat, or control */
   kind: 'asset' | 'threat' | 'control';
+  /**
+   * The OTHER repos that also define this tag — the ones the `duplicate_tag`
+   * warning names after "and also in:". Absent when the tag is unambiguous.
+   *
+   * The registry has always known this; it only ever reached a warning string.
+   * Recording it here is what lets the coverage join be scoped by owner (mark
+   * 8), and what lets a reader of a merged JSON — who no longer has the
+   * per-repo definition lists, since `combineModels` dedups them — rebuild that
+   * scoping from the report alone.
+   */
+  also_defined_in?: string[];
+  /**
+   * A fingerprint of the DECLARATION this entry won with — for an asset, its
+   * dotted path and description. Not an identity for the join; only the input
+   * to `definitions_differ`.
+   */
+  declared_as?: string;
+  /**
+   * True when the repos in `also_defined_in` do not all declare this tag the
+   * SAME way.
+   *
+   * This is the difference between two teams colliding and one team's shared
+   * vocabulary shipped to every repo. `also_defined_in` alone cannot tell them
+   * apart: a platform team that copies one `definitions.ts` into every
+   * repository makes every asset "defined in" N repos, and scoping on that
+   * would cut every legitimate cross-repo join in the estate.
+   *
+   * Absent on a report written before this field existed — which scopes to
+   * nothing, the conservative direction, exactly as `also_defined_in`'s absence
+   * does.
+   */
+  definitions_differ?: boolean;
 }
 
 /** A cross-repo reference that could not be resolved during merge */
@@ -68,7 +100,8 @@ export type MergeWarningCode =
   | 'missing_repo'        // Workspace repo has no report (stale/missing)
   | 'schema_mismatch'     // Report schema_version differs across repos
   | 'tag_prefix_mismatch' // Tag prefix doesn't match any known repo name
-  | 'stale_report';       // Report older than threshold
+  | 'stale_report'        // Report older than threshold
+  | 'owner_scoped_join';  // A finding is open because the covering tag belongs to another repo's asset
 
 /** Per-repo status in a merged report */
 export interface RepoStatus {

@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/workspace-link.flows.mmd
-%% scope:           PARTIAL — #workspace-link and its flow neighbourhood, grown until the drawing stopped fitting — 34 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:96b5e046610905578780c457ae147944c6688cb16e66a505a4b359eeea689ea1
+%% scope:           PARTIAL — #workspace-link and its flow neighbourhood, grown until the drawing stopped fitting — 38 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:39b3f1e648d4b08fe8632ac7a8b74a62ad0afa5170f3345766b66901d4a244e1
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -17,10 +17,10 @@ graph LR
   gate["🧩 GuardLink.Gate"]
   init["🧩 GuardLink.Init"]
   agentfiles["🧩 AgentFiles"]
-  agentproposal["🧩 AgentProposal"]
   tui["👤 GuardLink.TUI"]
   agent_launcher["🧩 GuardLink.Agent_Launcher"]
   llm_client["👤 GuardLink.LLM_Client"]
+  estate_view["🧩 Workspace.Estate"]
   workspace_link["🧩 Workspace.Link"]
   merge_engine["🧩 Workspace.Merge"]
   blame -- "📡 formatBlameText" --> cli
@@ -28,10 +28,10 @@ graph LR
   userargs -- "📡 process.argv" --> cli
   cli -- "📡 runGate" --> gate
   init -- "🗄️ writeFileSync" --> agentfiles
-  agentproposal -- "📡 proposeEntitlement" --> cli
   userargs -- "📡 args" --> tui
   tui -- "📡 launchAgent" --> agent_launcher
   tui -- "📡 chatCompletion" --> llm_client
+  estate_view -- "📡 estateReport" --> cli
   userargs -- "📡 linkProject" --> workspace_link
   workspace_link -- "📡 updateAgentWorkspaceContext" --> agentfiles
   merge_engine -- "📡 mergeVerdict" --> cli

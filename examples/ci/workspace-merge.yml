@@ -15,9 +15,11 @@
 #   2. Merges all reports into a unified threat model
 #   3. Compares against last week's merge (--diff-against)
 #   4. Generates a workspace dashboard (HTML)
-#   5. Uploads merged JSON + dashboard + weekly diff as artifacts
-#   6. (Optional) Deploys dashboard to GitHub Pages
-#   7. (Optional) Posts summary to Slack
+#   5. Reads the merged model back with `guardlink estate` — what is open,
+#      in which repository, and over how much of the estate
+#   6. Uploads merged JSON + dashboard + estate summary + weekly diff
+#   7. (Optional) Deploys dashboard to GitHub Pages
+#   8. (Optional) Posts summary to Slack
 
 name: GuardLink Workspace Merge
 
@@ -137,6 +139,25 @@ jobs:
           mkdir -p merged
           guardlink merge $MERGE_ARGS
 
+      # ── Read the merged model back ───────────────────────────
+      # `merge` writes the estate model; `estate` is what reads it. Without
+      # this step the combined answer only ever reaches a browser, and the
+      # question a platform team asks — what is open across all of our
+      # repositories — has no line in the run log.
+      #
+      # Advisory here, matching the rest of this workflow. Add `--strict` to
+      # fail the run on an open exposure, a reproduced exploit, or an estate
+      # that was only partly read.
+      - name: What is open across the estate
+        run: |
+          guardlink estate merged/workspace-report.json | tee merged/estate.txt
+          {
+            echo '## GuardLink — estate risk'
+            echo '```'
+            cat merged/estate.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # ── Preserve current merge for next week's diff ────────
       - name: Archive current merge as baseline
         run: |
@@ -159,6 +180,7 @@ jobs:
           path: |
             merged/workspace-report.json
             merged/workspace-dashboard.html
+            merged/estate.txt
             merged/*-weekly-diff.md
           retention-days: 90
 
