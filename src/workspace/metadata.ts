@@ -25,6 +25,14 @@ import type { WorkspaceConfig } from './types.js';
  * removed. `detectSchemaMismatch` compares this string across the reports being
  * merged, so leaving it at 1.0.0 made a mixed-version merge undetectable by the
  * one mechanism built to detect exactly that.
+ *
+ * NOT bumped for the optional `metadata.parse` field. It is purely additive —
+ * every key 1.1.0 carried is present and unrenamed — and a mixed estate is
+ * already handled correctly by design: a report without it counts toward
+ * `repos_parse_unknown` rather than toward clean. Bumping would make every
+ * estate holding one not-yet-regenerated repo emit a `schema_mismatch` warning
+ * saying results may be inconsistent, which would be false, and would train
+ * readers to ignore the warning that exists for real reshapes.
  */
 export const REPORT_SCHEMA_VERSION = '1.1.0';
 
