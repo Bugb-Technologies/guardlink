@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:96b5e046610905578780c457ae147944c6688cb16e66a505a4b359eeea689ea1
+%% annotation_hash: sha256-v3:39b3f1e648d4b08fe8632ac7a8b74a62ad0afa5170f3345766b66901d4a244e1
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 45 nodes / 157 edges, past the 12 / 16 legibility budget (45 nodes against 12, 157 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 46 nodes / 162 edges, past the 12 / 16 legibility budget (46 nodes against 12, 162 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -48,6 +48,7 @@ graph LR
   gate["🔷 GuardLink.Gate"]
   init["🔷 GuardLink.Init [INTERNAL]"]
   suggest["🔷 GuardLink.Suggest"]
+  estate_view["🔷 Workspace.Estate"]
   merge_engine["🔷 Workspace.Merge"]
   report["🔷 GuardLink.Report [PII]"]
   workspace_config["🔷 Workspace.Config"]
@@ -145,6 +146,8 @@ graph LR
   tui -. exposes .-> api_key_exposure
   tui -. exposes .-> prompt_injection
   tui -. exposes .-> dos
+  estate_view -. exposes .-> vacuous_pass
+  estate_view -. exposes .-> insecure_deser
   merge_engine -. exposes .-> vacuous_pass
   key_redaction -- mitigates --> api_key_exposure
   key_redaction -. protects .-> agent_launcher
@@ -218,8 +221,10 @@ graph LR
   path_validation -. protects .-> tui
   key_redaction -. protects .-> tui
   resource_limits -. protects .-> tui
-  prefix_ownership -. protects .-> merge_engine
   fail_closed -- mitigates --> vacuous_pass
+  fail_closed -. protects .-> estate_view
+  config_validation -. protects .-> estate_view
+  prefix_ownership -. protects .-> merge_engine
   fail_closed -. protects .-> merge_engine
   yaml_validation -- mitigates --> config_tamper
   yaml_validation -. protects .-> workspace_config
@@ -236,6 +241,7 @@ graph LR
   mcp -- "📡 generateThreatReport" --> llm_client
   tui -- "📡 launchAgent" --> agent_launcher
   tui -- "📡 chatCompletion" --> llm_client
+  estate_view -- "📡 estateReport" --> cli
   merge_engine -- "📡 mergeVerdict" --> cli
   classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
   classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px

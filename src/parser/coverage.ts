@@ -154,10 +154,25 @@ export interface CoverageIndex {
   mitigationsFor(exposure: SitedRelation): ThreatModelMitigation[];
 }
 
-function indexByPair<T extends SitedRelation>(rows: T[], assetKey: (ref: string) => string): Map<string, T[]> {
+/** No namespace — the single-repo answer, and the default everywhere but merge. */
+const NO_SCOPE = (): string => '';
+
+function pairKey(
+  r: SitedRelation,
+  assetKey: (ref: string) => string,
+  scope: (r: SitedRelation) => string,
+): string {
+  return `${scope(r)} ${assetKey(r.asset)}::${normalizeRef(r.threat)}`;
+}
+
+function indexByPair<T extends SitedRelation>(
+  rows: T[],
+  assetKey: (ref: string) => string,
+  scope: (r: SitedRelation) => string,
+): Map<string, T[]> {
   const map = new Map<string, T[]>();
   for (const r of rows) {
-    const key = `${assetKey(r.asset)}::${normalizeRef(r.threat)}`;
+    const key = pairKey(r, assetKey, scope);
     const bucket = map.get(key);
     if (bucket) bucket.push(r); else map.set(key, [r]);
   }
@@ -171,6 +186,20 @@ export interface CoverageOptions {
    * cannot classify two acceptances against two different midnights.
    */
   now?: Date;
+  /**
+   * A namespace two relations must share before they are allowed to join.
+   *
+   * Empty string for every relation in a single-repo model, which is why the
+   * default is a constant and why nothing outside `workspace/merge.ts` passes
+   * it. It exists for the one model that is not one repository: after
+   * `combineModels`, two teams' independently declared `#listing` are the same
+   * string, and a `@mitigates` naming one of them answered for both — a real
+   * finding disappearing because two teams picked the same word (mark 8).
+   *
+   * Expressed as a key rather than a predicate so the pair index stays linear.
+   * Like the anchor rule above it can only ever REMOVE coverage, never add it.
+   */
+  scope?: (r: SitedRelation) => string;
   /**
    * When set, an acceptance that fails this policy stops covering anything.
    *
@@ -200,17 +229,18 @@ export function buildCoverageIndex(model: ThreatModel, opts: CoverageOptions = {
   // guardlink (16 → 16) or specter-v1 (1 → 1). It adds no coverage on any real
   // corpus; it removes a disagreement.
   const assetKey = canonicaliser(model);
+  const scope = opts.scope ?? NO_SCOPE;
   const now = opts.now ?? new Date();
-  const mitigations = indexByPair(model.mitigations as unknown as SitedRelation[] as ThreatModelMitigation[], assetKey);
+  const mitigations = indexByPair(model.mitigations as unknown as SitedRelation[] as ThreatModelMitigation[], assetKey, scope);
   // An acceptance the gate has already refused never reaches the index, so
   // "does this cover?" and "does this count?" cannot answer differently.
   const eligible = opts.policy
     ? model.acceptances.filter(a => isQualified(a, opts.policy, now))
     : model.acceptances;
-  const acceptances = indexByPair(eligible as unknown as SitedRelation[] as ThreatModelAcceptance[], assetKey);
+  const acceptances = indexByPair(eligible as unknown as SitedRelation[] as ThreatModelAcceptance[], assetKey, scope);
 
   const matching = <T extends SitedRelation>(index: Map<string, T[]>, e: SitedRelation): T[] => {
-    const bucket = index.get(`${assetKey(e.asset)}::${normalizeRef(e.threat)}`);
+    const bucket = index.get(pairKey(e, assetKey, scope));
     if (!bucket) return [];
     return bucket.filter(c => !anchorsContradict(c, e));
   };

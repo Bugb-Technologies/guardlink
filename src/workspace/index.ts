@@ -23,6 +23,7 @@ export {
   resolveReportPaths,
   mergeVerdict,
   formatMergeVerdict,
+  openExposuresIn,
   formatMergeSummary,
   diffMergedReports,
   formatDiffSummary,
@@ -31,6 +32,21 @@ export type {
   MergeOptions, ResolvedReportPaths,
   MergeVerdict, MergeVerdictOptions, MergeFailure, MergeFailureCode,
 } from './merge.js';
+
+export {
+  estateReport,
+  formatEstateReport,
+  readMergedReport,
+  NotAMergedReport,
+  ESTATE_SCHEMA,
+} from './estate.js';
+export type {
+  EstateReport, EstateFinding, EstateRepoLine, EstateSummary, EstateOptions,
+  EstateSeverityCounts,
+} from './estate.js';
+
+export { buildOwnerScope, repoOfPath, NO_OWNER_SCOPE } from './owner-scope.js';
+export type { OwnerScope } from './owner-scope.js';
 
 export { linkProject, addToWorkspace, removeFromWorkspace, buildWorkspaceContextBlock, detectRepoName } from './link.js';
 export type { LinkProjectOptions, AddToWorkspaceOptions, RemoveFromWorkspaceOptions, LinkResult } from './link.js';

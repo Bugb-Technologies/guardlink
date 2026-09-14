@@ -93,6 +93,36 @@
  * them. `--scope` filters everything, because everything has a file, and "this
  * pipeline owns services/api/" is a statement about all of it.
  *
+ * ── One repository, and it says so (marks 5, 6, 7, 18) ─────────────
+ *
+ * `guardlink ci <one-repo>` is what a developer types and what a CI job runs,
+ * and in a multi-repository estate it cannot see that the `@mitigates` covering
+ * its `@exposes` lives in a sibling repository. Measured on a four-repo estate:
+ * the repo holding the risk exits 1, the repo holding the control exits 0, and
+ * `guardlink merge` over both reports says 0 unmitigated. The per-repo answer
+ * is not wrong about its own tree — it is wrong about the question the reader
+ * thinks it answered.
+ *
+ * Two repairs were available and this is the one that shipped: `ci` states that
+ * it answered a single-repository question, names the siblings it did not read,
+ * and points at the estate command.
+ *
+ * The other — teach `ci` the workspace it is already linked into — cannot be
+ * made honest here. `workspace.yaml` records a workspace name, `this_repo`, and
+ * each sibling's NAME and remote REGISTRY URL; `serializeWorkspaceYaml`
+ * deliberately never writes a local path, and `WorkspaceRepo.local_path` is
+ * documented as setup-only. So `ci` has no path to a sibling's checkout and no
+ * path to a sibling's report. Even given one, the environment `ci` exists for
+ * is a CI runner that has checked out exactly one repository: a sibling's
+ * current model is not on that disk at all. It would work on a laptop with four
+ * repos cloned side by side and degrade silently in the pipeline — the same
+ * class of quietly-wrong answer this whole file exists to remove.
+ *
+ * The estate answer needs artifacts from N pipelines, which is exactly what
+ * `report --format json` → `merge` → `estate` is. So `ci` points there instead
+ * of guessing, and it does NOT move its own exit code: the finding in this tree
+ * is real until a merged report says a sibling covers it.
+ *
  * ── Reports, never repairs ──────────────────────────────────────────
  *
  * Read-only. `applyReanchor` is deliberately not called from here: rewriting an
@@ -160,6 +190,32 @@ export interface CiFilters {
   /** Findings of every kind dropped by `--scope`. */
   excluded_by_scope: number;
 }
+
+/**
+ * The estate this repository is linked into, as `ci` can see it.
+ *
+ * Present only when `.guardlink/workspace.yaml` exists. `siblings` is every
+ * OTHER repo the workspace declares — the repositories whose controls this run
+ * could not read, named so the reader can tell how much of the estate this
+ * answer is missing rather than being left to assume it is all of it.
+ */
+export interface CiWorkspaceScope {
+  workspace: string;
+  this_repo: string;
+  siblings: string[];
+  /**
+   * Always `single-repo`. A constant, and emitted anyway: a consumer that has
+   * to infer whether a number covers one repository or an estate will infer
+   * wrongly, and the two answers differ by exactly the defect this records.
+   */
+  answers: 'single-repo';
+  /** The command that answers the estate question instead. */
+  estate_command: string;
+}
+
+/** What `ci` tells a reader to run when the answer it has is not the one they want. */
+export const ESTATE_ROUTE = 'guardlink merge <each repo\'s guardlink-report.json> --json workspace-merge.json'
+  + ' && guardlink estate workspace-merge.json';
 
 export interface CiSummary {
   /** Unmitigated exposures — `exposures.length`. */
@@ -238,6 +294,13 @@ export interface CiSummary {
   strict: boolean;
   /** What this run was narrowed to, and what that narrowing dropped. */
   filters: CiFilters;
+  /**
+   * The estate this repository belongs to, when it belongs to one — and the
+   * statement that this run answered for one repository of it. Null in a repo
+   * with no `.guardlink/workspace.yaml`, where there is no larger question to
+   * be wrong about.
+   */
+  workspace: CiWorkspaceScope | null;
   /** The exit code the command used. 0 unless `strict` and something was found. */
   exit_code: 0 | 1;
 }
@@ -299,6 +362,15 @@ export interface CiOptions {
   policy?: AcceptancePolicy;
   /** The clock. A parameter so a test can pin it and so one run uses one midnight. */
   now?: Date;
+  /**
+   * The workspace this repo is linked into, read from `.guardlink/workspace.yaml`
+   * by the caller. Passed in rather than read here for the reason at the top of
+   * this file: `ci` holds no opinion of its own about anything it reports.
+   *
+   * It changes what the run SAYS and never what it finds — no exit code, no
+   * count, and no exposure moves because of it.
+   */
+  workspace?: CiWorkspaceScope | null;
 }
 
 /** A claim as `ci` reports it: no raw annotation text, no model record. */
@@ -502,6 +574,7 @@ export function runCiChecks(root: string, model: ThreatModel, opts: CiOptions = 
           + (allConfirmed.length - scopedConfirmed.length)
           + (allUnqualified.length - unqualified.length),
       },
+      workspace: opts.workspace ?? null,
       exit_code: strict && found ? 1 : 0,
     },
   };
@@ -538,6 +611,7 @@ function kindBreakdown(counts: DriftKindCounts): string {
  */
 export function formatCiReport(report: CiReport): string {
   const { summary, exposures, confirmed, drift } = report;
+  const ws = summary.workspace;
   const out: string[] = [];
 
   // What this run was narrowed to, before any count — a number under a filter
@@ -659,10 +733,28 @@ export function formatCiReport(report: CiReport): string {
     && report.unqualified_acceptances.length === 0 && report.stale.length === 0
     && report.parse.length === 0;
   if (clean) {
-    out.push('', '✓ No unmitigated exposures, no confirmed exploits, no anchor drift,'
-      + ` every acceptance accounted for.${summary.ledger === 'present' ? ' No stale claims.' : ''}`);
+    out.push('', `✓ No unmitigated exposures, no confirmed exploits, no anchor drift,`
+      + ` every acceptance accounted for${ws ? ' — in this repository' : ''}.`
+      + `${summary.ledger === 'present' ? ' No stale claims.' : ''}`);
   } else if (!summary.strict) {
     out.push('', 'Advisory — nothing here failed the build. Run with --strict to gate on it.');
+  }
+
+  // Last, because it qualifies the verdict above rather than replacing it: this
+  // was a single-repository answer, and in an estate that is not the same
+  // question as "is this risk handled". Printed whether the run was clean or
+  // not — a green tick over one repo of four needs the caveat at least as much
+  // as a red one does.
+  if (ws) {
+    out.push('', `This is a single-repository answer: ${ws.this_repo} of workspace "${ws.workspace}".`);
+    if (ws.siblings.length > 0) {
+      out.push(`  ${ws.siblings.length} sibling repo(s) were NOT read: ${ws.siblings.join(', ')}.`);
+      out.push(exposures.length > 0
+        ? '  A control covering one of the exposures above may live in one of them —'
+        : '  A risk this repository does not declare may live in one of them —');
+      out.push('  this run cannot see it, and did not take it into account either way.');
+    }
+    out.push(`  For the estate answer:  ${ESTATE_ROUTE}`);
   }
 
   return out.join('\n');

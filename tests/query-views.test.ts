@@ -183,28 +183,32 @@ describe('the node counter against browser-measured geometry', () => {
     const { model } = await parseProject({ root: '.', project: 'guardlink' });
     const ordered = canonicalizeModelOrder(model);
     // Measured in Chrome at 1440x900: the default (high/critical-filtered)
-    // threat graph rendered 32 `.node` elements and 77 `path.flowchart-link`s,
-    // and the whole-model graph 45 and 157.
+    // threat graph rendered 33 `.node` elements and 80 `path.flowchart-link`s,
+    // and the whole-model graph 46 and 162.
     // Annotating this repository moves these numbers — the two @validates on
     // #cli that GAP-58 declared took the edges from 70 to 72, the
     // @validates #glob-filtering for #parser that came with the scan-set widening
-    // took them from 72 to 73, and #vacuous-pass / #fail-closed (the merge
-    // honesty work) took 29/73 to 32/77 and the whole model from 43 nodes to 45.
+    // took them from 72 to 73, #vacuous-pass / #fail-closed (the merge
+    // honesty work) took 29/73 to 32/77 and the whole model from 43 nodes to 45,
+    // and the cross-repo correctness work took 32/77/45 to 33/80/46 by declaring
+    // `Workspace.Estate (#estate-view)` with its flows and by putting
+    // #vacuous-pass / #fail-closed on a second asset.
     // When they move, re-render the diagram in a browser and count the SVG
     // again; never bump them to whatever the counter says, which leaves it
     // checking itself.
     //
-    // Re-measured for 77: both diagrams rendered with mermaid@11 under the
+    // Re-measured for 80: both diagrams rendered with mermaid@11 under the
     // dashboard's own initialize options (dagre-d3, htmlLabels:false,
-    // useMaxWidth:false, maxTextSize 50000, maxEdges 500) at 1440x900, counting
-    // `.node` and `path.flowchart-link` in the SVG. Chrome reported filtered
-    // {nodes:32, links:77, clusters:7} and whole model {nodes:45, links:157};
-    // Chrome and measureLegibility agree on both pairs.
+    // useMaxWidth:false, maxTextSize 50000, maxEdges 500) at a viewport
+    // confirmed to be 1440x900, counting `.node` and `path.flowchart-link` in
+    // the SVG. Chrome reported filtered {nodes:33, links:80, clusters:7} and
+    // whole model {nodes:46, links:162}; Chrome and measureLegibility agree on
+    // both pairs.
     const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
-    expect(m.nodes).toBe(32);
-    expect(m.edges).toBe(77);
-    // And the whole model is 45 nodes, which is the number this work exists for.
-    expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(45);
+    expect(m.nodes).toBe(33);
+    expect(m.edges).toBe(80);
+    // And the whole model is 46 nodes, which is the number this work exists for.
+    expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(46);
   });
 });
 

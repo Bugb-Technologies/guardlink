@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:96b5e046610905578780c457ae147944c6688cb16e66a505a4b359eeea689ea1
+%% annotation_hash: sha256-v3:39b3f1e648d4b08fe8632ac7a8b74a62ad0afa5170f3345766b66901d4a244e1
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 68 nodes / 166 edges, past the 12 / 16 legibility budget (68 nodes against 12, 166 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 72 nodes / 170 edges, past the 12 / 16 legibility budget (72 nodes against 12, 170 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -112,11 +112,15 @@ graph LR
   rawstdin["🧩 RawStdin"]
   terminal["🧩 Terminal"]
   packagejson["🧩 PackageJson"]
+  repoparsestate["🧩 RepoParseState"]
+  estate_view["🧩 Workspace.Estate"]
+  mergedreportfile["🧩 MergedReportFile"]
   workspace_link["🧩 Workspace.Link"]
   reportjson["🧩 ReportJSON"]
   merge_engine["🧩 Workspace.Merge"]
   mergedreport["🧩 MergedReport"]
   report_metadata["🧩 Workspace.Metadata"]
+  tagregistry["🧩 TagRegistry"]
   agent_launcher -.-|🧱 Trust boundary at process spawn| agentprocess
   llm_client -.-|🧱 Trust boundary at external API call| llmprovider
   llm_client -.-|🧱 Trust boundary at external API| nvd
@@ -275,6 +279,9 @@ graph LR
   rawstdin -- "📡 process.stdin" --> tui
   tui -- "📡 process.stdout" --> terminal
   packagejson -- "🗄️ readFileSync" --> cli
+  repoparsestate -- "📡 estateReport" --> estate_view
+  mergedreportfile -- "📡 readMergedReport" --> estate_view
+  estate_view -- "📡 estateReport" --> cli
   userargs -- "📡 linkProject" --> workspace_link
   workspace_link -- "📡 updateAgentWorkspaceContext" --> agentfiles
   reportjson -- "📡 mergeReports" --> merge_engine
@@ -283,3 +290,4 @@ graph LR
   filesystem -- "📡 resolveReportPaths" --> merge_engine
   gitrepo -- "📡 execSync" --> report_metadata
   report_metadata -- "📡 populateMetadata" --> threatmodel
+  tagregistry -- "📡 buildOwnerScope" --> merge_engine

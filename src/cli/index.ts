@@ -49,7 +49,8 @@ import { resolve, basename, join, isAbsolute, relative } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
-import { runCiChecks, formatCiReport } from '../ci/index.js';
+import { runCiChecks, formatCiReport, ESTATE_ROUTE } from '../ci/index.js';
+import type { CiWorkspaceScope } from '../ci/index.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { ensurePromptMd } from '../init/migrate.js';
 import { generateReport, generateMermaid } from '../report/index.js';
@@ -81,7 +82,7 @@ import {
   explicitDecider, identitySuggestion, formatProposalForReview, formatProposalLine, summarizeDecisions, proposalsPath,
   type DecisionResult, type EntitlementProposal, type ProposalStatus,
 } from '../review/entitlements.js';
-import { populateMetadata, mergeReports, resolveReportPaths, mergeVerdict, formatMergeVerdict, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace } from '../workspace/index.js';
+import { loadWorkspaceConfig, populateMetadata, mergeReports, resolveReportPaths, mergeVerdict, formatMergeVerdict, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace, estateReport, formatEstateReport, readMergedReport, NotAMergedReport } from '../workspace/index.js';
 import type { MergedReport, LinkResult } from '../workspace/index.js';
 import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
 import type { VerificationReport } from '../parser/index.js';
@@ -656,6 +657,28 @@ program
   });
 
 // ─── ci ──────────────────────────────────────────────────────────────
+/**
+ * The workspace `guardlink ci` is running inside, if any.
+ *
+ * `ci` reports it and nothing more: it cannot read a sibling repository's
+ * model — `workspace.yaml` carries names and remote registry URLs, never a
+ * local path — and on a CI runner the sibling is not checked out at all. See
+ * the header of `src/ci/index.ts` for why naming what was not read beats
+ * guessing at it.
+ */
+function ciWorkspaceScope(root: string): CiWorkspaceScope | null {
+  const config = loadWorkspaceConfig(root);
+  if (!config) return null;
+  return {
+    workspace: config.workspace,
+    this_repo: config.this_repo,
+    siblings: config.repos.map(r => r.name).filter(n => n !== config.this_repo),
+    answers: 'single-repo',
+    estate_command: ESTATE_ROUTE,
+  };
+}
+
+
 
 program
   .command('ci')
@@ -695,6 +718,7 @@ program
     const report = runCiChecks(root, model, {
       strict: opts.strict, diagnostics, severity, scope,
       policy: readAcceptancePolicy(root),
+      workspace: ciWorkspaceScope(root),
     });
 
     if (report.summary.ledger === 'corrupt' && opts.format === 'text') {
@@ -3090,6 +3114,9 @@ program
       const jsonPath = resolvePath(opts.json);
       await writeFile(jsonPath, JSON.stringify(merged, null, 2) + '\n');
       console.error(`✓ Wrote merged JSON to ${opts.json}`);
+      // Mark 20: this file has always been written and never read back. Say
+      // what reads it, at the moment it is produced.
+      console.error(`  What is open across the estate:  guardlink estate ${opts.json}`);
     }
 
     // Diff against previous
@@ -3140,6 +3167,63 @@ program
     // Set the code and let the process end on its own: process.exit() would
     // truncate the stdout summary above at the pipe buffer before it has flushed.
     process.exitCode = verdict.exit_code;
+  });
+
+// ─── estate ──────────────────────────────────────────────────────────
+
+program
+  .command('estate')
+  .description('Estate-wide open risk, read back from the merged report `guardlink merge --json` wrote (exit 0 unless --strict)')
+  .argument('[file]', 'Merged report JSON', 'workspace-merge.json')
+  .option('-f, --format <fmt>', 'Output format: text (default) or json', 'text')
+  .option('--severity <levels>', 'Report only findings at these severities (comma-separated: critical,high,medium,low). Unrated findings always count')
+  .option('--repo <names>', 'Report only findings from these repos (comma-separated)')
+  .option('--strict', 'Exit 1 when anything is open or confirmed, or when the estate was not fully read')
+  .action(async (file: string, opts: {
+    format: string; severity?: string; repo?: string; strict?: boolean;
+  }) => {
+    if (opts.format !== 'text' && opts.format !== 'json') {
+      console.error(`Unknown --format '${opts.format}'. Use text or json.`);
+      process.exit(1);
+    }
+
+    // Same guard as `ci`: a misspelled severity must not narrow the view to
+    // nothing and then report an estate with nothing open.
+    let severity: Severity[] | undefined;
+    if (opts.severity) {
+      const asked = opts.severity.split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+      const valid = ['critical', 'high', 'medium', 'low'];
+      const unknown = asked.filter(x => !valid.includes(x));
+      if (unknown.length > 0) {
+        console.error(`Unknown --severity '${unknown.join(', ')}'. Use ${valid.join(', ')}.`);
+        process.exit(1);
+      }
+      severity = asked as Severity[];
+    }
+    const repo = opts.repo?.split(',').map(x => x.trim()).filter(Boolean);
+
+    let merged;
+    try {
+      merged = await readMergedReport(resolve(file));
+    } catch (err) {
+      // Refuse rather than summarise. A lenient read of the wrong file is how
+      // a clean estate gets reported over a report of one repository.
+      console.error(`\u2717 ${err instanceof NotAMergedReport ? err.message : String(err)}`);
+      process.exit(1);
+      return;
+    }
+
+    const report = estateReport(merged, { severity, repo, strict: opts.strict });
+
+    if (opts.format === 'json') {
+      console.log(JSON.stringify(report, null, 2));
+      console.error(`GuardLink estate: ${report.summary.repos_loaded}/${report.summary.repos} repo(s) read, `
+        + `${report.summary.open} open, ${report.summary.confirmed} confirmed`);
+    } else {
+      console.log(formatEstateReport(report));
+    }
+
+    process.exitCode = report.summary.exit_code;
   });
 
 // ─── feature ──────────────────────────────────────────────────────────

@@ -57,8 +57,7 @@ import { basename, dirname, resolve as resolvePath } from 'node:path';
 import fg from 'fast-glob';
 import type {
   ThreatModel,
-
-
+  ThreatModelExposure,
 
 
   SourceLocation, AnnotationVerb,
@@ -69,6 +68,8 @@ import type {
 } from './types.js';
 import { REPORT_SCHEMA_VERSION } from './metadata.js';
 import { buildCoverageIndex, fileCoveragePercent, annotationCount, normalizeCoverage } from '../parser/coverage.js';
+import { canonicaliser } from '../parser/canonical-ref.js';
+import { buildOwnerScope, repoOfPath, NO_OWNER_SCOPE, type OwnerScope } from './owner-scope.js';
 
 // ─── Report Loading ──────────────────────────────────────────────────
 
@@ -257,14 +258,35 @@ export async function loadAllReports(
  * Extract all tag definitions (assets, threats, controls) from a ThreatModel.
  * Tags come from the `id` field (e.g. "#payment-svc.refund").
  */
+/**
+ * How a repository DECLARED a tag, as a comparable string.
+ *
+ * Two repositories both declaring `#listing` is not by itself a collision. A
+ * platform team that ships one `definitions.ts` into every repository makes
+ * every asset "defined in" N repos while meaning one thing, which is the normal
+ * and healthy shape of a shared vocabulary — the same argument `owner-scope.ts`
+ * already makes about threats, and it applies to any tag declared identically.
+ *
+ * So the question the scope must ask is not "do two repos declare this" but "do
+ * they declare it DIFFERENTLY". For an asset that is its dotted path and its
+ * description: `Orders.Listing "Order listing endpoint"` in two repos is one
+ * endpoint described twice; two different paths or two different descriptions
+ * under one id are two teams who picked the same word.
+ */
+function declarationFingerprint(path: string[] | undefined, description: string | undefined): string {
+  const p = (path ?? []).join('.').toLowerCase();
+  return `${p}\u0001${(description ?? '').trim()}`;
+}
+
 function extractTagDefinitions(model: ThreatModel, repo: string): TagOwnership[] {
   const tags: TagOwnership[] = [];
 
   for (const a of model.assets) {
     if (a.id) {
-      tags.push({ tag: a.id, owner_repo: repo, kind: 'asset' });
+      const declared_as = declarationFingerprint(a.path, a.description);
+      tags.push({ tag: a.id, owner_repo: repo, kind: 'asset', declared_as });
       // Also register with # prefix since relationships use #tag form
-      if (!a.id.startsWith('#')) tags.push({ tag: `#${a.id}`, owner_repo: repo, kind: 'asset' });
+      if (!a.id.startsWith('#')) tags.push({ tag: `#${a.id}`, owner_repo: repo, kind: 'asset', declared_as });
     }
   }
   for (const t of model.threats) {
@@ -323,12 +345,23 @@ export function buildTagRegistry(
       ? defs.find(d => d.owner_repo === prefixOwner) || defs[0]
       : defs[0];
 
-    registry.push(winner);
-
     // Warn about duplicates
     const otherRepos = defs
       .filter(d => d.owner_repo !== winner.owner_repo)
       .map(d => d.owner_repo);
+
+    // The losers are recorded on the entry, not only in the warning text. See
+    // TagOwnership.also_defined_in — this is the input the coverage join needs
+    // to tell one team's #listing from another's.
+    // Whether the OTHER definers disagree with the winner about what this tag
+    // is. Same id declared the same way in N repos is one shared vocabulary;
+    // only a genuine disagreement is a collision the coverage join must respect.
+    const definitions_differ = defs.some(d => d.declared_as !== winner.declared_as);
+
+    registry.push(otherRepos.length > 0
+      ? { ...winner, also_defined_in: [...new Set(otherRepos)], definitions_differ }
+      : winner);
+
     if (otherRepos.length > 0) {
       warnings.push({
         level: 'warning',
@@ -655,17 +688,24 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
 // ─── Totals & Unmitigated Detection ──────────────────────────────────
 
 /**
- * Count unmitigated exposures: exposures with no corresponding mitigation
- * (same asset+threat pair) and no acceptance.
+ * The exposures a combined model leaves open, owner-scoped.
+ *
+ * One implementation, used by `computeTotals` here and by the estate read-back
+ * in `estate.ts`, so the number a merged report carries and the list a reader
+ * gets out of it cannot disagree.
  */
-function countUnmitigated(model: ThreatModel): number {
+export function openExposuresIn(model: ThreatModel, scope: OwnerScope = NO_OWNER_SCOPE): ThreatModelExposure[] {
   // D36. Was a local pair set that also skipped ref normalisation, so a
   // workspace total could disagree with the per-repo `validate` it summarises.
   // Note this runs on the COMBINED model, whose locations are repo-prefixed —
   // which is what makes the same-file test correct across repos: two repos'
   // db.py are different files here, so neither can narrow the other.
-  const index = buildCoverageIndex(model);
-  return model.exposures.filter(e => !index.isCovered(e)).length;
+  //
+  // Mark 8: the pair alone is not enough once the model spans repositories.
+  // `scope` is what keeps one team's #listing out of another team's bucket;
+  // see owner-scope.ts for why it narrows the asset dimension and not the threat.
+  const index = buildCoverageIndex(model, { scope });
+  return model.exposures.filter(e => !index.isCovered(e));
 }
 
 /** Compute aggregate totals from a combined model */
@@ -674,6 +714,7 @@ export function computeTotals(
   statuses: RepoStatus[],
   resolvedCount: number,
   unresolvedCount: number,
+  scope: OwnerScope = NO_OWNER_SCOPE,
 ): MergeTotals {
   const loadedStatuses = statuses.filter(s => s.loaded);
   return {
@@ -685,7 +726,7 @@ export function computeTotals(
     controls: model.controls.length,
     mitigations: model.mitigations.length,
     exposures: model.exposures.length,
-    unmitigated_exposures: countUnmitigated(model),
+    unmitigated_exposures: openExposuresIn(model, scope).length,
     confirmed: (model.confirmed || []).length,
     // Summed over the repos that answered; the ones that did not are counted
     // separately rather than contributing a zero.
@@ -925,6 +966,14 @@ export async function mergeReports(
   // 4. Combine models
   const combinedModel = combineModels(reports);
 
+  // 4a. Mark 8 — the join is scoped by the ownership the registry already
+  // resolved. Without this a `@mitigates` on orders-api's `#listing` covers
+  // billing-api's unrelated `#listing` and the estate reports clean.
+  const ownerScope = buildOwnerScope(registry, repoNames, canonicaliser(combinedModel));
+  const scopedOpen = openExposuresIn(combinedModel, ownerScope);
+  const unscopedOpen = openExposuresIn(combinedModel, NO_OWNER_SCOPE);
+  const reopenedByScope = scopedOpen.length - unscopedOpen.length;
+
   // 5. Detect stale reports
   const staleWarnings = detectStaleReports(statuses, staleHours);
 
@@ -938,6 +987,25 @@ export async function mergeReports(
 
   // Assemble all warnings
   const allWarnings = [...tagWarnings, ...refWarnings, ...staleWarnings, ...schemaWarnings];
+
+  // Say out loud when the scoping changed the answer. A count that silently
+  // grows by one is indistinguishable from someone having written a new
+  // `@exposes`, and these two mean different things to whoever reads the board.
+  if (reopenedByScope > 0) {
+    const repos = [...new Set(scopedOpen
+      .filter(e => !unscopedOpen.includes(e))
+      .map(e => repoOfPath(e.location?.file, repoNames))
+      .filter((r): r is string => r !== null))];
+    allWarnings.push({
+      level: 'warning',
+      code: 'owner_scoped_join',
+      message: `${reopenedByScope} exposure(s) are open because the only control naming that tag `
+        + `belongs to another repo's asset of the same name`
+        + (repos.length > 0 ? ` (${repos.join(', ')})` : '')
+        + '. Scoped by the owner the tag registry already resolved.',
+      repos,
+    });
+  }
 
   // Missing repo warnings
   for (const s of statuses) {
@@ -959,7 +1027,7 @@ export async function mergeReports(
     tag_registry: registry,
     unresolved_refs: unresolved,
     warnings: allWarnings,
-    totals: computeTotals(combinedModel, statuses, resolvedCount, unresolved.length),
+    totals: computeTotals(combinedModel, statuses, resolvedCount, unresolved.length, ownerScope),
     model: combinedModel,
   };
 }

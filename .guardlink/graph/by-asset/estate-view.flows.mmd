@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
-%% artifact:        by-boundary/git-boundary.mmd
-%% scope:           PARTIAL — the Trust boundary at git command execution between diff and gitrepo, and what flows across it
+%% artifact:        by-asset/estate-view.flows.mmd
+%% scope:           PARTIAL — #estate-view and its flow neighbourhood, grown until the drawing stopped fitting — 21 neighbour(s) one hop out are not shown
 %% annotation_hash: sha256-v3:39b3f1e648d4b08fe8632ac7a8b74a62ad0afa5170f3345766b66901d4a244e1
 %% generator:       guardlink@2.0.0
 %% ---
@@ -11,30 +11,30 @@
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
 graph LR
-  subgraph Z0["🧱 GuardLink.Diff · Trust boundary at git command execution"]
-    diff["🧩 GuardLink.Diff"]
-  end
-  subgraph Z1["🧱 GitRepo · Trust boundary at git command execution"]
-    gitrepo["🧩 GitRepo"]
-  end
   blame["🧩 GuardLink.Blame"]
   cli["🧩 GuardLink.CLI"]
-  dashboard["🧩 GuardLink.Dashboard"]
-  changedfilelist["🧩 ChangedFileList"]
-  mcp["🧩 GuardLink.MCP"]
-  tui["👤 GuardLink.TUI"]
-  diff -.-|🧱 Trust boundary at git command execution| gitrepo
+  gitrepo["🧩 GitRepo"]
+  filesystem["🧩 FileSystem"]
+  gate["🧩 GuardLink.Gate"]
+  agentproposal["🧩 AgentProposal"]
+  gitconfig["🧩 GitConfig"]
+  repoparsestate["🧩 RepoParseState"]
+  estate_view["🧩 Workspace.Estate"]
+  mergedreportfile["🧩 MergedReportFile"]
+  merge_engine["🧩 Workspace.Merge"]
   blame -- "📡 formatBlameText" --> cli
   gitrepo -- "🗄️ execFileSync" --> blame
   gitrepo -- "📡 listCommits" --> blame
   blame -- "🗄️ buildBlamePayload" --> cli
-  blame -- "📡 summarise" --> dashboard
+  cli -- "🗄️ writeFile" --> filesystem
   gitrepo -- "📡 attachBlame" --> cli
   gitrepo -- "📡 computeBlame" --> cli
+  cli -- "📡 runGate" --> gate
   gitrepo -- "📡 loadSince" --> cli
-  gitrepo -- "📡 loadSince" --> dashboard
-  gitrepo -- "📡 parseAtRef" --> dashboard
-  diff -- "📡 return" --> changedfilelist
-  gitrepo -- "🗄️ readFileSync" --> mcp
-  gitrepo -- "📡 computeBlame" --> mcp
-  gitrepo -- "📡 computeBlame" --> tui
+  agentproposal -- "📡 proposeEntitlement" --> cli
+  gitconfig -- "🗄️ execFileSync" --> cli
+  repoparsestate -- "📡 estateReport" --> estate_view
+  mergedreportfile -- "📡 readMergedReport" --> estate_view
+  estate_view -- "📡 estateReport" --> cli
+  merge_engine -- "📡 mergeVerdict" --> cli
+  filesystem -- "📡 resolveReportPaths" --> merge_engine
