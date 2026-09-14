@@ -30,7 +30,7 @@
  * @mitigates #cli against #insecure-deser using #config-validation -- "parseLedger validates shape field by field and drops nothing silently — a malformed ledger is an error, not a partial read; `inert` is recomputed from the citation rather than trusted from the file"
  * @mitigates #cli against #insecure-deser using #resource-limits -- "Ledger reads are capped at MAX_LEDGER_BYTES"
  * @exposes #cli to #arbitrary-write [high] cwe:CWE-74 -- "Agent-supplied rationale and human decision notes are interpolated into annotation text, where a newline would forge a second annotation"
- * @mitigates #cli against #arbitrary-write using #input-sanitize -- "oneLine() collapses newlines/CR/tabs before escapeDesc, and every built line is re-parsed with parseLine before it is written"
+ * @mitigates #cli against #arbitrary-write using #input-sanitize -- "oneLine() — the one definition in review/index.ts, re-exported here rather than copied — collapses every character a host grammar treats as ending a line: the Unicode mandatory breaks LF, CR, NEL, LS and PS, plus VT, FF and TAB, not the ASCII three. It runs before escapeDesc, and every built line is re-parsed with parseLine before it is written"
  * @flows AgentProposal -> #cli via proposeEntitlement -- "Agent-side proposal input"
  * @flows #cli -> ProposalLedger via writeFile -- "Proposal artifact output"
  * @flows ProposalLedger -> #cli via readFile -- "Proposal artifact input"
@@ -46,7 +46,7 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { extractCitation } from '../parser/citation.js';
 import { normalizeName } from '../parser/normalize.js';
 import { parseLine } from '../parser/parse-line.js';
-import { escapeDesc, insertAnnotationsAt, type CommentStyle } from './index.js';
+import { escapeDesc, insertAnnotationsAt, oneLine, type CommentStyle } from './index.js';
 import type {
   EntitlementCitation, EntitlesAnnotation, ParseDiagnostic, ThreatModel,
 } from '../types/index.js';
@@ -169,7 +169,6 @@ export const PROPOSALS_FILE = 'entitlement-proposals.json';
 
 /** A ledger is a review queue for a dozen role/capability pairs (§3.6), not a database. */
 const MAX_LEDGER_BYTES = 512 * 1024;
-const MAX_TEXT_LEN = 1000;
 
 /** Mirrors the CAPABILITY fragment in parse-line.ts — the capability is a join key, not prose. */
 const CAPABILITY_RE = /^[A-Za-z][A-Za-z0-9_.\-]*$/;
@@ -197,15 +196,13 @@ function resolveInsideRoot(root: string, relative: string): string {
 // ─── Text hygiene ───────────────────────────────────────────────────
 
 /**
- * Collapse a free-text field to one line.
- *
- * Annotation descriptions are line-oriented, so an embedded newline in a
- * rationale or a decision note would let the text below it be read back as a
- * separate annotation. Escaping quotes (escapeDesc) is not enough on its own.
+ * Re-exported, not re-implemented. This module kept its own copy for fear of a
+ * cycle, but it already imports `escapeDesc` from `./index.js`, so there is no
+ * new edge — and two copies of the line-breaking character set is precisely the
+ * shape that drifts apart, which is how a separator the ASCII set misses got to
+ * survive into a written annotation.
  */
-export function oneLine(s: string): string {
-  return s.replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, MAX_TEXT_LEN);
-}
+export { oneLine } from './index.js';
 
 // ─── Identity ───────────────────────────────────────────────────────
 

@@ -134,6 +134,181 @@ export function isStandaloneAnnotationFile(filePath: string): boolean {
 }
 
 /**
+ * Every block form `stripCommentPrefix` above recognises, opener paired with the
+ * sequence that ends it and with the marker a line INSIDE it must begin with.
+ * One definition: the stripper's forms, the closers a writer must neutralise and
+ * the prefix a writer must use to stay inside one are the same set, and a set
+ * written twice drifts.
+ *
+ * Only the C-family has a continuation marker — the Javadoc `*`, which the
+ * stripper reads a few lines above. The other three have none, and that is not a
+ * gap: `stripCommentPrefix` recognises `<!-- … -->`, `{- … -}` and `(* … *)` only
+ * as COMPLETE single-line comments, so an annotation on an open-ended opener line
+ * of those forms is not a comment to the parser and never reaches the model. The
+ * `null` is the honest answer to a question that cannot arise, rather than a hole.
+ */
+const BLOCK_FORMS: ReadonlyArray<{ open: string; close: string; continuation: string | null }> = [
+  { open: '/*', close: '*/', continuation: '* ' },
+  { open: '<!--', close: '-->', continuation: null },
+  { open: '{-', close: '-}', continuation: null },
+  { open: '(*', close: '*)', continuation: null },
+];
+
+/**
+ * Block closers a file could plausibly carry, for a line that does not show its
+ * own opener — the LAST resort behind `commentFormAt`, which reads the source.
+ *
+ * At least as wide as what the stripper accepts for that language, because a
+ * table thinner than the stripper leaves the host-grammar defect reachable
+ * exactly where it is thin. Markup carries two: an annotation in an inline
+ * `<script>` or `<style>` doc-block is stripped the same way and is exposed to
+ * the C-family closer as well as its own.
+ *
+ * Languages whose only comment form is a line comment need no entry — a line
+ * comment ends at a newline, and a written description is already one line.
+ */
+const BLOCK_CLOSERS: Readonly<Record<string, readonly string[]>> = {
+  '.ts': ['*/'], '.tsx': ['*/'], '.js': ['*/'], '.jsx': ['*/'], '.mts': ['*/'], '.cts': ['*/'],
+  '.java': ['*/'], '.c': ['*/'], '.h': ['*/'], '.cpp': ['*/'], '.cc': ['*/'], '.hpp': ['*/'],
+  '.cs': ['*/'], '.go': ['*/'], '.rs': ['*/'], '.swift': ['*/'], '.kt': ['*/'], '.kts': ['*/'],
+  '.scala': ['*/'], '.dart': ['*/'], '.php': ['*/'],
+  '.css': ['*/'], '.scss': ['*/'], '.less': ['*/'],
+  '.sql': ['*/'], '.tf': ['*/'], '.hcl': ['*/'],
+  '.hs': ['-}'],
+  '.ml': ['*)'], '.mli': ['*)'], '.pas': ['*)'],
+  '.html': ['-->', '*/'], '.xml': ['-->'], '.svg': ['-->', '*/'], '.vue': ['-->', '*/'],
+};
+
+/** Closers this file could carry, when the line itself cannot settle the form. */
+export function blockCommentClosers(filePath: string): readonly string[] {
+  return BLOCK_CLOSERS[extname(filePath).toLowerCase()] ?? [];
+}
+
+/**
+ * Both ends of every block form these closers belong to.
+ *
+ * Breaking only the closer leaves the other end open, and block comments NEST in
+ * Rust, Swift, Kotlin, Scala, Dart, Haskell and OCaml — every one of them in the
+ * table above. An injected OPENER there starts a nested comment; the doc-block's
+ * own closer on the next line closes only that nested level, and the outer comment
+ * runs on past the declaration it documents, so that declaration and everything
+ * below it silently leave the compile. Same hole the closer pass exists to close,
+ * entered from the other end, and a writer's re-parse is blind to it either way.
+ *
+ * Uniform, with no table of which grammars nest: an injected opener is inert where
+ * they do not nest and fatal where they do, so breaking it always costs nothing and
+ * sometimes saves the file — and one more per-language dimension modelled here and
+ * relied on elsewhere is the shape that drifts. Both ends come off the same
+ * `BLOCK_FORMS` pair, so neither can be widened without the other.
+ */
+function delimitersFor(closers: readonly string[]): readonly string[] {
+  const out: string[] = [];
+  for (const close of closers) {
+    out.push(close);
+    const form = BLOCK_FORMS.find(f => f.close === close);
+    if (form) out.push(form.open);
+  }
+  return out;
+}
+
+/** Both delimiters of every form this file could carry, when the line cannot settle it. */
+export function blockCommentDelimiters(filePath: string): readonly string[] {
+  return delimitersFor(blockCommentClosers(filePath));
+}
+
+/**
+ * Break every comment delimiter in `text`, so it can neither end nor open the
+ * comment it is written into.
+ *
+ * A space after the delimiter's first character breaks the sequence and still shows
+ * the reader what the text said. Each delimiter is applied over the whole string in
+ * turn, closer before opener, so a delimiter that breaking another one CREATES is
+ * caught: `*` + `/*` collapses to `* /*` on the closer pass and to `* / *` on the
+ * opener pass. One function, because a second copy of this transform is how the two
+ * passes that need it would come to disagree about what is neutralised.
+ */
+export function breakCommentDelimiters(text: string, delimiters: readonly string[]): string {
+  return delimiters.reduce((s, d) => s.split(d).join(`${d.charAt(0)} ${d.slice(1)}`), text);
+}
+
+/** The comment form an annotation line sits in. */
+export interface LineCommentForm {
+  /** Sequences that would end this comment — empty for a line comment. */
+  closers: readonly string[];
+  /** Every delimiter a written description must not carry: each closer AND the opener it pairs with. */
+  delimiters: readonly string[];
+  /** The line opens AND closes its own comment, so a line added after it needs its own terminator. */
+  selfClosing: boolean;
+  /**
+   * The line OPENS a block comment and does not close it, so its own prefix IS an
+   * opener and a line inserted after it must not reuse that prefix.
+   *
+   * Copying it opens a SECOND comment: where block comments nest (Rust, Swift,
+   * Kotlin, Scala, Dart, Haskell, OCaml) the block's own closer then closes only the
+   * inner one and the file runs on inside an unterminated comment, silently dropping
+   * the declaration it documents and everything below it from the compile. No
+   * report-controlled text is needed to reach it — an `@exposes` on a `/**` opening
+   * line is enough. Reproducing the closer instead is not the answer: balanced inside
+   * a nesting host, it ends the OUTER block early in a non-nesting one.
+   */
+  opensUnclosedBlock: boolean;
+  /** The marker a line inserted inside this form must begin with, or null when the form has none a reader could strip. */
+  continuation: string | null;
+}
+
+/**
+ * The comment form of `lines[idx]`, derived from the SOURCE rather than guessed
+ * from the path.
+ *
+ * Writing into a comment raises two questions and they have one answer: which
+ * sequence would end this comment (so a description carrying it is neutralised),
+ * and does this line close itself (so a line inserted after it must reopen and
+ * close its own). The file extension answers neither reliably — the stripper
+ * accepts `/* … *` + `/` in any file with no language gate, so the extension is
+ * a proxy that is thinner than reality in one direction and wrong in the other.
+ *
+ * Read in order: the line's own opener settles it; a line-comment marker means
+ * no closer at all; otherwise the line is a continuation, so look back for the
+ * block that opened it; and only when even that is absent fall back to the
+ * extension.
+ */
+export function commentFormAt(lines: readonly string[], idx: number, filePath: string): LineCommentForm {
+  const asForm = (closers: readonly string[], selfClosing: boolean, opensUnclosedBlock = false): LineCommentForm =>
+    ({ closers, delimiters: delimitersFor(closers), selfClosing, opensUnclosedBlock, continuation: continuationFor(closers) });
+  const own = blockFormOpenedBy(lines[idx] ?? '');
+  if (own) {
+    const closes = closesItself(lines[idx], own);
+    return asForm([own.close], closes, !closes);
+  }
+  const trimmed = (lines[idx] ?? '').trimStart();
+  if (LINE_MARKERS.some(m => trimmed.startsWith(m.prefix))) return asForm([], false);
+  for (let i = idx - 1; i >= 0; i--) {
+    const open = blockFormOpenedBy(lines[i]);
+    if (open && !closesItself(lines[i], open)) return asForm([open.close], false);
+  }
+  return asForm(blockCommentClosers(filePath), false);
+}
+
+/** The first continuation marker among these closers' forms, or null when none has one. */
+function continuationFor(closers: readonly string[]): string | null {
+  for (const close of closers) {
+    const form = BLOCK_FORMS.find(f => f.close === close);
+    if (form?.continuation) return form.continuation;
+  }
+  return null;
+}
+
+function blockFormOpenedBy(line: string): { open: string; close: string } | undefined {
+  const trimmed = line.trimStart();
+  return BLOCK_FORMS.find(f => trimmed.startsWith(f.open));
+}
+
+function closesItself(line: string, form: { open: string; close: string }): boolean {
+  const body = line.trim();
+  return body.length >= form.open.length + form.close.length && body.endsWith(form.close);
+}
+
+/**
  * Detect file's primary comment style from extension.
  * Used for multi-line continuation detection.
  */

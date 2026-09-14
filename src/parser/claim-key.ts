@@ -35,6 +35,63 @@ export type ClaimVerb =
 /** Verbs whose staleness can hide an exposure: the two that remove one from the export. */
 export const DEMOTABLE_VERBS: ReadonlySet<AnnotationVerb> = new Set(['mitigates', 'accepts']);
 
+/**
+ * How the claim key travels on the wire, defined once so the exporter, the
+ * reader and the operator-facing text cannot drift apart.
+ *
+ * They already have, four times, and each time the gap moved to whichever
+ * dimension was still written twice: the key was emitted under two name
+ * conventions and read under one, then emitted into two surfaces and read from
+ * one. So both dimensions live here — the names AND the surfaces — and the
+ * reader derives its container list rather than listing it. Adding a surface
+ * below must widen what the reader accepts with no edit to the reader; a
+ * dimension written twice is a dimension that will disagree.
+ *
+ * `CLAIM_KEY_FINGERPRINT` is the mechanism — the name inside SARIF's own
+ * stable-identity map, which other SARIF tooling understands.
+ * `CLAIM_KEY_PROPERTY` is the mirror in `properties`, for consumers without a
+ * SARIF library. `CLAIM_KEY_SURFACES` pairs each emitted SARIF result member
+ * with the name the key carries inside it. `CLAIM_KEY_NAMES` is every name a
+ * scan report may carry the key under: those, plus the snake_case the
+ * scan-report convention uses.
+ *
+ * Both orders are the reader's precedence for a report that contradicts itself,
+ * and each keeps what was accepted earliest in front, so widening cannot change
+ * what an already-accepted report resolves to. The two are therefore SEPARATE
+ * orders: `partialFingerprints` was read before `properties` was, while the
+ * name `claimKey` was accepted before `guardlink/claimKey` was. Deriving one
+ * order from the other satisfies whichever half it happens to match and
+ * silently inverts the other.
+ */
+export const CLAIM_KEY_FINGERPRINT = 'guardlink/claimKey';
+export const CLAIM_KEY_PROPERTY = 'claimKey';
+
+export interface ClaimKeySurface {
+  /** The SARIF result member the export writes the key into. */
+  container: string;
+  /** The name the key carries inside that member. */
+  name: string;
+}
+
+/** Surfaces, in the order each became readable. */
+export const CLAIM_KEY_SURFACES: readonly ClaimKeySurface[] = [
+  { container: 'partialFingerprints', name: CLAIM_KEY_FINGERPRINT },
+  { container: 'properties', name: CLAIM_KEY_PROPERTY },
+];
+
+/** Names, in the order each became accepted. */
+const NAME_PRECEDENCE: readonly string[] = ['claim_key', CLAIM_KEY_PROPERTY, CLAIM_KEY_FINGERPRINT];
+
+/**
+ * Every accepted name: the ones above in acceptance order, then any surface
+ * name not among them — a surface added later is newest, so appending it keeps
+ * the order honest while still making the set derive from the surfaces.
+ */
+export const CLAIM_KEY_NAMES: readonly string[] = [
+  ...NAME_PRECEDENCE,
+  ...CLAIM_KEY_SURFACES.map(s => s.name).filter(n => !NAME_PRECEDENCE.includes(n)),
+];
+
 export interface ClaimSource {
   verb: ClaimVerb;
   /** `<sha256 hex>:<ordinal>` — see module note. */
@@ -112,23 +169,43 @@ function baseKey(rec: Rec): string {
 
 function allRecords(model: ThreatModel): Rec[] {
   const out: Rec[] = [];
-  for (const r of model.mitigations) out.push(['mitigates', r]);
-  for (const r of model.exposures) out.push(['exposes', r]);
-  for (const r of model.confirmed || []) out.push(['confirmed', r]);
-  for (const r of model.acceptances) out.push(['accepts', r]);
-  for (const r of model.transfers) out.push(['transfers', r]);
-  for (const r of model.flows) out.push(['flows', r]);
-  for (const r of model.boundaries) out.push(['boundary', r]);
-  for (const r of model.validations) out.push(['validates', r]);
-  for (const r of model.audits) out.push(['audit', r]);
-  for (const r of model.ownership) out.push(['owns', r]);
-  for (const r of model.data_handling) out.push(['handles', r]);
-  for (const r of model.assumptions) out.push(['assumes', r]);
-  for (const r of model.features) out.push(['feature', r]);
-  for (const r of model.comments) out.push(['comment', r]);
-  for (const r of model.entitlements || []) out.push(['entitles', r]);
+  // Every collection is read through `?? []`, for the reason
+  // `canonicalAnnotationRecords` states: `ThreatModel` declares most of them
+  // required and `parseProject` always populates them, but this is now reached
+  // from `generateSarif`, a pure transform callers hand partial models to. An
+  // absent collection contributes no claims, which is what an empty one gives.
+  for (const r of model.mitigations ?? []) out.push(['mitigates', r]);
+  for (const r of model.exposures ?? []) out.push(['exposes', r]);
+  for (const r of model.confirmed ?? []) out.push(['confirmed', r]);
+  for (const r of model.acceptances ?? []) out.push(['accepts', r]);
+  for (const r of model.transfers ?? []) out.push(['transfers', r]);
+  for (const r of model.flows ?? []) out.push(['flows', r]);
+  for (const r of model.boundaries ?? []) out.push(['boundary', r]);
+  for (const r of model.validations ?? []) out.push(['validates', r]);
+  for (const r of model.audits ?? []) out.push(['audit', r]);
+  for (const r of model.ownership ?? []) out.push(['owns', r]);
+  for (const r of model.data_handling ?? []) out.push(['handles', r]);
+  for (const r of model.assumptions ?? []) out.push(['assumes', r]);
+  for (const r of model.features ?? []) out.push(['feature', r]);
+  for (const r of model.comments ?? []) out.push(['comment', r]);
+  for (const r of model.entitlements ?? []) out.push(['entitles', r]);
   return out;
 }
+
+/**
+ * The shape `relationRecords` mints below — a sha256 digest in lowercase hex,
+ * then the ordinal. It lives here, next to the `${base}:${ordinal}` that
+ * produces it, so a checker cannot drift from the thing it checks.
+ *
+ * A reader accepts the key under three names in six containers, several of them
+ * free-form bags another tool may also write a `claim_key` into. Without this,
+ * any non-empty string is taken as our stamp, and a value that was never a
+ * claim key diverts a finding that would otherwise have joined.
+ */
+export const CLAIM_KEY_PATTERN = /^[0-9a-f]{64}:\d+$/;
+
+/** Whether a value is shaped like a key this module mints. */
+export const isClaimKey = (v: string): boolean => CLAIM_KEY_PATTERN.test(v);
 
 /** Every relationship record with its stable key, in model order. */
 export function relationRecords(model: ThreatModel): ClaimSource[] {

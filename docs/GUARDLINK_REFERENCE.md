@@ -105,7 +105,7 @@ guardlink ci . --strict --scope services/api       # Gate on findings under thes
 # Reports & Export
 guardlink report [dir]                  # Generate threat-model.md + optional JSON
 guardlink dashboard [dir]               # Interactive HTML dashboard with Mermaid diagrams
-guardlink sarif [dir] [-o file]         # SARIF 2.1.0 for GitHub Advanced Security / VS Code
+guardlink sarif [dir] [-o file]         # SARIF 2.1.0 for GitHub Advanced Security / VS Code; @exposes and @confirmed results carry guardlink/threatId, and @exposes results also carry guardlink/claimKey
 guardlink diff [ref]                    # Compare threat model against a git ref (default: HEAD~1)
 guardlink paths [dir] [--all]           # Undefended source-to-sink routes, derived from @flows (no LLM)
 
@@ -208,7 +208,7 @@ guardlink hypothesis list [dir] [--state untested|confirmed|refuted|retest] [--j
 guardlink hypothesis next [dir] [-n 10] [--intake]           # what to test next; --intake prints a brief for bugb intake
 guardlink hypothesis refute  src/x.ts:12 --evidence "POST /login with payload X returned 400 from validateEmail()"
 guardlink hypothesis confirm src/x.ts:12 --evidence "request … response …" [--write]   # --write inserts the @confirmed line beneath the @exposes
-guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--write]     # cxg findings joined to claims
+guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--write]     # cxg findings joined to claims; --write inserts only uncontested key-verified ones
 ```
 
 - **Evidence is required.** A refutation needs what was tried and what came back; a confirmation
@@ -227,9 +227,107 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
 - **The queue.** `next` puts retests first, then untested exposures by severity, then those on an
   undefended path (`guardlink paths`), then unowned ones. No AI: the ledger is bookkeeping and
   the ranking is arithmetic. Testing stays with bugb and cxg.
-- **Scan import joins** by the finding's annotation location, then by asset and threat, then by
-  CWE. A finding that fits more than one claim is reported as ambiguous, never guessed; one that
-  fits none is listed as unmatched.
+- **A stamped claim key resolves the join, before anything coarser is tried.** A finding carrying
+  the claim key is looked up across the whole model. A key matches at most one claim, so that
+  lookup is the answer. If it names no claim the finding is **stale**: the claim it was tested
+  against is not in the model any more, deleted or with its asset, threat, refs, description or
+  file edited. Nothing is recorded, no by-hand target is offered (any claim standing there now is
+  a *different* claim), and the command exits non-zero.
+- **Forward it however your scanner already holds it.** `guardlink sarif` emits the key twice per
+  `@exposes` result: as `partialFingerprints['guardlink/claimKey']` — the mechanism, SARIF's own
+  stable-identity map and the only stamp location SARIF defines — and as `properties.claimKey`,
+  the mirror for consumers without a SARIF library. `--from-scan` accepts it under any of
+  `guardlink/claimKey`, `claimKey` or `claim_key`, and from either level — a finding's top level or
+  its `annotation` object — either spread onto that level or left as a nested `properties` or
+  `partialFingerprints` map. So copying either emitted surface wholesale works, spread or nested,
+  at either level. One shared definition (`CLAIM_KEY_NAMES` and `CLAIM_KEY_SURFACES` in
+  `src/parser/claim-key.ts`) backs the emitter, the reader's accepted placements and the hint text
+  — names *and* surfaces, because sharing only the names left the containers written twice and the
+  disagreement moved there. What the product advertises is always what the reader takes. The two
+  precedence orders are separate, each keeping the earliest-accepted first, so a report carrying a
+  key in both surfaces resolves to the `partialFingerprints` one, as it always did.
+- **A stamp has to look like a claim key.** Those names include free-form bags another tool may
+  also write a `claim_key` into, so a value counts as the stamp only if it is shaped like one —
+  sha256 hex, then the ordinal. That splits three situations the output keeps apart: no stamp (the
+  coarse joins apply), a well-formed key naming no claim (**stale**), and a value that is not a key
+  at all (**malformed** — reported with the value and the field it arrived in, never joined,
+  because guessing from the coarse tiers would confirm on what was just rejected). All of
+  ambiguous, stale, malformed and unmatched exit non-zero. Every candidate is collected before the
+  check runs, so a foreign `claim_key` sitting beside our own emitted `claimKey` in a forwarded bag
+  cannot bury it: the key is the first *valid* candidate in precedence order, and the unshaped ones
+  are reported as a note that changes neither the join nor the exit status.
+- **A scan-derived `@confirmed` is built from external text.** Every value in its description comes
+  from the report, and the line goes into a file whose annotations are line-oriented, so all of them
+  are collapsed to one line at a single boundary, quote-escaped, and the finished line is re-parsed
+  before it is written — a line that does not read back as exactly one `@confirmed` is refused. The
+  host language's comment syntax is a second grammar the text passes through, so **both** block
+  delimiters are broken, derived from the target file's form: the closer, which left intact ends the
+  doc-block and puts report text in code position, and the **opener**, which in a language whose
+  comments nest (Rust, Swift, Kotlin, Scala, Dart, Haskell, OCaml) starts a nested comment that
+  swallows the real closer and leaves the file inside an unterminated one. The re-parse cannot see
+  either, because it reads the annotation outside the comment it lands in. Breaking the opener is
+  unconditional — inert where comments do not nest, and a table of which languages nest would be one
+  more per-language fact to keep in step.
+- **`--write` only inserts an uncontested key-verified confirmation.** An `@confirmed` in source is
+  a claim that the exposure was tested and proven — later scans, reviewers and `guardlink sarif`
+  read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be
+  about a different exposure than the probe tested, and a **contested** one (two well-formed keys
+  naming different claims, resolved by precedence) leaves identity in doubt, so `--from-scan
+  --write` skips either, names it and prints the by-hand command; the outcome is still in the
+  ledger. Withholding is a fact about a **claim**, not about a finding: several findings can join to
+  one claim — a stamped one beside an unstamped one during a scanner rollout — and a claim whose
+  confirmation reached the source is not withheld, so it is neither reported as skipped nor counted
+  toward the exit status. Those skips are reported **after** the writes, at the line each withheld claim occupies
+  once they have landed — an insertion shifts every claim below it in that file, and with
+  consecutive `@exposes` a pre-write number names a *different* claim, so the handed-out command
+  would have recorded a confirmation against an exposure the probe never tested. Every `file:line`
+  command the tool prints is still position-dependent (GAP-77): correct when printed, stale after
+  the next write or edit. The line it does write states that the scan stamped the claim's own key,
+  so the reason survives the code that enforces it. One claim gets one write: two findings carrying
+  the same claim key — two probe templates against one exposure — fold into one ledger entry and one
+  insertion. A confirmation **already in the source**, from an earlier run or a re-import of the same
+  report, is reported as already there and is a **success**; `writeConfirmedLine` says so as a typed
+  outcome rather than an error message, so the distinction cannot drift with the wording. **A
+  `--write` that skipped anything exits non-zero**, a
+  partially written run included: the reader of that exit code is an orchestrator that never sees
+  the skip lines on stderr, and a `0` after a half-landed write is indistinguishable from a
+  complete one. The manual `confirm <file:line> --evidence … --write` path is never withheld —
+  it is human evidence about a named target, with no join to qualify — and it reads the same typed
+  outcome, so re-running it against a claim whose source already carries the confirmation says so
+  and exits 0.
+- **Only an unstamped finding falls to the coarse joins** — annotation location, then asset and
+  threat, then CWE — where one that fits more than one claim is reported as ambiguous, never
+  guessed, and one that fits none is listed as unmatched. An ambiguous finding's candidates are
+  by-hand targets like the withheld ones, so they are printed **after** the writes, at the line each
+  candidate occupies once this run has landed — a key-verified write higher up the same file moves
+  them, and with consecutive `@exposes` the shifted line holds a different claim. Those match where a claim *sits*, not
+  which claim it *is*, so a sibling that came to occupy the tested line satisfies them: same file,
+  same line, same asset, same threat, hence the same `threatId`. The order is the point. Were a
+  coarse join allowed to run first and the key left only a veto, a claim whose file was edited
+  above it — same claim, same key, new line — would be declared stale while it is alive, and a
+  finding carrying nothing but a key would be called unmatched.
+- **Every confirmation says which identity joined it**, in one of three ways, because each
+  establishes something different. `joined by claim-key` is key-verified: one stamp, naming this
+  claim. `joined by claim-key, CONTESTED` means the report carried more than one well-formed key
+  naming different claims, so the winner came from precedence rather than agreement. Anything else
+  is labelled *NOT key-verified* — it matched where the claim sits, not which claim it is — and a
+  report that carried no stamps at all says so once at the top. The provenance is persisted on the
+  ledger entry's scan source (`joined_by`), so the distinction survives the import. None of the
+  three may read like another: that identity is exactly how GAP-58 would reopen unnoticed.
+- **What it costs, and the bound.** The key names the claim, not the code, so it is unmoved by a
+  line shift and by any edit to the code beneath it — the ordinary drift that makes the ledger
+  expire an outcome costs no confirmation here. Measured on GuardLink's own model at `899b815`:
+  115 exposures, **115 distinct claim keys**, no collisions. The bound is repeats — two
+  byte-identical claims in one file (same verb, asset, threat, refs *and* description) share a
+  digest and are told apart only by an ordinal in document order, so deleting the earlier one
+  hands `<digest>:0` to the survivor and a stamp against the first joins to the second. Of those
+  115 exposures, **none** relies on an ordinal above zero; across all 669 claims in the model
+  exactly one does, and it is not an exposure. Separately, rewording a claim's own description
+  re-keys it, so a stamp from before the rewording is reported as stale.
+- **A `@confirmed` result carries no claim key.** The verb is part of the digest, so an `@exposes`
+  and the `@confirmed` proving it hold different keys, and the ledger keys entries by exposure
+  only — a confirmed claim's state comes from the annotation, never from an entry. A key stamped
+  from a confirmed result could join to nothing, so none is emitted.
 
 ## Threat Report Frameworks
 

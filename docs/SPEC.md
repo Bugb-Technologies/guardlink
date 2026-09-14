@@ -1048,6 +1048,181 @@ CWE references additionally populate the `cwe` property on SARIF results, which 
 
 When uploaded to GitHub via the Code Scanning API, `@exposes` annotations appear as inline security alerts on the relevant lines in pull requests.
 
+### 6.5. Result Identity
+
+Each result carries its identity in SARIF's own `partialFingerprints`, mirrored into
+`properties` for consumers without a SARIF library:
+
+| Key | `properties` mirror | On | Over |
+|---|---|---|---|
+| `guardlink/threatId` | `threatId` | `@exposes` and `@confirmed` | `(asset, threat, file)` |
+| `guardlink/claimKey` | `claimKey` | `@exposes` only | the claim's own words — verb, identity arguments, external refs, description — plus the file, with an ordinal for repeats |
+
+`guardlink/threatId` is the coarse, stable identity: one threat keeps one id across its
+lifecycle, so the `@exposes` and the `@confirmed` that later proves it mint the same id, and
+the id does not move when the claim changes line. The line is therefore not in it, and neither
+is the message.
+
+`guardlink/claimKey` is the fine identity: the same key the hypothesis ledger keys an entry on
+(`src/parser/claim-key.ts`). It names the claim across every edit that is not the claim — the
+line it sits on, and the code beneath it. Two exposures sharing `(asset, threat, file)`
+therefore share one `threatId` and are told apart by `claimKey`.
+
+**A `@confirmed` result carries no `claimKey`, deliberately.** The verb is part of the digest,
+so an `@exposes` and the `@confirmed` that proves it hold *different* keys; and the hypothesis
+ledger keys entries by exposure only — it resolves a confirmed claim's state from the source
+annotation and never reads a ledger entry for it. A key stamped from a confirmed result could
+therefore join to nothing, and emitting an identifier that cannot be used is worse than
+emitting none. Stamping the sibling exposure's key onto it instead would be worse still: it
+would assert a link between two claims that the model does not declare.
+
+A consumer that stamps a result's identity onto a finding and later joins that finding back to
+a claim MUST **resolve** on `claimKey` rather than filter on it: look the key up across the
+whole model *before* any coarser match, because a key matches at most one claim. If it resolves,
+that is the answer; if it resolves to nothing, the claim is gone and the finding is stale. A
+coarser match must never be allowed to win first and leave the key only a veto — a claim whose
+file was edited above it keeps its key but changes line, so a location match would send a live,
+correctly-stamped finding to `stale`, while a sibling that came to occupy the tested line would
+be matched before the key could speak. `guardlink hypothesis confirm --from-scan` implements
+exactly this rule, and records which identity joined each outcome so a key-verified confirmation
+is distinguishable from one taken on the coarser match.
+
+**Accepted wire names.** An unrecognised stamp is worse than an absent one: it degrades to the
+coarser join while the report *did* carry the discriminator. The mechanism is
+`partialFingerprints['guardlink/claimKey']` — SARIF's own stable-identity map, which other SARIF
+tooling understands and which is the only stamp location SARIF itself defines;
+`properties.claimKey` is the mirror for consumers without a SARIF library. `--from-scan`
+therefore accepts the key under **any** of these names:
+
+| Name | Where it comes from |
+|---|---|
+| `guardlink/claimKey` | the fingerprint key, forwarded as emitted |
+| `claimKey` | the `properties` mirror, forwarded as emitted |
+| `claim_key` | the scan-report convention's own casing |
+
+and from **any** container these placements produce — each level the key can sit at (the finding
+itself, its `annotation` object) carrying it directly, or carrying either emitted surface nested
+under that surface's own name:
+
+| Level | Placement |
+|---|---|
+| the finding | the key spread onto it under any accepted name |
+| the finding | `properties` or `partialFingerprints`, forwarded as a nested map |
+| `annotation` | the key spread onto it under any accepted name |
+| `annotation` | `properties` or `partialFingerprints`, forwarded as a nested map |
+
+So a consumer may copy either emitted surface wholesale, spread or nested, at either level,
+without knowing which name the key arrived under.
+
+Names and surfaces are **one** definition (`CLAIM_KEY_NAMES` and `CLAIM_KEY_SURFACES` in
+`src/parser/claim-key.ts`), which the exporter emits through, the reader generates its accepted
+placements from, and the operator-facing text interpolates. Both dimensions on purpose: sharing
+only the names left the containers written twice, and the disagreement simply moved there. A name
+or a surface the reader does not accept therefore cannot be advertised, and adding a surface
+widens the reader with no edit to it. The two precedence orders are separate, each keeping what
+was accepted earliest in front, so a report that contradicts itself resolves the way it always
+did — a key in both surfaces resolves to the `partialFingerprints` one.
+
+**A stamp must look like a claim key.** The accepted names include free-form bags another tool may
+also write a `claim_key` into, so a value is only taken as the stamp when it matches the shape the
+key is minted in — a sha256 digest in lowercase hex, then the ordinal (`CLAIM_KEY_PATTERN`). Three
+situations follow, and a consumer MUST NOT collapse them:
+
+| The finding carries | Meaning | What happens |
+|---|---|---|
+| no stamp | nothing claimed which claim was tested | the coarse joins apply |
+| a well-formed key naming no claim | the claim it was tested against is gone | **stale**: reported, never re-joined |
+| no well-formed key, and at least one unshaped value | a producer is emitting something else under a guardlink name | **malformed**: reported with the value and the field, never joined |
+| a well-formed key *and* unshaped values beside it | the report is usable; something else is also writing under our names | joins by key, and the unshaped values are **noted** |
+
+A malformed stamp is not treated as absent: falling back to the coarse joins would confirm on the
+strength of a value just rejected, and folding it into "unstamped" hides the one thing worth
+knowing. It is not treated as stale either — nothing about it says a claim is gone.
+
+The shape check runs **after** every candidate has been collected, never on whichever one the
+precedence happened to reach first. Validating a single selected candidate validates the wrong
+thing: these containers are shared bags, so a foreign `claim_key` placeholder sorting ahead of our
+own emitted `claimKey` — in the same object, from the same forwarded map — would bury a valid key
+and refuse a confirmation the report had identified precisely. The key is the first **valid**
+candidate in precedence order.
+
+**Writing an `@confirmed` back to source requires a key-verified join.** The annotation is a claim
+in the repository that the exposure was tested and proven; later scans, reviewers and this export
+all read it, and unlike a ledger entry it never expires. A coarse-joined confirmation may be about
+a different exposure than the probe tested, so `--from-scan --write` inserts only key-verified
+ones, names each one it skipped and how to record it deliberately, and states the provenance in
+the line it does write. A manual confirmation is unaffected: it is human evidence about a named
+target, with no join to qualify.
+
+A join is **contested** when the finding carried more than one well-formed claim key naming
+different claims. Precedence still picks the winner deterministically, but the outcome is recorded
+and reported as `claim-key-contested`, the losing keys are named with the field each arrived in,
+and the write is withheld — a label asserting more verification than was performed is itself a
+false claim, and this is the one surface that writes into a repository.
+
+**A written description is external text, and is treated as such.** Every value in a scan-derived
+`@confirmed` — the template id, the title, the matched patterns, the request and the response —
+comes from the report, and the line is spliced into a file whose annotations are line-oriented. So
+all of them are collapsed to one line at the single boundary they enter through, then quote- and
+backslash-escaped, and the assembled line is **re-parsed** before anything is written: a line that
+does not read back as exactly one `@confirmed` is refused rather than written. Collapsing per field
+at each interpolation is what left the title and the matched patterns raw while the request and
+response were handled, and a newline in any of them ends the annotation and puts report-controlled
+text on the next line of someone's doc-block.
+
+Sanitisation covers **every grammar the text passes through, not only GuardLink's.** A written
+description also passes through the host language's comment syntax, and those are different
+grammars: collapsing newlines and escaping quotes neutralises ours and leaves the host's intact, so
+the sequence that closes a block comment — ordinary in a probe's response when it echoes CSS or JS
+— ends the doc-block early and puts report-controlled text in **code** position in the file being
+edited. **Both** delimiters of that form are therefore broken, not only the closer. Block comments
+**nest** in Rust, Swift, Kotlin, Scala, Dart, Haskell and OCaml, and there an injected **opener**
+starts a nested comment: the block's own closer then closes only that inner level and the file runs
+on inside an unterminated comment, so the declaration the doc-block documents and everything below
+it silently leave the compile — the same damage as the closer case, entered from the other end, and
+equally invisible to a writer that re-parses the bare annotation outside the comment it lands in.
+Breaking the opener is **unconditional**, not gated on a table of which grammars nest: it is inert
+where they do not nest and fatal where they do, so it always costs nothing and sometimes saves the
+file, and one more per-language fact modelled in one place and relied on in another is the drift
+this section exists to prevent. Both ends are taken from the same form pair, so neither can be
+widened without the other. The comment form itself is derived from the
+**source line being written into** — the line's own opener when it has one, no closer at all for a
+line comment, the block that opened it for a continuation line, and only then a per-extension
+fallback. The extension alone is a proxy: a C-family block comment is accepted in any file with no
+language gate, so a table keyed by extension is thinner than the parser in one direction and
+irrelevant in the other. The damage is language-specific — a sequence that is fatal in one language
+is inert in another, and mangling text that was never dangerous loses evidence for nothing.
+
+That derivation settles two further questions with the same information. When the `@exposes` line
+**closes its own comment**, the inserted line inherits its opener, so the terminator is reproduced
+on it. Without that the file is left inside an unterminated comment and the declaration the
+doc-block described silently leaves the compile.
+
+And when the `@exposes` line **opens a block it does not close**, its prefix is an opener, so the
+inserted line is given that form's **continuation marker** instead of a copy of it. Copying the
+prefix is the same nesting failure reached without any report-controlled text at all: an ordinary
+`/** @exposes …` opening line was enough. Reproducing the closer there is not the alternative —
+balanced inside a nesting host, it ends the **outer** block early in a non-nesting one. A form with
+no continuation marker a reader could strip refuses the write rather than guessing, which is
+unreachable in practice because such an opener line is not a comment to the parser and never
+reaches the model. Sanitisation belongs to the **whole line that is written**, prefix and
+terminator included, not only to the value that is obviously external.
+
+Line comments need no closer of their own, but the reason is the collapse, not the absence of a
+terminator: a line comment ends at **any** character its grammar treats as ending a line, and
+ECMAScript counts U+2028 and U+2029 among those. The collapse therefore removes every one of them
+— the Unicode mandatory line breaks, not the ASCII two — and that is what makes a `//` host safe.
+A collapse narrowed back to `\r\n\t` would reopen it, with report-controlled text landing in code
+position. The re-parse cannot stand in for any of this: it reads the bare annotation, outside the
+comment it is about to be spliced into.
+
+**Bound.** Two BYTE-IDENTICAL claims in one file — same verb, same identity arguments, same
+external refs *and* the same description — share a digest and are told apart only by an ordinal
+in document order, `<digest>:0` and `<digest>:1`. Delete the earlier one and the survivor
+inherits `<digest>:0`, which is the deleted claim's exact key, so a finding stamped against the
+first joins to the second. Separately: rewording a claim's own description re-keys it, so a
+stamp taken before the rewording is refused as stale.
+
 ---
 
 ## 7. Diff and Change Detection

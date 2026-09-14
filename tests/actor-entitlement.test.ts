@@ -540,6 +540,32 @@ describe('§9.8 uncited and imprecise are independent', () => {
   });
 });
 
+describe('§3.2 still holds with the claim key on every result', () => {
+  // The claim key is a second keyed fingerprint on each result, and it is derived
+  // from the whole model — including the entitlements. §3.2 has to be re-proved for
+  // anything new a result carries: an entitlement must not change a byte of it.
+  const exposure = {
+    asset: '#archival-fs', threat: '#path-traversal', severity: 'high' as const,
+    external_refs: [], description: 'archival URI is used as a filesystem path',
+    location: loc('common/archiver/filestore/archiver.go', 61),
+  };
+
+  it('produces byte-identical SARIF when the results carry a claim key', () => {
+    const without = generateSarif(model({ exposures: [exposure] }));
+    const with_ = generateSarif(model({
+      exposures: [exposure],
+      actors: [actor('ns-admin', 'Namespace_Admin')],
+      entitlements: [effective()],
+    }));
+    // The key is present, so this is not passing on an absent field.
+    expect(without.runs[0].results[0].partialFingerprints?.['guardlink/claimKey']).toMatch(/^[0-9a-f]{64}:\d+$/);
+    expect(JSON.stringify(with_.runs[0].results)).toBe(JSON.stringify(without.runs[0].results));
+    expect(JSON.stringify(with_.runs[0].tool)).toBe(JSON.stringify(without.runs[0].tool));
+    expect(with_.runs[0].properties.annotation_hash)
+      .not.toBe(without.runs[0].properties.annotation_hash);
+  });
+});
+
 describe('§3.2 still holds with the threat slot', () => {
   const exposure = {
     asset: '#archival-fs', threat: '#path-traversal', severity: 'high' as const,

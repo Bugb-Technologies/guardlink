@@ -15,13 +15,30 @@
  * @flows #cli -> SourceFiles via writeConfirmedLine -- "The @confirmed line, on --write"
  * @handles internal on #cli -- "Request and response evidence from scans, redacted"
  * @comment -- "A confirmation is held to the same evidence bar the gate holds @confirmed to; a refutation needs evidence too, just not the same words, because 'the validator rejected it' is evidence of absence"
+ * @comment -- "importScan() resolves a finding carrying a claim_key against the whole record set BEFORE the location/asset-threat/CWE tiers, which run only for an unstamped finding; a key that names no claim is stale, never re-joined by a coarser tier. The key names the claim itself, so it survives a line move and an edit to the code beneath it, and separates a sibling claim that landed on the tested line. Two byte-identical claims in one file share a digest and are told apart only by an ordinal in document order, so deleting the earlier one hands its key to the survivor"
+ * @comment -- "The claim key is read under every name in CLAIM_KEY_NAMES and from every container generated from CLAIM_KEY_SURFACES (src/parser/claim-key.ts) — the same definition guardlink sarif emits through — so the finding's top level, its annotation object, and either emitted surface nested under its own name at either level all resolve. Names AND surfaces live in that one definition because each time only one dimension was shared the disagreement simply moved to the other, and an unrecognised stamp takes the weaker join while the output tells the operator to start sending the stamp they already sent"
+ * @comment -- "The @validates below sits here rather than on its test on purpose: .guardlink/config.json excludes the tests directory and every nested one from the scan, so an annotation moved into tests/hypothesis.test.ts is never parsed — it would leave the threat model entirely and a lookup of the validations for #cli would answer nothing instead of pointing anywhere. Every validation in this repo lives with the implementation it proves and names its test in the description; see src/parser/parse-file.ts, src/parser/comment-strip.ts and src/mcp/subgraph.ts. Do not move it"
+ * @validates #config-validation for #cli -- "tests/hypothesis.test.ts forwards a real generateSarif result's emitted surfaces into the scan finding without naming a field, in every placement generated from CLAIM_KEY_SURFACES, so neither the names nor the containers the reader accepts can drift from what the export writes"
+ * @comment -- "A stamp is only taken as ours when it matches CLAIM_KEY_PATTERN; three names across six containers include free-form bags another tool may also write a claim_key into. All candidates are collected first and the shape check partitions them AFTER, because validating only the first hit checked the wrong candidate — a foreign placeholder sorting ahead of our own emitted claimKey in the same forwarded bag buried a valid key. The key is the first VALID candidate in precedence order; only when none is valid is the finding refused as malformed, and unshaped values found beside a good key are reported as a note that changes neither the join nor the exit status"
+ * @comment -- "confirmedLine() states the join provenance in a scan-derived @confirmed, because that line is a claim in someone's repository that this exposure was tested, not a report line. The CLI refuses to write one that was not key-verified; the provenance in the text is what keeps that refusal meaningful after the caller changes"
+ * @exposes #cli to #arbitrary-write [high] cwe:CWE-74 -- "scanEvidence() interpolates scan-report-controlled strings — template_id, title, matched_patterns, request, response — into the @confirmed description writeConfirmedLine() splices into a source file; a newline in any of them ends the annotation and places report-controlled text on the next line of someone's doc-block, in the syntax their threat model is parsed from"
+ * @mitigates #cli against #arbitrary-write using #input-sanitize -- "Sanitisation covers every grammar the text passes through, not only ours. GuardLink's: every scan-controlled value goes through oneLine() at the one boundary it enters through (scanEvidence) rather than per interpolation, then escapeDesc() for quotes and backslashes, and the line that will actually be written is re-parsed and refused unless it reads back as exactly one @confirmed. The HOST language's: commentFormAt() derives the comment form from the SOURCE LINE being written into — not from the file extension, which is a proxy the stripper does not share — and that one derivation both breaks the closer that would end the comment and reproduces the terminator when the @exposes closes its own comment, since the re-parse reads the bare annotation outside the comment it is spliced into and is blind to either"
+ * @validates #input-sanitize for #cli -- "tests/hypothesis.test.ts drives scan-controlled newlines and each host block closer through the real write path — including a language absent from the extension fallback and a self-closing comment — and asserts with src/structure that the host file still resolves the symbol it documents, which the annotation re-parse alone cannot see"
+ * @audit #cli -- "The stale bucket refuses a join rather than guessing it, and offers no by-hand target on purpose: the claims the coarse tiers would have named are different claims, so recording this evidence against one is the confirmation the key just refused. The malformed bucket refuses for the same reason one level earlier. The CLI exits non-zero when any finding lands in either"
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import type { ThreatModel } from '../types/index.js';
 import { hasEvidenceWords } from '../gate/lint.js';
 import { redactEvidence } from '../analyze/format.js';
-import { readHypotheses, writeHypotheses, emptyHypotheses, type HypothesisEntry, type HypothesisOutcome, type HypothesisSource, type HypothesesLedger } from './ledger.js';
+import { CLAIM_KEY_NAMES, CLAIM_KEY_SURFACES, isClaimKey } from '../parser/claim-key.js';
+import { parseLine } from '../parser/parse-line.js';
+import { blockCommentDelimiters, breakCommentDelimiters, commentFormAt, isStandaloneAnnotationFile, stripCommentPrefix } from '../parser/comment-strip.js';
+// `oneLine` and `escapeDesc` are the treatment this repo already applies at every
+// annotation write site; reused rather than re-implemented so a third copy cannot
+// drift. No cycle: src/review only imports parser modules and types.
+import { oneLine, escapeDesc } from '../review/index.js';
+import { readHypotheses, writeHypotheses, emptyHypotheses, type HypothesisEntry, type HypothesisOutcome, type HypothesisSource, type HypothesesLedger, type JoinedBy } from './ledger.js';
 import { classifyHypotheses, type HypothesisRecord } from './classify.js';
 
 export interface OutcomeInput {
@@ -101,20 +118,122 @@ export interface ScanFinding {
   annotation: { file: string; line: number } | null;
   asset: string | null;
   threat: string | null;
+  /**
+   * The claim key the export stamped onto the finding, when it carries one, read
+   * under every name in `CLAIM_KEY_NAMES` and from every container a consumer
+   * puts it in — see `findingStamp`. A stamp guardlink fails to recognise is
+   * worse than no stamp: it takes the weaker join, and the report that carried
+   * the discriminator gets told to start sending one.
+   *
+   * Null when the finding carried no stamp AND when EVERY stamp it carried is
+   * unshaped — the latter lands in `malformed_stamp` instead, so the two are
+   * never confused for each other.
+   */
+  claim_key: string | null;
+  /**
+   * Candidates were present under our names and NONE was shaped like a claim
+   * key. Its own state: a producer emitting something else under our name is
+   * neither "unstamped" nor "the claim is gone", and folding it into either
+   * loses the one thing worth knowing about it.
+   */
+  malformed_stamp: ScanStamp | null;
+  /**
+   * Unshaped candidates found ALONGSIDE a valid key, which was used. Reported as
+   * a note and nothing more: selecting the good key must not silently hide that
+   * something is emitting garbage under a guardlink name, but it is not grounds
+   * to refuse a join the report identified precisely.
+   */
+  junk_stamps: ScanStamp[];
+  /**
+   * Well-formed keys that DISAGREE with the one selected — the report claiming
+   * two different exposures at once. Deterministic precedence still picks the
+   * winner, because a widening must not change what an already-accepted report
+   * resolves to; what changes is that the disagreement is no longer discarded.
+   * A conflicting VALID extra is likelier to be trusted than an obviously
+   * malformed one, so hiding it is worse than hiding junk, not equally bad.
+   */
+  rival_stamps: ScanStamp[];
   evidence: { request: string | null; response: string | null; matched_patterns: string[]; data: Record<string, unknown> };
 }
 
-export type JoinedBy = 'location' | 'asset-threat' | 'cwe';
+/** A value found under one of the claim key's accepted names, and where. */
+export interface ScanStamp {
+  value: string;
+  /** The path it arrived under, e.g. `annotation.properties.claimKey`. */
+  field: string;
+}
+
+export type { JoinedBy } from './ledger.js';
 
 export interface ImportResult {
   scanId: string;
   confirmed: { finding: ScanFinding; record: HypothesisRecord; entry: HypothesisEntry; joinedBy: JoinedBy }[];
   ambiguous: { finding: ScanFinding; candidates: HypothesisRecord[] }[];
+  /**
+   * The finding's claim key names no claim in the model: the claim it was tested
+   * against is gone. No candidates are offered — whatever the coarse tiers would
+   * have matched is a different claim, and recording this evidence against it by
+   * hand is the exact confirmation the key just refused.
+   */
+  stale: { finding: ScanFinding }[];
+  /**
+   * A stamp arrived under one of our names that is not a claim key. Reported,
+   * never joined: it says nothing about which claim was tested, so guessing from
+   * the coarse tiers would be a confirmation resting on a value we rejected.
+   */
+  malformed: { finding: ScanFinding; stamp: ScanStamp }[];
   unmatched: ScanFinding[];
 }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
 const bare = (r: string): string => r.trim().replace(/^#/, '').toLowerCase();
+const bag = (v: unknown): Record<string, unknown> | undefined => (v && typeof v === 'object' ? v as Record<string, unknown> : undefined);
+
+/**
+ * The stamp a scan report carries, under any name in `CLAIM_KEY_NAMES` and in
+ * any container a real consumer puts it in, with the field it arrived in so a
+ * value that is not a claim key can be reported precisely.
+ *
+ * The containers are GENERATED, not listed: each level a key can sit at — the
+ * finding itself, its `annotation` object — carrying the key directly, or
+ * carrying any emitted surface in `CLAIM_KEY_SURFACES` nested under that
+ * surface's own name, which is what copying a SARIF result member wholesale
+ * produces. Adding a surface to that definition widens this with no edit here.
+ * A hand-written list is how the reader came to refuse a shape the export
+ * advertised.
+ *
+ * EVERY candidate is collected, in the precedence those two definitions fix,
+ * and the shape check partitions them afterwards. Validating only the first hit
+ * checked the wrong candidate: several of these containers are free-form bags
+ * another tool may also write a `claim_key` into, so a foreign placeholder
+ * sorting earlier than our own emitted `claimKey` — in the same object, from the
+ * same forwarded bag — buried a perfectly good key and the finding was refused.
+ * A validity check placed after a selection step validates the wrong thing.
+ *
+ * The key is therefore the first VALID candidate in precedence order, so a
+ * report that contradicts itself resolves the way it always did.
+ */
+function findingStamps(o: Record<string, unknown>, ann: Record<string, unknown> | undefined): ScanStamp[] {
+  const found: ScanStamp[] = [];
+  // The second level is `o.annotation ?? o.location`, so the path has to name
+  // the key the value actually arrived under. Hard-coding `annotation.` sent an
+  // operator looking for a field their report does not contain — in the one
+  // message whose whole purpose is telling them what to fix.
+  const at2 = o.annotation ? 'annotation.' : 'location.';
+  for (const [level, at] of [[o, ''], [ann, at2]] as const) {
+    if (!level) continue;
+    const containers: [Record<string, unknown> | undefined, string][] = [[level, at]];
+    for (const s of CLAIM_KEY_SURFACES) containers.push([bag(level[s.container]), `${at}${s.container}.`]);
+    for (const [c, prefix] of containers) {
+      if (!c) continue;
+      for (const name of CLAIM_KEY_NAMES) {
+        const v = str(c[name]);
+        if (v) found.push({ value: v, field: `${prefix}${name}` });
+      }
+    }
+  }
+  return found;
+}
 
 function coerceFinding(raw: unknown, i: number): ScanFinding | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -122,6 +241,13 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
   const ann = (o.annotation ?? o.location) as Record<string, unknown> | undefined;
   const ev = (o.evidence ?? {}) as Record<string, unknown>;
   const cwe = Array.isArray(o.cwe_ids) ? o.cwe_ids.filter((c): c is string => typeof c === 'string') : [];
+  const stamps = findingStamps(o, ann);
+  const valid = stamps.filter(s => isClaimKey(s.value));
+  const invalid = stamps.filter(s => !isClaimKey(s.value));
+  // Forwarding both emitted surfaces carries the SAME key twice, which is the
+  // ordinary shape and agreement, not a conflict. Only a DIFFERENT well-formed
+  // key is a rival: the report contradicting itself about which claim was tested.
+  const rivals = valid.filter(s => s.value !== valid[0]?.value);
   return {
     id: str(o.id) ?? `finding-${i + 1}`,
     template_id: str(o.template_id) ?? 'unknown-template',
@@ -132,6 +258,10 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
     annotation: ann && typeof ann.file === 'string' && typeof ann.line === 'number' ? { file: ann.file, line: ann.line } : null,
     asset: str(o.asset) ?? str(ann?.asset),
     threat: str(o.threat) ?? str(ann?.threat),
+    claim_key: valid[0]?.value ?? null,
+    malformed_stamp: valid.length === 0 ? invalid[0] ?? null : null,
+    junk_stamps: valid.length > 0 ? invalid : [],
+    rival_stamps: rivals,
     evidence: {
       request: str(ev.request), response: str(ev.response),
       matched_patterns: Array.isArray(ev.matched_patterns) ? ev.matched_patterns.filter((p): p is string => typeof p === 'string') : [],
@@ -140,20 +270,72 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
   };
 }
 
-/** Evidence text for the ledger: what the template sent and what came back, redacted, plus the scan id. */
+/**
+ * Evidence text for the ledger: what the template sent and what came back,
+ * redacted, plus the scan id.
+ *
+ * EVERY value here comes out of a scan report, and this string can be written
+ * into someone's source as an `@confirmed` description. So all of them go
+ * through `one()` — the single boundary they can enter through — rather than
+ * each interpolation remembering. A per-field helper is exactly how
+ * `template_id`, `title` and `matched_patterns` came to be interpolated raw
+ * while only `request` and `response` were collapsed, and a newline in any of
+ * them ends our line and puts report-controlled text on the next one, in the
+ * syntax the threat model is parsed from.
+ */
 export function scanEvidence(scanId: string, f: ScanFinding): string {
   const red = redactEvidence({ ...f.evidence, timestamp: undefined }) as { request: string | null; response: string | null; matched_patterns: string[] };
-  const cut = (s: string | null): string => (s ? s.replace(/\s+/g, ' ').trim().slice(0, 240) : '(none)');
-  const parts = [`${f.template_id}: ${f.title || 'finding'}`, `request: ${cut(red.request)}`, `response: ${cut(red.response)}`];
-  if (red.matched_patterns.length > 0) parts.push(`matched: ${red.matched_patterns.join(', ')}`);
-  parts.push(`(scan ${scanId})`);
+  const one = (s: string | null | undefined, fallback: string): string => {
+    const flat = oneLine(s ?? '').slice(0, 240);
+    return flat.length > 0 ? flat : fallback;
+  };
+  const parts = [
+    `${one(f.template_id, 'unknown-template')}: ${one(f.title, 'finding')}`,
+    `request: ${one(red.request, '(none)')}`,
+    `response: ${one(red.response, '(none)')}`,
+  ];
+  if (red.matched_patterns.length > 0) parts.push(`matched: ${one(red.matched_patterns.join(', '), '(none)')}`);
+  parts.push(`(scan ${one(scanId, 'scan')})`);
   return parts.join('; ');
 }
 
 /**
- * Join each finding to a claim — by annotation location, then by asset and
- * threat, then by CWE — and record the confirmed ones. A finding that fits
- * more than one claim is reported as ambiguous, never guessed.
+ * Join each finding to a claim and record the confirmed ones.
+ *
+ * A claim key RESOLVES the join; it does not narrow one. A finding that carries
+ * a key is looked up against the whole record set, and that lookup is the whole
+ * answer: it hits exactly one claim (keys are unique within a model) or it hits
+ * none, in which case the claim it named is gone and the finding is stale. The
+ * coarse tiers — annotation location, then asset and threat, then CWE — run
+ * ONLY for a finding that carries no key, and a finding that fits more than one
+ * of them is reported as ambiguous, never guessed.
+ *
+ * The order matters and is not an optimisation. Were the tiers to run first,
+ * the location tier would pick whatever claim now sits on the tested line and
+ * the key would only get to veto it — so a claim that merely DRIFTED (its file
+ * edited above it, moving its line) would be reported stale while it is alive
+ * and holding the stamped key, and a finding carrying nothing but a key — the
+ * most precise identifier in the system — would be reported unmatched. A wrong
+ * location match must never beat a correct key.
+ *
+ * The key is the one the ledger already keys an entry on: a digest of the
+ * claim's own words, so it survives every edit that is not the claim — a line
+ * move, and an edit to the code beneath it. That is what separates a finding
+ * from a sibling claim that landed on the line it was tested at: same file,
+ * same line, same asset, same threat, therefore the same threat id, and nothing
+ * else on the finding tells them apart.
+ *
+ * The bound: two BYTE-IDENTICAL claims in one file — same verb, asset, threat,
+ * external refs and description — share a digest and are told apart only by an
+ * ordinal in document order. Delete the earlier one and the survivor inherits
+ * `…:0`, the deleted claim's exact key, so a finding stamped against the first
+ * joins to the second. That is the shape this function exists to refuse,
+ * surviving at a strictly narrower population. Separately, rewording a claim's
+ * own description re-keys it, so a stamp from before the rewording is refused.
+ *
+ * Every confirmation records WHICH identity joined it (`joined_by`), because a
+ * key-verified confirmation and one taken on the coarse tiers must not be
+ * indistinguishable after the fact.
  */
 export function importScan(root: string, model: ThreatModel, scanPath: string, input: { by: string; at: string }): ImportResult {
   const abs = inside(root, scanPath);
@@ -185,31 +367,41 @@ export function importScan(root: string, model: ThreatModel, scanPath: string, i
     return own;
   };
 
-  const result: ImportResult = { scanId, confirmed: [], ambiguous: [], unmatched: [] };
+  const result: ImportResult = { scanId, confirmed: [], ambiguous: [], stale: [], malformed: [], unmatched: [] };
   const ledger = loadForWrite(root);
+  const byKey = new Map(records.map(r => [r.key, r]));
   for (const f of findings) {
     let candidates: HypothesisRecord[] = [];
     let joinedBy: JoinedBy | null = null;
-    if (f.annotation) {
-      const file = f.annotation.file.replace(/\\/g, '/');
-      candidates = records.filter(r => r.file === file && r.line === f.annotation!.line);
-      if (candidates.length > 0) joinedBy = 'location';
+    if (f.malformed_stamp) { result.malformed.push({ finding: f, stamp: f.malformed_stamp }); continue; }
+    if (f.claim_key) {
+      const named = byKey.get(f.claim_key);
+      if (!named) { result.stale.push({ finding: f }); continue; }
+      candidates = [named];
+      // Identity in doubt: the key won a tiebreak rather than standing alone.
+      joinedBy = f.rival_stamps.length > 0 ? 'claim-key-contested' : 'claim-key';
+    } else {
+      if (f.annotation) {
+        const file = f.annotation.file.replace(/\\/g, '/');
+        candidates = records.filter(r => r.file === file && r.line === f.annotation!.line);
+        if (candidates.length > 0) joinedBy = 'location';
+      }
+      if (!joinedBy && (f.asset || f.threat)) {
+        candidates = records.filter(r => (!f.asset || assetOf(r.asset) === assetOf(f.asset)) && (!f.threat || threatOf(r.threat) === threatOf(f.threat)));
+        if (candidates.length > 0) joinedBy = 'asset-threat';
+      }
+      if (!joinedBy && f.cwe_ids.length > 0) {
+        const want = new Set(f.cwe_ids.map(c => c.toUpperCase()));
+        candidates = records.filter(r => [...cwesOf(r)].some(c => want.has(c)));
+        if (candidates.length > 0) joinedBy = 'cwe';
+      }
+      if (!joinedBy) { result.unmatched.push(f); continue; }
+      if (candidates.length > 1) { result.ambiguous.push({ finding: f, candidates }); continue; }
     }
-    if (!joinedBy && (f.asset || f.threat)) {
-      candidates = records.filter(r => (!f.asset || assetOf(r.asset) === assetOf(f.asset)) && (!f.threat || threatOf(r.threat) === threatOf(f.threat)));
-      if (candidates.length > 0) joinedBy = 'asset-threat';
-    }
-    if (!joinedBy && f.cwe_ids.length > 0) {
-      const want = new Set(f.cwe_ids.map(c => c.toUpperCase()));
-      candidates = records.filter(r => [...cwesOf(r)].some(c => want.has(c)));
-      if (candidates.length > 0) joinedBy = 'cwe';
-    }
-    if (!joinedBy) { result.unmatched.push(f); continue; }
-    if (candidates.length > 1) { result.ambiguous.push({ finding: f, candidates }); continue; }
     const record = candidates[0];
     const entry = upsert(ledger, record, 'confirmed', {
       evidence: scanEvidence(scanId, f), by: `${input.by}:${f.template_id}`, at: input.at,
-      source: { kind: 'scan', scan_id: scanId, template_id: f.template_id, confidence: f.confidence },
+      source: { kind: 'scan', scan_id: scanId, template_id: f.template_id, confidence: f.confidence, joined_by: joinedBy },
     });
     result.confirmed.push({ finding: f, record, entry, joinedBy });
   }
@@ -221,24 +413,162 @@ export function importScan(root: string, model: ThreatModel, scanPath: string, i
 export function confirmedLine(record: HypothesisRecord, entry: HypothesisEntry): string {
   const cwe = record.refs;
   const sev = record.severity && record.severity !== 'unset' ? ` [${record.severity}]` : '';
-  const desc = entry.evidence.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  // The provenance marker is appended AFTER `oneLine`'s cap, so the description
+  // can exceed that cap by the marker's length. That is deliberate: the cap
+  // exists to bound SCAN-CONTROLLED text, the marker is our own fixed words, and
+  // it is the one part that must survive — it says how this confirmation was
+  // established. Collapsing the two together put the marker inside the cap, so
+  // evidence near 1000 characters (reachable from ordinary scan data, five
+  // fields at 240 each) silently dropped it and the written line read exactly
+  // like an unverified one.
+  const desc = escapeDesc(hostSafe(`${oneLine(entry.evidence)}${writtenProvenance(entry)}`, record.file));
   return `@confirmed ${record.threat} on ${record.asset}${sev}${cwe.length ? ` ${cwe.join(' ')}` : ''} -- "${desc}"`;
 }
 
 /**
- * Insert the line directly beneath the @exposes, with the same comment
- * prefix. Refuses when a @confirmed for the pair already sits there.
+ * Break any sequence that would end OR open a comment this description is
+ * written into, derived from the target file's block forms.
+ *
+ * Sanitisation has to cover every grammar the text passes through, not only
+ * ours. `oneLine` and `escapeDesc` neutralise GuardLink's grammar — newlines,
+ * quotes, backslashes — and leave the HOST language's comment syntax untouched,
+ * so a block closer in a probe's response (ordinary when it echoes CSS or JS)
+ * ended the customer's doc-block and put report-controlled text in code
+ * position. The re-parse in `writeConfirmedLine` cannot catch it: it reads the
+ * bare annotation, outside the comment it is about to be spliced into.
+ *
+ * Both delimiters, not only the closer: where block comments NEST an injected
+ * OPENER swallows the real closer and leaves the file inside an unterminated
+ * comment — see `blockCommentDelimiters`, which pairs the two so they cannot
+ * drift. Line comments need no delimiter of their own — but only because
+ * `oneLine` removes every character a host grammar treats as ending a line, not
+ * merely the newline. An ECMAScript line comment ends at ANY LineTerminator, and
+ * a lone U+2028 once survived a collapse that covered `[\r\n\t]`, leaving report
+ * text in code position. Narrow that collapse and this function stops being
+ * sufficient for a `//` host.
+ *
+ * This pass works from the extension, because the offered line is built without
+ * reading the file and may be pasted anywhere in it. `writeConfirmedLine` runs
+ * the authoritative pass from the form it derives out of the source line; both
+ * call one transform, so a delimiter this one already broke is simply absent there.
  */
-export function writeConfirmedLine(root: string, record: HypothesisRecord, line: string): { file: string; line: number } {
+function hostSafe(desc: string, file: string): string {
+  return breakCommentDelimiters(desc, blockCommentDelimiters(file));
+}
+
+/**
+ * What an `@confirmed` written from a scan says about how it was established.
+ *
+ * An `@confirmed` in source is not a report line — it is a claim in the
+ * repository that this exposure was tested and proven, read by every later scan
+ * and by reviewers, and a coarse-joined one may be about a different exposure
+ * entirely. So a scan-derived line states that its evidence reached this claim
+ * by the claim's own key. Without that, the rule refusing to write the others
+ * lives only in the caller, and the next person to loosen the join silently
+ * reuses a path that writes unmarked claims into someone's source.
+ *
+ * A manual confirmation renders unchanged: it is human evidence about a named
+ * target, there is no join, and nothing about it is in question.
+ */
+function writtenProvenance(entry: HypothesisEntry): string {
+  if (entry.source.kind !== 'scan' || entry.source.joined_by !== 'claim-key') return '';
+  return '; key-verified: the scan stamped this claim\'s own claim key';
+}
+
+/**
+ * Where the `@confirmed` for a claim ended up, and whether this call put it there.
+ *
+ * `already-present` is a correct outcome, not a failure. A claim whose source
+ * already carries its confirmation is in exactly the state the caller asked for,
+ * and the ordinary paths reach it: two cxg templates probing one exposure stamp
+ * the same claim key, and re-importing a report is idempotent because the key
+ * digests the claim's words and is unmoved by the line already inserted. The
+ * caller has to tell that from a real write failure to report honestly, and the
+ * distinction is a TYPE rather than the wording of an error string — a caller
+ * matching on English is a defect waiting for a reword. Every other refusal below
+ * stays a throw: nothing landed and nothing is going to.
+ */
+export type ConfirmedWrite = { file: string; line: number; outcome: 'inserted' | 'already-present' };
+
+/**
+ * Insert the line directly beneath the @exposes, with the same comment
+ * prefix. Reports `already-present` when a @confirmed for the pair already sits
+ * there, and refuses a line that does not parse back as one `@confirmed`.
+ *
+ * The re-parse is the structural half of the same guard `confirmedLine`'s
+ * collapse gives: the description is assembled from a scan report, and a value
+ * that broke out of its quotes or its line would land in source as something
+ * the next parse reads differently from what we thought we wrote. Checking here
+ * rather than in the caller means no caller can skip it. Same reason, and the
+ * same pairing, as `buildAcceptLines` in `src/review/index.ts`.
+ *
+ * `record.line` is resolved from a model parsed BEFORE this call, and this call
+ * splices a line into the file — so applying several of these to one file must
+ * go in DESCENDING line order. Ascending, each insertion shifts every later
+ * target down by one, and where the shifted line is itself an `@exposes` every
+ * guard below passes and the confirmation lands against a claim that was never
+ * tested. Re-resolving between writes would work too; the ordering is cheaper
+ * and cannot be forgotten halfway.
+ */
+export function writeConfirmedLine(root: string, record: HypothesisRecord, line: string): ConfirmedWrite {
   const abs = inside(root, record.file);
   const lines = readFileSync(abs, 'utf-8').split('\n');
   const idx = record.line - 1;
   const src = lines[idx];
   if (src === undefined || !src.includes('@exposes')) throw new Error(`${record.file}:${record.line} does not carry an @exposes any more; re-parse and try again`);
+  // A written `@confirmed` carries only `(threat, asset)` — the same coarse tuple
+  // GAP-58 is about — so two sibling claims in one doc-block are indistinguishable
+  // to this guard by construction, and this was the last place in the write path
+  // still keying on that pair. It cannot be narrowed further until a written
+  // confirmation carries a claim-specific identity, so instead the SCAN is bounded
+  // semantically: stop at the next `@exposes`, because a `@confirmed` past that
+  // line belongs to THAT claim, and stop on leaving the comment block. A fixed
+  // six-line window was a guess about layout that swallowed the sibling below and
+  // refused a confirmation nothing else could write.
+  // In a standalone `.gal` file the line's content IS the line; reading it
+  // through `stripCommentPrefix` returns null on the first bare annotation and
+  // breaks the scan before it compares anything, which disabled the guard for
+  // external mode entirely. Same asymmetry, same branch, as `parseFile`.
+  const bare = isStandaloneAnnotationFile(record.file);
   const pair = `@confirmed ${record.threat} on ${record.asset}`;
-  if (lines.slice(idx + 1, idx + 6).some(l => l.includes(pair))) throw new Error(`${record.file}:${record.line + 1} already carries ${pair}`);
-  const prefix = src.slice(0, src.indexOf('@exposes'));
-  lines.splice(idx + 1, 0, `${prefix}${line}`);
+  for (let i = idx + 1; i < lines.length; i++) {
+    const inner = bare ? lines[i] : stripCommentPrefix(lines[i]);
+    // A `@source` starts a new anchoring block, so anything past it describes a
+    // different location — the `.gal` counterpart of the next `@exposes`.
+    if (inner === null || inner.includes('@exposes') || inner.includes('@source')) break;
+    if (inner.includes(pair)) return { file: record.file, line: i + 1, outcome: 'already-present' };
+  }
+  // One derivation of the comment form being written into answers both host-
+  // grammar questions: which delimiters would end or reopen this comment, and
+  // whether the line closes itself. A self-closing `@exposes` inherits its opener
+  // into the inserted line, so without reproducing the terminator the file is left
+  // inside an unterminated comment and everything below it silently leaves the
+  // compile — and an injected opener does the same wherever comments nest.
+  const form = commentFormAt(lines, idx, record.file);
+  const safe = breakCommentDelimiters(line, form.delimiters);
+  const reparsed = parseLine(safe, { file: record.file, line: record.line + 1 });
+  if (reparsed.annotation?.verb !== 'confirmed') {
+    throw new Error(`Refusing to write a line that does not parse back as one @confirmed: ${JSON.stringify(safe.slice(0, 120))}`);
+  }
+  // The treatment belongs to the LINE, not to the value that is obviously
+  // external. The prefix used to be copied off the source line verbatim, so an
+  // `@exposes` on the line that OPENS a multi-line block comment re-injected that
+  // opener into the inserted line — no scan-controlled text required — and where
+  // comments nest the block's own closer then closed only the inner one. What is
+  // being inserted is a CONTINUATION of an existing comment, so the prefix is that
+  // form's continuation marker, derived from the same `commentFormAt` that answers
+  // every other host-grammar question here. A self-closing line is the one case
+  // whose prefix is an opener on purpose, balanced by the terminator below.
+  let prefix = src.slice(0, src.indexOf('@exposes'));
+  if (form.opensUnclosedBlock) {
+    if (form.continuation === null) {
+      throw new Error(`${record.file}:${record.line} opens a block comment it does not close, and that comment form has no continuation marker to insert under; close the comment on this line, or move the annotation to a continuation line`);
+    }
+    prefix = `${prefix.match(/^[ \t]*/)![0]} ${form.continuation}`;
+  }
+  if (!form.selfClosing) prefix = breakCommentDelimiters(prefix, form.delimiters);
+  const close = form.selfClosing ? ` ${form.closers[0]}` : '';
+  lines.splice(idx + 1, 0, `${prefix}${safe}${close}`);
   writeFileSync(abs, lines.join('\n'));
-  return { file: record.file, line: record.line + 1 };
+  return { file: record.file, line: record.line + 1, outcome: 'inserted' };
 }

@@ -26,9 +26,12 @@ claim was tested against reality.
 
 - Testing. GuardLink never fires traffic; bugb and cxg do.
 - A GAL verb for "refuted". The claim stays `@exposes`; the ledger carries the outcome.
-- Importing which hypothesis a probe attached to when cxg does not say (SEAM-12). Until then the
-  join is by annotation location, then by asset and threat, then by CWE, and an ambiguous match
-  is reported, not guessed.
+- Importing which hypothesis a probe attached to when cxg does not say (SEAM-12). When cxg does
+  not say, the join is by annotation location, then by asset and threat, then by CWE, and an
+  ambiguous match is reported, not guessed. When cxg does say — a finding carrying the
+  `guardlink/claimKey` the SARIF export stamped on the `@exposes` — that key is resolved against
+  the whole model first and those coarser joins do not run at all; a key naming no claim is
+  reported as stale rather than confirmed.
 
 ## Architecture
 
@@ -44,7 +47,7 @@ Schema `guardlink.hypotheses/v1`, a sibling of `verified.json`. One entry per cl
 | `evidence` | required; for a confirmation it must carry evidence words (request, response, reproduced, scan, …), the same bar the gate holds `@confirmed` to |
 | `by`, `at` | `human:<name>` / `cxg:<template>`, ISO date |
 | `anchor` | the claim's anchor `{scope, symbol, hash}` at test time |
-| `source` | `{kind: 'manual'}` or `{kind: 'scan', scan_id, template_id, confidence}` |
+| `source` | `{kind: 'manual'}` or `{kind: 'scan', scan_id, template_id, confidence, joined_by?}` — `joined_by` names the identity that joined the finding to the claim (`claim-key`, `claim-key-contested`, `location`, `asset-threat`, `cwe`); absent on entries written before it existed, which is unknown rather than verified |
 | `history` | every earlier outcome for the key, newest first |
 
 Untested is the absence of an entry. Evidence from a scan goes through `redactEvidence` before
@@ -78,10 +81,37 @@ guardlink hypothesis confirm --from-scan <report.json> [dir] [--by <name>] [--wr
 ```
 
 `refute` and `confirm` refuse without `--evidence`; `confirm` refuses evidence with no evidence
-words. `--write` inserts the offered `@confirmed` line directly beneath the `@exposes`, with the
-same comment prefix, and reports the file and line. `--from-scan` joins each finding to a claim
-(annotation location → asset and threat → CWE), records the confirmed ones, and lists the
-unmatched and the ambiguous. `--intake` prints the ranked queue as a brief for `bugb intake`.
+words. `--write` inserts the offered `@confirmed` line directly beneath the `@exposes`, as a
+continuation of that comment — the marker and any terminator derived from the line being written
+into rather than copied from it (docs/SPEC.md §6.5) — and reports the file and line; a claim whose
+source already carries the confirmation is reported as such and is a success. `--from-scan` joins
+each finding to a claim, records the confirmed ones, and lists the unmatched, the ambiguous, the
+stale and the malformed.
+
+On `--from-scan`, `--write` inserts only the confirmations that were key-verified AND uncontested,
+and says what it skipped and how to record it by hand. An `@confirmed` in source is a claim that
+the exposure was tested and proven, and it never expires the way a ledger entry does, so neither a
+coarse-joined one — which may be about a different exposure than the probe tested — nor a contested
+one, whose report named two different claims and whose winner came from a precedence tiebreak, is
+written there. The line it does write states that the scan stamped the claim's own key.
+
+A finding carrying the claim key — under any of `guardlink/claimKey`, `claimKey` or `claim_key`,
+at the finding's top level or in its `annotation`, spread onto that level or left as a forwarded
+`properties` or `partialFingerprints` map — is resolved against the whole record set first:
+that key is the one this ledger already keys its entries on, so the join and the ledger name a
+claim the same way, and a key matches at most one claim. It holds across a line move and an edit
+to the code beneath the claim, and it separates a sibling claim that came to sit on the tested
+line, where file, line, asset, threat and threat id all match. A key naming no claim is stale, and
+a stamp that is not shaped like a key at all is malformed — reported with the value and the field,
+never joined, since those names include bags another tool may also write a `claim_key` into.
+Only an unstamped finding falls to the coarse joins (annotation location → asset and threat →
+CWE); letting those run first would let a live-but-moved claim be called stale and a key-only
+finding be called unmatched. Each recorded outcome keeps the identity that joined it in
+`source.joined_by`, so a key-verified confirmation is not mistaken for a coarse one.
+
+The bound is repeats: two byte-identical claims in one file share a digest and are separated
+only by an ordinal in document order, so deleting the earlier one hands its key to the survivor.
+`--intake` prints the ranked queue as a brief for `bugb intake`.
 
 ### Where the state shows
 

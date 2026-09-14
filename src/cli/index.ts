@@ -66,7 +66,7 @@ import type { SinceInput } from '../dashboard/analytics.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt, buildTranslatePrompt, buildAskPrompt, resolveAnnotationMode } from '../agents/index.js';
 import { selectAnnotatePlaybook, selectReportShape, ANNOTATE_PLAYBOOKS, REPORT_SHAPES } from '../playbooks/index.js';
 import { lintAnnotations, runGate, formatGateReport, buildGateFollowUp, stripViolations, RULE_FIX } from '../gate/index.js';
-import { relationRecords } from '../parser/claim-key.js';
+import { relationRecords, CLAIM_KEY_NAMES, CLAIM_KEY_SURFACES } from '../parser/claim-key.js';
 import { parseFindingsBlock, validateFindings } from '../analyze/findings.js';
 import { readHypotheses, classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, confirmedLine, writeConfirmedLine, formatHypothesisList, formatQueue, formatIntake, formatOutcome, formatImport, HYPOTHESES_FILE } from '../hypothesis/index.js';
 import type { HypothesisClassification } from '../hypothesis/index.js';
@@ -1657,22 +1657,66 @@ hypothesis
 
 const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: string | undefined, dir: string, opts: { project?: string; evidence?: string; by?: string; write?: boolean; fromScan?: string }) => {
   const { root, model } = await hypothesisContext(dir, opts.project);
-  const by = opts.by || `human:${defaultVerifier(root)}`;
+  // @comment -- "`defaultVerifier` already returns `human:<name>` (src/parser/verify.ts:172), so prefixing it here recorded `human:human:<name>` — the form the ledger schema and this command's own --by help both say it is not. Do NOT 'repair' older entries that carry the doubled form: `by` is display and provenance metadata, never a join key — upsert and every reader match on the claim key — so pre-fix and post-fix entries coexist in one ledger and nothing stops matching. An explicit --by is passed through verbatim on this path, which is how `--by cxg:login-sqli` names its scheme"
+  const by = opts.by || defaultVerifier(root);
   const at = nowIso();
   try {
     if (outcome === 'confirmed' && opts.fromScan) {
       // @flows ScanReport -> #cli via importScan -- "cxg findings recorded as confirmations, joined to claims"
       const r = importScan(root, model, opts.fromScan, { by: opts.by || 'cxg', at });
       console.log(formatImport(r));
+      // @comment -- "Withheld is a fact about a CLAIM, not about a finding. Several findings can join to one claim — a stamped one beside an unstamped one during a cxg stamp rollout, or two templates probing the same exposure — so a per-finding list printed one claim's remediation command twice and, worse, could report a claim as skipped in the very run that wrote it. Keyed by record.key on the same rule `writes` uses, last occurrence kept because that is the entry the ledger ends up holding"
+      const coarse = [...new Map(r.confirmed.filter(c => c.joinedBy !== 'claim-key').map(c => [c.record.key, c])).values()];
+      let withheld = coarse;
+      // @comment -- "THE one calculation of where a line sits once the writes are done, used by every coordinate this command hands a user: the confirmations that landed, the ones already present, and the by-hand commands for both the withheld and the ambiguous. Each done.line is a PRE-write coordinate — descending order guarantees nothing at or above a target had been spliced when it was written — so an insertion at or at a lower number than a pre-write position pushes that position down by one. Only SUCCESSFUL writes are in `done`, so a write that threw shifts nothing, and with no --write it is empty and this is the identity. Two sites computing this independently is the shape that disagrees silently, and this command has already produced that defect twice"
+      const done: { file: string; line: number }[] = [];
+      const afterWrites = (file: string, pre: number) => pre + done.filter(o => o.file === file && o.line <= pre).length;
       if (opts.write) {
-        for (const c of r.confirmed) {
-          try { const w = writeConfirmedLine(root, c.record, confirmedLine(c.record, c.entry)); console.log(`  wrote ${w.file}:${w.line}`); }
-          catch (e) { console.error(`  ! ${(e as Error).message}`); }
+        // @comment -- "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet"
+        // @comment -- "ONE CLAIM, ONE WRITE. Two findings can carry the same claim key — the ordinary shape when two cxg templates probe one exposure — and both resolve to the same record and fold into ONE ledger entry, so writing per finding attempted the same insertion twice and the second was refused as a failure. Keyed by record.key, keeping the LAST occurrence: upsert replaces the entry object on every call, so only the final one is the entry the ledger actually holds"
+        const writes = [...new Map(r.confirmed.filter(c => c.joinedBy === 'claim-key').map(c => [c.record.key, c])).values()]
+          .sort((a, b) => (a.record.file < b.record.file ? -1 : a.record.file > b.record.file ? 1 : b.record.line - a.record.line));
+        // @comment -- "An exit code is a claim about what happened, and it has to be true in BOTH directions: honest about an under-write and honest about a success. A confirmation already in the source is the state we were asked to reach — from an earlier run, or a re-import of the same report — so it is separated from a real failure by the TYPE writeConfirmedLine returns, never by matching the wording of an error. Every remaining throw is a failure and still exits non-zero"
+        const present: { file: string; line: number }[] = [];
+        const reached = new Set<string>();
+        for (const c of writes) {
+          try {
+            const w = writeConfirmedLine(root, c.record, confirmedLine(c.record, c.entry));
+            (w.outcome === 'inserted' ? done : present).push({ file: w.file, line: w.line });
+            reached.add(c.record.key);
+          }
+          catch (e) { console.error(`  ! ${(e as Error).message}`); process.exitCode = 1; }
         }
-      } else if (r.confirmed.length > 0) {
-        console.log('\nadd --write to insert an @confirmed line beneath each joined @exposes');
+        // @comment -- "Reconciled against what the writes actually did. A claim whose confirmation IS in the source — inserted just now or already there — was not withheld, whatever else joined to it coarsely, so it is neither told to the operator as skipped nor counted toward the exit status. The rule it serves is the one the exit check states: the code is a claim about what happened and has to be true in BOTH directions, and reporting a claim as withheld in the run that wrote it is the half that was still false"
+        withheld = coarse.filter(c => !reached.has(c.record.key));
+        // @comment -- "An inserted @confirmed comes to rest directly above the line it displaced, so it is that line's new position less one — derived from afterWrites rather than counted a second way. Printed in reading order, not in the order the writes went in"
+        const landed = done.map(w => ({ file: w.file, line: afterWrites(w.file, w.line) - 1 }));
+        for (const w of landed.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line))) console.log(`  wrote ${w.file}:${w.line}`);
+        // @comment -- "Said in terms of what is true rather than as an error: the confirmation is there. The line an already-present @confirmed was found at is a pre-write coordinate like any other — the scan that found it stops at the next @exposes, and descending order means every insertion so far sits below that — so it goes through the same afterWrites"
+        for (const w of present.map(p => ({ file: p.file, line: afterWrites(p.file, p.line) })).sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line))) console.log(`  already confirmed ${w.file}:${w.line}`);
+        // @comment -- "--write only inserts an UNCONTESTED key-verified confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), and a contested one came from a report that named two different claims at once, so identity is in doubt in both cases. Losing that throughput is the point: those are exactly the joins that can be wrong"
+        // @comment -- "Reported AFTER the writes, at the line the withheld claim occupies once they have landed. Printing pre-write lines here handed the operator a command naming a line that this same run then moved: with consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator writes a confirmation against an exposure the probe never tested — GAP-58 one layer out, in a human's fingers instead of ours. Documenting the hazard one block down was not guarding against it"
+        // @comment -- "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so every command printed here is position-dependent and is correct AT THE MOMENT OF PRINTING and no longer — a later write, or an edit, moves the target again. Tracked there, not widened here"
+        for (const c of withheld) {
+          const why = c.joinedBy === 'claim-key-contested'
+            ? 'the report carried more than one claim key naming different claims, so this one won on precedence rather than agreement — which exposure was tested is in doubt'
+            : `joined by ${c.joinedBy}, not key-verified, so it may be about a different exposure than the probe tested`;
+          const at = `${c.record.file}:${afterWrites(c.record.file, c.record.line)}`;
+          console.error(`  ! skipped ${at} — ${why}. The outcome is in the ledger; if you judge it right, record it deliberately:`);
+          console.error(`      guardlink hypothesis confirm ${at} --evidence "…" --write`);
+        }
+      } else if (r.confirmed.some(c => c.joinedBy === 'claim-key')) {
+        console.log('\nadd --write to insert an @confirmed line beneath each key-verified @exposes');
       }
-      if (r.ambiguous.length > 0 || r.unmatched.length > 0) process.exitCode = 1;
+      // @comment -- "The candidates for an ambiguous finding are by-hand targets like the withheld ones, so they are emitted here rather than inside formatImport: that formatter runs BEFORE the writes, and a key-verified write higher up the same file moves an ambiguous candidate exactly as it moves a withheld claim. With consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator records a confirmation against an exposure the probe never tested — GAP-58 through a human's fingers, on our own instruction. Stays on stdout, where it was"
+      // @comment -- "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so these are correct AT THE MOMENT OF PRINTING and no longer. That residue is the addressing scheme and is tracked there; a command this run itself invalidated is a different problem and is fixed here"
+      for (const a of r.ambiguous) {
+        console.log(`\nAmbiguous  ${a.finding.id} (${a.finding.template_id}) fits ${a.candidates.length} claims — pick one and record it by hand:`);
+        for (const c of a.candidates) console.log(`  guardlink hypothesis confirm ${c.file}:${afterWrites(c.file, c.line)} --evidence "…"`);
+      }
+      // @comment -- "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'. A --write that withheld any confirmation is the same fact about the same run, so it exits non-zero too — PARTIALLY written included, not only the all-withheld case. The reader of this exit code is bravos, which orchestrates this loop and never sees the `! skipped` lines on stderr: give 0 two meanings and a half-written run is indistinguishable from a complete one, and the orchestrator proceeds believing the corpus carries confirmations that are not in it"
+      if (r.ambiguous.length > 0 || r.stale.length > 0 || r.malformed.length > 0 || r.unmatched.length > 0
+        || (opts.write && withheld.length > 0)) process.exitCode = 1;
       return;
     }
     if (!target) { console.error('Name the exposure as file:line, or pass --from-scan <report.json>.'); process.exitCode = 1; return; }
@@ -1681,8 +1725,9 @@ const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: strin
     const offered = outcome === 'confirmed' ? confirmedLine(record, entry) : undefined;
     console.log(formatOutcome(record, entry, opts.write ? undefined : offered));
     if (outcome === 'confirmed' && opts.write) {
+      // @comment -- "The by-hand path reads the same typed outcome as --from-scan. A claim whose source already carries this confirmation is in the state that was asked for, so it is reported and exits 0; it used to throw into the ✗ handler and exit non-zero on a run that changed nothing and needed to change nothing"
       const w = writeConfirmedLine(root, record, offered!);
-      console.log(`\nWrote ${w.file}:${w.line}`);
+      console.log(w.outcome === 'already-present' ? `\n${w.file}:${w.line} already carries this confirmation` : `\nWrote ${w.file}:${w.line}`);
     }
   } catch (e) {
     console.error(`✗ ${(e as Error).message}`);
@@ -1707,9 +1752,11 @@ hypothesis
   .argument('[dir]', 'Project directory', '.')
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--evidence <text>', 'The request and response, the reproduction, or the scan proof (required without --from-scan)')
-  .option('--from-scan <file>', 'A cxg scan report (JSON); each finding is joined to a claim by location, then asset and threat, then CWE')
+  // @comment -- "The accepted names and containers are INTERPOLATED from the one shared definition, not written out here. A hand-written copy drifts benignly when the definition widens (the help under-advertises) and harmfully when it narrows: the help then advertises a name the reader refuses, which is the one thing this definition exists to make impossible. The no-stamp banner in format.ts interpolates for the same reason, and both are pinned by tests that take the names out of the text and require the reader to accept them"
+  .option('--from-scan <file>', `A cxg scan report (JSON). A finding carrying the claim key (${CLAIM_KEY_NAMES.join(', ')} — at the finding's top level or in its annotation, spread or as a forwarded ${CLAIM_KEY_SURFACES.map(s => s.container).join('/')} map) resolves to the claim with that key, or is reported stale; only an unstamped finding falls to the weaker joins — location, then asset and threat, then CWE`)
   .option('--by <name>', 'Who tested it (default: human:<git user.name>; cxg for --from-scan)')
-  .option('--write', 'Also insert the @confirmed line beneath the @exposes in the source')
+  // @comment -- "ONE string stating BOTH behaviours, because --write sits on `confirm` and genuinely serves both paths. An author writing against this flag reads --help, not our runtime output: 'inserts the @confirmed line' alone over-promises on the one surface that writes into someone else's repository, and an operator who believes every joined confirmation landed stops checking the ones that did not — which is exactly the knowledge the withholding rule exists to give them. Two per-path wordings were rejected for the reason this branch has already corrected on names, containers, grammars and positions: two descriptions of one thing can disagree, and one string cannot contradict itself"
+  .option('--write', 'Also insert the @confirmed line into the source. On the manual confirm <file:line> path it goes beneath that @exposes; under --from-scan only uncontested key-verified confirmations are written — the rest stay in the ledger alone and are reported with the command to record them by hand')
   .action(outcomeAction('confirmed'));
 
 // ─── translate ───────────────────────────────────────────────────────
