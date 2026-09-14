@@ -794,6 +794,39 @@ export function findUser(email: string) { return email; }
     expect(readHypotheses(root).ledger!.entries[0].source).toMatchObject({ kind: 'scan', joined_by: 'claim-key-contested' });
   }, 60000);
 
+  it('does not claim an outcome for a contested finding that was never recorded', async () => {
+    // The precedence winner names a DELETED claim while the rival names a live
+    // one, so the finding goes to `stale` — nothing is recorded, there is no
+    // outcome and no write to withhold. The contest is still worth reporting,
+    // but not in words that assert a confirmation that never happened.
+    const tested = await siblings(SIBLINGS);
+    const testedSarif = generateSarif(await parse(tested));
+    const dead = stamp(testedSarif, 4).claim_key;   // A — deleted below
+
+    const root = await siblings(B_ON_A_LINE);
+    const model = await parse(root);
+    const live = stamp(generateSarif(model), 4).claim_key;   // B — survived, now on A's line
+    expect(dead).not.toBe(live);
+    expect(relationRecords(model).map(x => x.key)).not.toContain(dead);
+
+    const path = await writeScan(root, { scan_id: 'cxg-dead', findings: [{
+      id: 'f1', template_id: 'login-sqli', severity: 'critical', confidence: 0.9, title: 'SQLi', cwe_ids: [],
+      partialFingerprints: { 'guardlink/claimKey': dead }, properties: { claimKey: live },
+      evidence: { request: 'POST /u', response: 'HTTP 200 3 rows', matched_patterns: [], data: {} },
+    }] });
+    const r = importScan(root, model, path, { by: 'cxg', at: NOW });
+
+    expect(r.confirmed).toEqual([]);
+    expect(r.stale.map(x => x.finding.id)).toEqual(['f1']);
+    const out = formatImport(r);
+    // The contest is reported, and says what actually became of the finding.
+    expect(out).toMatch(/Contested\s+a finding that was not recorded/);
+    expect(out).toMatch(/Nothing was confirmed for it/);
+    // And it must NOT claim an outcome, a CONTESTED label, or a withheld write.
+    expect(out).not.toMatch(/The winner above was chosen/);
+    expect(out).not.toMatch(/no @confirmed is written to source for it/);
+  }, 60000);
+
   it('treats the same key in both surfaces as agreement, not a conflict', async () => {
     // The ordinary forwarded shape: a consumer copies both emitted surfaces, so
     // the same key arrives twice. Nothing is contested and nothing is withheld.
@@ -1293,6 +1326,46 @@ export function login(email: string) { return email; }
     expect(src.split('\n').filter(l => l.trim() === CLOSER)).toHaveLength(1);
     expect(src.split('\n').indexOf('SELECT id FROM users WHERE id = 1;')).toBeGreaterThan(
       src.split('\n').findIndex(l => l.trim() === CLOSER));
+  }, 120_000);
+
+  it('collapses a line separator the report smuggled in, so a line-comment host still parses', async () => {
+    // A `//` host has no block closer to break, so `hostSafe` adds nothing and
+    // the annotation re-parse — which reads the bare line outside its comment —
+    // sees nothing wrong. But ECMAScript ends a `//` comment at U+2028, so a
+    // single one between two non-whitespace characters left the rest of the
+    // description in CODE position. `\\s{2,}` never caught it: a lone separator
+    // matches nothing, and U+0085 is not in `\\s` at all.
+    const SEP = String.fromCharCode(0x2028);
+    const LINEC = `import x from 'x';
+
+// @exposes #api to #sqli [critical] cwe:CWE-89 -- "email param"
+export function findUser(email: string) { return email; }
+`;
+    const root = await siblings(LINEC);
+    const before = await parse(root);
+    expect(before.exposures).toHaveLength(1);
+    await writeScan(root, { scan_id: 'cxg-sep', findings: [finding({
+      claim_key: stamp(generateSarif(before), 3).claim_key,
+      evidence: { request: 'r', response: `HTTP200${SEP}const pwned=1;`, matched_patterns: [], data: {} },
+    })] });
+    const run = await runCli(root);
+    expect(run.code).toBe(0);
+
+    const src = await readFile(join(root, 'src', 'a.ts'), 'utf-8');
+    expect(src).not.toContain(SEP);
+
+    // The host grammar is what this breaks, so ask the structural parser. Left
+    // intact, the separator ended the comment and `const pwned=1;` became a real
+    // declaration — the anchor resolved to `pwned` instead of `findUser`.
+    const confirmedAt = src.split('\n').findIndex(l => l.includes('@confirmed')) + 1;
+    const st = await parseStructure(join(root, 'src', 'a.ts'), src);
+    expect(st.language).toBe('typescript');
+    expect(st.anchorForLine(confirmedAt)).toMatchObject({ symbol: 'findUser' });
+    st.dispose();
+
+    const after = await parse(root);
+    expect(after.confirmed).toHaveLength(1);
+    expect(after.exposures).toHaveLength(1);
   }, 120_000);
 
   it('reproduces the terminator when the @exposes closes its own comment', async () => {

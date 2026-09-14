@@ -46,7 +46,7 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { extractCitation } from '../parser/citation.js';
 import { normalizeName } from '../parser/normalize.js';
 import { parseLine } from '../parser/parse-line.js';
-import { escapeDesc, insertAnnotationsAt, type CommentStyle } from './index.js';
+import { escapeDesc, insertAnnotationsAt, oneLine, type CommentStyle } from './index.js';
 import type {
   EntitlementCitation, EntitlesAnnotation, ParseDiagnostic, ThreatModel,
 } from '../types/index.js';
@@ -169,7 +169,6 @@ export const PROPOSALS_FILE = 'entitlement-proposals.json';
 
 /** A ledger is a review queue for a dozen role/capability pairs (§3.6), not a database. */
 const MAX_LEDGER_BYTES = 512 * 1024;
-const MAX_TEXT_LEN = 1000;
 
 /** Mirrors the CAPABILITY fragment in parse-line.ts — the capability is a join key, not prose. */
 const CAPABILITY_RE = /^[A-Za-z][A-Za-z0-9_.\-]*$/;
@@ -197,15 +196,13 @@ function resolveInsideRoot(root: string, relative: string): string {
 // ─── Text hygiene ───────────────────────────────────────────────────
 
 /**
- * Collapse a free-text field to one line.
- *
- * Annotation descriptions are line-oriented, so an embedded newline in a
- * rationale or a decision note would let the text below it be read back as a
- * separate annotation. Escaping quotes (escapeDesc) is not enough on its own.
+ * Re-exported, not re-implemented. This module kept its own copy for fear of a
+ * cycle, but it already imports `escapeDesc` from `./index.js`, so there is no
+ * new edge — and two copies of the line-breaking character set is precisely the
+ * shape that drifts apart, which is how a separator the ASCII set misses got to
+ * survive into a written annotation.
  */
-export function oneLine(s: string): string {
-  return s.replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, MAX_TEXT_LEN);
-}
+export { oneLine } from './index.js';
 
 // ─── Identity ───────────────────────────────────────────────────────
 

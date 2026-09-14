@@ -28,7 +28,7 @@
  * @exposes #cli to #arbitrary-write [medium] cwe:CWE-73 -- "Writes @accepts/@audit annotations into source files"
  * @mitigates #cli against #arbitrary-write using #path-validation -- "Only modifies files already in the parsed project"
  * @exposes #cli to #arbitrary-write [high] cwe:CWE-74 -- "Reviewer-supplied justification and author name are interpolated into annotation text, where a newline would forge a second annotation"
- * @mitigates #cli against #arbitrary-write using #input-sanitize -- "oneLine() collapses newlines/CR/tabs before escapeDesc on every field that reaches a built line"
+ * @mitigates #cli against #arbitrary-write using #input-sanitize -- "oneLine() collapses every character a host grammar treats as ending a line — the Unicode mandatory breaks LF, CR, NEL, LS and PS, plus VT, FF and TAB, not the ASCII two — before escapeDesc on every field that reaches a built line. A lone U+2028 ends a // comment in ECMAScript and put report-controlled text in code position, and the \\s{2,} collapse never caught it. One definition, re-exported to entitlements.ts rather than copied"
  * @audit #cli -- "Every acceptance records who decided, why, and until when; the rule is enforced in applyReviewAction so no caller can route around it"
  * @flows ThreatModel -> #cli via getReviewableExposures -- "Exposure list input"
  * @flows #cli -> SourceFiles via writeFile -- "Annotation insertion output"
@@ -244,16 +244,35 @@ export function findInsertionIndex(lines: string[], exposureLine: number, stopAt
 // ─── Annotation builders ────────────────────────────────────────────
 
 /**
+ * Every character that ends a line in a grammar this text may be written into,
+ * plus TAB, which is collapsed to keep the result on one visual line.
+ *
+ * The set is the Unicode mandatory line breaks — LF, CR, NEL (U+0085), LS
+ * (U+2028), PS (U+2029) — together with VT and FF, which line-oriented readers
+ * also break on, NOT the ASCII two. ECMAScript ends a `//` comment at LS or PS,
+ * so a single one of those inside a description ends the comment it was written
+ * into and puts the rest of the line in CODE position. The `\s{2,}` collapse
+ * below does not save us: a lone separator between two non-whitespace
+ * characters matches nothing at all, and U+0085 is not in `\s` to begin with.
+ *
+ * `\t-\r` is U+0009–U+000D: TAB, LF, VT, FF, CR.
+ */
+const LINE_BREAKING = /[\t-\r\u0085\u2028\u2029]+/g;
+
+/**
  * Collapse a free-text field to one line.
  *
- * Annotation descriptions are line-oriented, so an embedded newline in a
- * justification would let the text below it be read back as a separate
- * annotation — `escapeDesc` alone does not stop that. Same function and the same
- * reason as `entitlements.ts`; kept here rather than imported to avoid a cycle
- * between the two review writers.
+ * Annotation descriptions are line-oriented, so an embedded line break in a
+ * justification — or in a scan report's evidence — would let the text after it
+ * be read back as a separate annotation, or leave the host language's comment
+ * and become source. `escapeDesc` alone stops neither.
+ *
+ * The single copy: `entitlements.ts` used to keep its own for fear of a cycle,
+ * but it already imports `escapeDesc` from here, so importing this adds no edge
+ * — and two copies of a character set is the shape that drifts.
  */
 export function oneLine(s: string): string {
-  return (s ?? '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, 1000);
+  return (s ?? '').replace(LINE_BREAKING, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, 1000);
 }
 
 /**

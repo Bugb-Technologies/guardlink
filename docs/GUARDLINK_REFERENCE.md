@@ -281,11 +281,14 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
   coarse join allowed to run first and the key left only a veto, a claim whose file was edited
   above it — same claim, same key, new line — would be declared stale while it is alive, and a
   finding carrying nothing but a key would be called unmatched.
-- **Every confirmation says which identity joined it.** `joined by claim-key` is key-verified;
-  anything else is labelled *NOT key-verified*, and a report that carried no stamps at all says so
-  once at the top. The provenance is persisted on the ledger entry's scan source (`joined_by`), so
-  the distinction survives the import. A key-verified confirmation and one taken on a coarse match
-  must not read the same — that identity is exactly how GAP-58 would reopen unnoticed.
+- **Every confirmation says which identity joined it**, in one of three ways, because each
+  establishes something different. `joined by claim-key` is key-verified: one stamp, naming this
+  claim. `joined by claim-key, CONTESTED` means the report carried more than one well-formed key
+  naming different claims, so the winner came from precedence rather than agreement. Anything else
+  is labelled *NOT key-verified* — it matched where the claim sits, not which claim it is — and a
+  report that carried no stamps at all says so once at the top. The provenance is persisted on the
+  ledger entry's scan source (`joined_by`), so the distinction survives the import. None of the
+  three may read like another: that identity is exactly how GAP-58 would reopen unnoticed.
 - **What it costs, and the bound.** The key names the claim, not the code, so it is unmoved by a
   line shift and by any edit to the code beneath it — the ordinary drift that makes the ledger
   expire an outcome costs no confirmation here. Measured on GuardLink's own model at `899b815`:

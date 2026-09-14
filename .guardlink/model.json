@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:f783bf0a1b8212a84e58e95fae378926f845040f492f3ee04fd8d25f97e7c308",
+    "annotation_hash": "sha256-v3:cbec3ceeb6421c10df0a72ef5cbc7f78e6084e6de1b0977a85ba8ebf16963633",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
@@ -1832,7 +1832,7 @@
       "description": "execFileSync with a fixed argv and no shell; nothing user-supplied reaches the command",
       "location": {
         "file": "src/review/entitlements.ts",
-        "line": 872
+        "line": 869
       }
     },
     {
@@ -1849,7 +1849,7 @@
       "asset": "#cli",
       "threat": "#arbitrary-write",
       "control": "#input-sanitize",
-      "description": "oneLine() collapses newlines/CR/tabs before escapeDesc on every field that reaches a built line",
+      "description": "oneLine() collapses every character a host grammar treats as ending a line — the Unicode mandatory breaks LF, CR, NEL, LS and PS, plus VT, FF and TAB, not the ASCII two — before escapeDesc on every field that reaches a built line. A lone U+2028 ends a // comment in ECMAScript and put report-controlled text in code position, and the \\s{2,} collapse never caught it. One definition, re-exported to entitlements.ts rather than copied",
       "location": {
         "file": "src/review/index.ts",
         "line": 31
@@ -1862,7 +1862,7 @@
       "description": "Anchor line must exist in the file, and callers resolve the path against the parsed project root",
       "location": {
         "file": "src/review/index.ts",
-        "line": 395
+        "line": 414
       }
     },
     {
@@ -3322,7 +3322,7 @@
       "description": "Writes annotation lines into a caller-supplied file path",
       "location": {
         "file": "src/review/index.ts",
-        "line": 394
+        "line": 413
       }
     },
     {
@@ -4973,7 +4973,7 @@
       "description": "Reads the local git identity to offer it as a prompt suggestion; never recorded unconfirmed",
       "location": {
         "file": "src/review/entitlements.ts",
-        "line": 873
+        "line": 870
       }
     },
     {
@@ -5003,7 +5003,7 @@
       "description": "Annotation insertion output",
       "location": {
         "file": "src/review/index.ts",
-        "line": 396
+        "line": 415
       }
     },
     {
@@ -7382,14 +7382,14 @@
       "description": "Writes `against <threat>` as well as `on <asset>`, because the join is the triple (design §9.3): a claim missing either clause matches no finding and demotes nothing. Omitting the threat here made acceptance produce a DEAD annotation — the proposal ledger carried it, the written line did not, so the only sanctioned way to create an entitlement produced one that could never work. Observed on a real repository before this fix, not hypothesised.",
       "location": {
         "file": "src/review/entitlements.ts",
-        "line": 502
+        "line": 499
       }
     },
     {
       "description": "Suggestion only. The unattended paths (scripted --accept, --from batch, MCP) do not call this at all: a name nobody confirmed is a forged signature, and the caller refuses instead",
       "location": {
         "file": "src/review/entitlements.ts",
-        "line": 874
+        "line": 871
       }
     },
     {
@@ -7410,7 +7410,7 @@
       "description": "Shared by exposure review (@accepts/@audit) and entitlement acceptance (@entitles) so both writers place annotations by the same rules",
       "location": {
         "file": "src/review/index.ts",
-        "line": 393
+        "line": 412
       }
     },
     {

@@ -85,11 +85,12 @@ words. `--write` inserts the offered `@confirmed` line directly beneath the `@ex
 same comment prefix, and reports the file and line. `--from-scan` joins each finding to a claim,
 records the confirmed ones, and lists the unmatched, the ambiguous, the stale and the malformed.
 
-On `--from-scan`, `--write` inserts only the confirmations that were key-verified, and says what
-it skipped and how to record it by hand. An `@confirmed` in source is a claim that the exposure
-was tested and proven, and it never expires the way a ledger entry does, so a coarse-joined one —
-which may be about a different exposure than the probe tested — is not written there. The line it
-does write states that the scan stamped the claim's own key.
+On `--from-scan`, `--write` inserts only the confirmations that were key-verified AND uncontested,
+and says what it skipped and how to record it by hand. An `@confirmed` in source is a claim that
+the exposure was tested and proven, and it never expires the way a ledger entry does, so neither a
+coarse-joined one — which may be about a different exposure than the probe tested — nor a contested
+one, whose report named two different claims and whose winner came from a precedence tiebreak, is
+written there. The line it does write states that the scan stamped the claim's own key.
 
 A finding carrying the claim key — under any of `guardlink/claimKey`, `claimKey` or `claim_key`,
 at the finding's top level or in its `annotation`, spread onto that level or left as a forwarded

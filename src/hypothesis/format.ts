@@ -8,7 +8,7 @@
  */
 import type { HypothesisClassification, HypothesisRecord, RankedHypothesis } from './classify.js';
 import type { HypothesisEntry } from './ledger.js';
-import type { ImportResult } from './commands.js';
+import type { ImportResult, ScanFinding } from './commands.js';
 import { CLAIM_KEY_FINGERPRINT, CLAIM_KEY_PATTERN } from '../parser/claim-key.js';
 
 const pad = (s: string, n: number): string => (s.length >= n ? s : s + ' '.repeat(n - s.length));
@@ -129,11 +129,22 @@ export function formatImport(r: ImportResult): string {
   // A conflict is louder than junk: an extra key that is WELL-FORMED is likelier
   // to be trusted than an obviously broken one, and it names a different claim,
   // so it changes which exposure gets confirmed rather than merely being noise.
-  const rivals = findings.flatMap(f => f.rival_stamps.map(s => ({ f, s })));
-  if (rivals.length > 0) {
-    lines.push('', `⚠  Contested  ${rivals.length === 1 ? 'a finding' : 'findings'} carried more than one claim key, naming different claims — the report contradicts itself about which exposure was tested. The winner above was chosen by precedence, not by agreement, so it is labelled CONTESTED and no @confirmed is written to source for it. The key used is listed on the outcome; the ones it beat:`);
-    for (const { f, s } of rivals) lines.push(`  ${f.id}: also claimed ${short(s.value, 24)} in ${s.field}`);
+  //
+  // Split by what actually happened. A contest on a finding that CONFIRMED has
+  // an outcome above, labelled CONTESTED, with its write withheld. A contest on
+  // one that did not confirm has none of those — its own bucket above already
+  // said what became of it — so it must not be told it has an outcome.
+  const rivalsOf = (fs: ScanFinding[]) => fs.flatMap(f => f.rival_stamps.map(s => ({ f, s })));
+  const decided = rivalsOf(r.confirmed.map(c => c.finding));
+  const undecided = rivalsOf(findings.filter(f => !r.confirmed.some(c => c.finding === f)));
+  if (decided.length > 0) {
+    lines.push('', `⚠  Contested  ${decided.length === 1 ? 'a finding' : 'findings'} carried more than one claim key, naming different claims — the report contradicts itself about which exposure was tested. The winner above was chosen by precedence, not by agreement, so it is labelled CONTESTED and no @confirmed is written to source for it. The key used is listed on the outcome; the ones it beat:`);
+    for (const { f, s } of decided) lines.push(`  ${f.id}: also claimed ${short(s.value, 24)} in ${s.field}`);
     lines.push(`           Fix whatever emits two keys for one finding. To record one of these deliberately: guardlink hypothesis confirm <file:line> --evidence "…" --write`);
+  }
+  if (undecided.length > 0) {
+    lines.push('', `⚠  Contested  ${undecided.length === 1 ? 'a finding that was not recorded' : 'findings that were not recorded'} also carried more than one claim key, naming different claims. Nothing was confirmed for ${undecided.length === 1 ? 'it' : 'them'} — see above for why — so there is no outcome and no write to withhold; the contest is reported because whatever emits two keys for one finding is still wrong:`);
+    for (const { f, s } of undecided) lines.push(`  ${f.id}: used ${short(f.claim_key ?? '', 24)}, also claimed ${short(s.value, 24)} in ${s.field}`);
   }
   return lines.join('\n');
 }
