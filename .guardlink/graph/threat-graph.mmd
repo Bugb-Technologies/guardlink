@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:1ffaceedfbf419c98d3f31068aefa8de0eb34967f35664f34b68b1d23be27a3b
+%% annotation_hash: sha256-v3:96b5e046610905578780c457ae147944c6688cb16e66a505a4b359eeea689ea1
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 43 nodes / 153 edges, past the 12 / 16 legibility budget (43 nodes against 12, 153 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 45 nodes / 157 edges, past the 12 / 16 legibility budget (45 nodes against 12, 157 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -48,8 +48,8 @@ graph LR
   gate["🔷 GuardLink.Gate"]
   init["🔷 GuardLink.Init [INTERNAL]"]
   suggest["🔷 GuardLink.Suggest"]
-  report["🔷 GuardLink.Report [PII]"]
   merge_engine["🔷 Workspace.Merge"]
+  report["🔷 GuardLink.Report [PII]"]
   workspace_config["🔷 Workspace.Config"]
   api_key_exposure["🟠 API_Key_Exposure (cwe:CWE-798)"]:::threat
   path_traversal["🟠 Path_Traversal (cwe:CWE-22)"]:::threat
@@ -65,6 +65,7 @@ graph LR
   cmd_injection["🔴 Command_Injection (cwe:CWE-78)"]:::threat
   xss["🟠 Cross_Site_Scripting (cwe:CWE-79)"]:::threat
   info_disclosure["🔵 Information_Disclosure (cwe:CWE-200)"]:::threat
+  vacuous_pass["🟠 Vacuous_Pass (cwe:CWE-754)"]:::threat
   tag_collision["🟡 Tag_Collision"]:::threat
   key_redaction["🛡️ Key_Redaction"]:::control
   path_validation["🛡️ Path_Validation"]:::control
@@ -77,6 +78,7 @@ graph LR
   identity_redaction["🛡️ Identity_Redaction"]:::control
   output_encoding["🛡️ Output_Encoding"]:::control
   prefix_ownership["🛡️ Prefix_Ownership"]:::control
+  fail_closed["🛡️ Fail_Closed"]:::control
   yaml_validation["🛡️ YAML_Validation"]:::control
   agent_launcher -. exposes .-> api_key_exposure
   agent_launcher -. exposes .-> path_traversal
@@ -143,6 +145,7 @@ graph LR
   tui -. exposes .-> api_key_exposure
   tui -. exposes .-> prompt_injection
   tui -. exposes .-> dos
+  merge_engine -. exposes .-> vacuous_pass
   key_redaction -- mitigates --> api_key_exposure
   key_redaction -. protects .-> agent_launcher
   path_validation -- mitigates --> path_traversal
@@ -216,6 +219,8 @@ graph LR
   key_redaction -. protects .-> tui
   resource_limits -. protects .-> tui
   prefix_ownership -. protects .-> merge_engine
+  fail_closed -- mitigates --> vacuous_pass
+  fail_closed -. protects .-> merge_engine
   yaml_validation -- mitigates --> config_tamper
   yaml_validation -. protects .-> workspace_config
   config_validation -. validates .-> cli
@@ -231,5 +236,6 @@ graph LR
   mcp -- "📡 generateThreatReport" --> llm_client
   tui -- "📡 launchAgent" --> agent_launcher
   tui -- "📡 chatCompletion" --> llm_client
+  merge_engine -- "📡 mergeVerdict" --> cli
   classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
   classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px

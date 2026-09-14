@@ -306,7 +306,27 @@ export interface ReportMetadata {
   parse?: ReportParseState;
 }
 
-/** Diagnostics from the parse behind a report, carried into the report itself. */
+/**
+ * Diagnostics from the parse behind a report, carried into the report itself.
+ *
+ * ── What this counts, and what it has never counted ────────────────
+ *
+ * Every number here is about a file the parser OPENED and could not fully read.
+ * A file in a language the parser did not scan produced no diagnostic at all —
+ * it was never opened to be asked — so it contributed nothing here rather than
+ * being counted as malformed. Measured across the scan-set widening (34 → 73
+ * file types) on a probe carrying a well-formed annotation and a malformed one
+ * in a newly-read language: before, both were invisible and the model was empty;
+ * after, the well-formed one became an EXPOSURE and only the malformed one
+ * became a diagnostic.
+ *
+ * So the count's scope widens with the scan set while its meaning does not: a
+ * reader chasing `unparsed_annotations` after an upgrade is chasing annotations
+ * that are genuinely unreadable in files that are genuinely read, never files
+ * that were merely unsupported. The two were never conflated because
+ * "unsupported" was never a diagnostic — it was silence, which is the defect
+ * the widening closed.
+ */
 export interface ReportParseState {
   /** Diagnostics at level `error` or `fatal`. */
   errors: number;
