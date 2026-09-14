@@ -260,17 +260,24 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
   from the report, and the line goes into a file whose annotations are line-oriented, so all of them
   are collapsed to one line at a single boundary, quote-escaped, and the finished line is re-parsed
   before it is written — a line that does not read back as exactly one `@confirmed` is refused. The
-  host language's comment syntax is a second grammar the text passes through, so the sequence that
-  closes a block comment is broken as well, derived from the target file's form: left intact it ends
-  the doc-block and puts report text in code position, and the re-parse cannot see it because it
-  reads the annotation outside the comment it lands in.
+  host language's comment syntax is a second grammar the text passes through, so **both** block
+  delimiters are broken, derived from the target file's form: the closer, which left intact ends the
+  doc-block and puts report text in code position, and the **opener**, which in a language whose
+  comments nest (Rust, Swift, Kotlin, Scala, Dart, Haskell, OCaml) starts a nested comment that
+  swallows the real closer and leaves the file inside an unterminated one. The re-parse cannot see
+  either, because it reads the annotation outside the comment it lands in. Breaking the opener is
+  unconditional — inert where comments do not nest, and a table of which languages nest would be one
+  more per-language fact to keep in step.
 - **`--write` only inserts an uncontested key-verified confirmation.** An `@confirmed` in source is
   a claim that the exposure was tested and proven — later scans, reviewers and `guardlink sarif`
   read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be
   about a different exposure than the probe tested, and a **contested** one (two well-formed keys
   naming different claims, resolved by precedence) leaves identity in doubt, so `--from-scan
   --write` skips either, names it and prints the by-hand command; the outcome is still in the
-  ledger. Those skips are reported **after** the writes, at the line each withheld claim occupies
+  ledger. Withholding is a fact about a **claim**, not about a finding: several findings can join to
+  one claim — a stamped one beside an unstamped one during a scanner rollout — and a claim whose
+  confirmation reached the source is not withheld, so it is neither reported as skipped nor counted
+  toward the exit status. Those skips are reported **after** the writes, at the line each withheld claim occupies
   once they have landed — an insertion shifts every claim below it in that file, and with
   consecutive `@exposes` a pre-write number names a *different* claim, so the handed-out command
   would have recorded a confirmation against an exposure the probe never tested. Every `file:line`

@@ -102,6 +102,7 @@ export function formatImport(r: ImportResult): string {
   } else if (stamped < r.confirmed.length) {
     lines.push('', `⚠  ${r.confirmed.length - stamped} of ${r.confirmed.length} findings carried no claim key and were joined on the weaker match; each is labelled below.`);
   }
+  // @comment -- "One block per FINDING, deliberately — the header counts findings and two probes hitting one claim is worth seeing. So a claim several findings joined to appears more than once, each block showing the entry that finding produced. Withholding and the exit code are the opposite case: those are decisions about a CLAIM, are derived per claim in the CLI, and must not be read off a per-finding list"
   for (const c of r.confirmed) lines.push('', formatOutcome(c.record, c.entry));
   // @comment -- "GAP-77: every file:line in this report, here and in the formatOutcome blocks above, is the PRE-write position — this formatter runs before --write splices anything and has no way to know what will land. An ambiguous finding is never written, so its candidates cannot be moved by a write to themselves, but a key-verified write higher up the same file does move them. The CLI's withheld-write block prints its own targets AFTER the writes for exactly that reason; these are the remaining position-dependent commands, and the fix for them is an addressing scheme that is not a line number"
   for (const a of r.ambiguous) {

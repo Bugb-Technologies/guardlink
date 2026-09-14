@@ -1664,8 +1664,9 @@ const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: strin
       // @flows ScanReport -> #cli via importScan -- "cxg findings recorded as confirmations, joined to claims"
       const r = importScan(root, model, opts.fromScan, { by: opts.by || 'cxg', at });
       console.log(formatImport(r));
-      // @comment -- "Recorded in the ledger but withheld from source: the coarse and contested joins. One list, so the skip messages and the exit code below cannot disagree about which findings --write declined"
-      const withheld = r.confirmed.filter(c => c.joinedBy !== 'claim-key');
+      // @comment -- "Withheld is a fact about a CLAIM, not about a finding. Several findings can join to one claim — a stamped one beside an unstamped one during a cxg stamp rollout, or two templates probing the same exposure — so a per-finding list printed one claim's remediation command twice and, worse, could report a claim as skipped in the very run that wrote it. Keyed by record.key on the same rule `writes` uses, last occurrence kept because that is the entry the ledger ends up holding"
+      const coarse = [...new Map(r.confirmed.filter(c => c.joinedBy !== 'claim-key').map(c => [c.record.key, c])).values()];
+      let withheld = coarse;
       if (opts.write) {
         // @comment -- "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet"
         // @comment -- "ONE CLAIM, ONE WRITE. Two findings can carry the same claim key — the ordinary shape when two cxg templates probe one exposure — and both resolve to the same record and fold into ONE ledger entry, so writing per finding attempted the same insertion twice and the second was refused as a failure. Keyed by record.key, keeping the LAST occurrence: upsert replaces the entry object on every call, so only the final one is the entry the ledger actually holds"
@@ -1674,13 +1675,17 @@ const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: strin
         // @comment -- "An exit code is a claim about what happened, and it has to be true in BOTH directions: honest about an under-write and honest about a success. A confirmation already in the source is the state we were asked to reach — from an earlier run, or a re-import of the same report — so it is separated from a real failure by the TYPE writeConfirmedLine returns, never by matching the wording of an error. Every remaining throw is a failure and still exits non-zero"
         const done: { file: string; line: number }[] = [];
         const present: { file: string; line: number }[] = [];
+        const reached = new Set<string>();
         for (const c of writes) {
           try {
             const w = writeConfirmedLine(root, c.record, confirmedLine(c.record, c.entry));
             (w.outcome === 'inserted' ? done : present).push({ file: w.file, line: w.line });
+            reached.add(c.record.key);
           }
           catch (e) { console.error(`  ! ${(e as Error).message}`); process.exitCode = 1; }
         }
+        // @comment -- "Reconciled against what the writes actually did. A claim whose confirmation IS in the source — inserted just now or already there — was not withheld, whatever else joined to it coarsely, so it is neither told to the operator as skipped nor counted toward the exit status. The rule it serves is the one the exit check states: the code is a claim about what happened and has to be true in BOTH directions, and reporting a claim as withheld in the run that wrote it is the half that was still false"
+        withheld = coarse.filter(c => !reached.has(c.record.key));
         // @comment -- "THE one calculation of where a line sits once the writes are done, used by both the confirmations that landed and the by-hand commands for the ones withheld. Each done.line is a PRE-write coordinate — descending order guarantees nothing at or above a target had been spliced when it was written — so an insertion at or at a lower number than a pre-write position pushes that position down by one. Only SUCCESSFUL writes are in `done`, so a write that threw shifts nothing. Two sites computing this independently is the shape that disagrees silently, and this file has already produced that defect once"
         const afterWrites = (file: string, pre: number) => pre + done.filter(o => o.file === file && o.line <= pre).length;
         // @comment -- "An inserted @confirmed comes to rest directly above the line it displaced, so it is that line's new position less one — derived from afterWrites rather than counted a second way. Printed in reading order, not in the order the writes went in"

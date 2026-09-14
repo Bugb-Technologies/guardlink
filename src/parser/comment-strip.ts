@@ -175,10 +175,59 @@ export function blockCommentClosers(filePath: string): readonly string[] {
   return BLOCK_CLOSERS[extname(filePath).toLowerCase()] ?? [];
 }
 
+/**
+ * Both ends of every block form these closers belong to.
+ *
+ * Breaking only the closer leaves the other end open, and block comments NEST in
+ * Rust, Swift, Kotlin, Scala, Dart, Haskell and OCaml — every one of them in the
+ * table above. An injected OPENER there starts a nested comment; the doc-block's
+ * own closer on the next line closes only that nested level, and the outer comment
+ * runs on past the declaration it documents, so that declaration and everything
+ * below it silently leave the compile. Same hole the closer pass exists to close,
+ * entered from the other end, and a writer's re-parse is blind to it either way.
+ *
+ * Uniform, with no table of which grammars nest: an injected opener is inert where
+ * they do not nest and fatal where they do, so breaking it always costs nothing and
+ * sometimes saves the file — and one more per-language dimension modelled here and
+ * relied on elsewhere is the shape that drifts. Both ends come off the same
+ * `BLOCK_FORMS` pair, so neither can be widened without the other.
+ */
+function delimitersFor(closers: readonly string[]): readonly string[] {
+  const out: string[] = [];
+  for (const close of closers) {
+    out.push(close);
+    const form = BLOCK_FORMS.find(f => f.close === close);
+    if (form) out.push(form.open);
+  }
+  return out;
+}
+
+/** Both delimiters of every form this file could carry, when the line cannot settle it. */
+export function blockCommentDelimiters(filePath: string): readonly string[] {
+  return delimitersFor(blockCommentClosers(filePath));
+}
+
+/**
+ * Break every comment delimiter in `text`, so it can neither end nor open the
+ * comment it is written into.
+ *
+ * A space after the delimiter's first character breaks the sequence and still shows
+ * the reader what the text said. Each delimiter is applied over the whole string in
+ * turn, closer before opener, so a delimiter that breaking another one CREATES is
+ * caught: `*` + `/*` collapses to `* /*` on the closer pass and to `* / *` on the
+ * opener pass. One function, because a second copy of this transform is how the two
+ * passes that need it would come to disagree about what is neutralised.
+ */
+export function breakCommentDelimiters(text: string, delimiters: readonly string[]): string {
+  return delimiters.reduce((s, d) => s.split(d).join(`${d.charAt(0)} ${d.slice(1)}`), text);
+}
+
 /** The comment form an annotation line sits in. */
 export interface LineCommentForm {
   /** Sequences that would end this comment — empty for a line comment. */
   closers: readonly string[];
+  /** Every delimiter a written description must not carry: each closer AND the opener it pairs with. */
+  delimiters: readonly string[];
   /** The line opens AND closes its own comment, so a line added after it needs its own terminator. */
   selfClosing: boolean;
 }
@@ -200,15 +249,17 @@ export interface LineCommentForm {
  * extension.
  */
 export function commentFormAt(lines: readonly string[], idx: number, filePath: string): LineCommentForm {
+  const asForm = (closers: readonly string[], selfClosing: boolean): LineCommentForm =>
+    ({ closers, delimiters: delimitersFor(closers), selfClosing });
   const own = blockFormOpenedBy(lines[idx] ?? '');
-  if (own) return { closers: [own.close], selfClosing: closesItself(lines[idx], own) };
+  if (own) return asForm([own.close], closesItself(lines[idx], own));
   const trimmed = (lines[idx] ?? '').trimStart();
-  if (LINE_MARKERS.some(m => trimmed.startsWith(m.prefix))) return { closers: [], selfClosing: false };
+  if (LINE_MARKERS.some(m => trimmed.startsWith(m.prefix))) return asForm([], false);
   for (let i = idx - 1; i >= 0; i--) {
     const open = blockFormOpenedBy(lines[i]);
-    if (open && !closesItself(lines[i], open)) return { closers: [open.close], selfClosing: false };
+    if (open && !closesItself(lines[i], open)) return asForm([open.close], false);
   }
-  return { closers: blockCommentClosers(filePath), selfClosing: false };
+  return asForm(blockCommentClosers(filePath), false);
 }
 
 function blockFormOpenedBy(line: string): { open: string; close: string } | undefined {

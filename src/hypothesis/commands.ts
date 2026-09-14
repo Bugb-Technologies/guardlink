@@ -33,7 +33,7 @@ import { hasEvidenceWords } from '../gate/lint.js';
 import { redactEvidence } from '../analyze/format.js';
 import { CLAIM_KEY_NAMES, CLAIM_KEY_SURFACES, isClaimKey } from '../parser/claim-key.js';
 import { parseLine } from '../parser/parse-line.js';
-import { blockCommentClosers, commentFormAt, isStandaloneAnnotationFile, stripCommentPrefix } from '../parser/comment-strip.js';
+import { blockCommentDelimiters, breakCommentDelimiters, commentFormAt, isStandaloneAnnotationFile, stripCommentPrefix } from '../parser/comment-strip.js';
 // `oneLine` and `escapeDesc` are the treatment this repo already applies at every
 // annotation write site; reused rather than re-implemented so a third copy cannot
 // drift. No cycle: src/review only imports parser modules and types.
@@ -426,8 +426,8 @@ export function confirmedLine(record: HypothesisRecord, entry: HypothesisEntry):
 }
 
 /**
- * Break any sequence that would end the comment this description is written
- * into, derived from the target file's block form.
+ * Break any sequence that would end OR open a comment this description is
+ * written into, derived from the target file's block forms.
  *
  * Sanitisation has to cover every grammar the text passes through, not only
  * ours. `oneLine` and `escapeDesc` neutralise GuardLink's grammar — newlines,
@@ -437,21 +437,23 @@ export function confirmedLine(record: HypothesisRecord, entry: HypothesisEntry):
  * position. The re-parse in `writeConfirmedLine` cannot catch it: it reads the
  * bare annotation, outside the comment it is about to be spliced into.
  *
- * A space after the closer's first character is enough to break it and still
- * shows the reader what the report said. Line comments need no closer of their
- * own — but only because `oneLine` removes every character a host grammar
- * treats as ending a line, not merely the newline. An ECMAScript line comment
- * ends at ANY LineTerminator, and a lone U+2028 once survived a collapse that
- * covered `[\r\n\t]`, leaving report text in code position. Narrow that
- * collapse and this function stops being sufficient for a `//` host.
+ * Both delimiters, not only the closer: where block comments NEST an injected
+ * OPENER swallows the real closer and leaves the file inside an unterminated
+ * comment — see `blockCommentDelimiters`, which pairs the two so they cannot
+ * drift. Line comments need no delimiter of their own — but only because
+ * `oneLine` removes every character a host grammar treats as ending a line, not
+ * merely the newline. An ECMAScript line comment ends at ANY LineTerminator, and
+ * a lone U+2028 once survived a collapse that covered `[\r\n\t]`, leaving report
+ * text in code position. Narrow that collapse and this function stops being
+ * sufficient for a `//` host.
  *
  * This pass works from the extension, because the offered line is built without
  * reading the file and may be pasted anywhere in it. `writeConfirmedLine` runs
- * the authoritative pass from the form it derives out of the source line; the
- * two are idempotent, so a closer this one already broke is simply absent there.
+ * the authoritative pass from the form it derives out of the source line; both
+ * call one transform, so a delimiter this one already broke is simply absent there.
  */
 function hostSafe(desc: string, file: string): string {
-  return blockCommentClosers(file).reduce((s, c) => s.split(c).join(`${c.charAt(0)} ${c.slice(1)}`), desc);
+  return breakCommentDelimiters(desc, blockCommentDelimiters(file));
 }
 
 /**
@@ -537,12 +539,13 @@ export function writeConfirmedLine(root: string, record: HypothesisRecord, line:
     if (inner.includes(pair)) return { file: record.file, line: i + 1, outcome: 'already-present' };
   }
   // One derivation of the comment form being written into answers both host-
-  // grammar questions: which sequence would end this comment, and whether the
-  // line closes itself. A self-closing `@exposes` inherits its opener into the
-  // inserted line, so without reproducing the terminator the file is left inside
-  // an unterminated comment and everything below it silently leaves the compile.
+  // grammar questions: which delimiters would end or reopen this comment, and
+  // whether the line closes itself. A self-closing `@exposes` inherits its opener
+  // into the inserted line, so without reproducing the terminator the file is left
+  // inside an unterminated comment and everything below it silently leaves the
+  // compile — and an injected opener does the same wherever comments nest.
   const form = commentFormAt(lines, idx, record.file);
-  const safe = form.closers.reduce((s, c) => s.split(c).join(`${c.charAt(0)} ${c.slice(1)}`), line);
+  const safe = breakCommentDelimiters(line, form.delimiters);
   const reparsed = parseLine(safe, { file: record.file, line: record.line + 1 });
   if (reparsed.annotation?.verb !== 'confirmed') {
     throw new Error(`Refusing to write a line that does not parse back as one @confirmed: ${JSON.stringify(safe.slice(0, 120))}`);

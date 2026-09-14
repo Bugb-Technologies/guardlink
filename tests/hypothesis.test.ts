@@ -1223,6 +1223,44 @@ export function parseBody(body: string) { return body; }
     expect(src).toContain('sqli-boolean');
   }, 120_000);
 
+  it('does not report a claim as skipped in the run that wrote it', async () => {
+    // The mixed shape during a cxg stamp rollout: one template forwards the claim
+    // key, another does not, and both join to the SAME claim. The confirmation is
+    // in the source, so that claim was not withheld — and the exit code is the
+    // signal bravos reads without ever seeing stderr.
+    const root = await siblings(ONE);
+    const a = stamp(generateSarif(await parse(root)), 4);
+    await writeScan(root, { scan_id: 'cxg-rollout', findings: [
+      finding({ id: 'f-stamped', template_id: 'sqli-union', claim_key: a.claim_key }),
+      finding({ id: 'f-unstamped', template_id: 'sqli-boolean', annotation: { file: 'src/a.ts', line: 4 } }),
+    ] });
+    const run = await runCli(root);
+
+    expect(run.out.match(/wrote \S+/g)).toEqual(['wrote src/a.ts:5']);
+    expect(run.out).not.toMatch(/skipped/);
+    expect(run.code).toBe(0);
+    const after = await parse(root);
+    expect(after.confirmed).toHaveLength(1);
+    expect(after.confirmed![0]).toMatchObject({ asset: '#api', threat: '#sqli' });
+  }, 120_000);
+
+  it('offers one by-hand command per withheld CLAIM, not per finding', async () => {
+    // Two templates probing one exposure, neither stamped. One claim is withheld,
+    // so the operator gets one instruction — and the run still exits non-zero,
+    // because that confirmation is not in the source.
+    const root = await siblings(ONE);
+    await writeScan(root, { scan_id: 'cxg-two-coarse', findings: [
+      finding({ id: 'f1', template_id: 't1', annotation: { file: 'src/a.ts', line: 4 } }),
+      finding({ id: 'f2', template_id: 't2', annotation: { file: 'src/a.ts', line: 4 } }),
+    ] });
+    const run = await runCli(root);
+
+    expect(run.out.match(/! skipped \S+/g)).toEqual(['! skipped src/a.ts:4']);
+    expect(run.out.match(/guardlink hypothesis confirm \S+/g)).toEqual(['guardlink hypothesis confirm src/a.ts:4']);
+    expect(run.code).not.toBe(0);
+    expect(await readFile(join(root, 'src', 'a.ts'), 'utf-8')).not.toContain('@confirmed');
+  }, 120_000);
+
   it('re-importing the same report writes nothing more and still exits 0', async () => {
     // The claim key digests the claim's words, so the line the first run inserted
     // does not re-key it: the report joins again and asks for the same write. The
@@ -1508,6 +1546,50 @@ export function login(email: string) { return email; }
     expect(written).toHaveLength(1);
     expect(written[0]).not.toContain(CLOSER);
     expect(written[0]).toContain('<style>a{}</style>');
+    const after = await parse(root);
+    expect(after.confirmed).toHaveLength(1);
+    expect(after.exposures).toHaveLength(1);
+  }, 120_000);
+
+  it('breaks a block-comment OPENER too, so a nesting host is not left inside a comment', async () => {
+    // The other end of the same hole. Rust NESTS block comments: an injected `/*`
+    // opens a nested comment, the doc-block's own `*/` closes only that nested
+    // level, and the outer comment runs on past the declaration it documents —
+    // which, with everything below it, silently leaves the compile. Breaking the
+    // closer does nothing about this, and our re-parse is blind to it exactly as
+    // it was to the closer, so assert on the STRUCTURE of the host file.
+    const OPENER = '/' + '*';
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-rust-'));
+    await mkdir(join(root, '.guardlink'), { recursive: true });
+    await mkdir(join(root, 'src'), { recursive: true });
+    await writeFile(join(root, '.guardlink', 'definitions.ts'), DEFINITIONS);
+    await writeFile(join(root, 'src', 'lib.rs'),
+      `/**\n * @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into the query"\n */\npub fn find_user(email: &str) -> &str { email }\n`);
+
+    const model = await parse(root);
+    expect(model.exposures, 'the .rs annotation should be in the model').toHaveLength(1);
+    await writeScan(root, { scan_id: 'cxg-rust', findings: [finding({
+      claim_key: stamp(generateSarif(model), 2).claim_key,
+      evidence: { request: 'r', response: `HTTP 200 ${OPENER} echoed source`, matched_patterns: [], data: {} },
+    })] });
+    const run = await runCli(root);
+    expect(run.code).toBe(0);
+
+    const src = await readFile(join(root, 'src', 'lib.rs'), 'utf-8');
+    const written = src.split('\n').filter(l => l.includes('@confirmed'));
+    expect(written).toHaveLength(1);
+    expect(written[0]).not.toContain(OPENER);
+    // Broken, not dropped — the reader still sees what the report said.
+    expect(written[0]).toContain('echoed source');
+
+    // The doc-block still ends where it ended, so what follows it is still a
+    // declaration and not comment text: ask the structural parser for the symbol.
+    // An unterminated comment swallows it and this comes back null.
+    const st = await parseStructure(join(root, 'src', 'lib.rs'), src);
+    expect(st.language).toBe('rust');
+    expect(st.symbolNamed('find_user')).toMatchObject({ scope: 'symbol', start_line: 5 });
+    st.dispose();
+
     const after = await parse(root);
     expect(after.confirmed).toHaveLength(1);
     expect(after.exposures).toHaveLength(1);
