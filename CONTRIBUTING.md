@@ -78,6 +78,8 @@ npm run cli       # Run CLI without building (via tsx)
 
 There used to be four copies of that list. They drifted, and an annotation in a `.php` or `.kts` file was read by nothing and — because both §2.12 diagnostics are asked of a file's lines — reported by nothing either. `tests/scanned-languages.test.ts` now fails if the copies diverge again.
 
+**If the language has a block comment form, add its closer to `BLOCK_CLOSERS` in `src/parser/comment-strip.ts` in the same change.** That table is what `guardlink hypothesis confirm --write` consults before splicing a scan-controlled description into a claim's comment, so that the description cannot end the comment it is written into. A claim can only exist in a file the parser opens — so scanning a language whose closer is not listed is a comment-escape, reachable as soon as someone annotates such a file. Languages whose only comment form is a line comment (Python, Ruby, Bash, YAML, Erlang, LaTeX, INI, Batch) need no entry and must not get one: a line comment ends at a newline, and a written description is one line. The same test pins both directions.
+
 ## Annotation Spec Changes
 
 Changes to the annotation grammar or ThreatModel schema require discussion in an issue first. The spec is designed to be stable — breaking changes need strong justification.
