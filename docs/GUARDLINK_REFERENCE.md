@@ -270,8 +270,14 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
   about a different exposure than the probe tested, and a **contested** one (two well-formed keys
   naming different claims, resolved by precedence) leaves identity in doubt, so `--from-scan
   --write` skips either, names it and prints the by-hand command; the outcome is still in the
-  ledger. The line it does write states that the scan stamped the claim's own key, so the reason
-  survives the code that enforces it. **A `--write` that skipped anything exits non-zero**, a
+  ledger. Those skips are reported **after** the writes, at the line each withheld claim occupies
+  once they have landed — an insertion shifts every claim below it in that file, and with
+  consecutive `@exposes` a pre-write number names a *different* claim, so the handed-out command
+  would have recorded a confirmation against an exposure the probe never tested. Every `file:line`
+  command the tool prints is still position-dependent (GAP-77): correct when printed, stale after
+  the next write or edit. The line it does write states that the scan stamped the claim's own key,
+  so the reason survives the code that enforces it. **A `--write` that skipped anything exits
+  non-zero**, a
   partially written run included: the reader of that exit code is an orchestrator that never sees
   the skip lines on stderr, and a `0` after a half-landed write is indistinguishable from a
   complete one. The manual `confirm <file:line> --evidence … --write` path is unchanged.

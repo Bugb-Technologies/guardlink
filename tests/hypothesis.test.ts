@@ -1109,14 +1109,14 @@ export function findUser(email: string) { return email; }
     title: 'SQLi in findUser', cwe_ids: ['CWE-89'], evidence: EV, ...over,
   });
 
-  const runCli = async (root: string) => {
+  const runArgs = async (root: string, ...args: string[]) => {
     const tsx = createRequire(import.meta.url).resolve('tsx/cli');
     const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
     return new Promise<{ code: number; out: string }>((res) =>
-      execFile(process.execPath, [tsx, cli, 'hypothesis', 'confirm', '.', '--from-scan', 'scan.json', '--write'],
-        { cwd: root, maxBuffer: 64 * 1024 * 1024 },
+      execFile(process.execPath, [tsx, cli, ...args], { cwd: root, maxBuffer: 64 * 1024 * 1024 },
         (err, stdout, stderr) => res({ code: (err as { code?: number } | null)?.code ?? 0, out: stdout + stderr })));
   };
+  const runCli = (root: string) => runArgs(root, 'hypothesis', 'confirm', '.', '--from-scan', 'scan.json', '--write');
 
   it('refuses to write a confirmation that was not key-verified, and says how to do it deliberately', async () => {
     const root = await siblings(ONE);
@@ -1160,9 +1160,10 @@ export function parseBody(body: string) { return body; }
     ] });
     const run = await runCli(root);
 
-    // The key-verified one landed, and only it.
+    // The key-verified one landed, and only it. B's @exposes started at line 9
+    // and the insertion at line 5 pushed it to 10 — the skip names where it is.
     expect(run.out).toMatch(/wrote src\/a\.ts:5/);
-    expect(run.out).toMatch(/skipped src\/a\.ts:9 — joined by location, not key-verified/);
+    expect(run.out).toMatch(/skipped src\/a\.ts:10 — joined by location, not key-verified/);
     const after = await parse(root);
     expect(after.confirmed).toHaveLength(1);
     expect(after.confirmed![0]).toMatchObject({ asset: '#api', threat: '#sqli' });
@@ -1172,6 +1173,54 @@ export function parseBody(body: string) { return body; }
 
     // And the run still reports that the write it was asked for did not fully happen.
     expect(run.code).not.toBe(0);
+  }, 120_000);
+
+  it('hands out a by-hand target that survives its own writes, and it resolves to the withheld claim', async () => {
+    // The by-hand command is the dangerous output: the operator runs it AFTER
+    // the run, and the run moved the line. With consecutive @exposes the
+    // pre-write number names a DIFFERENT claim, so following our own
+    // instructions records the confirmation against an exposure the probe never
+    // tested — GAP-58 delivered through a human's fingers.
+    const THREE = `import x from 'x';
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "A: findUser concatenates email"
+ * @exposes #api to #dos [medium] -- "B: parseBody has no size cap"
+ * @exposes #web to #xss [high] cwe:CWE-79 -- "C: bio rendered via innerHTML"
+ */
+export function login(email: string) { return email; }
+`;
+    const root = await siblings(THREE);
+    const a = stamp(generateSarif(await parse(root)), 4);
+    await writeScan(root, { scan_id: 'cxg-shift', findings: [
+      finding({ id: 'fA', template_id: 'tA', claim_key: a.claim_key }),
+      finding({ id: 'fB', template_id: 'tB', annotation: { file: 'src/a.ts', line: 5 } }),
+      finding({ id: 'fC', template_id: 'tC', annotation: { file: 'src/a.ts', line: 6 } }),
+    ] });
+    const run = await runCli(root);
+
+    // A's @confirmed took line 5, so B moved 5→6 and C moved 6→7. Pre-write
+    // numbering would have offered 5 and 6 — and 6 is B, not C.
+    expect(run.out).toMatch(/wrote src\/a\.ts:5/);
+    const offered = [...run.out.matchAll(/guardlink hypothesis confirm (\S+) --evidence/g)].map(m => m[1]);
+    expect(offered.sort()).toEqual(['src/a.ts:6', 'src/a.ts:7']);
+
+    // The claim actually standing at each offered line is the withheld claim it
+    // was offered for — asserted by running the command we printed for the last
+    // one and seeing which @exposes the confirmation attaches to.
+    const byHand = await runArgs(root, 'hypothesis', 'confirm', 'src/a.ts:7', '.', '--evidence', CONFIRM, '--by', 'human:test', '--write');
+    expect(byHand.code).toBe(0);
+
+    const after = await parse(root);
+    const exposureAt = new Map(after.exposures.map(e => [e.location.line, e]));
+    for (const c of after.confirmed!) {
+      const above = exposureAt.get(c.location.line - 1);
+      expect(above, `@confirmed at :${c.location.line} does not sit beneath an @exposes`).toBeDefined();
+      expect({ asset: above!.asset, threat: above!.threat }).toEqual({ asset: c.asset, threat: c.threat });
+    }
+    // C got the confirmation the operator was told to record. B, the claim the
+    // stale line would have hit, got none.
+    expect(after.confirmed!.map(c => `${c.asset}/${c.threat}`).sort()).toEqual(['#api/#sqli', '#web/#xss']);
   }, 120_000);
 
   it('writes a key-verified confirmation, and the line says how it was established', async () => {

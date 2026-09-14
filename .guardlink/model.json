@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:91d0165bf205ffafaf60b642758403b4edbcefade41dc5ab3bbdc24268e828f2",
+    "annotation_hash": "sha256-v3:5580c741fc8edc7861f7eae40716ead26f21fecd430d8c41be1459bc04e83203",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 150,
-  "annotations_parsed": 765,
+  "annotations_parsed": 770,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -4023,7 +4023,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2798
+        "line": 2801
       }
     },
     {
@@ -4033,7 +4033,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2801
+        "line": 2804
       }
     },
     {
@@ -5692,7 +5692,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3528
+        "line": 3531
       }
     },
     {
@@ -6455,38 +6455,66 @@
       }
     },
     {
-      "description": "--write only inserts an UNCONTESTED key-verified confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), and a contested one came from a report that named two different claims at once, so identity is in doubt in both cases. Losing that throughput is the point: those are exactly the joins that can be wrong",
+      "description": "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet",
       "location": {
         "file": "src/cli/index.ts",
         "line": 1670
       }
     },
     {
-      "description": "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet",
+      "description": "THE one calculation of where a line sits once the writes are done, used by both the confirmations that landed and the by-hand commands for the ones withheld. Each done.line is a PRE-write coordinate — descending order guarantees nothing at or above a target had been spliced when it was written — so an insertion at or at a lower number than a pre-write position pushes that position down by one. Only SUCCESSFUL writes are in `done`, so a write that threw shifts nothing. Two sites computing this independently is the shape that disagrees silently, and this file has already produced that defect once",
       "location": {
         "file": "src/cli/index.ts",
         "line": 1678
       }
     },
     {
+      "description": "An inserted @confirmed comes to rest directly above the line it displaced, so it is that line's new position less one — derived from afterWrites rather than counted a second way. Printed in reading order, not in the order the writes went in",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1680
+      }
+    },
+    {
+      "description": "--write only inserts an UNCONTESTED key-verified confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), and a contested one came from a report that named two different claims at once, so identity is in doubt in both cases. Losing that throughput is the point: those are exactly the joins that can be wrong",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1683
+      }
+    },
+    {
+      "description": "Reported AFTER the writes, at the line the withheld claim occupies once they have landed. Printing pre-write lines here handed the operator a command naming a line that this same run then moved: with consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator writes a confirmation against an exposure the probe never tested — GAP-58 one layer out, in a human's fingers instead of ours. Documenting the hazard one block down was not guarding against it",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1684
+      }
+    },
+    {
+      "description": "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so every command printed here is position-dependent and is correct AT THE MOMENT OF PRINTING and no longer — a later write, or an edit, moves the target again. Tracked there, not widened here",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1685
+      }
+    },
+    {
       "description": "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'. A --write that withheld any confirmation is the same fact about the same run, so it exits non-zero too — PARTIALLY written included, not only the all-withheld case. The reader of this exit code is bravos, which orchestrates this loop and never sees the `! skipped` lines on stderr: give 0 two meanings and a half-written run is indistinguishable from a complete one, and the orchestrator proceeds believing the corpus carries confirmations that are not in it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1694
+        "line": 1697
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3474
+        "line": 3477
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3529
+        "line": 3532
       }
     },
     {
@@ -6844,6 +6872,13 @@
       "location": {
         "file": "src/hypothesis/format.ts",
         "line": 7
+      }
+    },
+    {
+      "description": "GAP-77: every file:line in this report, here and in the formatOutcome blocks above, is the PRE-write position — this formatter runs before --write splices anything and has no way to know what will land. An ambiguous finding is never written, so its candidates cannot be moved by a write to themselves, but a key-verified write higher up the same file does move them. The CLI's withheld-write block prints its own targets AFTER the writes for exactly that reason; these are the remaining position-dependent commands, and the fix for them is an addressing scheme that is not a line number",
+      "location": {
+        "file": "src/hypothesis/format.ts",
+        "line": 106
       }
     },
     {
@@ -7499,7 +7534,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 765,
+    "annotation_count": 770,
     "coverage_percent": 87
   },
   "external_refs": []

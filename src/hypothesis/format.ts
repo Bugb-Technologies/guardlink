@@ -103,6 +103,7 @@ export function formatImport(r: ImportResult): string {
     lines.push('', `⚠  ${r.confirmed.length - stamped} of ${r.confirmed.length} findings carried no claim key and were joined on the weaker match; each is labelled below.`);
   }
   for (const c of r.confirmed) lines.push('', formatOutcome(c.record, c.entry));
+  // @comment -- "GAP-77: every file:line in this report, here and in the formatOutcome blocks above, is the PRE-write position — this formatter runs before --write splices anything and has no way to know what will land. An ambiguous finding is never written, so its candidates cannot be moved by a write to themselves, but a key-verified write higher up the same file does move them. The CLI's withheld-write block prints its own targets AFTER the writes for exactly that reason; these are the remaining position-dependent commands, and the fix for them is an addressing scheme that is not a line number"
   for (const a of r.ambiguous) {
     lines.push('', `Ambiguous  ${a.finding.id} (${a.finding.template_id}) fits ${a.candidates.length} claims — pick one and record it by hand:`);
     for (const c of a.candidates) lines.push(`  guardlink hypothesis confirm ${c.file}:${c.line} --evidence "…"`);

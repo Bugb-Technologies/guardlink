@@ -42,6 +42,13 @@ _debug.ts
 /output/
 /tmp/
 
+# Throwaway probes. A one-off script written to watch a fix behave is not a
+# test — nothing includes, typechecks or lints a path like this, so a committed
+# one is invisible until someone six months from now assumes it is load-bearing.
+# Anything worth keeping belongs in tests/ where the suite runs it.
+/.tmp-probe/
+/.tmp-*/
+
 # Packing artifacts. `npm pack` / `npm pack --dry-run` write the tarball into
 # the repo root, and a stray guardlink-<version>.tgz committed alongside the
 # source is both noise and a stale copy of a published artifact.

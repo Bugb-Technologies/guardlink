@@ -1667,14 +1667,6 @@ const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: strin
       // @comment -- "Recorded in the ledger but withheld from source: the coarse and contested joins. One list, so the skip messages and the exit code below cannot disagree about which findings --write declined"
       const withheld = r.confirmed.filter(c => c.joinedBy !== 'claim-key');
       if (opts.write) {
-        // @comment -- "--write only inserts an UNCONTESTED key-verified confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), and a contested one came from a report that named two different claims at once, so identity is in doubt in both cases. Losing that throughput is the point: those are exactly the joins that can be wrong"
-        for (const c of withheld) {
-          const why = c.joinedBy === 'claim-key-contested'
-            ? 'the report carried more than one claim key naming different claims, so this one won on precedence rather than agreement — which exposure was tested is in doubt'
-            : `joined by ${c.joinedBy}, not key-verified, so it may be about a different exposure than the probe tested`;
-          console.error(`  ! skipped ${c.record.file}:${c.record.line} — ${why}. The outcome is in the ledger; if you judge it right, record it deliberately:`);
-          console.error(`      guardlink hypothesis confirm ${c.record.file}:${c.record.line} --evidence "…" --write`);
-        }
         // @comment -- "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet"
         const writes = r.confirmed.filter(c => c.joinedBy === 'claim-key')
           .sort((a, b) => (a.record.file < b.record.file ? -1 : a.record.file > b.record.file ? 1 : b.record.line - a.record.line));
@@ -1683,11 +1675,22 @@ const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: strin
           try { done.push(writeConfirmedLine(root, c.record, confirmedLine(c.record, c.entry))); }
           catch (e) { console.error(`  ! ${(e as Error).message}`); process.exitCode = 1; }
         }
-        // Each write returns the line it inserted at, but writing descending means
-        // every LATER insertion in that file sat above this one and pushed it down.
-        // Report where the line ended up, in reading order, not where it went in.
-        const landed = done.map((w, i) => ({ file: w.file, line: w.line + done.slice(i + 1).filter(o => o.file === w.file).length }));
+        // @comment -- "THE one calculation of where a line sits once the writes are done, used by both the confirmations that landed and the by-hand commands for the ones withheld. Each done.line is a PRE-write coordinate — descending order guarantees nothing at or above a target had been spliced when it was written — so an insertion at or at a lower number than a pre-write position pushes that position down by one. Only SUCCESSFUL writes are in `done`, so a write that threw shifts nothing. Two sites computing this independently is the shape that disagrees silently, and this file has already produced that defect once"
+        const afterWrites = (file: string, pre: number) => pre + done.filter(o => o.file === file && o.line <= pre).length;
+        // @comment -- "An inserted @confirmed comes to rest directly above the line it displaced, so it is that line's new position less one — derived from afterWrites rather than counted a second way. Printed in reading order, not in the order the writes went in"
+        const landed = done.map(w => ({ file: w.file, line: afterWrites(w.file, w.line) - 1 }));
         for (const w of landed.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line))) console.log(`  wrote ${w.file}:${w.line}`);
+        // @comment -- "--write only inserts an UNCONTESTED key-verified confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), and a contested one came from a report that named two different claims at once, so identity is in doubt in both cases. Losing that throughput is the point: those are exactly the joins that can be wrong"
+        // @comment -- "Reported AFTER the writes, at the line the withheld claim occupies once they have landed. Printing pre-write lines here handed the operator a command naming a line that this same run then moved: with consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator writes a confirmation against an exposure the probe never tested — GAP-58 one layer out, in a human's fingers instead of ours. Documenting the hazard one block down was not guarding against it"
+        // @comment -- "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so every command printed here is position-dependent and is correct AT THE MOMENT OF PRINTING and no longer — a later write, or an edit, moves the target again. Tracked there, not widened here"
+        for (const c of withheld) {
+          const why = c.joinedBy === 'claim-key-contested'
+            ? 'the report carried more than one claim key naming different claims, so this one won on precedence rather than agreement — which exposure was tested is in doubt'
+            : `joined by ${c.joinedBy}, not key-verified, so it may be about a different exposure than the probe tested`;
+          const at = `${c.record.file}:${afterWrites(c.record.file, c.record.line)}`;
+          console.error(`  ! skipped ${at} — ${why}. The outcome is in the ledger; if you judge it right, record it deliberately:`);
+          console.error(`      guardlink hypothesis confirm ${at} --evidence "…" --write`);
+        }
       } else if (r.confirmed.some(c => c.joinedBy === 'claim-key')) {
         console.log('\nadd --write to insert an @confirmed line beneath each key-verified @exposes');
       }
