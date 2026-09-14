@@ -289,6 +289,55 @@ export interface ReportMetadata {
    * derived artifact still describes the current model.
    */
   annotation_hash?: string;
+  /**
+   * What the parse that produced this report could not read.
+   *
+   * Optional, and its ABSENCE is a third state rather than a zero. A report cut
+   * by a GuardLink that predates this field says nothing about its own parse,
+   * and a consumer that reads that silence as "clean" has invented the answer —
+   * which is the whole failure this field exists to close one level up. `merge`
+   * reports such a repository as "parse state unknown" and never folds it into
+   * a clean estate.
+   *
+   * `ci` already reports the same three numbers for a single repository; this
+   * is how they survive `report --format json` and reach an estate-wide merge,
+   * where nothing else can see them.
+   */
+  parse?: ReportParseState;
+}
+
+/**
+ * Diagnostics from the parse behind a report, carried into the report itself.
+ *
+ * ── What this counts, and what it has never counted ────────────────
+ *
+ * Every number here is about a file the parser OPENED and could not fully read.
+ * A file in a language the parser did not scan produced no diagnostic at all —
+ * it was never opened to be asked — so it contributed nothing here rather than
+ * being counted as malformed. Measured across the scan-set widening (34 → 73
+ * file types) on a probe carrying a well-formed annotation and a malformed one
+ * in a newly-read language: before, both were invisible and the model was empty;
+ * after, the well-formed one became an EXPOSURE and only the malformed one
+ * became a diagnostic.
+ *
+ * So the count's scope widens with the scan set while its meaning does not: a
+ * reader chasing `unparsed_annotations` after an upgrade is chasing annotations
+ * that are genuinely unreadable in files that are genuinely read, never files
+ * that were merely unsupported. The two were never conflated because
+ * "unsupported" was never a diagnostic — it was silence, which is the defect
+ * the widening closed.
+ */
+export interface ReportParseState {
+  /** Diagnostics at level `error` or `fatal`. */
+  errors: number;
+  /** Diagnostics at level `warning`. */
+  warnings: number;
+  /**
+   * Annotation lines those diagnostics stand for — `occurrences` where the
+   * parser collapsed repeats, one otherwise. Not the same number as
+   * `errors + warnings`, and the one that says how much of the model is missing.
+   */
+  unparsed_annotations: number;
 }
 
 // ─── External References ─────────────────────────────────────────────
@@ -715,6 +764,21 @@ export interface ParseDiagnostic {
   raw?: string;
   /** Present on diagnostics that have a defined kind; absent on ad-hoc ones. */
   code?: DiagnosticCode;
+  /**
+   * How many annotation lines this one diagnostic stands for.
+   *
+   * Present only where the parser collapsed repeats (`collapsePerFileToken`),
+   * and then always > 1; absent means one line, which is why every existing
+   * consumer keeps working and why a clean parse serializes exactly as before.
+   *
+   * It exists because the collapsed count was reachable only by reading English
+   * out of `message`. A repository with one house convention the parser cannot
+   * read reported "1 warning" for 1,340 dropped annotations, and no consumer —
+   * `ci`'s JSON included — could recover the real number. A diagnostic count and
+   * an annotations-dropped count are different numbers and the second is the one
+   * that says how much of the model is missing.
+   */
+  occurrences?: number;
 }
 
 export interface ParseResult {

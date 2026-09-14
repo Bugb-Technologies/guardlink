@@ -113,6 +113,16 @@ jobs:
           fi
 
       # ── Merge reports ────────────────────────────────────────
+      #
+      # `merge` fails on its own if it read nothing: a pattern that matched no
+      # file, or zero reports loaded, exits non-zero rather than writing a
+      # dashboard that reads "0 unmitigated" for an estate nobody opened.
+      #
+      # To fail this roll-up on what the estate SAYS — unmitigated exposures,
+      # reproduced exploits, or a repo whose report could not be read — add
+      # `--strict` to MERGE_ARGS. It is off here because a workspace mid-annotation
+      # has unmitigated exposures by construction, and a weekly job that is red
+      # from week one is a weekly job somebody deletes.
       - name: Merge workspace reports
         run: |
           MERGE_ARGS="reports/*.json --workspace $WORKSPACE_NAME"

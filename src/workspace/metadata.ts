@@ -14,7 +14,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { computeAnnotationHash } from '../parser/annotation-hash.js';
 import { getPackageVersion } from '../version.js';
-import type { ThreatModel, ReportMetadata } from '../types/index.js';
+import type { ThreatModel, ReportMetadata, ReportParseState, ParseDiagnostic } from '../types/index.js';
 import type { WorkspaceConfig } from './types.js';
 
 /**
@@ -25,6 +25,14 @@ import type { WorkspaceConfig } from './types.js';
  * removed. `detectSchemaMismatch` compares this string across the reports being
  * merged, so leaving it at 1.0.0 made a mixed-version merge undetectable by the
  * one mechanism built to detect exactly that.
+ *
+ * NOT bumped for the optional `metadata.parse` field. It is purely additive —
+ * every key 1.1.0 carried is present and unrenamed — and a mixed estate is
+ * already handled correctly by design: a report without it counts toward
+ * `repos_parse_unknown` rather than toward clean. Bumping would make every
+ * estate holding one not-yet-regenerated repo emit a `schema_mismatch` warning
+ * saying results may be inconsistent, which would be false, and would train
+ * readers to ignore the warning that exists for real reshapes.
  */
 export const REPORT_SCHEMA_VERSION = '1.1.0';
 
@@ -192,7 +200,29 @@ export function serializeWorkspaceYaml(config: WorkspaceConfig): string {
  * Enrich a ThreatModel with provenance metadata.
  * Call this before writing the report JSON.
  */
-export function populateMetadata(model: ThreatModel, root: string): ThreatModel {
+/**
+ * The three numbers `ci` reports about a parse, in the shape a report carries.
+ *
+ * `unparsed_annotations` counts LINES, not diagnostics: the parser collapses
+ * repeats per (file, token), so one unreadable comment convention is one
+ * diagnostic standing for however many annotations were written in it.
+ */
+export function summarizeParse(diagnostics: ParseDiagnostic[]): ReportParseState {
+  let errors = 0;
+  let warnings = 0;
+  let unparsed = 0;
+  for (const d of diagnostics) {
+    if (d.level === 'error' || d.level === 'fatal') errors += 1; else warnings += 1;
+    unparsed += d.occurrences && d.occurrences > 1 ? d.occurrences : 1;
+  }
+  return { errors, warnings, unparsed_annotations: unparsed };
+}
+
+export function populateMetadata(
+  model: ThreatModel,
+  root: string,
+  diagnostics?: ParseDiagnostic[],
+): ThreatModel {
   const workspace = loadWorkspaceConfig(root);
 
   const metadata: ReportMetadata = {
@@ -204,6 +234,11 @@ export function populateMetadata(model: ThreatModel, root: string): ThreatModel 
     generated_at: model.generated_at,
     annotation_hash: computeAnnotationHash(model),
     ...(workspace?.workspace && { workspace: workspace.workspace }),
+    // Omitted entirely when the caller did not pass the parse it came from.
+    // Absent means UNKNOWN downstream, and a zero would mean "read cleanly" —
+    // a distinction a merged estate's verdict depends on, so it must not be
+    // erased by a default here.
+    ...(diagnostics && { parse: summarizeParse(diagnostics) }),
   };
 
   return {

@@ -42,6 +42,7 @@
 // @threat Insecure_Deserialization (#insecure-deser) [medium] cwe:CWE-502 -- "Unsafe parsing of JSON/YAML configuration files"
 // @threat Child_Process_Injection (#child-proc-injection) [high] cwe:CWE-78 -- "Agent launcher executing attacker-controlled commands via process spawn"
 // @threat Information_Disclosure (#info-disclosure) [low] cwe:CWE-200 -- "Unintended exposure of internal paths, structure, or implementation details"
+// @threat Vacuous_Pass (#vacuous-pass) [high] cwe:CWE-754 -- "A check reports success without having read what it was asked to check: zero repositories loaded, a glob that matched nothing, annotations the parser dropped. An input nobody read contributes to no count, so every number above it looks healthier for its absence, and the exit code says the estate is clean"
 
 // ─── CONTROLS ─────────────────────────────────────────────────────────
 // Security controls that mitigate threats
@@ -59,6 +60,7 @@
 // @control Prefix_Ownership (#prefix-ownership) -- "Tag prefix determines owning repo, preventing cross-repo tag collisions"
 // @control YAML_Validation (#yaml-validation) -- "Schema validation for workspace.yaml configuration files"
 // @control Identity_Redaction (#identity-redaction) -- "Hashes or drops author emails before attribution leaves the machine"
+// @control Fail_Closed (#fail-closed) -- "A command that could not read what it was asked to read exits non-zero and names what it could not read, rather than reporting the empty result as a clean one. Distinct from a gate: this fires on the absence of input, not on a finding, so it is not behind an opt-in flag"
 // @asset GuardLink.Gate (#gate) -- "Checks what an annotating agent added against the evidence bar: lints, re-prompts, strips what still fails"
 
 // ─── ACTORS ───────────────────────────────────────────────────────────

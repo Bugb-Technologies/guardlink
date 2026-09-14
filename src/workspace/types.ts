@@ -9,7 +9,7 @@
  * @mitigates #workspace-config against #config-tamper using #yaml-validation -- "Schema validation on load"
  */
 
-import type { ThreatModel, ExternalRef } from '../types/index.js';
+import type { ThreatModel, ExternalRef, ReportParseState } from '../types/index.js';
 
 // ─── Workspace Configuration (workspace.yaml) ───────────────────────
 
@@ -81,6 +81,13 @@ export interface RepoStatus {
   commit_sha?: string;
   /** Count of annotations in this repo */
   annotation_count?: number;
+  /**
+   * What this repo's parse could not read, if its report said.
+   *
+   * Undefined on a loaded repo means the report predates the field — unknown,
+   * which is not zero. Always undefined when `loaded` is false.
+   */
+  parse?: ReportParseState;
   /** Why this repo is missing (if loaded=false) */
   error?: string;
 }
@@ -118,6 +125,31 @@ export interface MergeTotals {
   mitigations: number;
   exposures: number;
   unmitigated_exposures: number;
+  /**
+   * Reproduced exploits — `@confirmed` records in the combined model.
+   *
+   * Counted because `merge --strict` gates on it, and for the same reason
+   * `guardlink ci` does: an `@accepts` does not silence a `@confirmed` anywhere
+   * in the product, so an estate can hold verified exploits while
+   * `unmitigated_exposures` reads 0. Additive to the merged JSON — a reader of
+   * the previous shape finds every key it had, unrenamed.
+   */
+  confirmed: number;
+  /**
+   * Annotation lines the member repos' parses could not read, summed over the
+   * repositories that said. See `repos_parse_unknown` for the rest — the two
+   * are reported side by side because a zero here means nothing on its own if
+   * half the estate did not answer.
+   */
+  unparsed_annotations: number;
+  /** Parse ERRORS across the repositories that reported their parse. */
+  parse_errors: number;
+  /**
+   * Repositories whose report carries no parse state at all — cut by a
+   * GuardLink older than the field. Neither clean nor a failure: a third state,
+   * kept as its own number so it can never be added into either.
+   */
+  repos_parse_unknown: number;
   acceptances: number;
   flows: number;
   boundaries: number;
