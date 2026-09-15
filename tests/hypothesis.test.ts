@@ -1999,3 +1999,102 @@ export function findUser(email: string) { return email; }
     expect(await readFile(join(root, 'src', 'a.ts'), 'utf-8')).not.toContain('@confirmed');
   }, 60000);
 });
+
+
+// ─── GAP-94 / GAP-95: one queue, bounded the same way, addressable by key ────
+
+/**
+ * Five untested claims, two of which share (asset, threat, file) — the tier a
+ * consumer would have to join on without a key. They differ only by description
+ * and line, so a coarse positional join cannot tell them apart and a claim key
+ * can. That is the same shape GAP-58 proved unsafe, here as the corpus the key
+ * test runs against rather than as a scan import.
+ */
+const QUEUE_CORPUS = `import x from 'x';
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "A: findUser concatenates email"
+ */
+export function findUser(email: string) { return email; }
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "B: findOrder concatenates id"
+ */
+export function findOrder(id: string) { return id; }
+
+/**
+ * @exposes #web to #xss [high] cwe:CWE-79 -- "profile.bio rendered via innerHTML in render()"
+ */
+export function render(bio: string) { return bio; }
+
+/**
+ * @exposes #api to #dos [medium] -- "parseBody() has no size cap"
+ */
+export function parseBody(body: string) { return body; }
+
+/**
+ * @exposes #web to #dos [medium] -- "the render loop is unbounded"
+ */
+export function loop(n: number) { return n; }
+`;
+const CORPUS_SIZE = 5;
+
+describe('the queue is one queue, whichever renderer prints it', () => {
+  const tsx = createRequire(import.meta.url).resolve('tsx/cli');
+  const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
+  const run = (cwd: string, ...args: string[]) => new Promise<{ code: number; stdout: string; stderr: string }>((res) =>
+    execFile(process.execPath, [tsx, cli, ...args], { cwd, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => res({ code: (err as { code?: number } | null)?.code ?? 0, stdout, stderr })));
+
+  /** How many entries each renderer actually printed — counted from its own rows, never from a header. */
+  async function counts(root: string, n: number): Promise<{ json: number; table: number; intake: number }> {
+    const [json, table, intake] = await Promise.all([
+      run(root, 'hypothesis', 'next', '.', '-n', String(n), '--json'),
+      run(root, 'hypothesis', 'next', '.', '-n', String(n)),
+      run(root, 'hypothesis', 'next', '.', '-n', String(n), '--intake'),
+    ]);
+    for (const r of [json, table, intake]) expect(r.code).toBe(0);
+    const rows = (s: string, re: RegExp) => s.split('\n').filter(l => re.test(l)).length;
+    return {
+      json: (JSON.parse(json.stdout) as { queue: unknown[] }).queue.length,
+      table: rows(table.stdout, /^ {2}\d+ /),
+      intake: rows(intake.stdout, /^\d+\. /),
+    };
+  }
+
+  it('bounds by -n in every renderer, below, at and above the queue length', async () => {
+    const root = await siblings(QUEUE_CORPUS);
+    // Below, exactly at, and above: a renderer that ignores -n is only visible below the length.
+    for (const n of [3, CORPUS_SIZE, 50]) {
+      const c = await counts(root, n);
+      expect({ n, ...c }).toEqual({ n, json: Math.min(n, CORPUS_SIZE), table: Math.min(n, CORPUS_SIZE), intake: Math.min(n, CORPUS_SIZE) });
+    }
+  }, 180_000);
+
+  it('gives every queue entry the claim key that addresses it, and it resolves in `hypothesis list`', async () => {
+    const root = await siblings(QUEUE_CORPUS);
+    const [next, list] = await Promise.all([
+      run(root, 'hypothesis', 'next', '.', '-n', String(CORPUS_SIZE), '--json'),
+      run(root, 'hypothesis', 'list', '.', '--json'),
+    ]);
+    expect(next.code).toBe(0);
+    expect(list.code).toBe(0);
+    const q = JSON.parse(next.stdout) as { schema: string; queue: { key: string; asset: string; threat: string; file: string; line: number }[] };
+    const records = (JSON.parse(list.stdout) as { records: { key: string; asset: string; threat: string; file: string; line: number }[] }).records;
+    expect(q.schema).toBe('guardlink.hypotheses-next/v1');   // additive: a consumer tells by the field, not by a version it would have to be rebuilt for
+    expect(q.queue).toHaveLength(CORPUS_SIZE);
+
+    // The control: this corpus DOES collide at the tier a keyless consumer would
+    // join on, so resolving by key here is not the luck of a distinct tuple.
+    const coarse = new Set(records.map(r => `${r.asset}|${r.threat}|${r.file}`));
+    expect(coarse.size).toBeLessThan(records.length);
+
+    const byKey = new Map(records.map(r => [r.key, r]));
+    expect(byKey.size).toBe(records.length);           // a key names at most one claim
+    for (const e of q.queue) {
+      expect(e.key, `queue entry ${e.asset} → ${e.threat} at ${e.file}:${e.line} carries no claim key`).toBeTruthy();
+      const hit = byKey.get(e.key);
+      expect(hit, `key ${e.key} resolves to no record in hypothesis list`).toBeDefined();
+      expect(hit).toMatchObject({ asset: e.asset, threat: e.threat, file: e.file, line: e.line });
+    }
+  }, 180_000);
+});

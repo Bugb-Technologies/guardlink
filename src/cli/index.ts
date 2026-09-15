@@ -1732,15 +1732,17 @@ hypothesis
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('-n, --count <n>', 'How many to list', '10')
   .option('--intake', 'Print the queue as a brief for bugb intake')
-  .option('--json', 'Machine-readable output')
+  .option('--json', 'Machine-readable output (guardlink.hypotheses-next/v1)')
   .action(async (dir: string, opts: { project?: string; count?: string; intake?: boolean; json?: boolean }) => {
     const { root, project, model, c } = await hypothesisContext(dir, opts.project);
     // @flows ThreatModel -> #cli via findUnmitigatedPaths -- "Which assets sit on an undefended path, for the ranking"
     const pathAssets = new Set<string>();
     for (const f of findUnmitigatedPaths(model)) for (const a of f.assetsOnPath) pathAssets.add(a);
     const n = Math.max(1, parseInt(opts.count ?? '10', 10) || 10);
-    const queue = rankUntested(c.records, model, pathAssets).slice(0, opts.intake ? Number.MAX_SAFE_INTEGER : n);
-    if (opts.json) { console.log(JSON.stringify({ schema: 'guardlink.hypotheses-next/v1', root, queue: queue.map(r => ({ rank: r.rank, state: r.state, asset: r.asset, threat: r.threat, severity: r.severity, file: r.file, line: r.line, onPath: r.onPath, unowned: r.unowned, claim: r.claim })) }, null, 2)); return; }
+    // @comment -- "ONE bound, applied before any renderer runs. `--intake` used to take the whole queue while --json and the table took -n, so the renderer built for the downstream consumer was the one that could not be asked for a bounded brief — `-n 3 --intake` printed all 142 on temporal. A per-renderer slice is the shape that drifts; a renderer added later inherits this one"
+    const queue = rankUntested(c.records, model, pathAssets).slice(0, n);
+    // @comment -- "`key` is the claim key, the same one hypotheses-list/v1 carries and `hypothesis confirm`/`--from-scan` join on, so a consumer can address a queued claim instead of joining back to `hypothesis list` on (asset, threat, file, line). That join is positional and GAP-58 proved it unsafe: this population collides at the coarser (asset, threat, file) tier. The schema stays at v1 deliberately — the field is purely additive, nothing v1 carried is renamed or removed, and a consumer tells whether a build has it by the field's presence; bumping would strand consumers pinned to the v1 string for a change that breaks none of them"
+    if (opts.json) { console.log(JSON.stringify({ schema: 'guardlink.hypotheses-next/v1', root, queue: queue.map(r => ({ rank: r.rank, key: r.key, state: r.state, asset: r.asset, threat: r.threat, severity: r.severity, file: r.file, line: r.line, onPath: r.onPath, unowned: r.unowned, claim: r.claim })) }, null, 2)); return; }
     console.log(opts.intake ? formatIntake(queue, project) : formatQueue(queue));
   });
 
