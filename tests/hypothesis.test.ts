@@ -2070,6 +2070,51 @@ describe('the queue is one queue, whichever renderer prints it', () => {
     }
   }, 180_000);
 
+  it('names the page and the whole queue in every renderer when -n bounds it', async () => {
+    const root = await siblings(QUEUE_CORPUS);
+    const SHOWN = 3;
+    const [json, table, intake] = await Promise.all([
+      run(root, 'hypothesis', 'next', '.', '-n', String(SHOWN), '--json'),
+      run(root, 'hypothesis', 'next', '.', '-n', String(SHOWN)),
+      run(root, 'hypothesis', 'next', '.', '-n', String(SHOWN), '--intake'),
+    ]);
+    for (const r of [json, table, intake]) expect(r.code).toBe(0);
+
+    // --json: a consumer holding 3 entries can tell a page from the whole queue.
+    const payload = JSON.parse(json.stdout) as { schema: string; total: number; queue: unknown[] };
+    expect(payload.schema).toBe('guardlink.hypotheses-next/v1');
+    expect(payload.queue).toHaveLength(SHOWN);
+    expect(payload.total).toBe(CORPUS_SIZE);
+
+    // The table header: the page size AND the queue size, in that order.
+    expect(table.stdout.split('\n')[0]).toMatch(new RegExp(`\\b${SHOWN}\\b.*\\b${CORPUS_SIZE}\\b`));
+
+    // The brief says it before the list and again on the line that hands it over,
+    // because either can be the one an operator reads.
+    const [head, ...rest] = intake.stdout.split(/^1\. /m);
+    const closing = rest.join('1. ').split('\n').filter(Boolean).at(-1)!;
+    for (const part of [head, closing]) {
+      expect(part).toMatch(new RegExp(`\\b${SHOWN}\\b`));
+      expect(part).toMatch(new RegExp(`\\b${CORPUS_SIZE}\\b`));
+    }
+    expect(closing).toContain('bugb intake');
+    expect(head).toContain('-n');   // and how to ask for the rest
+  }, 180_000);
+
+  it('claims no truncation when -n hid nothing', async () => {
+    const root = await siblings(QUEUE_CORPUS);
+    const [json, table, intake] = await Promise.all([
+      run(root, 'hypothesis', 'next', '.', '-n', '50', '--json'),
+      run(root, 'hypothesis', 'next', '.', '-n', '50'),
+      run(root, 'hypothesis', 'next', '.', '-n', '50', '--intake'),
+    ]);
+    for (const r of [json, table, intake]) expect(r.code).toBe(0);
+    expect((JSON.parse(json.stdout) as { total: number; queue: unknown[] }).total).toBe(CORPUS_SIZE);
+    expect(table.stdout.split('\n')[0]).toBe(`${CORPUS_SIZE} to test`);
+    expect(intake.stdout).not.toMatch(new RegExp(`\\bof ${CORPUS_SIZE}\\b`));
+    expect(intake.stdout.split('\n').filter(Boolean).at(-1)).toBe('Hand this to `bugb intake "<brief>"`; an operator approves the plan before anything runs.');
+  }, 180_000);
+
   it('gives every queue entry the claim key that addresses it, and it resolves in `hypothesis list`', async () => {
     const root = await siblings(QUEUE_CORPUS);
     const [next, list] = await Promise.all([

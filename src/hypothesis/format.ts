@@ -30,9 +30,14 @@ export function formatHypothesisList(c: HypothesisClassification, state?: string
   return lines.join('\n');
 }
 
-export function formatQueue(q: RankedHypothesis[]): string {
+/**
+ * The queue as a table. `total` is the queue length BEFORE `-n` bounded it.
+ *
+ * @comment -- "The header counted the rows it was handed, so once -n bounded every renderer a 142-claim queue printed 10 to test: not a smaller answer to the same question but a wrong answer to it, because that line is the only place the table says how much there is. It names both numbers when the page is short of the queue, and reads exactly as it always did when it is not — a run that hides nothing must not grow a notice about hiding"
+ */
+export function formatQueue(q: RankedHypothesis[], total: number = q.length): string {
   if (q.length === 0) return 'Nothing to test: every exposure has an outcome that still holds.';
-  const lines = [`${q.length} to test`, '', `  ${pad('#', 4)}${pad('state', 9)}${pad('severity', 10)}${pad('asset', 18)}${pad('threat', 22)}${pad('where', 34)}why`];
+  const lines = [q.length < total ? `${q.length} of ${total} to test` : `${total} to test`, '', `  ${pad('#', 4)}${pad('state', 9)}${pad('severity', 10)}${pad('asset', 18)}${pad('threat', 22)}${pad('where', 34)}why`];
   for (const r of q) {
     const why = [r.onPath ? 'on an undefended path' : null, r.unowned ? 'unowned' : null, r.state === 'retest' ? 'confirmed, code changed' : null].filter(Boolean).join(', ');
     lines.push(`  ${pad(String(r.rank), 4)}${pad(r.state, 9)}${pad(r.severity, 10)}${pad(short(r.asset, 17), 18)}${pad(short(r.threat, 21), 22)}${pad(short(`${r.file}:${r.line}`, 33), 34)}${why}`);
@@ -41,14 +46,23 @@ export function formatQueue(q: RankedHypothesis[]): string {
   return lines.join('\n');
 }
 
-/** The queue as a brief `bugb intake` can take. */
-export function formatIntake(q: RankedHypothesis[], project: string): string {
+/**
+ * The queue as a brief `bugb intake` can take. `total` is the queue length
+ * BEFORE `-n` bounded it.
+ *
+ * @comment -- "A bounded brief that does not say it is bounded is a misleading brief. This one closes by telling an operator to hand it to bugb intake, so a 10-item page of a 142-claim queue reads as the whole of what there is to test and the 132 it never names read as nothing left to do. Both numbers are stated above the list and again on that closing line, since either can be the one an operator reads, along with the flag that asks for the rest. An untruncated brief is unchanged, down to the byte"
+ */
+export function formatIntake(q: RankedHypothesis[], project: string, total: number = q.length): string {
+  const truncated = q.length < total;
   const lines = [`# Test plan for ${project} — from guardlink hypothesis next`, '', 'Test these exposures in order. Each is a GuardLink claim; record the result with `guardlink hypothesis confirm|refute <file:line> --evidence "…"` or import the scan with `--from-scan`.', ''];
+  if (truncated) lines.push(`NOT THE WHOLE QUEUE: the first ${q.length} of ${total} ranked exposures, bounded by \`-n\`. The other ${total - q.length} are still untested and are not listed below — \`-n <count>\` asks for more, \`-n ${total}\` for all of them.`, '');
   for (const r of q) {
     lines.push(`${r.rank}. ${r.asset} → ${r.threat} [${r.severity}] at ${r.file}:${r.line}${r.state === 'retest' ? ' (previously confirmed; code changed — retest)' : ''}${r.onPath ? ' — on an undefended path' : ''}${r.unowned ? ' — no owner' : ''}`);
     lines.push(`   claim: ${r.claim}`);
   }
-  lines.push('', 'Hand this to `bugb intake "<brief>"`; an operator approves the plan before anything runs.');
+  lines.push('', truncated
+    ? `Hand this to \`bugb intake "<brief>"\`; an operator approves the plan before anything runs. This plan is the first ${q.length} of ${total}, not the whole queue — \`-n <count>\` asks for more.`
+    : 'Hand this to `bugb intake "<brief>"`; an operator approves the plan before anything runs.');
   return lines.join('\n');
 }
 

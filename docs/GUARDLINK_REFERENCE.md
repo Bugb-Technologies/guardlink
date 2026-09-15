@@ -262,6 +262,12 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
   consumer addresses a queued claim by key rather than joining back to `hypothesis list` on
   (asset, threat, file, line), which is positional and collides. The schema stays `/v1`: `key` is
   additive, and a consumer tells whether a build carries it by the field's presence.
+  **A bounded queue says so, in all three renderers.** The table header reads `3 of 142 to test`,
+  the brief names both numbers above the list and again on the line that hands it to `bugb intake`
+  (with the `-n <count>` that asks for the rest), and the payload carries `total`, the queue length
+  before the bound — so a page cannot be read as the whole set, by a person or by a consumer.
+  `total` is additive exactly as `key` is, and the schema stays `/v1` for the same reason. A run
+  that hides nothing is unchanged: no marker, no notice.
 - **A stamped claim key resolves the join, before anything coarser is tried.** A finding carrying
   the claim key is looked up across the whole model. A key matches at most one claim, so that
   lookup is the answer. If it names no claim the finding is **stale**: the claim it was tested
