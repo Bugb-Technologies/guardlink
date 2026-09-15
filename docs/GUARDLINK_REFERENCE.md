@@ -71,6 +71,32 @@ Use the same GAL syntax without language comment prefixes. Definitions still bel
 
 **Convention:** always place a `@source` directive before any annotations in a `.gal` file. Annotations that appear before the first `@source` are anchored to the `.gal` file's own physical location rather than to a source-code location, which is usually not what you want and makes dashboards / reports display the `.gal` path instead of the underlying source file.
 
+**Sidecars need one extra step that inline annotations do not: export the model.**
+
+```sh
+guardlink parse . -o .guardlink/report.json
+```
+
+GuardLink reads `.gal` sidecars. Nothing downstream of it does. A consumer — the code graph, a
+dashboard, a CI job — looks for that JSON export and, failing to find one, falls back to scraping
+inline source comments itself; a `.gal` is not one of those, so it is skipped. Measured on a fresh
+repository (2026-09-16): the same two `@exposes` and one `@accepts` gave `exposures 2, acceptances
+1` written inline and `exposures 0, acceptances 0` written in sidecars, while the consuming surface
+still reported itself *present* — a correctly annotated repository rendering a green, empty
+dashboard.
+
+Re-export whenever the annotations change. `guardlink validate .` and `guardlink status .` both
+report the export as missing, stale, or carrying no provenance stamp; the three are different
+answers and are reported as three, because an export with no `metadata.annotation_hash` is not
+known to be current and is not known to be stale.
+
+**A `.gal` that yields nothing now says which kind of nothing it is.** An empty sidecar
+(`empty-gal`), one holding text that names no GuardLink verb (`unrecognised-gal`), and one whose
+`@source` points at a file that is not on disk (`missing-gal-source`) are three different mistakes
+with three different fixes, and each is a warning rather than a silent zero. A sidecar whose lines
+*are* verb-shaped and fail to parse keeps its existing, more precise diagnostic
+(`malformed-annotation`, `prose-like`, `unknown-verb`) instead of gaining a vaguer second one.
+
 ## When Writing Code
 
 | Situation | Annotation |
