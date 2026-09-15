@@ -2175,3 +2175,59 @@ describe('the queue is one queue, whichever renderer prints it', () => {
     }
   }, 180_000);
 });
+
+
+// ─── The bounded notice: grammar, and who states the total ──────────────
+
+describe('a bounded queue says so in a sentence that holds at every count', () => {
+  const tsx = createRequire(import.meta.url).resolve('tsx/cli');
+  const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
+  const run = (cwd: string, ...args: string[]) => new Promise<{ code: number; stdout: string; stderr: string }>((res) =>
+    execFile(process.execPath, [tsx, cli, ...args], { cwd, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => res({ code: (err as { code?: number } | null)?.code ?? 0, stdout, stderr })));
+
+  it('agrees in number when exactly one entry is hidden', async () => {
+    const root = await siblings(QUEUE_CORPUS);
+    // CORPUS_SIZE - 1 shown leaves a remainder of exactly one: the count the
+    // sentence was fixed at plural for.
+    const one = await run(root, 'hypothesis', 'next', '.', '-n', String(CORPUS_SIZE - 1), '--intake');
+    expect(one.code).toBe(0);
+    expect(one.stdout).toContain('The other 1 is');
+    expect(one.stdout).not.toContain('The other 1 are');
+
+    // And the plural case still reads as it did.
+    const many = await run(root, 'hypothesis', 'next', '.', '-n', '2', '--intake');
+    expect(many.code).toBe(0);
+    expect(many.stdout).toContain(`The other ${CORPUS_SIZE - 2} are`);
+  }, 120_000);
+});
+
+describe('the total a bounded renderer prints is the caller’s to state', () => {
+  const tsc = createRequire(import.meta.url).resolve('typescript/bin/tsc');
+  const format = join(process.cwd(), 'src', 'hypothesis', 'format.js');
+  const classify = join(process.cwd(), 'src', 'hypothesis', 'classify.js');
+
+  /** Type-check one fixture against the real module and report what tsc said. */
+  const check = async (body: string): Promise<{ code: number; out: string }> => {
+    const dir = await mkdtemp(join(tmpdir(), 'guardlink-total-'));
+    const file = join(dir, 'fixture.ts');
+    await writeFile(file, `import { formatQueue, formatIntake } from '${format}';\nimport type { RankedHypothesis } from '${classify}';\ndeclare const page: RankedHypothesis[];\ndeclare const total: number;\n${body}\n`);
+    return new Promise((res) => execFile(process.execPath, [tsc, '--noEmit', '--strict', '--target', 'ES2022', '--module', 'NodeNext', '--moduleResolution', 'NodeNext', '--skipLibCheck', file], { maxBuffer: 64 * 1024 * 1024 },
+      (err, stdout) => res({ code: (err as { code?: number } | null)?.code ?? 0, out: stdout })));
+  };
+
+  it('refuses to compile a call that leaves the total unstated', async () => {
+    // Omitting it is the defect these renderers exist to prevent, wearing a
+    // plausible number: the page length silently becomes the queue length, so a
+    // 10-of-142 page reports "10 to test". A required parameter turns that into
+    // a build failure instead of a confident wrong answer.
+    const omitted = await check('formatQueue(page);\nformatIntake(page, \'p\');');
+    expect(omitted.code).not.toBe(0);
+    expect(omitted.out).toMatch(/Expected \d+ arguments, but got \d+/);
+
+    // The control: the same fixture with the total stated must compile, so the
+    // failure above is the missing argument and not an unrelated type error.
+    const stated = await check('formatQueue(page, total);\nformatIntake(page, \'p\', total);');
+    expect(stated.out).toBe('');
+    expect(stated.code).toBe(0);
+  }, 180_000);
+});
