@@ -89,6 +89,7 @@ import type {
 } from '../types/index.js';
 import { canonicaliser } from './canonical-ref.js';
 import { acceptanceCovers, isQualified, type AcceptancePolicy } from './acceptance.js';
+import { countAnnotations } from './feature-filter.js';
 
 /** Strip a leading `#` and case so `#sqli`, `sqli` and `SQLi` compare equal. */
 export function normalizeRef(ref: string): string {
@@ -328,6 +329,45 @@ export function describeCoverage(model: ThreatModel): CoverageDescription {
     sourceFiles,
     percent: fileCoveragePercent(annotatedFiles, sourceFiles),
     annotations: annotationCount(model),
+  };
+}
+
+/**
+ * The same description, narrowed to a set of root-relative path prefixes.
+ *
+ * `guardlink ci --scope services/api` says "this pipeline owns services/api",
+ * and a coverage floor that answered for the whole monorepo would let a fully
+ * annotated `web/` carry an untouched `services/api/` over the bar — the
+ * vacuous pass the floor exists to close, reappearing one level up.
+ *
+ * An empty or absent `scope` delegates to {@link describeCoverage} rather than
+ * recomputing, so an unscoped run reports the model's own number and cannot
+ * disagree with the dashboard, the report or `status` about it.
+ *
+ * The scoped denominator is `annotated_files ∪ unannotated_files`, which is
+ * every file the parser placed. It can be a hair under `source_files`, whose
+ * set also carries scanned files inside `.guardlink/` that carry no
+ * annotations; those are never under a caller's scope prefix anyway, and the
+ * division itself still happens in exactly one place.
+ */
+export function describeCoverageUnder(
+  model: ThreatModel,
+  scope: string[] | null | undefined,
+  matches: (file: string, scope: string[]) => boolean,
+): CoverageDescription {
+  if (!scope || scope.length === 0) return describeCoverage(model);
+  const annotated = model.annotated_files.filter(f => matches(f, scope));
+  const placed = new Set([...annotated, ...model.unannotated_files.filter(f => matches(f, scope))]);
+  return {
+    kind: 'file',
+    annotatedFiles: annotated.length,
+    sourceFiles: placed.size,
+    percent: fileCoveragePercent(annotated.length, placed.size),
+    // Annotations, not files. `annotations_parsed` is a project-wide scalar
+    // with no per-file breakdown, so it would report the whole repository's
+    // total under any narrowing; `countAnnotations` finds the rows by shape,
+    // which is the same counter `filterByFeature` uses for the same reason.
+    annotations: countAnnotations(model, new Set(annotated)),
   };
 }
 

@@ -93,6 +93,53 @@
  * them. `--scope` filters everything, because everything has a file, and "this
  * pipeline owns services/api/" is a statement about all of it.
  *
+ * ── The seventh check: a signature with days left on it ────────────
+ *
+ * `ci` could already tell you an acceptance had EXPIRED — the exposures it
+ * covered come back, and `--strict` fails. It said nothing at all on the way
+ * there. Measured: an `@accepts` on a critical exposure with eleven days left
+ * printed `Acceptances: 1 in the model; 0 do not count` and then an unqualified
+ * green tick. The horizon was in the model the whole time; the gate declined to
+ * read it out.
+ *
+ * The server register does read it out — `expiry_edges` in
+ * `bugb_server/notify/lifecycle_transitions.py` fires `ACCEPTANCE_EXPIRING` at
+ * `expires_at − acceptance_warn_days`, default 14, clamped 0..365. That is the
+ * same event about the same waiver for the same team, so the boundary here is
+ * that boundary and the default is that default. Two components disagreeing
+ * about whether a risk acceptance is in trouble would be a worse defect than
+ * either of them being silent.
+ *
+ * It WARNS and does not gate, which is also the server's verdict:
+ * `ACCEPTANCE_EXPIRING` leaves `lifecycle_state` at `accepted` and only
+ * `EXPIRED_REOPENED` moves it. Nothing is wrong with an acceptance doing what
+ * its author signed it to do, and this gate sits in people's pipelines: a red
+ * build on a date nobody chose — no commit, no review, just the calendar —
+ * is a gate that gets deleted rather than acted on. When the date passes, the
+ * acceptance stops covering and `--strict` fails on `exposures`, which was
+ * already load-bearing and needed no help.
+ *
+ * ── The eighth check: whether the model says anything at all ────────
+ *
+ * Every check above counts things that are WRONG, and a count of things that
+ * are wrong is silent about whether anybody looked. Measured: a repository with
+ * zero annotations and a repository whose every risk is mitigated produce the
+ * same line and the same exit code. A pipeline can therefore be green because
+ * the work is finished or because it never started, and `ci` does not say which
+ * — `#vacuous-pass`, in the tool that exists to catch it.
+ *
+ * Two repairs, deliberately different in kind. The coverage LINE is
+ * unconditional: it is the denominator every count above it is measured
+ * against, and printing it changes no exit code. The coverage FLOOR is opt-in
+ * via `--min-coverage`, because a floor that appeared on upgrade would turn
+ * somebody's green pipeline red for a change they did not make.
+ *
+ * The floor is the one term in the exit code that does NOT consult `--strict`.
+ * `--strict` says "treat findings in this model as blocking"; a floor says
+ * "this model has to say something before its findings mean anything". Behind
+ * `--strict` it would be unreachable for everyone running the gate advisory,
+ * which is to say it would be a floor nobody can fail.
+ *
  * ── One repository, and it says so (marks 5, 6, 7, 18) ─────────────
  *
  * `guardlink ci <one-repo>` is what a developer types and what a CI job runs,
@@ -133,7 +180,11 @@
  * @flows ParseDiagnostics -> #cli via runCiChecks -- "Diagnostics from the parse are reported, never recomputed"
  * @flows SourceFiles -> #cli via findAnchorDrift -- "Recorded anchors compared against current source"
  * @flows LedgerFile -> #cli via readLedger -- "Recorded claim hashes, read only"
- * @comment -- "Exit code is a pure function of (strict, exposures, confirmed, drift, demotable stale, parse errors, unqualified acceptances) and lives in the summary, so JSON consumers see the same verdict the shell got"
+ * @comment -- "Exit code is a pure function of (strict, exposures, confirmed, drift, demotable stale, parse errors, unqualified acceptances) OR the coverage floor, and lives in the summary, so JSON consumers see the same verdict the shell got"
+ * @flows AcceptanceHorizons -> #cli via findExpiringAcceptances -- "Qualifying acceptances read for how much of their horizon is left; reported, never gated on"
+ * @comment -- "The expiry warning boundary is bugb-server's DEFAULT_ACCEPTANCE_WARN_DAYS (14, clamped 0..365) rather than a number chosen here: two registers disagreeing about whether a waiver is in trouble is the bug one level up"
+ * @comment -- "--min-coverage is the ONE exit-code term that ignores --strict: it asserts the model exists rather than grading what it says, and behind --strict it would be unreachable for every advisory run"
+ * @comment -- "A lapsing acceptance never moves the exit code. It is a clock reading, not a finding, and a build that goes red on a date nobody chose is a gate teams delete rather than act on"
  * @comment -- "Exposures and drift are serialized as the types the parser already produces — no renamed fields, so guardlink.ci/v1 cannot drift from the model it reports"
  * @comment -- "The third check reads .guardlink/verified.json and never writes it; a corrupt ledger is reported once and treated as absent"
  * @comment -- "@confirmed is not filtered by acceptance state at all: @accepts does not silence a reproduced exploit anywhere else in the product and must not do so here"
@@ -143,11 +194,11 @@
 import type {
   ThreatModel, ThreatModelExposure, ThreatModelConfirmed, Severity, ParseDiagnostic, DiagnosticCode,
 } from '../types/index.js';
-import { findUnmitigatedExposures } from '../parser/coverage.js';
+import { findUnmitigatedExposures, describeCoverageUnder, type CoverageDescription } from '../parser/coverage.js';
 import {
-  findAcceptanceDefects, DEFAULT_ACCEPTANCE_POLICY,
+  findAcceptanceDefects, findExpiringAcceptances, DEFAULT_ACCEPTANCE_POLICY,
   ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_SHORT, ACCEPTANCE_REGISTER_NOTE,
-  type AcceptanceFinding, type AcceptancePolicy,
+  type AcceptanceFinding, type AcceptancePolicy, type ExpiringAcceptance,
 } from '../parser/acceptance.js';
 import { findAnchorDrift, type AnchorDrift } from '../parser/reanchor.js';
 import { countAnchors } from '../parser/annotation-hash.js';
@@ -192,6 +243,42 @@ export interface CiFilters {
 }
 
 /**
+ * How much of the tree the model describes, and whether that clears the floor
+ * the caller asked for.
+ *
+ * ── Why a gate needs a denominator at all ───────────────────────────
+ *
+ * Every other number here is a count of things that are WRONG, and a count of
+ * things that are wrong is silent about whether anybody looked. Measured: a
+ * repository with zero annotations and a repository whose every risk is
+ * mitigated produce the same line and the same exit code — `✓ No unmitigated
+ * exposures, …` — so a pipeline can be green because the work is finished or
+ * because it never started, and the gate does not say which. That is
+ * `#vacuous-pass` in the tool whose job is to catch it.
+ *
+ * ── Line versus floor ───────────────────────────────────────────────
+ *
+ * The numbers are reported unconditionally: they qualify every count above
+ * them, they cost no behaviour, and no pipeline changes because a line of text
+ * appeared. `floor` is `null` unless someone typed `--min-coverage`, and it is
+ * the only thing here that can move an exit code.
+ */
+export interface CiCoverage {
+  /** File coverage — the only coverage GuardLink computes. Names its own unit. */
+  kind: 'file';
+  annotated_files: number;
+  source_files: number;
+  /** `annotated_files / source_files` as a whole percent. */
+  percent: number;
+  /** Annotations parsed in scope. NOT the numerator of `percent` — a separate quantity. */
+  annotations: number;
+  /** The floor `--min-coverage` asked for, or null when none was asked for. */
+  floor: number | null;
+  /** True only when a floor was asked for and this model is under it. */
+  below_floor: boolean;
+}
+
+/**
  * The estate this repository is linked into, as `ci` can see it.
  *
  * Present only when `.guardlink/workspace.yaml` exists. `siblings` is every
@@ -228,6 +315,23 @@ export interface CiSummary {
   confirmed: number;
   /** Acceptances that do not meet the policy — `unqualified_acceptances.length`. */
   unqualified_acceptances: number;
+  /**
+   * Acceptances that DO count today and stop counting within
+   * `acceptance_warn_days` — `expiring_acceptances.length`.
+   *
+   * Never part of the exit-code predicate. See the note at the head of this
+   * file: this is a clock reading, not a finding.
+   */
+  expiring_acceptances: number;
+  /**
+   * The warning window this run judged against, in days.
+   *
+   * Emitted whether or not anything was found, because "0 expiring" means
+   * something different at 14 days than at 0 — and at 0 it means the question
+   * was not asked. A consumer that has to guess which of those it has will
+   * guess, exactly as with `acceptance_register` next door.
+   */
+  acceptance_warn_days: number;
   /** Every `@accepts` in the model, qualified or not. The denominator for the line above. */
   acceptances: number;
   /**
@@ -250,6 +354,8 @@ export interface CiSummary {
   anchors: number;
   by_severity: SeverityCounts;
   by_kind: DriftKindCounts;
+  /** How much of this repository (or of `--scope`) the model actually describes. */
+  coverage: CiCoverage;
   /** Stale claims — `stale.length`. */
   stale: number;
   /** Claims whose hash matches the ledger. Carried as a count only. */
@@ -313,6 +419,8 @@ export interface CiReport {
   confirmed: ThreatModelConfirmed[];
   /** Acceptances the policy refused, each with what is wrong with it. */
   unqualified_acceptances: AcceptanceFinding[];
+  /** Qualifying acceptances inside the warning window, soonest first. */
+  expiring_acceptances: ExpiringAcceptance[];
   /** `AnchorDrift` as `findAnchorDrift` produced it — same fields, same names. */
   drift: AnchorDrift[];
   stale: CiClaim[];
@@ -360,6 +468,29 @@ export interface CiOptions {
    * `guardlink ci` passes what `.guardlink/config.json` declares.
    */
   policy?: AcceptancePolicy;
+  /**
+   * Days of notice before an acceptance lapses. Overrides `policy.warn_days`;
+   * `guardlink ci` passes `--expiring-within` here and nothing otherwise.
+   *
+   * `0` asks for no warning at all, which is why an explicit zero has to be
+   * distinguishable from an absent one — a `?? policy.warn_days` on a falsy
+   * check would quietly turn "no warnings" back into "fourteen days".
+   */
+  warnDays?: number;
+  /**
+   * Fail the run when file coverage is below this percentage.
+   *
+   * Opt-in and absent by default: a floor that appeared on upgrade would turn
+   * somebody's green pipeline red for a change they did not make, which is the
+   * failure mode `--strict` exists to avoid and this must not reintroduce.
+   *
+   * Independent of `strict`, and deliberately. `--strict` says "treat findings
+   * in this model as blocking"; this says "this model has to say something
+   * before its findings mean anything". Requiring both would make the floor
+   * unreachable for the large majority of users who run the gate advisory —
+   * which is to say, it would be a floor nobody can fail.
+   */
+  minCoverage?: number;
   /** The clock. A parameter so a test can pin it and so one run uses one midnight. */
   now?: Date;
   /**
@@ -464,6 +595,21 @@ function underScope(file: string | undefined, scope: string[] | null): boolean {
   });
 }
 
+/**
+ * `--min-coverage` as a percentage, or null when none was asked for.
+ *
+ * `0` is a real floor and survives — it is the value a caller uses to say "I
+ * want the verdict line, and I never want it to fail". Only `undefined` means
+ * absent, so the caller's explicit zero is never mistaken for silence. Out of
+ * range is refused at the CLI, where a person can be told why; here the value
+ * is clamped rather than dropped, because silently ignoring a floor is the one
+ * outcome a floor must never have.
+ */
+function normalizeFloor(value: number | undefined): number | null {
+  if (value === undefined || !Number.isFinite(value)) return null;
+  return Math.min(100, Math.max(0, value));
+}
+
 function atSeverity(severity: Severity | undefined, allowed: Severity[] | null): boolean {
   // An exposure with no severity is UNRATED, not low. It survives every
   // threshold, because the alternative is a gate you pass by omitting a bracket.
@@ -506,6 +652,29 @@ export function runCiChecks(root: string, model: ThreatModel, opts: CiOptions = 
   // would go quiet the moment the last exposure was mitigated.
   const unqualified = allUnqualified.filter(f => underScope(f.file, scope));
 
+  // The clock reading, from the one module that says what an acceptance is.
+  // Scoped like every other finding; never severity-filtered, for the reason
+  // above — a horizon is not a severity. An explicit `warnDays: 0` has to
+  // survive, so the fallback tests for undefined rather than for falsiness.
+  const warnDays = opts.warnDays ?? policy.warn_days;
+  const expiring = findExpiringAcceptances(model, policy, warnDays, now)
+    .filter(a => underScope(a.file, scope));
+
+  // Coverage, narrowed the same way the findings were. `underScope` is passed
+  // in rather than reimplemented so a file that counts for the floor is
+  // exactly a file that could have carried one of the findings above it.
+  const described: CoverageDescription = describeCoverageUnder(model, scope, (file, prefixes) => underScope(file, prefixes));
+  const floor = normalizeFloor(opts.minCoverage);
+  const coverage: CiCoverage = {
+    kind: 'file',
+    annotated_files: described.annotatedFiles,
+    source_files: described.sourceFiles,
+    percent: described.percent,
+    annotations: described.annotations,
+    floor,
+    below_floor: floor !== null && described.percent < floor,
+  };
+
   const drift = findAnchorDrift(root, model).filter(d => underScope(d.file, scope));
   const read = readLedger(root);
   const verification: VerificationReport = classifyClaims(model, read);
@@ -530,11 +699,26 @@ export function runCiChecks(root: string, model: ThreatModel, opts: CiOptions = 
     || demotableStale > 0
     || parseErrors.length > 0;
 
+  // `expiring` is deliberately absent from `found`. Nothing is wrong with an
+  // acceptance that is doing what its author signed it to do, and a build that
+  // went red on a date nobody chose — no commit, no review, just the calendar —
+  // is a gate people delete rather than a gate people act on. The server takes
+  // the same view: ACCEPTANCE_EXPIRING leaves `lifecycle_state` at `accepted`
+  // and only EXPIRED_REOPENED moves it. When the date does pass, the acceptance
+  // stops covering, its exposures return to `exposures`, and `--strict` fails
+  // there — on the predicate that was already load-bearing.
+  //
+  // `below_floor` is in, and is the ONE term that does not consult `strict`: a
+  // floor is a claim the caller made about this repository, not an opinion
+  // about how blocking a finding should be, and it has no meaning it could
+  // carry if it never failed anything.
+
   return {
     schema: CI_SCHEMA,
     exposures,
     confirmed,
     unqualified_acceptances: unqualified,
+    expiring_acceptances: expiring,
     drift,
     stale: staleRecords.map(toCiClaim),
     unverified: unverifiedRecords.map(toCiClaim),
@@ -544,12 +728,15 @@ export function runCiChecks(root: string, model: ThreatModel, opts: CiOptions = 
       exposures: exposures.length,
       confirmed: confirmed.length,
       unqualified_acceptances: unqualified.length,
+      expiring_acceptances: expiring.length,
+      acceptance_warn_days: warnDays,
       acceptances: model.acceptances.length,
       acceptance_register: ACCEPTANCE_REGISTER_ID,
       drift: drift.length,
       anchors: countAnchors(model),
       by_severity: countBySeverity(exposures),
       by_kind: countByKind(drift),
+      coverage,
       stale: staleRecords.length,
       verified: verification.summary.verified,
       unverified: unverifiedRecords.length,
@@ -575,7 +762,7 @@ export function runCiChecks(root: string, model: ThreatModel, opts: CiOptions = 
           + (allUnqualified.length - unqualified.length),
       },
       workspace: opts.workspace ?? null,
-      exit_code: strict && found ? 1 : 0,
+      exit_code: (strict && found) || coverage.below_floor ? 1 : 0,
     },
   };
 }
@@ -652,7 +839,26 @@ export function formatCiReport(report: CiReport): string {
     : `Acceptances: ${summary.acceptances} in the model; `
       + `${summary.unqualified_acceptances} do not count as acceptances`
       + `${summary.filters.scope ? ' (in scope)' : ''}`
+      // The third state, on the same line as the other two: an acceptance is
+      // counted, refused or running out, and a reader looking for "how are my
+      // waivers" should find all three answers in one place rather than
+      // discovering the third only if it happens to be non-zero elsewhere.
+      + (summary.expiring_acceptances > 0
+        ? `; ${summary.expiring_acceptances} lapsing within ${summary.acceptance_warn_days} days`
+        : '')
       + ` — ${ACCEPTANCE_REGISTER_SHORT}`);
+  // Unconditional, because it is the denominator every count above it is
+  // measured against: "0 unmitigated exposures" over 0 annotations and over 400
+  // are different sentences, and until this line existed they printed the same.
+  out.push(`Annotation coverage: ${summary.coverage.percent}%`
+    + ` — ${summary.coverage.annotated_files} of ${summary.coverage.source_files} source file(s) annotated`
+    + `, ${summary.coverage.annotations} annotation(s)`
+    + `${summary.filters.scope ? ' (in scope)' : ''}`
+    + (summary.coverage.floor === null
+      ? ''
+      : summary.coverage.below_floor
+        ? `; below the ${summary.coverage.floor}% floor`
+        : `; floor ${summary.coverage.floor}% met`));
   out.push(summary.anchors === 0
     ? 'Anchor drift: 0 (no anchored @source blocks to check)'
     : `Anchor drift: ${summary.drift}${kindBreakdown(summary.by_kind)}`
@@ -712,6 +918,24 @@ export function formatCiReport(report: CiReport): string {
     out.push(`   ${ACCEPTANCE_REGISTER_NOTE}`);
   }
 
+  // Below the acceptances that do not count, above nothing: these DO count
+  // today. The register on the server warns at the same boundary, so a team
+  // reading both surfaces gets one answer rather than two.
+  if (report.expiring_acceptances.length > 0) {
+    out.push('', `⚠  ${report.expiring_acceptances.length} acceptance(s) lapsing within `
+      + `${summary.acceptance_warn_days} days — covering today, uncovered after:`);
+    for (const a of report.expiring_acceptances) {
+      const who = a.acceptance.accepted_by ? ` by ${a.acceptance.accepted_by}` : '';
+      const left = a.days_remaining === 0 ? 'last day' : `${a.days_remaining} day(s) left`;
+      out.push(`   ${a.file}:${a.line}  ${a.acceptance.threat} on ${a.acceptance.asset}`
+        + ` — ${left}, until ${a.expires}${who}`);
+    }
+    out.push('   Nothing failed on this. When one lapses it stops covering, its exposure(s)');
+    out.push('   return as unmitigated, and --strict fails there rather than here.');
+    out.push('   Re-decide before the date with: guardlink review . --accept <id> --by "<name>"'
+      + ' --justification "<why>" --until <YYYY-MM-DD>');
+  }
+
   if (drift.length > 0) {
     out.push('', `⚠  ${drift.length} drifted @source block(s):`);
     for (const d of drift) {
@@ -729,14 +953,33 @@ export function formatCiReport(report: CiReport): string {
     }
   }
 
+  // The floor, last of the blocks and first of the verdicts: it says whether
+  // the checks above were asked of a model that exists. Printed before the tick
+  // so a reader never sees a tick they then have to retract.
+  if (summary.coverage.below_floor) {
+    out.push('', `✗  Coverage floor not met: ${summary.coverage.percent}% is below the `
+      + `${summary.coverage.floor}% floor asked for with --min-coverage`
+      + `${summary.filters.scope ? ` (scope ${summary.filters.scope.join(', ')})` : ''}.`);
+    out.push('   A model this thin passes the checks above by having nothing to fail,');
+    out.push('   so their silence is not a result. Annotate, or lower the floor deliberately —');
+    out.push('   `guardlink status .` shows where the gaps are, `guardlink suggest <file>` starts one.');
+  }
+
   const clean = exposures.length === 0 && confirmed.length === 0 && drift.length === 0
     && report.unqualified_acceptances.length === 0 && report.stale.length === 0
     && report.parse.length === 0;
-  if (clean) {
+  if (clean && !summary.coverage.below_floor) {
+    // The tick carries its own caveat rather than standing alone. Measured
+    // before this: eleven days from a signature lapsing on a critical exposure,
+    // this line printed with a full stop after it and nothing else.
     out.push('', `✓ No unmitigated exposures, no confirmed exploits, no anchor drift,`
       + ` every acceptance accounted for${ws ? ' — in this repository' : ''}.`
-      + `${summary.ledger === 'present' ? ' No stale claims.' : ''}`);
-  } else if (!summary.strict) {
+      + `${summary.ledger === 'present' ? ' No stale claims.' : ''}`
+      + (summary.expiring_acceptances > 0
+        ? `\n  ${summary.expiring_acceptances} of them lapsing within `
+          + `${summary.acceptance_warn_days} days, listed above.`
+        : ''));
+  } else if (!summary.strict && !summary.coverage.below_floor) {
     out.push('', 'Advisory — nothing here failed the build. Run with --strict to gate on it.');
   }
 

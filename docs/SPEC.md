@@ -532,6 +532,15 @@ end
 almost always. `until <YYYY-MM-DD>` is the last day the acceptance covers anything; after it, the
 exposure returns and the gate reports it as **expired**.
 
+**Approaching expiry is a warning, never a failure.** A qualifying acceptance within
+`acceptance.warn_days` of its `until` date is reported by the gate as **lapsing**, with the days
+remaining and the date, and the exit code does not move: nothing is wrong with an acceptance doing
+what its author signed it to do, and a build that goes red on a date nobody chose is a gate teams
+delete rather than act on. The exit code moves when it actually lapses, on the exposures that come
+back. An acceptance that is already expired, or that does not qualify, is reported as that and not
+as lapsing. The default window is **14 days**, matching the server decision log's own
+acceptance-deadline scan (`acceptance_warn_days`); `0` means no warning at all.
+
 Both clauses are syntactically optional, so an acceptance written before they existed still parses.
 They are not optional in effect: an acceptance missing either one, or carrying a justification too
 short to be a reason, **does not count as an acceptance** to `guardlink ci --strict`, and its
@@ -552,11 +561,14 @@ site nobody had reviewed was removed from the set of things that would ever be t
 now need two signatures, which is the cost, and the cost is the point.
 
 **Policy.** Thresholds live in `.guardlink/config.json` and default to
-`{ "min_justification": 24, "require_author": true, "require_expiry": true, "max_horizon_days": 365 }`.
-A project may move a threshold; scope and expiry semantics are not settings.
+`{ "min_justification": 24, "require_author": true, "require_expiry": true, "max_horizon_days": 365, "warn_days": 14 }`.
+A project may move a threshold; scope and expiry semantics are not settings. `warn_days` is the one
+field that cannot re-open or silence a finding — it decides only how early a reader hears that a
+qualifying acceptance is running out — and it is clamped to 0..365 rather than refused, because a
+window wider than the longest grantable horizon would put every acceptance permanently inside it.
 
 ```json
-{ "acceptance": { "min_justification": 40, "max_horizon_days": 90 } }
+{ "acceptance": { "min_justification": 40, "max_horizon_days": 90, "warn_days": 30 } }
 ```
 
 #### `@entitles` — Capability Held by Design

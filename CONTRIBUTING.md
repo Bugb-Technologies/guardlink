@@ -80,6 +80,33 @@ There used to be four copies of that list. They drifted, and an annotation in a 
 
 **If the language has a block comment form, add its closer to `BLOCK_CLOSERS` in `src/parser/comment-strip.ts` in the same change.** That table is what `guardlink hypothesis confirm --write` consults before splicing a scan-controlled description into a claim's comment, so that the description cannot end the comment it is written into. A claim can only exist in a file the parser opens — so scanning a language whose closer is not listed is a comment-escape, reachable as soon as someone annotates such a file. Languages whose only comment form is a line comment (Python, Ruby, Bash, YAML, Erlang, LaTeX, INI, Batch) need no entry and must not get one: a line comment ends at a newline, and a written description is one line. The same test pins both directions.
 
+## Generated Files
+
+`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.cursor/rules/guardlink.mdc`, `.windsurfrules`,
+`.clinerules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md` and `.guardlink/README.md`
+are **written by `guardlink sync` from this repository's own model**. Do not hand-edit the region
+between the `guardlink:begin` / `guardlink:end` markers — the next sync overwrites it. Change
+`src/init/templates.ts` and run `guardlink sync .`; if you added or moved annotations, run it in the
+same change so the committed block and the model agree.
+
+The block asserts a threat model exists only when `annotations_parsed > 0`, and points at the
+reference document this repository actually has (`docs/` by default, `.guardlink/` under
+`--no-root-files`). Both are conditional on purpose: this file is written into other people's
+repositories under our name, so a sentence that is only sometimes true has to be rendered only
+sometimes.
+
+## Numbers Shared With bugb-server
+
+Two constants in `src/parser/acceptance.ts` — `DEFAULT_ACCEPTANCE_WARN_DAYS` (14) and
+`MAX_ACCEPTANCE_WARN_DAYS` (365) — are **deliberately the server's**
+`bugb_server/notify/config.py` values, and the reading of `0` (no warning at all) is matched too.
+Both registers describe the same event, a signed risk acceptance running out of time, for the same
+team. Two components disagreeing about whether an acceptance is in trouble is a worse defect than
+either of them being silent, so moving one of these means moving both, in the same breath.
+
+What is *not* shared is the trigger: the server is edge-triggered because it delivers messages, and
+the gate is level-triggered because it describes a repository at the moment it runs.
+
 ## Annotation Spec Changes
 
 Changes to the annotation grammar or ThreatModel schema require discussion in an issue first. The spec is designed to be stable — breaking changes need strong justification.

@@ -20,10 +20,11 @@ export { findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, f
 export {
   readAcceptancePolicy, findAcceptanceDefects, acceptanceDefects, isQualified, isExpired,
   daysRemaining, parseExpiry, todayISO, acceptanceCovers, acceptanceBlastRadius,
-  formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY,
+  formatBlastRadius, findExpiringAcceptances, DEFAULT_ACCEPTANCE_POLICY,
+  DEFAULT_ACCEPTANCE_WARN_DAYS, MAX_ACCEPTANCE_WARN_DAYS,
   ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_SHORT, ACCEPTANCE_REGISTER_NOTE,
 } from './acceptance.js';
-export type { AcceptancePolicy, AcceptanceDefect, AcceptanceFinding, BlastRadius } from './acceptance.js';
+export type { AcceptancePolicy, AcceptanceDefect, AcceptanceFinding, BlastRadius, ExpiringAcceptance } from './acceptance.js';
 export { buildCoverageIndex, normalizeRef, coversExposure } from './coverage.js';
 export type { CoverageIndex, CoverageOptions, SitedRelation } from './coverage.js';
 export { extractCitation, citationMatchesFile } from './citation.js';

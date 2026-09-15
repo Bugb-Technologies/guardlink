@@ -306,7 +306,9 @@ export function initProject(options: InitOptions): InitResult {
   // GuardLink exists cannot annotate in either mode.
 
   if (!skipAgentFiles && rootFiles) {
-    const agentResults = updateAgentFiles(root, project, force, dryRun, mode, options.agentIds);
+    // D45's rule, not a guess: `init` knows where it just put the reference,
+    // so the block it writes points at the file that is actually there.
+    const agentResults = updateAgentFiles(root, project, force, dryRun, mode, refRelative, options.agentIds);
     created.push(...agentResults.created);
     updated.push(...agentResults.updated);
     skipped.push(...agentResults.skipped);
@@ -348,6 +350,9 @@ function updateAgentFiles(
   // D27: the mode init just recorded in config.json. Without it the agent files
   // it writes cannot say where annotations go, which is the whole defect.
   mode: AnnotationMode,
+  // Where `init` wrote the annotation reference in this repository. Threaded
+  // rather than assumed: `--no-root-files` puts it inside `.guardlink/`.
+  referencePath: string,
   agentIds?: string[],
 ): { created: string[]; updated: string[]; skipped: string[] } {
   const created: string[] = [];
@@ -390,7 +395,7 @@ function updateAgentFiles(
         skipped.push(`${choice.file} (already has GuardLink)`);
         continue;
       }
-      const result = injectIntoAgentFile(root, choice.file, project, force, dryRun, mode);
+      const result = injectIntoAgentFile(root, choice.file, project, force, dryRun, mode, referencePath);
       if (result === 'updated') updated.push(choice.file);
       else if (result === 'skipped') skipped.push(choice.file);
       else skipped.push(result.skippedReason);
@@ -405,7 +410,7 @@ function updateAgentFiles(
         content = wrapMarkers(cursorRulesContent(project, mode));
       } else {
         // Markdown-based (CLAUDE.md, AGENTS.md, copilot-instructions.md, .gemini/GEMINI.md)
-        content = buildClaudeMdFromScratch(project, mode);
+        content = buildClaudeMdFromScratch(project, mode, referencePath);
       }
       const res = safeWriteAgentFile(filePath, content, dryRun, project, mode);
       if (!res.ok) skipped.push(res.skipReason);
@@ -424,6 +429,7 @@ function injectIntoAgentFile(
   force: boolean,
   dryRun: boolean,
   mode: AnnotationMode,
+  referencePath: string,
 ): 'updated' | 'skipped' | { skippedReason: string } {
   const fullPath = join(root, relPath);
 
@@ -463,15 +469,15 @@ function injectIntoAgentFile(
   if (existing.includes('GuardLink') && !force) return 'skipped';
 
   if (!dryRun) {
-    const block = wrapMarkers(agentInstructions(project, mode));
+    const block = wrapMarkers(agentInstructions(project, mode, { referencePath }));
     const newContent = replaceOrAppend(existing, block);
     writeFileSync(fullPath, newContent);
   }
   return 'updated';
 }
 
-function buildClaudeMdFromScratch(project: ProjectInfo, mode: AnnotationMode): string {
-  return buildMdFromScratch(project, null, undefined, mode);
+function buildClaudeMdFromScratch(project: ProjectInfo, mode: AnnotationMode, referencePath: string): string {
+  return buildMdFromScratch(project, null, undefined, mode, referencePath);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -629,10 +635,25 @@ function buildMdFromScratch(
   model: ThreatModel | null,
   freshness?: ModelContextFreshness,
   mode: ObservedAnnotationMode | null = null,
+  referencePath?: string,
 ): string {
   return `# ${toPascalCase(project.name)} — Project Instructions
 
-${wrapMarkers(agentInstructionsWithModel(project, model, freshness, mode))}`;
+${wrapMarkers(agentInstructionsWithModel(project, model, freshness, mode, { referencePath }))}`;
+}
+
+/**
+ * Where this repository's annotation reference actually is.
+ *
+ * D45: `sync` does not write the reference doc, so it observes where it is
+ * rather than assuming — the same shape as `mcpAtRoot`. Shared by the README
+ * and by the agent block, which used to hardcode the `docs/` path and was
+ * therefore wrong in every `--no-root-files` repository.
+ */
+function observedReferencePath(root: string): string {
+  return existsSync(join(root, REFERENCE_DOC_IN_GUARDLINK))
+    ? REFERENCE_DOC_IN_GUARDLINK
+    : REFERENCE_DOC_IN_DOCS;
 }
 
 // ─── Sync: regenerate agent files with live threat model ─────────────
@@ -695,11 +716,7 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
     model,
     annotationHash: model && model.annotations_parsed > 0 ? computeAnnotationHash(model) : null,
     mcpAtRoot: existsSync(join(root, '.mcp.json')),
-    // D45: sync did not write the reference doc, so it observes where it is
-    // rather than assuming — the same shape as mcpAtRoot directly above.
-    referencePath: existsSync(join(root, REFERENCE_DOC_IN_GUARDLINK))
-      ? REFERENCE_DOC_IN_GUARDLINK
-      : REFERENCE_DOC_IN_DOCS,
+    referencePath: observedReferencePath(root),
   });
   if (!dryRun) {
     ensureDir(join(root, '.guardlink'));
@@ -735,7 +752,7 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
         content = wrapMarkers(cursorRulesContentWithModel(project, model, freshness, mode));
       } else {
         // Markdown-based: CLAUDE.md, AGENTS.md, copilot-instructions.md, etc.
-        content = buildMdFromScratch(project, model, freshness, mode);
+        content = buildMdFromScratch(project, model, freshness, mode, observedReferencePath(root));
       }
       const res = safeWriteAgentFile(filePath, content, dryRun, project, mode);
       if (!res.ok) skipped.push(res.skipReason);
@@ -765,7 +782,8 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
       } else {
         const existing = readFileSync(filePath, 'utf-8');
         if (!dryRun) {
-          const block = wrapMarkers(agentInstructionsWithModel(project, model, freshness, mode));
+          const block = wrapMarkers(agentInstructionsWithModel(project, model, freshness, mode,
+            { referencePath: observedReferencePath(root) }));
           writeFileSync(filePath, replaceOrAppend(existing, block));
         }
         updated.push(choice.file);

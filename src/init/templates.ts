@@ -306,21 +306,12 @@ When connected via \`.mcp.json\`, use:
 
 // ─── Agent instruction content (compact — points to reference doc) ───
 
-// @shield:begin -- "agentInstructions renders the Quick Syntax block: verb lines at column 0 that document the grammar rather than claim anything"
 /**
- * Compact GuardLink instruction block injected into agent files.
- * Points to docs/GUARDLINK_REFERENCE.md for full syntax.
- *
- * `mode` is not optional in spirit even though it is in the signature: D27 was
- * this function having no way to say where annotations go. It defaults to null,
- * which renders the product default explicitly labelled as a default — never
- * silence.
+ * The opening for a repository that has a model. Unchanged text, now with a
+ * precondition: it is rendered only where `annotations_parsed > 0`.
  */
-export function agentInstructions(project: ProjectInfo, mode: AnnotationMode | null = null): string {
-  return `
-## GuardLink — Security Model
-
-This project carries a [GuardLink](https://guardlink.bugb.io) threat model: security facts
+function populatedOpening(): string {
+  return `This project carries a [GuardLink](https://guardlink.bugb.io) threat model: security facts
 recorded next to the code they describe — what each component is exposed to, what mitigates
 it, how data flows between components — parsed into something you can query.
 
@@ -337,9 +328,122 @@ such as which risks a human has explicitly accepted.
 | ask where data reaches without a control | \`guardlink_paths(root)\` — undefended entry-to-sink routes, derived from \`@flows\`, no LLM |
 
 Without MCP, the same answers come from \`guardlink status .\`, \`guardlink parse .\`
-(the whole model as JSON on stdout) and \`guardlink diff HEAD~1\`.
+(the whole model as JSON on stdout) and \`guardlink diff HEAD~1\`.`;
+}
 
-**Full reference: \`docs/GUARDLINK_REFERENCE.md\`**
+/**
+ * The opening for a repository that has not got one yet.
+ *
+ * Three jobs, in the order a cold agent needs them. Say the model is empty, so
+ * nothing downstream reads its silence as an answer. Say what empty MEANS,
+ * because "no findings" and "not looked at" render identically and only one of
+ * them is safe to act on. Then hand the agent the job — which is the half that
+ * turns a first-run repository from an embarrassment into an on-ramp, and the
+ * reason this is not simply the same block with a sentence deleted.
+ *
+ * `model` is used only for the counts, and only when they are real: a null
+ * model is `init` running before anything has been parsed, and inventing
+ * "0 of 0 files" there would be a second fabricated number in the file this
+ * function exists to stop fabricating numbers in.
+ */
+function emptyOpening(model: ThreatModel | null): string {
+  const scanned = model ? ` The parser has read ${model.source_files} source file(s) here and found `
+    + `${model.annotations_parsed} annotation(s).` : '';
+  return `This project has [GuardLink](https://guardlink.bugb.io) installed and **its threat model is empty**
+— no security facts have been recorded next to the code yet.${scanned}
+
+**That is a statement about the record, not about the code.** An absent finding is not a cleared one:
+nothing here has been reviewed and found safe, it has not been looked at. So **read the code for security context**,
+exactly as you would in a repository with no threat model at all, and do not cite this model — or its
+silence — as evidence about anything.
+
+**You are the one who fills it.** Annotate the security-relevant code you touch, in the same change as
+the code. Once the first annotations land, \`guardlink sync\` rewrites this block with the real assets,
+threats, controls and open exposures, and the queries below start answering.
+
+| You are about to… | Ask |
+|---|---|
+| edit a file | \`guardlink_context(file)\` — empty today, but it says WHICH empty: \`scanned_without_annotations\` means the parser read the file and found nothing, \`not_scanned\` means it never read it |
+| write your first annotations | \`guardlink_suggest(file)\` for a starting point, then \`guardlink validate .\` — they parse, and their refs resolve |
+| ask how far along this is | \`guardlink status .\` — coverage, and which files carry nothing |
+
+Without MCP, the same answers come from \`guardlink status .\` and \`guardlink validate .\`.`;
+}
+
+// @shield:begin -- "agentInstructions renders the Quick Syntax block: verb lines at column 0 that document the grammar rather than claim anything"
+/**
+ * What this block is allowed to claim about the repository it is written into.
+ *
+ * Both fields answer the same question — is the sentence I am about to write
+ * true HERE — and both default to the conservative answer, because this block
+ * is written into somebody else's tracked files under our name.
+ */
+export interface AgentBlockContext {
+  /**
+   * The model this repository actually has, when one has been parsed.
+   *
+   * `null` (or a model with no annotations) is not a detail: it decides which
+   * opening the block gets, and the two openings make opposite claims.
+   */
+  model?: ThreatModel | null;
+  /**
+   * Where the annotation reference lives IN THIS REPOSITORY.
+   *
+   * D45 all over again, in the file D45 did not reach. `init --no-root-files`
+   * writes the reference to `.guardlink/GUARDLINK_REFERENCE.md`, and this block
+   * said `docs/GUARDLINK_REFERENCE.md` unconditionally — so the one pointer
+   * aimed at a reader about to guess at syntax pointed at nothing. Defaults to
+   * the `docs/` path, which is where the default `init` puts it.
+   */
+  referencePath?: string;
+}
+
+/**
+ * Compact GuardLink instruction block injected into agent files.
+ * Points to the repository's annotation reference for full syntax.
+ *
+ * `mode` is not optional in spirit even though it is in the signature: D27 was
+ * this function having no way to say where annotations go. It defaults to null,
+ * which renders the product default explicitly labelled as a default — never
+ * silence.
+ *
+ * ── The opening is conditional, and that is the point ───────────────
+ *
+ * Caveat 7 of release-flows-end-to-end: a repository with no `.guardlink/`, no
+ * annotations and a model of `{exposures: 0, assets: 0, threats: 0}` got a
+ * `CLAUDE.md` saying "This project carries a GuardLink threat model… **Ask it
+ * instead of inferring security context from the source.** It already answers
+ * most of what you would otherwise guess at."
+ *
+ * Every clause of that is false in that repository, it is false inside the
+ * customer's own tracked files under our name, and — worst of the three — it is
+ * an INSTRUCTION. Every coding agent that opened the repo was told to consult an
+ * empty model in preference to reading the code, which is precisely the reading
+ * that turns an absent finding into a cleared one.
+ *
+ * Deleting the sentence was not the fix either. A repository that has just run
+ * `init` is exactly the repository where an agent most needs telling what to do,
+ * so the empty state gets its own text: the model is empty, empty means nothing
+ * is known rather than nothing is wrong, read the code, and you are the one who
+ * fills it. The obligation half of the block was always true and is unchanged.
+ */
+export function agentInstructions(
+  project: ProjectInfo,
+  mode: AnnotationMode | null = null,
+  ctx: AgentBlockContext = {},
+): string {
+  // `annotations_parsed` is the same field `agentInstructionsWithModel` already
+  // used to decide whether to append the live context, so the claim and the
+  // evidence for it can never disagree: the block asserts a model exists in
+  // exactly the case where it goes on to show you one.
+  const populated = (ctx.model?.annotations_parsed ?? 0) > 0;
+  const referencePath = ctx.referencePath ?? REFERENCE_DOC_IN_DOCS;
+  return `
+## GuardLink — Security Model
+
+${populated ? populatedOpening() : emptyOpening(ctx.model ?? null)}
+
+**Full reference: \`${referencePath}\`**
 
 ### Where annotations go
 
@@ -578,8 +682,12 @@ export function agentInstructionsWithModel(
   model: ThreatModel | null,
   freshness?: ModelContextFreshness,
   mode: AnnotationMode | null = null,
+  ctx: AgentBlockContext = {},
 ): string {
-  const base = agentInstructions(project, mode);
+  // The model goes to the block itself, not only to the section below it. Both
+  // halves then key off one fact: the block claims a threat model exists in
+  // exactly the case where the live context that proves it is appended.
+  const base = agentInstructions(project, mode, { ...ctx, model });
 
   if (!model || model.annotations_parsed === 0) {
     return base;
