@@ -47,7 +47,7 @@
 import { Command } from 'commander';
 import { resolve, basename, join, isAbsolute, relative } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { runCiChecks, formatCiReport, ESTATE_ROUTE } from '../ci/index.js';
 import type { CiWorkspaceScope } from '../ci/index.js';
@@ -680,6 +680,27 @@ function ciWorkspaceScope(root: string): CiWorkspaceScope | null {
 
 
 
+/**
+ * A numeric flag, or `undefined` when it was not given — and a hard exit when
+ * it was given and cannot be honoured.
+ *
+ * The alternative, clamping or ignoring, is the failure this whole command is
+ * about: `--severity critcal` used to narrow the gate to nothing and report a
+ * pass, and a `--min-coverage 1000` that quietly became 100, or a
+ * `--expiring-within -5` that quietly became "never", would each be a gate
+ * silently answering a question nobody asked. Zero is a legitimate value for
+ * both flags and is preserved as one.
+ */
+function readBoundedInt(raw: string | undefined, flag: string, min: number, max: number): number | undefined {
+  if (raw === undefined) return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    console.error(`Invalid ${flag} '${raw}'. Use a whole number between ${min} and ${max}.`);
+    process.exit(1);
+  }
+  return value;
+}
+
 program
   .command('ci')
   .description('Advisory CI checks — parse diagnostics, unmitigated exposures, confirmed exploits, unqualified acceptances, drifted @source anchors, and stale claims (exit 0 unless --strict)')
@@ -689,8 +710,11 @@ program
   .option('--strict', 'Exit 1 when any check finds something to gate on. Off by default — these are warnings, not a gate')
   .option('--severity <levels>', 'Gate only on exposures and confirmed exploits at these severities (comma-separated: critical,high,medium,low). Unrated findings always count; drift and parse errors are unaffected')
   .option('--scope <paths>', 'Gate only on findings under these root-relative paths (comma-separated). Prefix match on path segments')
+  .option('--expiring-within <days>', 'Warn when a qualifying @accepts lapses within this many days (0 = never warn). Default: acceptance.warn_days in .guardlink/config.json, else 14 — the same boundary the server register warns at. Never changes the exit code')
+  .option('--min-coverage <percent>', 'Fail when file coverage is below this percentage. Opt-in, and gates on its own without --strict: an empty model otherwise passes every check by having nothing to fail')
   .action(async (dir: string, opts: {
     project: string; format: string; strict?: boolean; severity?: string; scope?: string;
+    expiringWithin?: string; minCoverage?: string;
   }) => {
     const root = resolve(dir);
 
@@ -698,6 +722,14 @@ program
       console.error(`Unknown --format '${opts.format}'. Use text or json.`);
       process.exit(1);
     }
+
+    // Both numeric flags are refused rather than clamped, because here there is
+    // a person at a keyboard: silently storing 365 for someone who typed 3,650,
+    // or 100 for someone who typed 1,000, is how a gate ends up meaning
+    // something nobody asked for and nobody notices. The config file, read by a
+    // machine and possibly written by an older build, clamps instead.
+    const warnDays = readBoundedInt(opts.expiringWithin, '--expiring-within', 0, MAX_ACCEPTANCE_WARN_DAYS);
+    const minCoverage = readBoundedInt(opts.minCoverage, '--min-coverage', 0, 100);
 
     // A misspelled severity must not narrow the gate to nothing and report a
     // pass. `--severity critcal` would otherwise match no finding and exit 0.
@@ -717,6 +749,7 @@ program
     const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
     const report = runCiChecks(root, model, {
       strict: opts.strict, diagnostics, severity, scope,
+      warnDays, minCoverage,
       policy: readAcceptancePolicy(root),
       workspace: ciWorkspaceScope(root),
     });
@@ -730,7 +763,9 @@ program
       console.error(`GuardLink CI: ${report.summary.parse_errors} parse error(s), ${report.summary.parse_warnings} parse warning(s), `
         + `${report.summary.exposures} unmitigated exposure(s), ${report.summary.confirmed} confirmed exploit(s), `
         + `${report.summary.unqualified_acceptances} unqualified acceptance(s), `
-        + `${report.summary.drift} drifted anchor(s), ${report.summary.stale} stale claim(s)`);
+        + `${report.summary.expiring_acceptances} acceptance(s) lapsing within ${report.summary.acceptance_warn_days} day(s), `
+        + `${report.summary.drift} drifted anchor(s), ${report.summary.stale} stale claim(s), `
+        + `${report.summary.coverage.percent}% coverage`);
     } else {
       console.error(formatCiReport(report));
     }

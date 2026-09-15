@@ -101,6 +101,8 @@ guardlink ci [dir] [--strict]           # The gate: parse errors, unmitigated ex
                                         #   exploits, unqualified acceptances, anchor drift, stale claims
 guardlink ci . --strict --severity critical,high   # Gate on risk findings at these severities only
 guardlink ci . --strict --scope services/api       # Gate on findings under these paths only
+guardlink ci . --min-coverage 40                   # Fail below this file coverage — gates without --strict
+guardlink ci . --expiring-within 30                # Days of notice before an @accepts lapses (0 = never)
 
 # Reports & Export
 guardlink report [dir]                  # Generate threat-model.md + optional JSON
@@ -568,7 +570,7 @@ from, so a site nobody had reviewed stopped being something that would ever be t
 are not settings:
 
 ```json
-{ "acceptance": { "min_justification": 40, "require_author": true, "require_expiry": true, "max_horizon_days": 90 } }
+{ "acceptance": { "min_justification": 40, "require_author": true, "require_expiry": true, "max_horizon_days": 90, "warn_days": 30 } }
 ```
 
 **`@confirmed` is not silenceable.** A reproduced exploit fails `guardlink ci --strict` regardless
@@ -597,6 +599,72 @@ rather than a filter that matches nothing and exits 0.
 `--scope` narrows everything, because everything has a file. Both echo what they dropped, in the
 text output and in `summary.filters` of the JSON — a green gate that only looked at part of the
 repository says so.
+
+### The coverage floor: has anybody looked?
+
+Every check the gate runs counts things that are **wrong**, and a count of things that are wrong is
+silent about whether anybody looked. A repository with zero annotations and a repository whose every
+risk is mitigated produced the same line and the same exit code, so a pipeline could be green
+because the work was finished or because it never started.
+
+`guardlink ci` now always prints the denominator:
+
+```
+Annotation coverage: 0% — 0 of 12 source file(s) annotated, 0 annotation(s)
+```
+
+and `--min-coverage <percent>` turns it into a condition:
+
+```bash
+guardlink ci . --min-coverage 40                     # whole repository
+guardlink ci . --min-coverage 40 --scope services/api  # just the part this pipeline owns
+```
+
+**It is opt-in and it gates on its own, without `--strict`.** Opt-in because a floor that appeared
+on upgrade would turn a green pipeline red for a change nobody made. Without `--strict` because
+`--strict` says *treat findings in this model as blocking* while a floor says *this model has to say
+something before its findings mean anything* — behind `--strict` it would be unreachable for
+everyone running the gate advisory, which is a floor nobody can fail. `--min-coverage 0` is a real
+value and prints the verdict without ever failing; a value outside 0..100 is refused rather than
+clamped. With `--scope`, the floor measures the scoped area only, so a fully annotated `web/` cannot
+carry an untouched `services/api/` over the bar.
+
+Coverage is **file** coverage — files carrying at least one annotation, over source files scanned —
+and the JSON says so in `summary.coverage` (`kind`, `annotated_files`, `source_files`, `percent`,
+`annotations`, `floor`, `below_floor`) rather than making a consumer infer a denominator.
+
+### Acceptances that are about to lapse
+
+An acceptance that has **expired** stops covering: its exposures return as unmitigated and
+`--strict` fails. `guardlink ci` now says so on the way there, rather than printing an unqualified
+green tick eleven days before a signature on a critical exposure runs out.
+
+```
+Acceptances: 3 in the model; 1 do not count as acceptances; 1 lapsing within 14 days — source: @accepts annotations in this repository
+
+⚠  1 acceptance(s) lapsing within 14 days — covering today, uncovered after:
+   src/api.ts:7  #sqli on #api — 11 day(s) left, until 2026-09-25 by Grace Hopper
+   Nothing failed on this. When one lapses it stops covering, its exposure(s)
+   return as unmitigated, and --strict fails there rather than here.
+```
+
+**It warns and never gates.** Nothing is wrong with an acceptance doing what its author signed it to
+do, and a red build on a date nobody chose — no commit, no review, just the calendar — is a gate
+teams delete rather than act on. The exit code moves when the acceptance actually lapses, on the
+`exposures` predicate that was already load-bearing.
+
+The window is **14 days** by default, per project in `.guardlink/config.json`
+(`acceptance.warn_days`, clamped to 0..365) and per run with `--expiring-within <days>`; `0` asks
+for no warning at all. That default is not chosen here — it is the server register's
+`DEFAULT_ACCEPTANCE_WARN_DAYS`, which is what the acceptance-deadline scan warns at. The two
+registers describe the same event for the same team, and two components disagreeing about whether a
+risk acceptance is in trouble is a worse defect than either of them being silent.
+
+Only acceptances that **currently count** are warned about. One that is already expired is reported
+as expired, and one that does not qualify is reported as not qualifying; telling a reader that a
+record covering nothing will shortly stop covering nothing is noise in front of the finding that
+matters. The JSON carries `summary.expiring_acceptances`, `summary.acceptance_warn_days` and the
+findings themselves in `expiring_acceptances`.
 
 ## Stale claims and the verification ledger
 

@@ -21,8 +21,24 @@ import type { ThreatModel } from '../src/types/index.js';
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const project = { name: 'demo', language: 'typescript', definitionsExt: '.ts' } as ReturnType<typeof detectProject>;
 
+/**
+ * A model with something in it. Every GL-403 assertion below is about the block
+ * a repository gets once it HAS a threat model — the claim it opens with is
+ * rendered on that condition now, because a repository with no annotations was
+ * getting it too and it was false there (caveat 7; see
+ * `agent-block-empty-model.test.ts` for the other branch).
+ */
+const populatedModel = {
+  version: '1.0.0', project: 'demo', generated_at: '', source_files: 2,
+  annotated_files: ['a.ts'], unannotated_files: ['b.ts'], annotations_parsed: 12,
+  assets: [], threats: [], controls: [], mitigations: [], exposures: [], confirmed: [],
+  acceptances: [], transfers: [], flows: [], boundaries: [], validations: [], audits: [],
+  ownership: [], data_handling: [], assumptions: [], shields: [], features: [], comments: [],
+  coverage: { annotation_count: 12, coverage_percent: 50 },
+} as ThreatModel;
+
 describe('GL-403 — weakness 1: leads with capability, not obligation', () => {
-  const text = agentInstructions(project);
+  const text = agentInstructions(project, null, { model: populatedModel });
 
   it('opens by saying what the model gives you', () => {
     const head = text.slice(0, 700);
@@ -257,6 +273,9 @@ describe('GL-403 — end to end through sync', () => {
   it('a model with no annotations gets the base block without a freshness section', () => {
     const text = agentInstructionsWithModel(project, null);
     expect(text).not.toMatch(/Block Freshness/);
-    expect(text).toMatch(/Ask it instead of inferring/);
+    // And without the claim the freshness section would have been evidence for:
+    // no live context below means no threat model to point at above.
+    expect(text).not.toMatch(/Ask it instead of inferring/);
+    expect(text).toContain('**its threat model is empty**');
   });
 });

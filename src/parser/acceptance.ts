@@ -51,6 +51,8 @@
  * @exposes #parser to #insecure-deser [low] cwe:CWE-502 -- "JSON.parse of a repository file"
  * @mitigates #parser against #insecure-deser using #config-validation -- "Parsed inside try/catch; only four scalar fields are read, each through a type guard, and nothing from the file is executed or used as a path"
  * @flows ThreatModel -> #parser via findAcceptanceDefects -- "Acceptances read and checked against policy"
+ * @flows ThreatModel -> #parser via findExpiringAcceptances -- "Qualifying acceptances read for how much of their horizon is left"
+ * @comment -- "acceptance.warn_days is the one policy field that cannot re-open or silence a finding: it decides only how early a reader hears that a QUALIFYING acceptance is running out. Coverage never consults it, so a project lowering it to 0 loses a warning and gains no suppression"
  * @flows ConfigFile -> #parser via readAcceptancePolicy -- "Per-project policy thresholds, read only"
  * @handles internal on #parser -- "Reads the reviewer name and justification text an acceptance carries"
  * @comment -- "Pure functions apart from readAcceptancePolicy; `now` is a parameter so a test can pin the clock rather than skew it"
@@ -115,7 +117,59 @@ export interface AcceptancePolicy {
    * suggestion gets the ceiling, never a suggestion its own rule would refuse.
    */
   default_horizon_days: number;
+  /**
+   * How many days before `until` the gate starts saying an acceptance is about
+   * to lapse. `0` is a project asking for no warning at all.
+   *
+   * The one number in this interface that does NOT decide whether an acceptance
+   * counts. Everything above it is a bar an acceptance has to clear; this is
+   * only how early a reader hears that a qualifying acceptance is running out.
+   * It lives here because it is read from the same config block, by the same
+   * function, and a project that tunes its acceptance policy tunes this beside
+   * it — but moving it can never re-open or silence a finding.
+   *
+   * See {@link DEFAULT_ACCEPTANCE_WARN_DAYS} for where 14 comes from.
+   */
+  warn_days: number;
 }
+
+/**
+ * Days of notice before an acceptance lapses, when nobody has said otherwise.
+ *
+ * **14, and it is the server's number rather than one picked here.**
+ * `bugb_server/notify/config.py` defines `DEFAULT_ACCEPTANCE_WARN_DAYS = 14`
+ * and the deadline scan warns at `expires_at − acceptance_warn_days`. That
+ * register and this one describe the same event — a signed risk acceptance
+ * running out of time — for the same team, and two components disagreeing
+ * about whether a waiver is in trouble is a worse defect than either of them
+ * being silent. So the boundary, the default and the ceiling are matched
+ * deliberately, and this comment is the reason not to drift them apart.
+ *
+ * The server's argument for 14 applies unchanged: acting on the warning means
+ * finding the person who signed, re-assessing a risk they accepted months ago,
+ * and either fixing it or signing again. That is scheduling work, and a
+ * fortnight is a sprint boundary plus slack — about 15% of the 90-day horizon
+ * `default_horizon_days` suggests.
+ *
+ * What is NOT matched is the trigger. The server is edge-triggered, because it
+ * sends messages and a level-triggered notifier would send 20,160 of them over
+ * a fortnight. A gate is level-triggered by construction: it describes the
+ * state of a repository at the moment it runs, holds no `last` and delivers
+ * nothing, so every run inside the window says the same true thing.
+ */
+export const DEFAULT_ACCEPTANCE_WARN_DAYS = 14;
+
+/**
+ * The longest lead time that can mean anything: a year, which is
+ * `max_horizon_days`, which is also the server's `MAX_ACCEPTANCE_WARN_DAYS`.
+ *
+ * No acceptance may be granted for longer than a year, so a window wider than
+ * a year would put every acceptance permanently inside it — the setting would
+ * read as "warn as early as possible" and mean "warn about everything, always".
+ * Clamping gives the operator the widest window that still distinguishes
+ * anything, which is the honest answer to a number typed with an extra zero.
+ */
+export const MAX_ACCEPTANCE_WARN_DAYS = 365;
 
 export const DEFAULT_ACCEPTANCE_POLICY: AcceptancePolicy = {
   min_justification: 24,
@@ -123,6 +177,7 @@ export const DEFAULT_ACCEPTANCE_POLICY: AcceptancePolicy = {
   require_expiry: true,
   max_horizon_days: 365,
   default_horizon_days: 90,
+  warn_days: DEFAULT_ACCEPTANCE_WARN_DAYS,
 };
 
 // ─── Which register a number came from ──────────────────────────────
@@ -159,7 +214,7 @@ export const ACCEPTANCE_REGISTER_NOTE =
  * Per-project overrides from `.guardlink/config.json`:
  *
  * ```json
- * { "acceptance": { "min_justification": 40, "max_horizon_days": 90, "default_horizon_days": 30 } }
+ * { "acceptance": { "min_justification": 40, "max_horizon_days": 90, "default_horizon_days": 30, "warn_days": 30 } }
  * ```
  *
  * Same shape as `readConfiguredMode` and `readDisabledDiagnostics` — one way to
@@ -189,6 +244,15 @@ export function readAcceptancePolicy(root: string): AcceptancePolicy {
       default_horizon_days: Math.min(
         num(raw.default_horizon_days, DEFAULT_ACCEPTANCE_POLICY.default_horizon_days),
         max_horizon_days,
+      ),
+      // Clamped, not refused — the same fail-soft rule the server's
+      // `acceptance_warn_days()` follows, and for the same reason: a
+      // notification boundary that will not load has inverted its own purpose.
+      // A route where a person is at a keyboard should refuse out-of-range
+      // input with a sentence; `guardlink ci --expiring-within` does.
+      warn_days: Math.min(
+        num(raw.warn_days, DEFAULT_ACCEPTANCE_WARN_DAYS),
+        MAX_ACCEPTANCE_WARN_DAYS,
       ),
     };
   } catch {
@@ -330,6 +394,84 @@ export function findAcceptanceDefects(
     });
   }
   return findings;
+}
+
+// ─── Running out of time ────────────────────────────────────────────
+
+/**
+ * An acceptance that still counts today and will stop counting soon.
+ *
+ * Deliberately not an {@link AcceptanceFinding}: nothing is wrong with it. The
+ * author attributed it, justified it and put a horizon on it, and the horizon
+ * is doing exactly what a horizon is for. This is a clock reading, which is why
+ * it carries `days_remaining` as the fact and no `defects` list at all.
+ */
+export interface ExpiringAcceptance {
+  acceptance: ThreatModelAcceptance;
+  file: string;
+  line: number;
+  /** Whole days until `until`, inclusive. `0` means today is the last covered day. */
+  days_remaining: number;
+  /** The `until` clause as written, so a reader gets the date and not only a countdown. */
+  expires: string;
+}
+
+/**
+ * Every acceptance currently inside its warning window, soonest first.
+ *
+ * Three exclusions, each of which is the whole point of a separate function
+ * rather than a filter on `findAcceptanceDefects`:
+ *
+ *   **Already lapsed** is not warned about. It is EXPIRED — a different state,
+ *   reported by `findAcceptanceDefects`, and one the gate already fails on
+ *   because the exposures it covered have come back. Saying "expiring" about it
+ *   too would be two lines for one fact, in opposite tenses.
+ *
+ *   **Does not qualify** is not warned about either. An acceptance with nobody's
+ *   name on it is already reported as not counting and its exposures are already
+ *   back in `exposures`; telling a reader that a record which covers nothing
+ *   will shortly stop covering nothing is noise in front of the finding that
+ *   matters.
+ *
+ *   **`warnDays === 0`** returns nothing. That is a team asking for no warning,
+ *   and it is the same reading the server's `expiry_edges` gives a zero window.
+ *
+ * `warnDays` is required and has no default here, deliberately — the same
+ * keyword-with-no-default the server's `expiry_edges` uses. There is exactly one
+ * place that decides what this project's lead time is (`readAcceptancePolicy`,
+ * then `--expiring-within`), and a caller that forgot to consult it should not
+ * silently warn at a number nobody chose.
+ */
+export function findExpiringAcceptances(
+  model: ThreatModel,
+  policy: AcceptancePolicy = DEFAULT_ACCEPTANCE_POLICY,
+  warnDays: number = DEFAULT_ACCEPTANCE_WARN_DAYS,
+  now: Date = new Date(),
+): ExpiringAcceptance[] {
+  if (!Number.isFinite(warnDays) || warnDays <= 0) return [];
+  const window = Math.min(Math.floor(warnDays), MAX_ACCEPTANCE_WARN_DAYS);
+  const expiring: ExpiringAcceptance[] = [];
+  for (const acceptance of model.acceptances) {
+    // Qualification first: an acceptance that does not count is not covering
+    // anything for its expiry to take away.
+    if (!isQualified(acceptance, policy, now)) continue;
+    const remaining = daysRemaining(acceptance, now);
+    // `null` is an acceptance with no readable horizon. A project that has
+    // switched `require_expiry` off has said it does not want dates; there is
+    // no clock to read, so there is nothing to say.
+    if (remaining === null || remaining < 0 || remaining > window) continue;
+    expiring.push({
+      acceptance,
+      file: acceptance.location.file,
+      line: acceptance.location.line,
+      days_remaining: remaining,
+      expires: acceptance.expires!,
+    });
+  }
+  return expiring.sort((a, b) =>
+    a.days_remaining - b.days_remaining
+    || a.file.localeCompare(b.file)
+    || a.line - b.line);
 }
 
 // ─── Scope, and how far one line reaches ────────────────────────────
