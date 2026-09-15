@@ -3,10 +3,10 @@
  * a ranked queue, scan import, and where the state shows.
  */
 import { describe, it, expect } from 'vitest';
-import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, parse as parsePath } from 'node:path';
 import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { parseProject } from '../src/parser/parse-project.js';
@@ -57,6 +57,11 @@ async function project(): Promise<string> {
   return root;
 }
 const parse = async (root: string) => (await parseProject({ root, project: 'h' })).model;
+
+const tsx = createRequire(import.meta.url).resolve('tsx/cli');
+const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
+const run = (cwd: string, ...args: string[]) => new Promise<{ code: number; stdout: string; stderr: string }>((res) =>
+  execFile(process.execPath, [tsx, cli, ...args], { cwd, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => res({ code: (err as { code?: number } | null)?.code ?? 0, stdout, stderr })));
 
 describe('the ledger', () => {
   it('is absent until written, round-trips, and reports corruption instead of throwing', async () => {
@@ -242,11 +247,6 @@ describe('where the state shows', () => {
 });
 
 describe('the CLI', () => {
-  const tsx = createRequire(import.meta.url).resolve('tsx/cli');
-  const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
-  const run = (cwd: string, ...args: string[]) => new Promise<{ code: number; stdout: string; stderr: string }>((res) =>
-    execFile(process.execPath, [tsx, cli, ...args], { cwd, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => res({ code: (err as { code?: number } | null)?.code ?? 0, stdout, stderr })));
-
   it('refute, list --json, next --intake and status', async () => {
     const root = await project();
     const noEvidence = await run(root, 'hypothesis', 'refute', SQLI, '.');
@@ -487,8 +487,6 @@ describe('scan import — the claim key as a discriminator', () => {
   }, 60000);
 
   it('the CLI refuses it too: nothing recorded, and it says why', async () => {
-    const tsx = createRequire(import.meta.url).resolve('tsx/cli');
-    const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
     const tested = await siblings(SIBLINGS);
     const a = stamp(generateSarif(await parse(tested)), 4);
 
@@ -1060,8 +1058,6 @@ export function findAccount(id: string) { return id; }
     // written in a test can only hold names someone thought of, and advertising a
     // spelling the reader refuses is the failure the shared definition exists to
     // make impossible. The claim is settled by running the real reader.
-    const tsx = createRequire(import.meta.url).resolve('tsx/cli');
-    const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
     const help = await new Promise<string>((res) =>
       execFile(process.execPath, [tsx, cli, 'hypothesis', 'confirm', '--help'], { maxBuffer: 64 * 1024 * 1024 },
         (_e, stdout, stderr) => res(stdout + stderr)));
@@ -1171,8 +1167,6 @@ export function findUser(email: string) { return email; }
   });
 
   const runArgs = async (root: string, ...args: string[]) => {
-    const tsx = createRequire(import.meta.url).resolve('tsx/cli');
-    const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
     return new Promise<{ code: number; out: string }>((res) =>
       execFile(process.execPath, [tsx, cli, ...args], { cwd: root, maxBuffer: 64 * 1024 * 1024 },
         (err, stdout, stderr) => res({ code: (err as { code?: number } | null)?.code ?? 0, out: stdout + stderr })));
@@ -2040,11 +2034,6 @@ export function loop(n: number) { return n; }
 const CORPUS_SIZE = 5;
 
 describe('the queue is one queue, whichever renderer prints it', () => {
-  const tsx = createRequire(import.meta.url).resolve('tsx/cli');
-  const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
-  const run = (cwd: string, ...args: string[]) => new Promise<{ code: number; stdout: string; stderr: string }>((res) =>
-    execFile(process.execPath, [tsx, cli, ...args], { cwd, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => res({ code: (err as { code?: number } | null)?.code ?? 0, stdout, stderr })));
-
   /** How many entries each renderer actually printed — counted from its own rows, never from a header. */
   async function counts(root: string, n: number): Promise<{ json: number; table: number; intake: number }> {
     const [json, table, intake] = await Promise.all([
@@ -2180,11 +2169,6 @@ describe('the queue is one queue, whichever renderer prints it', () => {
 // ─── The bounded notice: grammar, and who states the total ──────────────
 
 describe('a bounded queue says so in a sentence that holds at every count', () => {
-  const tsx = createRequire(import.meta.url).resolve('tsx/cli');
-  const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
-  const run = (cwd: string, ...args: string[]) => new Promise<{ code: number; stdout: string; stderr: string }>((res) =>
-    execFile(process.execPath, [tsx, cli, ...args], { cwd, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => res({ code: (err as { code?: number } | null)?.code ?? 0, stdout, stderr })));
-
   it('agrees in number when exactly one entry is hidden', async () => {
     const root = await siblings(QUEUE_CORPUS);
     // CORPUS_SIZE - 1 shown leaves a remainder of exactly one: the count the
@@ -2206,13 +2190,37 @@ describe('the total a bounded renderer prints is the caller’s to state', () =>
   const format = join(process.cwd(), 'src', 'hypothesis', 'format.js');
   const classify = join(process.cwd(), 'src', 'hypothesis', 'classify.js');
 
-  /** Type-check one fixture against the real module and report what tsc said. */
+  /**
+   * Type-check one fixture against the real module and report what tsc said.
+   *
+   * The fixture is checked under the PROJECT's tsconfig, not a hand-listed flag
+   * set: it pulls the whole transitive graph of `format.ts` into the program,
+   * and a graph checked under options the repo does not use goes red for
+   * reasons that have nothing to do with the arity pinned below. Two overrides
+   * are needed to point that config at a file outside `src`: `include` is
+   * emptied so the fixture is the only root, and `rootDir` — which governs
+   * output layout and nothing else under `--noEmit` — is widened to an ancestor
+   * of both the fixture and the repo. The fixture's own `package.json` makes it
+   * ESM, matching the modules it imports; without it `nodenext` infers CommonJS
+   * for a file outside the package and the import is a `require()` of ESM.
+   */
   const check = async (body: string): Promise<{ code: number; out: string }> => {
     const dir = await mkdtemp(join(tmpdir(), 'guardlink-total-'));
-    const file = join(dir, 'fixture.ts');
-    await writeFile(file, `import { formatQueue, formatIntake } from '${format}';\nimport type { RankedHypothesis } from '${classify}';\ndeclare const page: RankedHypothesis[];\ndeclare const total: number;\n${body}\n`);
-    return new Promise((res) => execFile(process.execPath, [tsc, '--noEmit', '--strict', '--target', 'ES2022', '--module', 'NodeNext', '--moduleResolution', 'NodeNext', '--skipLibCheck', file], { maxBuffer: 64 * 1024 * 1024 },
-      (err, stdout) => res({ code: (err as { code?: number } | null)?.code ?? 0, out: stdout })));
+    try {
+      await writeFile(join(dir, 'fixture.ts'), `import { formatQueue, formatIntake } from '${format}';\nimport type { RankedHypothesis } from '${classify}';\ndeclare const page: RankedHypothesis[];\ndeclare const total: number;\n${body}\n`);
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ type: 'module' }));
+      const config = join(dir, 'tsconfig.json');
+      await writeFile(config, JSON.stringify({
+        extends: join(process.cwd(), 'tsconfig.json'),
+        compilerOptions: { noEmit: true, rootDir: parsePath(dir).root },
+        include: [],
+        files: ['fixture.ts'],
+      }));
+      return await new Promise((res) => execFile(process.execPath, [tsc, '--noEmit', '--project', config], { maxBuffer: 64 * 1024 * 1024 },
+        (err, stdout) => res({ code: (err as { code?: number } | null)?.code ?? 0, out: stdout })));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   };
 
   it('refuses to compile a call that leaves the total unstated', async () => {

@@ -172,6 +172,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **`formatQueue` and `formatIntake` require the queue total. Breaking for `guardlink/hypothesis`.** Both are re-exported from `src/hypothesis/index.ts` and published as the `guardlink/hypothesis` subpath, and both gained a required trailing parameter: `formatQueue(q, total)` and `formatIntake(q, project, total)`, where `total` is the queue length **before** `-n` bounded it — see the bounded-queue entry under *Added*.
+
+  **What you observe, in TypeScript:** `error TS2554: Expected 2 arguments, but got 1.` on `formatQueue(queue)`, and `Expected 3 arguments, but got 2.` on `formatIntake(queue, project)`. Add the total. A caller that already has the whole queue and is not paging passes `queue.length`.
+
+  **What you observe, in untyped JavaScript:** nothing throws. `total` is `undefined`, `q.length < undefined` is `false`, and the table header renders `undefined to test` — so the one line that says how much there is to test is wrong, printed with no diagnostic. This is the case to check for if you consume the subpath from JS.
+
+  **Why it is required rather than defaulted.** A `= q.length` default hands a caller who forgets the argument the permissive answer — nothing truncated, and a 10-of-142 page reporting `10 to test`. That is the exact wrong number these renderers were changed to stop, reinstalled as a silent default. Required, the omission is a build failure instead of a confident wrong answer.
+
 - **`ARTIFACT_SCHEMA_VERSION` is 2.** Every `.mmd` entry in `MANIFEST.json` now carries `renderable` and a `render` measurement. `annotation_hash` is unchanged and in the same place, so an existing `validate --artifacts` reads the new manifest exactly as it read the old one.
 
 - **`ANNOTATION_HASH_VERSION` is 3**, adding an acceptance's `accepted_by` and `expires`. Without them, re-signing an acceptance or pushing its expiry out by a year moved nothing the staleness gate could see, and those two fields are the entire difference between a decision and a deletion. Every committed artifact reads stale once; regenerate with `guardlink artifacts .` and `guardlink sync`.
