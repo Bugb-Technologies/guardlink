@@ -34,9 +34,10 @@ export function formatHypothesisList(c: HypothesisClassification, state?: string
  * The queue as a table. `total` is the queue length BEFORE `-n` bounded it.
  *
  * @comment -- "The header counted the rows it was handed, so once -n bounded every renderer a 142-claim queue printed 10 to test: not a smaller answer to the same question but a wrong answer to it, because that line is the only place the table says how much there is. It names both numbers when the page is short of the queue, and reads exactly as it always did when it is not — a run that hides nothing must not grow a notice about hiding. `total` is REQUIRED and deliberately carries no default: defaulting it to q.length hands a caller who forgets it the permissive answer — truncated false, and a 10-of-142 page reporting `10 to test` — which is the wrong number this renderer exists to stop, reinstalled as a silent default. Required, an omission is a build failure instead of a confident wrong answer"
+ * @comment -- "`total` decides EVERY branch here, the empty page included. The early return is the one sentence in this function that names a state rather than counting — it says every exposure has an outcome that still holds — so it is owed to `total === 0` and not to an empty page: `formatQueue([], 142)` asked the queue for nothing and got nothing back, which says where the page ended, never that there is nothing outstanding. That branch was the last place in this file where a required total was accepted and then not read, and an empty page over a non-empty queue now falls through to the ordinary header and renders `0 of 142 to test`, which counts and claims nothing"
  */
 export function formatQueue(q: RankedHypothesis[], total: number): string {
-  if (q.length === 0) return 'Nothing to test: every exposure has an outcome that still holds.';
+  if (total === 0) return 'Nothing to test: every exposure has an outcome that still holds.';
   const lines = [q.length < total ? `${q.length} of ${total} to test` : `${total} to test`, '', `  ${pad('#', 4)}${pad('state', 9)}${pad('severity', 10)}${pad('asset', 18)}${pad('threat', 22)}${pad('where', 34)}why`];
   for (const r of q) {
     const why = [r.onPath ? 'on an undefended path' : null, r.unowned ? 'unowned' : null, r.state === 'retest' ? 'confirmed, code changed' : null].filter(Boolean).join(', ');

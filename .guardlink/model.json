@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:e5b5e7b1baf2ffc6180e342cd76e572db083f4495e11c443cb8f2c555f830ba1",
+    "annotation_hash": "sha256-v3:c92fd108821f3027bebac5807e645acec1cae17609e244be26e502ad8ebfee5d",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 155,
-  "annotations_parsed": 815,
+  "annotations_parsed": 816,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -7216,24 +7216,31 @@
       }
     },
     {
+      "description": "`total` decides EVERY branch here, the empty page included. The early return is the one sentence in this function that names a state rather than counting — it says every exposure has an outcome that still holds — so it is owed to `total === 0` and not to an empty page: `formatQueue([], 142)` asked the queue for nothing and got nothing back, which says where the page ended, never that there is nothing outstanding. That branch was the last place in this file where a required total was accepted and then not read, and an empty page over a non-empty queue now falls through to the ordinary header and renders `0 of 142 to test`, which counts and claims nothing",
+      "location": {
+        "file": "src/hypothesis/format.ts",
+        "line": 37
+      }
+    },
+    {
       "description": "A bounded brief that does not say it is bounded is a misleading brief. This one closes by telling an operator to hand it to bugb intake, so a 10-item page of a 142-claim queue reads as the whole of what there is to test and the 132 it never names read as nothing left to do. Both numbers are stated above the list and again on that closing line, since either can be the one an operator reads, along with the flag that asks for the rest. An untruncated brief is unchanged, down to the byte. The notice COUNTS the remainder and deliberately names no state for it: rankUntested queues untested and retest together, so a state noun here can misdescribe what is hidden — calling a claim that was confirmed, and whose code has since moved, untested, in the very line an operator hands to bugb intake. Membership is decided by that filter and is free to change without anyone reading this string; a line that only counts cannot fall out of step with what it counts, and the per-item labels below keep the composition legible where it belongs. The remainder clause agrees in number, because a remainder of exactly one is an ordinary count and `The other 1 are` is the kind of seam that tells a reader the sentence was never run at that value. The page size stays a numeral even when it is one: a bounded notice has to name both numbers, so it is not dropped for grammar. `total` is REQUIRED here for the same reason as in formatQueue — a default would return the permissive answer to a caller who forgot it, in the one renderer an operator hands to bugb intake",
       "location": {
         "file": "src/hypothesis/format.ts",
-        "line": 53
+        "line": 54
       }
     },
     {
       "description": "One block per FINDING, deliberately — the header counts findings and two probes hitting one claim is worth seeing. So a claim several findings joined to appears more than once, each block showing the entry that finding produced. Withholding and the exit code are the opposite case: those are decisions about a CLAIM, are derived per claim in the CLI, and must not be read off a per-finding list",
       "location": {
         "file": "src/hypothesis/format.ts",
-        "line": 132
+        "line": 133
       }
     },
     {
       "description": "This formatter emits NO model coordinate. It runs before --write splices anything, so every line it could name is a pre-write position, and a target handed to an operator has to name where the claim is once this run is finished — a key-verified write higher up the same file moves an ambiguous candidate as readily as it moves a withheld one. The by-hand commands for an ambiguous finding therefore live in the CLI beside the withheld ones, after the writes, through the one afterWrites calculation. The only file:line left below is the SCAN REPORT's own, which is correct as the report's claim about what it tested and is not ours to shift",
       "location": {
         "file": "src/hypothesis/format.ts",
-        "line": 134
+        "line": 135
       }
     },
     {
@@ -7931,7 +7938,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 815,
+    "annotation_count": 816,
     "coverage_percent": 86
   },
   "external_refs": []
