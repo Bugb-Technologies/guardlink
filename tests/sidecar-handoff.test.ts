@@ -318,7 +318,39 @@ describe('a sidecar that yields nothing says which kind of nothing', () => {
  * Before this change, every assertion in this block was the opposite: `validate`
  * printed "✓ All annotations valid, no unmitigated exposures." over a repository
  * whose model reached nothing, and `status` had no line about it at all.
+ *
+ * ── Why each case carries an explicit 30s timeout ───────────────────
+ *
+ * Every case here spawns `npx tsx src/cli/index.ts`. The 5000ms default is not
+ * a budget for that, it is a dice roll, and this file lost it once: the
+ * inline case timed out on CI while its two single-spawn siblings passed in the
+ * same run, because it was the only one launching the CLI twice.
+ *
+ * **Measured before changing anything**, since "the default was always
+ * marginal" and "something got slower" are different problems with different
+ * fixes. The spawns this block makes, mean of 7 runs each: **548ms** for
+ * `validate` and **457ms** for `status`, against ~110ms for the same work run
+ * from `dist` — so roughly 80% of each case is `npx` resolution and tsx
+ * transpiling the CLI's import graph, not the command. On GitHub's shared
+ * runners, which `tests/paths-format.test.ts` measured at roughly 3x local,
+ * that is ~1.5s per spawn and ~3s for a case that made two.
+ *
+ * And the inline path itself is NOT slower. `validate` over this repository,
+ * interleaved and trimmed mean of 9 runs: **693ms on this branch against 704ms
+ * on main**. In-process, `parseProject` over the same tree is **305ms against
+ * 297ms**. `checkHandoff` costs **0.53ms** on 820 annotations, and now returns
+ * before the hash that was 0.46ms of it, so a purely inline repository pays
+ * ~0.01ms. (A first pass at this measurement read 250ms slower on main — the
+ * `git archive` tree it ran in had no grammar `.wasm` files, so it was skipping
+ * anchor parsing entirely. Noted because the artifact is easy to repeat.)
+ *
+ * So the fix is one spawn per case and a timeout sized to what a spawn costs —
+ * not a weaker assertion. The global `testTimeout` stays where it is, so a
+ * genuinely slow NEW test still surfaces; these are annotated because it is
+ * known and measured that they spawn a process.
  */
+const CLI_SPAWN_TIMEOUT_MS = 30_000;
+
 describe('the CLI says it too', () => {
   it('validate no longer prints an unqualified tick over a model nothing can read', () => {
     const root = repo('sidecar');
@@ -337,17 +369,27 @@ describe('the CLI says it too', () => {
     // The tick survives, and says which half it covers.
     expect(out).toContain('in this repository');
     expect(out).not.toContain('✓ All annotations valid, no unmitigated exposures.\n');
-  });
+  }, CLI_SPAWN_TIMEOUT_MS);
 
   it('status carries a line naming what consumers read', () => {
     const root = repo('sidecar');
     expect(guardlink('status', root)).toContain(`Consumers read:   nothing`);
-  });
+  }, CLI_SPAWN_TIMEOUT_MS);
 
-  it('says nothing extra on an inline repository', () => {
-    const root = repo('inline');
-    const out = guardlink('validate', root);
+  // The two inline cases are split so each spawns the CLI once. Together they
+  // are the regression guard that keeps these diagnostics from becoming noise
+  // for the majority of repositories, so they are two assertions on two
+  // surfaces, not one assertion doing less.
+  it('validate says nothing extra on an inline repository', () => {
+    const out = guardlink('validate', repo('inline'));
     expect(out).not.toContain('Annotations do not leave this repository');
-    expect(guardlink('status', root)).not.toContain('Consumers read:');
-  });
+    // And the verdict keeps its ordinary wording: the qualifier the handoff
+    // adds must not appear on a repository that needs no export.
+    expect(out).toContain('Validation passed with 1 unmitigated exposure(s).');
+    expect(out).not.toContain('in this repository. See above');
+  }, CLI_SPAWN_TIMEOUT_MS);
+
+  it('status says nothing extra on an inline repository', () => {
+    expect(guardlink('status', repo('inline'))).not.toContain('Consumers read:');
+  }, CLI_SPAWN_TIMEOUT_MS);
 });
