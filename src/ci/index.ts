@@ -181,7 +181,7 @@
  * @flows SourceFiles -> #cli via findAnchorDrift -- "Recorded anchors compared against current source"
  * @flows LedgerFile -> #cli via readLedger -- "Recorded claim hashes, read only"
  * @comment -- "Exit code is a pure function of (strict, exposures, confirmed, drift, demotable stale, parse errors, unqualified acceptances) OR the coverage floor, and lives in the summary, so JSON consumers see the same verdict the shell got"
- * @flows AcceptanceHorizons -> #cli via findExpiringAcceptances -- "Qualifying acceptances read for how much of their horizon is left; reported, never gated on"
+ * @flows ThreatModel -> #cli via findExpiringAcceptances -- "Qualifying acceptances read for how much of their horizon is left; reported, never gated on"
  * @comment -- "The expiry warning boundary is bugb-server's DEFAULT_ACCEPTANCE_WARN_DAYS (14, clamped 0..365) rather than a number chosen here: two registers disagreeing about whether a waiver is in trouble is the bug one level up"
  * @comment -- "--min-coverage is the ONE exit-code term that ignores --strict: it asserts the model exists rather than grading what it says, and behind --strict it would be unreachable for every advisory run"
  * @comment -- "A lapsing acceptance never moves the exit code. It is a clock reading, not a finding, and a build that goes red on a date nobody chose is a gate teams delete rather than act on"

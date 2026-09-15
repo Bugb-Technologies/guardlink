@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:39b3f1e648d4b08fe8632ac7a8b74a62ad0afa5170f3345766b66901d4a244e1
+%% annotation_hash: sha256-v3:ff23bad8db4eb3f34bccc5435aae3a487aadaf576b5e080b77c7469538753fab
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 72 nodes / 170 edges, past the 12 / 16 legibility budget (72 nodes against 12, 170 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 72 nodes / 172 edges, past the 12 / 16 legibility budget (72 nodes against 12, 172 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -167,6 +167,7 @@ graph LR
   parsediagnostics -- "📡 runCiChecks" --> cli
   sourcefiles -- "📡 findAnchorDrift" --> cli
   ledgerfile -- "📡 readLedger" --> cli
+  threatmodel -- "📡 findExpiringAcceptances" --> cli
   userargs -- "📡 process.argv" --> cli
   cli -- "🗄️ writeFile" --> filesystem
   gitrepo -- "📡 attachBlame" --> cli
@@ -231,6 +232,7 @@ graph LR
   filepath -- "🗄️ readFileSync" --> suggest
   suggest -- "📡 suggestAnnotations" --> suggestions
   threatmodel -- "📡 findAcceptanceDefects" --> parser
+  threatmodel -- "📡 findExpiringAcceptances" --> parser
   configfile -- "📡 readAcceptancePolicy" --> parser
   threatmodel -- "📡 computeAnnotationHash" --> parser
   threatmodel -- "📡 detectAnnotationMode" --> parser

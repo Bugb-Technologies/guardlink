@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:39b3f1e648d4b08fe8632ac7a8b74a62ad0afa5170f3345766b66901d4a244e1",
+    "annotation_hash": "sha256-v3:ff23bad8db4eb3f34bccc5435aae3a487aadaf576b5e080b77c7469538753fab",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 155,
-  "annotations_parsed": 804,
+  "annotations_parsed": 810,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -1503,7 +1503,7 @@
       "description": "callers pass join(root, ...) constrained paths",
       "location": {
         "file": "src/init/index.ts",
-        "line": 512
+        "line": 518
       }
     },
     {
@@ -2859,7 +2859,7 @@
       "description": "Creates directories for agent-file writes",
       "location": {
         "file": "src/init/index.ts",
-        "line": 511
+        "line": 517
       }
     },
     {
@@ -3986,7 +3986,7 @@
       "description": "Parsed model checked for uncovered exposures, confirmed exploits and unqualified acceptances",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 132
+        "line": 179
       }
     },
     {
@@ -3996,7 +3996,7 @@
       "description": "Diagnostics from the parse are reported, never recomputed",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 133
+        "line": 180
       }
     },
     {
@@ -4006,7 +4006,7 @@
       "description": "Recorded anchors compared against current source",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 134
+        "line": 181
       }
     },
     {
@@ -4016,7 +4016,17 @@
       "description": "Recorded claim hashes, read only",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 135
+        "line": 182
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#cli",
+      "mechanism": "findExpiringAcceptances",
+      "description": "Qualifying acceptances read for how much of their horizon is left; reported, never gated on",
+      "location": {
+        "file": "src/ci/index.ts",
+        "line": 184
       }
     },
     {
@@ -4116,7 +4126,7 @@
       "description": "report --blame attaches attribution before the metadata spread, so the shared records carry it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 782
+        "line": 817
       }
     },
     {
@@ -4126,7 +4136,7 @@
       "description": "The model before and after the agent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1538
+        "line": 1573
       }
     },
     {
@@ -4136,7 +4146,7 @@
       "description": "Which assets sit on an undefended path, for the ranking",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1673
+        "line": 1708
       }
     },
     {
@@ -4146,7 +4156,7 @@
       "description": "cxg findings recorded as confirmations, joined to claims",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1689
+        "line": 1724
       }
     },
     {
@@ -4156,7 +4166,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2848
+        "line": 2883
       }
     },
     {
@@ -4166,7 +4176,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2851
+        "line": 2886
       }
     },
     {
@@ -4750,13 +4760,23 @@
       }
     },
     {
+      "source": "ThreatModel",
+      "target": "#parser",
+      "mechanism": "findExpiringAcceptances",
+      "description": "Qualifying acceptances read for how much of their horizon is left",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 54
+      }
+    },
+    {
       "source": "ConfigFile",
       "target": "#parser",
       "mechanism": "readAcceptancePolicy",
       "description": "Per-project policy thresholds, read only",
       "location": {
         "file": "src/parser/acceptance.ts",
-        "line": 54
+        "line": 56
       }
     },
     {
@@ -5894,7 +5914,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3694
+        "line": 3729
       }
     },
     {
@@ -6020,7 +6040,7 @@
       "description": "Reads the reviewer name and justification text an acceptance carries",
       "location": {
         "file": "src/parser/acceptance.ts",
-        "line": 55
+        "line": 57
       }
     },
     {
@@ -6306,26 +6326,26 @@
       "reason": "agentInstructions renders the Quick Syntax block: verb lines at column 0 that document the grammar rather than claim anything",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 309
+        "line": 373
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 418
+        "line": 522
       }
     },
     {
       "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 906
+        "line": 1014
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1218
+        "line": 1326
       }
     }
   ],
@@ -6594,38 +6614,59 @@
       }
     },
     {
-      "description": "Exit code is a pure function of (strict, exposures, confirmed, drift, demotable stale, parse errors, unqualified acceptances) and lives in the summary, so JSON consumers see the same verdict the shell got",
+      "description": "Exit code is a pure function of (strict, exposures, confirmed, drift, demotable stale, parse errors, unqualified acceptances) OR the coverage floor, and lives in the summary, so JSON consumers see the same verdict the shell got",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 136
+        "line": 183
+      }
+    },
+    {
+      "description": "The expiry warning boundary is bugb-server's DEFAULT_ACCEPTANCE_WARN_DAYS (14, clamped 0..365) rather than a number chosen here: two registers disagreeing about whether a waiver is in trouble is the bug one level up",
+      "location": {
+        "file": "src/ci/index.ts",
+        "line": 185
+      }
+    },
+    {
+      "description": "--min-coverage is the ONE exit-code term that ignores --strict: it asserts the model exists rather than grading what it says, and behind --strict it would be unreachable for every advisory run",
+      "location": {
+        "file": "src/ci/index.ts",
+        "line": 186
+      }
+    },
+    {
+      "description": "A lapsing acceptance never moves the exit code. It is a clock reading, not a finding, and a build that goes red on a date nobody chose is a gate teams delete rather than act on",
+      "location": {
+        "file": "src/ci/index.ts",
+        "line": 187
       }
     },
     {
       "description": "Exposures and drift are serialized as the types the parser already produces — no renamed fields, so guardlink.ci/v1 cannot drift from the model it reports",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 137
+        "line": 188
       }
     },
     {
       "description": "The third check reads .guardlink/verified.json and never writes it; a corrupt ledger is reported once and treated as absent",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 138
+        "line": 189
       }
     },
     {
       "description": "@confirmed is not filtered by acceptance state at all: @accepts does not silence a reproduced exploit anywhere else in the product and must not do so here",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 139
+        "line": 190
       }
     },
     {
       "description": "--severity narrows risk findings only; drift, parse errors, stale claims and unqualified acceptances carry no severity and a severity threshold says nothing about them",
       "location": {
         "file": "src/ci/index.ts",
-        "line": 140
+        "line": 191
       }
     },
     {
@@ -6653,140 +6694,140 @@
       "description": "`defaultVerifier` already returns `human:<name>` (src/parser/verify.ts:172), so prefixing it here recorded `human:human:<name>` — the form the ledger schema and this command's own --by help both say it is not. Do NOT 'repair' older entries that carry the doubled form: `by` is display and provenance metadata, never a join key — upsert and every reader match on the claim key — so pre-fix and post-fix entries coexist in one ledger and nothing stops matching. An explicit --by is passed through verbatim on this path, which is how `--by cxg:login-sqli` names its scheme",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1684
+        "line": 1719
       }
     },
     {
       "description": "Withheld is a fact about a CLAIM, not about a finding. Several findings can join to one claim — a stamped one beside an unstamped one during a cxg stamp rollout, or two templates probing the same exposure — so a per-finding list printed one claim's remediation command twice and, worse, could report a claim as skipped in the very run that wrote it. Keyed by record.key on the same rule `writes` uses, last occurrence kept because that is the entry the ledger ends up holding",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1692
+        "line": 1727
       }
     },
     {
       "description": "THE one calculation of where a line sits once the writes are done, used by every coordinate this command hands a user: the confirmations that landed, the ones already present, and the by-hand commands for both the withheld and the ambiguous. Each done.line is a PRE-write coordinate — descending order guarantees nothing at or above a target had been spliced when it was written — so an insertion at or at a lower number than a pre-write position pushes that position down by one. Only SUCCESSFUL writes are in `done`, so a write that threw shifts nothing, and with no --write it is empty and this is the identity. Two sites computing this independently is the shape that disagrees silently, and this command has already produced that defect twice",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1695
+        "line": 1730
       }
     },
     {
       "description": "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1699
+        "line": 1734
       }
     },
     {
       "description": "ONE CLAIM, ONE WRITE. Two findings can carry the same claim key — the ordinary shape when two cxg templates probe one exposure — and both resolve to the same record and fold into ONE ledger entry, so writing per finding attempted the same insertion twice and the second was refused as a failure. Keyed by record.key, keeping the LAST occurrence: upsert replaces the entry object on every call, so only the final one is the entry the ledger actually holds",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1700
+        "line": 1735
       }
     },
     {
       "description": "An exit code is a claim about what happened, and it has to be true in BOTH directions: honest about an under-write and honest about a success. A confirmation already in the source is the state we were asked to reach — from an earlier run, or a re-import of the same report — so it is separated from a real failure by the TYPE writeConfirmedLine returns, never by matching the wording of an error. Every remaining throw is a failure and still exits non-zero",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1703
+        "line": 1738
       }
     },
     {
       "description": "Reconciled against what the writes actually did. A claim whose confirmation IS in the source — inserted just now or already there — was not withheld, whatever else joined to it coarsely, so it is neither told to the operator as skipped nor counted toward the exit status. The rule it serves is the one the exit check states: the code is a claim about what happened and has to be true in BOTH directions, and reporting a claim as withheld in the run that wrote it is the half that was still false",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1714
+        "line": 1749
       }
     },
     {
       "description": "An inserted @confirmed comes to rest directly above the line it displaced, so it is that line's new position less one — derived from afterWrites rather than counted a second way. Printed in reading order, not in the order the writes went in",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1716
+        "line": 1751
       }
     },
     {
       "description": "Said in terms of what is true rather than as an error: the confirmation is there. The line an already-present @confirmed was found at is a pre-write coordinate like any other — the scan that found it stops at the next @exposes, and descending order means every insertion so far sits below that — so it goes through the same afterWrites",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1719
+        "line": 1754
       }
     },
     {
       "description": "--write only inserts an UNCONTESTED key-verified confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), and a contested one came from a report that named two different claims at once, so identity is in doubt in both cases. Losing that throughput is the point: those are exactly the joins that can be wrong",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1721
+        "line": 1756
       }
     },
     {
       "description": "Reported AFTER the writes, at the line the withheld claim occupies once they have landed. Printing pre-write lines here handed the operator a command naming a line that this same run then moved: with consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator writes a confirmation against an exposure the probe never tested — GAP-58 one layer out, in a human's fingers instead of ours. Documenting the hazard one block down was not guarding against it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1722
+        "line": 1757
       }
     },
     {
       "description": "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so every command printed here is position-dependent and is correct AT THE MOMENT OF PRINTING and no longer — a later write, or an edit, moves the target again. Tracked there, not widened here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1723
+        "line": 1758
       }
     },
     {
       "description": "The candidates for an ambiguous finding are by-hand targets like the withheld ones, so they are emitted here rather than inside formatImport: that formatter runs BEFORE the writes, and a key-verified write higher up the same file moves an ambiguous candidate exactly as it moves a withheld claim. With consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator records a confirmation against an exposure the probe never tested — GAP-58 through a human's fingers, on our own instruction. Stays on stdout, where it was",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1735
+        "line": 1770
       }
     },
     {
       "description": "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so these are correct AT THE MOMENT OF PRINTING and no longer. That residue is the addressing scheme and is tracked there; a command this run itself invalidated is a different problem and is fixed here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1736
+        "line": 1771
       }
     },
     {
       "description": "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'. A --write that withheld any confirmation is the same fact about the same run, so it exits non-zero too — PARTIALLY written included, not only the all-withheld case. The reader of this exit code is bravos, which orchestrates this loop and never sees the `! skipped` lines on stderr: give 0 two meanings and a half-written run is indistinguishable from a complete one, and the orchestrator proceeds believing the corpus carries confirmations that are not in it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1741
+        "line": 1776
       }
     },
     {
       "description": "The by-hand path reads the same typed outcome as --from-scan. A claim whose source already carries this confirmation is in the state that was asked for, so it is reported and exits 0; it used to throw into the ✗ handler and exit non-zero on a run that changed nothing and needed to change nothing",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1752
+        "line": 1787
       }
     },
     {
       "description": "The accepted names and containers are INTERPOLATED from the one shared definition, not written out here. A hand-written copy drifts benignly when the definition widens (the help under-advertises) and harmfully when it narrows: the help then advertises a name the reader refuses, which is the one thing this definition exists to make impossible. The no-stamp banner in format.ts interpolates for the same reason, and both are pinned by tests that take the names out of the text and require the reader to accept them",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1779
+        "line": 1814
       }
     },
     {
       "description": "ONE string stating BOTH behaviours, because --write sits on `confirm` and genuinely serves both paths. An author writing against this flag reads --help, not our runtime output: 'inserts the @confirmed line' alone over-promises on the one surface that writes into someone else's repository, and an operator who believes every joined confirmation landed stops checking the ones that did not — which is exactly the knowledge the withholding rule exists to give them. Two per-path wordings were rejected for the reason this branch has already corrected on names, containers, grammars and positions: two descriptions of one thing can disagree, and one string cannot contradict itself",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1782
+        "line": 1817
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3640
+        "line": 3675
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3695
+        "line": 3730
       }
     },
     {
@@ -7273,38 +7314,45 @@
       }
     },
     {
+      "description": "acceptance.warn_days is the one policy field that cannot re-open or silence a finding: it decides only how early a reader hears that a QUALIFYING acceptance is running out. Coverage never consults it, so a project lowering it to 0 loses a warning and gains no suppression",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 55
+      }
+    },
+    {
       "description": "Pure functions apart from readAcceptancePolicy; `now` is a parameter so a test can pin the clock rather than skew it",
-      "location": {
-        "file": "src/parser/acceptance.ts",
-        "line": 56
-      }
-    },
-    {
-      "description": "Scope and expiry are enforced in coverage.ts, not here — this module defines them and answers questions about them, coverage applies them",
-      "location": {
-        "file": "src/parser/acceptance.ts",
-        "line": 57
-      }
-    },
-    {
-      "description": "acceptanceBlastRadius is read by guardlink review BEFORE the justification prompt: a reviewer typing one line sees how many exposures it removes from the gate and from the SARIF a pentest reads",
       "location": {
         "file": "src/parser/acceptance.ts",
         "line": 58
       }
     },
     {
-      "description": "ACCEPTANCE_REGISTER_* name the ONE register this codebase reads — @accepts in the repository's own source. The server decision log (POST /v1/decisions), whose author is an authenticated principal and which the acceptance-deadline scan reads, is a different register with opposite guarantees and is not read here. Every surface that shows an acceptance says which one it is showing, from these constants, so there is one sentence to change when that answer changes",
+      "description": "Scope and expiry are enforced in coverage.ts, not here — this module defines them and answers questions about them, coverage applies them",
       "location": {
         "file": "src/parser/acceptance.ts",
         "line": 59
       }
     },
     {
-      "description": "Neither the signer nor the horizon is defaulted on an unattended path: --by used to fall back to git user.name (a fabricated attribution that renders identically to a real signature) and --until used to default to max_horizon_days, the ceiling. default_horizon_days is a SUGGESTION offered at a TTY, never applied silently",
+      "description": "acceptanceBlastRadius is read by guardlink review BEFORE the justification prompt: a reviewer typing one line sees how many exposures it removes from the gate and from the SARIF a pentest reads",
       "location": {
         "file": "src/parser/acceptance.ts",
         "line": 60
+      }
+    },
+    {
+      "description": "ACCEPTANCE_REGISTER_* name the ONE register this codebase reads — @accepts in the repository's own source. The server decision log (POST /v1/decisions), whose author is an authenticated principal and which the acceptance-deadline scan reads, is a different register with opposite guarantees and is not read here. Every surface that shows an acceptance says which one it is showing, from these constants, so there is one sentence to change when that answer changes",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 61
+      }
+    },
+    {
+      "description": "Neither the signer nor the horizon is defaulted on an unattended path: --by used to fall back to git user.name (a fabricated attribution that renders identically to a real signature) and --until used to default to max_horizon_days, the ceiling. default_horizon_days is a SUGGESTION offered at a TTY, never applied silently",
+      "location": {
+        "file": "src/parser/acceptance.ts",
+        "line": 62
       }
     },
     {
@@ -7848,7 +7896,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 804,
+    "annotation_count": 810,
     "coverage_percent": 86
   },
   "external_refs": []
