@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:65328a7256ace61a87a69a644b11c2b171983565a42ed3bf5525e8474e5ed6a0",
+    "annotation_hash": "sha256-v3:e5b5e7b1baf2ffc6180e342cd76e572db083f4495e11c443cb8f2c555f830ba1",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
@@ -7209,14 +7209,14 @@
       }
     },
     {
-      "description": "The header counted the rows it was handed, so once -n bounded every renderer a 142-claim queue printed 10 to test: not a smaller answer to the same question but a wrong answer to it, because that line is the only place the table says how much there is. It names both numbers when the page is short of the queue, and reads exactly as it always did when it is not — a run that hides nothing must not grow a notice about hiding",
+      "description": "The header counted the rows it was handed, so once -n bounded every renderer a 142-claim queue printed 10 to test: not a smaller answer to the same question but a wrong answer to it, because that line is the only place the table says how much there is. It names both numbers when the page is short of the queue, and reads exactly as it always did when it is not — a run that hides nothing must not grow a notice about hiding. `total` is REQUIRED and deliberately carries no default: defaulting it to q.length hands a caller who forgets it the permissive answer — truncated false, and a 10-of-142 page reporting `10 to test` — which is the wrong number this renderer exists to stop, reinstalled as a silent default. Required, an omission is a build failure instead of a confident wrong answer",
       "location": {
         "file": "src/hypothesis/format.ts",
         "line": 36
       }
     },
     {
-      "description": "A bounded brief that does not say it is bounded is a misleading brief. This one closes by telling an operator to hand it to bugb intake, so a 10-item page of a 142-claim queue reads as the whole of what there is to test and the 132 it never names read as nothing left to do. Both numbers are stated above the list and again on that closing line, since either can be the one an operator reads, along with the flag that asks for the rest. An untruncated brief is unchanged, down to the byte. The notice COUNTS the remainder and deliberately names no state for it: rankUntested queues untested and retest together, so a state noun here can misdescribe what is hidden — calling a claim that was confirmed, and whose code has since moved, untested, in the very line an operator hands to bugb intake. Membership is decided by that filter and is free to change without anyone reading this string; a line that only counts cannot fall out of step with what it counts, and the per-item labels below keep the composition legible where it belongs",
+      "description": "A bounded brief that does not say it is bounded is a misleading brief. This one closes by telling an operator to hand it to bugb intake, so a 10-item page of a 142-claim queue reads as the whole of what there is to test and the 132 it never names read as nothing left to do. Both numbers are stated above the list and again on that closing line, since either can be the one an operator reads, along with the flag that asks for the rest. An untruncated brief is unchanged, down to the byte. The notice COUNTS the remainder and deliberately names no state for it: rankUntested queues untested and retest together, so a state noun here can misdescribe what is hidden — calling a claim that was confirmed, and whose code has since moved, untested, in the very line an operator hands to bugb intake. Membership is decided by that filter and is free to change without anyone reading this string; a line that only counts cannot fall out of step with what it counts, and the per-item labels below keep the composition legible where it belongs. The remainder clause agrees in number, because a remainder of exactly one is an ordinary count and `The other 1 are` is the kind of seam that tells a reader the sentence was never run at that value. The page size stays a numeral even when it is one: a bounded notice has to name both numbers, so it is not dropped for grammar. `total` is REQUIRED here for the same reason as in formatQueue — a default would return the permissive answer to a caller who forgot it, in the one renderer an operator hands to bugb intake",
       "location": {
         "file": "src/hypothesis/format.ts",
         "line": 53
@@ -7226,14 +7226,14 @@
       "description": "One block per FINDING, deliberately — the header counts findings and two probes hitting one claim is worth seeing. So a claim several findings joined to appears more than once, each block showing the entry that finding produced. Withholding and the exit code are the opposite case: those are decisions about a CLAIM, are derived per claim in the CLI, and must not be read off a per-finding list",
       "location": {
         "file": "src/hypothesis/format.ts",
-        "line": 131
+        "line": 132
       }
     },
     {
       "description": "This formatter emits NO model coordinate. It runs before --write splices anything, so every line it could name is a pre-write position, and a target handed to an operator has to name where the claim is once this run is finished — a key-verified write higher up the same file moves an ambiguous candidate as readily as it moves a withheld one. The by-hand commands for an ambiguous finding therefore live in the CLI beside the withheld ones, after the writes, through the one afterWrites calculation. The only file:line left below is the SCAN REPORT's own, which is correct as the report's claim about what it tested and is not ours to shift",
       "location": {
         "file": "src/hypothesis/format.ts",
-        "line": 133
+        "line": 134
       }
     },
     {
