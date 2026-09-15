@@ -169,6 +169,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
   **What you observe, in untyped JavaScript:** nothing throws. `total` is `undefined`, `q.length < undefined` is `false`, and the table header renders `undefined to test` — so the one line that says how much there is to test is wrong, printed with no diagnostic. This is the case to check for if you consume the subpath from JS.
 
+  **`total` decides the empty page too.** `formatQueue`'s `Nothing to test: every exposure has an outcome that still holds.` is now owed to `total === 0` rather than to an empty `q`. It is the one line in that renderer that names a state instead of counting, and an empty *page* of a non-empty queue is not that state: `formatQueue([], 142)` renders the ordinary header, `0 of 142 to test`. Unreachable from the CLI — `-n` clamps to at least 1, so the page is empty only when the queue is — and reachable from the subpath by any caller that pages.
+
   **Why it is required rather than defaulted.** A `= q.length` default hands a caller who forgets the argument the permissive answer — nothing truncated, and a 10-of-142 page reporting `10 to test`. That is the exact wrong number these renderers were changed to stop, reinstalled as a silent default. Required, the omission is a build failure instead of a confident wrong answer.
 
 - **`ARTIFACT_SCHEMA_VERSION` is 2.** Every `.mmd` entry in `MANIFEST.json` now carries `renderable` and a `render` measurement. `annotation_hash` is unchanged and in the same place, so an existing `validate --artifacts` reads the new manifest exactly as it read the old one.
