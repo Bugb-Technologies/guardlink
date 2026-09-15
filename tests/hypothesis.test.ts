@@ -14,7 +14,7 @@ import { relationRecords, CLAIM_KEY_SURFACES, CLAIM_KEY_PROPERTY } from '../src/
 import { blockCommentClosers, commentFormAt } from '../src/parser/comment-strip.js';
 import {
   HYPOTHESES_FILE, readHypotheses, writeHypotheses, emptyHypotheses,
-  classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, resolveTarget, confirmedLine, writeConfirmedLine, formatImport,
+  classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, resolveTarget, confirmedLine, writeConfirmedLine, formatImport, formatQueue,
 } from '../src/hypothesis/index.js';
 import { lintAnnotations } from '../src/gate/index.js';
 import { generateDashboardHTML } from '../src/dashboard/index.js';
@@ -2238,4 +2238,16 @@ describe('the total a bounded renderer prints is the caller’s to state', () =>
     expect(stated.out).toBe('');
     expect(stated.code).toBe(0);
   }, 180_000);
+
+  it('reads the total on an empty page too, instead of calling the queue empty', () => {
+    // An empty page says where the page ended, never that the queue is empty.
+    // The sentence below is the one line in the table that names a state, so it
+    // is owed to the total and not to the row count.
+    const emptyPage = formatQueue([], 142);
+    expect(emptyPage).not.toContain('Nothing to test');
+    expect(emptyPage.split('\n')[0]).toBe('0 of 142 to test');
+
+    // And the genuinely empty queue still reads exactly as it always did.
+    expect(formatQueue([], 0)).toBe('Nothing to test: every exposure has an outcome that still holds.');
+  });
 });
