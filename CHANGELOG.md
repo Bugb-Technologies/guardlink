@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **`guardlink hypothesis next` is one queue in three renderers: bounded the same way, and addressable by key.** `bravos` asks GuardLink what to test next and then addresses the answer; both halves of that had a gap.
+
+  - **`-n` bounds the table, `--intake` and `--json` identically.** `--intake` ignored it and printed the whole queue, so the renderer built for the downstream consumer was the one that could not be asked for a bounded brief — `-n 3 --intake` printed all 142. The bound now happens once, before any renderer runs, so a renderer added later inherits it. **This changes a default:** `--intake` with no `-n` prints the first 10, as the table and `--json` always did; `-n <count>` asks for more.
+  - **A bounded queue names its total, in all three renderers** — because a bounded brief that does not say it is bounded is a misleading one, and the failure is an operator handing `bugb intake` a 10-item plan off a 142-claim queue believing nothing else is outstanding. The table header reads `10 of 142 to test`, the brief says it above the list and again on the line that hands it over (with the flag that asks for the rest), and the payload carries `total`, the queue length before the bound. A run that hides nothing reads exactly as it did before, down to the byte: no marker, no notice.
+  - **`guardlink.hypotheses-next/v1` entries gain `key`**, the claim key — the same one `guardlink.hypotheses-list/v1` records carry and `hypothesis confirm --from-scan` joins on. A consumer addresses a queued claim by key instead of joining back to `hypothesis list` on (asset, threat, file, line), which is positional and collides — the same tier the SARIF `threatId` fix in this release is about.
+  - **The schema stays at `/v1`, deliberately.** `key` and `total` are purely additive; nothing `/v1` carried is renamed or removed, and a consumer tells whether a build has them by the field's presence rather than by a version string it would have to be rebuilt for. Bumping would strand consumers pinned to `/v1` for a change that breaks none of them.
+
 - **`guardlink ci` warns before a signed risk acceptance lapses, and the boundary is the server register's.** The gate could tell you an acceptance had **expired** — its exposures come back and `--strict` fails — and said nothing on the way there. Measured: an `@accepts` covering a critical exposure with **eleven days left** printed `Acceptances: 1 in the model; 0 do not count` and then an unqualified green tick. The horizon was in the model the whole time; the gate declined to read it out, and annotations-in-code is the flow we document and demo.
 
   - **One judgement, not two.** The warning fires at `until − 14 days`, which is `DEFAULT_ACCEPTANCE_WARN_DAYS` in the server's `bugb_server/notify/config.py` and the boundary its acceptance-deadline scan warns at. Same event, same waiver, same team — two components disagreeing about whether a risk acceptance is in trouble is a worse defect than either of them being silent. The ceiling (365, `MAX_ACCEPTANCE_WARN_DAYS`) and the reading of `0` (no warning at all) are matched too.
@@ -155,6 +162,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - **`init` guidance now shows the host language's real doc-block** — `///` for Rust, C# and Swift, `//` for Go, a JSDoc block for TS/JS/Java/Kotlin, `#` for Python, Ruby and Terraform — and, for Python and Ruby, says explicitly that docstrings and `=begin` blocks are not read.
 
 ### Changed
+
+- **`formatQueue` and `formatIntake` require the queue total. Breaking for `guardlink/hypothesis`.** Both are re-exported from `src/hypothesis/index.ts` and published as the `guardlink/hypothesis` subpath, and both gained a required trailing parameter: `formatQueue(q, total)` and `formatIntake(q, project, total)`, where `total` is the queue length **before** `-n` bounded it — see the bounded-queue entry under *Added*.
+
+  **What you observe, in TypeScript:** `error TS2554: Expected 2 arguments, but got 1.` on `formatQueue(queue)`, and `Expected 3 arguments, but got 2.` on `formatIntake(queue, project)`. Add the total. A caller that already has the whole queue and is not paging passes `queue.length`.
+
+  **What you observe, in untyped JavaScript:** nothing throws. `total` is `undefined`, `q.length < undefined` is `false`, and the table header renders `undefined to test` — so the one line that says how much there is to test is wrong, printed with no diagnostic. This is the case to check for if you consume the subpath from JS.
+
+  **`total` decides the empty page too.** `formatQueue`'s `Nothing to test: every exposure has an outcome that still holds.` is now owed to `total === 0` rather than to an empty `q`. It is the one line in that renderer that names a state instead of counting, and an empty *page* of a non-empty queue is not that state: `formatQueue([], 142)` renders the ordinary header, `0 of 142 to test`. Unreachable from the CLI — `-n` clamps to at least 1, so the page is empty only when the queue is — and reachable from the subpath by any caller that pages.
+
+  **Why it is required rather than defaulted.** A `= q.length` default hands a caller who forgets the argument the permissive answer — nothing truncated, and a 10-of-142 page reporting `10 to test`. That is the exact wrong number these renderers were changed to stop, reinstalled as a silent default. Required, the omission is a build failure instead of a confident wrong answer.
 
 - **`ARTIFACT_SCHEMA_VERSION` is 2.** Every `.mmd` entry in `MANIFEST.json` now carries `renderable` and a `render` measurement. `annotation_hash` is unchanged and in the same place, so an existing `validate --artifacts` reads the new manifest exactly as it read the old one.
 

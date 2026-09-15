@@ -30,9 +30,15 @@ export function formatHypothesisList(c: HypothesisClassification, state?: string
   return lines.join('\n');
 }
 
-export function formatQueue(q: RankedHypothesis[]): string {
-  if (q.length === 0) return 'Nothing to test: every exposure has an outcome that still holds.';
-  const lines = [`${q.length} to test`, '', `  ${pad('#', 4)}${pad('state', 9)}${pad('severity', 10)}${pad('asset', 18)}${pad('threat', 22)}${pad('where', 34)}why`];
+/**
+ * The queue as a table. `total` is the queue length BEFORE `-n` bounded it.
+ *
+ * @comment -- "The header counted the rows it was handed, so once -n bounded every renderer a 142-claim queue printed 10 to test: not a smaller answer to the same question but a wrong answer to it, because that line is the only place the table says how much there is. It names both numbers when the page is short of the queue, and reads exactly as it always did when it is not — a run that hides nothing must not grow a notice about hiding. `total` is REQUIRED and deliberately carries no default: defaulting it to q.length hands a caller who forgets it the permissive answer — truncated false, and a 10-of-142 page reporting `10 to test` — which is the wrong number this renderer exists to stop, reinstalled as a silent default. Required, an omission is a build failure instead of a confident wrong answer"
+ * @comment -- "`total` decides EVERY branch here, the empty page included. The early return is the one sentence in this function that names a state rather than counting — it says every exposure has an outcome that still holds — so it is owed to `total === 0` and not to an empty page: `formatQueue([], 142)` asked the queue for nothing and got nothing back, which says where the page ended, never that there is nothing outstanding. That branch was the last place in this file where a required total was accepted and then not read, and an empty page over a non-empty queue now falls through to the ordinary header and renders `0 of 142 to test`, which counts and claims nothing"
+ */
+export function formatQueue(q: RankedHypothesis[], total: number): string {
+  if (total === 0) return 'Nothing to test: every exposure has an outcome that still holds.';
+  const lines = [q.length < total ? `${q.length} of ${total} to test` : `${total} to test`, '', `  ${pad('#', 4)}${pad('state', 9)}${pad('severity', 10)}${pad('asset', 18)}${pad('threat', 22)}${pad('where', 34)}why`];
   for (const r of q) {
     const why = [r.onPath ? 'on an undefended path' : null, r.unowned ? 'unowned' : null, r.state === 'retest' ? 'confirmed, code changed' : null].filter(Boolean).join(', ');
     lines.push(`  ${pad(String(r.rank), 4)}${pad(r.state, 9)}${pad(r.severity, 10)}${pad(short(r.asset, 17), 18)}${pad(short(r.threat, 21), 22)}${pad(short(`${r.file}:${r.line}`, 33), 34)}${why}`);
@@ -41,14 +47,24 @@ export function formatQueue(q: RankedHypothesis[]): string {
   return lines.join('\n');
 }
 
-/** The queue as a brief `bugb intake` can take. */
-export function formatIntake(q: RankedHypothesis[], project: string): string {
+/**
+ * The queue as a brief `bugb intake` can take. `total` is the queue length
+ * BEFORE `-n` bounded it.
+ *
+ * @comment -- "A bounded brief that does not say it is bounded is a misleading brief. This one closes by telling an operator to hand it to bugb intake, so a 10-item page of a 142-claim queue reads as the whole of what there is to test and the 132 it never names read as nothing left to do. Both numbers are stated above the list and again on that closing line, since either can be the one an operator reads, along with the flag that asks for the rest. An untruncated brief is unchanged, down to the byte. The notice COUNTS the remainder and deliberately names no state for it: rankUntested queues untested and retest together, so a state noun here can misdescribe what is hidden — calling a claim that was confirmed, and whose code has since moved, untested, in the very line an operator hands to bugb intake. Membership is decided by that filter and is free to change without anyone reading this string; a line that only counts cannot fall out of step with what it counts, and the per-item labels below keep the composition legible where it belongs. The remainder clause agrees in number, because a remainder of exactly one is an ordinary count and `The other 1 are` is the kind of seam that tells a reader the sentence was never run at that value. The page size stays a numeral even when it is one: a bounded notice has to name both numbers, so it is not dropped for grammar. `total` is REQUIRED here for the same reason as in formatQueue — a default would return the permissive answer to a caller who forgot it, in the one renderer an operator hands to bugb intake"
+ */
+export function formatIntake(q: RankedHypothesis[], project: string, total: number): string {
+  const truncated = q.length < total;
+  const hidden = total - q.length;
   const lines = [`# Test plan for ${project} — from guardlink hypothesis next`, '', 'Test these exposures in order. Each is a GuardLink claim; record the result with `guardlink hypothesis confirm|refute <file:line> --evidence "…"` or import the scan with `--from-scan`.', ''];
+  if (truncated) lines.push(`NOT THE WHOLE QUEUE: the first ${q.length} of ${total} ranked exposures, bounded by \`-n\`. The other ${hidden} ${hidden === 1 ? 'is' : 'are'} in this queue and not shown below — \`-n <count>\` asks for more, \`-n ${total}\` for all of them.`, '');
   for (const r of q) {
     lines.push(`${r.rank}. ${r.asset} → ${r.threat} [${r.severity}] at ${r.file}:${r.line}${r.state === 'retest' ? ' (previously confirmed; code changed — retest)' : ''}${r.onPath ? ' — on an undefended path' : ''}${r.unowned ? ' — no owner' : ''}`);
     lines.push(`   claim: ${r.claim}`);
   }
-  lines.push('', 'Hand this to `bugb intake "<brief>"`; an operator approves the plan before anything runs.');
+  lines.push('', truncated
+    ? `Hand this to \`bugb intake "<brief>"\`; an operator approves the plan before anything runs. This plan is the first ${q.length} of ${total}, not the whole queue — \`-n <count>\` asks for more.`
+    : 'Hand this to `bugb intake "<brief>"`; an operator approves the plan before anything runs.');
   return lines.join('\n');
 }
 

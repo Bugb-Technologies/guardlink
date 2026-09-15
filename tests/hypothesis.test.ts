@@ -3,10 +3,10 @@
  * a ranked queue, scan import, and where the state shows.
  */
 import { describe, it, expect } from 'vitest';
-import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, parse as parsePath } from 'node:path';
 import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { parseProject } from '../src/parser/parse-project.js';
@@ -14,7 +14,7 @@ import { relationRecords, CLAIM_KEY_SURFACES, CLAIM_KEY_PROPERTY } from '../src/
 import { blockCommentClosers, commentFormAt } from '../src/parser/comment-strip.js';
 import {
   HYPOTHESES_FILE, readHypotheses, writeHypotheses, emptyHypotheses,
-  classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, resolveTarget, confirmedLine, writeConfirmedLine, formatImport,
+  classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, resolveTarget, confirmedLine, writeConfirmedLine, formatImport, formatQueue,
 } from '../src/hypothesis/index.js';
 import { lintAnnotations } from '../src/gate/index.js';
 import { generateDashboardHTML } from '../src/dashboard/index.js';
@@ -57,6 +57,11 @@ async function project(): Promise<string> {
   return root;
 }
 const parse = async (root: string) => (await parseProject({ root, project: 'h' })).model;
+
+const tsx = createRequire(import.meta.url).resolve('tsx/cli');
+const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
+const run = (cwd: string, ...args: string[]) => new Promise<{ code: number; stdout: string; stderr: string }>((res) =>
+  execFile(process.execPath, [tsx, cli, ...args], { cwd, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => res({ code: (err as { code?: number } | null)?.code ?? 0, stdout, stderr })));
 
 describe('the ledger', () => {
   it('is absent until written, round-trips, and reports corruption instead of throwing', async () => {
@@ -242,11 +247,6 @@ describe('where the state shows', () => {
 });
 
 describe('the CLI', () => {
-  const tsx = createRequire(import.meta.url).resolve('tsx/cli');
-  const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
-  const run = (cwd: string, ...args: string[]) => new Promise<{ code: number; stdout: string; stderr: string }>((res) =>
-    execFile(process.execPath, [tsx, cli, ...args], { cwd, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => res({ code: (err as { code?: number } | null)?.code ?? 0, stdout, stderr })));
-
   it('refute, list --json, next --intake and status', async () => {
     const root = await project();
     const noEvidence = await run(root, 'hypothesis', 'refute', SQLI, '.');
@@ -487,8 +487,6 @@ describe('scan import — the claim key as a discriminator', () => {
   }, 60000);
 
   it('the CLI refuses it too: nothing recorded, and it says why', async () => {
-    const tsx = createRequire(import.meta.url).resolve('tsx/cli');
-    const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
     const tested = await siblings(SIBLINGS);
     const a = stamp(generateSarif(await parse(tested)), 4);
 
@@ -1060,8 +1058,6 @@ export function findAccount(id: string) { return id; }
     // written in a test can only hold names someone thought of, and advertising a
     // spelling the reader refuses is the failure the shared definition exists to
     // make impossible. The claim is settled by running the real reader.
-    const tsx = createRequire(import.meta.url).resolve('tsx/cli');
-    const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
     const help = await new Promise<string>((res) =>
       execFile(process.execPath, [tsx, cli, 'hypothesis', 'confirm', '--help'], { maxBuffer: 64 * 1024 * 1024 },
         (_e, stdout, stderr) => res(stdout + stderr)));
@@ -1171,8 +1167,6 @@ export function findUser(email: string) { return email; }
   });
 
   const runArgs = async (root: string, ...args: string[]) => {
-    const tsx = createRequire(import.meta.url).resolve('tsx/cli');
-    const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
     return new Promise<{ code: number; out: string }>((res) =>
       execFile(process.execPath, [tsx, cli, ...args], { cwd: root, maxBuffer: 64 * 1024 * 1024 },
         (err, stdout, stderr) => res({ code: (err as { code?: number } | null)?.code ?? 0, out: stdout + stderr })));
@@ -1998,4 +1992,262 @@ export function findUser(email: string) { return email; }
     expect(() => writeConfirmedLine(root, record, 'not an annotation at all')).toThrow(/does not parse back as one @confirmed/);
     expect(await readFile(join(root, 'src', 'a.ts'), 'utf-8')).not.toContain('@confirmed');
   }, 60000);
+});
+
+
+// ─── GAP-94 / GAP-95: one queue, bounded the same way, addressable by key ────
+
+/**
+ * Five untested claims, two of which share (asset, threat, file) — the tier a
+ * consumer would have to join on without a key. They differ only by description
+ * and line, so a coarse positional join cannot tell them apart and a claim key
+ * can. That is the same shape GAP-58 proved unsafe, here as the corpus the key
+ * test runs against rather than as a scan import.
+ */
+const QUEUE_CORPUS = `import x from 'x';
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "A: findUser concatenates email"
+ */
+export function findUser(email: string) { return email; }
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "B: findOrder concatenates id"
+ */
+export function findOrder(id: string) { return id; }
+
+/**
+ * @exposes #web to #xss [high] cwe:CWE-79 -- "profile.bio rendered via innerHTML in render()"
+ */
+export function render(bio: string) { return bio; }
+
+/**
+ * @exposes #api to #dos [medium] -- "parseBody() has no size cap"
+ */
+export function parseBody(body: string) { return body; }
+
+/**
+ * @exposes #web to #dos [medium] -- "the render loop is unbounded"
+ */
+export function loop(n: number) { return n; }
+`;
+const CORPUS_SIZE = 5;
+
+describe('the queue is one queue, whichever renderer prints it', () => {
+  /** How many entries each renderer actually printed — counted from its own rows, never from a header. */
+  async function counts(root: string, n: number): Promise<{ json: number; table: number; intake: number }> {
+    const [json, table, intake] = await Promise.all([
+      run(root, 'hypothesis', 'next', '.', '-n', String(n), '--json'),
+      run(root, 'hypothesis', 'next', '.', '-n', String(n)),
+      run(root, 'hypothesis', 'next', '.', '-n', String(n), '--intake'),
+    ]);
+    for (const r of [json, table, intake]) expect(r.code).toBe(0);
+    const rows = (s: string, re: RegExp) => s.split('\n').filter(l => re.test(l)).length;
+    return {
+      json: (JSON.parse(json.stdout) as { queue: unknown[] }).queue.length,
+      table: rows(table.stdout, /^ {2}\d+ /),
+      intake: rows(intake.stdout, /^\d+\. /),
+    };
+  }
+
+  it('bounds by -n in every renderer, below, at and above the queue length', async () => {
+    const root = await siblings(QUEUE_CORPUS);
+    // Below, exactly at, and above: a renderer that ignores -n is only visible below the length.
+    for (const n of [3, CORPUS_SIZE, 50]) {
+      const c = await counts(root, n);
+      expect({ n, ...c }).toEqual({ n, json: Math.min(n, CORPUS_SIZE), table: Math.min(n, CORPUS_SIZE), intake: Math.min(n, CORPUS_SIZE) });
+    }
+  }, 180_000);
+
+  it('names the page and the whole queue in every renderer when -n bounds it', async () => {
+    const root = await siblings(QUEUE_CORPUS);
+    const SHOWN = 3;
+    const [json, table, intake] = await Promise.all([
+      run(root, 'hypothesis', 'next', '.', '-n', String(SHOWN), '--json'),
+      run(root, 'hypothesis', 'next', '.', '-n', String(SHOWN)),
+      run(root, 'hypothesis', 'next', '.', '-n', String(SHOWN), '--intake'),
+    ]);
+    for (const r of [json, table, intake]) expect(r.code).toBe(0);
+
+    // --json: a consumer holding 3 entries can tell a page from the whole queue.
+    const payload = JSON.parse(json.stdout) as { schema: string; total: number; queue: unknown[] };
+    expect(payload.schema).toBe('guardlink.hypotheses-next/v1');
+    expect(payload.queue).toHaveLength(SHOWN);
+    expect(payload.total).toBe(CORPUS_SIZE);
+
+    // The table header: the page size AND the queue size, in that order.
+    expect(table.stdout.split('\n')[0]).toMatch(new RegExp(`\\b${SHOWN}\\b.*\\b${CORPUS_SIZE}\\b`));
+
+    // The brief says it before the list and again on the line that hands it over,
+    // because either can be the one an operator reads.
+    const [head, ...rest] = intake.stdout.split(/^1\. /m);
+    const closing = rest.join('1. ').split('\n').filter(Boolean).at(-1)!;
+    for (const part of [head, closing]) {
+      expect(part).toMatch(new RegExp(`\\b${SHOWN}\\b`));
+      expect(part).toMatch(new RegExp(`\\b${CORPUS_SIZE}\\b`));
+    }
+    expect(closing).toContain('bugb intake');
+    expect(head).toContain('-n');   // and how to ask for the rest
+  }, 180_000);
+
+  it('claims no truncation when -n hid nothing', async () => {
+    const root = await siblings(QUEUE_CORPUS);
+    const [json, table, intake] = await Promise.all([
+      run(root, 'hypothesis', 'next', '.', '-n', '50', '--json'),
+      run(root, 'hypothesis', 'next', '.', '-n', '50'),
+      run(root, 'hypothesis', 'next', '.', '-n', '50', '--intake'),
+    ]);
+    for (const r of [json, table, intake]) expect(r.code).toBe(0);
+    expect((JSON.parse(json.stdout) as { total: number; queue: unknown[] }).total).toBe(CORPUS_SIZE);
+    expect(table.stdout.split('\n')[0]).toBe(`${CORPUS_SIZE} to test`);
+    expect(intake.stdout).not.toMatch(new RegExp(`\\bof ${CORPUS_SIZE}\\b`));
+    expect(intake.stdout.split('\n').filter(Boolean).at(-1)).toBe('Hand this to `bugb intake "<brief>"`; an operator approves the plan before anything runs.');
+  }, 180_000);
+
+  it('counts the hidden remainder without naming a state, because retests are queued too', async () => {
+    const root = await siblings(QUEUE_CORPUS);
+    const model = await parse(root);
+    // Confirm the two #sqli claims, then move the code beneath both: they become
+    // `retest`, and retests sort first — so a page of one leaves a previously
+    // CONFIRMED claim in the remainder the notice is summarising.
+    for (const target of ['src/a.ts:4', 'src/a.ts:9']) recordOutcome(root, model, target, 'confirmed', { evidence: CONFIRM, by: 'human:test', at: NOW });
+    await writeFile(join(root, 'src', 'a.ts'), QUEUE_CORPUS.replace('{ return email; }', '{ return email.trim(); }').replace('{ return id; }', '{ return id.trim(); }'));
+
+    const [list, intake] = await Promise.all([
+      run(root, 'hypothesis', 'list', '.', '--json'),
+      run(root, 'hypothesis', 'next', '.', '-n', '1', '--intake'),
+    ]);
+    expect(list.code).toBe(0);
+    expect(intake.code).toBe(0);
+
+    const states = (JSON.parse(list.stdout) as { records: { state: string }[] }).records.map(r => r.state);
+    expect(states.filter(x => x === 'retest')).toHaveLength(2);
+
+    const shown = intake.stdout.split('\n').filter(l => /^\d+\. /.test(l));
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toContain('previously confirmed');   // the page holds one retest; the other is hidden
+
+    // The lines that summarise what is hidden: they count, and claim nothing
+    // about the state of what they count.
+    const summary = intake.stdout.split('\n').filter(l => !/^\d+\. |^ {3}claim: /.test(l)).join('\n');
+    expect(summary).toMatch(new RegExp(`\\b${CORPUS_SIZE - 1}\\b`));   // the remainder, counted
+    expect(summary).toMatch(new RegExp(`\\b1\\b.*\\b${CORPUS_SIZE}\\b`));
+    expect(summary).toContain('-n <count>');
+    expect(summary).not.toMatch(/untested/);
+  }, 180_000);
+
+  it('gives every queue entry the claim key that addresses it, and it resolves in `hypothesis list`', async () => {
+    const root = await siblings(QUEUE_CORPUS);
+    const [next, list] = await Promise.all([
+      run(root, 'hypothesis', 'next', '.', '-n', String(CORPUS_SIZE), '--json'),
+      run(root, 'hypothesis', 'list', '.', '--json'),
+    ]);
+    expect(next.code).toBe(0);
+    expect(list.code).toBe(0);
+    const q = JSON.parse(next.stdout) as { schema: string; queue: { key: string; asset: string; threat: string; file: string; line: number }[] };
+    const records = (JSON.parse(list.stdout) as { records: { key: string; asset: string; threat: string; file: string; line: number }[] }).records;
+    expect(q.schema).toBe('guardlink.hypotheses-next/v1');   // additive: a consumer tells by the field, not by a version it would have to be rebuilt for
+    expect(q.queue).toHaveLength(CORPUS_SIZE);
+
+    // The control: this corpus DOES collide at the tier a keyless consumer would
+    // join on, so resolving by key here is not the luck of a distinct tuple.
+    const coarse = new Set(records.map(r => `${r.asset}|${r.threat}|${r.file}`));
+    expect(coarse.size).toBeLessThan(records.length);
+
+    const byKey = new Map(records.map(r => [r.key, r]));
+    expect(byKey.size).toBe(records.length);           // a key names at most one claim
+    for (const e of q.queue) {
+      expect(e.key, `queue entry ${e.asset} → ${e.threat} at ${e.file}:${e.line} carries no claim key`).toBeTruthy();
+      const hit = byKey.get(e.key);
+      expect(hit, `key ${e.key} resolves to no record in hypothesis list`).toBeDefined();
+      expect(hit).toMatchObject({ asset: e.asset, threat: e.threat, file: e.file, line: e.line });
+    }
+  }, 180_000);
+});
+
+
+// ─── The bounded notice: grammar, and who states the total ──────────────
+
+describe('a bounded queue says so in a sentence that holds at every count', () => {
+  it('agrees in number when exactly one entry is hidden', async () => {
+    const root = await siblings(QUEUE_CORPUS);
+    // CORPUS_SIZE - 1 shown leaves a remainder of exactly one: the count the
+    // sentence was fixed at plural for.
+    const one = await run(root, 'hypothesis', 'next', '.', '-n', String(CORPUS_SIZE - 1), '--intake');
+    expect(one.code).toBe(0);
+    expect(one.stdout).toContain('The other 1 is');
+    expect(one.stdout).not.toContain('The other 1 are');
+
+    // And the plural case still reads as it did.
+    const many = await run(root, 'hypothesis', 'next', '.', '-n', '2', '--intake');
+    expect(many.code).toBe(0);
+    expect(many.stdout).toContain(`The other ${CORPUS_SIZE - 2} are`);
+  }, 120_000);
+});
+
+describe('the total a bounded renderer prints is the caller’s to state', () => {
+  const tsc = createRequire(import.meta.url).resolve('typescript/bin/tsc');
+  const format = join(process.cwd(), 'src', 'hypothesis', 'format.js');
+  const classify = join(process.cwd(), 'src', 'hypothesis', 'classify.js');
+
+  /**
+   * Type-check one fixture against the real module and report what tsc said.
+   *
+   * The fixture is checked under the PROJECT's tsconfig, not a hand-listed flag
+   * set: it pulls the whole transitive graph of `format.ts` into the program,
+   * and a graph checked under options the repo does not use goes red for
+   * reasons that have nothing to do with the arity pinned below. Two overrides
+   * are needed to point that config at a file outside `src`: `include` is
+   * emptied so the fixture is the only root, and `rootDir` — which governs
+   * output layout and nothing else under `--noEmit` — is widened to an ancestor
+   * of both the fixture and the repo. The fixture's own `package.json` makes it
+   * ESM, matching the modules it imports; without it `nodenext` infers CommonJS
+   * for a file outside the package and the import is a `require()` of ESM.
+   */
+  const check = async (body: string): Promise<{ code: number; out: string }> => {
+    const dir = await mkdtemp(join(tmpdir(), 'guardlink-total-'));
+    try {
+      await writeFile(join(dir, 'fixture.ts'), `import { formatQueue, formatIntake } from '${format}';\nimport type { RankedHypothesis } from '${classify}';\ndeclare const page: RankedHypothesis[];\ndeclare const total: number;\n${body}\n`);
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ type: 'module' }));
+      const config = join(dir, 'tsconfig.json');
+      await writeFile(config, JSON.stringify({
+        extends: join(process.cwd(), 'tsconfig.json'),
+        compilerOptions: { noEmit: true, rootDir: parsePath(dir).root },
+        include: [],
+        files: ['fixture.ts'],
+      }));
+      return await new Promise((res) => execFile(process.execPath, [tsc, '--noEmit', '--project', config], { maxBuffer: 64 * 1024 * 1024 },
+        (err, stdout) => res({ code: (err as { code?: number } | null)?.code ?? 0, out: stdout })));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  };
+
+  it('refuses to compile a call that leaves the total unstated', async () => {
+    // Omitting it is the defect these renderers exist to prevent, wearing a
+    // plausible number: the page length silently becomes the queue length, so a
+    // 10-of-142 page reports "10 to test". A required parameter turns that into
+    // a build failure instead of a confident wrong answer.
+    const omitted = await check('formatQueue(page);\nformatIntake(page, \'p\');');
+    expect(omitted.code).not.toBe(0);
+    expect(omitted.out).toMatch(/Expected \d+ arguments, but got \d+/);
+
+    // The control: the same fixture with the total stated must compile, so the
+    // failure above is the missing argument and not an unrelated type error.
+    const stated = await check('formatQueue(page, total);\nformatIntake(page, \'p\', total);');
+    expect(stated.out).toBe('');
+    expect(stated.code).toBe(0);
+  }, 180_000);
+
+  it('reads the total on an empty page too, instead of calling the queue empty', () => {
+    // An empty page says where the page ended, never that the queue is empty.
+    // The sentence below is the one line in the table that names a state, so it
+    // is owed to the total and not to the row count.
+    const emptyPage = formatQueue([], 142);
+    expect(emptyPage).not.toContain('Nothing to test');
+    expect(emptyPage.split('\n')[0]).toBe('0 of 142 to test');
+
+    // And the genuinely empty queue still reads exactly as it always did.
+    expect(formatQueue([], 0)).toBe('Nothing to test: every exposure has an outcome that still holds.');
+  });
 });
