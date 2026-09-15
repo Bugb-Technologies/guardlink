@@ -2115,6 +2115,38 @@ describe('the queue is one queue, whichever renderer prints it', () => {
     expect(intake.stdout.split('\n').filter(Boolean).at(-1)).toBe('Hand this to `bugb intake "<brief>"`; an operator approves the plan before anything runs.');
   }, 180_000);
 
+  it('counts the hidden remainder without naming a state, because retests are queued too', async () => {
+    const root = await siblings(QUEUE_CORPUS);
+    const model = await parse(root);
+    // Confirm the two #sqli claims, then move the code beneath both: they become
+    // `retest`, and retests sort first — so a page of one leaves a previously
+    // CONFIRMED claim in the remainder the notice is summarising.
+    for (const target of ['src/a.ts:4', 'src/a.ts:9']) recordOutcome(root, model, target, 'confirmed', { evidence: CONFIRM, by: 'human:test', at: NOW });
+    await writeFile(join(root, 'src', 'a.ts'), QUEUE_CORPUS.replace('{ return email; }', '{ return email.trim(); }').replace('{ return id; }', '{ return id.trim(); }'));
+
+    const [list, intake] = await Promise.all([
+      run(root, 'hypothesis', 'list', '.', '--json'),
+      run(root, 'hypothesis', 'next', '.', '-n', '1', '--intake'),
+    ]);
+    expect(list.code).toBe(0);
+    expect(intake.code).toBe(0);
+
+    const states = (JSON.parse(list.stdout) as { records: { state: string }[] }).records.map(r => r.state);
+    expect(states.filter(x => x === 'retest')).toHaveLength(2);
+
+    const shown = intake.stdout.split('\n').filter(l => /^\d+\. /.test(l));
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toContain('previously confirmed');   // the page holds one retest; the other is hidden
+
+    // The lines that summarise what is hidden: they count, and claim nothing
+    // about the state of what they count.
+    const summary = intake.stdout.split('\n').filter(l => !/^\d+\. |^ {3}claim: /.test(l)).join('\n');
+    expect(summary).toMatch(new RegExp(`\\b${CORPUS_SIZE - 1}\\b`));   // the remainder, counted
+    expect(summary).toMatch(new RegExp(`\\b1\\b.*\\b${CORPUS_SIZE}\\b`));
+    expect(summary).toContain('-n <count>');
+    expect(summary).not.toMatch(/untested/);
+  }, 180_000);
+
   it('gives every queue entry the claim key that addresses it, and it resolves in `hypothesis list`', async () => {
     const root = await siblings(QUEUE_CORPUS);
     const [next, list] = await Promise.all([
