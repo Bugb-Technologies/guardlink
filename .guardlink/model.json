@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:4483df1e765f3673d1f6d858a58543cbc0ad0f21157889c182c3ab846008378f",
+    "annotation_hash": "sha256-v3:65328a7256ace61a87a69a644b11c2b171983565a42ed3bf5525e8474e5ed6a0",
     "generator": "guardlink@2.0.0"
   },
   "version": "1.2.0",
@@ -7216,7 +7216,7 @@
       }
     },
     {
-      "description": "A bounded brief that does not say it is bounded is a misleading brief. This one closes by telling an operator to hand it to bugb intake, so a 10-item page of a 142-claim queue reads as the whole of what there is to test and the 132 it never names read as nothing left to do. Both numbers are stated above the list and again on that closing line, since either can be the one an operator reads, along with the flag that asks for the rest. An untruncated brief is unchanged, down to the byte",
+      "description": "A bounded brief that does not say it is bounded is a misleading brief. This one closes by telling an operator to hand it to bugb intake, so a 10-item page of a 142-claim queue reads as the whole of what there is to test and the 132 it never names read as nothing left to do. Both numbers are stated above the list and again on that closing line, since either can be the one an operator reads, along with the flag that asks for the rest. An untruncated brief is unchanged, down to the byte. The notice COUNTS the remainder and deliberately names no state for it: rankUntested queues untested and retest together, so a state noun here can misdescribe what is hidden — calling a claim that was confirmed, and whose code has since moved, untested, in the very line an operator hands to bugb intake. Membership is decided by that filter and is free to change without anyone reading this string; a line that only counts cannot fall out of step with what it counts, and the per-item labels below keep the composition legible where it belongs",
       "location": {
         "file": "src/hypothesis/format.ts",
         "line": 53

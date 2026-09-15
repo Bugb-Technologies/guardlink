@@ -176,7 +176,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v3:4483df1e765f3673d1f6d858a58543cbc0ad0f21157889c182c3ab846008378f`
+- `annotation_hash`: `sha256-v3:65328a7256ace61a87a69a644b11c2b171983565a42ed3bf5525e8474e5ed6a0`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.
