@@ -749,6 +749,12 @@ export type DiagnosticCode =
   | 'off-convention-gal'
   /** An on-convention `.gal` sidecar carries `@source` blocks for other files. */
   | 'stray-gal-source'
+  /** A `.gal` sidecar exists and holds nothing at all. */
+  | 'empty-gal'
+  /** A `.gal` sidecar holds text, no annotation, and no other diagnostic explaining why. */
+  | 'unrecognised-gal'
+  /** A `.gal` sidecar's `@source` names a file that is not on disk. */
+  | 'missing-gal-source'
   // ── Verification ledger (src/parser/ledger.ts) ──
   /** `.guardlink/verified.json` exists but does not parse or fails shape validation. */
   | 'ledger-corrupt'

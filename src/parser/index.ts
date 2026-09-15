@@ -29,6 +29,10 @@ export { buildCoverageIndex, normalizeRef, coversExposure } from './coverage.js'
 export type { CoverageIndex, CoverageOptions, SitedRelation } from './coverage.js';
 export { extractCitation, citationMatchesFile } from './citation.js';
 export { resolveGalPath, galPathFor, sourceFileForGal, isConventionalGalPath, ANNOTATIONS_DIR, GAL_CONVENTION } from './gal-path.js';
+// Whether the model reaches anything but this CLI — the check that catches an
+// externally annotated repository whose consumers are all reading zero.
+export { checkHandoff, HANDOFF_PATH, HANDOFF_COMMAND } from './handoff.js';
+export type { HandoffReport, HandoffVerdict } from './handoff.js';
 export { clearAnnotations } from './clear.js';
 export type { ClearAnnotationsOptions, ClearAnnotationsResult } from './clear.js';
 export { listFeatures, filterByFeature, getFeatureSummaries } from './feature-filter.js';

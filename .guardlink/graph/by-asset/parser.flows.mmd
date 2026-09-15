@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/parser.flows.mmd
-%% scope:           PARTIAL — #parser and its flow neighbourhood, grown until the drawing stopped fitting — 11 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:ff23bad8db4eb3f34bccc5435aae3a487aadaf576b5e080b77c7469538753fab
+%% scope:           PARTIAL — #parser and its flow neighbourhood, grown until the drawing stopped fitting — 12 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:637e8b9ebe8d7cb54f21eb70a069447a3a5a7b9d7dc0ec3e139dc2511c1ba175
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -20,25 +20,23 @@ graph LR
   configfile["🧩 ConfigFile"]
   mcpclient["👤 MCPClient"]
   projectroot["🧩 ProjectRoot"]
-  sourcefiles["🧩 SourceFiles"]
-  sourcefile["🧩 SourceFile"]
+  exportfile["🧩 ExportFile"]
   ledgerfile["🧩 LedgerFile"]
   filepath["🧩 FilePath"]
   annotations["🧩 Annotations"]
   parsediagnostics["🧩 ParseDiagnostics"]
+  annotationsource["🧩 AnnotationSource"]
   grammarfile["🧩 GrammarFile"]
   parser -.-|🧱 Trust boundary between parser and disk I/O| filesystem
   configfile -- "📡 readAcceptancePolicy" --> parser
   mcpclient -- "📡 applyAnnotations" --> parser
   parser -- "🗄️ writeFileSync" --> filesystem
   projectroot -- "📡 fast-glob" --> parser
-  parser -- "🗄️ writeFile" --> sourcefiles
-  sourcefile -- "📡 resolveGalPath" --> parser
+  exportfile -- "🗄️ readFileSync" --> parser
   ledgerfile -- "📡 readLedger" --> parser
   filepath -- "🗄️ readFile" --> parser
   parser -- "📡 parseString" --> annotations
   parser -- "📡 parseString" --> parsediagnostics
+  annotationsource -- "📡 existsSync" --> parser
   ledgerfile -- "📡 classifyClaims" --> parser
-  sourcefiles -- "📡 attachAnchors" --> parser
-  sourcefile -- "📡 parseStructure" --> parser
   grammarfile -- "📡 Language.load" --> parser
