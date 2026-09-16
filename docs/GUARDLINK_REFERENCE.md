@@ -233,7 +233,7 @@ when, and the code hash beneath the claim at that moment.
 
 ```bash
 guardlink hypothesis list [dir] [--state untested|confirmed|refuted|retest] [--json]
-guardlink hypothesis next [dir] [-n 10] [--intake]           # what to test next; --intake prints a brief for bugb intake
+guardlink hypothesis next [dir] [-n 10] [--intake] [--json]  # what to test next; --intake prints a brief for bugb intake
 guardlink hypothesis refute  src/x.ts:12 --evidence "POST /login with payload X returned 400 from validateEmail()"
 guardlink hypothesis confirm src/x.ts:12 --evidence "request … response …" [--write]   # --write inserts the @confirmed line beneath the @exposes
 guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--write]     # cxg findings joined to claims; --write inserts only uncontested key-verified ones
@@ -255,6 +255,19 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
 - **The queue.** `next` puts retests first, then untested exposures by severity, then those on an
   undefended path (`guardlink paths`), then unowned ones. No AI: the ledger is bookkeeping and
   the ranking is arithmetic. Testing stays with bugb and cxg.
+- **`-n` bounds every renderer, and every entry carries its claim key.** The table, `--intake` and
+  `--json` print the same first `n` of the same queue, so a bounded brief is `-n 3 --intake` and
+  the whole queue is `-n <big>`. Each `guardlink.hypotheses-next/v1` entry carries `key`, the same
+  claim key `guardlink.hypotheses-list/v1` records carry and `confirm --from-scan` joins on — so a
+  consumer addresses a queued claim by key rather than joining back to `hypothesis list` on
+  (asset, threat, file, line), which is positional and collides. The schema stays `/v1`: `key` is
+  additive, and a consumer tells whether a build carries it by the field's presence.
+  **A bounded queue says so, in all three renderers.** The table header reads `3 of 142 to test`,
+  the brief names both numbers above the list and again on the line that hands it to `bugb intake`
+  (with the `-n <count>` that asks for the rest), and the payload carries `total`, the queue length
+  before the bound — so a page cannot be read as the whole set, by a person or by a consumer.
+  `total` is additive exactly as `key` is, and the schema stays `/v1` for the same reason. A run
+  that hides nothing is unchanged: no marker, no notice.
 - **A stamped claim key resolves the join, before anything coarser is tried.** A finding carrying
   the claim key is looked up across the whole model. A key matches at most one claim, so that
   lookup is the answer. If it names no claim the finding is **stale**: the claim it was tested

@@ -204,7 +204,9 @@ const diff = diffModels(oldModel, newModel);
 const sarif = generateSarif(model, '.');
 ```
 
-Seven entry points: `guardlink`, and `guardlink/{parser,init,report,diff,analyzer,mcp}`.
+Ten entry points: `guardlink`, and
+`guardlink/{parser,init,report,diff,analyzer,mcp,structure,blame,hypothesis}` — the set
+`package.json`'s `exports` publishes.
 Every exported symbol is documented at
 [docs.bugb.io/guardlink/reference/api/](https://docs.bugb.io/guardlink/reference/api/).
 

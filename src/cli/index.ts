@@ -1732,16 +1732,20 @@ hypothesis
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('-n, --count <n>', 'How many to list', '10')
   .option('--intake', 'Print the queue as a brief for bugb intake')
-  .option('--json', 'Machine-readable output')
+  .option('--json', 'Machine-readable output (guardlink.hypotheses-next/v1)')
   .action(async (dir: string, opts: { project?: string; count?: string; intake?: boolean; json?: boolean }) => {
     const { root, project, model, c } = await hypothesisContext(dir, opts.project);
     // @flows ThreatModel -> #cli via findUnmitigatedPaths -- "Which assets sit on an undefended path, for the ranking"
     const pathAssets = new Set<string>();
     for (const f of findUnmitigatedPaths(model)) for (const a of f.assetsOnPath) pathAssets.add(a);
     const n = Math.max(1, parseInt(opts.count ?? '10', 10) || 10);
-    const queue = rankUntested(c.records, model, pathAssets).slice(0, opts.intake ? Number.MAX_SAFE_INTEGER : n);
-    if (opts.json) { console.log(JSON.stringify({ schema: 'guardlink.hypotheses-next/v1', root, queue: queue.map(r => ({ rank: r.rank, state: r.state, asset: r.asset, threat: r.threat, severity: r.severity, file: r.file, line: r.line, onPath: r.onPath, unowned: r.unowned, claim: r.claim })) }, null, 2)); return; }
-    console.log(opts.intake ? formatIntake(queue, project) : formatQueue(queue));
+    // @comment -- "ONE bound, applied before any renderer runs. `--intake` used to take the whole queue while --json and the table took -n, so the renderer built for the downstream consumer was the one that could not be asked for a bounded brief — `-n 3 --intake` printed all 142 on temporal. A per-renderer slice is the shape that drifts; a renderer added later inherits this one"
+    const ranked = rankUntested(c.records, model, pathAssets);
+    const queue = ranked.slice(0, n);
+    // @comment -- "`key` is the claim key, the same one hypotheses-list/v1 carries and `hypothesis confirm`/`--from-scan` join on, so a consumer can address a queued claim instead of joining back to `hypothesis list` on (asset, threat, file, line). That join is positional and GAP-58 proved it unsafe: this population collides at the coarser (asset, threat, file) tier. The schema stays at v1 deliberately — the field is purely additive, nothing v1 carried is renamed or removed, and a consumer tells whether a build has it by the field's presence; bumping would strand consumers pinned to the v1 string for a change that breaks none of them"
+    // @comment -- "`total` is the queue length before the bound, carried into all three renderers because a bounded queue that does not say it is bounded reads as the whole of what there is to test — the failure this guards is an operator handing bugb a 10-item plan off a 142-claim queue believing nothing else is outstanding. It is additive exactly as `key` is, so the schema stays at v1: nothing v1 carried is renamed or removed, and a consumer holding a page tells it apart from a whole queue by the field's presence"
+    if (opts.json) { console.log(JSON.stringify({ schema: 'guardlink.hypotheses-next/v1', root, total: ranked.length, queue: queue.map(r => ({ rank: r.rank, key: r.key, state: r.state, asset: r.asset, threat: r.threat, severity: r.severity, file: r.file, line: r.line, onPath: r.onPath, unowned: r.unowned, claim: r.claim })) }, null, 2)); return; }
+    console.log(opts.intake ? formatIntake(queue, project, ranked.length) : formatQueue(queue, ranked.length));
   });
 
 const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: string | undefined, dir: string, opts: { project?: string; evidence?: string; by?: string; write?: boolean; fromScan?: string }) => {
