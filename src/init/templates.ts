@@ -11,6 +11,7 @@ import { buildCoverageIndex } from '../parser/coverage.js';
 // grammar, never typed as strings. Hand-written examples of a grammar are how
 // D19 shipped in the first place.
 import { crossRepoTag } from '../parser/parse-line.js';
+import { HANDOFF_COMMAND, HANDOFF_PATH } from '../parser/handoff.js';
 // D17: one list of GuardLink's own generated outputs — the parser excludes them
 // from the scan set, and .gitignore ignores them, from the same constant.
 import { GENERATED_OUTPUT_FILES } from '../parser/parse-project.js';
@@ -89,7 +90,24 @@ not edit source files to add annotations in this mode.
 
 > Sidecars are found wherever the convention puts them, including for source files under
 > \`test/\`, \`vendor/\` or \`dist/\` — directories the parser skips for *source* but not for
-> annotations. \`guardlink validate\` warns if a \`.gal\` is off-convention, and still parses it.`;
+> annotations. \`guardlink validate\` warns if a \`.gal\` is off-convention, and still parses it.
+
+**External mode has one step inline mode does not: export the model.**
+
+\`\`\`sh
+${HANDOFF_COMMAND}
+\`\`\`
+
+GuardLink reads these sidecars. Nothing downstream of it does — a consumer that finds no
+export falls back to scraping inline source comments, and a \`.gal\` is not one of those.
+Measured on a fresh repository: the same two \`@exposes\` and one \`@accepts\` gave
+\`exposures 2, acceptances 1\` written inline and \`exposures 0, acceptances 0\` written in
+the sidecars this section recommends — while the consuming surface still reported itself
+*present*, so a correctly annotated repository rendered a green, empty dashboard.
+
+Re-run the export whenever the annotations change, and commit \`${HANDOFF_PATH}\` if the
+consumer reads the repository rather than your working tree. \`guardlink validate .\` and
+\`guardlink status .\` both say when it is missing, stale, or carries no provenance stamp.`;
   }
 
   const { example, notRead } = inlinePlacementExample(project);

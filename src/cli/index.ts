@@ -47,7 +47,7 @@
 import { Command } from 'commander';
 import { resolve, basename, join, isAbsolute, relative } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, checkHandoff, HANDOFF_COMMAND, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { runCiChecks, formatCiReport, ESTATE_ROUTE } from '../ci/index.js';
 import type { CiWorkspaceScope } from '../ci/index.js';
@@ -85,7 +85,7 @@ import {
 import { loadWorkspaceConfig, populateMetadata, mergeReports, resolveReportPaths, mergeVerdict, formatMergeVerdict, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace, estateReport, formatEstateReport, readMergedReport, NotAMergedReport } from '../workspace/index.js';
 import type { MergedReport, LinkResult } from '../workspace/index.js';
 import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
-import type { VerificationReport } from '../parser/index.js';
+import type { VerificationReport, HandoffReport } from '../parser/index.js';
 import gradient from 'gradient-string';
 import { readConfiguredProject } from '../parser/annotation-mode.js';
 import { computeBlame, attachBlame, buildBlamePayload, formatBlameText, readBlameConfig, type BlamePayload, type IdentityMode } from '../blame/index.js';
@@ -234,6 +234,19 @@ program
         ? `  2. Add annotations in .guardlink/annotations/<source path>.gal sidecars — NOT in source files (or ask your coding agent to do it)`
         : `  2. Add annotations in source-file comments (or ask your coding agent to do it)`);
       console.log(`  3. Run: guardlink validate .`);
+      // The step that made external mode a trap. GuardLink reads sidecars;
+      // nothing downstream of it does — a consumer with no export falls back to
+      // scraping inline source comments, so inline annotations survive that
+      // fallback and sidecars cannot. Measured on a fresh repository: identical
+      // annotations gave 2 exposures / 1 acceptance inline and 0 / 0 in the
+      // sidecars this same screen recommends. Step 2 without step 4 is how a
+      // correctly annotated repository renders an empty dashboard.
+      if (external) {
+        console.log(`  4. Run: ${HANDOFF_COMMAND}`);
+        console.log(`     Sidecars are read by GuardLink and by nothing else. That export is how`);
+        console.log(`     the code graph, dashboards and CI see them — without it they read zero.`);
+        console.log(`     guardlink validate . and guardlink status . both say when it is missing or stale.`);
+      }
     }
   });
 
@@ -307,7 +320,7 @@ program
     printDiagnostics(diagnostics);
     // @flows LedgerFile -> #cli via readLedger -- "status reports verified/stale/unverified claim counts alongside annotation coverage"
     // @flows LedgerFile -> #cli via readHypotheses -- "status reports how many exposures were tested, and with what outcome"
-    printStatus(model, classifyClaims(model, readLedger(root)), classifyHypotheses(model, readHypotheses(root)));
+    printStatus(model, classifyClaims(model, readLedger(root)), classifyHypotheses(model, readHypotheses(root)), checkHandoff(root, model));
     // @flows GitRepo -> #cli via computeBlame -- "status --blame reads attribution without touching the model"
     if (opts.blame) printBlameSummary(buildBlamePayload(model, computeBlame(root, model), root));
 
@@ -412,11 +425,28 @@ program
       }
     }
 
+    // Does any of the above leave this repository? An externally annotated
+    // project whose export is missing or stale reads as a healthy model here
+    // and as an empty one everywhere else — measured, and the reason this
+    // check exists at all (see src/parser/handoff.ts). Reported before the
+    // verdict line, because "✓ All annotations valid" is exactly the sentence
+    // it qualifies.
+    const handoff = checkHandoff(root, model);
+    if (handoff.message) {
+      console.error(`\n⚠  Annotations do not leave this repository:`);
+      console.error(`   ${handoff.message}`);
+    }
+
     const errorCount = allDiags.filter(d => d.level === 'error').length;
     const hasUnmitigated = unmitigated.length > 0;
 
     if (errorCount === 0 && !hasUnmitigated && acceptedOnly.length === 0) {
-      console.error('\n✓ All annotations valid, no unmitigated exposures.');
+      // "All annotations valid" is true and, with a broken handoff, misleading
+      // on its own — the annotations are valid *here* and absent everywhere
+      // else. The tick keeps its meaning by saying which half it covers.
+      console.error(handoff.message
+        ? '\n✓ All annotations valid, no unmitigated exposures — in this repository. See above for what consumers of it see.'
+        : '\n✓ All annotations valid, no unmitigated exposures.');
     } else if (errorCount === 0 && !hasUnmitigated && acceptedOnly.length > 0) {
       console.error(`\nValidation passed. ${acceptedOnly.length} exposure(s) accepted without mitigation — ensure these are intentional human decisions.`);
     } else if (errorCount === 0 && hasUnmitigated) {
@@ -3665,13 +3695,20 @@ function printDiagnostics(diagnostics: ParseDiagnostic[]) {
   }
 }
 
-function printStatus(model: ThreatModel, verification?: VerificationReport, hypotheses?: HypothesisClassification) {
+function printStatus(model: ThreatModel, verification?: VerificationReport, hypotheses?: HypothesisClassification, handoff?: HandoffReport) {
   console.log(`GuardLink Status: ${model.project}`);
   console.log(`${'─'.repeat(40)}`);
   console.log(`Files scanned:    ${model.source_files}`);
   console.log(`  Files annotated:    ${model.annotated_files.length}`);
   console.log(`  Files unannotated:  ${model.unannotated_files.length}`);
   console.log(`Annotations:      ${model.annotations_parsed}`);
+  // Whether any of that leaves the repository. Silent in a purely inline
+  // project, where there is nothing an export would rescue; loud in an external
+  // one, where this line is the difference between a model and a model nothing
+  // can read. Computed by the caller — see the no-I/O note below.
+  if (handoff && handoff.verdict !== 'not-needed') {
+    console.log(`Consumers read:   ${describeHandoff(handoff)}`);
+  }
   // @comment -- "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own"
   if (verification) {
     const s = verification.summary;
@@ -3720,6 +3757,29 @@ function printStatus(model: ThreatModel, verification?: VerificationReport, hypo
   }
   console.log(`Comments:         ${model.comments.length}`);
   console.log(`Shields:          ${model.shields.length}`);
+}
+
+/**
+ * The one-line form of the handoff check for `guardlink status`.
+ *
+ * Each verdict gets its own wording because each has a different next action,
+ * and `unverifiable` in particular must not be flattened into either neighbour:
+ * an export with no provenance stamp is not known to be stale and is not known
+ * to be current, and saying either would be a guess printed as a fact.
+ */
+function describeHandoff(h: HandoffReport): string {
+  switch (h.verdict) {
+    case 'current':
+      return `${h.path} (current)`;
+    case 'missing':
+      return `nothing — ${h.external} sidecar annotation(s), and ${h.path} does not exist. Run: ${h.command}`;
+    case 'stale':
+      return `${h.path}, which is behind these annotations. Run: ${h.command}`;
+    case 'unverifiable':
+      return `${h.path}, with no provenance stamp — current or stale is unknown. Run: ${h.command}`;
+    default:
+      return h.path;
+  }
 }
 
 /**

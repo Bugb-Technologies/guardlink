@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:ff23bad8db4eb3f34bccc5435aae3a487aadaf576b5e080b77c7469538753fab
+%% annotation_hash: sha256-v3:637e8b9ebe8d7cb54f21eb70a069447a3a5a7b9d7dc0ec3e139dc2511c1ba175
 %% generator:       guardlink@2.0.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 72 nodes / 172 edges, past the 12 / 16 legibility budget (72 nodes against 12, 172 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 74 nodes / 175 edges, past the 12 / 16 legibility budget (74 nodes against 12, 175 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -101,7 +101,9 @@ graph LR
   suggest["🧩 GuardLink.Suggest"]
   suggestions["🧩 Suggestions"]
   sourcefile["🧩 SourceFile"]
+  exportfile["🧩 ExportFile"]
   annotations["🧩 Annotations"]
+  annotationsource["🧩 AnnotationSource"]
   featurename["🧩 FeatureName"]
   report["🧩 GuardLink.Report · pii"]
   markdown["🧩 Markdown"]
@@ -243,6 +245,8 @@ graph LR
   parser -- "🗄️ writeFile" --> sourcefiles
   threatmodel -- "📡 isCovered" --> parser
   sourcefile -- "📡 resolveGalPath" --> parser
+  threatmodel -- "📡 checkHandoff" --> parser
+  exportfile -- "🗄️ readFileSync" --> parser
   ledgerfile -- "📡 readLedger" --> parser
   cli -- "📡 writeLedger" --> ledgerfile
   threatmodel -- "📡 migrateAnnotationMode" --> parser
@@ -250,6 +254,7 @@ graph LR
   parser -- "📡 parseString" --> annotations
   parser -- "📡 parseString" --> parsediagnostics
   parser -- "📡 assembleModel" --> threatmodel
+  annotationsource -- "📡 existsSync" --> parser
   threatmodel -- "📡 findAnchorDrift" --> parser
   threatmodel -- "📡 classifyClaims" --> parser
   ledgerfile -- "📡 classifyClaims" --> parser

@@ -16,7 +16,8 @@
 
 import fg from 'fast-glob';
 import { GAL_GLOB, sourceGlobs } from './languages.js';
-import { isAbsolute, relative } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { isAbsolute, join, relative } from 'node:path';
 import type {
   Annotation, ThreatModel, ParseDiagnostic,
   AssetAnnotation, ThreatAnnotation, ControlAnnotation, ActorAnnotation,
@@ -30,6 +31,7 @@ import type {
   ThreatModelEntitlement, EntitlementDemotionBlocker,
 } from '../types/index.js';
 import { parseFile } from './parse-file.js';
+import { isKnownVerb } from './parse-line.js';
 import { extractCitation } from './citation.js';
 import { loadWorkspaceConfig } from '../workspace/index.js';
 import { ANNOTATIONS_DIR } from './gal-path.js';
@@ -39,6 +41,132 @@ import { attachAnchors } from '../structure/attach.js';
 
 /** A standalone annotation sidecar, not a source file. */
 const isGalPath = (p: string): boolean => /\.gal$/i.test(p);
+
+/**
+ * Why a `.gal` sidecar that exists produced no annotation — when nothing else
+ * has already said why.
+ *
+ * A sidecar is a file a developer created on purpose, at a path that names the
+ * source file it is for. Reading one and getting nothing back is therefore
+ * never routine, and until this existed it was also never reported: an empty
+ * sidecar and a sidecar full of prose both left `guardlink validate` printing
+ * "✓ All annotations valid", which is the same confident zero the consuming
+ * surfaces print for a sidecar they never read at all.
+ *
+ * Three causes, three messages, because the fix differs:
+ *
+ * - **empty** — the file was created and never written. Nothing is wrong with
+ *   GuardLink and nothing is wrong with the annotations; there are none.
+ * - **unrecognised** — the file holds text that mentions no GuardLink verb.
+ *   Notes, a paste from somewhere else, or a house convention GAL does not
+ *   speak. The content is real and is contributing nothing.
+ * - **neither** — the file holds verb-shaped lines that failed to parse. This
+ *   function returns null for that case on purpose: `parseLine` has already
+ *   emitted `malformed-annotation`, `prose-like` or `unknown-verb` naming the
+ *   exact line, and a second, vaguer diagnostic over the top of a precise one
+ *   is noise. The rule is "nothing came out **and** nothing said why".
+ */
+function emptySidecarDiagnostic(absolute: string, relPath: string): ParseDiagnostic | null {
+  let content: string;
+  try {
+    content = readFileSync(absolute, 'utf-8');
+  } catch {
+    // Unreadable at this point means it was readable moments ago when the
+    // parser opened it. Say nothing rather than invent a cause.
+    return null;
+  }
+
+  if (content.trim().length === 0) {
+    return {
+      level: 'warning',
+      code: 'empty-gal',
+      message: `\`${relPath}\` is an empty annotation sidecar — it contributes nothing to the `
+        + `threat model. Delete it, or write the annotations for `
+        + `\`${sourceFileForGalOrSelf(relPath)}\` into it.`,
+      file: relPath,
+      line: 1,
+    };
+  }
+
+  if (mentionsKnownVerb(content)) return null;
+
+  return {
+    level: 'warning',
+    code: 'unrecognised-gal',
+    message: `\`${relPath}\` holds text but no GuardLink annotation — no line in it names a verb `
+      + `this parser knows, so the whole file contributes nothing to the threat model. `
+      + `If it is notes, that is fine and this warning is the only trace of it; if it was meant `
+      + `to be annotations, check the syntax with \`guardlink gal\`.`,
+    file: relPath,
+    line: 1,
+  };
+}
+
+/** Whether any line in a sidecar names a verb this parser implements. */
+function mentionsKnownVerb(content: string): boolean {
+  for (const match of content.matchAll(/@(?:g\.)?([a-zA-Z][a-zA-Z0-9_-]*)/g)) {
+    if (isKnownVerb(match[1])) return true;
+  }
+  return false;
+}
+
+/** The source file a sidecar path names, falling back to the path itself. */
+function sourceFileForGalOrSelf(relPath: string): string {
+  const norm = relPath.replaceAll('\\', '/');
+  const prefix = `${ANNOTATIONS_DIR}/`;
+  if (norm.startsWith(prefix) && norm.endsWith('.gal')) {
+    const source = norm.slice(prefix.length, -'.gal'.length);
+    if (source.length > 0) return source;
+  }
+  return norm;
+}
+
+/**
+ * `@source` blocks naming a file that is not on disk.
+ *
+ * A sidecar's whole job is to point at code it does not live in, so a `@source`
+ * that points at nothing is the one way an external annotation can be read
+ * perfectly and still describe no code. Today it is worse than silent: the
+ * named path is counted as an *annotated file*, so a repository gains coverage
+ * for a file that does not exist.
+ *
+ * Existence on disk is the test, deliberately — not "was it scanned". A source
+ * file under `test/` is excluded from the scan and is still a legitimate
+ * `@source` target (GL-503 rescued exactly that case), so keying this on the
+ * scan set would fire on correct annotations.
+ *
+ * One diagnostic per (sidecar, missing path) pair: a sidecar with twelve
+ * annotations for one moved file is one mistake, not twelve.
+ *
+ * @exposes #parser to #path-traversal [low] cwe:CWE-22 -- "`@source file:` is author-controlled text and is joined onto the project root to test existence"
+ * @mitigates #parser against #path-traversal using #path-validation -- "Existence only: no read, no write, and the result reaches the model as a warning string that echoes the path the author already wrote"
+ * @flows AnnotationSource -> #parser via existsSync -- "Declared @source paths probed for existence"
+ * @comment -- "A traversing path is already a broken annotation and this is the diagnostic that says so; refusing to stat it would return the silence this function exists to remove"
+ */
+function missingSourceDiagnostics(root: string, annotations: Annotation[]): ParseDiagnostic[] {
+  const seen = new Set<string>();
+  const diagnostics: ParseDiagnostic[] = [];
+  for (const ann of annotations) {
+    const origin = ann.location.origin_file;
+    const target = ann.location.file;
+    if (!origin || target === origin) continue;
+    const key = `${origin}\u0000${target}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (existsSync(join(root, target))) continue;
+    diagnostics.push({
+      level: 'warning',
+      code: 'missing-gal-source',
+      message: `\`${origin}\` declares \`@source file:${target}\`, and that file is not on disk. `
+        + `Its annotations parse and are counted, but they describe no code: nothing anchors, `
+        + `and \`${target}\` is reported as an annotated file that does not exist. `
+        + `Point the block at the file's current path, or delete it if the code is gone.`,
+      file: origin,
+      line: ann.location.origin_line ?? 1,
+    });
+  }
+  return diagnostics.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+}
 
 export interface ParseProjectOptions {
   /** Root directory to scan */
@@ -189,10 +317,22 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
       // itself; it is still a real annotation, just not attributable to a source
       // file. Keep the physical path in that case so the annotation is not orphaned.
       if (!isGalPath(relPath)) filesWithAnnotations.add(relPath);
+    } else if (isGalPath(relPath) && result.diagnostics.length === 0) {
+      // A sidecar that yielded nothing and explained nothing. See
+      // `emptySidecarDiagnostic` for why silence here is the defect: a sidecar
+      // exists because someone put it there, and a confident zero over the top
+      // of it is indistinguishable from a model with nothing to say.
+      const diag = emptySidecarDiagnostic(file, relPath);
+      if (diag) allDiagnostics.push(diag);
     }
     allAnnotations.push(...result.annotations);
     allDiagnostics.push(...result.diagnostics);
   }
+
+  // `@source` blocks pointing at files that are not there. Runs over every
+  // annotation at once rather than per file, so one moved source file reported
+  // from two sidecars is two diagnostics and not two hundred.
+  allDiagnostics.push(...missingSourceDiagnostics(root, allAnnotations));
 
   // The code beneath each claim (spec §5). Locations are already logical,
   // root-relative paths, and assembleModel shares each location object by
