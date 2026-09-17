@@ -60,17 +60,18 @@ guardlink status .        # what the model now holds
 ```text
 GuardLink Status: guardlink
 ────────────────────────────────────────
-Files scanned:    87
-  Files annotated:    66
-  Files unannotated:  21
-Annotations:      441
+Files scanned:    156
+  Files annotated:    134
+  Files unannotated:  22
+Annotations:      826
+Verified claims:  207 / 740 (stale 215, unverified 318)
 ────────────────────────────────────────
-Assets:           16
-Threats:          15
-Controls:         12
+Assets:           19
+Threats:          16
+Controls:         14
 Actors:           3
-Mitigations:      68
-Exposures:        80
+Mitigations:      125
+Exposures:        121
 ```
 
 Truncated. The block continues with acceptances, entitlements, transfers, flows,
