@@ -87,6 +87,9 @@ commands**, and changing an annotation invalidates both. Missing the second is t
 `sync` prints a tick that reads like "everything generated is now current", and nothing local
 contradicts it.
 
+Changing an annotation is not the only thing that invalidates them, and the two sets do not
+always move together — see **Releasing** below.
+
 | Set | Regenerate with | Checked by |
 |---|---|---|
 | `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.cursor/rules/guardlink.mdc`, `.windsurfrules`, `.clinerules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `.guardlink/README.md` | `guardlink sync .` | — |
@@ -114,6 +117,35 @@ reference document this repository actually has (`docs/` by default, `.guardlink
 `--no-root-files`). Both are conditional on purpose: this file is written into other people's
 repositories under our name, so a sentence that is only sometimes true has to be rendered only
 sometimes.
+
+## Releasing
+
+The version is recorded in exactly one place a person edits: `package.json`. `npm version
+<x.y.z> --no-git-tag-version` writes it there and into `package-lock.json`'s two root entries,
+and that is the whole of the bump. `src/version.ts` reads `package.json` at run time and is the
+only module allowed to — `tests/cli-version.test.ts` fails if a second copy appears — so every
+surface that reports a version follows it with no further edit: `guardlink --version` and
+`guardlink-mcp --version`, the TUI banner, the MCP server's own advertised version and the
+`guardlink_version` on every MCP response envelope, SARIF's `tool.driver.version`, the
+`guardlink_version` in report metadata, and the `generator:` stamp on the artifacts.
+
+**A version bump invalidates the artifact set on its own, with no annotation having moved.**
+Every `.guardlink/graph/**/*.mmd` carries a `%% generator: guardlink@<version>` header and
+`.guardlink/model.json` carries the same under `provenance.generator`, so `guardlink artifacts .`
+has to run after the bump. The agent instruction set does not record the version, so
+`guardlink sync .` correctly reports no change — this is the one case where the two generated
+sets above do not move together, and the `annotation_hash` in the regenerated artifacts should
+come out byte-identical to the one before the bump. If it does not, something other than the
+version moved and that is the thing to look at.
+
+`.github/workflows/release.yml` triggers on a GitHub Release being **published**, not on a tag
+push — tagging alone publishes nothing. It runs `npm ci`, `npm run build` and `npm test` before
+`npm publish`, in that order, so a test failure there leaves a published Release with no npm
+version behind it and has to be cleaned up by hand. Run the build and the full suite locally
+before the Release is created, not after.
+
+`package.json`'s `files` array publishes `README.md` and `CHANGELOG.md` into the tarball, so
+both ship whatever they say at the tagged commit.
 
 ## Numbers Shared With bugb-server
 
