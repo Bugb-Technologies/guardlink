@@ -66,7 +66,7 @@ Every time you write or modify code that touches security-relevant behavior, you
 
 _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`, or read `.guardlink/definitions.*`._
 
-**Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest), #blame (GuardLink,Blame), #gate (GuardLink,Gate), #estate-view (Workspace,Estate), #workspace-link (Workspace,Link), #merge-engine (Workspace,Merge), #report-metadata (Workspace,Metadata), #workspace-config (Workspace,Config)
+**Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest), #blame (GuardLink,Blame), #codegraph (GuardLink,CodeGraph), #gate (GuardLink,Gate), #estate-view (Workspace,Estate), #workspace-link (Workspace,Link), #merge-engine (Workspace,Merge), #report-metadata (Workspace,Metadata), #workspace-config (Workspace,Config)
 **Threats:** #path-traversal (Path_Traversal) [high], #cmd-injection (Command_Injection) [critical], #xss (Cross_Site_Scripting) [high], #api-key-exposure (API_Key_Exposure) [high], #ssrf (Server_Side_Request_Forgery) [medium], #redos (ReDoS) [medium], #arbitrary-write (Arbitrary_File_Write) [high], #prompt-injection (Prompt_Injection) [medium], #dos (Denial_of_Service) [medium], #data-exposure (Sensitive_Data_Exposure) [medium], #insecure-deser (Insecure_Deserialization) [medium], #child-proc-injection (Child_Process_Injection) [high], #info-disclosure (Information_Disclosure) [low], #vacuous-pass (Vacuous_Pass) [high], #tag-collision (Tag_Collision) [medium], #config-tamper (Config_Tampering) [medium]
 **Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring), #prefix-ownership (Prefix_Ownership), #yaml-validation (YAML_Validation), #identity-redaction (Identity_Redaction), #fail-closed (Fail_Closed)
 **Actors:** #local-dev (Local_Developer), #mcp-agent (MCP_Agent), #ci-runner (CI_Runner)
@@ -83,10 +83,12 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
 - #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
 - #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:34)
+- #codegraph exposed to #config-tamper [medium] (src/codegraph/index.ts:45)
+- #codegraph exposed to #prompt-injection [medium] (src/codegraph/index.ts:49)
 - #init exposed to #data-exposure [low] (src/init/index.ts:12)
 - #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:6)
-- #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:37)
-- #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:41)
+- #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:39)
+- #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:43)
 - #suggest exposed to #dos [low] (src/mcp/suggest.ts:16)
 - #parser exposed to #data-exposure [low] (src/parser/migrate-mode.ts:26)
 - #tui exposed to #cmd-injection [high] (src/tui/commands.ts:11)
@@ -105,6 +107,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - UserPrompt -> #agent-launcher via buildAskPrompt
 - ThreatModel -> #agent-launcher via model
 - #agent-launcher -> AgentPrompt via return
+- #codegraph -> #agent-launcher via worklist
 - SavedReport -> #llm-client via parseFindingsBlock
 - ThreatModel -> #llm-client via serializeModel
 - ProjectFiles -> #llm-client via readFileSync
@@ -113,8 +116,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - LLMConfig -> #llm-client via chatCompletion
 - #llm-client -> LLMProvider via fetch
 - LLMProvider -> #llm-client via response
-- LLMToolCall -> #llm-client via createToolExecutor
-- … and 164 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
+- … and 170 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
 
 ### Features (filter with `--feature`)
 
@@ -123,11 +125,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-826 annotations, 19 assets, 16 threats, 14 controls, 121 exposures, 0 confirmed, 125 mitigations, 3 actors, 1 entitlements, 184 flows, 2 features
+845 annotations, 20 assets, 16 threats, 14 controls, 125 exposures, 0 confirmed, 127 mitigations, 3 actors, 1 entitlements, 190 flows, 2 features
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v3:f69e96fb8c398975bc8016d2de7084bd35db3dfad5a9d05ffdaafb0541e64c2d`
+- `annotation_hash`: `sha256-v3:22d4797ace05d0013917c10716c6b3037f7befb968393fe1b9b8f6091bcb76c9`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.

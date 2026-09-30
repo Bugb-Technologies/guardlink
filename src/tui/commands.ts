@@ -39,6 +39,7 @@ import type { ThreatModel, ThreatModelExposure } from '../types/index.js';
 import { C, severityBadge, severityText, severityTextPad, severityOrder, computeGrade, gradeColored, readCodeContext, trunc, bar, fileLink, fileLinkTrunc, cleanCliArtifacts } from './format.js';
 import { resolveLLMConfig, saveTuiConfig, loadTuiConfig } from './config.js';
 import { AGENTS, parseAgentFlag, parseAnnotationModeFlag, launchAgent, launchAgentInline, copyToClipboard, buildAnnotatePrompt, type AgentEntry } from '../agents/index.js';
+import { loadWorklist, worklistSummaryLine } from '../codegraph/index.js';
 import { describeConfigSource } from '../agents/config.js';
 import { getReviewableExposures, applyReviewAction, summarizeReview, horizonFrom, ReviewRejected, type ReviewResult } from '../review/index.js';
 import { readAcceptancePolicy, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
@@ -1603,8 +1604,13 @@ export async function cmdAnnotate(args: string, ctx: TuiContext): Promise<void> 
   const agent = flagAgent || await pickAgent(ctx);
   if (!agent) return;
 
+  // The optional code graph's entry-point worklist; nothing when none is installed
+  const worklist = await loadWorklist(ctx.root, ctx.model);
+  const graphLine = worklistSummaryLine(worklist);
+  if (graphLine) console.log(C.dim(`  ${graphLine}`));
+
   // Build context prompt using shared builder
-  const prompt = buildAnnotatePrompt(cleanArgs.trim(), ctx.root, ctx.model, annotationMode);
+  const prompt = buildAnnotatePrompt(cleanArgs.trim(), ctx.root, ctx.model, annotationMode, undefined, worklist);
 
   // For terminal agents: foreground spawn (agent takes over terminal)
   if (agent.cmd) {

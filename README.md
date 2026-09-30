@@ -170,6 +170,21 @@ GuardLink annotations.*
 Every tool the server exposes, with its input schema, is at
 [docs.bugb.io/guardlink/reference/mcp/](https://docs.bugb.io/guardlink/reference/mcp/).
 
+**Optional: a code graph for where to start.** When a code graph is installed
+(`codegraph-mcp` on `PATH`, or `bravos` with a graph build that publishes route and
+attack-surface queries) and the repository has been indexed, `guardlink annotate`
+adds a ranked worklist to the agent's prompt: each route handler with its
+`METHOD path`, the sink classes it reaches through the call graph (data layer,
+exec, template, outbound network, filesystem, crypto), and whether the threat
+model covers it yet — unannotated handlers first. An agent in its own editor gets
+the same list from `guardlink_worklist`, and `guardlink_reach(symbol)` answers what
+one function reaches before it writes an `@exposes` or `@flows`. GuardLink never
+installs or builds the graph. Without one — or with `--no-code-graph`, or
+`GUARDLINK_CODEGRAPH=off` — the prompt is byte-for-byte what it was, and when the
+graph reports that it resolved too few calls to rank honestly, the worklist is
+left out and the prompt says why. `GUARDLINK_CODEGRAPH_MCP` points at a specific
+`codegraph-mcp` binary.
+
 ---
 
 ## Real-world results

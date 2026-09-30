@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/mcp.flows.mmd
-%% scope:           PARTIAL — #mcp and its flow neighbourhood, grown until the drawing stopped fitting — 21 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:f69e96fb8c398975bc8016d2de7084bd35db3dfad5a9d05ffdaafb0541e64c2d
+%% scope:           PARTIAL — #mcp and its flow neighbourhood, grown until the drawing stopped fitting — 20 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:22d4797ace05d0013917c10716c6b3037f7befb968393fe1b9b8f6091bcb76c9
 %% generator:       guardlink@2.1.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -17,17 +17,14 @@ graph LR
   subgraph Z1["🧱 MCPClient · Trust boundary at MCP protocol"]
     mcpclient["👤 MCPClient"]
   end
-  threatmodel["🧩 ThreatModel"]
-  llm_client["👤 GuardLink.LLM_Client"]
   gitrepo["🧩 GitRepo"]
   configfile["🧩 ConfigFile"]
   querystring["🧩 QueryString"]
   filesystem["🧩 FileSystem"]
+  llm_client["👤 GuardLink.LLM_Client"]
+  codegraph["🧩 GuardLink.CodeGraph"]
   mcp -.-|🧱 Trust boundary at MCP protocol| mcpclient
-  threatmodel -- "📡 serializeModel" --> llm_client
   mcpclient -- "📡 guardlink_context" --> mcp
-  threatmodel -- "🗄️ fileContext" --> mcp
-  threatmodel -- "📡 buildEnvelope" --> mcp
   gitrepo -- "🗄️ readFileSync" --> mcp
   mcpclient -- "📡 stdio" --> mcp
   configfile -- "🗄️ readFileSync" --> mcp
@@ -36,5 +33,6 @@ graph LR
   mcp -- "🗄️ writeFile" --> filesystem
   mcp -- "📡 generateThreatReport" --> llm_client
   mcp -- "📡 resource" --> mcpclient
+  mcp -- "📡 guardlink_worklist" --> codegraph
+  mcp -- "📡 guardlink_reach" --> codegraph
   gitrepo -- "📡 computeBlame" --> mcp
-  threatmodel -- "📡 selectSubgraph" --> mcp

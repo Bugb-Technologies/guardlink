@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:f69e96fb8c398975bc8016d2de7084bd35db3dfad5a9d05ffdaafb0541e64c2d",
+    "annotation_hash": "sha256-v3:22d4797ace05d0013917c10716c6b3037f7befb968393fe1b9b8f6091bcb76c9",
     "generator": "guardlink@2.1.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 156,
-  "annotations_parsed": 826,
+  "source_files": 158,
+  "annotations_parsed": 845,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -32,6 +32,7 @@
     "src/blame/types.ts",
     "src/ci/index.ts",
     "src/cli/index.ts",
+    "src/codegraph/index.ts",
     "src/dashboard/analytics.ts",
     "src/dashboard/annotations.ts",
     "src/dashboard/client-legacy.ts",
@@ -165,7 +166,8 @@
     "src/parser/index.ts",
     "src/parser/normalize.ts",
     "src/tui/format.ts",
-    "src/types/index.ts"
+    "src/types/index.ts",
+    "vitest.config.ts"
   ],
   "assets": [
     {
@@ -327,13 +329,25 @@
     {
       "path": [
         "GuardLink",
+        "CodeGraph"
+      ],
+      "id": "codegraph",
+      "description": "Optional adapter that reads an installed code graph (codegraph-mcp or bravos) for ranked entry points and per-function reach; spawns the graph binary and parses its JSON",
+      "location": {
+        "file": ".guardlink/definitions.ts",
+        "line": 28
+      }
+    },
+    {
+      "path": [
+        "GuardLink",
         "Gate"
       ],
       "id": "gate",
       "description": "Checks what an annotating agent added against the evidence bar: lints, re-prompts, strips what still fails",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 64
+        "line": 65
       }
     },
     {
@@ -409,7 +423,7 @@
       "description": "File read/write operations outside intended project directory via ../ sequences or absolute paths",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 32
+        "line": 33
       }
     },
     {
@@ -423,7 +437,7 @@
       "description": "Shell command execution with unsanitized user input",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 33
+        "line": 34
       }
     },
     {
@@ -437,7 +451,7 @@
       "description": "Injection of malicious scripts into generated HTML output",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 34
+        "line": 35
       }
     },
     {
@@ -451,7 +465,7 @@
       "description": "API keys leaked in logs, error messages, or unintended output",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 35
+        "line": 36
       }
     },
     {
@@ -465,7 +479,7 @@
       "description": "LLM API requests to attacker-controlled URLs via config override",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 36
+        "line": 37
       }
     },
     {
@@ -479,7 +493,7 @@
       "description": "Regular expression denial of service from crafted annotation content",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 37
+        "line": 38
       }
     },
     {
@@ -493,7 +507,7 @@
       "description": "Writing files to attacker-controlled paths outside project",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 38
+        "line": 39
       }
     },
     {
@@ -507,7 +521,7 @@
       "description": "Malicious content in annotations injected into LLM prompts",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 39
+        "line": 40
       }
     },
     {
@@ -521,7 +535,7 @@
       "description": "Resource exhaustion from processing large files or deep directory trees",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 40
+        "line": 41
       }
     },
     {
@@ -535,7 +549,7 @@
       "description": "Threat model details exposed to unauthorized parties",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 41
+        "line": 42
       }
     },
     {
@@ -549,7 +563,7 @@
       "description": "Unsafe parsing of JSON/YAML configuration files",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 42
+        "line": 43
       }
     },
     {
@@ -563,7 +577,7 @@
       "description": "Agent launcher executing attacker-controlled commands via process spawn",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 43
+        "line": 44
       }
     },
     {
@@ -577,7 +591,7 @@
       "description": "Unintended exposure of internal paths, structure, or implementation details",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 44
+        "line": 45
       }
     },
     {
@@ -591,7 +605,7 @@
       "description": "A check reports success without having read what it was asked to check: zero repositories loaded, a glob that matched nothing, annotations the parser dropped. An input nobody read contributes to no count, so every number above it looks healthier for its absence, and the exit code says the estate is clean",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 45
+        "line": 46
       }
     },
     {
@@ -629,7 +643,7 @@
       "description": "Validates file paths using resolve() + startsWith() to ensure access within allowed directories",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 50
+        "line": 51
       }
     },
     {
@@ -639,7 +653,7 @@
       "description": "Input validation with anchored regex patterns and length limits",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 51
+        "line": 52
       }
     },
     {
@@ -649,7 +663,7 @@
       "description": "HTML entity encoding for untrusted data in generated output",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 52
+        "line": 53
       }
     },
     {
@@ -659,7 +673,7 @@
       "description": "Masking API keys in logs and error messages",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 53
+        "line": 54
       }
     },
     {
@@ -669,7 +683,7 @@
       "description": "Controlled child process spawning with explicit args array, no shell",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 54
+        "line": 55
       }
     },
     {
@@ -679,7 +693,7 @@
       "description": "Schema validation for configuration files before use",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 55
+        "line": 56
       }
     },
     {
@@ -689,7 +703,7 @@
       "description": "File size limits, recursion depth limits, timeout constraints",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 56
+        "line": 57
       }
     },
     {
@@ -699,7 +713,7 @@
       "description": "Using spawn with args array instead of shell string interpolation",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 57
+        "line": 58
       }
     },
     {
@@ -709,7 +723,7 @@
       "description": "Filtering files using glob patterns with explicit excludes",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 58
+        "line": 59
       }
     },
     {
@@ -719,7 +733,7 @@
       "description": "Using anchored regex patterns (^...$) to prevent backtracking",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 59
+        "line": 60
       }
     },
     {
@@ -729,7 +743,7 @@
       "description": "Tag prefix determines owning repo, preventing cross-repo tag collisions",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 60
+        "line": 61
       }
     },
     {
@@ -739,7 +753,7 @@
       "description": "Schema validation for workspace.yaml configuration files",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 61
+        "line": 62
       }
     },
     {
@@ -749,7 +763,7 @@
       "description": "Hashes or drops author emails before attribution leaves the machine",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 62
+        "line": 63
       }
     },
     {
@@ -759,7 +773,7 @@
       "description": "A command that could not read what it was asked to read exits non-zero and names what it could not read, rather than reporting the empty result as a clean one. Distinct from a gate: this fires on the absence of input, not on a finding, so it is not behind an opt-in flag",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 63
+        "line": 64
       }
     }
   ],
@@ -771,7 +785,7 @@
       "description": "Runs the guardlink binary from a shell on the project; already holds write access to the same working tree guardlink edits, and has an interactive TTY that can answer a confirmation prompt",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 74
+        "line": 75
       }
     },
     {
@@ -781,7 +795,7 @@
       "description": "AI coding agent calling guardlink tools over stdio through the MCP server; acts only with the tool set src/mcp/server.ts exposes, not with the operator's shell",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 75
+        "line": 76
       }
     },
     {
@@ -791,7 +805,7 @@
       "description": "GitHub Actions job invoking the built CLI (see .github/workflows/ci.yml); has no TTY, so it cannot answer a confirmation prompt, and is deliberately granted no entitlement",
       "location": {
         "file": ".guardlink/definitions.ts",
-        "line": 76
+        "line": 77
       }
     }
   ],
@@ -812,7 +826,7 @@
       "imprecise": false,
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 53
+        "line": 57
       }
     }
   ],
@@ -884,7 +898,7 @@
       "description": "renderRows caps the assembled context at PROMPT_CONTEXT_BUDGET_CHARS and reports how many rows it dropped",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 66
+        "line": 70
       }
     },
     {
@@ -1124,7 +1138,27 @@
       "description": "Path is the constant LEDGER_FILE under a root that must already carry .guardlink/; targets only select claims, they are never written to",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 536
+        "line": 537
+      }
+    },
+    {
+      "asset": "#codegraph",
+      "threat": "#child-proc-injection",
+      "control": "#param-commands",
+      "description": "spawn/execFile with an argv array and shell:false; the only caller-derived arguments are the project root and a symbol address, each passed as one argv element",
+      "location": {
+        "file": "src/codegraph/index.ts",
+        "line": 44
+      }
+    },
+    {
+      "asset": "#codegraph",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "Every query has a timeout (QUERY_TIMEOUT_MS) and an output cap (MAX_OUTPUT_BYTES); the process is killed when either is hit",
+      "location": {
+        "file": "src/codegraph/index.ts",
+        "line": 48
       }
     },
     {
@@ -1544,7 +1578,7 @@
       "description": "Zod schema validates root; resolve() canonicalizes",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 34
+        "line": 36
       }
     },
     {
@@ -1554,7 +1588,7 @@
       "description": "Output paths resolved relative to validated root",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 36
+        "line": 38
       }
     },
     {
@@ -1564,7 +1598,7 @@
       "description": "Keys from env only; never logged or returned",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 40
+        "line": 42
       }
     },
     {
@@ -1574,7 +1608,7 @@
       "description": "The proposal artifact path is fixed, and its target file must resolve inside the project root — a proposal never writes to source",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 44
+        "line": 46
       }
     },
     {
@@ -2196,7 +2230,7 @@
       "description": "Prompt size now scales with model size: uncapped flow and exposure rows mean a large repo assembles a large prompt",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 65
+        "line": 69
       }
     },
     {
@@ -2547,7 +2581,59 @@
       "description": "The one command that writes .guardlink/verified.json",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 535
+        "line": 536
+      }
+    },
+    {
+      "asset": "#codegraph",
+      "threat": "#child-proc-injection",
+      "severity": "high",
+      "external_refs": [
+        "cwe:CWE-78"
+      ],
+      "description": "Spawns codegraph-mcp or bravos found on PATH, or the binary named by GUARDLINK_CODEGRAPH_MCP",
+      "location": {
+        "file": "src/codegraph/index.ts",
+        "line": 43
+      }
+    },
+    {
+      "asset": "#codegraph",
+      "threat": "#config-tamper",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-15"
+      ],
+      "description": "GUARDLINK_CODEGRAPH_MCP names the binary to run; whoever controls the environment chooses what executes",
+      "location": {
+        "file": "src/codegraph/index.ts",
+        "line": 45
+      }
+    },
+    {
+      "asset": "#codegraph",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "A wedged or runaway graph server could hold the annotate command or an MCP call open, or stream unbounded output",
+      "location": {
+        "file": "src/codegraph/index.ts",
+        "line": 47
+      }
+    },
+    {
+      "asset": "#codegraph",
+      "threat": "#prompt-injection",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-77"
+      ],
+      "description": "Route paths, symbol names and sink call text come from the repository's own source and are rendered into the annotate prompt",
+      "location": {
+        "file": "src/codegraph/index.ts",
+        "line": 49
       }
     },
     {
@@ -2948,7 +3034,7 @@
       "description": "Tool arguments include 'root' directory path from external client",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 33
+        "line": 35
       }
     },
     {
@@ -2961,7 +3047,7 @@
       "description": "report, dashboard, sarif tools write files",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 35
+        "line": 37
       }
     },
     {
@@ -2974,7 +3060,7 @@
       "description": "annotate and threat_report tools pass user prompts to LLM",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 37
+        "line": 39
       }
     },
     {
@@ -2987,7 +3073,7 @@
       "description": "threat_report tool uses API keys from environment",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 39
+        "line": 41
       }
     },
     {
@@ -3000,7 +3086,7 @@
       "description": "Resources expose full threat model to MCP clients",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 41
+        "line": 43
       }
     },
     {
@@ -3013,7 +3099,7 @@
       "description": "guardlink_entitlement_propose writes a client-supplied claim into .guardlink/entitlement-proposals.json",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 43
+        "line": 45
       }
     },
     {
@@ -3754,6 +3840,16 @@
       }
     },
     {
+      "source": "#codegraph",
+      "target": "#agent-launcher",
+      "mechanism": "worklist",
+      "description": "Optional code-graph worklist, placed between the scope and the method; absent, the prompt is unchanged",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 146
+      }
+    },
+    {
       "source": "SavedReport",
       "target": "#llm-client",
       "mechanism": "parseFindingsBlock",
@@ -4080,7 +4176,7 @@
       "description": "Opt-in attribution; without --blame the JSON is byte-identical to before",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 271
+        "line": 272
       }
     },
     {
@@ -4090,7 +4186,7 @@
       "description": "status reports verified/stale/unverified claim counts alongside annotation coverage",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 321
+        "line": 322
       }
     },
     {
@@ -4100,7 +4196,7 @@
       "description": "status reports how many exposures were tested, and with what outcome",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 322
+        "line": 323
       }
     },
     {
@@ -4110,7 +4206,7 @@
       "description": "status --blame reads attribution without touching the model",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 324
+        "line": 325
       }
     },
     {
@@ -4120,7 +4216,7 @@
       "description": "Read-only; a corrupt ledger becomes a validate error (ledger-corrupt) instead of being silently treated as absent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 391
+        "line": 392
       }
     },
     {
@@ -4130,7 +4226,7 @@
       "description": "Targets, --by and mode flags",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 537
+        "line": 538
       }
     },
     {
@@ -4140,7 +4236,7 @@
       "description": "Attribution read from blame, log -L and commit trailers",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 654
+        "line": 655
       }
     },
     {
@@ -4150,7 +4246,17 @@
       "description": "report --blame attaches attribution before the metadata spread, so the shared records carry it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 847
+        "line": 848
+      }
+    },
+    {
+      "source": "#cli",
+      "target": "#codegraph",
+      "mechanism": "loadWorklist",
+      "description": "Project root; the graph answers with ranked entry points or a status",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 1566
       }
     },
     {
@@ -4160,7 +4266,7 @@
       "description": "The model before and after the agent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1603
+        "line": 1613
       }
     },
     {
@@ -4170,7 +4276,7 @@
       "description": "Which assets sit on an undefended path, for the ranking",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1738
+        "line": 1748
       }
     },
     {
@@ -4180,7 +4286,7 @@
       "description": "cxg findings recorded as confirmations, joined to claims",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1758
+        "line": 1768
       }
     },
     {
@@ -4190,7 +4296,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2917
+        "line": 2927
       }
     },
     {
@@ -4200,7 +4306,27 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2920
+        "line": 2930
+      }
+    },
+    {
+      "source": "CodeGraphServer",
+      "target": "#codegraph",
+      "mechanism": "stdout",
+      "description": "JSON answers to routes, attack_surface, reachable_sinks, entry_reach",
+      "location": {
+        "file": "src/codegraph/index.ts",
+        "line": 51
+      }
+    },
+    {
+      "source": "#codegraph",
+      "target": "CodeGraphServer",
+      "mechanism": "spawn",
+      "description": "Project root and symbol address as argv / tools/call arguments",
+      "location": {
+        "file": "src/codegraph/index.ts",
+        "line": 52
       }
     },
     {
@@ -4700,7 +4826,7 @@
       "description": "Tool invocation input",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 46
+        "line": 48
       }
     },
     {
@@ -4710,7 +4836,7 @@
       "description": "Report/dashboard output",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 47
+        "line": 49
       }
     },
     {
@@ -4720,7 +4846,7 @@
       "description": "LLM API call path",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 48
+        "line": 50
       }
     },
     {
@@ -4730,7 +4856,27 @@
       "description": "Threat model data output",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 49
+        "line": 51
+      }
+    },
+    {
+      "source": "#mcp",
+      "target": "#codegraph",
+      "mechanism": "guardlink_worklist",
+      "description": "Ranked entry points for an annotating agent, when a code graph is installed",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 52
+      }
+    },
+    {
+      "source": "#mcp",
+      "target": "#codegraph",
+      "mechanism": "guardlink_reach",
+      "description": "Client-supplied symbol address, passed to the graph as one argument",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 53
       }
     },
     {
@@ -4740,7 +4886,7 @@
       "description": "Attribution read from blame, log -L and commit trailers for the connected agent",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1119
+        "line": 1181
       }
     },
     {
@@ -5290,7 +5436,7 @@
       "description": "Attribution read from blame, log -L and commit trailers",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 998
+        "line": 999
       }
     },
     {
@@ -5526,6 +5672,16 @@
       }
     },
     {
+      "asset_a": "#codegraph",
+      "asset_b": "CodeGraphServer",
+      "id": "codegraph-boundary",
+      "description": "Process boundary: an external binary's JSON is parsed defensively and never executed",
+      "location": {
+        "file": "src/codegraph/index.ts",
+        "line": 53
+      }
+    },
+    {
       "asset_a": "#diff",
       "asset_b": "GitRepo",
       "id": "git-boundary",
@@ -5552,7 +5708,7 @@
       "description": "Trust boundary at tool argument parsing",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 50
+        "line": 54
       }
     },
     {
@@ -5577,6 +5733,24 @@
     }
   ],
   "validations": [
+    {
+      "control": "#resource-limits",
+      "asset": "#codegraph",
+      "description": "tests/codegraph.test.ts: a stand-in server that never answers costs the timeout and yields status error, not a hung run",
+      "location": {
+        "file": "src/codegraph/index.ts",
+        "line": 54
+      }
+    },
+    {
+      "control": "#param-commands",
+      "asset": "#codegraph",
+      "description": "tests/codegraph.test.ts drives both transports against stand-in executables through argv, with no shell",
+      "location": {
+        "file": "src/codegraph/index.ts",
+        "line": 55
+      }
+    },
     {
       "control": "#config-validation",
       "asset": "#cli",
@@ -5698,6 +5872,22 @@
       }
     },
     {
+      "asset": "#codegraph",
+      "description": "The override is an operator convenience, as PATH itself is; confirm CI environments do not let untrusted input set GUARDLINK_CODEGRAPH_MCP",
+      "location": {
+        "file": "src/codegraph/index.ts",
+        "line": 46
+      }
+    },
+    {
+      "asset": "#codegraph",
+      "description": "Same trust as the source files the agent is told to read; the worklist adds no content the agent could not read itself, but a crafted route string is prose in the prompt",
+      "location": {
+        "file": "src/codegraph/index.ts",
+        "line": 50
+      }
+    },
+    {
       "asset": "#diff",
       "description": "Git commands use execSync; ref is validated with rev-parse before use",
       "location": {
@@ -5742,7 +5932,7 @@
       "description": "User prompts passed to LLM; model context is read-only",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 38
+        "line": 40
       }
     },
     {
@@ -5750,7 +5940,7 @@
       "description": "Threat model data intentionally exposed to connected agents",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 42
+        "line": 44
       }
     },
     {
@@ -5959,7 +6149,7 @@
       "description": "Author identities printed or emitted as JSON; --identity hash (or blame.identity in config.json) redacts emails",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 655
+        "line": 656
       }
     },
     {
@@ -5968,7 +6158,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3793
+        "line": 3803
       }
     },
     {
@@ -6076,7 +6266,7 @@
       "description": "Processes project annotations and threat model data",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 51
+        "line": 55
       }
     },
     {
@@ -6085,7 +6275,7 @@
       "description": "Author identities, in the configured identity mode (blame.identity in config.json), reach the MCP client",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1120
+        "line": 1182
       }
     },
     {
@@ -6148,7 +6338,7 @@
       "description": "Author identities printed to the terminal in the configured identity mode",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 999
+        "line": 1000
       }
     },
     {
@@ -6193,130 +6383,130 @@
       "reason": "Example annotation block for reference, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 288
+        "line": 296
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 301
+        "line": 309
       }
     },
     {
       "reason": "Description examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 308
+        "line": 316
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 318
+        "line": 326
       }
     },
     {
       "reason": "Flow examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 325
+        "line": 333
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 334
+        "line": 342
       }
     },
     {
       "reason": "Boundary examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 341
+        "line": 349
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 347
+        "line": 355
       }
     },
     {
       "reason": "Actor example, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 408
+        "line": 416
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 410
+        "line": 418
       }
     },
     {
       "reason": "Entitlement example, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 427
+        "line": 435
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 430
+        "line": 438
       }
     },
     {
       "reason": "@accepts alternative examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 445
+        "line": 453
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 455
+        "line": 463
       }
     },
     {
       "reason": "Definition syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 482
+        "line": 490
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 486
+        "line": 494
       }
     },
     {
       "reason": "Relationship syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 491
+        "line": 499
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 507
+        "line": 515
       }
     },
     {
       "reason": "Externalized relationship examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 512
+        "line": 520
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 517
+        "line": 525
       }
     },
     {
@@ -6425,7 +6615,7 @@
       "description": "Model Context Protocol server for AI agent tooling",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 52
+        "line": 56
       }
     }
   ],
@@ -6455,14 +6645,14 @@
       "description": "Row counts are uncapped on purpose and the byte budget is the only ceiling: a truncated flow graph made the agent duplicate edges it was never shown, and a missing hop reads as findPath's 'no directed path' — a false clean rather than a coverage gap",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 67
+        "line": 71
       }
     },
     {
       "description": "The method sits above the generic rules on purpose: the agent reads it first, and the evidence bar it carries is what the gate later checks",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 141
+        "line": 145
       }
     },
     {
@@ -6735,182 +6925,189 @@
       "description": "Closes the same blind spot ci's third check already closed (src/ci/index.ts) for the validate/CI-gate surface",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 392
+        "line": 393
       }
     },
     {
       "description": "Re-locking a stale claim is an assertion that the control still holds, so the default form never does it: --stale, --all or a named target is required, and each says so in its output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 538
+        "line": 539
       }
     },
     {
       "description": "Always exits 0 once the model parsed: outside a git checkout every claim reads as unattributed, which is an answer, not a failure. Only an unknown --identity is an error",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 656
+        "line": 657
       }
     },
     {
       "description": "ONE bound, applied before any renderer runs. `--intake` used to take the whole queue while --json and the table took -n, so the renderer built for the downstream consumer was the one that could not be asked for a bounded brief — `-n 3 --intake` printed all 142 on temporal. A per-renderer slice is the shape that drifts; a renderer added later inherits this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1742
+        "line": 1752
       }
     },
     {
       "description": "`key` is the claim key, the same one hypotheses-list/v1 carries and `hypothesis confirm`/`--from-scan` join on, so a consumer can address a queued claim instead of joining back to `hypothesis list` on (asset, threat, file, line). That join is positional and GAP-58 proved it unsafe: this population collides at the coarser (asset, threat, file) tier. The schema stays at v1 deliberately — the field is purely additive, nothing v1 carried is renamed or removed, and a consumer tells whether a build has it by the field's presence; bumping would strand consumers pinned to the v1 string for a change that breaks none of them",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1745
+        "line": 1755
       }
     },
     {
       "description": "`total` is the queue length before the bound, carried into all three renderers because a bounded queue that does not say it is bounded reads as the whole of what there is to test — the failure this guards is an operator handing bugb a 10-item plan off a 142-claim queue believing nothing else is outstanding. It is additive exactly as `key` is, so the schema stays at v1: nothing v1 carried is renamed or removed, and a consumer holding a page tells it apart from a whole queue by the field's presence",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1746
+        "line": 1756
       }
     },
     {
       "description": "`defaultVerifier` already returns `human:<name>` (src/parser/verify.ts:172), so prefixing it here recorded `human:human:<name>` — the form the ledger schema and this command's own --by help both say it is not. Do NOT 'repair' older entries that carry the doubled form: `by` is display and provenance metadata, never a join key — upsert and every reader match on the claim key — so pre-fix and post-fix entries coexist in one ledger and nothing stops matching. An explicit --by is passed through verbatim on this path, which is how `--by cxg:login-sqli` names its scheme",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1753
+        "line": 1763
       }
     },
     {
       "description": "Withheld is a fact about a CLAIM, not about a finding. Several findings can join to one claim — a stamped one beside an unstamped one during a cxg stamp rollout, or two templates probing the same exposure — so a per-finding list printed one claim's remediation command twice and, worse, could report a claim as skipped in the very run that wrote it. Keyed by record.key on the same rule `writes` uses, last occurrence kept because that is the entry the ledger ends up holding",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1761
+        "line": 1771
       }
     },
     {
       "description": "THE one calculation of where a line sits once the writes are done, used by every coordinate this command hands a user: the confirmations that landed, the ones already present, and the by-hand commands for both the withheld and the ambiguous. Each done.line is a PRE-write coordinate — descending order guarantees nothing at or above a target had been spliced when it was written — so an insertion at or at a lower number than a pre-write position pushes that position down by one. Only SUCCESSFUL writes are in `done`, so a write that threw shifts nothing, and with no --write it is empty and this is the identity. Two sites computing this independently is the shape that disagrees silently, and this command has already produced that defect twice",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1764
+        "line": 1774
       }
     },
     {
       "description": "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1768
+        "line": 1778
       }
     },
     {
       "description": "ONE CLAIM, ONE WRITE. Two findings can carry the same claim key — the ordinary shape when two cxg templates probe one exposure — and both resolve to the same record and fold into ONE ledger entry, so writing per finding attempted the same insertion twice and the second was refused as a failure. Keyed by record.key, keeping the LAST occurrence: upsert replaces the entry object on every call, so only the final one is the entry the ledger actually holds",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1769
+        "line": 1779
       }
     },
     {
       "description": "An exit code is a claim about what happened, and it has to be true in BOTH directions: honest about an under-write and honest about a success. A confirmation already in the source is the state we were asked to reach — from an earlier run, or a re-import of the same report — so it is separated from a real failure by the TYPE writeConfirmedLine returns, never by matching the wording of an error. Every remaining throw is a failure and still exits non-zero",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1772
+        "line": 1782
       }
     },
     {
       "description": "Reconciled against what the writes actually did. A claim whose confirmation IS in the source — inserted just now or already there — was not withheld, whatever else joined to it coarsely, so it is neither told to the operator as skipped nor counted toward the exit status. The rule it serves is the one the exit check states: the code is a claim about what happened and has to be true in BOTH directions, and reporting a claim as withheld in the run that wrote it is the half that was still false",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1783
+        "line": 1793
       }
     },
     {
       "description": "An inserted @confirmed comes to rest directly above the line it displaced, so it is that line's new position less one — derived from afterWrites rather than counted a second way. Printed in reading order, not in the order the writes went in",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1785
+        "line": 1795
       }
     },
     {
       "description": "Said in terms of what is true rather than as an error: the confirmation is there. The line an already-present @confirmed was found at is a pre-write coordinate like any other — the scan that found it stops at the next @exposes, and descending order means every insertion so far sits below that — so it goes through the same afterWrites",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1788
+        "line": 1798
       }
     },
     {
       "description": "--write only inserts an UNCONTESTED key-verified confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), and a contested one came from a report that named two different claims at once, so identity is in doubt in both cases. Losing that throughput is the point: those are exactly the joins that can be wrong",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1790
+        "line": 1800
       }
     },
     {
       "description": "Reported AFTER the writes, at the line the withheld claim occupies once they have landed. Printing pre-write lines here handed the operator a command naming a line that this same run then moved: with consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator writes a confirmation against an exposure the probe never tested — GAP-58 one layer out, in a human's fingers instead of ours. Documenting the hazard one block down was not guarding against it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1791
+        "line": 1801
       }
     },
     {
       "description": "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so every command printed here is position-dependent and is correct AT THE MOMENT OF PRINTING and no longer — a later write, or an edit, moves the target again. Tracked there, not widened here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1792
+        "line": 1802
       }
     },
     {
       "description": "The candidates for an ambiguous finding are by-hand targets like the withheld ones, so they are emitted here rather than inside formatImport: that formatter runs BEFORE the writes, and a key-verified write higher up the same file moves an ambiguous candidate exactly as it moves a withheld claim. With consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator records a confirmation against an exposure the probe never tested — GAP-58 through a human's fingers, on our own instruction. Stays on stdout, where it was",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1804
+        "line": 1814
       }
     },
     {
       "description": "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so these are correct AT THE MOMENT OF PRINTING and no longer. That residue is the addressing scheme and is tracked there; a command this run itself invalidated is a different problem and is fixed here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1805
+        "line": 1815
       }
     },
     {
       "description": "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'. A --write that withheld any confirmation is the same fact about the same run, so it exits non-zero too — PARTIALLY written included, not only the all-withheld case. The reader of this exit code is bravos, which orchestrates this loop and never sees the `! skipped` lines on stderr: give 0 two meanings and a half-written run is indistinguishable from a complete one, and the orchestrator proceeds believing the corpus carries confirmations that are not in it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1810
+        "line": 1820
       }
     },
     {
       "description": "The by-hand path reads the same typed outcome as --from-scan. A claim whose source already carries this confirmation is in the state that was asked for, so it is reported and exits 0; it used to throw into the ✗ handler and exit non-zero on a run that changed nothing and needed to change nothing",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1821
+        "line": 1831
       }
     },
     {
       "description": "The accepted names and containers are INTERPOLATED from the one shared definition, not written out here. A hand-written copy drifts benignly when the definition widens (the help under-advertises) and harmfully when it narrows: the help then advertises a name the reader refuses, which is the one thing this definition exists to make impossible. The no-stamp banner in format.ts interpolates for the same reason, and both are pinned by tests that take the names out of the text and require the reader to accept them",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1848
+        "line": 1858
       }
     },
     {
       "description": "ONE string stating BOTH behaviours, because --write sits on `confirm` and genuinely serves both paths. An author writing against this flag reads --help, not our runtime output: 'inserts the @confirmed line' alone over-promises on the one surface that writes into someone else's repository, and an operator who believes every joined confirmation landed stops checking the ones that did not — which is exactly the knowledge the withholding rule exists to give them. Two per-path wordings were rejected for the reason this branch has already corrected on names, containers, grammars and positions: two descriptions of one thing can disagree, and one string cannot contradict itself",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1851
+        "line": 1861
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3716
+        "line": 3726
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3794
+        "line": 3804
+      }
+    },
+    {
+      "description": "Never builds a graph and never installs anything; every failure is a status, and a status other than available changes nothing downstream",
+      "location": {
+        "file": "src/codegraph/index.ts",
+        "line": 56
       }
     },
     {
@@ -7379,21 +7576,21 @@
       "description": "No guardlink_entitlement_accept tool exists on purpose: proposing is an agent's job, granting authority is not (actor-entitlement design §3.6)",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 45
+        "line": 47
       }
     },
     {
       "description": "Entitlement accepted by zippon on 2026-08-10 via guardlink entitle (proposal ent-mcp_agent.mcp.data_exposure).",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 54
+        "line": 58
       }
     },
     {
       "description": "Non-mutating: computeBlame leaves the cached model untouched, so a later guardlink_parse in the same session never carries blame unasked. Nothing is written to the repository",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1121
+        "line": 1183
       }
     },
     {
@@ -7967,14 +8164,14 @@
       "description": "Non-mutating on purpose: ctx.model is reused by every later command, and /blame must not make /report carry attribution unasked",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 1000
+        "line": 1001
       }
     },
     {
       "description": "Derived query over @flows and @mitigates; every hop it prints is an existing annotation location, so a finding here cannot cite a line that was never written",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 1072
+        "line": 1073
       }
     },
     {
@@ -8028,8 +8225,8 @@
     }
   ],
   "coverage": {
-    "annotation_count": 826,
-    "coverage_percent": 86
+    "annotation_count": 845,
+    "coverage_percent": 85
   },
   "external_refs": []
 }

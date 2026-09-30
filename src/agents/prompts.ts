@@ -43,6 +43,10 @@ function readIfExists(path: string, maxChars = 5000): string {
 import { ANNOTATIONS_DIR, galPathFor } from '../parser/gal-path.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
 import { selectAnnotatePlaybook, getPlaybook, type AnnotatePlaybookId } from '../playbooks/index.js';
+import { renderWorklistBlock, type Worklist } from '../codegraph/index.js';
+
+/** How every playbook without its own `worklistUse` reads a code-graph worklist. */
+const WORKLIST_DEFAULT_USE = 'Use this list to decide what to read first. The scope above and the method below still govern: it adds no file to the scope and lowers no bar.';
 
 /**
  * How much of the live model each prompt builder shows the agent.
@@ -139,6 +143,7 @@ You MUST write annotations inline in the source code comments.
  * syntax rules.
  *
  * @comment -- "The method sits above the generic rules on purpose: the agent reads it first, and the evidence bar it carries is what the gate later checks"
+ * @flows #codegraph -> #agent-launcher via worklist -- "Optional code-graph worklist, placed between the scope and the method; absent, the prompt is unchanged"
  */
 export function buildAnnotatePrompt(
   userPrompt: string,
@@ -146,9 +151,12 @@ export function buildAnnotatePrompt(
   model: ThreatModel | null,
   annotationMode: AnnotationMode = 'inline',
   playbook?: AnnotatePlaybookId | string,
+  worklist?: Worklist | null,
 ): string {
   const selection = selectAnnotatePlaybook(userPrompt, playbook);
   const pb = getPlaybook(selection.id);
+  // Empty unless a code graph answered; with none, the prompt is byte-identical to before.
+  const worklistBlock = renderWorklistBlock(worklist, pb.worklistUse ?? WORKLIST_DEFAULT_USE);
   // Read the reference doc if available
   let refDoc = '';
   const refPath = resolve(root, '.guardlink', 'GUARDLINK_REFERENCE.md');
@@ -239,7 +247,7 @@ Playbook: ${pb.id} — ${pb.summary}
 ## Scope and intent
 ${userPrompt.trim() || '(none given — the whole project, as the method directs)'}
 
-${pb.body.trim()}
+${worklistBlock ? worklistBlock + '\n\n' : ''}${pb.body.trim()}
 
 The method above governs. The scope narrows where it applies; where they conflict, the evidence bar wins.
 
