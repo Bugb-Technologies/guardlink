@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:f69e96fb8c398975bc8016d2de7084bd35db3dfad5a9d05ffdaafb0541e64c2d
+%% annotation_hash: sha256-v3:22d4797ace05d0013917c10716c6b3037f7befb968393fe1b9b8f6091bcb76c9
 %% generator:       guardlink@2.1.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 46 nodes / 162 edges, past the 12 / 16 legibility budget (46 nodes against 12, 162 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 47 nodes / 174 edges, past the 12 / 16 legibility budget (47 nodes against 12, 174 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -30,16 +30,19 @@ graph LR
   subgraph TZ3["🧱 Trust boundary at CLI argument parsing"]
     cli["🔷 GuardLink.CLI [SECRETS, PII, INTERNAL]"]
   end
-  subgraph TZ4["🧱 Trust boundary at git command execution"]
+  subgraph TZ4["🧱 Process boundary: an external binary's …"]
+    codegraph["🔷 GuardLink.CodeGraph"]
+  end
+  subgraph TZ5["🧱 Trust boundary at git command execution"]
     diff["🔷 GuardLink.Diff"]
   end
-  subgraph TZ5["🧱 Trust boundary at MCP protocol"]
+  subgraph TZ6["🧱 Trust boundary at MCP protocol"]
     mcp["🔷 GuardLink.MCP [INTERNAL, PII]"]
   end
-  subgraph TZ7["🧱 Trust boundary between parser and disk …"]
+  subgraph TZ8["🧱 Trust boundary between parser and disk …"]
     parser["🔷 GuardLink.Parser [INTERNAL]"]
   end
-  subgraph TZ8["🧱 Trust boundary at interactive input"]
+  subgraph TZ9["🧱 Trust boundary at interactive input"]
     tui["🔷 GuardLink.TUI [SECRETS, PII]"]
   end
   sarif["🔷 GuardLink.SARIF"]
@@ -107,6 +110,10 @@ graph LR
   cli -. exposes .-> arbitrary_write
   cli -. exposes .-> api_key_exposure
   cli -. exposes .-> cmd_injection
+  codegraph -. exposes .-> child_proc_injection
+  codegraph -. exposes .-> config_tamper
+  codegraph -. exposes .-> dos
+  codegraph -. exposes .-> prompt_injection
   dashboard -. exposes .-> path_traversal
   dashboard -. exposes .-> xss
   dashboard -. exposes .-> data_exposure
@@ -179,6 +186,8 @@ graph LR
   identity_redaction -. protects .-> blame
   path_validation -. protects .-> cli
   key_redaction -. protects .-> cli
+  param_commands -. protects .-> codegraph
+  resource_limits -. protects .-> codegraph
   output_encoding -- mitigates --> xss
   output_encoding -. protects .-> dashboard
   output_encoding -- mitigates --> data_exposure
@@ -228,17 +237,23 @@ graph LR
   fail_closed -. protects .-> merge_engine
   yaml_validation -- mitigates --> config_tamper
   yaml_validation -. protects .-> workspace_config
+  resource_limits -. validates .-> codegraph
+  param_commands -. validates .-> codegraph
   config_validation -. validates .-> cli
   input_sanitize -. validates .-> cli
   resource_limits -. validates .-> mcp
   regex_anchoring -. validates .-> parser
   glob_filtering -. validates .-> parser
   input_sanitize -. validates .-> parser
+  codegraph -- "📡 worklist" --> agent_launcher
   blame -- "📡 formatBlameText" --> cli
   blame -- "🗄️ buildBlamePayload" --> cli
   blame -- "📡 summarise" --> dashboard
+  cli -- "📡 loadWorklist" --> codegraph
   cli -- "📡 runGate" --> gate
   mcp -- "📡 generateThreatReport" --> llm_client
+  mcp -- "📡 guardlink_worklist" --> codegraph
+  mcp -- "📡 guardlink_reach" --> codegraph
   tui -- "📡 launchAgent" --> agent_launcher
   tui -- "📡 chatCompletion" --> llm_client
   estate_view -- "📡 estateReport" --> cli

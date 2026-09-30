@@ -131,6 +131,7 @@ ${STOP_CONDITIONS}`,
     title: 'Coverage',
     summary: 'The files with no annotations yet, entry points first.',
     triggers: [/\bunannotated\b/, /\bcoverage\b/, /\bmissing files\b/, /\bno annotations\b/, /\bevery file\b/],
+    worklistUse: `**Coverage, Phase 1, with this worklist:** it is the "entry points first" order, derived from the code rather than guessed from file names. Take the \`[none]\` and \`[file]\` handlers in the order listed — each is an entry point the model does not cover yet, and the sink classes beside it say what to trace it to. Then continue with the remaining unannotated files the way Phase 1 ranks them.`,
     body: `## Method — Coverage
 **Purpose.** Bring the files the model has never seen into it, in the order that matters: entry points and sinks before helpers, and structure before claims.
 

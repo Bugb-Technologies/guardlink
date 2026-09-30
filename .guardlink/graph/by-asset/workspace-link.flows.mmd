@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/workspace-link.flows.mmd
-%% scope:           PARTIAL — #workspace-link and its flow neighbourhood, grown until the drawing stopped fitting — 38 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:f69e96fb8c398975bc8016d2de7084bd35db3dfad5a9d05ffdaafb0541e64c2d
+%% scope:           PARTIAL — #workspace-link and its flow neighbourhood, grown until the drawing stopped fitting — 37 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:22d4797ace05d0013917c10716c6b3037f7befb968393fe1b9b8f6091bcb76c9
 %% generator:       guardlink@2.1.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -11,6 +11,8 @@
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %%{init: {"flowchart": {"nodeSpacing": 47, "rankSpacing": 67, "curve": "basis", "htmlLabels": false}}}%%
 graph LR
+  codegraph["🧩 GuardLink.CodeGraph"]
+  agent_launcher["🧩 GuardLink.Agent_Launcher"]
   blame["🧩 GuardLink.Blame"]
   cli["🧩 GuardLink.CLI"]
   userargs["👤 UserArgs"]
@@ -18,14 +20,14 @@ graph LR
   init["🧩 GuardLink.Init"]
   agentfiles["🧩 AgentFiles"]
   tui["👤 GuardLink.TUI"]
-  agent_launcher["🧩 GuardLink.Agent_Launcher"]
   llm_client["👤 GuardLink.LLM_Client"]
   estate_view["🧩 Workspace.Estate"]
   workspace_link["🧩 Workspace.Link"]
-  merge_engine["🧩 Workspace.Merge"]
+  codegraph -- "📡 worklist" --> agent_launcher
   blame -- "📡 formatBlameText" --> cli
   blame -- "🗄️ buildBlamePayload" --> cli
   userargs -- "📡 process.argv" --> cli
+  cli -- "📡 loadWorklist" --> codegraph
   cli -- "📡 runGate" --> gate
   init -- "🗄️ writeFileSync" --> agentfiles
   userargs -- "📡 args" --> tui
@@ -34,4 +36,3 @@ graph LR
   estate_view -- "📡 estateReport" --> cli
   userargs -- "📡 linkProject" --> workspace_link
   workspace_link -- "📡 updateAgentWorkspaceContext" --> agentfiles
-  merge_engine -- "📡 mergeVerdict" --> cli

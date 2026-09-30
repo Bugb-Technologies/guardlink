@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:f69e96fb8c398975bc8016d2de7084bd35db3dfad5a9d05ffdaafb0541e64c2d
+%% annotation_hash: sha256-v3:22d4797ace05d0013917c10716c6b3037f7befb968393fe1b9b8f6091bcb76c9
 %% generator:       guardlink@2.1.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 74 nodes / 175 edges, past the 12 / 16 legibility budget (74 nodes against 12, 175 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 76 nodes / 182 edges, past the 12 / 16 legibility budget (76 nodes against 12, 182 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -42,25 +42,31 @@ graph LR
   subgraph Z6["🧱 UserInput · Trust boundary at CLI argument parsing"]
     userinput["👤 UserInput"]
   end
-  subgraph Z7["🧱 GuardLink.Diff · Trust boundary at git command execution"]
+  subgraph Z7["🧱 GuardLink.CodeGraph · Process boundary: an external binary's JSON is parsed defensively and never executed"]
+    codegraph["🧩 GuardLink.CodeGraph"]
+  end
+  subgraph Z8["🧱 CodeGraphServer · Process boundary: an external binary's JSON is parsed defensively and never executed"]
+    codegraphserver["🖥️ CodeGraphServer"]
+  end
+  subgraph Z9["🧱 GuardLink.Diff · Trust boundary at git command execution"]
     diff["🧩 GuardLink.Diff"]
   end
-  subgraph Z8["🧱 GitRepo · Trust boundary at git command execution"]
+  subgraph Z10["🧱 GitRepo · Trust boundary at git command execution"]
     gitrepo["🧩 GitRepo"]
   end
-  subgraph Z9["🧱 GuardLink.MCP · Trust boundary at MCP protocol"]
+  subgraph Z11["🧱 GuardLink.MCP · Trust boundary at MCP protocol"]
     mcp["🧩 GuardLink.MCP · internal, pii"]
   end
-  subgraph Z10["🧱 MCPClient · Trust boundary at MCP protocol"]
+  subgraph Z12["🧱 MCPClient · Trust boundary at MCP protocol"]
     mcpclient["👤 MCPClient"]
   end
-  subgraph Z11["🧱 GuardLink.Parser · Trust boundary between parser and disk I/O"]
+  subgraph Z13["🧱 GuardLink.Parser · Trust boundary between parser and disk I/O"]
     parser["🧩 GuardLink.Parser · internal"]
   end
-  subgraph Z12["🧱 FileSystem · Trust boundary between parser and disk I/O"]
+  subgraph Z14["🧱 FileSystem · Trust boundary between parser and disk I/O"]
     filesystem["🧩 FileSystem"]
   end
-  subgraph Z13["🧱 GuardLink.TUI · Trust boundary at interactive input"]
+  subgraph Z15["🧱 GuardLink.TUI · Trust boundary at interactive input"]
     tui["👤 GuardLink.TUI · secrets, pii"]
   end
   envvars["🧩 EnvVars"]
@@ -127,6 +133,7 @@ graph LR
   llm_client -.-|🧱 Trust boundary at external API call| llmprovider
   llm_client -.-|🧱 Trust boundary at external API| nvd
   cli -.-|🧱 Trust boundary at CLI argument parsing| userinput
+  codegraph -.-|🧱 Process boundary: an external binary's JSON is parsed defensively and never executed| codegraphserver
   diff -.-|🧱 Trust boundary at git command execution| gitrepo
   mcp -.-|🧱 Trust boundary at MCP protocol| mcpclient
   parser -.-|🧱 Trust boundary between parser and disk I/O| filesystem
@@ -142,6 +149,7 @@ graph LR
   userprompt -- "📡 buildAskPrompt" --> agent_launcher
   threatmodel -- "📡 model" --> agent_launcher
   agent_launcher -- "📡 return" --> agentprompt
+  codegraph -- "📡 worklist" --> agent_launcher
   savedreport -- "📡 parseFindingsBlock" --> llm_client
   threatmodel -- "📡 serializeModel" --> llm_client
   projectfiles -- "🗄️ readFileSync" --> llm_client
@@ -176,10 +184,13 @@ graph LR
   ledgerfile -- "📡 readHypotheses" --> cli
   gitrepo -- "📡 computeBlame" --> cli
   userinput -- "📡 verify" --> cli
+  cli -- "📡 loadWorklist" --> codegraph
   cli -- "📡 runGate" --> gate
   threatmodel -- "📡 findUnmitigatedPaths" --> cli
   scanreport -- "📡 importScan" --> cli
   gitrepo -- "📡 loadSince" --> cli
+  codegraphserver -- "📡 stdout" --> codegraph
+  codegraph -- "📡 spawn" --> codegraphserver
   sourcefiles -- "🗄️ readFileSync" --> dashboard
   ledgerfile -- "📡 readLedger" --> dashboard
   threatmodel -- "📡 generateThreatGraph" --> dashboard
@@ -229,6 +240,8 @@ graph LR
   mcp -- "🗄️ writeFile" --> filesystem
   mcp -- "📡 generateThreatReport" --> llm_client
   mcp -- "📡 resource" --> mcpclient
+  mcp -- "📡 guardlink_worklist" --> codegraph
+  mcp -- "📡 guardlink_reach" --> codegraph
   gitrepo -- "📡 computeBlame" --> mcp
   threatmodel -- "📡 selectSubgraph" --> mcp
   filepath -- "🗄️ readFileSync" --> suggest

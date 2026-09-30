@@ -27,6 +27,12 @@ export interface Playbook {
   body: string;
   /** Words in a user prompt that select this playbook when no id is given. */
   triggers: RegExp[];
+  /**
+   * How this method uses a code-graph worklist, when the prompt carries one.
+   * Rendered only beneath a worklist, so a prompt built with no code graph is
+   * unchanged by it.
+   */
+  worklistUse?: string;
 }
 
 export interface PlaybookSelection<Id extends PlaybookId = PlaybookId> {

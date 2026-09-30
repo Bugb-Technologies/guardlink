@@ -1,0 +1,43 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-boundary/codegraph-boundary.mmd
+%% scope:           PARTIAL — the Process boundary: an external binary's JSON is parsed defensively and never executed between codegraph and codegraphserver, and what flows across it
+%% annotation_hash: sha256-v3:22d4797ace05d0013917c10716c6b3037f7befb968393fe1b9b8f6091bcb76c9
+%% generator:       guardlink@2.1.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
+graph LR
+  subgraph Z0["🧱 GuardLink.CodeGraph · Process boundary: an external binary's JSON is parsed defensively and never executed"]
+    codegraph["🧩 GuardLink.CodeGraph"]
+  end
+  subgraph Z1["🧱 CodeGraphServer · Process boundary: an external binary's JSON is parsed defensively and never executed"]
+    codegraphserver["🖥️ CodeGraphServer"]
+  end
+  agent_launcher["🧩 GuardLink.Agent_Launcher"]
+  blame["🧩 GuardLink.Blame"]
+  cli["🧩 GuardLink.CLI"]
+  gate["🧩 GuardLink.Gate"]
+  mcp["🧩 GuardLink.MCP"]
+  llm_client["👤 GuardLink.LLM_Client"]
+  tui["👤 GuardLink.TUI"]
+  estate_view["🧩 Workspace.Estate"]
+  merge_engine["🧩 Workspace.Merge"]
+  codegraph -.-|🧱 Process boundary: an external binary's JSON is parsed defensively and never executed| codegraphserver
+  codegraph -- "📡 worklist" --> agent_launcher
+  blame -- "📡 formatBlameText" --> cli
+  blame -- "🗄️ buildBlamePayload" --> cli
+  cli -- "📡 loadWorklist" --> codegraph
+  cli -- "📡 runGate" --> gate
+  codegraphserver -- "📡 stdout" --> codegraph
+  codegraph -- "📡 spawn" --> codegraphserver
+  mcp -- "📡 generateThreatReport" --> llm_client
+  mcp -- "📡 guardlink_worklist" --> codegraph
+  mcp -- "📡 guardlink_reach" --> codegraph
+  tui -- "📡 launchAgent" --> agent_launcher
+  tui -- "📡 chatCompletion" --> llm_client
+  estate_view -- "📡 estateReport" --> cli
+  merge_engine -- "📡 mergeVerdict" --> cli

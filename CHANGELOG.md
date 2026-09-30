@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## \[Unreleased\]
 
+### Added
+
+- **An optional code graph tells the annotating agent where to start.** `guardlink annotate` told the agent to find the entry points and trace each one to its sinks, and the `coverage` playbook asked for "entry points first" — but nothing in GuardLink could find an entry point: everything the prompt carried about the repository was derived from annotations already written. When a code graph is installed (`codegraph-mcp` on `PATH`, `$GUARDLINK_CODEGRAPH_MCP`, or `bravos graph`) and the repository is indexed, the prompt now carries a bounded **code-graph worklist**: route handlers ranked by the sink classes they reach through the call graph, each with its `METHOD path`, `file:line`, an example sink, and whether the model already covers it (`none` / `file` / `handler`), unannotated handlers first. The `coverage` playbook takes it as its "entry points first" order.
+  - **Two new MCP tools** give an agent annotating in its own editor the same answers: `guardlink_worklist` (the ranked list, filterable by file) and `guardlink_reach(symbol)` (the sink classes one function reaches with an example path each, and which route reaches it). `guardlink_annotate` gains `code_graph: false`.
+  - **The graph is strictly optional.** GuardLink never installs or builds one. With no tooling, no graph built, tooling too old to answer, a failed query, `--no-code-graph` or `GUARDLINK_CODEGRAPH=off`, the annotate prompt is byte-identical to the one this version builds without the feature; `annotate` says on stderr why no graph was used, unless it was switched off.
+  - **A thin graph is not a small attack surface.** When the graph reports `insufficient_resolution` — its own measurement that too few calls resolved to walk — the worklist is withheld and the prompt says so, with the graph's reason, instead of showing a short list.
+
 ## \[2.1.0\] — 2026-09-17
 
 **Read this first if `guardlink ci --strict` gates a pipeline: this release can turn a green build red, and your exposure count will go up.** Nothing in your code got worse. GuardLink was not reading every annotation you had already written, and now it is.

@@ -18,6 +18,8 @@
  *   guardlink_entitlement_list — List entitlement proposals and their decisions
  *   guardlink_workspace_info — Workspace config, siblings, tag prefixes
  *   guardlink_blame    — Who introduced / declared / fixed each claim, and which AI co-authored it (read from git)
+ *   guardlink_worklist — Entry points ranked by the sinks they reach, unannotated first (optional code graph)
+ *   guardlink_reach    — What one function reaches, and which entry point reaches it (optional code graph)
  *
  * There is no entitlement *accept* tool. An entitlement's error mode is a silent
  * false negative, so acceptance stays a human decision recorded by name through
@@ -47,6 +49,8 @@
  * @flows #mcp -> FileSystem via writeFile -- "Report/dashboard output"
  * @flows #mcp -> #llm-client via generateThreatReport -- "LLM API call path"
  * @flows #mcp -> MCPClient via resource -- "Threat model data output"
+ * @flows #mcp -> #codegraph via guardlink_worklist -- "Ranked entry points for an annotating agent, when a code graph is installed"
+ * @flows #mcp -> #codegraph via guardlink_reach -- "Client-supplied symbol address, passed to the graph as one argument"
  * @boundary #mcp and MCPClient (#mcp-tool-boundary) -- "Trust boundary at tool argument parsing"
  * @handles internal on #mcp -- "Processes project annotations and threat model data"
  * @feature "MCP Integration" -- "Model Context Protocol server for AI agent tooling"
@@ -55,6 +59,7 @@
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { resolve } from 'node:path';
 import { z } from 'zod';
 // MERGE: main added the entitlement validators and the proposal module; ours
 // kept `crossRepoTag` (D19). Union — main's list had dropped crossRepoTag only
@@ -78,6 +83,7 @@ import { fileContext, normalizeContextPath } from './context.js';
 import { selectSubgraph, traverseGraph, findPath, summariseGraphPayload, withoutFileInventory } from './subgraph.js';
 import { buildServerInstructions, readConfiguredMode } from './instructions.js';
 import { suggestAnnotations } from './suggest.js';
+import { loadWorklist, reachFor, worklistSummaryLine, type Worklist } from '../codegraph/index.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
@@ -392,6 +398,57 @@ export function createServer(): McpServer {
     },
   );
 
+  // ── Tool: guardlink_worklist ──
+  registerTool(
+    server, cache,
+    'guardlink_worklist',
+    'Which code to annotate first, ranked from the code itself. Needs an optional code graph (codegraph-mcp or bravos installed, and this repository indexed); nothing is installed or built for you. Returns every entry point the graph ranked — each route handler with its METHOD path, file:line and graph address, the sink classes it reaches through the call graph (data_layer, exec, template, network, filesystem, crypto_secrets) with an example sink, and whether the threat model already covers it (none / file / handler) — handlers not yet annotated first, heaviest reach first. READ code_graph.status FIRST: anything but available means there is no worklist, and note says why. withheld_reason means the graph judged its own call resolution too thin to rank, so the list is empty ON PURPOSE — never read that as a small attack surface. Pass a handler address to guardlink_reach before writing its @exposes or @flows.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      file: z.string().optional().describe('Keep only handlers whose file path contains this text'),
+      limit: z.number().int().min(1).max(1000).default(25).describe('Entries to return (default 25); totals are counted before it'),
+    },
+    async ({ root, file, limit }) => {
+      const absRoot = resolve(root);
+      let model: ThreatModel | null = null;
+      try { model = (await getModel(root)).model; } catch { /* no model — every handler reads as unannotated */ }
+      const w = await loadWorklist(absRoot, model);
+      const matching = file ? w.entries.filter(e => e.file.includes(file)) : w.entries;
+      const result = {
+        code_graph: {
+          status: w.status, via: w.via, note: w.note, verdict: w.verdict,
+          withheld_reason: w.withheld_reason, message: w.message, entry_rule: w.entry_rule,
+          currency_caveat: w.currency_caveat,
+        },
+        total: w.entries.length,
+        matching: matching.length,
+        entries: matching.slice(0, limit),
+        routes_unbound: w.routes_unbound,
+        unbound_examples: w.unbound_examples,
+        routes_dynamic: w.routes_dynamic,
+        coverage_note: w.status === 'available'
+          ? 'Only entry points in frameworks the graph recognises are ranked; one it does not recognise (a CLI command, a message consumer, another framework) is absent, not safe.'
+          : '',
+      };
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  // ── Tool: guardlink_reach ──
+  registerTool(
+    server, cache,
+    'guardlink_reach',
+    'Before writing an @exposes or @flows for a function: what it reaches and what reaches it, from an optional code graph (see guardlink_worklist). Returns the sink classes the function transitively reaches through the call graph, each with its shallowest depth, an example sink call and the path to it, plus liveness — live_via_route (a route handler reaches it; the entries carry the METHOD path), live_via_entry (only main does), not_reached, or unknown. READ unknown AS UNKNOWN, never as dead, and not_reached as "no RECOGNISED entry point", not as unreachable. sinks_withheld_reason means the graph judged its call resolution too thin: no sinks are listed on purpose. A name matching several functions is refused with candidates — re-ask with one.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      symbol: z.string().min(1).max(1000).describe('The function, addressed exactly: a graph address from guardlink_worklist (`api/users.py::delete_user`), a qualified name, or a bare name'),
+    },
+    async ({ root, symbol }) => {
+      const r = await reachFor(resolve(root), symbol);
+      return { content: [{ type: 'text', text: JSON.stringify(r, null, 2) }] };
+    },
+  );
+
   // ── Tool: guardlink_lookup ──
   registerTool(
     server, cache,
@@ -650,23 +707,28 @@ export function createServer(): McpServer {
       prompt: z.string().describe('Annotation instructions (e.g., "annotate auth endpoints for OWASP Top 10")'),
       mode: z.enum(['inline', 'external']).describe('Annotation placement mode — inline (default) or external (externalized .gal files)').default('inline'),
       playbook: z.enum(['map', 'exploitable', 'chains', 'diff', 'coverage', 'verify']).optional().describe('The method: map (architecture first, no exposures), exploitable (default: claim only what an attacker can reach), chains (follow flows from open exposures), diff (changed files only), coverage (unannotated files), verify (re-check existing claims). Inferred from the prompt when omitted.'),
+      code_graph: z.boolean().default(true).describe('Add a ranked entry-point worklist when a code graph is installed and built for this repository (false to leave it out). Without a graph the prompt is unchanged either way.'),
     },
-    async ({ root, prompt, mode, playbook }) => {
+    async ({ root, prompt, mode, playbook, code_graph }) => {
       let model: ThreatModel | null = null;
+      let parsed: ThreatModel | null = null;
       try {
         const result = await getModel(root);
+        parsed = result.model;
         if (result.model.annotations_parsed > 0) {
           model = result.model;
         }
       } catch { /* no model yet — fine */ }
 
-      const annotatePrompt = buildAnnotatePrompt(prompt, root, model, mode, playbook);
+      const worklist: Worklist = await loadWorklist(resolve(root), parsed, { enabled: code_graph !== false });
+      const annotatePrompt = buildAnnotatePrompt(prompt, root, model, mode, playbook, worklist);
 
       return {
         content: [{ type: 'text', text: JSON.stringify({
           mode: 'agent',
           message: `Annotation prompt built with project context. Read the source files in the project directory, then add GuardLink annotations using ${mode === 'external' ? 'associated .gal files' : 'inline source comments'} following the guidelines in the prompt. After annotating, call guardlink_parse to verify the annotations were parsed correctly.`,
           prompt: annotatePrompt,
+          code_graph: worklistSummaryLine(worklist) || 'disabled',
           guidelines: [
             mode === 'external'
               ? 'Write externalized annotations into associated .gal files using @source blocks'

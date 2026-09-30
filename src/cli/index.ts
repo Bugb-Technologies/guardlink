@@ -65,6 +65,7 @@ import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard,
 import { generateDashboardHTML, loadSince } from '../dashboard/index.js';
 import type { SinceInput } from '../dashboard/analytics.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt, buildTranslatePrompt, buildAskPrompt, resolveAnnotationMode } from '../agents/index.js';
+import { loadWorklist, worklistSummaryLine } from '../codegraph/index.js';
 import { selectAnnotatePlaybook, selectReportShape, ANNOTATE_PLAYBOOKS, REPORT_SHAPES } from '../playbooks/index.js';
 import { lintAnnotations, runGate, formatGateReport, buildGateFollowUp, stripViolations, RULE_FIX } from '../gate/index.js';
 import { relationRecords, CLAIM_KEY_NAMES, CLAIM_KEY_SURFACES } from '../parser/claim-key.js';
@@ -1508,12 +1509,13 @@ program
   .option('--since <ref>', 'For the diff playbook: the ref the changed-file list is taken from (default HEAD)')
   .option('--no-gate', 'Skip the acceptance check after a terminal agent returns')
   .option('--gate-retries <n>', 'How many times to re-prompt the agent with the gate\'s violations before stripping what still fails', '1')
+  .option('--no-code-graph', 'Do not read a code graph for the entry-point worklist, even when codegraph-mcp or bravos is installed (also: GUARDLINK_CODEGRAPH=off)')
   .action(async (prompt: string, dir: string, opts: {
     project: string;
     mode?: string;
     claudeCode?: boolean; codex?: boolean; gemini?: boolean;
     cursor?: boolean; windsurf?: boolean; clipboard?: boolean; stdout?: boolean;
-    playbook?: string; since?: string; gate?: boolean; gateRetries?: string;
+    playbook?: string; since?: string; gate?: boolean; gateRetries?: string; codeGraph?: boolean;
   }) => {
     const root = resolve(dir);
     const project = detectProjectName(root, opts.project);
@@ -1558,8 +1560,16 @@ program
       }
     } catch { /* no model yet — that's fine */ }
 
+    // The optional code graph: a ranked entry-point worklist when one is installed
+    // and built for this repo, nothing otherwise. Announced on stderr either way,
+    // so --stdout still pipes only the prompt.
+    // @flows #cli -> #codegraph via loadWorklist -- "Project root; the graph answers with ranked entry points or a status"
+    const worklist = await loadWorklist(root, baseline, { enabled: opts.codeGraph !== false });
+    const graphLine = worklistSummaryLine(worklist);
+    if (graphLine) console.error(graphLine);
+
     // Build prompt
-    const fullPrompt = buildAnnotatePrompt(scopedPrompt, root, model, annotationMode, selection.id);
+    const fullPrompt = buildAnnotatePrompt(scopedPrompt, root, model, annotationMode, selection.id, worklist);
 
     // Launch agent
     if (agent.id !== 'stdout') {

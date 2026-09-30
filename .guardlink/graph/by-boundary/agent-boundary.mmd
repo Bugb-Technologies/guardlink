@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-boundary/agent-boundary.mmd
 %% scope:           PARTIAL — the Trust boundary at process spawn between agent-launcher and agentprocess, and what flows across it
-%% annotation_hash: sha256-v3:f69e96fb8c398975bc8016d2de7084bd35db3dfad5a9d05ffdaafb0541e64c2d
+%% annotation_hash: sha256-v3:22d4797ace05d0013917c10716c6b3037f7befb968393fe1b9b8f6091bcb76c9
 %% generator:       guardlink@2.1.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -22,6 +22,7 @@ graph LR
   userprompt["👤 UserPrompt"]
   threatmodel["🧩 ThreatModel"]
   agentprompt["🧩 AgentPrompt"]
+  codegraph["🧩 GuardLink.CodeGraph"]
   tui["👤 GuardLink.TUI"]
   agent_launcher -.-|🧱 Trust boundary at process spawn| agentprocess
   envvars -- "📡 process.env" --> agent_launcher
@@ -35,6 +36,7 @@ graph LR
   userprompt -- "📡 buildAskPrompt" --> agent_launcher
   threatmodel -- "📡 model" --> agent_launcher
   agent_launcher -- "📡 return" --> agentprompt
+  codegraph -- "📡 worklist" --> agent_launcher
   tui -- "📡 launchAgent" --> agent_launcher
   configfile -- "📡 loadProjectConfig" --> tui
   tui -- "📡 saveProjectConfig" --> configfile
