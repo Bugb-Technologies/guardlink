@@ -35,7 +35,10 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
   const lines = content.split('\n');
   const annotations: Annotation[] = [];
   const diagnostics: ParseDiagnostic[] = [];
-  let lastAnnotation: Annotation | null = null;
+  // Every record the last annotation line produced — one per hop for a
+  // multi-hop @flows — so a continuation line reaches all of them, not only
+  // the last hop (SPEC §3.2 `@flows`, Chains).
+  let lastAnnotations: Annotation[] = [];
   let inShield = false;
   const allowRawAnnotationLines = isStandaloneAnnotationFile(filePath);
   let currentSource: SourceLocation | null = null;
@@ -70,7 +73,7 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
           });
         }
       }
-      lastAnnotation = null;
+      lastAnnotations = [];
       continue;
     }
     const text = inner.trimStart();
@@ -82,7 +85,7 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
       const result = parseLine(text, location);
       if (result.annotation) annotations.push(result.annotation);
       inShield = false;
-      lastAnnotation = null;
+      lastAnnotations = [];
       continue;
     }
     if (trimmed.startsWith('@shield:begin')) {
@@ -90,7 +93,7 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
       const result = parseLine(text, location);
       if (result.annotation) annotations.push(result.annotation);
       inShield = true;
-      lastAnnotation = null;
+      lastAnnotations = [];
       continue;
     }
 
@@ -99,13 +102,11 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
 
     // Check for continuation line: -- "..."
     const contMatch = text.match(/^--\s*"((?:[^"\\]|\\.)*)"/);
-    if (contMatch && lastAnnotation) {
-      // Append to last annotation's description
+    if (contMatch && lastAnnotations.length > 0) {
+      // Append to the last annotation line's description, on every record it produced
       const contDesc = unescapeDescription(contMatch[1]);
-      if (lastAnnotation.description) {
-        lastAnnotation.description += ' ' + contDesc;
-      } else {
-        lastAnnotation.description = contDesc;
+      for (const last of lastAnnotations) {
+        last.description = last.description ? `${last.description} ${contDesc}` : contDesc;
       }
       continue;
     }
@@ -120,23 +121,26 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
         line: result.sourceDirective.line,
         parent_symbol: result.sourceDirective.symbol ?? null,
       };
-      lastAnnotation = null;
+      lastAnnotations = [];
       continue;
     }
 
     if (result.annotation) {
+      const produced = [result.annotation, ...(result.extraAnnotations ?? [])];
       if (allowRawAnnotationLines && currentSource) {
-        result.annotation.location = {
+        // Every hop of a multi-hop @flows is sited at the @source block, not
+        // only the first; they share one location, as inline hops do.
+        const sited: SourceLocation = {
           file: currentSource.file,
           line: currentSource.line,
           parent_symbol: currentSource.parent_symbol ?? null,
           origin_file: filePath,
           origin_line: lineNum,
         };
+        for (const a of produced) a.location = sited;
       }
-      annotations.push(result.annotation);
-      if (result.extraAnnotations) annotations.push(...result.extraAnnotations);
-      lastAnnotation = annotations[annotations.length - 1];
+      annotations.push(...produced);
+      lastAnnotations = produced;
     } else {
       if (result.diagnostic) {
         diagnostics.push(result.diagnostic);
@@ -162,7 +166,7 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
         }
       }
       if (!result.isContinuation) {
-        lastAnnotation = null;
+        lastAnnotations = [];
       }
     }
   }
