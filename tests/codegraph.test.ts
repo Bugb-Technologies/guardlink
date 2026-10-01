@@ -16,7 +16,8 @@ import { join, delimiter } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import {
-  loadWorklist, reachFor, renderWorklistBlock, worklistUsable, worklistSummaryLine,
+  loadWorklist, reachFor, renderWorklistBlock, worklistUsable, worklistSummaryLine, accessUsable,
+  formatWorklistEntry, suggestBoundaries,
   discoverTransport, mcpTransport, bravosTransport, graphSwitchedOff,
   GraphUnsupported, GraphToolingMissing, PROMPT_WORKLIST_ROWS,
   type CodeGraphTransport, type ToolAnswer, type ToolCall, type Worklist,
@@ -81,6 +82,29 @@ function stub(answers: Record<string, ToolAnswer>, via = 'stub'): CodeGraphTrans
 
 const HAPPY = { codegraph_attack_surface: { ok: true, value: SURFACE }, codegraph_routes: { ok: true, value: ROUTES } } as const;
 
+/** An auth-boundary answer in codegraph_auth_boundary's shape: one route at each level. */
+const AUTH = {
+  verdict: 'classified',
+  verdict_note: 'every route was classified; read `unknown_reason` on unknown rows and `basis` on the rest',
+  coverage_note: 'middleware applied outside the registering function is not seen',
+  resolver_density: { sufficient: true, edges_per_callable: 2.4, orphan_share: 0.1, shortfalls: [] },
+  routes_total: 4,
+  routes: [
+    { methods: ['DELETE'], path: '/users/{name}', handler: 'api/users.py::delete_user', resolution: 'bound',
+      access: { level: 'elevated', basis: 'declared', summary: 'elevated: an admin decorator runs before the handler',
+        evidence: [{ effect: 'elevated', rule: 'py.admin_required', source: 'handler_decorator', text: '@admin_required', at: 'api/users.py:39' }] } },
+    { methods: ['POST'], path: '/books', handler: 'api/books.py::add_book', resolution: 'bound',
+      access: { level: 'authenticated', basis: 'declared', summary: 'authenticated: a login decorator runs before the handler',
+        evidence: [{ effect: 'authenticated', rule: 'py.login_required', source: 'handler_decorator', text: '@login_required', at: 'api/books.py:9' }] } },
+    { methods: ['POST'], path: '/admin/run', handler: 'api/admin.py::run_job', resolution: 'bound',
+      access: { level: 'public', basis: 'absence', summary: 'public: no guard before or inside the handler' } },
+    { methods: ['GET'], path: '/', handler: 'api/main.py::index', resolution: 'bound',
+      access: { level: 'unknown', unknown_reason: 'ambiguous_handler_check', summary: 'unknown: the handler asks whether the caller is logged in' } },
+  ],
+};
+
+const WITH_ACCESS = { ...HAPPY, codegraph_auth_boundary: { ok: true, value: AUTH } } as const;
+
 /** A model carrying only what the worklist reads: located, anchored annotation rows. */
 function modelWith(rows: Array<{ file: string; scope: 'symbol' | 'file'; start: number; end: number; symbol?: string }>): ThreatModel {
   return {
@@ -122,11 +146,12 @@ describe('loadWorklist — ranking', () => {
     expect(w.entries.every(e => e.annotated === 'none')).toBe(true);
   });
 
-  it('asks for the attack surface and the routes in one query, at the graph caps', async () => {
+  it('asks for the attack surface, the routes and their access in one query, access optional', async () => {
     const t = stub(HAPPY);
     await loadWorklist('/repo', null, { ...ON, transport: t });
     expect(t.asked).toHaveLength(1);
-    expect(t.asked[0].map(c => c.tool)).toEqual(['codegraph_attack_surface', 'codegraph_routes']);
+    expect(t.asked[0].map(c => c.tool)).toEqual(['codegraph_attack_surface', 'codegraph_routes', 'codegraph_auth_boundary']);
+    expect(t.asked[0].map(c => !!c.optional)).toEqual([false, false, true]);
   });
 
   it('carries a currency caveat when the graph was indexed from another tree', async () => {
@@ -207,6 +232,114 @@ describe('the honesty gate — a thin graph withholds the worklist and says why'
       expect(renderWorklistBlock(w)).toContain('withheld');
     });
   }
+});
+
+// ─── Route access levels ─────────────────────────────────────────────
+
+describe('loadWorklist — route access levels', () => {
+  it('carries each route\'s level, basis and evidence when the graph classified access', async () => {
+    const w = await loadWorklist('/repo', null, { ...ON, transport: stub(WITH_ACCESS) });
+    expect(w.auth_verdict).toBe('classified');
+    expect(accessUsable(w)).toBe(true);
+    expect(w.resolver_density).toEqual({ sufficient: true, edges_per_callable: 2.4, shortfalls: [] });
+    const by = Object.fromEntries(w.entries.map(e => [e.name, e.access]));
+    expect(by.delete_user).toEqual([{
+      route: 'DELETE /users/{name}', level: 'elevated', basis: 'declared', unknown_reason: '',
+      evidence_summary: 'elevated: an admin decorator runs before the handler', evidence: ['@admin_required at api/users.py:39'], caveats: [],
+    }]);
+    expect(by.run_job[0]).toMatchObject({ level: 'public', basis: 'absence' });
+    expect(by.index[0]).toMatchObject({ level: 'unknown', basis: '', unknown_reason: 'ambiguous_handler_check' });
+  });
+
+  it('renders the level beside each route, and unknown as unknown with its reason', async () => {
+    const w = await loadWorklist('/repo', null, { ...ON, transport: stub(WITH_ACCESS) });
+    const lines = w.entries.map(formatWorklistEntry);
+    expect(lines).toContain(' 3. [none] POST /admin/run [public: absence] → api/admin.py:5 run_job — reach 2: exec 1 (e.g. subprocess.run at api/admin.py:9)');
+    expect(lines).toContain(' 4. [none] GET / [unknown: ambiguous_handler_check] → api/main.py:3 index — reach 0: no classified sink reached');
+    const block = renderWorklistBlock(w);
+    expect(block).toContain('Read unknown as unknown, never as public.');
+    expect(worklistSummaryLine(w)).toContain('route access classified');
+  });
+
+  it('withholds every level under any verdict but classified, and says why', async () => {
+    for (const verdict of ['insufficient_resolution', 'not_classified', 'no_routes', 'graph_predates_classification']) {
+      const auth = { ...AUTH, verdict, verdict_note: `note for ${verdict}` };
+      const w = await loadWorklist('/repo', null, { ...ON, transport: stub({ ...HAPPY, codegraph_auth_boundary: { ok: true, value: auth } }) });
+      expect(w.auth_verdict, verdict).toBe(verdict);
+      expect(accessUsable(w)).toBe(false);
+      expect(w.entries.every(e => e.access.length === 0)).toBe(true);
+      expect(w.access_withheld_reason).toContain(`note for ${verdict}`);
+      const block = renderWorklistBlock(w);
+      expect(block).toContain(`Route access levels are withheld: the graph's route access verdict is '${verdict}'`);
+      expect(block).not.toMatch(/\[(public|authenticated|elevated|unknown)[:\]]/);
+      expect(block).not.toContain('caller boundary');
+      expect(worklistSummaryLine(w)).toContain(`route access withheld (${verdict})`);
+    }
+  });
+
+  it('a graph that does not classify access leaves the worklist exactly as before', async () => {
+    const unsupported = { ok: false as const, message: 'the installed code graph does not answer codegraph_auth_boundary', unsupported: true };
+    const before = await loadWorklist('/repo', null, { ...ON, transport: stub(HAPPY) });
+    const w = await loadWorklist('/repo', null, { ...ON, transport: stub({ ...HAPPY, codegraph_auth_boundary: unsupported }) });
+    expect(w.status).toBe('available');
+    expect(w.auth_verdict).toBe('');
+    expect(w.access_withheld_reason).toContain('does not classify route access');
+    expect(w.entries.map(formatWorklistEntry)).toEqual(before.entries.map(formatWorklistEntry));
+    expect(renderWorklistBlock(w)).toBe(renderWorklistBlock(before));
+    expect(renderWorklistBlock(w)).not.toContain('Route access levels');
+  });
+});
+
+describe('boundary suggestions', () => {
+  it('suggests a caller boundary per classified route, naming the guard the graph cites as its enforcement', async () => {
+    const w = await loadWorklist('/repo', null, { ...ON, transport: stub(WITH_ACCESS) });
+    const by = Object.fromEntries(w.entries.map(e => [e.name, suggestBoundaries(e)]));
+    expect(by.delete_user[0]).toBe('caller boundary, DELETE /users/{name}: elevated (declared) — enforced by @admin_required at api/users.py:39');
+    expect(by.add_book[0]).toContain('authenticated (declared) — enforced by @login_required at api/books.py:9');
+    expect(by.run_job[0]).toContain('public — the graph found no guard before or inside the handler');
+    expect(by.run_job[0]).toContain('that is an @exposes, not a boundary');
+    expect(by.index[0]).toContain('access unknown (ambiguous_handler_check) — read the guard yourself');
+  });
+
+  it('suggests a boundary kind per sink class that sits behind a trust change, at the example sink', async () => {
+    const w = await loadWorklist('/repo', null, { ...ON, transport: stub(HAPPY) });
+    const by = Object.fromEntries(w.entries.map(e => [e.name, suggestBoundaries(e)]));
+    expect(by.run_job).toEqual(['process boundary (exec) at subprocess.run at api/admin.py:9']);
+    expect(by.delete_user).toEqual([
+      'vendor/egress boundary (network) at requests.get at api/users.py:50',
+      'data boundary (data_layer) at User.query.delete at models/user.py:12',
+    ]);
+    // Reaches nothing and no access: suggests nothing.
+    expect(by.index).toEqual([]);
+  });
+
+  it('template and crypto sinks suggest no boundary', () => {
+    const e = { position: 1, graph_rank: 1, handler: 'a::f', file: 'a', line: 1, name: 'f', routes: [], score: 1, annotated: 'none' as const, access: [],
+      reaches: [{ class: 'template', sinks: 1, weighted: 1, min_depth: 1, example: '' }, { class: 'crypto_secrets', sinks: 1, weighted: 1, min_depth: 1, example: '' }] };
+    expect(suggestBoundaries(e)).toEqual([]);
+  });
+
+  it('the prompt carries the suggestions for the rows it shows, after the list', async () => {
+    const w = await loadWorklist('/repo', null, { ...ON, transport: stub(WITH_ACCESS) });
+    const block = renderWorklistBlock(w);
+    const list = block.indexOf(' 1. [none]');
+    const section = block.indexOf('### Boundaries the graph suggests');
+    expect(list).toBeGreaterThan(-1);
+    expect(section).toBeGreaterThan(list);
+    expect(block).toContain('-  3. api/admin.py:5 run_job\n    caller boundary, POST /admin/run: public');
+    expect(block).toContain('    process boundary (exec) at subprocess.run at api/admin.py:9');
+    expect(block).toContain('A suggestion is where to look, not a claim');
+  });
+
+  it('caps the caller lines per handler and points at the rest', async () => {
+    const routes = ['GET /a', 'GET /b', 'GET /c', 'GET /d', 'GET /e'];
+    const surface = { ...SURFACE, rows: [row(1, 'api/x.py', 'many', 1, routes, 1)] };
+    const auth = { ...AUTH, routes: routes.map(r => ({ methods: [r.split(' ')[0]], path: r.split(' ')[1], handler: 'api/x.py::many', access: { level: 'authenticated', basis: 'declared', summary: 's', evidence: [{ text: 'auth', at: 'api/x.py:1' }] } })) };
+    const w = await loadWorklist('/repo', null, { ...ON, transport: stub({ ...HAPPY, codegraph_attack_surface: { ok: true, value: surface }, codegraph_auth_boundary: { ok: true, value: auth } }) });
+    const lines = suggestBoundaries(w.entries[0]);
+    expect(lines.filter(l => l.startsWith('caller boundary'))).toHaveLength(3);
+    expect(lines).toContain('2 more route(s) on this handler; guardlink_worklist lists their access');
+  });
 });
 
 // ─── The annotate prompt ─────────────────────────────────────────────
@@ -390,6 +523,19 @@ describe('transports and discovery', () => {
     expect(w.status).toBe('available');
     expect(w.via).toBe('codegraph-mcp');
     expect(w.entries).toHaveLength(4);
+    // A server older than the auth-boundary query still ranks; it just carries no access.
+    expect(w.auth_verdict).toBe('');
+    expect(w.access_withheld_reason).toContain('does not classify route access');
+    expect(w.entries.every(e => e.access.length === 0)).toBe(true);
+  });
+
+  it('reads route access from a codegraph-mcp that publishes it, in the same process', async () => {
+    const bin = join(dir, 'mcp-access');
+    await write(bin, fakeMcpScript(['codegraph_attack_surface', 'codegraph_routes', 'codegraph_auth_boundary'],
+      { codegraph_attack_surface: SURFACE, codegraph_routes: ROUTES, codegraph_auth_boundary: AUTH }));
+    const w = await loadWorklist(dir, null, { env: {}, transport: mcpTransport(bin, 10_000) });
+    expect(w.auth_verdict).toBe('classified');
+    expect(w.entries.find(e => e.name === 'run_job')?.access[0]).toMatchObject({ route: 'POST /admin/run', level: 'public' });
   });
 
   it('a server that does not publish the queries is unsupported', async () => {
@@ -430,8 +576,17 @@ describe('transports and discovery', () => {
     expect(w.status).toBe('available');
     expect(w.via).toBe('bravos graph');
     expect(w.entries).toHaveLength(4);
+    expect(w.auth_verdict).toBe('');
     const r = await reachFor(dir, 'a.py::f', { env: {}, transport: bravosTransport(bin, 10_000) });
     expect(r.liveness).toBe('not_reached');
+  });
+
+  it('reads route access through `bravos graph auth-boundary` when the graph answers it', async () => {
+    const bin = join(dir, 'bravos-access');
+    await write(bin, fakeBravosScript({ 'attack-surface': SURFACE, routes: ROUTES, 'auth-boundary': AUTH }, ['attack-surface', 'routes', 'auth-boundary']));
+    const w = await loadWorklist(dir, null, { env: {}, transport: bravosTransport(bin, 10_000) });
+    expect(w.auth_verdict).toBe('classified');
+    expect(w.entries.find(e => e.name === 'delete_user')?.access[0]).toMatchObject({ level: 'elevated', evidence: ['@admin_required at api/users.py:39'] });
   });
 
   it('a bravos whose graph predates the queries is unsupported', async () => {
@@ -530,9 +685,9 @@ describe('MCP: guardlink_worklist, guardlink_reach, guardlink_annotate', () => {
     await writeFile(join(dir, 'api', 'books.py'), '# @comment -- "books handlers"\ndef add_book():\n    pass\n');
     const bin = join(dir, 'fake-codegraph-mcp');
     await writeFile(bin, fakeMcpScript(
-      ['codegraph_attack_surface', 'codegraph_routes', 'codegraph_reachable_sinks', 'codegraph_entry_reach'],
+      ['codegraph_attack_surface', 'codegraph_routes', 'codegraph_auth_boundary', 'codegraph_reachable_sinks', 'codegraph_entry_reach'],
       {
-        codegraph_attack_surface: SURFACE, codegraph_routes: ROUTES,
+        codegraph_attack_surface: SURFACE, codegraph_routes: ROUTES, codegraph_auth_boundary: AUTH,
         codegraph_reachable_sinks: { verdict: 'sinks_reached', reach: { classes: [sinkClass('exec', 1, 5, 'subprocess.run', 'api/admin.py', 9)] } },
         codegraph_entry_reach: { reach: { liveness: 'live_via_route', entries: [] } },
       }));
@@ -578,6 +733,9 @@ describe('MCP: guardlink_worklist, guardlink_reach, guardlink_annotate', () => {
     ]);
     const only = await call('guardlink_worklist', { file: 'books' });
     expect(only.entries.map((e: any) => e.name)).toEqual(['add_book']);
+    expect(w.code_graph.auth_verdict).toBe('classified');
+    expect(w.code_graph.resolver_density.sufficient).toBe(true);
+    expect(only.entries[0].access).toEqual([expect.objectContaining({ route: 'POST /books', level: 'authenticated', basis: 'declared' })]);
 
     const r = await call('guardlink_reach', { symbol: 'api/admin.py::run_job' });
     expect(r.reaches[0]).toMatchObject({ class: 'exec', example: 'subprocess.run at api/admin.py:9' });
@@ -585,7 +743,8 @@ describe('MCP: guardlink_worklist, guardlink_reach, guardlink_annotate', () => {
 
     const a = await call('guardlink_annotate', { prompt: 'annotate the api', playbook: 'coverage' });
     expect(a.prompt).toContain('## Code-graph worklist');
-    expect(a.prompt).toContain(' 1. [none] DELETE /users/{name}');
+    expect(a.prompt).toContain(' 1. [none] DELETE /users/{name} [elevated: declared]');
+    expect(a.prompt).toContain('### Boundaries the graph suggests');
     expect(a.code_graph).toContain('4 entry point(s) ranked');
     const off = await call('guardlink_annotate', { prompt: 'annotate the api', playbook: 'coverage', code_graph: false });
     expect(off.prompt).not.toContain('## Code-graph worklist');

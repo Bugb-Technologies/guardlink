@@ -402,7 +402,7 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_worklist',
-    'Which code to annotate first, ranked from the code itself. Needs an optional code graph (codegraph-mcp or bravos installed, and this repository indexed); nothing is installed or built for you. Returns every entry point the graph ranked — each route handler with its METHOD path, file:line and graph address, the sink classes it reaches through the call graph (data_layer, exec, template, network, filesystem, crypto_secrets) with an example sink, and whether the threat model already covers it (none / file / handler) — handlers not yet annotated first, heaviest reach first. READ code_graph.status FIRST: anything but available means there is no worklist, and note says why. withheld_reason means the graph judged its own call resolution too thin to rank, so the list is empty ON PURPOSE — never read that as a small attack surface. Pass a handler address to guardlink_reach before writing its @exposes or @flows.',
+    'Which code to annotate first, ranked from the code itself. Needs an optional code graph (codegraph-mcp or bravos installed, and this repository indexed); nothing is installed or built for you. Returns every entry point the graph ranked — each route handler with its METHOD path, file:line and graph address, the sink classes it reaches through the call graph (data_layer, exec, template, network, filesystem, crypto_secrets) with an example sink, whether the threat model already covers it (none / file / handler), and — when the graph classifies route access — each route access level (public / authenticated / elevated / unknown, with basis and the guard it rests on) — handlers not yet annotated first, heaviest reach first. Access is carried only when code_graph.auth_verdict is classified; otherwise access_withheld_reason says why, and an unknown level is unknown, never public. READ code_graph.status FIRST: anything but available means there is no worklist, and note says why. withheld_reason means the graph judged its own call resolution too thin to rank, so the list is empty ON PURPOSE — never read that as a small attack surface. Pass a handler address to guardlink_reach before writing its @exposes or @flows.',
     {
       root: z.string().describe('Project root directory').default('.'),
       file: z.string().optional().describe('Keep only handlers whose file path contains this text'),
@@ -419,6 +419,7 @@ export function createServer(): McpServer {
           status: w.status, via: w.via, note: w.note, verdict: w.verdict,
           withheld_reason: w.withheld_reason, message: w.message, entry_rule: w.entry_rule,
           currency_caveat: w.currency_caveat,
+          auth_verdict: w.auth_verdict, access_withheld_reason: w.access_withheld_reason, resolver_density: w.resolver_density,
         },
         total: w.entries.length,
         matching: matching.length,
