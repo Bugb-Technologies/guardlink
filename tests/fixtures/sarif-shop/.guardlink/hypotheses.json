@@ -1,0 +1,63 @@
+{
+  "schema": "guardlink.hypotheses/v1",
+  "anchor_hash_version": 1,
+  "entries": [
+    {
+      "key": "b44f947995298c1630b205488542932135378eaefc69b18027081d56844fc9a1:0",
+      "claim": "between Client and #web (#edge)",
+      "file": "src/web.ts",
+      "line": 4,
+      "outcome": "supported",
+      "evidence": "GET /orders/1 with no session cookie returned 401",
+      "by": "human:fixture",
+      "at": "2026-10-01T20:01:40.793Z",
+      "anchor": {
+        "scope": "file",
+        "symbol": null,
+        "hash": "sha256-v1:6067fce655672e986106c970712a012a03d07e808e7bbc9b4c5505923c29a7de"
+      },
+      "source": {
+        "kind": "manual"
+      },
+      "history": []
+    },
+    {
+      "key": "aa7d0f55159827485580599056a256250d97d83583387f0d915cdae280fb2f99:0",
+      "claim": "#store to #sqli",
+      "file": "src/web.ts",
+      "line": 24,
+      "outcome": "confirmed",
+      "evidence": "POST /orders/search with term=' OR 1=1-- returned every order",
+      "by": "human:fixture",
+      "at": "2026-10-01T20:01:39.975Z",
+      "anchor": {
+        "scope": "symbol",
+        "symbol": "searchOrders",
+        "hash": "sha256-v1:07ffef664b156c51da762dee5bb8d0a24a0b60060b03cd9e671716c079dd90d3"
+      },
+      "source": {
+        "kind": "manual"
+      },
+      "history": []
+    },
+    {
+      "key": "4e9f08d159551b4e1e3e0a0ea2b6d8075bf0077c3a81524f285545a69677daa6:0",
+      "claim": "#orders to #dos",
+      "file": "src/web.ts",
+      "line": 33,
+      "outcome": "refuted",
+      "evidence": "DELETE /orders/1 with 10,000 child rows completed in one bound statement",
+      "by": "human:fixture",
+      "at": "2026-10-01T20:01:40.378Z",
+      "anchor": {
+        "scope": "symbol",
+        "symbol": "deleteOrder",
+        "hash": "sha256-v1:fdab3f11d634bdff70e939a891bb71a292e4a8d958ab9318d6acf05155ef4564"
+      },
+      "source": {
+        "kind": "manual"
+      },
+      "history": []
+    }
+  ]
+}

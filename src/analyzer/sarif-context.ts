@@ -123,6 +123,28 @@ export interface FindingClaim {
   location: SourceLocation;
 }
 
+/**
+ * Which side of an undirected `@boundary` is outside, inferred by the
+ * undeclared-endpoint convention (SPEC §3.2) or not at all.
+ */
+export type BoundarySide =
+  | { basis: 'undeclared-endpoint'; outer: string; inner: string }
+  | { basis: 'unknown' };
+
+/** One `@boundary` as the graph holds it, for results that restate it. */
+export interface BoundaryContext {
+  boundary: ThreatModelBoundary;
+  /** The graph edge id, `boundary:<n>`. */
+  edge: string;
+  /** Graph node ids (canonical refs) of the two sides, in the order the annotation names them. */
+  a: string;
+  b: string;
+  side: BoundarySide;
+  claimKey: string | null;
+  /** Indexes into `model.flows` of the hops whose endpoints are the two sides. */
+  crossings: number[];
+}
+
 export interface SarifContext {
   /** Append the declared context to one exposure or confirmed result. */
   enrich(result: EnrichableResult, claim: FindingClaim, verb: 'exposes' | 'confirmed'): void;
@@ -130,6 +152,8 @@ export interface SarifContext {
   taxonomies(): SarifTaxonomy[];
   /** `run.graphs[0]`, or null when the model declares no asset, flow or boundary. */
   graph(): SarifGraph | null;
+  /** Every `@boundary`, in model order, with the sides and crossings its graph edge carries. */
+  boundaries(): BoundaryContext[];
 }
 
 // ─── Bounds ─────────────────────────────────────────────────────────
@@ -237,6 +261,7 @@ export function buildSarifContext(model: ThreatModel): SarifContext {
   const boundaryLabel = new Map<string, string>();
   const edges: SarifGraph['edges'] = [];
   const crossingsOf = new Map<string, string[]>();
+  const boundaryContexts: BoundaryContext[] = [];
   boundaries.forEach((b, i) => {
     const id = `boundary:${i}`;
     const a = nodeFor(b.asset_a);
@@ -249,9 +274,10 @@ export function buildSarifContext(model: ThreatModel): SarifContext {
     // is outside the system. With exactly one undeclared side, that side is
     // outer; otherwise the annotation does not say, and neither do we.
     const outer = [a, c].filter(n => !declared.has(n));
-    const side = outer.length === 1
+    const side: BoundarySide = outer.length === 1
       ? { basis: 'undeclared-endpoint', outer: outer[0], inner: outer[0] === a ? c : a }
       : { basis: 'unknown' };
+    boundaryContexts.push({ boundary: b, edge: id, a, b: c, side, claimKey: claimKeyOf.get(b.location) ?? null, crossings: [] });
     edges.push({
       id, sourceNodeId: a, targetNodeId: c,
       label: { text: b.description || `@boundary ${claimText(['boundary', b])}` },
@@ -273,7 +299,10 @@ export function buildSarifContext(model: ThreatModel): SarifContext {
     const id = `flow:${i}`;
     const route = f.route ?? parseRouteChannel(f.mechanism);
     const crosses = crossedBy(f);
-    for (const b of crosses) crossingsOf.get(b)!.push(id);
+    for (const b of crosses) {
+      crossingsOf.get(b)!.push(id);
+      boundaryContexts[Number(b.slice('boundary:'.length))].crossings.push(i);
+    }
     edges.push({
       id, sourceNodeId: nodeFor(f.source), targetNodeId: nodeFor(f.target),
       ...(f.mechanism ? { label: { text: f.mechanism } } : {}),
@@ -491,6 +520,10 @@ export function buildSarifContext(model: ThreatModel): SarifContext {
         nodes: [...nodes.values()],
         edges,
       };
+    },
+
+    boundaries() {
+      return boundaryContexts;
     },
   };
 }
