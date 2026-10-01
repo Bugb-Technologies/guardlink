@@ -27,6 +27,12 @@ export {
 export type { AcceptancePolicy, AcceptanceDefect, AcceptanceFinding, BlastRadius, ExpiringAcceptance } from './acceptance.js';
 export { buildCoverageIndex, normalizeRef, coversExposure } from './coverage.js';
 export type { CoverageIndex, CoverageOptions, SitedRelation } from './coverage.js';
+// SPEC §3.2 `@flows` route channels and §3.6 handler scope — the readers the
+// conformance corpus (conformance/flows.json) pins.
+export { parseRouteChannel, buildRouteIndex } from './route.js';
+export type { HttpRoute, RouteDeclaration, RouteAttribution, RouteIndex } from './route.js';
+export { handlerScope, scopeEncloses } from './handler-scope.js';
+export type { HandlerScope } from './handler-scope.js';
 export { extractCitation, citationMatchesFile } from './citation.js';
 export { resolveGalPath, galPathFor, sourceFileForGal, isConventionalGalPath, ANNOTATIONS_DIR, GAL_CONVENTION } from './gal-path.js';
 // Whether the model reaches anything but this CLI — the check that catches an

@@ -38,6 +38,7 @@ import { ANNOTATIONS_DIR } from './gal-path.js';
 import { fileCoveragePercent } from './coverage.js';
 import { readDisabledDiagnostics } from './annotation-mode.js';
 import { attachAnchors } from '../structure/attach.js';
+import { parseRouteChannel } from './route.js';
 
 /** A standalone annotation sidecar, not a source file. */
 const isGalPath = (p: string): boolean => /\.gal$/i.test(p);
@@ -561,6 +562,7 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
         const f = ann as FlowsAnnotation;
         model.flows.push({
           source: f.source, target: f.target, mechanism: f.mechanism,
+          route: parseRouteChannel(f.mechanism),
           description: f.description, location: f.location,
         });
         break;

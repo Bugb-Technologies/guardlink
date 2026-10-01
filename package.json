@@ -13,6 +13,7 @@
     "dist",
     "src",
     "grammars",
+    "conformance",
     "LICENSE",
     "README.md",
     "CHANGELOG.md"
@@ -57,7 +58,8 @@
     "./hypothesis": {
       "import": "./dist/hypothesis/index.js",
       "types": "./dist/hypothesis/index.d.ts"
-    }
+    },
+    "./conformance/flows.json": "./conformance/flows.json"
   },
   "scripts": {
     "build": "tsx scripts/build-grammars.ts && tsc && node scripts/postbuild-chmod.mjs",

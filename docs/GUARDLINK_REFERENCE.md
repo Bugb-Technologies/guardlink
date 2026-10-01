@@ -21,7 +21,8 @@ RELATE   @mitigates <Asset> against <#threat> using <#control> -- "how"
          @entitles <#actor> to <capability> on <Asset> against <#threat> -- "by design + authz file:line"
                    ^ PROPOSED via `guardlink entitle --propose`, written only when a human accepts
 
-FLOW     @flows <Source> -> <Target> via <mechanism> -- "details"
+FLOW     @flows <Source> -> <Target> [-> <Next> …] [via <mechanism>] -- "details"
+         @flows <Client> -> <Asset> via GET./orders/<id> -- "an HTTP route, on its handler"
          @boundary <AssetA> | <AssetB> (#id) -- "trust boundary"
          @boundary between <AssetA> and <AssetB> (#id) -- "trust boundary"
 
@@ -438,7 +439,7 @@ Run `guardlink tui` for the interactive terminal interface:
 ## Critical Syntax Rules
 
 1. **@boundary requires TWO assets**: `@boundary between #A and #B` or `@boundary #A | #B`.
-2. **@flows is ONE source → ONE target per line**: `@flows <source> -> <target> via <mechanism>`.
+2. **@flows is ONE path per line, joined by arrows**: `@flows <source> -> <target> via <mechanism>`. A chain `A -> B -> C` is two flows sharing the mechanism; commas are not supported. An HTTP route is the mechanism `METHOD./path` (`via GET./orders/<id>`), written on the handler that serves it. Full definition: SPEC §3.2 `@flows`.
 3. **@exposes / @mitigates / @confirmed require defined #id refs**: Every `#id` must have a definition in `.guardlink/definitions.*`.
 4. **Severity in square brackets**: `[P0]` `[P1]` `[P2]` `[P3]` or `[critical]` `[high]` `[medium]` `[low]`. Goes AFTER the threat ref on `@exposes`; on `@confirmed` it reflects **verified** impact (optional but recommended).
 5. **Descriptions in double quotes after --**: `-- "description text here"`.

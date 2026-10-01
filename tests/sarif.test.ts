@@ -1,5 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { generateSarif, threatId } from '../src/analyzer/sarif.js';
+import { parseProject } from '../src/parser/parse-project.js';
 import type { ThreatModel } from '../src/types/index.js';
 
 /**
@@ -59,6 +63,24 @@ describe('generateSarif — codegraph_reachability from @flows', () => {
     const props = findingProps(sarif, '#archive');
     expect(props).toBeDefined();
     expect(props?.codegraph_reachability).toBeUndefined();
+  });
+
+  it('reports two routes in one file, neither on the finding, as ambiguous rather than picking the first', () => {
+    // No anchors here, so the finding is file-level and both routes are candidates.
+    const sarif = generateSarif(model({
+      exposures: [{ asset: '#orders', threat: '#sqli', severity: 'critical', external_refs: [], location: loc('app/orders.py', 11) } as never],
+      flows: [
+        { source: '#client', target: '#orders', mechanism: 'GET./orders/<id>', location: loc('app/orders.py', 4) } as never,
+        { source: '#client', target: '#orders', mechanism: 'POST./pay', location: loc('app/orders.py', 10) } as never,
+      ],
+    }));
+    const props = findingProps(sarif, '#orders');
+    expect(props?.codegraph_reachability).toBeUndefined();
+    expect(props?.route_attribution).toBe('ambiguous');
+    expect(props?.route_candidates).toEqual([
+      { http_method: 'GET', http_path: '/orders/<id>', file: 'app/orders.py', line: 4 },
+      { http_method: 'POST', http_path: '/pay', file: 'app/orders.py', line: 10 },
+    ]);
   });
 
   it('attaches the route to @confirmed results as well', () => {
@@ -275,5 +297,88 @@ describe('generateSarif — claim key (partialFingerprints + properties.claimKey
 
     const survivorAlone = generateSarif(model({ exposures: [exposure({ location: loc('src/a.ts', 5) })] }));
     expect(keyOf(survivorAlone, 0)).toBe(first);
+  });
+});
+
+/**
+ * One file, three handlers, one asset — parsed from source, so every claim has
+ * the handler scope the structure layer resolves (SPEC §3.6).
+ *
+ * Before handler scope, routes were keyed by file with the first declaration
+ * winning, so the injection on `pay` was exported as reachable through
+ * `GET /orders/<id>`; and coverage was keyed by (asset, threat), so the one
+ * `@mitigates` on `update_order` removed BOTH idor exposures from the export.
+ */
+describe('generateSarif — handler scope, end to end', () => {
+  const roots: string[] = [];
+  afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true }); });
+
+  const ORDERS = `import db
+
+
+# @flows #client -> #orders via GET./orders/<id>
+# @exposes #orders to #idor [high] -- "no owner check on read"
+def get_order(order_id):
+    return db.get(order_id)
+
+
+# @flows #client -> #orders via POST./pay
+# @exposes #orders to #sqli [critical] cwe:CWE-89 -- "amount concatenated"
+def pay(amount):
+    return db.execute("UPDATE o SET a=" + amount)
+
+
+# @flows #client -> #orders via DELETE./orders/<id>
+# @exposes #orders to #idor [high] -- "no owner check on delete"
+def delete_order(order_id):
+    return db.delete(order_id)
+`;
+  const UPDATE = `
+
+# @flows #client -> #orders via PUT./orders/<id>
+# @mitigates #orders against #idor using #owner-check -- "owner checked before update"
+def update_order(order_id, user):
+    check_owner(order_id, user)
+    return db.update(order_id)
+`;
+
+  async function sarifFor(source: string) {
+    const root = mkdtempSync(join(tmpdir(), 'gl-sarif-handlers-'));
+    roots.push(root);
+    mkdirSync(join(root, 'app'), { recursive: true });
+    writeFileSync(join(root, 'app', 'orders.py'), source);
+    const { model } = await parseProject({ root, project: 'handlers' });
+    return generateSarif(model);
+  }
+  const exposureResults = (sarif: ReturnType<typeof generateSarif>) => sarif.runs[0].results
+    .filter(r => r.ruleId.startsWith('guardlink/unmitigated'))
+    .map(r => ({
+      line: r.locations[0].physicalLocation.region.startLine,
+      threat: (r.properties as Record<string, unknown>).threat,
+      route: (r.properties as Record<string, unknown>).codegraph_reachability,
+      attribution: (r.properties as Record<string, unknown>).route_attribution,
+    }))
+    .sort((a, b) => a.line - b.line);
+
+  it('labels each finding with the route declared on its own handler', async () => {
+    expect(exposureResults(await sarifFor(ORDERS))).toEqual([
+      { line: 5, threat: '#idor', route: { http_method: 'GET', http_path: '/orders/<id>' }, attribution: 'handler' },
+      { line: 11, threat: '#sqli', route: { http_method: 'POST', http_path: '/pay' }, attribution: 'handler' },
+      { line: 17, threat: '#idor', route: { http_method: 'DELETE', http_path: '/orders/<id>' }, attribution: 'handler' },
+    ]);
+  });
+
+  it('a @mitigates on one handler leaves the same pair on sibling handlers in the export', async () => {
+    const lines = exposureResults(await sarifFor(ORDERS + UPDATE)).map(r => r.line);
+    expect(lines).toEqual([5, 11, 17]);
+  });
+
+  it('a @mitigates on the exposure\'s own handler still removes it — and only it', async () => {
+    const fixed = ORDERS.replace(
+      '# @exposes #orders to #idor [high] -- "no owner check on delete"\n',
+      '# @exposes #orders to #idor [high] -- "no owner check on delete"\n'
+        + '# @mitigates #orders against #idor using #owner-check -- "owner checked before delete"\n',
+    );
+    expect(exposureResults(await sarifFor(fixed)).map(r => r.line)).toEqual([5, 11]);
   });
 });

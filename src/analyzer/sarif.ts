@@ -37,7 +37,7 @@
  * @comment -- "runs[0].properties.acceptance_register names the register whose acceptances removed results from this export — the annotations in this repo, never the server decision log. Envelope only: results and tool stay byte-identical, the same §3.2 line annotation_hash sits on"
  * @comment -- "runs[0].properties.annotation_hash stamps the export with the annotations it was cut from (R10), so a hygiene gate can tell a current SARIF from one built three commits ago — this file is the pentest surface, and a stale one decides which exposures get tested"
  * @comment -- "@entitles has no export semantics by design: SARIF for a model with entitlements is byte-identical to one without, so an entitlement can never hide an exposure from the pentest export (actor-entitlement design §3.2)"
- * @comment -- "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} derived from the asset's inbound @flows route so downstream HTTP consumers (e.g. cert-x-gen) can target the endpoint; emitted verbatim from the annotation, no base path assumed"
+ * @comment -- "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} from the route @flows declared on the finding's own handler, else its file, else its asset (route_attribution says which), so downstream HTTP consumers can target the endpoint; emitted verbatim from the annotation, no base path assumed. When the model does not tie a finding to one route it carries route_attribution 'ambiguous' and route_candidates instead, never a guessed route"
  * @comment -- "EXPOSURE results carry the claim key as partialFingerprints['guardlink/claimKey'], mirrored to properties.claimKey — the same identity the hypothesis ledger keys an entry on (src/parser/claim-key.ts). The threat id is derived from (asset, threat, file) and so is shared by siblings in one file; the claim key digests the claim's own words, so it separates those siblings and is unchanged by any edit that is not the claim — including a line move and an edit to the code beneath it"
  * @comment -- "CONFIRMED results carry threatId and no claim key, on purpose: the verb is part of the key digest, so an @exposes and the @confirmed proving it hold different keys, and the ledger keys entries by exposure only. A key stamped from a confirmed result could join to nothing, so guardlink does not emit one rather than emitting an identifier that cannot be used"
  * @flows ThreatModel -> #sarif via generateSarif -- "Model input"
@@ -46,8 +46,10 @@
 
 import { createHash } from 'node:crypto';
 
-import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
+import type { ThreatModel, ParseDiagnostic, Severity, SourceLocation } from '../types/index.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
+import { canonicaliser } from '../parser/canonical-ref.js';
+import { buildRouteIndex } from '../parser/route.js';
 import { ACCEPTANCE_REGISTER_ID } from '../parser/acceptance.js';
 import { computeAnnotationHash, ANNOTATION_HASH_VERSION } from '../parser/annotation-hash.js';
 import { relationRecords, CLAIM_KEY_FINGERPRINT, CLAIM_KEY_PROPERTY } from '../parser/claim-key.js';
@@ -223,22 +225,25 @@ export function generateSarif(
   // expense-api, the critical #db → #sqli was one of two findings dropped.
   const coverage = buildCoverageIndex(model);
 
-  // Route lookup so each finding can carry the HTTP endpoint it is reachable
-  // through. Routes live on @flows (mechanism "METHOD./path"); index them by the
-  // flow's source file and by its target asset, then match each finding below.
-  const routeByFile = new Map<string, HttpRoute>();
-  const routeByAsset = new Map<string, HttpRoute>();
-  for (const f of model.flows) {
-    const route = extractRoute(f.mechanism);
-    if (!route) continue;
-    if (f.location?.file && !routeByFile.has(f.location.file)) routeByFile.set(f.location.file, route);
-    if (f.target && !routeByAsset.has(f.target)) routeByAsset.set(f.target, route);
-  }
-  const reachabilityFor = (asset: string, file: string) => {
-    // Prefer the route from the same handler file (an asset often fronts several
-    // routes); fall back to the asset's inbound route.
-    const route = routeByFile.get(file) ?? routeByAsset.get(asset);
-    return route ? { codegraph_reachability: { http_method: route.method, http_path: route.path } } : {};
+  // Which HTTP route reaches each finding. A route `@flows` (mechanism
+  // "METHOD./path") belongs to the handler it is declared on (SPEC §3.6.2); a
+  // finding the model does not tie to one route is reported ambiguous, with the
+  // candidates, and carries no codegraph_reachability — a wrong route sends a
+  // probe to an endpoint that does not reach the weakness.
+  const routes = buildRouteIndex(model.flows ?? [], canonicaliser(model));
+  const reachabilityFor = (asset: string, location: SourceLocation): Record<string, unknown> => {
+    const found = routes.routeFor(asset, location);
+    if (!found) return {};
+    if (found.status === 'ambiguous') {
+      return {
+        route_attribution: 'ambiguous',
+        route_candidates: found.candidates.map(c => ({ http_method: c.method, http_path: c.path, file: c.file, line: c.line })),
+      };
+    }
+    return {
+      codegraph_reachability: { http_method: found.route.method, http_path: found.route.path },
+      route_attribution: found.scope,
+    };
   };
 
   // Claim keys for EXPOSURES ONLY, by the location object each record carries.
@@ -290,7 +295,7 @@ export function generateSarif(
         asset: e.asset,
         threat: e.threat,
         ...(e.external_refs.length > 0 ? { externalRefs: e.external_refs } : {}),
-        ...reachabilityFor(e.asset, e.location.file),
+        ...reachabilityFor(e.asset, e.location),
       },
     });
   }
@@ -315,7 +320,7 @@ export function generateSarif(
         asset: c.asset,
         threat: c.threat,
         ...(c.external_refs.length > 0 ? { externalRefs: c.external_refs } : {}),
-        ...reachabilityFor(c.asset, c.location.file),
+        ...reachabilityFor(c.asset, c.location),
       },
     });
   }
@@ -403,28 +408,6 @@ export function threatId(asset: string, threat: string, file: string): string {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
-
-interface HttpRoute {
-  method: string;
-  path: string;
-}
-
-const ROUTE_MECHANISM_RE = /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\.(\/\S*)/i;
-
-/**
- * Parse a @flows mechanism such as "GET./websocket/attach?endpointId&id" or
- * "POST./restore (multipart)" into { method, path }. Returns undefined when the
- * mechanism is not an HTTP route (e.g. "tar.NewReader"). The path is emitted
- * verbatim from the annotation — no base path (e.g. /api) is assumed.
- */
-function extractRoute(mechanism?: string): HttpRoute | undefined {
-  if (!mechanism) return undefined;
-  const m = ROUTE_MECHANISM_RE.exec(mechanism.trim());
-  if (!m) return undefined;
-  const path = m[2].split('?')[0].replace(/\s*\(.*?\)\s*/g, '').trim();
-  if (!path) return undefined;
-  return { method: m[1].toUpperCase(), path };
-}
 
 function locationFrom(file: string, line: number): SarifLocation {
   // SARIF uses forward-slash URIs

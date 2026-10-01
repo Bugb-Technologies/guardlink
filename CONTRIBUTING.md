@@ -163,6 +163,8 @@ the gate is level-triggered because it describes a repository at the moment it r
 
 Changes to the annotation grammar or ThreatModel schema require discussion in an issue first. The spec is designed to be stable — breaking changes need strong justification.
 
+`docs/SPEC.md` is the definition every reader conforms to, this parser included. Other tools read the same annotations, so a form this parser accepts and the spec does not describe is a form those tools will drop without a word. When you change what the parser accepts or produces for a verb that has a conformance corpus — today `@flows`, together with handler scope (SPEC §3.6) — change three things in the same pull request: the SPEC section, the matching case in `conformance/flows.json`, and the parser. `tests/conformance-flows.test.ts` fails if the corpus and the parser disagree. Adding a case does not need a new corpus `version`. Changing the shape of a case does, and `conformance/README.md` documents that shape.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the MIT License.

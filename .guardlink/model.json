@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:22d4797ace05d0013917c10716c6b3037f7befb968393fe1b9b8f6091bcb76c9",
+    "annotation_hash": "sha256-v3:43ad313ae90e5e1a0f300c86060f958ea649cfd57cb5606357f52641404d583f",
     "generator": "guardlink@2.1.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 158,
-  "annotations_parsed": 845,
+  "source_files": 160,
+  "annotations_parsed": 849,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -99,6 +99,7 @@
     "src/parser/feature-filter.ts",
     "src/parser/fingerprint.ts",
     "src/parser/gal-path.ts",
+    "src/parser/handler-scope.ts",
     "src/parser/handoff.ts",
     "src/parser/languages.ts",
     "src/parser/ledger.ts",
@@ -107,6 +108,7 @@
     "src/parser/parse-line.ts",
     "src/parser/parse-project.ts",
     "src/parser/reanchor.ts",
+    "src/parser/route.ts",
     "src/parser/validate.ts",
     "src/parser/verification.ts",
     "src/parser/verify.ts",
@@ -1818,7 +1820,7 @@
       "description": "Existence only: no read, no write, and the result reaches the model as a warning string that echoes the path the author already wrote",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 142
+        "line": 143
       }
     },
     {
@@ -3409,7 +3411,7 @@
       "description": "`@source file:` is author-controlled text and is joined onto the project root to test existence",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 141
+        "line": 142
       }
     },
     {
@@ -3733,6 +3735,7 @@
       "source": "EnvVars",
       "target": "#agent-launcher",
       "mechanism": "process.env",
+      "route": null,
       "description": "Environment variable input",
       "location": {
         "file": "src/agents/config.ts",
@@ -3743,6 +3746,7 @@
       "source": "ConfigFile",
       "target": "#agent-launcher",
       "mechanism": "readFileSync",
+      "route": null,
       "description": "Config file read",
       "location": {
         "file": "src/agents/config.ts",
@@ -3753,6 +3757,7 @@
       "source": "#agent-launcher",
       "target": "ConfigFile",
       "mechanism": "writeFileSync",
+      "route": null,
       "description": "Config file write",
       "location": {
         "file": "src/agents/config.ts",
@@ -3763,6 +3768,7 @@
       "source": "UserPrompt",
       "target": "#agent-launcher",
       "mechanism": "launchAgent",
+      "route": null,
       "description": "Prompt input path",
       "location": {
         "file": "src/agents/launcher.ts",
@@ -3773,6 +3779,7 @@
       "source": "#agent-launcher",
       "target": "AgentProcess",
       "mechanism": "spawn",
+      "route": null,
       "description": "Process spawn path",
       "location": {
         "file": "src/agents/launcher.ts",
@@ -3783,6 +3790,7 @@
       "source": "AgentProcess",
       "target": "#agent-launcher",
       "mechanism": "stdout",
+      "route": null,
       "description": "Agent output capture",
       "location": {
         "file": "src/agents/launcher.ts",
@@ -3793,6 +3801,7 @@
       "source": "UserPrompt",
       "target": "#agent-launcher",
       "mechanism": "buildAnnotatePrompt",
+      "route": null,
       "description": "User instruction input",
       "location": {
         "file": "src/agents/prompts.ts",
@@ -3803,6 +3812,7 @@
       "source": "UserPrompt",
       "target": "#agent-launcher",
       "mechanism": "buildTranslatePrompt",
+      "route": null,
       "description": "Template translation instruction input",
       "location": {
         "file": "src/agents/prompts.ts",
@@ -3813,6 +3823,7 @@
       "source": "UserPrompt",
       "target": "#agent-launcher",
       "mechanism": "buildAskPrompt",
+      "route": null,
       "description": "Threat model question input",
       "location": {
         "file": "src/agents/prompts.ts",
@@ -3823,6 +3834,7 @@
       "source": "ThreatModel",
       "target": "#agent-launcher",
       "mechanism": "model",
+      "route": null,
       "description": "Model context injection",
       "location": {
         "file": "src/agents/prompts.ts",
@@ -3833,6 +3845,7 @@
       "source": "#agent-launcher",
       "target": "AgentPrompt",
       "mechanism": "return",
+      "route": null,
       "description": "Assembled prompt output",
       "location": {
         "file": "src/agents/prompts.ts",
@@ -3843,6 +3856,7 @@
       "source": "#codegraph",
       "target": "#agent-launcher",
       "mechanism": "worklist",
+      "route": null,
       "description": "Optional code-graph worklist, placed between the scope and the method; absent, the prompt is unchanged",
       "location": {
         "file": "src/agents/prompts.ts",
@@ -3853,6 +3867,7 @@
       "source": "SavedReport",
       "target": "#llm-client",
       "mechanism": "parseFindingsBlock",
+      "route": null,
       "description": "Findings out of a saved report",
       "location": {
         "file": "src/analyze/findings.ts",
@@ -3863,6 +3878,7 @@
       "source": "ThreatModel",
       "target": "#llm-client",
       "mechanism": "serializeModel",
+      "route": null,
       "description": "Model serialization input",
       "location": {
         "file": "src/analyze/index.ts",
@@ -3873,6 +3889,7 @@
       "source": "ProjectFiles",
       "target": "#llm-client",
       "mechanism": "readFileSync",
+      "route": null,
       "description": "Project context read",
       "location": {
         "file": "src/analyze/index.ts",
@@ -3883,6 +3900,7 @@
       "source": "#llm-client",
       "target": "ReportFile",
       "mechanism": "writeFileSync",
+      "route": null,
       "description": "Report output",
       "location": {
         "file": "src/analyze/index.ts",
@@ -3893,6 +3911,7 @@
       "source": "PentestFindings",
       "target": "#llm-client",
       "mechanism": "readFileSync",
+      "route": null,
       "description": "Reads CXG scan results for dashboard and report context",
       "location": {
         "file": "src/analyze/index.ts",
@@ -3903,6 +3922,7 @@
       "source": "LLMConfig",
       "target": "#llm-client",
       "mechanism": "chatCompletion",
+      "route": null,
       "description": "Config and prompt input",
       "location": {
         "file": "src/analyze/llm.ts",
@@ -3913,6 +3933,7 @@
       "source": "#llm-client",
       "target": "LLMProvider",
       "mechanism": "fetch",
+      "route": null,
       "description": "API request output",
       "location": {
         "file": "src/analyze/llm.ts",
@@ -3923,6 +3944,7 @@
       "source": "LLMProvider",
       "target": "#llm-client",
       "mechanism": "response",
+      "route": null,
       "description": "API response input",
       "location": {
         "file": "src/analyze/llm.ts",
@@ -3933,6 +3955,7 @@
       "source": "LLMToolCall",
       "target": "#llm-client",
       "mechanism": "createToolExecutor",
+      "route": null,
       "description": "Tool invocation input",
       "location": {
         "file": "src/analyze/tools.ts",
@@ -3943,6 +3966,7 @@
       "source": "#llm-client",
       "target": "NVD",
       "mechanism": "fetch",
+      "route": null,
       "description": "CVE lookup API call",
       "location": {
         "file": "src/analyze/tools.ts",
@@ -3953,6 +3977,7 @@
       "source": "ProjectFiles",
       "target": "#llm-client",
       "mechanism": "readFileSync",
+      "route": null,
       "description": "Codebase search reads",
       "location": {
         "file": "src/analyze/tools.ts",
@@ -3963,6 +3988,7 @@
       "source": "ThreatModel",
       "target": "#sarif",
       "mechanism": "generateSarif",
+      "route": null,
       "description": "Model input",
       "location": {
         "file": "src/analyzer/sarif.ts",
@@ -3973,6 +3999,7 @@
       "source": "#sarif",
       "target": "SarifLog",
       "mechanism": "return",
+      "route": null,
       "description": "SARIF output",
       "location": {
         "file": "src/analyzer/sarif.ts",
@@ -3983,6 +4010,7 @@
       "source": "ThreatModel",
       "target": "#dashboard",
       "mechanism": "emitArtifacts",
+      "route": null,
       "description": "Model rendered to disk artifacts",
       "location": {
         "file": "src/artifacts/emit.ts",
@@ -3993,6 +4021,7 @@
       "source": "#dashboard",
       "target": "FileSystem",
       "mechanism": "writeFileSync",
+      "route": null,
       "description": "Artifact write path",
       "location": {
         "file": "src/artifacts/emit.ts",
@@ -4003,6 +4032,7 @@
       "source": "#blame",
       "target": "ThreatModel",
       "mechanism": "attachBlame",
+      "route": null,
       "description": "record.blame on exposures, confirmed and mitigations",
       "location": {
         "file": "src/blame/attach.ts",
@@ -4013,6 +4043,7 @@
       "source": "ThreatModel",
       "target": "#blame",
       "mechanism": "computeBlame",
+      "route": null,
       "description": "Record locations and anchors",
       "location": {
         "file": "src/blame/compute.ts",
@@ -4023,6 +4054,7 @@
       "source": "#blame",
       "target": "ThreatModel",
       "mechanism": "attachBlame",
+      "route": null,
       "description": "record.blame, only on the CLI --blame paths",
       "location": {
         "file": "src/blame/compute.ts",
@@ -4033,6 +4065,7 @@
       "source": "ConfigFile",
       "target": "#blame",
       "mechanism": "readBlameConfig",
+      "route": null,
       "description": "Attribution settings",
       "location": {
         "file": "src/blame/config.ts",
@@ -4043,6 +4076,7 @@
       "source": "#blame",
       "target": "#cli",
       "mechanism": "formatBlameText",
+      "route": null,
       "description": "Human-readable attribution",
       "location": {
         "file": "src/blame/format.ts",
@@ -4053,6 +4087,7 @@
       "source": "GitRepo",
       "target": "#blame",
       "mechanism": "execFileSync",
+      "route": null,
       "description": "blame, log, ls-files, status and rev-parse output",
       "location": {
         "file": "src/blame/git.ts",
@@ -4063,6 +4098,7 @@
       "source": "GitRepo",
       "target": "#blame",
       "mechanism": "listCommits",
+      "route": null,
       "description": "The reachable history, for commit counts and the HEAD author date",
       "location": {
         "file": "src/blame/git.ts",
@@ -4073,6 +4109,7 @@
       "source": "#blame",
       "target": "#cli",
       "mechanism": "buildBlamePayload",
+      "route": null,
       "description": "guardlink.blame/v1 payload for --json, the MCP tool and the TUI",
       "location": {
         "file": "src/blame/summary.ts",
@@ -4083,6 +4120,7 @@
       "source": "#blame",
       "target": "#dashboard",
       "mechanism": "summarise",
+      "route": null,
       "description": "Per-person and per-tool rows, the quarterly trend, the cohort comparison and the hot files the Attribution page renders",
       "location": {
         "file": "src/blame/summary.ts",
@@ -4093,6 +4131,7 @@
       "source": "CommitTrailers",
       "target": "#blame",
       "mechanism": "parseTrailerBlock",
+      "route": null,
       "description": "Co-authored-by and Assisted-by values",
       "location": {
         "file": "src/blame/trailers.ts",
@@ -4103,6 +4142,7 @@
       "source": "ThreatModel",
       "target": "#cli",
       "mechanism": "runCiChecks",
+      "route": null,
       "description": "Parsed model checked for uncovered exposures, confirmed exploits and unqualified acceptances",
       "location": {
         "file": "src/ci/index.ts",
@@ -4113,6 +4153,7 @@
       "source": "ParseDiagnostics",
       "target": "#cli",
       "mechanism": "runCiChecks",
+      "route": null,
       "description": "Diagnostics from the parse are reported, never recomputed",
       "location": {
         "file": "src/ci/index.ts",
@@ -4123,6 +4164,7 @@
       "source": "SourceFiles",
       "target": "#cli",
       "mechanism": "findAnchorDrift",
+      "route": null,
       "description": "Recorded anchors compared against current source",
       "location": {
         "file": "src/ci/index.ts",
@@ -4133,6 +4175,7 @@
       "source": "LedgerFile",
       "target": "#cli",
       "mechanism": "readLedger",
+      "route": null,
       "description": "Recorded claim hashes, read only",
       "location": {
         "file": "src/ci/index.ts",
@@ -4143,6 +4186,7 @@
       "source": "ThreatModel",
       "target": "#cli",
       "mechanism": "findExpiringAcceptances",
+      "route": null,
       "description": "Qualifying acceptances read for how much of their horizon is left; reported, never gated on",
       "location": {
         "file": "src/ci/index.ts",
@@ -4153,6 +4197,7 @@
       "source": "UserArgs",
       "target": "#cli",
       "mechanism": "process.argv",
+      "route": null,
       "description": "CLI argument input path",
       "location": {
         "file": "src/cli/index.ts",
@@ -4163,6 +4208,7 @@
       "source": "#cli",
       "target": "FileSystem",
       "mechanism": "writeFile",
+      "route": null,
       "description": "Report/config output path",
       "location": {
         "file": "src/cli/index.ts",
@@ -4173,6 +4219,7 @@
       "source": "GitRepo",
       "target": "#cli",
       "mechanism": "attachBlame",
+      "route": null,
       "description": "Opt-in attribution; without --blame the JSON is byte-identical to before",
       "location": {
         "file": "src/cli/index.ts",
@@ -4183,6 +4230,7 @@
       "source": "LedgerFile",
       "target": "#cli",
       "mechanism": "readLedger",
+      "route": null,
       "description": "status reports verified/stale/unverified claim counts alongside annotation coverage",
       "location": {
         "file": "src/cli/index.ts",
@@ -4193,6 +4241,7 @@
       "source": "LedgerFile",
       "target": "#cli",
       "mechanism": "readHypotheses",
+      "route": null,
       "description": "status reports how many exposures were tested, and with what outcome",
       "location": {
         "file": "src/cli/index.ts",
@@ -4203,6 +4252,7 @@
       "source": "GitRepo",
       "target": "#cli",
       "mechanism": "computeBlame",
+      "route": null,
       "description": "status --blame reads attribution without touching the model",
       "location": {
         "file": "src/cli/index.ts",
@@ -4213,6 +4263,7 @@
       "source": "LedgerFile",
       "target": "#cli",
       "mechanism": "readLedger",
+      "route": null,
       "description": "Read-only; a corrupt ledger becomes a validate error (ledger-corrupt) instead of being silently treated as absent",
       "location": {
         "file": "src/cli/index.ts",
@@ -4223,6 +4274,7 @@
       "source": "UserInput",
       "target": "#cli",
       "mechanism": "verify",
+      "route": null,
       "description": "Targets, --by and mode flags",
       "location": {
         "file": "src/cli/index.ts",
@@ -4233,6 +4285,7 @@
       "source": "GitRepo",
       "target": "#cli",
       "mechanism": "computeBlame",
+      "route": null,
       "description": "Attribution read from blame, log -L and commit trailers",
       "location": {
         "file": "src/cli/index.ts",
@@ -4243,6 +4296,7 @@
       "source": "GitRepo",
       "target": "#cli",
       "mechanism": "attachBlame",
+      "route": null,
       "description": "report --blame attaches attribution before the metadata spread, so the shared records carry it",
       "location": {
         "file": "src/cli/index.ts",
@@ -4253,6 +4307,7 @@
       "source": "#cli",
       "target": "#codegraph",
       "mechanism": "loadWorklist",
+      "route": null,
       "description": "Project root; the graph answers with ranked entry points or a status",
       "location": {
         "file": "src/cli/index.ts",
@@ -4263,6 +4318,7 @@
       "source": "#cli",
       "target": "#gate",
       "mechanism": "runGate",
+      "route": null,
       "description": "The model before and after the agent",
       "location": {
         "file": "src/cli/index.ts",
@@ -4273,6 +4329,7 @@
       "source": "ThreatModel",
       "target": "#cli",
       "mechanism": "findUnmitigatedPaths",
+      "route": null,
       "description": "Which assets sit on an undefended path, for the ranking",
       "location": {
         "file": "src/cli/index.ts",
@@ -4283,6 +4340,7 @@
       "source": "ScanReport",
       "target": "#cli",
       "mechanism": "importScan",
+      "route": null,
       "description": "cxg findings recorded as confirmations, joined to claims",
       "location": {
         "file": "src/cli/index.ts",
@@ -4293,6 +4351,7 @@
       "source": "GitRepo",
       "target": "#cli",
       "mechanism": "attachBlame",
+      "route": null,
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
@@ -4303,6 +4362,7 @@
       "source": "GitRepo",
       "target": "#cli",
       "mechanism": "loadSince",
+      "route": null,
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
@@ -4313,6 +4373,7 @@
       "source": "CodeGraphServer",
       "target": "#codegraph",
       "mechanism": "stdout",
+      "route": null,
       "description": "JSON answers to routes, attack_surface, reachable_sinks, entry_reach",
       "location": {
         "file": "src/codegraph/index.ts",
@@ -4323,6 +4384,7 @@
       "source": "#codegraph",
       "target": "CodeGraphServer",
       "mechanism": "spawn",
+      "route": null,
       "description": "Project root and symbol address as argv / tools/call arguments",
       "location": {
         "file": "src/codegraph/index.ts",
@@ -4333,6 +4395,7 @@
       "source": "SourceFiles",
       "target": "#dashboard",
       "mechanism": "readFileSync",
+      "route": null,
       "description": "Code snippet reads",
       "location": {
         "file": "src/dashboard/annotations.ts",
@@ -4343,6 +4406,7 @@
       "source": "LedgerFile",
       "target": "#dashboard",
       "mechanism": "readLedger",
+      "route": null,
       "description": "Claim states for the badges and the stale-claims action",
       "location": {
         "file": "src/dashboard/data.ts",
@@ -4353,6 +4417,7 @@
       "source": "ThreatModel",
       "target": "#dashboard",
       "mechanism": "generateThreatGraph",
+      "route": null,
       "description": "Threat model relationships rendered as Mermaid source",
       "location": {
         "file": "src/dashboard/diagrams.ts",
@@ -4363,6 +4428,7 @@
       "source": "ThreatModel",
       "target": "#dashboard",
       "mechanism": "buildExploreData",
+      "route": null,
       "description": "Model narrowed into one budgeted answer per view",
       "location": {
         "file": "src/dashboard/explore.ts",
@@ -4373,6 +4439,7 @@
       "source": "GitRepo",
       "target": "#dashboard",
       "mechanism": "loadSince",
+      "route": null,
       "description": "The model at --since <ref>, diffed against the one rendered",
       "location": {
         "file": "src/dashboard/generate.ts",
@@ -4383,6 +4450,7 @@
       "source": "ThreatModel",
       "target": "#dashboard",
       "mechanism": "computeStats",
+      "route": null,
       "description": "Model statistics input",
       "location": {
         "file": "src/dashboard/generate.ts",
@@ -4393,6 +4461,7 @@
       "source": "SourceFiles",
       "target": "#dashboard",
       "mechanism": "readFileSync",
+      "route": null,
       "description": "Code snippet reads",
       "location": {
         "file": "src/dashboard/generate.ts",
@@ -4403,6 +4472,7 @@
       "source": "LedgerFile",
       "target": "#dashboard",
       "mechanism": "computeLedgerStates",
+      "route": null,
       "description": "Claim states for badges and the stale-claims action",
       "location": {
         "file": "src/dashboard/generate.ts",
@@ -4413,6 +4483,7 @@
       "source": "GitConfig",
       "target": "#dashboard",
       "mechanism": "detectRepoLinks",
+      "route": null,
       "description": "The remote's web host, for file and commit links",
       "location": {
         "file": "src/dashboard/generate.ts",
@@ -4423,6 +4494,7 @@
       "source": "#dashboard",
       "target": "HTML",
       "mechanism": "return",
+      "route": null,
       "description": "Generated HTML output",
       "location": {
         "file": "src/dashboard/generate.ts",
@@ -4433,6 +4505,7 @@
       "source": "LedgerFile",
       "target": "#dashboard",
       "mechanism": "readHypotheses",
+      "route": null,
       "description": "Outcomes for the badges, the drawer and the open count",
       "location": {
         "file": "src/dashboard/generate.ts",
@@ -4443,6 +4516,7 @@
       "source": "ThreatModel",
       "target": "#dashboard",
       "mechanism": "generateDashboardHTML",
+      "route": null,
       "description": "Model to HTML transformation",
       "location": {
         "file": "src/dashboard/index.ts",
@@ -4453,6 +4527,7 @@
       "source": "GitConfig",
       "target": "#dashboard",
       "mechanism": "readFileSync",
+      "route": null,
       "description": "remote.origin.url read from .git/config (or the worktree's gitdir config)",
       "location": {
         "file": "src/dashboard/links.ts",
@@ -4463,6 +4538,7 @@
       "source": "#dashboard",
       "target": "DashboardHTML",
       "mechanism": "RepoLinks",
+      "route": null,
       "description": "Web, file and commit links embedded in the generated dashboard",
       "location": {
         "file": "src/dashboard/links.ts",
@@ -4473,6 +4549,7 @@
       "source": "ThreatModel",
       "target": "#dashboard",
       "mechanism": "buildClaims",
+      "route": null,
       "description": "Records joined with coverage, ledger state and attribution into table rows",
       "location": {
         "file": "src/dashboard/pages/context.ts",
@@ -4483,6 +4560,7 @@
       "source": "DiagramSource",
       "target": "#dashboard",
       "mechanism": "checkRenderBudget",
+      "route": null,
       "description": "Generated Mermaid text measured before it is written or served",
       "location": {
         "file": "src/dashboard/render-budget.ts",
@@ -4493,6 +4571,7 @@
       "source": "GitRepo",
       "target": "#dashboard",
       "mechanism": "parseAtRef",
+      "route": null,
       "description": "The threat model as it was at the ref",
       "location": {
         "file": "src/dashboard/since.ts",
@@ -4503,6 +4582,7 @@
       "source": "ThreatModel",
       "target": "#diff",
       "mechanism": "diffModels",
+      "route": null,
       "description": "Before/after models compared into a structured delta",
       "location": {
         "file": "src/diff/engine.ts",
@@ -4513,6 +4593,7 @@
       "source": "GitRef",
       "target": "#diff",
       "mechanism": "execSync",
+      "route": null,
       "description": "Git command execution",
       "location": {
         "file": "src/diff/git.ts",
@@ -4523,6 +4604,7 @@
       "source": "#diff",
       "target": "TempDir",
       "mechanism": "writeFileSync",
+      "route": null,
       "description": "Extracted file writes",
       "location": {
         "file": "src/diff/git.ts",
@@ -4533,6 +4615,7 @@
       "source": "#diff",
       "target": "ThreatModel",
       "mechanism": "parseProject",
+      "route": null,
       "description": "Parsed model output",
       "location": {
         "file": "src/diff/git.ts",
@@ -4543,6 +4626,7 @@
       "source": "GitRef",
       "target": "#diff",
       "mechanism": "execSync",
+      "route": null,
       "description": "Ref input to git diff --name-only",
       "location": {
         "file": "src/diff/git.ts",
@@ -4553,6 +4637,7 @@
       "source": "#diff",
       "target": "ChangedFileList",
       "mechanism": "return",
+      "route": null,
       "description": "Repo-relative paths used for entitlement staleness",
       "location": {
         "file": "src/diff/git.ts",
@@ -4563,6 +4648,7 @@
       "source": "GitRef",
       "target": "#diff",
       "mechanism": "parseAtRef",
+      "route": null,
       "description": "Git reference input",
       "location": {
         "file": "src/diff/index.ts",
@@ -4573,6 +4659,7 @@
       "source": "ThreatModel",
       "target": "#gate",
       "mechanism": "runGate",
+      "route": null,
       "description": "The model before and after an agent run",
       "location": {
         "file": "src/gate/gate.ts",
@@ -4583,6 +4670,7 @@
       "source": "#gate",
       "target": "AgentPrompt",
       "mechanism": "buildGateFollowUp",
+      "route": null,
       "description": "The violations as a re-prompt",
       "location": {
         "file": "src/gate/gate.ts",
@@ -4593,6 +4681,7 @@
       "source": "#gate",
       "target": "SourceFiles",
       "mechanism": "stripViolations",
+      "route": null,
       "description": "Rejected annotation lines removed",
       "location": {
         "file": "src/gate/gate.ts",
@@ -4603,6 +4692,7 @@
       "source": "ThreatModel",
       "target": "#gate",
       "mechanism": "lintAnnotations",
+      "route": null,
       "description": "Claims and their descriptions",
       "location": {
         "file": "src/gate/lint.ts",
@@ -4613,6 +4703,7 @@
       "source": "DiagramSource",
       "target": "#dashboard",
       "mechanism": "measureLegibility",
+      "route": null,
       "description": "Generated Mermaid text measured for node and edge count before a view decides to draw it",
       "location": {
         "file": "src/graph/legibility.ts",
@@ -4623,6 +4714,7 @@
       "source": "ThreatModel",
       "target": "#dashboard",
       "mechanism": "growWithinBudget",
+      "route": null,
       "description": "Model narrowed to a neighbourhood that fits the legibility budget",
       "location": {
         "file": "src/graph/views.ts",
@@ -4633,6 +4725,7 @@
       "source": "ThreatModel",
       "target": "#cli",
       "mechanism": "classifyHypotheses",
+      "route": null,
       "description": "Claims joined to the ledger by key",
       "location": {
         "file": "src/hypothesis/classify.ts",
@@ -4643,6 +4736,7 @@
       "source": "#cli",
       "target": "ThreatModel",
       "mechanism": "attachHypotheses",
+      "route": null,
       "description": "The state stamped onto each exposure for the dashboard, the report and the lint",
       "location": {
         "file": "src/hypothesis/classify.ts",
@@ -4653,6 +4747,7 @@
       "source": "ScanReport",
       "target": "#cli",
       "mechanism": "importScan",
+      "route": null,
       "description": "cxg findings joined to claims",
       "location": {
         "file": "src/hypothesis/commands.ts",
@@ -4663,6 +4758,7 @@
       "source": "#cli",
       "target": "SourceFiles",
       "mechanism": "writeConfirmedLine",
+      "route": null,
       "description": "The @confirmed line, on --write",
       "location": {
         "file": "src/hypothesis/commands.ts",
@@ -4673,6 +4769,7 @@
       "source": "LedgerFile",
       "target": "#cli",
       "mechanism": "readHypotheses",
+      "route": null,
       "description": "Outcomes read back for classification",
       "location": {
         "file": "src/hypothesis/ledger.ts",
@@ -4683,6 +4780,7 @@
       "source": "#cli",
       "target": "LedgerFile",
       "mechanism": "writeHypotheses",
+      "route": null,
       "description": "Outcomes recorded",
       "location": {
         "file": "src/hypothesis/ledger.ts",
@@ -4693,6 +4791,7 @@
       "source": "ProjectRoot",
       "target": "#init",
       "mechanism": "detectProject",
+      "route": null,
       "description": "Project detection input",
       "location": {
         "file": "src/init/detect.ts",
@@ -4703,6 +4802,7 @@
       "source": "ProjectRoot",
       "target": "#init",
       "mechanism": "options.root",
+      "route": null,
       "description": "Project root input",
       "location": {
         "file": "src/init/index.ts",
@@ -4713,6 +4813,7 @@
       "source": "#init",
       "target": "AgentFiles",
       "mechanism": "writeFileSync",
+      "route": null,
       "description": "Agent instruction file writes",
       "location": {
         "file": "src/init/index.ts",
@@ -4723,6 +4824,7 @@
       "source": "#init",
       "target": "ConfigFile",
       "mechanism": "writeFileSync",
+      "route": null,
       "description": "Config file write",
       "location": {
         "file": "src/init/index.ts",
@@ -4733,6 +4835,7 @@
       "source": "DefinitionsFile",
       "target": "#init",
       "mechanism": "definitionsArePopulated",
+      "route": null,
       "description": "Existing declarations read to decide preservation",
       "location": {
         "file": "src/init/preserve.ts",
@@ -4743,6 +4846,7 @@
       "source": "ConfigFile",
       "target": "#init",
       "mechanism": "configIsCustomised",
+      "route": null,
       "description": "Existing config compared against template defaults",
       "location": {
         "file": "src/init/preserve.ts",
@@ -4753,6 +4857,7 @@
       "source": "MCPClient",
       "target": "#mcp",
       "mechanism": "guardlink_context",
+      "route": null,
       "description": "File path input",
       "location": {
         "file": "src/mcp/context.ts",
@@ -4763,6 +4868,7 @@
       "source": "ThreatModel",
       "target": "#mcp",
       "mechanism": "fileContext",
+      "route": null,
       "description": "Model grouped by location.file",
       "location": {
         "file": "src/mcp/context.ts",
@@ -4773,6 +4879,7 @@
       "source": "ThreatModel",
       "target": "#mcp",
       "mechanism": "buildEnvelope",
+      "route": null,
       "description": "Model content hashed for the freshness envelope",
       "location": {
         "file": "src/mcp/freshness.ts",
@@ -4783,6 +4890,7 @@
       "source": "GitRepo",
       "target": "#mcp",
       "mechanism": "readFileSync",
+      "route": null,
       "description": "HEAD read directly from .git, no subprocess",
       "location": {
         "file": "src/mcp/freshness.ts",
@@ -4793,6 +4901,7 @@
       "source": "MCPClient",
       "target": "#mcp",
       "mechanism": "stdio",
+      "route": null,
       "description": "MCP protocol transport",
       "location": {
         "file": "src/mcp/index.ts",
@@ -4803,6 +4912,7 @@
       "source": "ConfigFile",
       "target": "#mcp",
       "mechanism": "readFileSync",
+      "route": null,
       "description": "Annotation mode read for the initialize instructions",
       "location": {
         "file": "src/mcp/instructions.ts",
@@ -4813,6 +4923,7 @@
       "source": "QueryString",
       "target": "#mcp",
       "mechanism": "lookup",
+      "route": null,
       "description": "Query input path",
       "location": {
         "file": "src/mcp/lookup.ts",
@@ -4823,6 +4934,7 @@
       "source": "MCPClient",
       "target": "#mcp",
       "mechanism": "tool_call",
+      "route": null,
       "description": "Tool invocation input",
       "location": {
         "file": "src/mcp/server.ts",
@@ -4833,6 +4945,7 @@
       "source": "#mcp",
       "target": "FileSystem",
       "mechanism": "writeFile",
+      "route": null,
       "description": "Report/dashboard output",
       "location": {
         "file": "src/mcp/server.ts",
@@ -4843,6 +4956,7 @@
       "source": "#mcp",
       "target": "#llm-client",
       "mechanism": "generateThreatReport",
+      "route": null,
       "description": "LLM API call path",
       "location": {
         "file": "src/mcp/server.ts",
@@ -4853,6 +4967,7 @@
       "source": "#mcp",
       "target": "MCPClient",
       "mechanism": "resource",
+      "route": null,
       "description": "Threat model data output",
       "location": {
         "file": "src/mcp/server.ts",
@@ -4863,6 +4978,7 @@
       "source": "#mcp",
       "target": "#codegraph",
       "mechanism": "guardlink_worklist",
+      "route": null,
       "description": "Ranked entry points for an annotating agent, when a code graph is installed",
       "location": {
         "file": "src/mcp/server.ts",
@@ -4873,6 +4989,7 @@
       "source": "#mcp",
       "target": "#codegraph",
       "mechanism": "guardlink_reach",
+      "route": null,
       "description": "Client-supplied symbol address, passed to the graph as one argument",
       "location": {
         "file": "src/mcp/server.ts",
@@ -4883,6 +5000,7 @@
       "source": "GitRepo",
       "target": "#mcp",
       "mechanism": "computeBlame",
+      "route": null,
       "description": "Attribution read from blame, log -L and commit trailers for the connected agent",
       "location": {
         "file": "src/mcp/server.ts",
@@ -4893,6 +5011,7 @@
       "source": "ThreatModel",
       "target": "#mcp",
       "mechanism": "selectSubgraph",
+      "route": null,
       "description": "Model filtered to a neighbourhood",
       "location": {
         "file": "src/mcp/subgraph.ts",
@@ -4903,6 +5022,7 @@
       "source": "FilePath",
       "target": "#suggest",
       "mechanism": "readFileSync",
+      "route": null,
       "description": "File read path",
       "location": {
         "file": "src/mcp/suggest.ts",
@@ -4913,6 +5033,7 @@
       "source": "#suggest",
       "target": "Suggestions",
       "mechanism": "suggestAnnotations",
+      "route": null,
       "description": "Suggestion output",
       "location": {
         "file": "src/mcp/suggest.ts",
@@ -4923,6 +5044,7 @@
       "source": "ThreatModel",
       "target": "#parser",
       "mechanism": "findAcceptanceDefects",
+      "route": null,
       "description": "Acceptances read and checked against policy",
       "location": {
         "file": "src/parser/acceptance.ts",
@@ -4933,6 +5055,7 @@
       "source": "ThreatModel",
       "target": "#parser",
       "mechanism": "findExpiringAcceptances",
+      "route": null,
       "description": "Qualifying acceptances read for how much of their horizon is left",
       "location": {
         "file": "src/parser/acceptance.ts",
@@ -4943,6 +5066,7 @@
       "source": "ConfigFile",
       "target": "#parser",
       "mechanism": "readAcceptancePolicy",
+      "route": null,
       "description": "Per-project policy thresholds, read only",
       "location": {
         "file": "src/parser/acceptance.ts",
@@ -4953,6 +5077,7 @@
       "source": "ThreatModel",
       "target": "#parser",
       "mechanism": "computeAnnotationHash",
+      "route": null,
       "description": "Model content read for hashing",
       "location": {
         "file": "src/parser/annotation-hash.ts",
@@ -4963,6 +5088,7 @@
       "source": "ThreatModel",
       "target": "#parser",
       "mechanism": "detectAnnotationMode",
+      "route": null,
       "description": "Annotation locations read to infer storage mode",
       "location": {
         "file": "src/parser/annotation-mode.ts",
@@ -4973,6 +5099,7 @@
       "source": "MCPClient",
       "target": "#parser",
       "mechanism": "applyAnnotations",
+      "route": null,
       "description": "Structured annotation write path",
       "location": {
         "file": "src/parser/apply-annotations.ts",
@@ -4983,6 +5110,7 @@
       "source": "#parser",
       "target": "FileSystem",
       "mechanism": "writeFileSync",
+      "route": null,
       "description": "Sidecar append",
       "location": {
         "file": "src/parser/apply-annotations.ts",
@@ -4993,6 +5121,7 @@
       "source": "ThreatModel",
       "target": "#parser",
       "mechanism": "canonicalizeModelOrder",
+      "route": null,
       "description": "Model ordered deterministically before emission",
       "location": {
         "file": "src/parser/canonical-order.ts",
@@ -5003,6 +5132,7 @@
       "source": "ProjectRoot",
       "target": "#parser",
       "mechanism": "fast-glob",
+      "route": null,
       "description": "File discovery path",
       "location": {
         "file": "src/parser/clear.ts",
@@ -5013,6 +5143,7 @@
       "source": "#parser",
       "target": "SourceFiles",
       "mechanism": "writeFile",
+      "route": null,
       "description": "Modified file write path",
       "location": {
         "file": "src/parser/clear.ts",
@@ -5023,16 +5154,18 @@
       "source": "ThreatModel",
       "target": "#parser",
       "mechanism": "isCovered",
+      "route": null,
       "description": "Every unmitigated-exposure answer in the product routes through this predicate",
       "location": {
         "file": "src/parser/coverage.ts",
-        "line": 81
+        "line": 97
       }
     },
     {
       "source": "ProjectRoot",
       "target": "#parser",
       "mechanism": "fast-glob",
+      "route": null,
       "description": "Directory metadata scan for cache validity",
       "location": {
         "file": "src/parser/fingerprint.ts",
@@ -5043,6 +5176,7 @@
       "source": "SourceFile",
       "target": "#parser",
       "mechanism": "resolveGalPath",
+      "route": null,
       "description": "Source path mapped to its annotation sidecar",
       "location": {
         "file": "src/parser/gal-path.ts",
@@ -5053,6 +5187,7 @@
       "source": "ThreatModel",
       "target": "#parser",
       "mechanism": "checkHandoff",
+      "route": null,
       "description": "Live model hashed and compared against the exported one",
       "location": {
         "file": "src/parser/handoff.ts",
@@ -5063,6 +5198,7 @@
       "source": "ExportFile",
       "target": "#parser",
       "mechanism": "readFileSync",
+      "route": null,
       "description": "The JSON export consumers read, re-read here only for its provenance stamp",
       "location": {
         "file": "src/parser/handoff.ts",
@@ -5073,6 +5209,7 @@
       "source": "LedgerFile",
       "target": "#parser",
       "mechanism": "readLedger",
+      "route": null,
       "description": "Recorded hashes and verifiers",
       "location": {
         "file": "src/parser/ledger.ts",
@@ -5083,6 +5220,7 @@
       "source": "#cli",
       "target": "LedgerFile",
       "mechanism": "writeLedger",
+      "route": null,
       "description": "The only write the verify surfaces perform",
       "location": {
         "file": "src/parser/ledger.ts",
@@ -5093,6 +5231,7 @@
       "source": "ThreatModel",
       "target": "#parser",
       "mechanism": "migrateAnnotationMode",
+      "route": null,
       "description": "Model drives which files are rewritten",
       "location": {
         "file": "src/parser/migrate-mode.ts",
@@ -5103,6 +5242,7 @@
       "source": "#parser",
       "target": "FileSystem",
       "mechanism": "writeFileSync",
+      "route": null,
       "description": "Source rewrite and sidecar creation",
       "location": {
         "file": "src/parser/migrate-mode.ts",
@@ -5113,6 +5253,7 @@
       "source": "FilePath",
       "target": "#parser",
       "mechanism": "readFile",
+      "route": null,
       "description": "Disk read path",
       "location": {
         "file": "src/parser/parse-file.ts",
@@ -5123,6 +5264,7 @@
       "source": "#parser",
       "target": "Annotations",
       "mechanism": "parseString",
+      "route": null,
       "description": "Parsed annotation output",
       "location": {
         "file": "src/parser/parse-file.ts",
@@ -5133,6 +5275,7 @@
       "source": "#parser",
       "target": "ParseDiagnostics",
       "mechanism": "parseString",
+      "route": null,
       "description": "Lines that were meant to be annotations and were not read, named rather than dropped",
       "location": {
         "file": "src/parser/parse-file.ts",
@@ -5143,6 +5286,7 @@
       "source": "ProjectRoot",
       "target": "#parser",
       "mechanism": "fast-glob",
+      "route": null,
       "description": "Directory traversal path",
       "location": {
         "file": "src/parser/parse-project.ts",
@@ -5153,6 +5297,7 @@
       "source": "#parser",
       "target": "ThreatModel",
       "mechanism": "assembleModel",
+      "route": null,
       "description": "Aggregated threat model output",
       "location": {
         "file": "src/parser/parse-project.ts",
@@ -5163,16 +5308,18 @@
       "source": "AnnotationSource",
       "target": "#parser",
       "mechanism": "existsSync",
+      "route": null,
       "description": "Declared @source paths probed for existence",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 143
+        "line": 144
       }
     },
     {
       "source": "ThreatModel",
       "target": "#parser",
       "mechanism": "findAnchorDrift",
+      "route": null,
       "description": "Recorded anchors compared against current source",
       "location": {
         "file": "src/parser/reanchor.ts",
@@ -5182,7 +5329,19 @@
     {
       "source": "ThreatModel",
       "target": "#parser",
+      "mechanism": "buildRouteIndex",
+      "route": null,
+      "description": "Route @flows indexed by handler scope",
+      "location": {
+        "file": "src/parser/route.ts",
+        "line": 19
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#parser",
       "mechanism": "classifyClaims",
+      "route": null,
       "description": "Anchors on every relation record compared with the ledger",
       "location": {
         "file": "src/parser/verification.ts",
@@ -5193,6 +5352,7 @@
       "source": "LedgerFile",
       "target": "#parser",
       "mechanism": "classifyClaims",
+      "route": null,
       "description": "Recorded hashes, already read by the caller",
       "location": {
         "file": "src/parser/verification.ts",
@@ -5203,6 +5363,7 @@
       "source": "#cli",
       "target": "LedgerFile",
       "mechanism": "applyVerification",
+      "route": null,
       "description": "The ledger the verify surfaces write",
       "location": {
         "file": "src/parser/verify.ts",
@@ -5213,6 +5374,7 @@
       "source": "ThreatModel",
       "target": "#parser",
       "mechanism": "findUnmitigatedPaths",
+      "route": null,
       "description": "Reads flows, assets, mitigations and boundaries from the parsed model",
       "location": {
         "file": "src/paths/index.ts",
@@ -5223,6 +5385,7 @@
       "source": "FeatureName",
       "target": "#report",
       "mechanism": "filtered_by_features",
+      "route": null,
       "description": "A @feature name written in source reaches the diagram title",
       "location": {
         "file": "src/report/mermaid.ts",
@@ -5233,6 +5396,7 @@
       "source": "FeatureName",
       "target": "#report",
       "mechanism": "filtered_by_features",
+      "route": null,
       "description": "@feature names reach the title, every heading and the footer",
       "location": {
         "file": "src/report/report.ts",
@@ -5243,6 +5407,7 @@
       "source": "ThreatModel",
       "target": "#report",
       "mechanism": "generateReport",
+      "route": null,
       "description": "Model input",
       "location": {
         "file": "src/report/report.ts",
@@ -5253,6 +5418,7 @@
       "source": "#report",
       "target": "Markdown",
       "mechanism": "return",
+      "route": null,
       "description": "Report output",
       "location": {
         "file": "src/report/report.ts",
@@ -5263,6 +5429,7 @@
       "source": "ThreatModel",
       "target": "#report",
       "mechanism": "generateSequenceDiagram",
+      "route": null,
       "description": "Sequence diagram generation",
       "location": {
         "file": "src/report/sequence.ts",
@@ -5273,6 +5440,7 @@
       "source": "FeatureName",
       "target": "#report",
       "mechanism": "filtered_by_features",
+      "route": null,
       "description": "A @feature name written in source reaches the sequence diagram title",
       "location": {
         "file": "src/report/sequence.ts",
@@ -5283,6 +5451,7 @@
       "source": "AgentProposal",
       "target": "#cli",
       "mechanism": "proposeEntitlement",
+      "route": null,
       "description": "Agent-side proposal input",
       "location": {
         "file": "src/review/entitlements.ts",
@@ -5293,6 +5462,7 @@
       "source": "#cli",
       "target": "ProposalLedger",
       "mechanism": "writeFile",
+      "route": null,
       "description": "Proposal artifact output",
       "location": {
         "file": "src/review/entitlements.ts",
@@ -5303,6 +5473,7 @@
       "source": "ProposalLedger",
       "target": "#cli",
       "mechanism": "readFile",
+      "route": null,
       "description": "Proposal artifact input",
       "location": {
         "file": "src/review/entitlements.ts",
@@ -5313,6 +5484,7 @@
       "source": "#cli",
       "target": "SourceFiles",
       "mechanism": "applyProposalDecision",
+      "route": null,
       "description": "Accepted entitlement lands as an @entitles annotation",
       "location": {
         "file": "src/review/entitlements.ts",
@@ -5323,6 +5495,7 @@
       "source": "GitConfig",
       "target": "#cli",
       "mechanism": "execFileSync",
+      "route": null,
       "description": "Reads the local git identity to offer it as a prompt suggestion; never recorded unconfirmed",
       "location": {
         "file": "src/review/entitlements.ts",
@@ -5333,6 +5506,7 @@
       "source": "ThreatModel",
       "target": "#cli",
       "mechanism": "getReviewableExposures",
+      "route": null,
       "description": "Exposure list input",
       "location": {
         "file": "src/review/index.ts",
@@ -5343,6 +5517,7 @@
       "source": "#cli",
       "target": "SourceFiles",
       "mechanism": "writeFile",
+      "route": null,
       "description": "Annotation insertion output",
       "location": {
         "file": "src/review/index.ts",
@@ -5353,6 +5528,7 @@
       "source": "#cli",
       "target": "SourceFiles",
       "mechanism": "writeFile",
+      "route": null,
       "description": "Annotation insertion output",
       "location": {
         "file": "src/review/index.ts",
@@ -5363,6 +5539,7 @@
       "source": "SourceFiles",
       "target": "#parser",
       "mechanism": "attachAnchors",
+      "route": null,
       "description": "Annotated files re-read for structure",
       "location": {
         "file": "src/structure/attach.ts",
@@ -5373,6 +5550,7 @@
       "source": "SourceFile",
       "target": "#parser",
       "mechanism": "parseStructure",
+      "route": null,
       "description": "File content already read by the parser, parsed again for structure",
       "location": {
         "file": "src/structure/index.ts",
@@ -5383,6 +5561,7 @@
       "source": "GrammarFile",
       "target": "#parser",
       "mechanism": "Language.load",
+      "route": null,
       "description": "Bundled WASM read from the package's grammars/ directory",
       "location": {
         "file": "src/structure/runtime.ts",
@@ -5393,6 +5572,7 @@
       "source": "UserArgs",
       "target": "#tui",
       "mechanism": "args",
+      "route": null,
       "description": "Command argument input",
       "location": {
         "file": "src/tui/commands.ts",
@@ -5403,6 +5583,7 @@
       "source": "#tui",
       "target": "FileSystem",
       "mechanism": "writeFile",
+      "route": null,
       "description": "Report/config output",
       "location": {
         "file": "src/tui/commands.ts",
@@ -5413,6 +5594,7 @@
       "source": "#tui",
       "target": "#agent-launcher",
       "mechanism": "launchAgent",
+      "route": null,
       "description": "Agent spawn path",
       "location": {
         "file": "src/tui/commands.ts",
@@ -5423,6 +5605,7 @@
       "source": "#tui",
       "target": "#llm-client",
       "mechanism": "chatCompletion",
+      "route": null,
       "description": "LLM API call path",
       "location": {
         "file": "src/tui/commands.ts",
@@ -5433,16 +5616,18 @@
       "source": "GitRepo",
       "target": "#tui",
       "mechanism": "computeBlame",
+      "route": null,
       "description": "Attribution read from blame, log -L and commit trailers",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 999
+        "line": 1002
       }
     },
     {
       "source": "ConfigFile",
       "target": "#tui",
       "mechanism": "loadProjectConfig",
+      "route": null,
       "description": "Config load path",
       "location": {
         "file": "src/tui/config.ts",
@@ -5453,6 +5638,7 @@
       "source": "#tui",
       "target": "ConfigFile",
       "mechanism": "saveProjectConfig",
+      "route": null,
       "description": "Config save path",
       "location": {
         "file": "src/tui/config.ts",
@@ -5463,6 +5649,7 @@
       "source": "UserInput",
       "target": "#tui",
       "mechanism": "readline",
+      "route": null,
       "description": "Interactive command input",
       "location": {
         "file": "src/tui/index.ts",
@@ -5473,6 +5660,7 @@
       "source": "#tui",
       "target": "Commands",
       "mechanism": "dispatch",
+      "route": null,
       "description": "Command routing",
       "location": {
         "file": "src/tui/index.ts",
@@ -5483,6 +5671,7 @@
       "source": "RawStdin",
       "target": "#tui",
       "mechanism": "process.stdin",
+      "route": null,
       "description": "Raw keystroke input",
       "location": {
         "file": "src/tui/input.ts",
@@ -5493,6 +5682,7 @@
       "source": "#tui",
       "target": "Terminal",
       "mechanism": "process.stdout",
+      "route": null,
       "description": "ANSI escape sequence output",
       "location": {
         "file": "src/tui/input.ts",
@@ -5503,6 +5693,7 @@
       "source": "PackageJson",
       "target": "#cli",
       "mechanism": "readFileSync",
+      "route": null,
       "description": "Version string read from package.json",
       "location": {
         "file": "src/version.ts",
@@ -5513,6 +5704,7 @@
       "source": "RepoParseState",
       "target": "#estate-view",
       "mechanism": "estateReport",
+      "route": null,
       "description": "Each member repo's parse errors, warnings and unread annotation lines, carried from the merged report onto the estate answer",
       "location": {
         "file": "src/workspace/estate.ts",
@@ -5523,6 +5715,7 @@
       "source": "MergedReportFile",
       "target": "#estate-view",
       "mechanism": "readMergedReport",
+      "route": null,
       "description": "The JSON `guardlink merge --json` wrote, read back",
       "location": {
         "file": "src/workspace/estate.ts",
@@ -5533,6 +5726,7 @@
       "source": "#estate-view",
       "target": "#cli",
       "mechanism": "estateReport",
+      "route": null,
       "description": "Open exposures, reproduced exploits, and how much of the estate was actually read",
       "location": {
         "file": "src/workspace/estate.ts",
@@ -5543,6 +5737,7 @@
       "source": "UserArgs",
       "target": "#workspace-link",
       "mechanism": "linkProject",
+      "route": null,
       "description": "CLI args to workspace scaffolding",
       "location": {
         "file": "src/workspace/link.ts",
@@ -5553,6 +5748,7 @@
       "source": "#workspace-link",
       "target": "AgentFiles",
       "mechanism": "updateAgentWorkspaceContext",
+      "route": null,
       "description": "Inject workspace context",
       "location": {
         "file": "src/workspace/link.ts",
@@ -5563,6 +5759,7 @@
       "source": "ReportJSON",
       "target": "#merge-engine",
       "mechanism": "mergeReports",
+      "route": null,
       "description": "Per-repo reports feed into merge",
       "location": {
         "file": "src/workspace/merge.ts",
@@ -5573,6 +5770,7 @@
       "source": "#merge-engine",
       "target": "MergedReport",
       "mechanism": "mergeReports",
+      "route": null,
       "description": "Unified output",
       "location": {
         "file": "src/workspace/merge.ts",
@@ -5583,6 +5781,7 @@
       "source": "#merge-engine",
       "target": "#cli",
       "mechanism": "mergeVerdict",
+      "route": null,
       "description": "The exit code, decided once from the merged report and the paths that produced it",
       "location": {
         "file": "src/workspace/merge.ts",
@@ -5593,6 +5792,7 @@
       "source": "FileSystem",
       "target": "#merge-engine",
       "mechanism": "resolveReportPaths",
+      "route": null,
       "description": "Report paths discovered by expanding the caller's glob patterns against cwd",
       "location": {
         "file": "src/workspace/merge.ts",
@@ -5603,6 +5803,7 @@
       "source": "GitRepo",
       "target": "#report-metadata",
       "mechanism": "execSync",
+      "route": null,
       "description": "Git info extraction",
       "location": {
         "file": "src/workspace/metadata.ts",
@@ -5613,6 +5814,7 @@
       "source": "#report-metadata",
       "target": "ThreatModel",
       "mechanism": "populateMetadata",
+      "route": null,
       "description": "Metadata injection",
       "location": {
         "file": "src/workspace/metadata.ts",
@@ -5623,6 +5825,7 @@
       "source": "TagRegistry",
       "target": "#merge-engine",
       "mechanism": "buildOwnerScope",
+      "route": null,
       "description": "Recorded tag ownership becomes the namespace the coverage join is scoped by",
       "location": {
         "file": "src/workspace/owner-scope.ts",
@@ -6158,7 +6361,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3803
+        "line": 3806
       }
     },
     {
@@ -6338,7 +6541,7 @@
       "description": "Author identities printed to the terminal in the configured identity mode",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 1000
+        "line": 1003
       }
     },
     {
@@ -6726,7 +6929,7 @@
       }
     },
     {
-      "description": "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} derived from the asset's inbound @flows route so downstream HTTP consumers (e.g. cert-x-gen) can target the endpoint; emitted verbatim from the annotation, no base path assumed",
+      "description": "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} from the route @flows declared on the finding's own handler, else its file, else its asset (route_attribution says which), so downstream HTTP consumers can target the endpoint; emitted verbatim from the annotation, no base path assumed. When the model does not tie a finding to one route it carries route_attribution 'ambiguous' and route_candidates instead, never a guessed route",
       "location": {
         "file": "src/analyzer/sarif.ts",
         "line": 40
@@ -7093,14 +7296,14 @@
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3726
+        "line": 3729
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3804
+        "line": 3807
       }
     },
     {
@@ -7748,17 +7951,24 @@
       }
     },
     {
-      "description": "Inline annotations never carry parent_symbol (parse-file.ts populates it only from @source), so this rule is inert in every inline repo — measured: 0 of 74 exposures change state on guardlink, 0 of 61 on specter-v1, 2 of 11 on expense-api",
+      "description": "Inline annotations never carry parent_symbol (parse-file.ts populates it only from @source); they are sited by handler scope instead, read from the structure-layer anchor, so the rule now applies in inline repos too",
       "location": {
         "file": "src/parser/coverage.ts",
-        "line": 82
+        "line": 98
+      }
+    },
+    {
+      "description": "A location with no anchor (anchors: false, an unreadable file, a model from before anchors) is file-level and never narrowed — unknown can only fail to narrow, never invent a site",
+      "location": {
+        "file": "src/parser/coverage.ts",
+        "line": 99
       }
     },
     {
       "description": "Narrowing is one-directional by construction: coversExposure starts from the (asset, threat) match the old key computed and only ever subtracts. A refactor that made it additive would be a silent-wrong-answer path in the opposite direction",
       "location": {
         "file": "src/parser/coverage.ts",
-        "line": 83
+        "line": 100
       }
     },
     {
@@ -7808,6 +8018,13 @@
       "location": {
         "file": "src/parser/gal-path.ts",
         "line": 21
+      }
+    },
+    {
+      "description": "Pure functions over parsed locations; reads no files and no user input",
+      "location": {
+        "file": "src/parser/handler-scope.ts",
+        "line": 22
       }
     },
     {
@@ -7898,7 +8115,7 @@
       "description": "A traversing path is already a broken annotation and this is the diagnostic that says so; refusing to stat it would return the silence this function exists to remove",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 144
+        "line": 145
       }
     },
     {
@@ -7906,6 +8123,13 @@
       "location": {
         "file": "src/parser/reanchor.ts",
         "line": 22
+      }
+    },
+    {
+      "description": "Pure functions over the parsed model; the path is returned verbatim from the annotation and never resolved, fetched or joined to a base URL",
+      "location": {
+        "file": "src/parser/route.ts",
+        "line": 20
       }
     },
     {
@@ -8164,14 +8388,14 @@
       "description": "Non-mutating on purpose: ctx.model is reused by every later command, and /blame must not make /report carry attribution unasked",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 1001
+        "line": 1004
       }
     },
     {
       "description": "Derived query over @flows and @mitigates; every hop it prints is an existing annotation location, so a finding here cannot cite a line that was never written",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 1073
+        "line": 1076
       }
     },
     {
@@ -8225,8 +8449,8 @@
     }
   ],
   "coverage": {
-    "annotation_count": 845,
-    "coverage_percent": 85
+    "annotation_count": 849,
+    "coverage_percent": 86
   },
   "external_refs": []
 }
