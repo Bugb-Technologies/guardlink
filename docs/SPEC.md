@@ -616,16 +616,59 @@ func authMiddleware(next http.Handler) http.Handler {
 #### `@flows` — Data Flow Between Components
 
 ```
-@flows <source> -> <target> [via <mechanism>] [-- "<description>"]
+@flows <endpoint> -> <endpoint> [-> <endpoint> …] [via <mechanism>] [-- "<description>"]
 ```
 
-Declares a data or control flow between two components. The `->` operator is required and indicates direction.
+Declares that data or control moves from one component to another. The `->` operator is required and indicates direction.
 
 ```java
 // @flows App.Frontend -> App.API via HTTPS/443 -- "All API calls over TLS 1.3"
 // @flows App.API -> Infrastructure.Database via TLS/5432 -- "PostgreSQL wire protocol over TLS"
 // @flows App.API -> External.S3 via HTTPS -- "File uploads sent to S3 bucket"
 ```
+
+This section is the definition of `@flows`. Every form below is accepted by the reference parser, and a conforming reader MUST accept it and produce the records it describes. A reader that drops a conforming flow does not conform. The machine-readable conformance corpus in [`conformance/`](../conformance/README.md) pins each rule here to annotation text in and expected records out.
+
+**Endpoints.** Each `<endpoint>` is one of four forms, and its text is kept exactly as written (only the quotes of a quoted endpoint are removed):
+
+| Form | Example | Means |
+|---|---|---|
+| `#id` | `#orders` | The asset declared with that identifier (§2.3) |
+| `#repo.id` | `#billing.charge` | A repository-qualified tag: the identifier `charge` in the sibling repository `billing`. It is **not** a sub-component of `#billing`. Unresolved without a workspace, where `guardlink validate` reports it as a dangling reference |
+| `Dotted.Path` | `App.API`, `api.auth` | A component path (§2.2). Resolves to the declared asset with that path when there is one; otherwise it names an undeclared component (`User`, `ConfigFile`) and is still a valid endpoint |
+| `"quoted"` | `"SQLite db"`, `"/rest/user/login"` | Free text, for endpoints containing spaces or punctuation; `\"` and `\\` escapes apply (§2.11) |
+
+A reader MUST NOT shorten, re-case or resolve an endpoint when recording it: `#billing.charge` is recorded as `#billing.charge`, and `api.auth` as `api.auth`.
+
+**Chains.** A line with N endpoints declares N−1 **hops**, one flow record per arrow, in order: `#orders -> #billing -> #legacy via ledger_id` is exactly the two records `#orders -> #billing` and `#billing -> #legacy`. Every hop carries the line's whole `via` mechanism and description, and the line's location. There is no chain record; a chain is only a way of writing several hops on one line. Commas do not separate flows — `A -> B, C -> D` is malformed.
+
+**Mechanism.** `via` is optional. When present, the mechanism is all the text after `via ` up to the ` -- "` that opens the description, or to the end of the line, with surrounding whitespace trimmed. It may contain spaces, dots, slashes and punctuation: `via TLS 1.3`, `via TypeORM.findOne`, `via POST./restore (multipart)` are all single mechanisms. A flow **without** `via` is a complete flow whose channel is unstated; its mechanism is `null`, and it takes part in the data-flow graph, the diagrams and undefended-path analysis exactly as a flow with one does. A reader MUST NOT drop it.
+
+**Route channels.** A mechanism that begins `METHOD./path` declares an HTTP route — the endpoint a request reaches the target through:
+
+```python
+# @flows #client -> #orders via GET./orders/<id> -- "Order lookup by id"
+# @flows #client -> #orders via post./pay?amount (json body)
+```
+
+`METHOD` is one of `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`, in any case, and is recorded upper-cased. The path is every non-space character after `METHOD.`, which MUST begin with `/`, cut at the first `?` (a query hint, not part of the path) and with any parenthesised `(…)` note removed. It is recorded verbatim — path parameters such as `<id>`, `{id}` or `:id` are kept as written, nothing is decoded, and no base path is assumed. The two examples above declare `GET /orders/<id>` and `POST /pay`. A mechanism that does not begin this way (`HTTPS`, `tar.NewReader`, `TLS 1.3`) declares no route. Which claims a route reaches is defined by handler scope (§3.6).
+
+**Sidecar files.** In a standalone `.gal` file a flow is attributed to the `@source` block above it (§2.1): its `file`, `line` and handler are the `@source` file, line and `symbol:`, and the `.gal` file and line it was written on are recorded as `origin_file` and `origin_line` (§5.2). A sidecar flow is the same claim as the inline flow it would be written as at that source location, and a reader MUST either read `.gal` files or read the exported model (§5) that contains them; a reader that scans only source comments sees none of them.
+
+**Records.** Each hop becomes one entry in the model's `flows` array (§5.1):
+
+```json
+{
+  "source": "#client",
+  "target": "#orders",
+  "mechanism": "GET./orders/<id>",
+  "route": { "method": "GET", "path": "/orders/<id>" },
+  "description": "Order lookup by id",
+  "location": { "file": "app/orders.py", "line": 12 }
+}
+```
+
+`mechanism`, `route` and `description` are `null` (or absent) when not declared. `route` is derived from `mechanism` by the rule above, so it is not part of the annotation hash (§8.2.2); a model written before `route` existed omits it, and a reader of such a model applies the route-channel rule to `mechanism` itself.
 
 #### `@boundary` — Trust Boundary
 
@@ -781,6 +824,59 @@ Implementations claiming Level 4 conformance (§9) must:
 
 Non-conforming tools are not bound by this requirement, but the annotation serves as a clear signal of developer intent regardless of tooling.
 
+### 3.6. Handler Scope
+
+Every annotation is attached to code: the declaration or statement directly beneath it, recorded as its `anchor` (§5.2). A claim's **handler scope** is that anchor's line range when the anchor names code — scope `symbol` or `block`. A claim is **file-level** when its anchor has scope `file`, or when no anchor was resolved. One handler **encloses** another when both are in the same file and the second's lines lie within the first's: a handler encloses itself, and a class encloses its methods, but two sibling functions never enclose each other.
+
+Handler scope answers two questions, and every surface — `validate`, `ci`, `status`, `sarif`, the dashboard and the MCP tools — answers them the same way.
+
+#### 3.6.1. Which exposures a mitigation covers
+
+A `@mitigates` covers an `@exposes` when both name the same asset and the same threat (a declared asset's `#id` and its dotted path are the same asset), **unless** the two are in the same file and either
+
+- both carry a sidecar `symbol:` (`parent_symbol`) and the two names differ, or
+- both have a handler scope and the mitigation's handler does not enclose the exposure's.
+
+An `@accepts` covers by the same rule, and additionally only in its own file and only until it expires (§3.2, `@accepts`).
+
+```python
+from app import db
+
+# @exposes #orders to #idor [high] -- "no ownership check on read"
+def get_order(order_id): ...
+
+# @exposes #orders to #idor [high] -- "no ownership check on delete"
+def delete_order(order_id): ...
+
+# @mitigates #orders against #idor using #owner-check -- "owner checked before update"
+def update_order(order_id, user): ...
+```
+
+Both exposures stay open: the mitigation is attached to `update_order`, which encloses neither `get_order` nor `delete_order`. In full:
+
+| The mitigation is attached to… | …and the exposure to… | Covered? |
+|---|---|---|
+| the same handler | — | yes |
+| a class | a method of that class | yes |
+| one handler | a sibling handler in the same file | **no** |
+| a method | its class | **no** |
+| the file (a module header) | anything in that file | yes |
+| one handler | the file (a module header) | yes |
+| any code in another file | anything | yes |
+
+The last row is deliberate. A real control commonly runs at a trust boundary in one file and defends code downstream of it in another, and GuardLink has no call graph from which to say that it does not. Narrowing applies only where the model itself shows the author distinguishing two sites in one file. To state that a control covers a whole file, write the `@mitigates` in the file's module header.
+
+#### 3.6.2. Which route reaches a claim
+
+A route `@flows` (§3.2, route channels) belongs to the handler it is declared on. For a claim on asset X, the route that reaches it is decided by the first step below that finds any route; routes naming the same method and path count once, and when a step finds more than one distinct route the answer is **ambiguous**, with every one of them as a candidate, rather than any one of them:
+
+1. **`handler`** — routes declared on the claim's handler, or on code enclosing it.
+2. **`file`** — routes declared at file level in the claim's file.
+3. **`file`** — for a file-level claim, routes declared on any handler in its file. A claim that has a handler of its own, in a file whose routes are all declared on *other* handlers, is **ambiguous**: none of those routes is its own, and any one of them may or may not reach it.
+4. **`asset`** — when the claim's file declares no route at all, the routes whose target is X, anywhere in the model.
+
+A claim no step reaches has no route. SARIF carries the answer on each exposure and confirmed result (§6.1).
+
 ---
 
 ## 4. ThreatSpec Compatibility
@@ -930,7 +1026,8 @@ Every annotation carries a source location:
 - `file`: Relative path from project root
 - `line`: 1-indexed line number of the annotation comment
 - `end_line`: For block annotations (`@shield:begin/end`), the closing line
-- `parent_symbol`: Best-effort detection of the enclosing function, method, or class name. `null` when detection fails. Tools must not rely on this field for correctness — it is metadata for human readability.
+- `parent_symbol`: The `symbol:` named by a sidecar's `@source` block; `null` for inline annotations and for a `@source` without one. Handler scope (§3.6) reads it.
+- `anchor`: The code beneath the annotation, as the reference parser's structure layer resolved it — `{ "scope": "symbol" | "block" | "file", "symbol", "start_line", "end_line", "hash", "reason"? }`. A comment binds to the next declaration or statement below it; the first comment in a file, a comment directly above imports, and any annotation in a language with no grammar bind to the whole file (scope `file`). A sidecar annotation binds to the `@source` block's `symbol:` when it names one, and otherwise to its `line` read the same way. `null` when the file could not be read; absent when anchors were not resolved. Excluded from the annotation hash. Handler scope (§3.6) is defined over it.
 - `origin_file`: For externalized `.gal` annotations, the physical annotation file where the GAL line lives
 - `origin_line`: For externalized `.gal` annotations, the 1-indexed line in the `.gal` file where the annotation was declared
 
@@ -970,6 +1067,16 @@ GuardLink annotations map naturally to SARIF 2.1.0 (Static Analysis Results Inte
 `@entitles` is deliberately absent from this mapping. Two annotations already remove an exposure from the export (`@mitigates`, `@accepts`), and an exposure hidden from the export cannot be tested. Entitlement is a claim about *purpose* that no probe can verify, so it must never be the third such mechanism: a conforming exporter MUST produce **byte-identical `runs[].results` and `runs[].tool`** for a model with entitlements and the same model without them. Only the downstream *recommendation* may change (§3.2).
 
 This was previously stated as byte-identical SARIF *documents*, and the narrower wording is the accurate one rather than a relaxation. `runs[].properties` carries provenance — the `annotation_hash` naming the annotation set the export was cut from — and an `@entitles` **is** an annotation, so a hash that could not see one would report a model whose entitlements had been rewritten as unchanged. That is the silent all-clear §2 exists to prevent, and the reason the annotation hash was taught about entitlements in the first place. The invariant that matters is the one the table above states literally: no result, no suppression, and no property **on any result**. Provenance is not a finding.
+
+**Routes.** Each `@exposes` and `@confirmed` result names the HTTP route that reaches it, decided by §3.6.2, in its `properties`:
+
+| §3.6.2 answer | `properties` |
+|---|---|
+| one route | `codegraph_reachability: { "http_method", "http_path" }` and `route_attribution`: `"handler"`, `"file"` or `"asset"` — the step that found it |
+| ambiguous | `route_attribution: "ambiguous"` and `route_candidates: [{ "http_method", "http_path", "file", "line" }, …]`, and **no** `codegraph_reachability` |
+| none | neither property |
+
+A consumer that probes the endpoint in `codegraph_reachability` is told which step produced it, and is never handed a guessed route: an ambiguous result offers the candidates instead.
 
 ### 6.2. Severity Mapping
 
@@ -1806,7 +1913,7 @@ CONNECT
   @exposes    <asset> to <threat> [severity] [cwe:ID] -- "description"
   @accepts    <threat> on <asset> -- "description"
   @transfers  <threat> from <source> to <target> -- "description"
-  @flows      <source> -> <target> [via <mechanism>] -- "description"
+  @flows      <source> -> <target> [-> <next> …] [via <mechanism>] -- "description"
   @boundary   between <asset-a> and <asset-b> (#id) -- "description"
   @boundary   <asset-a> | <asset-b> (#id) -- "description"
 
@@ -1864,7 +1971,7 @@ mitigates_args   = component_path SP "against" SP threat_ref [ SP "using" SP con
 exposes_args     = component_path SP "to" SP threat_ref ;
 accepts_args     = threat_ref SP "on" SP component_path ;
 transfers_args   = threat_ref SP "from" SP component_path SP "to" SP component_path ;
-flows_args       = component_path SP "->" SP component_path [ SP "via" SP mechanism ] ;
+flows_args       = endpoint SP "->" SP endpoint { SP "->" SP endpoint } [ SP "via" SP mechanism ] ;  (* one record per "->" *)
 boundary_args    = [ "between" SP ] component_path SP "and" SP component_path [ SP id_def ]
                  | component_path SP "|" SP component_path [ SP id_def ] ;
 validates_args   = control_ref SP "for" SP component_path ;
@@ -1886,7 +1993,13 @@ identifier       = ( letter | digit | "_" | "-" ) { letter | digit | "_" | "-" }
 threat_ref       = id_ref | name ;
 control_ref      = id_ref | name ;
 owner_name       = identifier ;
-mechanism        = { any_char - "--" } ;
+mechanism        = route_channel [ SP { any_char } ] | { any_char } ;  (* ends before SP "--" SP '"' *)
+route_channel    = http_method "." "/" { path_char } ;
+http_method      = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS" ;  (* case-insensitive *)
+path_char        = any_char - SP ;  (* path ends at "?"; "(…)" notes are removed *)
+endpoint         = id_ref | qualified_ref | component_path | quoted_ref ;
+qualified_ref    = "#" identifier "." identifier { "." identifier } ;
+quoted_ref       = '"' { escaped_char } '"' ;
 classification   = "pii" | "phi" | "financial" | "secrets" | "internal" | "public" ;
 
 (* Qualifiers *)

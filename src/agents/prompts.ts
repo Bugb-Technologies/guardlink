@@ -531,9 +531,11 @@ Definitions go in .guardlink/definitions.{ts,js,py,rs}. Relationship annotations
    WRONG: \`@boundary api -- "desc"\`  (only one argument — will NOT parse)
    RIGHT: \`@boundary between #api and #client (#api-boundary) -- "Trust boundary"\`
 
-2. **@flows is ONE source -> ONE target per line**: \`@flows <source> -> <target> via <mechanism>\`.
+2. **@flows is ONE path per line, joined by arrows**: \`@flows <source> -> <target> via <mechanism>\`.
+   A chain \`@flows A -> B -> C via mechanism\` is two flows (A -> B, B -> C), each with the same mechanism.
    WRONG: \`@flows A -> B, C -> D -- "desc"\`  (commas not supported)
-   RIGHT: \`@flows A -> B via mechanism -- "desc"\` (one per line, repeat for multiple)
+   RIGHT: \`@flows A -> B via mechanism -- "desc"\` (repeat the line for flows that are not one path)
+   An HTTP route is the mechanism \`METHOD./path\` on the handler that serves it: \`@flows #client -> #orders via GET./orders/<id>\`.
 
 3. **@exposes / @mitigates require DEFINED #id refs**: Every \`#id\` you reference must exist as a definition.
    Before using \`@exposes #app to #sqli\`, ensure \`@threat SQL_Injection (#sqli)\` exists in definitions.

@@ -9,12 +9,16 @@
  *
  * Built here rather than borrowed from this repo, for the D34 reason: inline
  * annotations never carry `parent_symbol` (`parse-file.ts` populates it only
- * from `@source`), so no fixture drawn from guardlink itself can exercise the
- * rule at all. A test that cannot fail is not coverage.
+ * from `@source`), and this repo's own same-pair exposures and mitigations sit
+ * in module headers, which are file-level — so no fixture drawn from guardlink
+ * itself can exercise the rule at all. A test that cannot fail is not coverage.
  *
- * THE RULE UNDER TEST. A mitigation covers an exposure on the same (asset,
- * threat) UNLESS the two are in the same file, both carry a symbol anchor, and
- * those anchors differ. The negative cases matter as much as the positive one:
+ * THE RULE UNDER TEST (SPEC §3.6.1). A mitigation covers an exposure on the
+ * same (asset, threat) UNLESS the two are in the same file and either both carry
+ * a sidecar symbol and those differ, or both have a handler scope and the
+ * mitigation's does not enclose the exposure's. The inline form of the second
+ * half is pinned in conformance/flows.json (`mitigation_scope`) and in the
+ * inline cases below. The negative cases matter as much as the positive one:
  * a rule that narrowed cross-file mitigations would report 6 of this repo's own
  * mitigations as absent, all 6 of them real (measured), and an alarm that cries
  * wolf gets ignored.
@@ -176,18 +180,35 @@ describe('D36 — coverage that must survive the rule', () => {
     expect(findUnmitigatedExposures(model)).toHaveLength(0);
   });
 
-  it('inline annotations are never narrowed — they carry no anchor at all', async () => {
+  it('an inline module-header exposure is file-level, so a handler\'s mitigation still covers it', async () => {
     const root = mkdtempSync(join(tmpdir(), 'gl-d36-inline-'));
     roots.push(root);
     mkdirSync(join(root, '.guardlink'), { recursive: true });
     writeFileSync(join(root, '.guardlink', 'definitions.py'), DEFINITIONS);
+    // The first comment in a file binds to the whole file (SPEC §5.2 anchor),
+    // so this exposure is a statement about the module, not about `a`.
     writeFileSync(join(root, 'svc.py'),
       '# @exposes #db to #sqli [critical] -- "formatted"\ndef a(): pass\n\n\n'
       + '# @mitigates #db against #sqli using #prepared -- "bound"\ndef b(): pass\n');
     const { model } = await parseProject({ root, project: 'd36-inline' });
     expect(model.exposures[0].location.parent_symbol).toBeFalsy();
-    // The whole migration story rests on this: zero behaviour change inline.
+    expect(model.exposures[0].location.anchor?.scope).toBe('file');
     expect(findUnmitigatedExposures(model)).toHaveLength(0);
+  });
+
+  it('inline annotations on two sibling handlers are narrowed by handler scope (SPEC §3.6.1)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'gl-d36-inline-'));
+    roots.push(root);
+    mkdirSync(join(root, '.guardlink'), { recursive: true });
+    writeFileSync(join(root, '.guardlink', 'definitions.py'), DEFINITIONS);
+    // Inline annotations carry no parent_symbol; the anchor is what sites them.
+    writeFileSync(join(root, 'svc.py'), `import db
+${SOURCE.replace('def find_expenses', '# @exposes #db to #sqli [critical] -- "formatted"\ndef find_expenses')
+  .replace('def insert_expense', '# @mitigates #db against #sqli using #prepared -- "bound"\ndef insert_expense')}`);
+    const { model } = await parseProject({ root, project: 'd36-inline' });
+    expect(model.exposures[0].location.parent_symbol).toBeFalsy();
+    expect(model.exposures[0].location.anchor?.symbol).toBe('find_expenses');
+    expect(findUnmitigatedExposures(model)).toHaveLength(1);
   });
 });
 

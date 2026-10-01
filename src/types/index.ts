@@ -570,10 +570,25 @@ export interface ThreatModelTransfer {
   location: SourceLocation;
 }
 
+/** An HTTP route declared by a `@flows … via METHOD./path` mechanism (SPEC §3.2, `@flows` route channels). */
+export interface HttpRoute {
+  /** Upper-cased: GET, POST, PUT, DELETE, PATCH, HEAD or OPTIONS. */
+  method: string;
+  /** Starts with `/`, verbatim from the annotation, query hint and `(…)` notes removed. */
+  path: string;
+}
+
 export interface ThreatModelFlow {
   source: string;
   target: string;
   mechanism?: string;
+  /**
+   * The route the mechanism declares, read by `parseRouteChannel` — null when
+   * the mechanism is absent or is not a route channel. Derived from `mechanism`,
+   * so it is not part of the annotation hash or the claim key. Absent on models
+   * written before it existed; readers fall back to parsing `mechanism`.
+   */
+  route?: HttpRoute | null;
   description?: string;
   location: SourceLocation;
 }

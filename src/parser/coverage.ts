@@ -11,8 +11,11 @@
  * ── The rule ────────────────────────────────────────────────────────
  *
  * A mitigation (or acceptance) covers an exposure when they name the same asset
- * and the same threat, UNLESS the two records are sited in the same file, both
- * carry a symbol anchor, and those anchors differ.
+ * and the same threat, UNLESS the two records are sited in the same file and
+ * either both carry a sidecar `symbol:` and those differ, or both are attached
+ * to a handler and the mitigation's handler does not enclose the exposure's
+ * (SPEC §3.6.1, `handler-scope.ts`). A mitigation on `update_order` does not
+ * answer for the same pair on `get_order` and `delete_order` beside it.
  *
  * Everything else stays covered. In particular a mitigation in a DIFFERENT FILE
  * always covers, because that is the shape a real control has: the filter lives
@@ -74,12 +77,26 @@
  *
  * ── How an author says "this covers the whole asset" ────────────────
  *
- * Omit `symbol:` from the `@source` header — an unanchored mitigation is an
+ * Write the `@mitigates` in the file's module header inline, or omit `symbol:`
+ * from the `@source` header in a sidecar — a file-level mitigation is an
  * asset-level statement and is never narrowed. No new syntax was needed, which is
  * why none was added.
  *
+ * ── Handler scope, inline ───────────────────────────────────────────
+ *
+ * Inline annotations carry no `parent_symbol`, so until handler scope this rule
+ * was inert in every inline repository, and one `@mitigates` on one handler
+ * cleared the same pair on every sibling handler in the file — in `validate`,
+ * `ci` and the SARIF a scanner probes from. The structure layer already anchors
+ * every inline annotation to the code beneath it; handler scope reads that
+ * anchor. Measured before landing: 0 exposures change state on this repository
+ * (16 → 16) and 0 on the external-mode expense-api fixture (11 → 11), because
+ * every same-pair exposure and mitigation in both sits in a module header or a
+ * different file.
+ *
  * @flows ThreatModel -> #parser via isCovered -- "Every unmitigated-exposure answer in the product routes through this predicate"
- * @comment -- "Inline annotations never carry parent_symbol (parse-file.ts populates it only from @source), so this rule is inert in every inline repo — measured: 0 of 74 exposures change state on guardlink, 0 of 61 on specter-v1, 2 of 11 on expense-api"
+ * @comment -- "Inline annotations never carry parent_symbol (parse-file.ts populates it only from @source); they are sited by handler scope instead, read from the structure-layer anchor, so the rule now applies in inline repos too"
+ * @comment -- "A location with no anchor (anchors: false, an unreadable file, a model from before anchors) is file-level and never narrowed — unknown can only fail to narrow, never invent a site"
  * @comment -- "Narrowing is one-directional by construction: coversExposure starts from the (asset, threat) match the old key computed and only ever subtracts. A refactor that made it additive would be a silent-wrong-answer path in the opposite direction"
  */
 
@@ -90,6 +107,7 @@ import type {
 import { canonicaliser } from './canonical-ref.js';
 import { acceptanceCovers, isQualified, type AcceptancePolicy } from './acceptance.js';
 import { countAnnotations } from './feature-filter.js';
+import { handlerScope, scopeEncloses } from './handler-scope.js';
 
 /** Strip a leading `#` and case so `#sqli`, `sqli` and `SQLi` compare equal. */
 export function normalizeRef(ref: string): string {
@@ -107,17 +125,29 @@ export interface SitedRelation {
  * True when `cover`'s anchor contradicts `exposure`'s — the one configuration in
  * which a same-(asset, threat) statement does not answer for this site.
  *
- * Requires BOTH anchors. A pair where only one side is anchored carries no
- * evidence that the author distinguished the sites, so it stays covered. That is
- * the conservative reading, and it is what keeps a partially-migrated or
- * hand-written sidecar from producing a flood.
+ * Same file only, and BOTH sides must be sited. Two ways to be sited:
+ *
+ *   - a `@source … symbol:` name (`parent_symbol`), external mode — the names
+ *     must differ;
+ *   - a handler scope (SPEC §3.7, `handler-scope.ts`) — the code the annotation
+ *     is attached to, resolved by the structure layer in BOTH modes. The cover's
+ *     handler must enclose the exposure's: the same handler, or a class around
+ *     the method. A sibling handler does not.
+ *
+ * A pair where only one side is sited carries no evidence that the author
+ * distinguished the sites, so it stays covered. That is the conservative
+ * reading, and it is what keeps a module-header mitigation, a partially-migrated
+ * or hand-written sidecar, and a model loaded without anchors from producing a
+ * flood.
  */
 function anchorsContradict(cover: SitedRelation, exposure: SitedRelation): boolean {
+  if (cover.location.file !== exposure.location.file) return false;
   const a = cover.location.parent_symbol;
   const b = exposure.location.parent_symbol;
-  return cover.location.file === exposure.location.file
-    && !!a && !!b
-    && a !== b;
+  if (a && b && a !== b) return true;
+  const outer = handlerScope(cover.location);
+  const inner = handlerScope(exposure.location);
+  return !!outer && !!inner && !scopeEncloses(outer, inner);
 }
 
 /**

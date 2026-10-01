@@ -129,7 +129,9 @@ const PATTERNS: Record<string, RegExp> = {
   // reject a claim a reviewer should get to read.
   entitles: new RegExp(String.raw`^@entitles\s+(${THREAT_REF})\s+to\s+(${CAPABILITY})(?:\s+on\s+(${ASSET_REF}))?(?:\s+against\s+(${THREAT_REF}))?(?:\s+${DESC})?$`),
   transfers: new RegExp(String.raw`^@transfers\s+(${THREAT_REF})\s+from\s+(${ASSET_REF})\s+to\s+(${ASSET_REF})(?:\s+${DESC})?$`),
-  flows: new RegExp(String.raw`^@flows\s+(${ASSET_REF}(?:\s+->\s+${ASSET_REF})+)(?:\s+via\s+((?:(?!\s+--\s*").)+?))?(?:\s+${DESC})?$`),
+  // `via` must be followed by a mechanism: `via -- "d"` used to record `-- "d"`
+  // as the mechanism and lose the description. SPEC §3.2 `@flows`, Mechanism.
+  flows: new RegExp(String.raw`^@flows\s+(${ASSET_REF}(?:\s+->\s+${ASSET_REF})+)(?:\s+via\s+(?!--\s*")((?:(?!\s+--\s*").)+?))?(?:\s+${DESC})?$`),
   boundary: new RegExp(String.raw`^@boundary\s+(?:between\s+)?(${ASSET_REF})\s+and\s+(${ASSET_REF})(?:\s+${ID_DEF})?(?:\s+${DESC})?$`),
   boundary_pipe: new RegExp(String.raw`^@boundary\s+(${ASSET_REF})\s*\|\s*(${ASSET_REF})(?:\s+${ID_DEF})?(?:\s+${DESC})?$`),
   connects_v1: new RegExp(String.raw`^@connects\s+(${ASSET_REF})\s+to\s+(${ASSET_REF})(?:\s+${DESC})?$`),

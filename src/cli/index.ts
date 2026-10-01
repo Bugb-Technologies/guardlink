@@ -3551,7 +3551,10 @@ program
       console.log(D('    Document data movement between components.'));
       console.log(D('    Appears in the Data Flow Diagram.'));
       console.log(EX('    // @flows  api.auth  ->  db.users  via  TLS 1.3'));
+      console.log(EX('    // @flows  #client  ->  #orders  via  GET./orders/<id>  -- "Route, on its handler"'));
+      console.log(EX('    // @flows  #orders  ->  #billing  ->  #ledger  via  ledger_id'));
       console.log(EX('    // @flows  mobile.app  ->  api.gateway  via  HTTPS  -- "User credentials"'));
+      console.log(D('    Chain: A -> B -> C is two flows sharing the mechanism. Route: via METHOD./path.'));
       console.log('');
 
       console.log(`  ${V('@boundary')}  ${K('<asset_a>')}  ${D('and')}  ${K('<asset_b>')}  ${D('(#id)')}  ${D('[-- "description"]')}`);
