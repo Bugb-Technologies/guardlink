@@ -1052,6 +1052,8 @@ A `@validates` annotation with no corresponding test execution data is **unverif
 
 `guardlink sarif` (and the MCP `guardlink_sarif` tool and the TUI `/sarif` command, which produce the same document) exports the threat model as one SARIF 2.1.0 run for GitHub code scanning, VS Code, Azure DevOps and other SARIF consumers. This section describes what that export contains, and what it deliberately leaves out.
 
+The export has two profiles (§6.8). `github`, the default, is everything §6.1–§6.7 describe: the findings that should become code scanning alerts. `pentest` is the `github` export with claims to test appended after it. Unless a subsection says otherwise, it describes the `github` profile.
+
 **The export is a contract in two layers.** The *results* — which annotations become results, in what order, under which rule id, with which `message.text`, `partialFingerprints` and existing `properties` — are stable: consumers key on the result index, on `message.text` and on rule ids, and GitHub reopens every alert whose rule id changes. Everything else the model declares around a finding is *declared context* (§6.6): SARIF members appended after the stable ones, which a consumer that does not know them ignores. Deleting every declared-context member gives back the results and the `tool` object of an export cut before the context existed, byte for byte, and the test suite checks exactly that.
 
 ### 6.1. Mapping Rules
@@ -1072,14 +1074,14 @@ Every other annotation is **not** a result:
 
 | Annotation | In the export | Why it is not a result |
 |---|---|---|
-| `@mitigates`, `@accepts` | Not at all. A covered exposure is left out of the results. | GitHub ignores SARIF `suppressions` and would open a covered exposure as an alert. `runs[0].properties.acceptance_register` names where the acceptances that removed results came from (§6.7). |
-| `@boundary`, `@flows` | `run.graphs`, `relatedLocations` (boundaries), `codeFlows` (§6.6) | Context, not findings. |
+| `@mitigates`, `@accepts` | Not at all. A covered exposure is left out of the results. The `pentest` profile appends it as a `guardlink/mitigated-exposure` result (§6.8). | GitHub ignores SARIF `suppressions` and would open a covered exposure as an alert. `runs[0].properties.acceptance_register` names where the acceptances that removed results came from (§6.7). |
+| `@boundary`, `@flows` | `run.graphs`, `relatedLocations` (boundaries), `codeFlows` (§6.6). The `pentest` profile appends each `@boundary` as a `guardlink/boundary-claim` result (§6.8). | Context, not findings. |
 | `@assumes`, `@handles`, `@audit` | `relatedLocations` on results for the same asset (§6.6) | Context, not findings. |
 | `@transfers` | `relatedLocations` on results for the same asset and threat (§6.6). A transfer does not cover an exposure. | Context, not findings. |
 | `@validates`, `@owns`, `@feature`, `@comment`, `@shield` | Not exported | — |
 | `@actor` / `@entitles` | **Not exported.** No result, no suppression, no property on any result, and nothing in the declared context | See below. |
 
-New result kinds — covered exposures with their suppressions, `@boundary` claims, review items for `@assumes` and `@audit` — would change the result index every existing consumer keys on and open a GitHub alert per annotation. If they are added, it will be behind an opt-in profile that appends them after every result above, never in this default export.
+New result kinds — covered exposures with their suppressions, `@boundary` claims, review items for `@assumes` and `@audit` — would change the result index every existing consumer keys on and open a GitHub alert per annotation. The first two exist only in the `pentest` profile, appended after every result above (§6.8); none of them is ever added to the `github` profile.
 
 `@entitles` is deliberately absent from this mapping. Two annotations already remove an exposure from the export (`@mitigates`, `@accepts`), and an exposure hidden from the export cannot be tested. Entitlement is a claim about *purpose* that no probe can verify, so it must never be the third such mechanism: a conforming exporter MUST produce **byte-identical `runs[].results` and `runs[].tool`** for a model with entitlements and the same model without them. Only the downstream *recommendation* may change (§3.2). The declared context is held to the same rule: no related location, chain, graph node or taxon may be derived from an `@entitles` or an `@actor`.
 
@@ -1447,12 +1449,58 @@ Edge ids are positions in this export and change when annotations are added or r
 | `properties.generator` | `guardlink@<version>` |
 | `properties.acceptance_register` | `code-annotations`: the acceptances that removed results were read from source, not from a server decision log |
 | `properties.sarif_profile_version` | `1`: this shape. Absent on exports cut before the declared context existed. Bumped when the shape changes |
+| `properties.sarif_profile` | `pentest` on a `pentest` export; absent on a `github` one, so a `github` export is unchanged (§6.8) |
 | `automationDetails.id` | `guardlink/threat-model/`, so GitHub files GuardLink alerts in their own category beside other tools. An upload that sets a `category` explicitly overrides it |
 | `versionControlProvenance` | `[{ repositoryUri, revisionId, branch }]` — the repository's web URL (rebuilt from host and path, so credentials in the remote never reach the export), HEAD and branch. Omitted when the repository has no web-hosted `origin`, since SARIF requires `repositoryUri` |
 
 Artifact URIs are relative to the project root and carry no `uriBaseId`.
 
-A conforming exporter keeps these invariants across versions of this export: `message.text` byte-stable; rule ids stable; result order stable, with any new result only ever appended; `partialFingerprints` keys unchanged; `properties.annotation_hash` unchanged in meaning; nothing derived from `@entitles` or `@actor`; and no suppressed result.
+A conforming exporter keeps these invariants across versions of this export: `message.text` byte-stable; rule ids stable; result order stable, with any new result only ever appended; `partialFingerprints` keys unchanged; `properties.annotation_hash` unchanged in meaning; nothing derived from `@entitles` or `@actor`; and no suppressed result in the `github` profile.
+
+### 6.8. Profiles
+
+`guardlink sarif --profile <name>` (MCP `guardlink_sarif` argument `profile`) chooses the profile. The TUI `/sarif` command always writes `github`.
+
+| Profile | What it is for | Contents |
+|---|---|---|
+| `github` (default) | Code scanning: what should become an alert | §6.1–§6.7, exactly. Passing `--profile github` gives the same bytes as passing nothing |
+| `pentest` | A test run: what to probe, including what is claimed to be safe | The `github` export, plus the members below |
+
+**Appended, never inserted.** Result `i` of a `github` export is result `i` of the `pentest` export of the same model, and rule `i` is rule `i`. The `pentest` results come after every `github` result: covered exposures first, then boundary claims, each in model order. Its two rules come after the five `github` rules. A reader that keys on the result index, on `message.text` or on rule ids reads the shared prefix exactly as it reads a `github` export. Nothing in either profile is derived from `@entitles` or `@actor` (§6.1).
+
+**`guardlink/mitigated-exposure`** — one result per `@exposes` that a `@mitigates` or `@accepts` covers (§3.6.1), and that `--min-severity` keeps. It is the result an uncovered exposure would have been — the same `message.text`, `locations`, `partialFingerprints`, `properties` and declared context (§6.6) — under this rule, at `level: "note"`. Its `kind` is absent, which SARIF reads as `fail`: a declared control is a claim, and the result is exported so a test can check it holds. It adds `suppressions[]`, one per covering annotation, mitigations first:
+
+| Member | `@mitigates` | `@accepts` |
+|---|---|---|
+| `kind`, `status` | `inSource`, `accepted` | `inSource`, `accepted` |
+| `justification` | the description, when present | the description, when present |
+| `location` | the annotation's line, `message.text` `@mitigates {asset} against {threat} using {control}` | the annotation's line, `message.text` `@accepts {threat} on {asset} by … until …` |
+| `properties` | `guardlink/verb: "mitigates"`, `control`, `claimKey` | `guardlink/verb: "accepts"`, `accepted_by`, `expires`, `claimKey` |
+
+Only an acceptance that covers the exposure appears: one sited in its file and not expired (§3.6.1).
+
+**`guardlink/boundary-claim`** — one result per `@boundary`. It is a claim to verify, never a finding: `kind: "review"`, and therefore `level: "none"`. It never suppresses, closes or demotes another result.
+
+| Member | Content |
+|---|---|
+| `message.text` | the boundary's description; `@boundary between {a} and {b} (#id)` when it has none |
+| `locations[0]` | the `@boundary` line |
+| `partialFingerprints["guardlink/claimKey"]`, `properties.claimKey` | the boundary's claim key (§6.5), the key `guardlink hypothesis support` and `contradict` record against |
+| `properties.boundary` | `{ id, a, b, asset_a, asset_b, basis, outer?, inner? }`. `a` and `b` are the two sides as `run.graphs[0]` node ids; `asset_a` and `asset_b` as written; `id` is `#id` or `null` |
+| `properties.description` | the description, `""` when there is none |
+| `properties.crossings` | `[{ from, to, via, edge, claimKey, file, line, http_method?, http_path? }]` — every `@flows` hop whose endpoints are the two sides, in either direction |
+| `properties.inner_routes` | `[{ http_method, http_path, edge, claimKey, file, line }]` — every route-channel `@flows` into the inner side. Empty when the inner side is not known |
+| `properties["guardlink/edge"]` | the boundary's edge id in `run.graphs[0]` |
+| `codeFlows` | one per crossing: a single `threadFlowLocation` at the hop, `kinds: ["flow", "boundary-crossing"]`, with `webRequest` for a route channel |
+| `relatedLocations` | one per inner route, at its `@flows` line |
+
+`@boundary` has no direction. `basis` is `"undeclared-endpoint"` when exactly one side is an endpoint no `@asset` declares, and that side is `outer`, the other `inner` — the convention `guardlink paths` reads entries by (§3.2). Otherwise `basis` is `"unknown"` and neither `outer` nor `inner` is written; a reader must not infer them. `run.graphs[0]` states the same inference as `guardlink/side`.
+
+**`properties["guardlink/hypothesis"]`** — on every `@exposes` result (uncovered or covered), every `@confirmed` result and every boundary claim, the claim's state in the hypothesis ledger (`.guardlink/hypotheses.json`): `{ state, evidence, by, at, expired, previous_outcome }`. `state` is `untested`, `confirmed`, `refuted` or `retest` for an exposure (a source `@confirmed` is always `confirmed`), and `unverified`, `supported`, `contradicted` or `retest` for a boundary. A ledger outcome holds while the code beneath the claim is unchanged; `expired: true` with `previous_outcome` says it lapsed. With no ledger every claim is `untested` or `unverified`. A corrupt ledger stamps nothing. `run.properties.hypothesis_ledger` is `present`, `absent` or `corrupt`. Parse-error and dangling-ref results carry none.
+
+**`baselineState`** — `--baseline <file>`, an earlier SARIF export, sets `baselineState` on every result. Each result is matched to at most one result of the baseline's first run: by claim key first, then by threat id (or rule id), `message.text` and file — never by line, so a moved annotation is the same result. A matched result is `unchanged` when its rule, level, kind, message, severity and hypothesis state agree (the state only when both sides carry one), and `updated` otherwise; an unmatched one is `new`. A baseline result that matches nothing would be `absent` in SARIF's terms, but every reader of this export treats a result as something to test, so it is counted in `run.properties.baseline: { compared, absent }` instead of being exported. `--baseline` is refused without `--profile pentest`.
+
+`run.properties.sarif_profile` is `pentest`, followed by `hypothesis_ledger` and, with a baseline, `baseline`, after the `github` envelope members. `tests/fixtures/sarif-pentest/` holds the `pentest` export of two fixtures for a reader to test against.
 
 ---
 

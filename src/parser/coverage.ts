@@ -183,6 +183,8 @@ export interface CoverageIndex {
   isCovered(exposure: SitedRelation): boolean;
   /** The mitigations that actually cover this exposure, for reporting controls. */
   mitigationsFor(exposure: SitedRelation): ThreatModelMitigation[];
+  /** The acceptances that actually cover this exposure: same file, not expired. */
+  acceptancesFor(exposure: SitedRelation): ThreatModelAcceptance[];
 }
 
 /** No namespace — the single-repo answer, and the default everywhere but merge. */
@@ -280,14 +282,16 @@ export function buildCoverageIndex(model: ThreatModel, opts: CoverageOptions = {
   // Same (asset, threat) match as a mitigation, then the two rules that are only
   // an acceptance's: it must be sited in this exposure's file, and it must not
   // have lapsed. See `acceptance.ts` for why the file and not the pair.
-  const isAccepted = (e: SitedRelation) => matching(acceptances, e)
-    .some(a => acceptanceCovers(a, e.location, now));
+  const acceptancesFor = (e: SitedRelation) => matching(acceptances, e)
+    .filter(a => acceptanceCovers(a, e.location, now));
+  const isAccepted = (e: SitedRelation) => acceptancesFor(e).length > 0;
 
   return {
     isMitigated,
     isAccepted,
     isCovered: e => isMitigated(e) || isAccepted(e),
     mitigationsFor: e => matching(mitigations, e),
+    acceptancesFor,
   };
 }
 

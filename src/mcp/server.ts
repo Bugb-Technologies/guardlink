@@ -73,7 +73,8 @@ import {
   proposeEntitlement, listProposals, checkEntitlementProvenance, PROPOSALS_FILE,
   type ProposalStatus,
 } from '../review/entitlements.js';
-import { generateSarif } from '../analyzer/index.js';
+import { generateSarif, SARIF_PROFILES } from '../analyzer/index.js';
+import { readHypotheses } from '../hypothesis/index.js';
 import { generateReport } from '../report/index.js';
 import { generateDashboardHTML, generateThreatGraph } from '../dashboard/index.js';
 import { diffModels, parseAtRef } from '../diff/index.js';
@@ -836,12 +837,13 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_sarif',
-    'Export findings as SARIF 2.1.0 for GitHub Advanced Security, VS Code, and other SARIF consumers.',
+    'Export findings as SARIF 2.1.0 for GitHub Advanced Security, VS Code, and other SARIF consumers. profile "github" (default) is the code-scanning export; "pentest" also appends covered exposures, boundary claims and the hypothesis ledger\'s state, after the github results.',
     {
       root: z.string().describe('Project root directory').default('.'),
       output: z.string().describe('Output filename (default: guardlink.sarif.json)').default('guardlink.sarif.json'),
+      profile: z.enum(SARIF_PROFILES).describe('github (default) or pentest').default('github'),
     },
-    async ({ root, output }) => {
+    async ({ root, output, profile }) => {
       invalidateCache();
       const { model, diagnostics } = await getModel(root);
       const { writeFile } = await import('node:fs/promises');
@@ -852,6 +854,7 @@ export function createServer(): McpServer {
         includeDiagnostics: true,
         includeDanglingRefs: true,
         versionControl: readVersionControl(root),
+        ...(profile === 'pentest' ? { profile, hypotheses: readHypotheses(root) } : {}),
       });
       await writeFile(resolve(root, output), JSON.stringify(sarif, null, 2) + '\n');
       const resultCount = sarif.runs[0]?.results?.length ?? 0;
@@ -859,6 +862,7 @@ export function createServer(): McpServer {
         content: [{ type: 'text', text: JSON.stringify({
           sarif: output,
           results: resultCount,
+          ...(profile === 'pentest' ? { profile, hypothesis_ledger: sarif.runs[0]?.properties.hypothesis_ledger } : {}),
         }) }],
       };
     },

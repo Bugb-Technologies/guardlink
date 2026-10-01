@@ -57,7 +57,7 @@ import { generateReport, generateMermaid } from '../report/index.js';
 import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getChangedFiles } from '../diff/index.js';
 import { findUnmitigatedPaths, classifyEndpoints } from '../paths/index.js';
 import { formatPaths } from '../paths/format.js';
-import { generateSarif } from '../analyzer/index.js';
+import { generateSarif, isSarifProfile, SARIF_PROFILES, MITIGATED_RULE_ID, BOUNDARY_CLAIM_RULE_ID } from '../analyzer/index.js';
 import { emitArtifacts, checkArtifactDrift, checkArtifactRenderability } from '../artifacts/emit.js';
 import { describeViolation, ARTIFACT_FALLBACK, MERMAID_LIMITS_SOURCE } from '../dashboard/render-budget.js';
 import { startStdioServer } from '../mcp/index.js';
@@ -1229,12 +1229,39 @@ program
   .option('-o, --output <file>', 'Write SARIF to file (default: stdout)')
   .option('--min-severity <sev>', 'Only include unmitigated exposures at or above this severity (critical|high|medium|low); @confirmed results are always included')
   .option('--no-diagnostics', 'Exclude parse errors from SARIF output')
-  .action(async (dir: string, opts: { project: string; output?: string; minSeverity?: string; diagnostics?: boolean }) => {
+  .option('--profile <name>', 'github (default): findings for code scanning. pentest: also covered exposures, boundary claims and hypothesis-ledger state, appended after the github results', 'github')
+  .option('--baseline <file>', 'Pentest profile only: an earlier SARIF export; sets each result\'s baselineState (new, unchanged, updated)')
+  .action(async (dir: string, opts: { project: string; output?: string; minSeverity?: string; diagnostics?: boolean; profile: string; baseline?: string }) => {
     const root = resolve(dir);
+    if (!isSarifProfile(opts.profile)) {
+      console.error(`Unknown --profile ${JSON.stringify(opts.profile)}: expected ${SARIF_PROFILES.join(' or ')}`);
+      process.exit(2);
+    }
+    const pentest = opts.profile === 'pentest';
+    if (opts.baseline && !pentest) {
+      console.error('--baseline needs --profile pentest: the github profile never carries baselineState');
+      process.exit(2);
+    }
+    // @comment -- "--baseline reads a file the caller names, relative to the cwd like any CLI path argument; it is parsed as JSON and only compared, never written or executed"
+    let baseline: unknown;
+    if (opts.baseline) {
+      try {
+        baseline = JSON.parse(readFileSync(resolve(opts.baseline), 'utf-8'));
+      } catch (e) {
+        console.error(`Cannot read --baseline ${opts.baseline}: ${(e as Error).message}`);
+        process.exit(2);
+      }
+    }
     const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
 
     // Compute dangling refs (reuse validate logic)
     const danglingDiags = findDanglingRefs(model);
+
+    // @flows LedgerFile -> #cli via readHypotheses -- "pentest profile: each claim's tested state goes into the SARIF"
+    const hypotheses = pentest ? readHypotheses(root) : undefined;
+    if (hypotheses?.status === 'corrupt') {
+      console.error(`⚠ ${HYPOTHESES_FILE} is corrupt (${hypotheses.error}); no hypothesis state is exported`);
+    }
 
     const sarif = generateSarif(
       model,
@@ -1245,6 +1272,8 @@ program
         includeDanglingRefs: true,
         minSeverity: opts.minSeverity as any,
         versionControl: readVersionControl(root),
+        ...(pentest ? { profile: 'pentest' as const, hypotheses } : {}),
+        ...(baseline !== undefined ? { baseline } : {}),
       },
     );
 
@@ -1263,6 +1292,17 @@ program
     const errors = sarif.runs[0]?.results.filter(r => r.level === 'error').length ?? 0;
     const warnings = sarif.runs[0]?.results.filter(r => r.level === 'warning').length ?? 0;
     console.error(`SARIF: ${resultCount} result(s) — ${errors} error(s), ${warnings} warning(s)`);
+    if (pentest) {
+      const all = sarif.runs[0]?.results ?? [];
+      const mitigated = all.filter(r => r.ruleId === MITIGATED_RULE_ID).length;
+      const boundaries = all.filter(r => r.ruleId === BOUNDARY_CLAIM_RULE_ID).length;
+      console.error(`Pentest profile: ${mitigated} mitigated exposure(s), ${boundaries} boundary claim(s) appended; hypothesis ledger ${sarif.runs[0]?.properties.hypothesis_ledger}`);
+      const b = sarif.runs[0]?.properties.baseline;
+      if (b) {
+        const count = (state: string) => all.filter(r => r.baselineState === state).length;
+        console.error(`Baseline: ${count('new')} new, ${count('updated')} updated, ${count('unchanged')} unchanged, ${b.absent} absent (counted, not exported)`);
+      }
+    }
   });
 
 // ─── threat-report ───────────────────────────────────────────────────

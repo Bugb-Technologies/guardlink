@@ -16,9 +16,17 @@ reason the tests rely on:
 | `src/notify.ts` | file-level claims: `file` attribution, `@transfers` scoped to one threat, no logical location; the trailing `@exposes #mailer to` is the parse error |
 | `src/export.ts` | an exposure whose asset is only reached from another file, so no chain is emitted |
 
+`.guardlink/hypotheses.json` is a hypothesis ledger for the `pentest` profile
+(`tests/sarif-pentest.test.ts`): the `#store` SQL injection confirmed, the
+mitigated `#orders` denial of service refuted, and `#edge` supported, with
+`#data` left unverified. Each outcome is tied to the code beneath its claim, so
+editing `src/web.ts` expires them; re-record them with `guardlink hypothesis
+confirm|refute|support` after an edit.
+
 Editing this fixture changes the export it produces, so
-`tests/fixtures/sarif-baseline/sarif-shop.sarif` must be regenerated with it —
-see that directory's README.
+`tests/fixtures/sarif-baseline/sarif-shop.sarif`, `sarif-shop.github.sarif` and
+`tests/fixtures/sarif-pentest/sarif-shop.sarif` must be regenerated with it —
+see those directories' READMEs.
 
 It does not perturb this repository's own model: `tests` is excluded in
 `.guardlink/config.json`, and `**/tests/**` is in the parser's `DEFAULT_EXCLUDE`.

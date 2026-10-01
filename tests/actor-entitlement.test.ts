@@ -644,6 +644,32 @@ describe('§3.2 still holds with the declared context in the SARIF', () => {
     // of its own, nor marked declared.
     expect(with_.graphs?.[0].nodes.find(n => n.id === 'namespace_admin')?.properties['guardlink/declared']).toBe(false);
   });
+
+  it('holds for the pentest profile: no mitigated result, suppression or boundary claim comes from an entitlement', () => {
+    // A second exposure, covered by a @mitigates, so the profile writes a
+    // suppression; the boundary becomes a claim. The entitlement names the
+    // covered pair too, and still changes no byte.
+    const covered = { ...base.exposures[0], threat: '#ssrf', external_refs: [], location: loc(file, 70) };
+    const withMitigation = {
+      ...base,
+      exposures: [...base.exposures, covered],
+      mitigations: [{ asset: '#archival-fs', threat: '#ssrf', control: '#allowlist', location: loc(file, 71) }],
+    };
+    const without = generateSarif(model(withMitigation as Partial<ThreatModel>), [], [], { profile: 'pentest' }).runs[0];
+    const with_ = generateSarif(model({
+      ...(withMitigation as Partial<ThreatModel>),
+      actors: [actor('ns-admin', 'Namespace_Admin')],
+      entitlements: [effective(), effective({ threat: '#ssrf', capability: 'fetch-archive' })],
+    }), [], [], { profile: 'pentest' }).runs[0];
+    expect(without.results.map(r => r.ruleId)).toEqual([
+      'guardlink/unmitigated-critical', 'guardlink/mitigated-exposure', 'guardlink/boundary-claim',
+    ]);
+    expect(without.results[1].suppressions).toHaveLength(1);
+
+    const { properties: _w, ...withRun } = with_;
+    const { properties: _o, ...withoutRun } = without;
+    expect(JSON.stringify(withRun)).toBe(JSON.stringify(withoutRun));
+  });
 });
 
 describe('§9.7 diff keys on the join triple', () => {

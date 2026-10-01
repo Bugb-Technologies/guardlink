@@ -21,6 +21,12 @@
  * members those consumers ignore. Stripping them gives back the earlier export
  * byte for byte (tests/sarif-enrichment.test.ts).
  *
+ * That is the `github` profile, the default, and it is pinned whole
+ * (tests/sarif-pentest.test.ts). `--profile pentest` appends covered exposures
+ * and boundary claims after every result above and stamps the hypothesis
+ * ledger's state onto each claim (`sarif-pentest.ts`, SPEC §6.8); nothing it
+ * adds reaches a `github` export.
+ *
  * We deliberately emit NOTHING for @entitles. @mitigates and @accepts already
  * remove an exposure from this export, and a suppression that also prevents
  * verification is how a threat model becomes confidently wrong. An entitlement
@@ -56,7 +62,7 @@
 
 import { createHash } from 'node:crypto';
 
-import type { ThreatModel, ParseDiagnostic, Severity, SourceLocation } from '../types/index.js';
+import type { ThreatModel, ThreatModelExposure, ParseDiagnostic, Severity, SourceLocation } from '../types/index.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
 import { canonicaliser } from '../parser/canonical-ref.js';
 import { buildRouteIndex } from '../parser/route.js';
@@ -68,6 +74,11 @@ import {
   buildSarifContext, physicalLocation,
   type SarifLocation, type SarifTaxonReference, type SarifCodeFlow, type SarifGraph, type SarifTaxonomy,
 } from './sarif-context.js';
+import {
+  buildPentestAppendix, applyBaseline, PENTEST_RULES, MITIGATED_RULE_ID,
+  type SarifProfile, type SarifSuppression, type SarifBaselineState,
+} from './sarif-pentest.js';
+import type { HypothesesRead } from '../hypothesis/ledger.js';
 
 // ─── SARIF 2.1.0 types (subset) ─────────────────────────────────────
 
@@ -120,6 +131,12 @@ interface SarifRun {
      * `1` is that additive shape. Bumped only when the shape changes.
      */
     sarif_profile_version: typeof SARIF_PROFILE_VERSION;
+    /** `pentest` on a pentest-profile export; absent on the default `github` profile. */
+    sarif_profile?: 'pentest';
+    /** Pentest profile: whether the hypothesis ledger was present, absent or corrupt. */
+    hypothesis_ledger?: string;
+    /** Pentest profile with a baseline: results in the baseline's first run, and how many matched nothing. */
+    baseline?: { compared: number; absent: number };
   };
   /** Keeps GuardLink results in their own GitHub code scanning category. */
   automationDetails: { id: string };
@@ -145,7 +162,7 @@ interface SarifRule {
   fullDescription?: { text: string };
   helpUri?: string;
   defaultConfiguration: {
-    level: 'error' | 'warning' | 'note';
+    level: 'error' | 'warning' | 'note' | 'none';
   };
   help?: { text: string; markdown: string };
   properties?: Record<string, unknown>;
@@ -153,7 +170,9 @@ interface SarifRule {
 
 interface SarifResult {
   ruleId: string;
-  level: 'error' | 'warning' | 'note';
+  /** Pentest profile only: `review` on a boundary claim. Absent means `fail`. */
+  kind?: 'review';
+  level: 'error' | 'warning' | 'note' | 'none';
   message: { text: string };
   locations: SarifLocation[];
   /**
@@ -184,6 +203,10 @@ interface SarifResult {
   relatedLocations?: SarifLocation[];
   /** Declared @flows chains into the claim, only when the last hop is the claim's own. */
   codeFlows?: SarifCodeFlow[];
+  /** Pentest profile only: the @mitigates / @accepts covering a mitigated-exposure result. */
+  suppressions?: SarifSuppression[];
+  /** Pentest profile with a baseline only. */
+  baselineState?: SarifBaselineState;
 }
 
 // ─── Rule definitions ────────────────────────────────────────────────
@@ -320,6 +343,16 @@ export interface SarifOptions {
    * it; without a `repositoryUri` (which SARIF requires) nothing is written.
    */
   versionControl?: SarifVersionControl | null;
+  /**
+   * `github` (the default) is the export described above, unchanged. `pentest`
+   * appends covered exposures and boundary claims after every `github` result,
+   * and stamps the hypothesis ledger's state onto each claim (sarif-pentest.ts).
+   */
+  profile?: SarifProfile;
+  /** Pentest profile: the hypothesis ledger, as the front end read it. Absent means no ledger. */
+  hypotheses?: HypothesesRead;
+  /** Pentest profile: an earlier SARIF export to set each result's `baselineState` against. */
+  baseline?: unknown;
 }
 
 export function generateSarif(
@@ -329,6 +362,13 @@ export function generateSarif(
   options: SarifOptions = {},
 ): SarifLog {
   const { includeDiagnostics = true, includeDanglingRefs = true } = options;
+  const pentest = options.profile === 'pentest';
+  if (!pentest && options.profile !== undefined && options.profile !== 'github') {
+    throw new Error(`Unknown SARIF profile ${JSON.stringify(options.profile)}: expected github or pentest`);
+  }
+  if (!pentest && options.baseline !== undefined) {
+    throw new Error('A baseline applies to the pentest profile only; the github profile never carries baselineState');
+  }
 
   const results: SarifResult[] = [];
 
@@ -382,15 +422,15 @@ export function generateSarif(
     if (src.verb === 'exposes') claimKeys.set(src.location, src.key);
   }
 
-  for (const e of model.exposures) {
-    if (coverage.isCovered(e)) continue;
-
+  // One builder for every exposure result, so a covered exposure in the
+  // pentest profile says exactly what it would say uncovered, under its own rule.
+  const exposureResult = (e: ThreatModelExposure, rule?: { ruleId: string; level: SarifResult['level'] }): SarifResult | null => {
     // Severity filter
-    if (options.minSeverity && !meetsMinSeverity(e.severity, options.minSeverity)) continue;
+    if (options.minSeverity && !meetsMinSeverity(e.severity, options.minSeverity)) return null;
 
     const isCritical = e.severity === 'critical' || e.severity === 'high';
-    const ruleId = isCritical ? 'guardlink/unmitigated-critical' : 'guardlink/unmitigated-exposure';
-    const level = isCritical ? 'error' as const : 'warning' as const;
+    const ruleId = rule?.ruleId ?? (isCritical ? 'guardlink/unmitigated-critical' : 'guardlink/unmitigated-exposure');
+    const level = rule?.level ?? (isCritical ? 'error' as const : 'warning' as const);
 
     const threat = e.threat.startsWith('#') ? e.threat.slice(1) : e.threat;
     const desc = e.description ? `: ${e.description}` : '';
@@ -399,7 +439,7 @@ export function generateSarif(
     const id = threatId(e.asset, e.threat, e.location.file);
     const claimKey = claimKeys.get(e.location);
 
-    results.push({
+    const result: SarifResult = {
       ruleId,
       level,
       message: { text: messageText },
@@ -414,8 +454,20 @@ export function generateSarif(
         ...(e.external_refs.length > 0 ? { externalRefs: e.external_refs } : {}),
         ...reachabilityFor(e.asset, e.location),
       },
-    });
-    context.enrich(results[results.length - 1], e, 'exposes');
+    };
+    context.enrich(result, e, 'exposes');
+    return result;
+  };
+
+  // The claim each finding result came from, for the pentest profile's ledger stamp.
+  const claimOf = new Map<SarifResult, SourceLocation>();
+
+  for (const e of model.exposures) {
+    if (coverage.isCovered(e)) continue;
+    const result = exposureResult(e);
+    if (!result) continue;
+    results.push(result);
+    claimOf.set(result, e.location);
   }
 
   // ── Confirmed exploitable ──
@@ -442,6 +494,7 @@ export function generateSarif(
       },
     });
     context.enrich(results[results.length - 1], c, 'confirmed');
+    claimOf.set(results[results.length - 1], c.location);
   }
 
   // ── Parse errors ──
@@ -469,6 +522,19 @@ export function generateSarif(
     }
   }
 
+  // ── Pentest profile: appended after every result above ──
+  let pentestProperties: Pick<SarifRun['properties'], 'sarif_profile' | 'hypothesis_ledger' | 'baseline'> = {};
+  if (pentest) {
+    const appendix = buildPentestAppendix({
+      model, context, coverage, hypotheses: options.hypotheses,
+      exposureResult: e => exposureResult(e, { ruleId: MITIGATED_RULE_ID, level: 'note' }),
+    });
+    for (const [result, location] of claimOf) appendix.stamp(result, location);
+    results.push(...appendix.results);
+    pentestProperties = { sarif_profile: 'pentest', hypothesis_ledger: appendix.ledger };
+    if (options.baseline !== undefined) pentestProperties.baseline = applyBaseline(results, options.baseline);
+  }
+
   const vcs = options.versionControl;
   const taxonomies = context.taxonomies();
   const graph = context.graph();
@@ -482,7 +548,10 @@ export function generateSarif(
           name: 'GuardLink',
           version: getPackageVersion(),
           informationUri: 'https://guardlink.bugb.io',
-          rules: RULES.map(rule => ({ ...rule, ...RULE_EXTRAS[rule.id] })),
+          rules: [
+            ...RULES.map(rule => ({ ...rule, ...RULE_EXTRAS[rule.id] })),
+            ...(pentest ? PENTEST_RULES : []),
+          ],
         },
       },
       results,
@@ -492,6 +561,7 @@ export function generateSarif(
         generator: `guardlink@${getPackageVersion()}`,
         acceptance_register: ACCEPTANCE_REGISTER_ID,
         sarif_profile_version: SARIF_PROFILE_VERSION,
+        ...pentestProperties,
       },
       automationDetails: { id: SARIF_AUTOMATION_ID },
       ...(vcs?.repositoryUri ? {

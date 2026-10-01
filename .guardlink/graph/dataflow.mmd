@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:d02b387aba43c6c331700247d8cc308a417da789071942746f01a06ec68bfa1e
+%% annotation_hash: sha256-v3:4a7d0ba07ea80e6802ab0660b05f4541d06265ffe1cc3d1d817bebb549433253
 %% generator:       guardlink@2.1.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 76 nodes / 189 edges, past the 12 / 16 legibility budget (76 nodes against 12, 189 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 77 nodes / 192 edges, past the 12 / 16 legibility budget (77 nodes against 12, 192 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -80,14 +80,15 @@ graph LR
   pentestfindings["🧩 PentestFindings"]
   llmconfig["🧩 LLMConfig"]
   llmtoolcall["🧩 LLMToolCall"]
-  sarif["🧩 GuardLink.SARIF"]
+  sarif["🧩 GuardLink.SARIF · internal"]
+  ledgerfile["🧩 LedgerFile"]
+  baselinesarif["🧩 BaselineSarif"]
   sariflog["🧩 SarifLog"]
   dashboard["🧩 GuardLink.Dashboard · pii, internal"]
   blame["🧩 GuardLink.Blame · pii"]
   committrailers["🧩 CommitTrailers"]
   parsediagnostics["🧩 ParseDiagnostics"]
   sourcefiles["🧩 SourceFiles"]
-  ledgerfile["🧩 LedgerFile"]
   userargs["👤 UserArgs"]
   gate["🧩 GuardLink.Gate"]
   scanreport["🧩 ScanReport"]
@@ -161,6 +162,9 @@ graph LR
   llmtoolcall -- "📡 createToolExecutor" --> llm_client
   llm_client -- "📡 fetch" --> nvd
   threatmodel -- "📡 buildSarifContext" --> sarif
+  threatmodel -- "📡 buildPentestAppendix" --> sarif
+  ledgerfile -- "📡 HypothesesRead" --> sarif
+  baselinesarif -- "📡 applyBaseline" --> sarif
   threatmodel -- "📡 generateSarif" --> sarif
   sarif -- "📡 return" --> sariflog
   threatmodel -- "📡 emitArtifacts" --> dashboard

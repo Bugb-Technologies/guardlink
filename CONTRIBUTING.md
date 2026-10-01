@@ -169,6 +169,8 @@ Changes to the annotation grammar or ThreatModel schema require discussion in an
 
 Other tools key on the SARIF export's result index, `message.text`, rule ids and `partialFingerprints`, and GitHub reopens every alert whose rule id changes. So a change to `guardlink sarif` adds members after the existing ones and never adds, drops, reorders or rewords a result (SPEC §6.7). `tests/sarif-enrichment.test.ts` enforces this by stripping the added members and comparing the rest with `tests/fixtures/sarif-baseline/`. Name any new member in that test's `strip()`, and regenerate a baseline only for an intended change to `results` or `tool` (see the README in that directory). Describe the new shape in SPEC §6 and bump `SARIF_PROFILE_VERSION` in the same pull request.
 
+The `github` profile (the default) is also pinned whole against `tests/fixtures/sarif-baseline/*.github.sarif`, so anything for a test run goes in the `pentest` profile (`src/analyzer/sarif-pentest.ts`, SPEC §6.8), appended after every `github` result. `tests/sarif-pentest.test.ts` pins that profile against `tests/fixtures/sarif-pentest/`, which other tools test their readers against; regenerate those as its README says, and only for an intended change.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the MIT License.
