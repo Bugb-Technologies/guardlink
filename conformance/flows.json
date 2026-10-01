@@ -121,6 +121,123 @@
       }
     },
     {
+      "id": "chain/four-endpoints-via-description",
+      "rule": "Chains",
+      "about": "Four endpoints are three hops, in order, each carrying the whole mechanism and description.",
+      "files": {
+        "app/flows.py": "import os\n# @flows #client -> #gateway -> #orders -> #db via order_id -- \"Order write path\"\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#client",
+            "target": "#gateway",
+            "mechanism": "order_id",
+            "route": null,
+            "description": "Order write path",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#gateway",
+            "target": "#orders",
+            "mechanism": "order_id",
+            "route": null,
+            "description": "Order write path",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#orders",
+            "target": "#db",
+            "mechanism": "order_id",
+            "route": null,
+            "description": "Order write path",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "chain/five-endpoints-no-via",
+      "rule": "Chains; Mechanism",
+      "about": "Five endpoints are four hops; with no via every hop has a null mechanism. All four endpoint forms appear in one chain.",
+      "files": {
+        "app/flows.py": "import os\n# @flows User -> #edge -> Svc.Api -> #billing.charge -> \"Ledger DB\"\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "User",
+            "target": "#edge",
+            "mechanism": null,
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#edge",
+            "target": "Svc.Api",
+            "mechanism": null,
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "Svc.Api",
+            "target": "#billing.charge",
+            "mechanism": null,
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#billing.charge",
+            "target": "Ledger DB",
+            "mechanism": null,
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
       "id": "chain/quoted-endpoints",
       "rule": "Chains; Endpoints",
       "files": {
@@ -459,6 +576,67 @@
               "path": "/items"
             },
             "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "route/four-endpoint-chain",
+      "rule": "Chains; Route channels",
+      "about": "A route channel on a longer chain is carried, with its full mechanism and parsed route, by every hop.",
+      "files": {
+        "app/flows.py": "import os\n# @flows #client -> #gateway -> #orders -> #db via PATCH./orders/{id}?fields (json) -- \"Partial update\"\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#client",
+            "target": "#gateway",
+            "mechanism": "PATCH./orders/{id}?fields (json)",
+            "route": {
+              "method": "PATCH",
+              "path": "/orders/{id}"
+            },
+            "description": "Partial update",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#gateway",
+            "target": "#orders",
+            "mechanism": "PATCH./orders/{id}?fields (json)",
+            "route": {
+              "method": "PATCH",
+              "path": "/orders/{id}"
+            },
+            "description": "Partial update",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#orders",
+            "target": "#db",
+            "mechanism": "PATCH./orders/{id}?fields (json)",
+            "route": {
+              "method": "PATCH",
+              "path": "/orders/{id}"
+            },
+            "description": "Partial update",
             "location": {
               "file": "app/flows.py",
               "line": 2,
