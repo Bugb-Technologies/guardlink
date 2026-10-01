@@ -52,7 +52,7 @@ the same change.** This includes: new endpoints, authentication/authorization lo
 3. **Use `@confirmed` for verified exploits.** When a pentest, CXG scan, or manual reproduction proves a threat is exploitable, mark it with `@confirmed #threat on Asset [severity] -- "evidence"`. This is distinct from `@exposes` (theoretical) — `@confirmed` means real, verified, not a false positive. Include severity based on actual observed impact. **Without that evidence in hand, `@exposes` stands and you do not promote it** — reading the code is not reproduction. To get evidence, `bugb intake "<brief>"` turns a description into a test plan and prints a PLAN_ID; an operator approves it, never you.
 4. Do not delete or mangle existing annotations. Treat them as part of the code. Edit only when intentionally changing the threat model.
 5. Definitions (`@asset`, `@threat`, `@control` with `(#id)`) live in `.guardlink/definitions.ts`. Reuse existing `#id`s — never redefine. If you need a new asset or threat, add the definition there first, then reference it in source files.
-6. Source files use relationship verbs only: `@mitigates`, `@exposes`, `@confirmed`, `@flows`, `@handles`, `@boundary`, `@comment`, `@validates`, `@audit`, `@owns`, `@assumes`, `@transfers`, `@feature`. (`@actor` is a definition — it belongs in the definitions file with `@asset`/`@threat`/`@control`. `@entitles` is proposed, not written — see rule 9.) Four of those are permitted everywhere and written almost nowhere, because nothing tells you *when*. Their triggers:
+6. Source files use relationship verbs only: `@mitigates`, `@exposes`, `@confirmed`, `@flows`, `@handles`, `@boundary`, `@comment`, `@validates`, `@audit`, `@owns`, `@assumes`, `@transfers`, `@feature`, and the reach verbs `@agents`, `@reaches`, `@effects`, `@gates` (rule 10). (`@actor` is a definition — it belongs in the definitions file with `@asset`/`@threat`/`@control`. `@entitles` is proposed, not written — see rule 9.) Four of those are permitted everywhere and written almost nowhere, because nothing tells you *when*. Their triggers:
    - **You wrote or changed a test that pins a control** → `@validates #control for Asset -- "what the test proves"`, on the test. Control first, asset second, joined by `for`.
    - **The code trusts a caller, library, or platform to hold a property it never checks itself** → `@assumes Asset -- "what must hold, and what breaks if it does not"`. One asset, and the whole assumption lives in the description.
    - **Responsibility for a threat lands on a vendor, an upstream service, or another team's component** → `@transfers #threat from Source to Target`. Both ends must be assets that already exist in the definitions file — a vendor needs an `External.*` asset declared first, and a bare company name will not parse.
@@ -60,6 +60,7 @@ the same change.** This includes: new endpoints, authentication/authorization lo
 7. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note — plus `@boundary` when that flow crosses a trust change (written `from <outer> to <inner>` when you know which side is less trusted), and `@handles` when the asset touches classified data. Never write a lone `@exposes` without follow-up.
 8. Avoid `@shield` unless a human explicitly asks to hide code from AI — it creates blind spots.
 9. **NEVER write `@entitles` into source — propose it.** `@entitles` says a privilege is *supposed* to have this effect, so an over-grant closes a real privilege escalation as by-design. That makes it the second claim you may not make on a human's behalf, alongside `@accepts`. File it with `guardlink entitle --propose` (or `guardlink_entitlement_propose`) and a human's acceptance is what writes the annotation, under their name; an `@entitles` in source with no accepted proposal is a validation error. The rationale must cite the authz code as `file:line` or the claim is inert — parsed and then ignored. It never suppresses a finding and never gates testing; it only changes what triage recommends. Never propose one for an ownership question (IDOR, tenant isolation) — both peers hold the capability, so it cannot say whose object it was. When unsure which role the code actually requires, write `@comment` describing what you saw instead: under-granting costs noise, over-granting hides a real bug.
+10. **Declare what an embedded LLM agent can reach.** When code hands an agent a tool, an MCP server, file, shell or database access, or an internal method: `@agents #agent to <capability> on Asset` on the registration (declare the agent with `@actor` first), `@effects <read|write|delete|execute|spend|notify> on Asset` on the code that acts, and `@gates Asset by #approver` on any approval step. `@reaches` is the same claim for a principal that is not an LLM agent (a CI runner, a service account); one actor under both verbs is a validation error. You may write all four — they say what the code *can* do. Use the capability token an `@entitles` would use: `unentitled reaches` then lists the capabilities no human approved, and for those you propose an entitlement (rule 9), never write one.
 
 ### Workflow (while coding)
 
@@ -77,7 +78,8 @@ the same change.** This includes: new endpoints, authentication/authorization lo
   guessing** — send it a bad query to get the list. Beyond `asset`/`threat`/`control`, it reaches
   every relation the model holds: `owner of X`, `handles pii`, `assumptions for X`, `audits for X`,
   `validations for X`, `acceptances`, `transfers`, `comments for X`, `shields`, `cross-repo refs`,
-  and `cwe:CWE-89` / `owasp:A03` for scanner findings.
+  `agents`, `unentitled reaches`, `effects for X`, `gates for X`,
+  and `cwe:CWE-89` / `owasp:A03` for scanner findings. Without MCP, `guardlink lookup "<form>"` answers the same forms.
 - Reference matches report `matched_via: exact | alias | substring`. A substring match is a
   suggestion, not an identification; `ambiguous` with `candidates` means several records tied.
 
@@ -96,6 +98,9 @@ the same change.** This includes: new endpoints, authentication/authorization lo
 @confirmed #sqli on App.API [critical] cwe:CWE-89 -- "Pentest verified: raw SQL injection via email param"
 @feature "SSO Login" -- "Single sign-on authentication flow"
 @owns security-team for App.API -- "Team responsible for reviews"
+@agents #support-agent to run-sql on #tool-surface as #agent-session -- "run_sql tool registered in tools.ts"
+@effects write on #users-db as #db-service -- "Executes the model-written SQL via db.raw"
+@gates #payments by #support-human for issue-refund -- "requireApproval() blocks until a human approves"
 @actor Namespace_Admin (#ns-admin) -- "Administers one namespace's configuration"   (definitions file)
 @comment -- "Rate limit: 100 req/15min via express-rate-limit"
 ```
@@ -174,11 +179,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-874 annotations, 20 assets, 16 threats, 14 controls, 127 exposures, 0 confirmed, 129 mitigations, 3 actors, 1 entitlements, 202 flows, 2 features
+884 annotations, 20 assets, 16 threats, 14 controls, 127 exposures, 0 confirmed, 130 mitigations, 3 actors, 1 entitlements, 202 flows, 2 features
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v3:95e447ec72ce4924c563d83aae0d3e594f518789e71d00ded358ac3255cf772a`
+- `annotation_hash`: `sha256-v3:58a5b22940f27108f0890a80cc509fe5e68f0e97f88f9812332529f9e00b729a`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.
