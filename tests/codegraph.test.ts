@@ -748,5 +748,12 @@ describe('MCP: guardlink_worklist, guardlink_reach, guardlink_annotate', () => {
     expect(a.code_graph).toContain('4 entry point(s) ranked');
     const off = await call('guardlink_annotate', { prompt: 'annotate the api', playbook: 'coverage', code_graph: false });
     expect(off.prompt).not.toContain('## Code-graph worklist');
+
+    // Boundary checks ride on guardlink_validate only when asked for.
+    const plain = await call('guardlink_validate', {});
+    expect(plain).not.toHaveProperty('boundary_checks');
+    const checked = await call('guardlink_validate', { code_graph: true });
+    expect(checked.boundary_checks.code_graph).toContain('Boundary checks (code graph via codegraph-mcp): 4 entry point(s) read');
+    expect(checked.valid).toBe(plain.valid);
   });
 });

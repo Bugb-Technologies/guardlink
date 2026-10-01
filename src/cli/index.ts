@@ -66,6 +66,7 @@ import { generateDashboardHTML, loadSince } from '../dashboard/index.js';
 import type { SinceInput } from '../dashboard/analytics.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt, buildTranslatePrompt, buildAskPrompt, resolveAnnotationMode } from '../agents/index.js';
 import { loadWorklist, worklistSummaryLine } from '../codegraph/index.js';
+import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary-check.js';
 import { selectAnnotatePlaybook, selectReportShape, ANNOTATE_PLAYBOOKS, REPORT_SHAPES } from '../playbooks/index.js';
 import { lintAnnotations, runGate, formatGateReport, buildGateFollowUp, stripViolations, RULE_FIX } from '../gate/index.js';
 import { relationRecords, CLAIM_KEY_NAMES, CLAIM_KEY_SURFACES } from '../parser/claim-key.js';
@@ -349,7 +350,8 @@ program
   .option('--strict', 'Also fail on unmitigated exposures (for CI gates)')
   .option('--artifacts', 'Also check .guardlink/graph/ artifacts against the current model; exits non-zero on drift')
   .option('--sync', 'Also refresh agent instruction files (this used to happen unasked — see D16)')
-  .action(async (dir: string, opts: { project: string; strict?: boolean; artifacts?: boolean; sync?: boolean }) => {
+  .option('--code-graph', 'Also check declared @boundary claims against a code graph, when one is installed and built: a stated access level a route contradicts, a route handler with no boundary to the outside, a boundary nothing crosses. Warnings only')
+  .action(async (dir: string, opts: { project: string; strict?: boolean; artifacts?: boolean; sync?: boolean; codeGraph?: boolean }) => {
     const root = resolve(dir);
     const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
 
@@ -394,7 +396,18 @@ program
     const ledgerRead = readLedger(root);
     const ledgerDiags = ledgerRead.diagnostic ? [ledgerRead.diagnostic] : [];
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...acceptanceDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags];
+    // Opt-in, so validate without the flag never consults a graph and prints what
+    // it always printed. The checks are warnings: the graph's measurement
+    // disagrees with a claim a human wrote, and a human decides which is wrong.
+    let boundaryDiags: ParseDiagnostic[] = [];
+    if (opts.codeGraph) {
+      // @flows #cli -> #codegraph via loadWorklist -- "validate --code-graph: project root; ranked entry points with route access, or a status"
+      const worklist = await loadWorklist(root, model);
+      boundaryDiags = checkBoundaries(model, worklist);
+      console.error(boundaryCheckSummaryLine(worklist, boundaryDiags));
+    }
+
+    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...acceptanceDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags, ...boundaryDiags];
 
     // Check for unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);

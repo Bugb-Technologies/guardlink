@@ -775,7 +775,16 @@ export type DiagnosticCode =
   | 'ledger-corrupt'
   // ── Governance (src/review/entitlements.ts) ──
   /** An `@entitles` in source with no accepted proposal behind it. */
-  | 'entitlement-provenance';
+  | 'entitlement-provenance'
+  // ── Boundary checks against a code graph (src/codegraph/boundary-check.ts) ──
+  /** A boundary's description states an access level a route on its inner side is classified below. */
+  | 'boundary-access-contradicted'
+  /** A boundary states an access level, and the graph could not decide a route on its inner side. */
+  | 'boundary-access-unknown'
+  /** A route handler reaches a classified sink, and no asset its file names has a boundary to the outside. */
+  | 'boundary-missing'
+  /** No declared flow crosses a boundary, and no recognised entry point reaches either side. */
+  | 'boundary-unused';
 
 export interface ParseDiagnostic {
   level: 'error' | 'warning' | 'fatal';

@@ -84,6 +84,7 @@ import { selectSubgraph, traverseGraph, findPath, summariseGraphPayload, without
 import { buildServerInstructions, readConfiguredMode } from './instructions.js';
 import { suggestAnnotations } from './suggest.js';
 import { loadWorklist, reachFor, worklistSummaryLine, type Worklist } from '../codegraph/index.js';
+import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary-check.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
@@ -345,9 +346,12 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_validate',
-    'Check annotations for syntax errors, duplicate IDs, and dangling references. Returns structured error list.',
-    { root: z.string().describe('Project root directory').default('.') },
-    async ({ root }) => {
+    'Check annotations for syntax errors, duplicate IDs, and dangling references. Returns structured error list. With code_graph: true, also checks each declared @boundary against an optional code graph — a boundary whose description says its inner side needs a login (or an admin check) while a route there is classified public (boundary-access-contradicted) or could not be classified (boundary-access-unknown), a route handler reaching a sink with no boundary to the outside (boundary-missing), a boundary no flow crosses and no entry point reaches (boundary-unused). Those are warnings about claims to verify, never findings; boundary_checks says whether the graph was usable.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      code_graph: z.boolean().default(false).describe('Also check declared boundaries against a code graph, when one is installed and built for this repository'),
+    },
+    async ({ root, code_graph }) => {
       invalidateCache();
       const { model, diagnostics } = await getModel(root);
 
@@ -361,7 +365,18 @@ export function createServer(): McpServer {
       // §3.6: an @entitles no human accepted. Only checked where the project has
       // a proposal ledger, so it never fires on a repo not using the flow.
       const provenanceDiags = await checkEntitlementProvenance(root, model);
-      const allDiags = [...diagnostics, ...danglingDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags];
+      // Only when asked: without code_graph the answer is exactly what it was.
+      let boundaryChecks: { code_graph: string; warnings: { file: string; line: number; code?: string; message: string }[] } | undefined;
+      let boundaryDiags: typeof diagnostics = [];
+      if (code_graph) {
+        const worklist = await loadWorklist(resolve(root), model);
+        boundaryDiags = checkBoundaries(model, worklist);
+        boundaryChecks = {
+          code_graph: boundaryCheckSummaryLine(worklist, boundaryDiags),
+          warnings: boundaryDiags.map(d => ({ file: d.file, line: d.line, code: d.code, message: d.message })),
+        };
+      }
+      const allDiags = [...diagnostics, ...danglingDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...boundaryDiags];
 
       const errors = allDiags.filter(d => d.level === 'error');
       const warnings = allDiags.filter(d => d.level === 'warning');
@@ -371,6 +386,7 @@ export function createServer(): McpServer {
         errors: errors.map(d => ({ file: d.file, line: d.line, message: d.message })),
         warnings: warnings.map(d => ({ file: d.file, line: d.line, message: d.message })),
         summary: `${errors.length} error(s), ${warnings.length} warning(s)`,
+        ...(boundaryChecks ? { boundary_checks: boundaryChecks } : {}),
       };
 
       return {
