@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/sarif.flows.mmd
-%% scope:           PARTIAL — #sarif and its flow neighbourhood, grown until the drawing stopped fitting — 23 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:d02b387aba43c6c331700247d8cc308a417da789071942746f01a06ec68bfa1e
+%% scope:           PARTIAL — #sarif and its flow neighbourhood, grown until the drawing stopped fitting — 11 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:4a7d0ba07ea80e6802ab0660b05f4541d06265ffe1cc3d1d817bebb549433253
 %% generator:       guardlink@2.1.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -13,21 +13,12 @@
 graph LR
   threatmodel["🧩 ThreatModel"]
   sarif["🧩 GuardLink.SARIF"]
+  ledgerfile["🧩 LedgerFile"]
+  baselinesarif["🧩 BaselineSarif"]
   sariflog["🧩 SarifLog"]
-  parser["🧩 GuardLink.Parser"]
   threatmodel -- "📡 buildSarifContext" --> sarif
+  threatmodel -- "📡 buildPentestAppendix" --> sarif
+  ledgerfile -- "📡 HypothesesRead" --> sarif
+  baselinesarif -- "📡 applyBaseline" --> sarif
   threatmodel -- "📡 generateSarif" --> sarif
   sarif -- "📡 return" --> sariflog
-  threatmodel -- "📡 findAcceptanceDefects" --> parser
-  threatmodel -- "📡 findExpiringAcceptances" --> parser
-  threatmodel -- "📡 computeAnnotationHash" --> parser
-  threatmodel -- "📡 detectAnnotationMode" --> parser
-  threatmodel -- "📡 canonicalizeModelOrder" --> parser
-  threatmodel -- "📡 isCovered" --> parser
-  threatmodel -- "📡 checkHandoff" --> parser
-  threatmodel -- "📡 migrateAnnotationMode" --> parser
-  parser -- "📡 assembleModel" --> threatmodel
-  threatmodel -- "📡 findAnchorDrift" --> parser
-  threatmodel -- "📡 buildRouteIndex" --> parser
-  threatmodel -- "📡 classifyClaims" --> parser
-  threatmodel -- "📡 findUnmitigatedPaths" --> parser
