@@ -109,7 +109,7 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
   const confirmed = diffByKey(before.confirmed || [], after.confirmed || [], (c: ThreatModelConfirmed) => `${c.asset}::${c.threat}`, (a: ThreatModelConfirmed, b: ThreatModelConfirmed) => a.severity !== b.severity || a.description !== b.description ? `severity/description changed` : null);
   const acceptances = diffByKey(before.acceptances, after.acceptances, acceptanceKey);
   const flows = diffByKey(before.flows, after.flows, flowKey, flowChanged);
-  const boundaries = diffByKey(before.boundaries, after.boundaries, boundaryKey);
+  const boundaries = diffByKey(before.boundaries, after.boundaries, boundaryKey, boundaryChanged);
   const transfers = diffByKey(before.transfers, after.transfers, transferKey);
 
   // Compute unmitigated exposure delta
@@ -350,6 +350,19 @@ function flowChanged(a: ThreatModelFlow, b: ThreatModelFlow): string | null {
   if (a.mechanism !== b.mechanism) return `mechanism: ${a.mechanism || 'none'} → ${b.mechanism || 'none'}`;
   if (a.description !== b.description) return 'description changed';
   return null;
+}
+
+/**
+ * Only a change of direction: declaring one, dropping one, or swapping which
+ * side is outer. The boundary diff reported nothing on modification before the
+ * directed form existed, and an undirected pair still reports nothing.
+ */
+function boundaryChanged(a: ThreatModelBoundary, b: ThreatModelBoundary): string | null {
+  const direction = (x: ThreatModelBoundary) => (x.directed ? `from ${x.asset_a} to ${x.asset_b}` : 'undirected');
+  if (!a.directed && !b.directed) return null;
+  const before = direction(a);
+  const after = direction(b);
+  return before === after ? null : `direction: ${before} → ${after}`;
 }
 
 // ─── Unmitigated exposure computation ────────────────────────────────

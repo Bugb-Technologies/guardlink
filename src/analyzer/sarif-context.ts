@@ -124,10 +124,12 @@ export interface FindingClaim {
 }
 
 /**
- * Which side of an undirected `@boundary` is outside, inferred by the
- * undeclared-endpoint convention (SPEC §3.2) or not at all.
+ * Which side of a `@boundary` is outside. A directed boundary (`from <outer>
+ * to <inner>`) states it: `declared`. An undirected one leaves it to the
+ * undeclared-endpoint convention (SPEC §3.2), or to nobody: `unknown`.
  */
 export type BoundarySide =
+  | { basis: 'declared'; outer: string; inner: string }
   | { basis: 'undeclared-endpoint'; outer: string; inner: string }
   | { basis: 'unknown' };
 
@@ -268,22 +270,27 @@ export function buildSarifContext(model: ThreatModel): SarifContext {
     const c = nodeFor(b.asset_b);
     const pair = pairKey(a, c);
     boundaryEdgeIds.set(pair, [...(boundaryEdgeIds.get(pair) ?? []), id]);
-    boundaryLabel.set(id, b.id ? `#${b.id}` : `${b.asset_a} and ${b.asset_b}`);
+    boundaryLabel.set(id, b.id ? `#${b.id}` : b.directed ? `${b.asset_a} to ${b.asset_b}` : `${b.asset_a} and ${b.asset_b}`);
     crossingsOf.set(id, []);
-    // The convention SPEC §3.2 gives `guardlink paths`: an undeclared endpoint
-    // is outside the system. With exactly one undeclared side, that side is
-    // outer; otherwise the annotation does not say, and neither do we.
+    // A directed boundary says which side is outside, and that is the answer
+    // whatever either side's declaration suggests. Otherwise, the convention
+    // SPEC §3.2 gives `guardlink paths`: an undeclared endpoint is outside the
+    // system. With exactly one undeclared side, that side is outer; otherwise
+    // the annotation does not say, and neither do we.
     const outer = [a, c].filter(n => !declared.has(n));
-    const side: BoundarySide = outer.length === 1
-      ? { basis: 'undeclared-endpoint', outer: outer[0], inner: outer[0] === a ? c : a }
-      : { basis: 'unknown' };
+    const side: BoundarySide = b.directed
+      ? { basis: 'declared', outer: a, inner: c }
+      : outer.length === 1
+        ? { basis: 'undeclared-endpoint', outer: outer[0], inner: outer[0] === a ? c : a }
+        : { basis: 'unknown' };
     boundaryContexts.push({ boundary: b, edge: id, a, b: c, side, claimKey: claimKeyOf.get(b.location) ?? null, crossings: [] });
     edges.push({
       id, sourceNodeId: a, targetNodeId: c,
       label: { text: b.description || `@boundary ${claimText(['boundary', b])}` },
       properties: {
         'guardlink/kind': 'boundary',
-        'guardlink/directed': false,
+        // Directed edges run outer -> inner: source is the outer side.
+        'guardlink/directed': b.directed === true,
         'guardlink/boundaryId': b.id ?? null,
         'guardlink/claimKey': claimKeyOf.get(b.location) ?? null,
         'guardlink/location': { physicalLocation: physicalLocation(b.location.file, b.location.line) },
@@ -515,8 +522,13 @@ export function buildSarifContext(model: ThreatModel): SarifContext {
 
     graph() {
       if (nodes.size === 0) return null;
+      // The text changes only when a directed boundary exists, so an export of
+      // a model without one is byte-identical to what it was before.
+      const boundaryEdges = boundaries.some(b => b.directed)
+        ? '@boundary edges (undirected, or outer to inner where guardlink/directed is true)'
+        : '@boundary edges (undirected)';
       return {
-        description: { text: 'GuardLink declared threat model: @flows edges (directed) and @boundary edges (undirected). Edge ids are local to this export; guardlink/claimKey is the stable identity.' },
+        description: { text: `GuardLink declared threat model: @flows edges (directed) and ${boundaryEdges}. Edge ids are local to this export; guardlink/claimKey is the stable identity.` },
         nodes: [...nodes.values()],
         edges,
       };

@@ -861,8 +861,9 @@ function renderBoundarySuggestions(shown: WorklistEntry[]): string[] {
     '',
     '### Boundaries the graph suggests',
     'Each row above crosses trust lines the code shows: an outside caller reaching the handler, and the handler reaching storage, a spawned process, the network or the filesystem. '
-    + 'Where the model does not already declare one (guardlink_lookup "boundary for <asset>"), write a `@boundary` between the handler\'s asset and the other side — `Client` or an `External.*` asset for a caller, the store, process or vendor for a sink — '
-    + 'and name what enforces the line in its description: the guard the graph cites, once you have read it in source. A suggestion is where to look, not a claim; write none you cannot see in the code.',
+    + 'Where the model does not already declare one (guardlink_lookup "boundary for <asset>"), write a `@boundary` between the handler\'s asset and the other side — `Client` or an `External.*` asset for a caller, the store, process or vendor for a sink. '
+    + 'Write it directed, `@boundary from <outer> to <inner>`, when you know which side is less trusted: a caller is outer (`from Client to #api`), and a store is inner to the code that queries it (`from #api to #db`); write `between` when you do not. '
+    + 'Name what enforces the line in its description: the guard the graph cites, once you have read it in source. A suggestion is where to look, not a claim; write none you cannot see in the code.',
     ...blocks,
   ];
 }

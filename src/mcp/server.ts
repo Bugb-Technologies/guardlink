@@ -64,7 +64,7 @@ import { z } from 'zod';
 // MERGE: main added the entitlement validators and the proposal module; ours
 // kept `crossRepoTag` (D19). Union — main's list had dropped crossRepoTag only
 // because it branched before D19 landed.
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
 import { readAcceptancePolicy, acceptanceBlastRadius, formatBlastRadius, ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
 import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
@@ -358,6 +358,8 @@ export function createServer(): McpServer {
 
       // Compute dangling refs using shared validation
       const danglingDiags = findDanglingRefs(model);
+      // A directed @boundary whose outer or inner side names nothing is an error.
+      const boundarySideDiags = findUnresolvedBoundarySides(model);
       // Entitlement checks: undeclared actor is an error, an uncited (inert)
       // entitlement is a warning — it parses but can never demote a finding.
       const actorDiags = findUndeclaredActors(model);
@@ -377,7 +379,7 @@ export function createServer(): McpServer {
           warnings: boundaryDiags.map(d => ({ file: d.file, line: d.line, code: d.code, message: d.message })),
         };
       }
-      const allDiags = [...diagnostics, ...danglingDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...boundaryDiags];
+      const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...boundaryDiags];
 
       const errors = allDiags.filter(d => d.level === 'error');
       const warnings = allDiags.filter(d => d.level === 'warning');

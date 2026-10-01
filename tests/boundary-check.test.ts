@@ -165,6 +165,22 @@ describe('checkBoundaries', () => {
     expect(d.some(x => x.message.includes('#data-boundary'))).toBe(false);
   });
 
+  it('checks a directed boundary between two declared assets against its declared inner side', async () => {
+    // The same pair the test above skips, now written `from #db to #api`: the
+    // direction names the inner side, so nothing has to be inferred.
+    const directed: ThreatModel = {
+      ...model,
+      boundaries: model.boundaries.map(b => (b.id === 'data-boundary'
+        ? { ...b, asset_a: '#db', asset_b: '#api', directed: true as const, description: 'Everything past this point has been authenticated' }
+        : b)),
+    };
+    const d = checkBoundaries(directed, await worklist());
+    const contradicted = d.filter(x => x.code === 'boundary-access-contradicted' && x.message.startsWith('#data-boundary'));
+    expect(contradicted).toHaveLength(1);
+    expect(contradicted[0].message).toContain('#data-boundary says the #api side is authenticated');
+    expect(contradicted[0].message).toContain('GET /export (api/export.py:2 export) is public (absence)');
+  });
+
   it('every diagnostic is a warning', async () => {
     const d = checkBoundaries(model, await worklist());
     expect(d.length).toBeGreaterThan(0);

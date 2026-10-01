@@ -23,6 +23,7 @@ RELATE   @mitigates <Asset> against <#threat> using <#control> -- "how"
 
 FLOW     @flows <Source> -> <Target> [-> <Next> …] [via <mechanism>] -- "details"
          @flows <Client> -> <Asset> via GET./orders/<id> -- "an HTTP route, on its handler"
+         @boundary from <Outer> to <Inner> (#id) -- "trust boundary, direction known"
          @boundary <AssetA> | <AssetB> (#id) -- "trust boundary"
          @boundary between <AssetA> and <AssetB> (#id) -- "trust boundary"
 
@@ -273,7 +274,11 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
   `total` is additive exactly as `key` is, and the schema stays `/v1` for the same reason. A run
   that hides nothing is unchanged: no marker, no notice.
 - **A declared boundary is a claim too.** A `@boundary` says trust changes between two sides and,
-  in its description, what holds the line, which a probe can test from the outer side. The ledger
+  in its description, what holds the line, which a probe can test from the outer side. Write it
+  `@boundary from <outer> to <inner>` when you know which side is less trusted: the export then
+  states the outer side as declared (`basis: "declared"`) instead of inferring it, which it cannot
+  do at all when both sides are declared assets. A directed side that names no declared asset and
+  no `@flows` endpoint fails `guardlink validate` (`unresolved-boundary-side`). The ledger
   records that against the boundary's claim key as `supported` (refused where the boundary says)
   or `contradicted` (it got through), with the same evidence rule (a contradiction is held to the
   confirmation's bar) and the same expiry (supported lapses to `unverified`, contradicted becomes

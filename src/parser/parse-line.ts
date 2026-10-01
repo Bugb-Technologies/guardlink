@@ -133,6 +133,10 @@ const PATTERNS: Record<string, RegExp> = {
   // as the mechanism and lose the description. SPEC §3.2 `@flows`, Mechanism.
   flows: new RegExp(String.raw`^@flows\s+(${ASSET_REF}(?:\s+->\s+${ASSET_REF})+)(?:\s+via\s+(?!--\s*")((?:(?!\s+--\s*").)+?))?(?:\s+${DESC})?$`),
   boundary: new RegExp(String.raw`^@boundary\s+(?:between\s+)?(${ASSET_REF})\s+and\s+(${ASSET_REF})(?:\s+${ID_DEF})?(?:\s+${DESC})?$`),
+  // `from <outer> to <inner>` states which side is outside. The undirected
+  // forms above stay as they were; a reader that ignores `directed` reads this
+  // one as the pair (outer, inner). SPEC §3.2 `@boundary`, Direction.
+  boundary_directed: new RegExp(String.raw`^@boundary\s+from\s+(${ASSET_REF})\s+to\s+(${ASSET_REF})(?:\s+${ID_DEF})?(?:\s+${DESC})?$`),
   boundary_pipe: new RegExp(String.raw`^@boundary\s+(${ASSET_REF})\s*\|\s*(${ASSET_REF})(?:\s+${ID_DEF})?(?:\s+${DESC})?$`),
   connects_v1: new RegExp(String.raw`^@connects\s+(${ASSET_REF})\s+to\s+(${ASSET_REF})(?:\s+${DESC})?$`),
 
@@ -371,6 +375,14 @@ export function parseLine(
     return ok({
       ...base, verb: 'boundary', asset_a: resolveRef(m[1]), asset_b: resolveRef(m[2]),
       id: m[3], description: desc(m[4]),
+    });
+  }
+
+  // ── @boundary directed: @boundary from <outer> to <inner> ──
+  if ((m = trimmed.match(PATTERNS.boundary_directed))) {
+    return ok({
+      ...base, verb: 'boundary', asset_a: resolveRef(m[1]), asset_b: resolveRef(m[2]),
+      id: m[3], description: desc(m[4]), directed: true,
     });
   }
 
@@ -732,6 +744,19 @@ const VERB_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
+ * Keywords that are evidence only as the first word of the arguments.
+ *
+ * The directed `@boundary from <outer> to <inner>` brings `from` and `to`, and
+ * both are too common in English to count anywhere in the line: `@boundary is
+ * used to mark a trust change` is prose, not a broken annotation. Opening the
+ * arguments with `from` is how the directed form starts, and prose about the
+ * verb almost never does.
+ */
+const LEADING_KEYWORDS: Readonly<Record<string, RegExp>> = {
+  boundary: /^from\b/,
+};
+
+/**
  * Why we believe a line was MEANT to be an annotation, or null if we do not.
  *
  * D29: a diagnostic on every line beginning with a verb means that writing
@@ -768,6 +793,9 @@ export function structuralEvidence(verb: string, rest: string): string | null {
   // The description delimiter. Spaced, so a double hyphen inside prose
   // ("well--maybe") is not evidence.
   if (/\s--\s/.test(rest) || /\s--$/.test(rest)) return 'a `--` delimiter';
+
+  const leading = LEADING_KEYWORDS[verb];
+  if (leading && leading.test(rest.trim())) return `a leading \`${rest.trim().split(/\s+/)[0]}\``;
 
   for (const keyword of VERB_KEYWORDS[verb] ?? []) {
     const pattern = /^[a-z]+$/.test(keyword)

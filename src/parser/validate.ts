@@ -6,6 +6,7 @@
  *
  * @mitigates #parser against #tag-collision using #prefix-ownership -- "findDanglingRefs ensures #id refs resolve to definitions"
  * @comment -- "@confirmed refs validated same as @exposes for asset and threat"
+ * @comment -- "findUnresolvedBoundarySides errors on a directed @boundary whose outer or inner side names no declared asset and no @flows endpoint, so a declared direction cannot point consumers at nothing"
  * @comment -- "findUndeclaredActors / findInertEntitlements implement the two mechanical @entitles checks from docs/prd/actor-entitlement-design.md §3.7 — both typo-class; entitlement intent is not machine-checkable"
  */
 
@@ -17,6 +18,7 @@ import {
 // both to parser/coverage.ts, which this file now re-exports from (below).
 import type { ThreatModel, ParseDiagnostic, SourceLocation } from '../types/index.js';
 import { normalizeName } from './normalize.js';
+import { canonicaliser } from './canonical-ref.js';
 import { entitlementDemotionBlockers } from './parse-project.js';
 
 /**
@@ -103,6 +105,64 @@ export function findDanglingRefs(model: ThreatModel): ParseDiagnostic[] {
   for (const h of model.data_handling) checkRef(h.asset, h.location);
   for (const a of model.assumptions) checkRef(a.asset, a.location);
 
+  return diagnostics;
+}
+
+/**
+ * Find directed `@boundary from <outer> to <inner>` annotations naming a side the
+ * model cannot place.
+ *
+ * A direction is only worth declaring if a reader can act on it: a test probes
+ * the inner side from the outer one, and the SARIF export states both as graph
+ * nodes. A side that names nothing — a typo, a renamed asset — still parses and
+ * still exports as `basis: "declared"`, so consumers would trust a direction
+ * pointing at no component. That is why this is an error, where a dangling ref
+ * on an undirected boundary is a warning: the undirected form claims no side.
+ *
+ * A side resolves when it is:
+ *   - a `#tag` that a declared `@asset` defines as its id;
+ *   - any other name that is a declared asset's path, or an endpoint some `@flows`
+ *     names (an undeclared endpoint such as `Client` is how the model writes the
+ *     outside, SPEC §3.2).
+ * A repository-qualified `#repo.tag` belongs to another repository and is
+ * resolved by `guardlink merge`, not here. Undirected boundaries are not checked.
+ */
+export function findUnresolvedBoundarySides(model: ThreatModel): ParseDiagnostic[] {
+  const key = canonicaliser(model);
+  const assetIds = new Set<string>();
+  const names = new Set<string>();
+  for (const a of model.assets ?? []) {
+    if (a.id) assetIds.add(a.id.toLowerCase());
+    names.add(key(a.path.join('.')));
+  }
+  for (const f of model.flows ?? []) {
+    names.add(key(f.source));
+    names.add(key(f.target));
+  }
+  const resolves = (ref: string): boolean => {
+    if (ref.startsWith('#')) {
+      const id = ref.slice(1);
+      return id.includes('.') || assetIds.has(id.toLowerCase());
+    }
+    return names.has(key(ref));
+  };
+
+  const diagnostics: ParseDiagnostic[] = [];
+  for (const b of model.boundaries ?? []) {
+    if (!b.directed) continue;
+    const unresolved = [['outer', b.asset_a], ['inner', b.asset_b]].filter(([, ref]) => !resolves(ref));
+    if (unresolved.length === 0) continue;
+    diagnostics.push({
+      level: 'error',
+      code: 'unresolved-boundary-side',
+      message: `@boundary from ${b.asset_a} to ${b.asset_b}${b.id ? ` (#${b.id})` : ''} declares a direction, but its `
+        + `${unresolved.map(([role, ref]) => `${role} side ${ref}`).join(' and ')} `
+        + `${unresolved.length === 1 ? 'resolves' : 'resolve'} to no declared @asset and no @flows endpoint. `
+        + 'Declare it with @asset, name it in the @flows that crosses the boundary, or correct the reference.',
+      file: b.location.file,
+      line: b.location.line,
+    });
+  }
   return diagnostics;
 }
 

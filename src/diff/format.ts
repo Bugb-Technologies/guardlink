@@ -79,7 +79,7 @@ export function formatDiff(diff: ThreatModelDiff): string {
     `${e.actor} entitled to ${e.capability}${e.asset ? ` on ${e.asset}` : ''}${e.threat ? ` against ${e.threat}` : ''}`
     + entitlementCaveat(e));
   emitSection('Flows', diff.flows, lines, f => `${f.source} → ${f.target}${f.mechanism ? ` via ${f.mechanism}` : ''}`);
-  emitSection('Boundaries', diff.boundaries, lines, b => `${b.asset_a} ↔ ${b.asset_b}`);
+  emitSection('Boundaries', diff.boundaries, lines, b => (b.directed ? `${b.asset_a} → ${b.asset_b} (outer → inner)` : `${b.asset_a} ↔ ${b.asset_b}`));
   emitSection('Transfers', diff.transfers, lines, t => `${t.source} → ${t.target} (${t.threat})`);
 
   return lines.join('\n');

@@ -571,6 +571,7 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
         const b = ann as BoundaryAnnotation;
         model.boundaries.push({
           asset_a: b.asset_a, asset_b: b.asset_b, id: b.id,
+          ...(b.directed ? { directed: true as const } : {}),
           description: b.description, location: b.location,
         });
         break;

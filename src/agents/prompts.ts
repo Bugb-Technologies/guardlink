@@ -343,13 +343,14 @@ Descriptions must reference the real code: function names, variable names, libra
 \`\`\`
 
 ### \`@boundary\` — Mark Every Trust Zone Crossing
-Place @boundary annotations where trust level changes between two components:
+Place @boundary annotations where trust level changes between two components.
+When you know which side is less trusted, write the directed form \`@boundary from <outer> to <inner>\`: the outer side is where untrusted input comes from, the inner side is what the boundary protects. Testers probe the inner side from the outer one, and without a direction they cannot tell which is which when both sides are declared assets. Write \`between\` only when the code does not show the direction:
 
 \`\`\`
 // @shield:begin -- "Boundary examples, excluded from parsing"
 //
-// @boundary between #api-gateway and External_Internet (#public-boundary) -- "TLS termination, rate limiting at edge"
-// @boundary between #backend and #database (#data-boundary) -- "Application to persistence layer, connection pooling via pgBouncer"
+// @boundary from External_Internet to #api-gateway (#public-boundary) -- "TLS termination, rate limiting at edge"
+// @boundary from #backend to #database (#data-boundary) -- "Application to persistence layer, connection pooling via pgBouncer"
 // @boundary between #app and #payment-provider (#vendor-boundary) -- "PCI-DSS scope boundary, tokenized card data only"
 //
 // @shield:end
@@ -503,7 +504,7 @@ Definitions go in .guardlink/definitions.{ts,js,py,rs}. Relationship annotations
 // @audit #auth -- "Timing attack risk — needs human review to decide if bcrypt constant-time comparison is sufficient"
 // @transfers #ddos from #api to #cdn -- "Cloudflare handles L7 DDoS mitigation"
 // @flows req.body.username -> db.query via string-concat -- "User input flows to SQL"
-// @boundary between #frontend and #api (#web-boundary) -- "TLS-terminated public/private boundary"
+// @boundary from #frontend to #api (#web-boundary) -- "TLS-terminated public/private boundary"
 // @handles pii on #auth -- "Processes email, password, session tokens"
 // @validates #prepared-stmts for #auth -- "Integration test sqlInjectionTest.ts confirms parameterized queries block SQLi payloads"
 // @audit #auth -- "Session token rotation logic needs cryptographic review"
@@ -527,9 +528,10 @@ Definitions go in .guardlink/definitions.{ts,js,py,rs}. Relationship annotations
 
 ## CRITICAL SYNTAX RULES (violations cause parse errors)
 
-1. **@boundary requires TWO assets**: \`@boundary between #A and #B\` or \`@boundary #A | #B\`.
+1. **@boundary requires TWO assets**: \`@boundary from #outer to #inner\` when you know which side is less trusted, otherwise \`@boundary between #A and #B\` or \`@boundary #A | #B\`.
    WRONG: \`@boundary api -- "desc"\`  (only one argument — will NOT parse)
-   RIGHT: \`@boundary between #api and #client (#api-boundary) -- "Trust boundary"\`
+   WRONG: \`@boundary from #client and #api\`  (\`from\` pairs with \`to\`, \`between\` with \`and\`)
+   RIGHT: \`@boundary from Client to #api (#api-boundary) -- "Auth middleware: everything past it is authenticated"\`
 
 2. **@flows is ONE path per line, joined by arrows**: \`@flows <source> -> <target> via <mechanism>\`.
    A chain \`@flows A -> B -> C via mechanism\` is two flows (A -> B, B -> C), each with the same mechanism.
