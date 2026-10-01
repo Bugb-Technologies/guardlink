@@ -5,4 +5,4 @@
  * @comment -- "File writes handled by CLI/MCP callers"
  */
 
-export { generateSarif, type SarifOptions } from './sarif.js';
+export { generateSarif, type SarifOptions, type SarifVersionControl } from './sarif.js';

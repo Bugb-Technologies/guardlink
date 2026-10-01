@@ -83,7 +83,7 @@ import {
   explicitDecider, identitySuggestion, formatProposalForReview, formatProposalLine, summarizeDecisions, proposalsPath,
   type DecisionResult, type EntitlementProposal, type ProposalStatus,
 } from '../review/entitlements.js';
-import { loadWorkspaceConfig, populateMetadata, mergeReports, resolveReportPaths, mergeVerdict, formatMergeVerdict, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace, estateReport, formatEstateReport, readMergedReport, NotAMergedReport } from '../workspace/index.js';
+import { loadWorkspaceConfig, populateMetadata, readVersionControl, mergeReports, resolveReportPaths, mergeVerdict, formatMergeVerdict, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace, estateReport, formatEstateReport, readMergedReport, NotAMergedReport } from '../workspace/index.js';
 import type { MergedReport, LinkResult } from '../workspace/index.js';
 import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
 import type { VerificationReport, HandoffReport } from '../parser/index.js';
@@ -1214,7 +1214,7 @@ program
   .argument('[dir]', 'Project directory to scan', '.')
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('-o, --output <file>', 'Write SARIF to file (default: stdout)')
-  .option('--min-severity <sev>', 'Only include exposures at or above this severity (critical|high|medium|low)')
+  .option('--min-severity <sev>', 'Only include unmitigated exposures at or above this severity (critical|high|medium|low); @confirmed results are always included')
   .option('--no-diagnostics', 'Exclude parse errors from SARIF output')
   .action(async (dir: string, opts: { project: string; output?: string; minSeverity?: string; diagnostics?: boolean }) => {
     const root = resolve(dir);
@@ -1231,6 +1231,7 @@ program
         includeDiagnostics: opts.diagnostics !== false,
         includeDanglingRefs: true,
         minSeverity: opts.minSeverity as any,
+        versionControl: readVersionControl(root),
       },
     );
 

@@ -1,0 +1,378 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "GuardLink",
+          "version": "2.1.0",
+          "informationUri": "https://guardlink.bugb.io",
+          "rules": [
+            {
+              "id": "guardlink/unmitigated-exposure",
+              "name": "UnmitigatedExposure",
+              "shortDescription": {
+                "text": "Asset exposed to threat with no mitigation or acceptance"
+              },
+              "fullDescription": {
+                "text": "An @exposes annotation exists but no matching @mitigates or @accepts covers this (asset, threat) pair. This represents an acknowledged but unaddressed security risk."
+              },
+              "helpUri": "https://guardlink.bugb.io/docs/exposures",
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "guardlink/unmitigated-critical",
+              "name": "UnmitigatedCriticalExposure",
+              "shortDescription": {
+                "text": "Critical/high severity exposure with no mitigation"
+              },
+              "fullDescription": {
+                "text": "A critical or high severity exposure exists without mitigation. This should be addressed before deployment."
+              },
+              "helpUri": "https://guardlink.bugb.io/docs/exposures",
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "guardlink/confirmed-exploitable",
+              "name": "ConfirmedExploitable",
+              "shortDescription": {
+                "text": "Threat verified exploitable through testing"
+              },
+              "fullDescription": {
+                "text": "A @confirmed annotation marks this threat as verified through pentest, scanning, or manual reproduction. This is not a false positive and requires immediate remediation."
+              },
+              "helpUri": "https://guardlink.bugb.io/docs/confirmed",
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "guardlink/parse-error",
+              "name": "AnnotationParseError",
+              "shortDescription": {
+                "text": "Malformed GuardLink annotation"
+              },
+              "fullDescription": {
+                "text": "A GuardLink annotation could not be parsed. Check syntax against the specification."
+              },
+              "helpUri": "https://guardlink.bugb.io/docs/syntax",
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "guardlink/dangling-ref",
+              "name": "DanglingReference",
+              "shortDescription": {
+                "text": "Reference to undefined threat, control, or asset ID"
+              },
+              "fullDescription": {
+                "text": "An annotation references a #id that is not defined anywhere in the project."
+              },
+              "helpUri": "https://guardlink.bugb.io/docs/definitions",
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "guardlink/unmitigated-exposure",
+          "level": "warning",
+          "message": {
+            "text": "#store is exposed to dos: Export reads the whole table into memory"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/export.ts"
+                },
+                "region": {
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-2425fd275e00",
+            "guardlink/claimKey": "63046fdb7b8a3ceb3d74a9cd89038d5839c08faa739708f94c7978c346f96040:0"
+          },
+          "properties": {
+            "threatId": "gl-2425fd275e00",
+            "claimKey": "63046fdb7b8a3ceb3d74a9cd89038d5839c08faa739708f94c7978c346f96040:0",
+            "severity": "medium",
+            "asset": "#store",
+            "threat": "#dos",
+            "externalRefs": [
+              "cwe:CWE-400"
+            ]
+          }
+        },
+        {
+          "ruleId": "guardlink/unmitigated-exposure",
+          "level": "warning",
+          "message": {
+            "text": "#mailer is exposed to ssrf: Webhook URL is not validated before the request"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/notify.ts"
+                },
+                "region": {
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-9e2c8abd85e9",
+            "guardlink/claimKey": "b2c5328c212860a3a2eede9990b55fa53a0ff7d876925945d6469fa78be65b16:0"
+          },
+          "properties": {
+            "threatId": "gl-9e2c8abd85e9",
+            "claimKey": "b2c5328c212860a3a2eede9990b55fa53a0ff7d876925945d6469fa78be65b16:0",
+            "severity": "medium",
+            "asset": "#mailer",
+            "threat": "#ssrf",
+            "externalRefs": [
+              "cwe:CWE-918"
+            ]
+          }
+        },
+        {
+          "ruleId": "guardlink/unmitigated-exposure",
+          "level": "warning",
+          "message": {
+            "text": "#mailer is exposed to log-flood: Delivery failures log the full response body"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/notify.ts"
+                },
+                "region": {
+                  "startLine": 11
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-f5db85adaace",
+            "guardlink/claimKey": "4d2de4d866ac144b57f6c0e7b6e7881ca0210f882a3e80aae20d3e9c5dde5b9c:0"
+          },
+          "properties": {
+            "threatId": "gl-f5db85adaace",
+            "claimKey": "4d2de4d866ac144b57f6c0e7b6e7881ca0210f882a3e80aae20d3e9c5dde5b9c:0",
+            "severity": "low",
+            "asset": "#mailer",
+            "threat": "#log-flood"
+          }
+        },
+        {
+          "ruleId": "guardlink/unmitigated-critical",
+          "level": "error",
+          "message": {
+            "text": "#orders is exposed to idor: No owner check before the order is returned"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/web.ts"
+                },
+                "region": {
+                  "startLine": 12
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-75dd0eba6eb6",
+            "guardlink/claimKey": "d78739e45bf0d57d323c4e8db7219094c8991ef40bc54b79a372f9458d42256c:0"
+          },
+          "properties": {
+            "threatId": "gl-75dd0eba6eb6",
+            "claimKey": "d78739e45bf0d57d323c4e8db7219094c8991ef40bc54b79a372f9458d42256c:0",
+            "severity": "high",
+            "asset": "#orders",
+            "threat": "#idor",
+            "externalRefs": [
+              "cwe:CWE-639",
+              "owasp:A01:2021"
+            ],
+            "codegraph_reachability": {
+              "http_method": "GET",
+              "http_path": "/orders/:id"
+            },
+            "route_attribution": "handler"
+          }
+        },
+        {
+          "ruleId": "guardlink/unmitigated-critical",
+          "level": "error",
+          "message": {
+            "text": "#store is exposed to sqli: Search term concatenated into SQL"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/web.ts"
+                },
+                "region": {
+                  "startLine": 24
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-55d85b3632f3",
+            "guardlink/claimKey": "aa7d0f55159827485580599056a256250d97d83583387f0d915cdae280fb2f99:0"
+          },
+          "properties": {
+            "threatId": "gl-55d85b3632f3",
+            "claimKey": "aa7d0f55159827485580599056a256250d97d83583387f0d915cdae280fb2f99:0",
+            "severity": "critical",
+            "asset": "#store",
+            "threat": "#sqli",
+            "externalRefs": [
+              "cwe:CWE-89",
+              "owasp:A03:2021"
+            ],
+            "codegraph_reachability": {
+              "http_method": "POST",
+              "http_path": "/orders/search"
+            },
+            "route_attribution": "handler"
+          }
+        },
+        {
+          "ruleId": "guardlink/unmitigated-exposure",
+          "level": "warning",
+          "message": {
+            "text": "#orders is exposed to csrf: Refers to a threat this model never defines"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/web.ts"
+                },
+                "region": {
+                  "startLine": 35
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-d4687ef0175b",
+            "guardlink/claimKey": "8759962b4676d2f13d89628f4b6670226d133e3eb73680cfd0da4d4adf84e617:0"
+          },
+          "properties": {
+            "threatId": "gl-d4687ef0175b",
+            "claimKey": "8759962b4676d2f13d89628f4b6670226d133e3eb73680cfd0da4d4adf84e617:0",
+            "severity": "medium",
+            "asset": "#orders",
+            "threat": "#csrf",
+            "codegraph_reachability": {
+              "http_method": "DELETE",
+              "http_path": "/orders/:id"
+            },
+            "route_attribution": "handler"
+          }
+        },
+        {
+          "ruleId": "guardlink/confirmed-exploitable",
+          "level": "error",
+          "message": {
+            "text": "CONFIRMED: #orders exploitable via idor: Reproduced: user B read user A's order by id"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/web.ts"
+                },
+                "region": {
+                  "startLine": 13
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-75dd0eba6eb6"
+          },
+          "properties": {
+            "threatId": "gl-75dd0eba6eb6",
+            "severity": "high",
+            "asset": "#orders",
+            "threat": "#idor",
+            "externalRefs": [
+              "cwe:CWE-639"
+            ],
+            "codegraph_reachability": {
+              "http_method": "GET",
+              "http_path": "/orders/:id"
+            },
+            "route_attribution": "handler"
+          }
+        },
+        {
+          "ruleId": "guardlink/parse-error",
+          "level": "error",
+          "message": {
+            "text": "Malformed @exposes annotation: could not parse arguments (looks structural — found a #reference)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/notify.ts"
+                },
+                "region": {
+                  "startLine": 12
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "guardlink/dangling-ref",
+          "level": "warning",
+          "message": {
+            "text": "Dangling reference: #csrf is never defined"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/web.ts"
+                },
+                "region": {
+                  "startLine": 35
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "properties": {
+        "annotation_hash": "sha256-v3:3f7dfe18e0889164b8a438f8808d09ecfb57c45d50d4a454daf87e77dfa8739f",
+        "annotation_hash_version": 3,
+        "generator": "guardlink@2.1.0",
+        "acceptance_register": "code-annotations"
+      }
+    }
+  ]
+}

@@ -1050,23 +1050,42 @@ A `@validates` annotation with no corresponding test execution data is **unverif
 
 ## 6. SARIF Output Mapping
 
-GuardLink annotations map naturally to SARIF 2.1.0 (Static Analysis Results Interchange Format) for integration with GitHub Code Scanning, GitLab SAST, Azure DevOps, and other platforms.
+`guardlink sarif` (and the MCP `guardlink_sarif` tool and the TUI `/sarif` command, which produce the same document) exports the threat model as one SARIF 2.1.0 run for GitHub code scanning, VS Code, Azure DevOps and other SARIF consumers. This section describes what that export contains, and what it deliberately leaves out.
+
+**The export is a contract in two layers.** The *results* — which annotations become results, in what order, under which rule id, with which `message.text`, `partialFingerprints` and existing `properties` — are stable: consumers key on the result index, on `message.text` and on rule ids, and GitHub reopens every alert whose rule id changes. Everything else the model declares around a finding is *declared context* (§6.6): SARIF members appended after the stable ones, which a consumer that does not know them ignores. Deleting every declared-context member gives back the results and the `tool` object of an export cut before the context existed, byte for byte, and the test suite checks exactly that.
 
 ### 6.1. Mapping Rules
 
-| Annotation | SARIF Representation |
-|------------|---------------------|
-| `@exposes` | `result` with `level: "warning"` or `"error"` (based on severity) |
-| `@accepts` | `result` with `level: "note"`, `kind: "informational"` |
-| `@assumes` | `result` with `level: "note"`, `kind: "review"` |
-| `@audit` | `result` with `level: "note"`, `kind: "review"` |
-| `@mitigates` | `result` with `level: "none"`, `kind: "pass"` (suppresses matching `@exposes`) |
-| `@handles` (secrets/pii) | `result` with `level: "note"` for data flow tracking |
-| `@actor` / `@entitles` | **Not exported.** No result, no suppression, no property on any result |
+Results, in this order:
 
-`@entitles` is deliberately absent from this mapping. Two annotations already remove an exposure from the export (`@mitigates`, `@accepts`), and an exposure hidden from the export cannot be tested. Entitlement is a claim about *purpose* that no probe can verify, so it must never be the third such mechanism: a conforming exporter MUST produce **byte-identical `runs[].results` and `runs[].tool`** for a model with entitlements and the same model without them. Only the downstream *recommendation* may change (§3.2).
+| Source | `ruleId` | `level` | `message.text` |
+|---|---|---|---|
+| `@exposes` not covered by a `@mitigates` or `@accepts` (§3.6.1), severity `critical` or `high` | `guardlink/unmitigated-critical` | `error` | `{asset} is exposed to {threat}` + `: {description}` when present |
+| the same, any other severity or none | `guardlink/unmitigated-exposure` | `warning` | as above |
+| `@confirmed` | `guardlink/confirmed-exploitable` | `error` | `CONFIRMED: {asset} exploitable via {threat}` + `: {description}` when present |
+| parse error (a diagnostic at level `error`) | `guardlink/parse-error` | `error` | the diagnostic message |
+| reference to an undefined `#id` | `guardlink/dangling-ref` | `warning` | the diagnostic message |
+
+`{threat}` is written without its leading `#`. Exposures appear in model order, then confirmed findings, then parse errors, then dangling references. `--min-severity` drops exposures below the given severity and never drops a `@confirmed` result: a confirmed result is a reproduced exploit, and a noise filter must not be able to hide one. `--no-diagnostics` drops the parse errors.
+
+Every other annotation is **not** a result:
+
+| Annotation | In the export | Why it is not a result |
+|---|---|---|
+| `@mitigates`, `@accepts` | Not at all. A covered exposure is left out of the results. | GitHub ignores SARIF `suppressions` and would open a covered exposure as an alert. `runs[0].properties.acceptance_register` names where the acceptances that removed results came from (§6.7). |
+| `@boundary`, `@flows` | `run.graphs`, `relatedLocations` (boundaries), `codeFlows` (§6.6) | Context, not findings. |
+| `@assumes`, `@handles`, `@audit` | `relatedLocations` on results for the same asset (§6.6) | Context, not findings. |
+| `@transfers` | `relatedLocations` on results for the same asset and threat (§6.6). A transfer does not cover an exposure. | Context, not findings. |
+| `@validates`, `@owns`, `@feature`, `@comment`, `@shield` | Not exported | — |
+| `@actor` / `@entitles` | **Not exported.** No result, no suppression, no property on any result, and nothing in the declared context | See below. |
+
+New result kinds — covered exposures with their suppressions, `@boundary` claims, review items for `@assumes` and `@audit` — would change the result index every existing consumer keys on and open a GitHub alert per annotation. If they are added, it will be behind an opt-in profile that appends them after every result above, never in this default export.
+
+`@entitles` is deliberately absent from this mapping. Two annotations already remove an exposure from the export (`@mitigates`, `@accepts`), and an exposure hidden from the export cannot be tested. Entitlement is a claim about *purpose* that no probe can verify, so it must never be the third such mechanism: a conforming exporter MUST produce **byte-identical `runs[].results` and `runs[].tool`** for a model with entitlements and the same model without them. Only the downstream *recommendation* may change (§3.2). The declared context is held to the same rule: no related location, chain, graph node or taxon may be derived from an `@entitles` or an `@actor`.
 
 This was previously stated as byte-identical SARIF *documents*, and the narrower wording is the accurate one rather than a relaxation. `runs[].properties` carries provenance — the `annotation_hash` naming the annotation set the export was cut from — and an `@entitles` **is** an annotation, so a hash that could not see one would report a model whose entitlements had been rewritten as unchanged. That is the silent all-clear §2 exists to prevent, and the reason the annotation hash was taught about entitlements in the first place. The invariant that matters is the one the table above states literally: no result, no suppression, and no property **on any result**. Provenance is not a finding.
+
+**Result properties.** Each `@exposes` and `@confirmed` result carries, in `properties`: `threatId` and (exposures only) `claimKey`, mirroring `partialFingerprints` (§6.5); `severity` (`unset` when the annotation has none); `asset` and `threat` as written; `externalRefs` when the annotation has any; and the route, below. The declared context adds `guardlink/anchor` and `guardlink/flowAttribution` (§6.6). Parse-error and dangling-ref results carry no `properties`.
 
 **Routes.** Each `@exposes` and `@confirmed` result names the HTTP route that reaches it, decided by §3.6.2, in its `properties`:
 
@@ -1080,33 +1099,43 @@ A consumer that probes the endpoint in `codegraph_reachability` is told which st
 
 ### 6.2. Severity Mapping
 
-| GuardLink Severity | SARIF Level |
-|--------------------|-------------|
-| `critical` / `P0` | `error` |
-| `high` / `P1` | `error` |
-| `medium` / `P2` | `warning` |
-| `low` / `P3` | `note` |
-| (no severity) | `warning` |
+Rules are per *coverage state*, not per threat, so the `level` follows the rule:
+
+| GuardLink severity | Rule | SARIF `level` |
+|---|---|---|
+| `critical` / `P0`, `high` / `P1` | `guardlink/unmitigated-critical` | `error` |
+| `medium` / `P2`, `low` / `P3`, none | `guardlink/unmitigated-exposure` | `warning` |
+| any, on a `@confirmed` | `guardlink/confirmed-exploitable` | `error` |
+
+Low severity is a `warning`, not a `note`: the rule decides the level, and one rule holds medium, low and unset alike. The exact severity is always in the result's `properties.severity`.
+
+Each rule also carries `help` (`text` and `markdown`) and `properties` for GitHub code scanning:
+
+| Rule | `tags` | `security-severity` | GitHub band |
+|---|---|---|---|
+| `guardlink/confirmed-exploitable` | `security`, `threat-model` | `9.0` | critical |
+| `guardlink/unmitigated-critical` | `security`, `threat-model` | `8.9` | high |
+| `guardlink/unmitigated-exposure` | `security`, `threat-model` | `5.0` | medium |
+| `guardlink/parse-error`, `guardlink/dangling-ref` | `threat-model` | — | not a security alert |
+
+A rule can only be banded: `unmitigated-critical` covers both critical and high exposures and therefore sits in the high band. Exact per-finding severity on GitHub, and CWE tags (GitHub reads a CWE only from a rule's `tags`, as `external/cwe/cwe-89`), would need a rule per threat, which would change every rule id and reopen every existing alert. That is not done in this export.
 
 ### 6.3. External Reference Mapping
 
-When annotations include external references (§2.8), they map to SARIF `taxa` references:
+External references (§2.8) on an `@exposes` or `@confirmed` stay in `properties.externalRefs` exactly as written, and `cwe:` and `owasp:` references are also mapped to SARIF taxa:
 
-```json
-{
-  "taxa": [
-    {
-      "toolComponent": { "name": "CWE", "guid": "..." },
-      "id": "CWE-89",
-      "index": 0
-    }
-  ]
-}
-```
+| Reference | `result.taxa[]` entry |
+|---|---|
+| `cwe:CWE-89` (or `cwe:89`) | `{ "id": "89", "toolComponent": { "name": "CWE", … } }` — the numeric id the MITRE CWE taxonomy uses |
+| `owasp:A03:2021` | `{ "id": "A03:2021", "toolComponent": { "name": "OWASP", … } }` |
+| `owasp:A03` | `{ "id": "A03", "toolComponent": { "name": "OWASP", … } }` |
+| any other scheme (`capec:`, `cve:`, `attack:`, …) | none; it stays in `externalRefs` only |
 
-CWE references additionally populate the `cwe` property on SARIF results, which GitHub Code Scanning uses for CWE badge display.
+`run.taxonomies` holds one entry per taxonomy referenced (`CWE` from MITRE, `OWASP` from the OWASP Foundation), each with `isComprehensive: false` and only the taxa the results reference. Every reference carries both indexes: `toolComponent.index` into `run.taxonomies`, and `index` into that taxonomy's `taxa`. Only the claim's own references are mapped — the same ones `externalRefs` carries — not those of the `@threat` definition.
 
 ### 6.4. Example SARIF Output
+
+One exposure from the `tests/fixtures/sarif-shop` fixture, abridged (`…`) where the shape repeats:
 
 ```json
 {
@@ -1115,61 +1144,100 @@ CWE references additionally populate the `cwe` property on SARIF results, which 
   "runs": [{
     "tool": {
       "driver": {
-        "name": "guardlink",
-        "version": "1.0.0",
-        "informationUri": "https://github.com/Bugb-Technologies/guardlink",
+        "name": "GuardLink",
+        "version": "2.1.0",
+        "informationUri": "https://guardlink.bugb.io",
         "rules": [{
-          "id": "TS2001",
-          "name": "ExposedThreat",
-          "shortDescription": { "text": "Code exposes an asset to a known threat" },
-          "defaultConfiguration": { "level": "warning" }
-        }, {
-          "id": "TS2002",
-          "name": "UnmitigatedExposure",
-          "shortDescription": { "text": "Exposure has no corresponding mitigation" },
-          "defaultConfiguration": { "level": "error" }
-        }, {
-          "id": "TS2003",
-          "name": "AcceptedRisk",
-          "shortDescription": { "text": "Risk has been consciously accepted" },
-          "defaultConfiguration": { "level": "note" }
-        }, {
-          "id": "TS2004",
-          "name": "SecurityAssumption",
-          "shortDescription": { "text": "Code relies on a security assumption" },
-          "defaultConfiguration": { "level": "note" }
-        }, {
-          "id": "TS2005",
-          "name": "AuditRequired",
-          "shortDescription": { "text": "Code flagged for security review" },
-          "defaultConfiguration": { "level": "note" }
-        }]
+          "id": "guardlink/unmitigated-critical",
+          "name": "UnmitigatedCriticalExposure",
+          "shortDescription": { "text": "Critical/high severity exposure with no mitigation" },
+          "fullDescription": { "text": "A critical or high severity exposure exists without mitigation. This should be addressed before deployment." },
+          "helpUri": "https://guardlink.bugb.io/docs/exposures",
+          "defaultConfiguration": { "level": "error" },
+          "help": { "text": "…", "markdown": "…" },
+          "properties": { "tags": ["security", "threat-model"], "security-severity": "8.9" }
+        }, "…"]
       }
     },
     "results": [{
-      "ruleId": "TS2001",
+      "ruleId": "guardlink/unmitigated-critical",
       "level": "error",
-      "message": { "text": "App.API.Users is exposed to IDOR [P1]: No ownership check on GET /users/:id" },
+      "message": { "text": "#store is exposed to sqli: Search term concatenated into SQL" },
       "locations": [{
-        "physicalLocation": {
-          "artifactLocation": { "uri": "src/api/users.ts" },
-          "region": { "startLine": 42 }
-        },
-        "logicalLocations": [{
-          "name": "getUser",
-          "kind": "function"
-        }]
+        "physicalLocation": { "artifactLocation": { "uri": "src/web.ts" }, "region": { "startLine": 24 } },
+        "logicalLocations": [{ "name": "searchOrders" }]
       }],
-      "taxa": [{
-        "toolComponent": { "name": "CWE" },
-        "id": "CWE-639"
+      "partialFingerprints": { "guardlink/threatId": "gl-…", "guardlink/claimKey": "…:0" },
+      "properties": {
+        "threatId": "gl-…", "claimKey": "…:0", "severity": "critical", "asset": "#store", "threat": "#sqli",
+        "externalRefs": ["cwe:CWE-89", "owasp:A03:2021"],
+        "codegraph_reachability": { "http_method": "POST", "http_path": "/orders/search" },
+        "route_attribution": "handler",
+        "guardlink/anchor": { "scope": "symbol", "symbol": "searchOrders", "start_line": 27, "end_line": 29 },
+        "guardlink/flowAttribution": "handler"
+      },
+      "taxa": [
+        { "id": "89", "index": 0, "toolComponent": { "name": "CWE", "index": 0 } },
+        { "id": "A03:2021", "index": 0, "toolComponent": { "name": "OWASP", "index": 1 } }
+      ],
+      "relatedLocations": [{
+        "id": 1,
+        "physicalLocation": { "artifactLocation": { "uri": "src/web.ts" }, "region": { "startLine": 23 } },
+        "message": { "text": "@boundary between #orders and #store (#data): Service to database" },
+        "properties": { "guardlink/verb": "boundary", "guardlink/claimKey": "…:0", "guardlink/edge": "boundary:1" }
+      }, "…"],
+      "codeFlows": [{
+        "message": { "text": "Declared @flows chain from Client to #store; the last hop is declared on the claim's handler" },
+        "threadFlows": [{ "locations": [
+          { "location": { "physicalLocation": { "…": "src/web.ts:20" }, "message": { "text": "Client -> #web via POST./orders/search [crosses #edge]" } },
+            "kinds": ["flow", "boundary-crossing"], "webRequest": { "method": "POST", "target": "/orders/search" },
+            "properties": { "guardlink/edge": "flow:5", "guardlink/claimKey": "…:0", "guardlink/hopAttribution": "handler", "guardlink/crosses": ["boundary:0"] } },
+          { "location": { "physicalLocation": { "…": "src/web.ts:21" }, "message": { "text": "#web -> #orders via searchOrders" } },
+            "kinds": ["flow"], "properties": { "…": "…" } },
+          { "location": { "physicalLocation": { "…": "src/web.ts:22" }, "message": { "text": "#orders -> #store via query [crosses #data]" } },
+            "kinds": ["flow", "boundary-crossing"], "properties": { "…": "…" } },
+          { "location": { "physicalLocation": { "…": "src/web.ts:24" }, "message": { "text": "@exposes #store to #sqli" } },
+            "kinds": ["claim"], "importance": "essential" }
+        ]}],
+        "properties": { "guardlink/flowAttribution": "handler" }
       }]
+    }],
+    "properties": {
+      "annotation_hash": "sha256-v3:…",
+      "annotation_hash_version": 3,
+      "generator": "guardlink@2.1.0",
+      "acceptance_register": "code-annotations",
+      "sarif_profile_version": 1
+    },
+    "automationDetails": { "id": "guardlink/threat-model/" },
+    "versionControlProvenance": [{ "repositoryUri": "https://github.com/acme/shop", "revisionId": "…", "branch": "main" }],
+    "taxonomies": [
+      { "name": "CWE", "organization": "MITRE", "informationUri": "https://cwe.mitre.org/", "isComprehensive": false, "taxa": [{ "id": "89" }] },
+      { "name": "OWASP", "organization": "OWASP Foundation", "informationUri": "https://owasp.org/Top10/", "isComprehensive": false, "taxa": [{ "id": "A03:2021" }] }
+    ],
+    "graphs": [{
+      "description": { "text": "GuardLink declared threat model: …" },
+      "nodes": [
+        { "id": "store", "label": { "text": "#store" }, "location": { "…": "…" }, "properties": { "guardlink/declared": true, "guardlink/path": "Shop.Store" } },
+        { "id": "client", "label": { "text": "Client" }, "properties": { "guardlink/declared": false } },
+        "…"
+      ],
+      "edges": [{
+        "id": "boundary:0", "sourceNodeId": "client", "targetNodeId": "web",
+        "label": { "text": "Internet to API: nothing before this point is trusted" },
+        "properties": {
+          "guardlink/kind": "boundary", "guardlink/directed": false, "guardlink/boundaryId": "edge",
+          "guardlink/claimKey": "…:0", "guardlink/location": { "…": "…" },
+          "guardlink/side": { "basis": "undeclared-endpoint", "outer": "client", "inner": "web" },
+          "guardlink/crossings": ["flow:2", "flow:3", "flow:5", "flow:8"]
+        }
+      }, "…"]
     }]
   }]
 }
 ```
 
-When uploaded to GitHub via the Code Scanning API, `@exposes` annotations appear as inline security alerts on the relevant lines in pull requests.
+When uploaded to GitHub via the code scanning API, exposures and confirmed findings appear as security alerts on the annotation lines, banded by `security-severity`, with the declared chain under "Show paths".
 
 ### 6.5. Result Identity
 
@@ -1345,6 +1413,46 @@ in document order, `<digest>:0` and `<digest>:1`. Delete the earlier one and the
 inherits `<digest>:0`, which is the deleted claim's exact key, so a finding stamped against the
 first joins to the second. Separately: rewording a claim's own description re-keys it, so a
 stamp taken before the rewording is refused as stale.
+
+### 6.6. Declared Context
+
+Members each `@exposes` and `@confirmed` result gains from the model, all appended after the members §6.1 and §6.5 describe. Parse-error and dangling-ref results gain none.
+
+| Member | Content | Present when |
+|---|---|---|
+| `locations[0].logicalLocations` | `[{ "name": symbol }]` — the function or other declaration the claim is attached to (§3.6). No `kind` is claimed: the structure layer knows the scope, not what sort of declaration it is | the claim is attached to a symbol or block, not to the file |
+| `properties["guardlink/anchor"]` | `{ scope, symbol, start_line, end_line }` — the claim's anchor. The `region` stays the annotation line | the claim has an anchor |
+| `taxa` | §6.3 | the claim has a `cwe:` or `owasp:` reference |
+| `relatedLocations` | One entry per `@boundary` naming the claim's asset (either side), `@assumes`, `@handles` and `@audit` on it, and `@transfers` of the claim's threat from it — in that order, numbered from `1`. `message.text` is the annotation as `@verb arguments: description`; `properties` holds `guardlink/verb`, `guardlink/claimKey` and, for a boundary, `guardlink/edge` (its graph edge id) | any such annotation exists |
+| `codeFlows` | Up to three declared `@flows` chains into the claim's asset, then the claim itself (`kinds: ["claim"]`, `importance: "essential"`) | see below |
+| `properties["guardlink/flowAttribution"]` | `handler` or `file`: how the chain's last hop is tied to the claim | `codeFlows` is present |
+
+**A chain is never guessed.** `@flows` hops are not linked by call site: the model can say `Client -> #api` and `#api -> #db` without saying which handler of `#api` makes the second call. So only a chain's **last** hop — the one into the claim's asset — is tied to the claim, by the same ladder route attribution uses (§3.6.2): declared on the claim's own handler or on code enclosing it (`handler`), or declared for the claim's file, or anywhere in the file of a file-level claim (`file`). A hop on a sibling handler, or in another file, ties nothing. When no chain's last hop is tied, the result has no `codeFlows` at all. Chains whose last hop has the strongest tie are emitted, preferring chains with more hops on the claim's handler, then more boundary crossings, then fewer hops.
+
+Each hop is a `threadFlowLocation` at its own `@flows` line: `message.text` is `A -> B via M`, with `[crosses #id]` when the hop's endpoints are the two sides of a `@boundary`; `kinds` is `["flow"]` or `["flow", "boundary-crossing"]`; a route channel adds `webRequest { method, target }`; and `properties` holds `guardlink/edge` (the graph edge), `guardlink/claimKey`, `guardlink/crosses` (boundary edge ids) and `guardlink/hopAttribution` — `handler` or `file` when the hop is itself tied to the claim, `graph` when it is joined to the next hop only because its target is that hop's source. A chain starts at an *entry*: an endpoint no `@asset` declares (outside the system, as `guardlink paths` reads it) or a declared asset nothing flows into. The walk is bounded in depth, in chains collected and in steps, and shorter chains are found first.
+
+**The graph.** `run.graphs[0]` holds the declared model as SARIF nodes and edges:
+
+- **Nodes** — every declared asset (`id` its canonical id, `label` `#id` or the dotted path, `location` its definition, `properties["guardlink/declared"]: true` and `guardlink/path`), then every `@flows` or `@boundary` endpoint no asset declares (`guardlink/declared: false`). Actors are not nodes.
+- **Boundary edges** — `boundary:<n>`, one per `@boundary`, undirected (`guardlink/directed: false`), with `guardlink/kind: "boundary"`, `guardlink/boundaryId`, `guardlink/claimKey`, `guardlink/location`, `guardlink/crossings` (the flow edges whose endpoints are its two sides) and `guardlink/side`. A boundary has no direction in the grammar, so the side is inferred only when exactly one endpoint is undeclared: `{ basis: "undeclared-endpoint", outer, inner }`. Otherwise it is `{ basis: "unknown" }`.
+- **Flow edges** — `flow:<n>`, one per `@flows` hop, directed, with `label` the mechanism, `guardlink/kind: "flow"`, `guardlink/claimKey`, `guardlink/location`, `guardlink/route` for a route channel, and `guardlink/crosses` when it crosses a boundary.
+
+Edge ids are positions in this export and change when annotations are added or removed; `guardlink/claimKey` is the identity that survives (§6.5).
+
+### 6.7. Run Envelope and Compatibility
+
+| Member | Content |
+|---|---|
+| `properties.annotation_hash`, `annotation_hash_version` | the annotation set the export was cut from (§8.2.2) |
+| `properties.generator` | `guardlink@<version>` |
+| `properties.acceptance_register` | `code-annotations`: the acceptances that removed results were read from source, not from a server decision log |
+| `properties.sarif_profile_version` | `1`: this shape. Absent on exports cut before the declared context existed. Bumped when the shape changes |
+| `automationDetails.id` | `guardlink/threat-model/`, so GitHub files GuardLink alerts in their own category beside other tools. An upload that sets a `category` explicitly overrides it |
+| `versionControlProvenance` | `[{ repositoryUri, revisionId, branch }]` — the repository's web URL (rebuilt from host and path, so credentials in the remote never reach the export), HEAD and branch. Omitted when the repository has no web-hosted `origin`, since SARIF requires `repositoryUri` |
+
+Artifact URIs are relative to the project root and carry no `uriBaseId`.
+
+A conforming exporter keeps these invariants across versions of this export: `message.text` byte-stable; rule ids stable; result order stable, with any new result only ever appended; `partialFingerprints` keys unchanged; `properties.annotation_hash` unchanged in meaning; nothing derived from `@entitles` or `@actor`; and no suppressed result.
 
 ---
 

@@ -13,6 +13,7 @@ export type {
 export {
   REPORT_SCHEMA_VERSION,
   populateMetadata,
+  readVersionControl,
   loadWorkspaceConfig,
   parseWorkspaceYaml,
   serializeWorkspaceYaml,
