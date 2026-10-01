@@ -47,7 +47,7 @@
 import { Command } from 'commander';
 import { resolve, basename, join, isAbsolute, relative } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, checkHandoff, HANDOFF_COMMAND, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides, checkHandoff, HANDOFF_COMMAND, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { runCiChecks, formatCiReport, ESTATE_ROUTE } from '../ci/index.js';
 import type { CiWorkspaceScope } from '../ci/index.js';
@@ -358,6 +358,9 @@ program
     // Check for dangling refs
     const danglingDiags = findDanglingRefs(model);
 
+    // A directed @boundary whose outer or inner side names nothing (error)
+    const boundarySideDiags = findUnresolvedBoundarySides(model);
+
     // Check for @accepts without @audit (governance concern)
     const acceptAuditDiags = findAcceptedWithoutAudit(model);
 
@@ -407,7 +410,7 @@ program
       console.error(boundaryCheckSummaryLine(worklist, boundaryDiags));
     }
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...acceptanceDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags, ...boundaryDiags];
+    const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...acceptAuditDiags, ...acceptanceDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags, ...boundaryDiags];
 
     // Check for unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);
@@ -1930,7 +1933,7 @@ hypothesis
     const c = classifyBoundaryClaims(model, readHypotheses(root));
     if (opts.json) {
       const records = (opts.state ? c.records.filter(r => r.state === opts.state) : c.records).map(r => ({
-        key: r.key, claim: r.claim, id: r.id || null, asset_a: r.asset_a, asset_b: r.asset_b, description: r.description, file: r.file, line: r.line, state: r.state, expired: r.expired,
+        key: r.key, claim: r.claim, id: r.id || null, asset_a: r.asset_a, asset_b: r.asset_b, directed: r.directed, description: r.description, file: r.file, line: r.line, state: r.state, expired: r.expired,
         outcome: r.entry ? { outcome: r.entry.outcome, evidence: r.entry.evidence, by: r.entry.by, at: r.entry.at, source: r.entry.source, history: r.entry.history.length } : null,
         previous: r.previous ? { outcome: r.previous.outcome, by: r.previous.by, at: r.previous.at } : null,
       }));
@@ -3671,8 +3674,10 @@ program
       console.log(D('    Declare a trust boundary between two assets.'));
       console.log(D('    Groups assets in the Data Flow Diagram.'));
       console.log(D('    Alternate: @boundary between A and B  or  @boundary A | B'));
+      console.log(D('    Directed: @boundary from <outer> to <inner> when you know which side is less trusted.'));
       console.log(EX('    // @boundary  internet  and  api.gateway  (#edge)  -- "Public-facing edge"'));
       console.log(EX('    // @boundary  api.gateway | db.users  -- "Internal network boundary"'));
+      console.log(EX('    // @boundary  from  Client  to  #api  (#edge)  -- "Auth middleware: everything past it is authenticated"'));
       console.log('');
 
       // ── LIFECYCLE ──

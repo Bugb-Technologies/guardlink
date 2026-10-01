@@ -32,6 +32,8 @@ export interface BoundaryClaimRecord {
   id: string;
   asset_a: string;
   asset_b: string;
+  /** Written `from <outer> to <inner>`: `asset_a` is the outer side. */
+  directed: boolean;
   description: string;
   file: string;
   line: number;
@@ -63,7 +65,7 @@ export function classifyBoundaryClaims(model: ThreatModel, read: HypothesesRead)
     const b = byLocation.get(src.location);
     if (!b) continue;
     const base = {
-      key: src.key, claim: src.claim, id: b.id ?? '', asset_a: b.asset_a, asset_b: b.asset_b, description: b.description ?? '',
+      key: src.key, claim: src.claim, id: b.id ?? '', asset_a: b.asset_a, asset_b: b.asset_b, directed: b.directed === true, description: b.description ?? '',
       file: src.location.origin_file ?? src.location.file, line: src.location.origin_line ?? src.location.line, location: src.location,
     };
     const entry = entries.get(src.key) ?? null;

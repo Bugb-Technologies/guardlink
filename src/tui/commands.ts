@@ -23,7 +23,7 @@
 
 import { resolve, basename } from 'node:path';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { generateReport } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
@@ -268,8 +268,10 @@ export function cmdGal(): void {
   console.log(D('    Declare a trust boundary between two assets.'));
   console.log(D('    Groups assets in the Data Flow Diagram.'));
   console.log(D('    Alternate: @boundary between A and B  or  @boundary A | B'));
+  console.log(D('    Directed: @boundary from <outer> to <inner> when you know which side is less trusted.'));
   console.log(EX('    // @boundary  internet  and  api.gateway  (#edge)  -- "Public-facing edge"'));
   console.log(EX('    // @boundary  api.gateway | db.users  -- "Internal network boundary"'));
+  console.log(EX('    // @boundary  from  Client  to  #api  (#edge)  -- "Auth middleware: everything past it is authenticated"'));
   console.log('');
 
   // ── LIFECYCLE ─────────────────────────────────────────────────────
@@ -891,8 +893,9 @@ export async function cmdValidate(ctx: TuiContext): Promise<void> {
     const { model, diagnostics } = await parseProject({ root: ctx.root, project: ctx.projectName });
     ctx.model = model;
 
-    // Dangling refs
+    // Dangling refs, and a directed @boundary whose side names nothing
     const danglingDiags = findDanglingRefs(model);
+    const boundarySideDiags = findUnresolvedBoundarySides(model);
 
     // Check for @accepts without @audit (governance concern)
     const acceptAuditDiags = findAcceptedWithoutAudit(model);
@@ -902,7 +905,7 @@ export async function cmdValidate(ctx: TuiContext): Promise<void> {
     const inertDiags = findInertEntitlements(model);
     const impreciseDiags = findImpreciseEntitlements(model);
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...actorDiags, ...inertDiags, ...impreciseDiags];
+    const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...acceptAuditDiags, ...actorDiags, ...inertDiags, ...impreciseDiags];
 
     // Unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);

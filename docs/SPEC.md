@@ -327,12 +327,16 @@ the following appear after the verb:
 | A `#reference` | `@exposes #api to` |
 | A spaced `--` description delimiter | `@audit App.API --` |
 | A grammar keyword **belonging to that verb** | `@exposes App.API to` |
+| A keyword that is evidence only **as the first word** of that verb's arguments | `@boundary from Client` |
 
 The keyword set is **per verb**, not global. `to` is structural in `@exposes`,
 which is defined as `@exposes <asset> to <threat>`; it is not structural in
 `@feature`, whose grammar has no `to`. A global keyword list misclassifies
 ordinary English — `@feature still claims to describe the model` — as a broken
-annotation.
+annotation. For the same reason the directed `@boundary from <outer> to <inner>`
+does not make `from` or `to` keywords anywhere in the line: `@boundary is used to
+mark a trust change` is prose. `from` is evidence only when it opens the
+arguments, which is how the directed form starts.
 
 Verb keyword sets:
 
@@ -344,7 +348,7 @@ Verb keyword sets:
 | `@accepts` | `on`, `to`, `by`, `until` |
 | `@transfers` | `from`, `to` |
 | `@flows` | `->` |
-| `@boundary` | `between`, `and`, `\|` |
+| `@boundary` | `between`, `and`, `\|`; `from` only as the first word of the arguments |
 | `@validates`, `@owns` | `for` |
 | all others | *(none — structure comes from a ref or a `--`)* |
 
@@ -673,17 +677,44 @@ A reader MUST NOT shorten, re-case or resolve an endpoint when recording it: `#b
 #### `@boundary` — Trust Boundary
 
 ```
+@boundary from <outer> to <inner> [(#id)] [-- "<description>"]
 @boundary between <asset-a> and <asset-b> [(#id)] [-- "<description>"]
 @boundary <asset-a> | <asset-b> [(#id)] [-- "<description>"]
 ```
 
-Marks a trust boundary between two security zones. All data crossing a boundary should be validated. The pipe (`|`) form is syntactic sugar for the `between ... and` form.
+Marks a trust boundary between two security zones. All data crossing a boundary should be validated. The pipe (`|`) form is syntactic sugar for the `between ... and` form, and `between` itself may be omitted (`@boundary A and B`).
 
 ```yaml
+# @boundary from External.Internet to Internal.DMZ (#perimeter) -- "WAF + firewall boundary"
 # @boundary between External.Internet and Internal.DMZ (#perimeter) -- "WAF + firewall boundary"
 # @boundary External.Internet | Internal.DMZ (#perimeter) -- "WAF + firewall boundary"
-# @boundary between Internal.DMZ and Internal.Backend (#app-boundary) -- "Service mesh with mTLS"
+# @boundary from Internal.DMZ to Internal.Backend (#app-boundary) -- "Service mesh with mTLS"
 ```
+
+Each side is an endpoint in any of the four forms `@flows` accepts (§3.2 `@flows`, Endpoints), recorded exactly as written.
+
+**Direction.** The `from … to …` form is **directed**: it declares which side is outside. `<outer>` is the less-trusted side, where untrusted input comes from; `<inner>` is the side the boundary protects. The `between`, `and` and `|` forms are **undirected**: they say trust changes between two sides and nothing about which is which. Write the directed form whenever the trust direction is known. It matters most when both sides are declared assets — an application and its database, say — because then no convention can infer the outer side (§6.6), and a test cannot tell which side to probe from.
+
+A direction is a claim like any other. Declaring one, removing one or reversing one changes the annotation hash (§8.2.2) and the boundary's claim key (§6.5), so a recorded test outcome does not carry over to a boundary whose direction changed. An undirected boundary hashes and keys exactly as it did before the directed form existed.
+
+**Malformed lines.** `from` pairs with `to`, and `between` with `and`; the two do not mix. `@boundary from #a and #b`, `@boundary between #a to #b`, `@boundary #a to #b`, `@boundary from #a`, `@boundary from #a -> #b` and `@boundary from #a to #b to #c` are malformed (§2.12), as is any line whose arguments begin with `from` and do not parse. Prose that merely contains `from` or `to` elsewhere is not evidence.
+
+**Validation.** A directed boundary whose outer or inner side resolves to nothing is an **error** (`unresolved-boundary-side`): consumers act on the sides a direction names, so a typo there would point a test at no component. A side resolves when it is a `#id` some `@asset` defines, or another endpoint that is a declared asset's path or that some `@flows` names (an undeclared endpoint such as `Client` is how the model writes the outside — §3.2 `@flows`, Endpoints). A repository-qualified `#repo.id` is resolved across the workspace, not here. Undirected boundaries are not checked: they claim no side.
+
+**Records.** Each boundary becomes one entry in the model's `boundaries` array (§5.1):
+
+```json
+{
+  "asset_a": "#orders",
+  "asset_b": "#store",
+  "id": "data",
+  "directed": true,
+  "description": "The store trusts every query it is sent",
+  "location": { "file": "app/orders.py", "line": 12 }
+}
+```
+
+`asset_a` and `asset_b` are the two sides in the order written. `directed` is `true` only for the `from … to …` form, and then `asset_a` is the outer side and `asset_b` the inner side. For the undirected forms it is absent, and the order of `asset_a` and `asset_b` carries no meaning; a reader MUST NOT infer a direction from it. `id` (without its `#`) and `description` are absent when not declared. The conformance corpus [`conformance/boundaries.json`](../conformance/README.md) pins each rule here to annotation text in and expected records, sides and validation results out.
 
 ### 3.3. Lifecycle Annotations
 
@@ -1038,7 +1069,7 @@ Attribution (§5.4) blames the annotation line at `origin_file:origin_line` when
 The threat model forms a directed graph:
 
 - **Nodes:** Assets, Threats, Controls
-- **Edges:** `@mitigates` (Control → Asset, defending against Threat), `@exposes` (Threat → Asset), `@flows` (Asset → Asset), `@boundary` (bidirectional between Assets), `@transfers` (Asset → Asset, for a Threat), `@validates` (Test → Control)
+- **Edges:** `@mitigates` (Control → Asset, defending against Threat), `@exposes` (Threat → Asset), `@flows` (Asset → Asset), `@boundary` (between Assets, undirected; outer → inner when declared with `from … to …`), `@transfers` (Asset → Asset, for a Threat), `@validates` (Test → Control)
 
 An asset with `@exposes` edges and no corresponding `@mitigates` edges is **unmitigated** — a candidate for remediation or explicit `@accepts`.
 
@@ -1436,7 +1467,12 @@ Each hop is a `threadFlowLocation` at its own `@flows` line: `message.text` is `
 **The graph.** `run.graphs[0]` holds the declared model as SARIF nodes and edges:
 
 - **Nodes** — every declared asset (`id` its canonical id, `label` `#id` or the dotted path, `location` its definition, `properties["guardlink/declared"]: true` and `guardlink/path`), then every `@flows` or `@boundary` endpoint no asset declares (`guardlink/declared: false`). Actors are not nodes.
-- **Boundary edges** — `boundary:<n>`, one per `@boundary`, undirected (`guardlink/directed: false`), with `guardlink/kind: "boundary"`, `guardlink/boundaryId`, `guardlink/claimKey`, `guardlink/location`, `guardlink/crossings` (the flow edges whose endpoints are its two sides) and `guardlink/side`. A boundary has no direction in the grammar, so the side is inferred only when exactly one endpoint is undeclared: `{ basis: "undeclared-endpoint", outer, inner }`. Otherwise it is `{ basis: "unknown" }`.
+- **Boundary edges** — `boundary:<n>`, one per `@boundary`, with `guardlink/kind: "boundary"`, `guardlink/directed`, `guardlink/boundaryId`, `guardlink/claimKey`, `guardlink/location`, `guardlink/crossings` (the flow edges whose endpoints are its two sides, in either direction) and `guardlink/side`. An undirected boundary is an undirected edge (`guardlink/directed: false`). A directed one (`@boundary from <outer> to <inner>`, §3.2) is `guardlink/directed: true`, with `sourceNodeId` its outer side and `targetNodeId` its inner side. `guardlink/side` says which side is outer and why:
+  - `{ basis: "declared", outer, inner }` — the boundary is directed, and these are its sides as declared. A declared side is used as written, even where the inference below would say otherwise.
+  - `{ basis: "undeclared-endpoint", outer, inner }` — the boundary is undirected and exactly one side is an endpoint no `@asset` declares; that side is inferred to be outer.
+  - `{ basis: "unknown" }` — otherwise. Neither side is stated, and a reader must not infer one.
+
+  `outer` and `inner` are node ids. A reader written before `declared` existed should treat every basis other than `unknown` as naming both sides. The two kinds are kept distinct so a consumer can tell a side the author declared from one the exporter inferred.
 - **Flow edges** — `flow:<n>`, one per `@flows` hop, directed, with `label` the mechanism, `guardlink/kind: "flow"`, `guardlink/claimKey`, `guardlink/location`, `guardlink/route` for a route channel, and `guardlink/crosses` when it crosses a boundary.
 
 Edge ids are positions in this export and change when annotations are added or removed; `guardlink/claimKey` is the identity that survives (§6.5).
@@ -1486,7 +1522,7 @@ Only an acceptance that covers the exposure appears: one sited in its file and n
 | `message.text` | the boundary's description; `@boundary between {a} and {b} (#id)` when it has none |
 | `locations[0]` | the `@boundary` line |
 | `partialFingerprints["guardlink/claimKey"]`, `properties.claimKey` | the boundary's claim key (§6.5), the key `guardlink hypothesis support` and `contradict` record against |
-| `properties.boundary` | `{ id, a, b, asset_a, asset_b, basis, outer?, inner? }`. `a` and `b` are the two sides as `run.graphs[0]` node ids; `asset_a` and `asset_b` as written; `id` is `#id` or `null` |
+| `properties.boundary` | `{ id, a, b, asset_a, asset_b, basis, outer?, inner? }`. `a` and `b` are the two sides as `run.graphs[0]` node ids; `asset_a` and `asset_b` as written; `id` is `#id` or `null`. `basis` is `declared`, `undeclared-endpoint` or `unknown`, below |
 | `properties.description` | the description, `""` when there is none |
 | `properties.crossings` | `[{ from, to, via, edge, claimKey, file, line, http_method?, http_path? }]` — every `@flows` hop whose endpoints are the two sides, in either direction |
 | `properties.inner_routes` | `[{ http_method, http_path, edge, claimKey, file, line }]` — every route-channel `@flows` into the inner side. Empty when the inner side is not known |
@@ -1494,7 +1530,7 @@ Only an acceptance that covers the exposure appears: one sited in its file and n
 | `codeFlows` | one per crossing: a single `threadFlowLocation` at the hop, `kinds: ["flow", "boundary-crossing"]`, with `webRequest` for a route channel |
 | `relatedLocations` | one per inner route, at its `@flows` line |
 
-`@boundary` has no direction. `basis` is `"undeclared-endpoint"` when exactly one side is an endpoint no `@asset` declares, and that side is `outer`, the other `inner` — the convention `guardlink paths` reads entries by (§3.2). Otherwise `basis` is `"unknown"` and neither `outer` nor `inner` is written; a reader must not infer them. `run.graphs[0]` states the same inference as `guardlink/side`.
+`basis` is `"declared"` when the boundary is written `from <outer> to <inner>` (§3.2): `outer` is `a` and `inner` is `b`, as declared. An undirected boundary states no side, so `basis` is `"undeclared-endpoint"` when exactly one side is an endpoint no `@asset` declares, and that side is `outer`, the other `inner` — the convention `guardlink paths` reads entries by (§3.2). Otherwise `basis` is `"unknown"` and neither `outer` nor `inner` is written; a reader must not infer them. `inner_routes` lists routes into the inner side whenever there is one, declared or inferred. `run.graphs[0]` states the same sides as `guardlink/side`.
 
 **`properties["guardlink/hypothesis"]`** — on every `@exposes` result (uncovered or covered), every `@confirmed` result and every boundary claim, the claim's state in the hypothesis ledger (`.guardlink/hypotheses.json`): `{ state, evidence, by, at, expired, previous_outcome }`. `state` is `untested`, `confirmed`, `refuted` or `retest` for an exposure (a source `@confirmed` is always `confirmed`), and `unverified`, `supported`, `contradicted` or `retest` for a boundary. A ledger outcome holds while the code beneath the claim is unchanged; `expired: true` with `previous_outcome` says it lapsed. With no ledger every claim is `untested` or `unverified`. A corrupt ledger stamps nothing. `run.properties.hypothesis_ledger` is `present`, `absent` or `corrupt`. Parse-error and dangling-ref results carry none.
 
@@ -2070,6 +2106,7 @@ CONNECT
   @accepts    <threat> on <asset> -- "description"
   @transfers  <threat> from <source> to <target> -- "description"
   @flows      <source> -> <target> [-> <next> …] [via <mechanism>] -- "description"
+  @boundary   from <outer> to <inner> (#id) -- "description"
   @boundary   between <asset-a> and <asset-b> (#id) -- "description"
   @boundary   <asset-a> | <asset-b> (#id) -- "description"
 
@@ -2128,7 +2165,8 @@ exposes_args     = component_path SP "to" SP threat_ref ;
 accepts_args     = threat_ref SP "on" SP component_path ;
 transfers_args   = threat_ref SP "from" SP component_path SP "to" SP component_path ;
 flows_args       = endpoint SP "->" SP endpoint { SP "->" SP endpoint } [ SP "via" SP mechanism ] ;  (* one record per "->" *)
-boundary_args    = [ "between" SP ] component_path SP "and" SP component_path [ SP id_def ]
+boundary_args    = "from" SP component_path SP "to" SP component_path [ SP id_def ]   (* directed: outer, then inner *)
+                 | [ "between" SP ] component_path SP "and" SP component_path [ SP id_def ]
                  | component_path SP "|" SP component_path [ SP id_def ] ;
 validates_args   = control_ref SP "for" SP component_path ;
 audit_args       = component_path ;

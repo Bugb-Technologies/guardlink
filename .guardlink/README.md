@@ -11,8 +11,8 @@ accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 873 annotations · 20 assets · 16 threats · 14 controls · 127 exposures · 202 flows
-Content hash: `sha256-v3:4a7d0ba07ea80e6802ab0660b05f4541d06265ffe1cc3d1d817bebb549433253` — identical hash means identical model.
+Current model: 874 annotations · 20 assets · 16 threats · 14 controls · 127 exposures · 202 flows
+Content hash: `sha256-v3:95e447ec72ce4924c563d83aae0d3e594f518789e71d00ded358ac3255cf772a` — identical hash means identical model.
 
 ---
 
@@ -115,7 +115,7 @@ Assets are referenced as `#id` or as a `Dotted.Path`; both resolve to the same n
 | `@mitigates` | `@mitigates <asset> against <threat> using <control> -- "how"` |
 | `@confirmed` | `@confirmed <threat> on <asset> [severity] cwe:CWE-89 -- "evidence"` |
 | `@flows` | `@flows <A> -> <B> via <mechanism> -- "what moves"` — chains allowed: `A -> B -> C` |
-| `@boundary` | `@boundary between <A> and <B> (#id) -- "what changes across it"` |
+| `@boundary` | `@boundary from <outer> to <inner> (#id) -- "what changes across it"` when you know which side is less trusted; `@boundary between <A> and <B>` when you do not |
 | `@transfers` | `@transfers <threat> from <A> to <B> -- "who owns it now"` |
 | `@validates` | `@validates <control> for <asset> -- "the test that proves it"` |
 | `@audit` | `@audit <asset> -- "what a human needs to look at"` |

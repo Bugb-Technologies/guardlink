@@ -564,7 +564,10 @@ function lookupBoundaries(model: ThreatModel, query: string, assetRef: string, r
   const results = model.boundaries
     .filter(b => keep(b.asset_a) || keep(b.asset_b))
     .map(b => ({
-      asset_a: b.asset_a, asset_b: b.asset_b, description: b.description,
+      asset_a: b.asset_a, asset_b: b.asset_b,
+      // Only on a directed boundary, where asset_a is the outer side.
+      ...(b.directed ? { directed: true, outer: b.asset_a, inner: b.asset_b } : {}),
+      description: b.description,
       file: b.location.file, line: b.location.line,
     }));
   return { query, type: 'boundaries', count: results.length, results, ...provenance(match), ...ambiguity(matched, v => v) };

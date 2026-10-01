@@ -26,7 +26,7 @@ Read the entry points (HTTP handlers, CLI commands, consumers, cron, listeners),
 For every entry point, follow the request to its sinks and write the path as \`@flows\` edges, one per hop, naming the mechanism (\`via POST./login\`, \`via pg.query\`, \`via redis.set\`). Extend the flows the model already has; do not restate them. A hop you cannot see in the code is not a hop.
 
 ### Phase 3 — Mark the trust changes
-Where the caller's trust level changes — internet to app, app to database, service to service, app to vendor, code to spawned process — write a \`@boundary between A and B\` with what enforces the line (TLS termination, auth middleware, connection pooling, tokenisation).
+Where the caller's trust level changes — internet to app, app to database, service to service, app to vendor, code to spawned process — write a \`@boundary\` with what enforces the line (TLS termination, auth middleware, connection pooling, tokenisation). When you can see which side is less trusted, write it directed, \`@boundary from <outer> to <inner>\` — \`from Client to #api\`, \`from #api to #db\` — so a tester knows which side to probe from; write \`@boundary between A and B\` only when the direction is not visible in the code.
 
 ### Phase 4 — Classify the data
 Where an asset stores, logs or forwards personal, financial, health or secret data, write \`@handles <class> on Asset\` with the fields by name. Where the code trusts something it never checks, write \`@assumes\`. Where you know the accountable team, write \`@owns\`.

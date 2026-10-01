@@ -134,8 +134,12 @@ export function canonicalAnnotationRecords(model: ThreatModel): string[] {
   for (const fl of model.flows ?? []) {
     out.push(record('flows', s(fl.source), s(fl.target), s(fl.mechanism), s(fl.description), f(fl.location.file)));
   }
+  // A declared direction is content: `from A to B` says which side is outside,
+  // and `between A and B` does not. The marker is appended only to a directed
+  // record, so every undirected boundary hashes exactly as it did before the
+  // directed form existed and no version bump re-hashes existing models.
   for (const b of model.boundaries ?? []) {
-    out.push(record('boundary', s(b.asset_a), s(b.asset_b), s(b.id), s(b.description), f(b.location.file)));
+    out.push(record('boundary', s(b.asset_a), s(b.asset_b), s(b.id), s(b.description), f(b.location.file), ...(b.directed ? ['directed'] : [])));
   }
   for (const v of model.validations ?? []) {
     out.push(record('validates', s(v.control), s(v.asset), s(v.description), f(v.location.file)));

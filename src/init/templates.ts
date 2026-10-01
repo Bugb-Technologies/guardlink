@@ -247,6 +247,7 @@ RELATE   @mitigates <Asset> against <#threat> using <#control> -- "how"
                    ^ PROPOSED via \`guardlink entitle --propose\`, written only when a human accepts
 
 FLOW     @flows <Source> -> <Target> via <mechanism> -- "details"
+         @boundary from <Outer> to <Inner> (#id) -- "trust boundary, direction known"
          @boundary <AssetA> | <AssetB> (#id) -- "trust boundary"
          @boundary between <AssetA> and <AssetB> (#id) -- "trust boundary"
 
@@ -484,7 +485,7 @@ the same change.** This includes: new endpoints, authentication/authorization lo
    - **The code trusts a caller, library, or platform to hold a property it never checks itself** → \`@assumes Asset -- "what must hold, and what breaks if it does not"\`. One asset, and the whole assumption lives in the description.
    - **Responsibility for a threat lands on a vendor, an upstream service, or another team's component** → \`@transfers #threat from Source to Target\`. Both ends must be assets that already exist in the definitions file — a vendor needs an \`External.*\` asset declared first, and a bare company name will not parse.
    - **You know the team accountable for an asset** → \`@owns team-id for Asset\`. The owner is a bare token: \`platform-security\` parses, \`"Platform Security"\` and \`#platform-security\` do not. If you do not know the team, skip it rather than guessing.
-7. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note — plus \`@boundary\` when that flow crosses a trust change, and \`@handles\` when the asset touches classified data. Never write a lone \`@exposes\` without follow-up.
+7. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note — plus \`@boundary\` when that flow crosses a trust change (written \`from <outer> to <inner>\` when you know which side is less trusted), and \`@handles\` when the asset touches classified data. Never write a lone \`@exposes\` without follow-up.
 8. Avoid \`@shield\` unless a human explicitly asks to hide code from AI — it creates blind spots.
 9. **NEVER write \`@entitles\` into source — propose it.** \`@entitles\` says a privilege is *supposed* to have this effect, so an over-grant closes a real privilege escalation as by-design. That makes it the second claim you may not make on a human's behalf, alongside \`@accepts\`. File it with \`guardlink entitle --propose\` (or \`guardlink_entitlement_propose\`) and a human's acceptance is what writes the annotation, under their name; an \`@entitles\` in source with no accepted proposal is a validation error. The rationale must cite the authz code as \`file:line\` or the claim is inert — parsed and then ignored. It never suppresses a finding and never gates testing; it only changes what triage recommends. Never propose one for an ownership question (IDOR, tenant isolation) — both peers hold the capability, so it cannot say whose object it was. When unsure which role the code actually requires, write \`@comment\` describing what you saw instead: under-granting costs noise, over-granting hides a real bug.
 
@@ -515,7 +516,7 @@ the same change.** This includes: new endpoints, authentication/authorization lo
 @mitigates App.API against #sqli using #prepared-stmts -- "Parameterized queries via pg"
 @audit App.API -- "Timing attack risk — needs human review to assess bcrypt constant-time comparison"
 @flows User -> App.API via HTTPS -- "Login request path"
-@boundary between #api and #db (#data-boundary) -- "App → DB trust change"
+@boundary from #api to #db (#data-boundary) -- "App → DB trust change; #api is the less-trusted side"
 @handles pii on App.API -- "Processes email and session token"
 @validates #prepared-stmts for App.API -- "sqlInjectionTest.ts ensures placeholders used"
 @assumes App.API -- "Caller has already authenticated; this function never re-checks the session"
@@ -779,7 +780,7 @@ Every time you write or modify code that touches security-relevant behavior, you
 - Definitions (@asset, @threat, @control with (#id)) live in .guardlink/definitions${project.definitionsExt}. Reuse IDs — never redefine. Add new definitions there first, then reference in source files.
 - Source files use relationship verbs: @mitigates, @exposes, @confirmed, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers, @feature. (@actor is a definition — it lives with @asset/@threat/@control. @entitles is proposed, not written.)
 - Triggers for the four verbs everyone forgets: wrote a test that pins a control → @validates #control for Asset. Code trusts a caller/library/platform to hold a property it never checks → @assumes Asset -- "what must hold". A threat becomes a vendor's or another team's responsibility → @transfers #threat from Source to Target (both ends must be declared assets; a vendor needs an External.* asset first). You know the accountable team → @owns team-id for Asset (bare token — no quotes, no #).
-- Write coupled annotation blocks: risk + control (or audit) + data flow + context note — plus @boundary when that flow crosses a trust change, and @handles when the asset touches classified data.
+- Write coupled annotation blocks: risk + control (or audit) + data flow + context note — plus @boundary when that flow crosses a trust change (from <outer> to <inner> when you know which side is less trusted), and @handles when the asset touches classified data.
 - Avoid @shield unless a human explicitly asks to hide code from AI.
 
 ## Workflow
@@ -793,7 +794,7 @@ Every time you write or modify code that touches security-relevant behavior, you
 - @mitigates App.API against #sqli using #prepared-stmts -- "Parameterized queries via pg"
 - @audit App.API -- "Timing attack risk — needs human review"
 - @flows User -> App.API via HTTPS -- "Login request"
-- @boundary between #api and #db (#data-boundary) -- "Trust change"
+- @boundary from #api to #db (#data-boundary) -- "Trust change; outer side first"
 - @handles pii on App.API -- "Processes email, token"
 - @validates #prepared-stmts for App.API -- "CI test ensures placeholders"
 - @assumes App.API -- "Caller already authenticated; this never re-checks the session"
@@ -1161,7 +1162,7 @@ Assets are referenced as \`#id\` or as a \`Dotted.Path\`; both resolve to the sa
 | \`@mitigates\` | \`@mitigates <asset> against <threat> using <control> -- "how"\` |
 | \`@confirmed\` | \`@confirmed <threat> on <asset> [severity] cwe:CWE-89 -- "evidence"\` |
 | \`@flows\` | \`@flows <A> -> <B> via <mechanism> -- "what moves"\` — chains allowed: \`A -> B -> C\` |
-| \`@boundary\` | \`@boundary between <A> and <B> (#id) -- "what changes across it"\` |
+| \`@boundary\` | \`@boundary from <outer> to <inner> (#id) -- "what changes across it"\` when you know which side is less trusted; \`@boundary between <A> and <B>\` when you do not |
 | \`@transfers\` | \`@transfers <threat> from <A> to <B> -- "who owns it now"\` |
 | \`@validates\` | \`@validates <control> for <asset> -- "the test that proves it"\` |
 | \`@audit\` | \`@audit <asset> -- "what a human needs to look at"\` |

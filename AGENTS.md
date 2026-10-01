@@ -57,7 +57,7 @@ the same change.** This includes: new endpoints, authentication/authorization lo
    - **The code trusts a caller, library, or platform to hold a property it never checks itself** → `@assumes Asset -- "what must hold, and what breaks if it does not"`. One asset, and the whole assumption lives in the description.
    - **Responsibility for a threat lands on a vendor, an upstream service, or another team's component** → `@transfers #threat from Source to Target`. Both ends must be assets that already exist in the definitions file — a vendor needs an `External.*` asset declared first, and a bare company name will not parse.
    - **You know the team accountable for an asset** → `@owns team-id for Asset`. The owner is a bare token: `platform-security` parses, `"Platform Security"` and `#platform-security` do not. If you do not know the team, skip it rather than guessing.
-7. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note — plus `@boundary` when that flow crosses a trust change, and `@handles` when the asset touches classified data. Never write a lone `@exposes` without follow-up.
+7. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note — plus `@boundary` when that flow crosses a trust change (written `from <outer> to <inner>` when you know which side is less trusted), and `@handles` when the asset touches classified data. Never write a lone `@exposes` without follow-up.
 8. Avoid `@shield` unless a human explicitly asks to hide code from AI — it creates blind spots.
 9. **NEVER write `@entitles` into source — propose it.** `@entitles` says a privilege is *supposed* to have this effect, so an over-grant closes a real privilege escalation as by-design. That makes it the second claim you may not make on a human's behalf, alongside `@accepts`. File it with `guardlink entitle --propose` (or `guardlink_entitlement_propose`) and a human's acceptance is what writes the annotation, under their name; an `@entitles` in source with no accepted proposal is a validation error. The rationale must cite the authz code as `file:line` or the claim is inert — parsed and then ignored. It never suppresses a finding and never gates testing; it only changes what triage recommends. Never propose one for an ownership question (IDOR, tenant isolation) — both peers hold the capability, so it cannot say whose object it was. When unsure which role the code actually requires, write `@comment` describing what you saw instead: under-granting costs noise, over-granting hides a real bug.
 
@@ -88,7 +88,7 @@ the same change.** This includes: new endpoints, authentication/authorization lo
 @mitigates App.API against #sqli using #prepared-stmts -- "Parameterized queries via pg"
 @audit App.API -- "Timing attack risk — needs human review to assess bcrypt constant-time comparison"
 @flows User -> App.API via HTTPS -- "Login request path"
-@boundary between #api and #db (#data-boundary) -- "App → DB trust change"
+@boundary from #api to #db (#data-boundary) -- "App → DB trust change; #api is the less-trusted side"
 @handles pii on App.API -- "Processes email and session token"
 @validates #prepared-stmts for App.API -- "sqlInjectionTest.ts ensures placeholders used"
 @assumes App.API -- "Caller has already authenticated; this function never re-checks the session"
@@ -174,11 +174,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-873 annotations, 20 assets, 16 threats, 14 controls, 127 exposures, 0 confirmed, 129 mitigations, 3 actors, 1 entitlements, 202 flows, 2 features
+874 annotations, 20 assets, 16 threats, 14 controls, 127 exposures, 0 confirmed, 129 mitigations, 3 actors, 1 entitlements, 202 flows, 2 features
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v3:4a7d0ba07ea80e6802ab0660b05f4541d06265ffe1cc3d1d817bebb549433253`
+- `annotation_hash`: `sha256-v3:95e447ec72ce4924c563d83aae0d3e594f518789e71d00ded358ac3255cf772a`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.

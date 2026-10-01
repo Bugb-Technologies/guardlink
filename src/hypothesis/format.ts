@@ -118,9 +118,10 @@ export function formatOutcome(record: HypothesisRecord, entry: HypothesisEntry, 
   return lines.join('\n');
 }
 
-/** How a boundary reads in a heading: its #id, or its two sides. */
+/** How a boundary reads in a heading: its #id, or its two sides — outer first when it declares a direction. */
 function boundaryLabel(r: BoundaryClaimRecord): string {
-  return r.id ? `#${r.id} (between ${r.asset_a} and ${r.asset_b})` : `between ${r.asset_a} and ${r.asset_b}`;
+  const sides = r.directed ? `from ${r.asset_a} to ${r.asset_b}` : `between ${r.asset_a} and ${r.asset_b}`;
+  return r.id ? `#${r.id} (${sides})` : sides;
 }
 
 /** One boundary outcome, as a block. Like `formatOutcome`, it names the claim, not a position. */
@@ -152,7 +153,7 @@ export function formatBoundaryList(c: BoundaryClaimClassification, state?: strin
     const outcome = r.state === 'unverified' && r.previous ? `previously ${r.previous.outcome} ${r.previous.at.slice(0, 10)} by ${r.previous.by} — code changed since`
       : r.state === 'retest' && e ? `contradicted ${e.at.slice(0, 10)} by ${e.by} — code changed since, retest`
       : e ? `${e.at.slice(0, 10)} by ${e.by}` : '';
-    lines.push(`  ${pad(r.state, 13)}${pad(short(r.id ? `#${r.id}` : '(no id)', 21), 22)}${pad(short(`${r.asset_a} ↔ ${r.asset_b}`, 33), 34)}${pad(short(`${r.file}:${r.line}`, 33), 34)}${outcome}`);
+    lines.push(`  ${pad(r.state, 13)}${pad(short(r.id ? `#${r.id}` : '(no id)', 21), 22)}${pad(short(`${r.asset_a} ${r.directed ? '→' : '↔'} ${r.asset_b}`, 33), 34)}${pad(short(`${r.file}:${r.line}`, 33), 34)}${outcome}`);
   }
   if (rows.length === 0) lines.push('  (none)');
   return lines.join('\n');

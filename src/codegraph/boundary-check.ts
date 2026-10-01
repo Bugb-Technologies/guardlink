@@ -22,11 +22,14 @@
  * human decides which is wrong.
  *
  * WHICH SIDE IS INSIDE
- * `@boundary` is undirected. The outer side is inferred the way `guardlink paths`
- * infers entries: an endpoint the model does not declare as an asset is outside
- * the system, and so is a declared `External.*` asset. A boundary with exactly
- * one outer side has the other as its inner side; with two declared inner-looking
- * sides its direction is unknown and the access checks skip it rather than guess.
+ * A directed `@boundary from <outer> to <inner>` says so, and that is used as
+ * written — it is the one way to give a boundary between two declared assets an
+ * inner side. An undirected one does not say, so its outer side is inferred the
+ * way `guardlink paths` infers entries: an endpoint the model does not declare
+ * as an asset is outside the system, and so is a declared `External.*` asset.
+ * A boundary with exactly one outer side has the other as its inner side; with
+ * two declared inner-looking sides its direction is unknown and the access
+ * checks skip it rather than guess.
  *
  * WHICH ROUTES ARE ON A SIDE
  * A route belongs to an asset when its handler's file carries an annotation that
@@ -85,7 +88,7 @@ const exampleFile = (example: string): string | null => {
 };
 
 function boundaryName(b: ThreatModelBoundary): string {
-  return b.id ? `#${b.id}` : `the boundary between ${b.asset_a} and ${b.asset_b}`;
+  return b.id ? `#${b.id}` : b.directed ? `the boundary from ${b.asset_a} to ${b.asset_b}` : `the boundary between ${b.asset_a} and ${b.asset_b}`;
 }
 
 function routeWhere(e: WorklistEntry): string {
@@ -151,7 +154,8 @@ export function checkBoundaries(model: ThreatModel, w: Worklist | null | undefin
     for (const b of model.boundaries ?? []) {
       const ka = key(b.asset_a);
       const kb = key(b.asset_b);
-      const inner = isOuter(ka) && !isOuter(kb) ? kb : isOuter(kb) && !isOuter(ka) ? ka : null;
+      const inner = b.directed ? kb
+        : isOuter(ka) && !isOuter(kb) ? kb : isOuter(kb) && !isOuter(ka) ? ka : null;
       if (!inner) continue;
       const assumptions = (model.assumptions ?? []).filter(a => key(a.asset) === inner).map(a => a.description ?? '');
       const stated = [b.description ?? '', ...assumptions].map(statedAccess).find(s => s !== null) ?? null;

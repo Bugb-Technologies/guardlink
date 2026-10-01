@@ -127,7 +127,10 @@ function identity([verb, r]: Rec): string[] {
     case 'accepts':   return [s(r.asset), s(r.threat), s(r.accepted_by), s(r.expires)];
     case 'transfers': return [s(r.threat), s(r.source), s(r.target)];
     case 'flows':     return [s(r.source), s(r.target), s(r.mechanism)];
-    case 'boundary':  return [s(r.asset_a), s(r.asset_b), s(r.id)];
+    // A declared direction is part of the claim: rewriting `between` as `from …
+    // to …` asserts something new, so it arrives in the ledger unverified. The
+    // marker is appended only when directed, so undirected keys never move.
+    case 'boundary':  return [s(r.asset_a), s(r.asset_b), s(r.id), ...(r.directed ? ['directed'] : [])];
     case 'validates': return [s(r.control), s(r.asset)];
     case 'audit':     return [s(r.asset)];
     case 'owns':      return [s(r.owner), s(r.asset)];
@@ -149,7 +152,7 @@ export function claimText(rec: Rec): string {
     case 'accepts':   return `${r.threat} on ${r.asset}${r.accepted_by ? ` by ${r.accepted_by}` : ''}${r.expires ? ` until ${r.expires}` : ''}`;
     case 'transfers': return `${r.threat} from ${r.source} to ${r.target}`;
     case 'flows':     return `${r.source} -> ${r.target}${r.mechanism ? ` via ${r.mechanism}` : ''}`;
-    case 'boundary':  return `between ${r.asset_a} and ${r.asset_b}${r.id ? ` (#${r.id})` : ''}`;
+    case 'boundary':  return `${r.directed ? `from ${r.asset_a} to ${r.asset_b}` : `between ${r.asset_a} and ${r.asset_b}`}${r.id ? ` (#${r.id})` : ''}`;
     case 'validates': return `${r.control} for ${r.asset}`;
     case 'audit':     return r.asset;
     case 'owns':      return `${r.owner} for ${r.asset}`;

@@ -195,6 +195,8 @@ export interface BoundaryAnnotation extends BaseAnnotation {
   asset_a: string;
   asset_b: string;
   id?: string;
+  /** Written `from <outer> to <inner>`: `asset_a` is the outer side, `asset_b` the inner. Absent for `between`. */
+  directed?: true;
 }
 
 export interface ValidatesAnnotation extends BaseAnnotation {
@@ -597,6 +599,13 @@ export interface ThreatModelBoundary {
   asset_a: string;
   asset_b: string;
   id?: string;
+  /**
+   * The annotation declared a direction (`@boundary from <outer> to <inner>`,
+   * SPEC §3.2): `asset_a` is the outer, less-trusted side and `asset_b` the
+   * inner side. Absent — never `false` — for the undirected `between` and `|`
+   * forms, whose side order carries no meaning.
+   */
+  directed?: true;
   description?: string;
   location: SourceLocation;
 }
@@ -745,6 +754,8 @@ export type DiagnosticCode =
   // ── Validation-time (src/parser/validate.ts) ──
   /** A `#id` reference resolves to no definition. */
   | 'dangling-ref'
+  /** A directed `@boundary from <outer> to <inner>` names a side that is no declared asset and no `@flows` endpoint. */
+  | 'unresolved-boundary-side'
   /** `@entitles` names an actor never declared with `@actor`. */
   | 'undeclared-actor'
   /** `@entitles` cites no authz code, so it can never demote a finding. */
