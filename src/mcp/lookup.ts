@@ -13,6 +13,10 @@
  *   - "confirmed" → @confirmed verified exploitable findings
  *   - "actors" → declared principals (@actor) with the capabilities each is entitled to
  *   - "entitlements" / "entitlements for #actor" → @entitles claims, with citation and inert flag
+ *   - "reaches [for #actor]" / "agents [for #actor]" → @agents/@reaches claims: what a principal can invoke
+ *   - "unentitled reaches [for #actor]" → reaches no cited @entitles covers (can minus may)
+ *   - "effects [for #asset]" → @effects claims: what code does to an asset, as whom
+ *   - "gates [for #asset]" → @gates claims: who approves before effects on an asset land
  *   - "boundary #config" → boundaries involving asset
  *   - Free text → fuzzy match across assets, threats, controls
  *
@@ -20,10 +24,12 @@
  * @mitigates #mcp against #redos using #regex-anchoring -- "Patterns are simple and bounded"
  * @flows QueryString -> #mcp via lookup -- "Query input path"
  * @comment -- "Pure function; no I/O; operates on in-memory ThreatModel"
+ * @comment -- "The reach forms project the parsed model and add no input surface. `unentitled reaches` answers from findUnentitledReaches, the same join diff uses, so the two cannot disagree about can minus may"
  */
 
 import { buildCoverageIndex, findUnmitigatedExposures } from '../parser/coverage.js';
 import { ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
+import { actorResolver, findUnentitledReaches } from '../parser/reach.js';
 import type {
   ThreatModel, ThreatModelAsset, ThreatModelThreat, ThreatModelControl,
   ThreatModelTransfer, ThreatModelAcceptance,
@@ -92,6 +98,11 @@ export const SUPPORTED_QUERY_FORMS = [
   'transfers [for <threat-or-asset>]',
   'comments [for <file-or-asset>]',
   'shields [for <file-or-asset>]',
+  'reaches [for <actor>]     (@agents and @reaches: capabilities a principal can invoke)',
+  'agents [for <actor>]      (the @agents claims only: LLM agents and their capabilities)',
+  'unentitled reaches [for <actor>]  (capabilities reached with no cited @entitles covering them: can minus may)',
+  'effects [for <asset>]     (what code does to an asset: read, write, delete, execute, spend, notify)',
+  'gates [for <asset>]       (approval steps: who decides before effects on an asset land)',
   'cross-repo refs [for <repo-or-tag>]  (sibling-repo tags from workspace.yaml — NOT cwe:/owasp: — accepts `external refs` as an alias)',
   'cwe:CWE-89 | owasp:A03 | CWE-89  (external identifiers declared on threats — the scanner bridge)',
   '<id>            (bare identifier, fuzzy match across all categories)',
@@ -184,6 +195,46 @@ export function lookup(model: ThreatModel, query: string): LookupResult {
   const entitlementsQ = q.match(/^entitlements?(?:\s+(?:for|of|on)\s+(.+))?$/);
   if (entitlementsQ) {
     return lookupEntitlements(model, query, entitlementsQ[1]?.trim());
+  }
+
+  // ── "unentitled reaches [for <actor>]" — can minus may. Before the plain
+  //    reach forms, which would otherwise never see the qualifier. ──
+  const unentitledQ = q.match(/^unentitled\s+(?:reach(?:es)?|agents?)(?:\s+(?:for|of|by)\s+(.+))?$/);
+  if (unentitledQ) {
+    return lookupUnentitledReaches(model, query, unentitledQ[1]?.trim());
+  }
+
+  // ── "reaches [for <actor>]" / "agents [for <actor>]" ──
+  const reachesQ = q.match(/^(reach(?:es)?|agents?)(?:\s+(?:for|of|by)\s+(.+))?$/);
+  if (reachesQ) {
+    return lookupReaches(model, query, reachesQ[1].startsWith('agent'), reachesQ[2]?.trim());
+  }
+
+  // ── "effects [for <asset>]" ──
+  const effectsQ = q.match(/^effects?(?:\s+(?:for|on)\s+(.+))?$/);
+  if (effectsQ) {
+    const project = (e: NonNullable<ThreatModel['effects']>[number]) => ({
+      effect: e.effect, asset: e.asset, execution_identity: e.identity,
+      // Reads are reversible; every other effect is not, and that split is the
+      // one a reviewer scans for first.
+      mutating: e.effect !== 'read',
+      description: e.description, ...loc(e.location),
+    });
+    const effects = model.effects || [];
+    if (!effectsQ[1]) return { query, type: 'effects', count: effects.length, results: effects.map(project) };
+    return lookupAssetRelation(model, query, 'effects', effectsQ[1].trim(), resolve, effects, e => e.asset, project);
+  }
+
+  // ── "gates [for <asset>]" ──
+  const gatesQ = q.match(/^gates?(?:\s+(?:for|on)\s+(.+))?$/);
+  if (gatesQ) {
+    const project = (g: NonNullable<ThreatModel['gates']>[number]) => ({
+      asset: g.asset, approver: g.approver, capability: g.canonical_capability,
+      description: g.description, ...loc(g.location),
+    });
+    const gates = model.gates || [];
+    if (!gatesQ[1]) return { query, type: 'gates', count: gates.length, results: gates.map(project) };
+    return lookupAssetRelation(model, query, 'gates', gatesQ[1].trim(), resolve, gates, g => g.asset, project);
   }
 
   // ── "features" ──
@@ -415,6 +466,7 @@ function lookupUnmitigated(model: ThreatModel, query: string): LookupResult {
  * by design?
  */
 function lookupActors(model: ThreatModel, query: string): LookupResult {
+  const actorKey = actorResolver(model);
   const results = (model.actors || []).map(ac => {
     // Both sides go through bareRef so the join is case-insensitive, the way
     // every other ref match in this module is. Comparing a raw `ac.id` against a
@@ -422,6 +474,7 @@ function lookupActors(model: ThreatModel, query: string): LookupResult {
     // carried an uppercase letter.
     const key = bareRef(ac.id || ac.canonical_name);
     const held = (model.entitlements || []).filter(en => bareRef(en.actor) === key);
+    const reaches = (model.reaches || []).filter(r => actorKey(r.actor) === key);
     return {
       name: ac.name,
       id: ac.id,
@@ -435,6 +488,9 @@ function lookupActors(model: ThreatModel, query: string): LookupResult {
         citation: en.citation?.raw,
         inert: en.inert,
       })),
+      // Writing @agents about an actor is what marks it as an LLM agent.
+      agent: reaches.some(r => r.agent),
+      reaches: reaches.map(r => ({ capability: r.canonical_capability, asset: r.asset })),
     };
   });
   return { query, type: 'actors', count: results.length, results };
@@ -468,6 +524,58 @@ function lookupEntitlements(model: ThreatModel, query: string, actorRef?: string
       line: en.location.line,
     }));
   return { query, type: 'entitlements', count: results.length, results };
+}
+
+/**
+ * `@agents` / `@reaches` claims: what a principal can invoke. Mirrors
+ * `lookupEntitlements`, because the pair is the point: a row here with no row
+ * there is a capability nobody approved. `agentsOnly` narrows to `@agents`.
+ */
+function lookupReaches(model: ThreatModel, query: string, agentsOnly: boolean, actorRef?: string): LookupResult {
+  const actorKey = actorResolver(model);
+  const wanted = actorRef ? actorKey(actorRef) : undefined;
+  const results = (model.reaches || [])
+    .filter(r => (!agentsOnly || r.agent) && (!wanted || actorKey(r.actor) === wanted))
+    .map(r => ({
+      actor: r.actor,
+      agent: r.agent,
+      capability: r.canonical_capability,
+      capability_as_written: r.capability,
+      asset: r.asset,
+      caller_identity: r.identity,
+      description: r.description,
+      ...loc(r.location),
+    }));
+  return { query, type: agentsOnly ? 'agents' : 'reaches', count: results.length, results };
+}
+
+/**
+ * Can minus may: reaches no cited `@entitles` covers, from the one join in
+ * parser/reach.ts. Each row says why any entitlement for the same actor and
+ * capability still does not count, so a reviewer can tell "nobody approved
+ * this" from "an approval exists but is uncited or on another asset".
+ */
+function lookupUnentitledReaches(model: ThreatModel, query: string, actorRef?: string): LookupResult {
+  const actorKey = actorResolver(model);
+  const wanted = actorRef ? actorKey(actorRef) : undefined;
+  const results = findUnentitledReaches(model)
+    .filter(u => !wanted || actorKey(u.reach.actor) === wanted)
+    .map(({ reach: r, near_misses }) => ({
+      actor: r.actor,
+      agent: r.agent,
+      capability: r.canonical_capability,
+      asset: r.asset,
+      caller_identity: r.identity,
+      description: r.description,
+      ...loc(r.location),
+      near_misses: near_misses.map(n => ({
+        blocker: n.blocker,
+        asset: n.entitlement.asset,
+        file: n.entitlement.location.file,
+        line: n.entitlement.location.line,
+      })),
+    }));
+  return { query, type: 'unentitled_reaches', count: results.length, results };
 }
 
 function lookupConfirmed(model: ThreatModel, query: string): LookupResult {
@@ -599,6 +707,8 @@ function assetRelationRefs(model: ThreatModel): string[] {
     ...model.assumptions.map(a => a.asset),
     ...model.validations.map(v => v.asset),
     ...model.transfers.flatMap(t => [t.source, t.target]),
+    ...(model.effects || []).map(e => e.asset),
+    ...(model.gates || []).map(g => g.asset),
   ];
 }
 

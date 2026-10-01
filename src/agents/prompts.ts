@@ -283,6 +283,7 @@ At each boundary crossing and data transformation, ask:
 - Does this need human security review? (@audit)
 - Is this risk handled by someone else? (@transfers)
 - Is the privilege this requires already meant to grant this effect? (@entitles — cite the authz code, and never for an ownership question)
+- Does this hand an LLM agent a tool, an MCP server, or file, shell or database access? (@agents on the registration, @effects on the code that acts, @gates on any approval step)
 
 ### Step 4: Write Coupled Annotation Blocks
 NEVER write a single annotation in isolation. Every annotated location should tell a complete story.
@@ -436,6 +437,24 @@ Report what you proposed at the end of your run, and tell the user to review it 
 // @shield:begin -- "Entitlement example, excluded from parsing"
 // @entitles #ns-admin to configure-archival-destination on #archival-fs
 //     -- "By design: the archival URI is namespace configuration. Authz: ScopeCluster/AccessAdmin at common/api/metadata.go:189"
+// @shield:end
+\`\`\`
+
+### \`@agents\`, \`@reaches\`, \`@effects\`, \`@gates\` — What an Embedded Agent Can Reach
+When the code embeds an LLM agent, its harness hands the agent capabilities: tool definitions, MCP servers, file and shell access, database clients, internal methods. Declare them, so a reviewer can see the agent's blast radius:
+
+- \`@agents <#agent> to <capability> on <Asset> [as <identity>]\` — on the tool registration or server mount. Writing it is what marks the actor as an LLM agent; declare the actor with \`@actor\` in the definitions file first.
+- \`@reaches\` — the same shape for a principal that is not an LLM agent (a CI runner, a service account). Never name one actor under both verbs: that is a validation error.
+- \`@effects <read|write|delete|execute|spend|notify> on <Asset> [as <identity>]\` — on the code that acts. \`as\` is whose credentials it runs under. Egress needs no new verb: write \`@flows\` to an \`External.*\` asset.
+- \`@gates <Asset> by <#approver> [for <capability>]\` — on an approval step that blocks until the named principal decides. A gate suppresses nothing; only write one where the code really waits.
+
+You may write all four: they record what the code *can* do. Use the capability token an \`@entitles\` would use (\`run-sql\`, \`issue-refund\`), because "can minus may" — \`guardlink_lookup("unentitled reaches")\` — joins on it. For a capability with no entitlement, propose one only if the code shows it is meant to be there; a debug tool left registered is an \`@exposes\` + \`@audit\`, not an entitlement.
+
+\`\`\`
+// @shield:begin -- "Agent reach example, excluded from parsing"
+// @agents #support-agent to run-sql on #tool-surface -- "run_sql registered in tools.ts, still on in production"
+// @effects write on #users-db as #db-service -- "db.raw(sql) runs the model-written SQL verbatim"
+// @gates #payments by #support-human for issue-refund -- "requireApproval() parks the refund until a human approves"
 // @shield:end
 \`\`\`
 

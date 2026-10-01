@@ -14,6 +14,10 @@
  * bypass the propose/accept ledger in src/review/entitlements.ts entirely, which
  * is the gate that makes an entitlement carry a human's name (design §3.6).
  *
+ * `@agents`, `@reaches`, `@effects` and `@gates` are written like any other
+ * relation. They record what the code can do, not what anyone decided it may,
+ * so an agent reading a tool registration is exactly who should write them.
+ *
  * @exposes #parser to #arbitrary-write [high] cwe:CWE-73 -- "Writes annotation sidecars from tool input"
  * @mitigates #parser against #arbitrary-write using #path-validation -- "Target is always resolveGalPath(root, file); the caller cannot choose the path, and a file escaping root is rejected"
  * @exposes #parser to #insecure-deser [low] cwe:CWE-20 -- "Annotation lines arrive as caller-supplied text"

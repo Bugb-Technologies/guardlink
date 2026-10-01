@@ -7,10 +7,12 @@
  * @comment -- "Regex patterns designed with bounded quantifiers and explicit structure"
  * @comment -- "@entitles capability is a single-token identifier by grammar, so prose in that position is a parse error rather than a label nothing can group or compare (actor-entitlement design §3.1)"
  * @comment -- "@entitles takes optional `on <asset>` and `against <threat>` clauses because the join is the (actor, asset, threat) triple, not the capability — a capability-keyed join would demote every threat on the asset including one discovered later (actor-entitlement design §9.3)"
+ * @mitigates #parser against #redos using #regex-anchoring -- "@agents, @reaches, @effects and @gates reuse the anchored ASSET_REF, THREAT_REF, CAPABILITY and DESC fragments and add only a closed alternation for the effect class"
+ * @comment -- "@effects takes a closed effect set, like @handles takes a closed classification set: an open string cannot be compared across repositories or drive a query"
  */
 
 import type {
-  Annotation, DataClassification,
+  Annotation, DataClassification, EffectClass,
   ParseDiagnostic, SourceLocation,
 } from '../types/index.js';
 import { normalizeName, resolveSeverity, unescapeDescription } from './normalize.js';
@@ -81,6 +83,12 @@ const THREAT_REF = String.raw`(?:${TAG_REF}|${QUOTED_REF}|[A-Za-z]\w*(?:[_\- ][A
 // than a sentence nobody can match on.
 const CAPABILITY = String.raw`[A-Za-z][A-Za-z0-9_.\-]*`;
 /**
+ * The closed `@effects` set (SPEC §3.2). Closed like the `@handles`
+ * classifications, and for the same reason. Egress is deliberately absent:
+ * `@flows … -> External.X` already says it.
+ */
+const EFFECT = String.raw`(read|write|delete|execute|spend|notify)`;
+/**
  * The name in `@accepts … by <who>` — a person, not prose.
  *
  * Quoted, or a single unspaced token. Deliberately NOT the `NAME` fragment,
@@ -128,6 +136,17 @@ const PATTERNS: Record<string, RegExp> = {
   // harmless because it demotes nothing, whereas making it a parse error would
   // reject a claim a reviewer should get to read.
   entitles: new RegExp(String.raw`^@entitles\s+(${THREAT_REF})\s+to\s+(${CAPABILITY})(?:\s+on\s+(${ASSET_REF}))?(?:\s+against\s+(${THREAT_REF}))?(?:\s+${DESC})?$`),
+  // `@agents` and `@reaches` share @entitles' actor and capability positions, so
+  // a reach and an entitlement for one capability are written with one token
+  // and join on it. `as <identity>` is the identity the caller presents.
+  agents: new RegExp(String.raw`^@agents\s+(${THREAT_REF})\s+to\s+(${CAPABILITY})(?:\s+on\s+(${ASSET_REF}))?(?:\s+as\s+(${ASSET_REF}))?(?:\s+${DESC})?$`),
+  reaches: new RegExp(String.raw`^@reaches\s+(${THREAT_REF})\s+to\s+(${CAPABILITY})(?:\s+on\s+(${ASSET_REF}))?(?:\s+as\s+(${ASSET_REF}))?(?:\s+${DESC})?$`),
+  // `as <identity>` here is the identity the effect executes under.
+  effects: new RegExp(String.raw`^@effects\s+${EFFECT}\s+on\s+(${ASSET_REF})(?:\s+as\s+(${ASSET_REF}))?(?:\s+${DESC})?$`),
+  // `by <actor>` is required: a gate with no named approver would let "something
+  // happens here" read as "someone decides here", which is the one thing the
+  // annotation exists to tell apart.
+  gates: new RegExp(String.raw`^@gates\s+(${ASSET_REF})\s+by\s+(${THREAT_REF})(?:\s+for\s+(${CAPABILITY}))?(?:\s+${DESC})?$`),
   transfers: new RegExp(String.raw`^@transfers\s+(${THREAT_REF})\s+from\s+(${ASSET_REF})\s+to\s+(${ASSET_REF})(?:\s+${DESC})?$`),
   // `via` must be followed by a mechanism: `via -- "d"` used to record `-- "d"`
   // as the mechanism and lose the description. SPEC §3.2 `@flows`, Mechanism.
@@ -335,6 +354,42 @@ export function parseLine(
       asset: m[3] ? resolveRef(m[3]) : undefined,
       threat: m[4] ? resolveRef(m[4]) : undefined,
       description: desc(m[5]),
+    });
+  }
+
+  // ── @agents / @reaches ──
+  // One shape, two verbs: which one was written is what says whether the actor
+  // is an LLM agent. Refs resolve like @entitles' so the two join on the same
+  // spelling of actor and capability.
+  if ((m = trimmed.match(PATTERNS.agents)) || (m = trimmed.match(PATTERNS.reaches))) {
+    const capability = m[2];
+    return ok({
+      ...base, verb: trimmed.startsWith('@agents') ? 'agents' : 'reaches',
+      actor: resolveRef(m[1]),
+      capability, canonical_capability: normalizeName(capability),
+      asset: m[3] ? resolveRef(m[3]) : undefined,
+      identity: m[4] ? resolveRef(m[4]) : undefined,
+      description: desc(m[5]),
+    });
+  }
+
+  // ── @effects ──
+  if ((m = trimmed.match(PATTERNS.effects))) {
+    return ok({
+      ...base, verb: 'effects', effect: m[1] as EffectClass,
+      asset: resolveRef(m[2]),
+      identity: m[3] ? resolveRef(m[3]) : undefined,
+      description: desc(m[4]),
+    });
+  }
+
+  // ── @gates ──
+  if ((m = trimmed.match(PATTERNS.gates))) {
+    return ok({
+      ...base, verb: 'gates', asset: resolveRef(m[1]), approver: resolveRef(m[2]),
+      capability: m[3] || undefined,
+      canonical_capability: m[3] ? normalizeName(m[3]) : undefined,
+      description: desc(m[4]),
     });
   }
 
@@ -554,6 +609,7 @@ function ok(annotation: Annotation): ParseLineResult {
 const KNOWN_VERBS: ReadonlySet<string> = new Set([
   'asset', 'threat', 'control', 'actor', 'mitigates', 'exposes', 'confirmed', 'accepts', 'entitles',
   'transfers', 'flows', 'boundary', 'validates', 'audit', 'owns',
+  'agents', 'reaches', 'effects', 'gates',
   'handles', 'assumes', 'feature', 'source', 'comment', 'shield', 'shield:begin', 'shield:end',
   // v1 compat
   'review', 'connects',
@@ -741,6 +797,12 @@ const VERB_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
   // other verb errors — D29's split has to cover the whole verb table or it
   // silently weakens for whichever verbs were added last.
   entitles: ['to', 'on', 'against'],
+  // `on` and `as` are common English, so the reach verbs count only `to`, the
+  // keyword their grammar cannot do without. A malformed reach almost always
+  // carries a `#ref` too. `@gates` has no entry for the reason `by` is absent
+  // from `@accepts`: its one keyword is among the commonest words in English.
+  agents: ['to'],
+  reaches: ['to'],
 };
 
 /**
@@ -754,6 +816,9 @@ const VERB_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
  */
 const LEADING_KEYWORDS: Readonly<Record<string, RegExp>> = {
   boundary: /^from\b/,
+  // `@effects` opens with one of six effect words, which prose about the verb
+  // ("@effects on the model are…") does not.
+  effects: /^(?:read|write|delete|execute|spend|notify)\b/,
 };
 
 /**

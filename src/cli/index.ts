@@ -47,7 +47,7 @@
 import { Command } from 'commander';
 import { resolve, basename, join, isAbsolute, relative } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides, checkHandoff, HANDOFF_COMMAND, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides, checkHandoff, HANDOFF_COMMAND, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { runCiChecks, formatCiReport, ESTATE_ROUTE } from '../ci/index.js';
 import type { CiWorkspaceScope } from '../ci/index.js';
@@ -70,6 +70,7 @@ import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary
 import { selectAnnotatePlaybook, selectReportShape, ANNOTATE_PLAYBOOKS, REPORT_SHAPES } from '../playbooks/index.js';
 import { lintAnnotations, runGate, formatGateReport, buildGateFollowUp, stripViolations, RULE_FIX } from '../gate/index.js';
 import { relationRecords, CLAIM_KEY_NAMES, CLAIM_KEY_SURFACES } from '../parser/claim-key.js';
+import { lookup } from '../mcp/lookup.js';
 import { parseFindingsBlock, validateFindings } from '../analyze/findings.js';
 import { readHypotheses, classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, confirmedLine, writeConfirmedLine, formatHypothesisList, formatQueue, formatIntake, formatOutcome, formatImport, HYPOTHESES_FILE, classifyBoundaryClaims, recordBoundaryOutcome, formatBoundaryOutcome, formatBoundaryList, BOUNDARY_CLAIM_KEY_NAMES } from '../hypothesis/index.js';
 import type { HypothesisClassification } from '../hypothesis/index.js';
@@ -383,6 +384,8 @@ program
     const actorDiags = findUndeclaredActors(model);
     const inertDiags = findInertEntitlements(model);
     const impreciseDiags = findImpreciseEntitlements(model);
+    // One actor under both @agents and @reaches (error)
+    const agentReachDiags = findAgentReachConflicts(model);
 
     // §3.6: an entitlement in source with no accepted proposal behind it. Skipped
     // in projects with no proposal ledger, so this only bites where the flow is used.
@@ -410,7 +413,7 @@ program
       console.error(boundaryCheckSummaryLine(worklist, boundaryDiags));
     }
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...acceptAuditDiags, ...acceptanceDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags, ...boundaryDiags];
+    const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...acceptAuditDiags, ...acceptanceDiags, ...actorDiags, ...agentReachDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags, ...boundaryDiags];
 
     // Check for unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);
@@ -1220,6 +1223,25 @@ program
     }
 
     if (opts.failOnFound && findings.length > 0) process.exit(1);
+  });
+
+// ─── lookup ──────────────────────────────────────────────────────────
+
+// @comment -- "guardlink lookup is read-only: it parses the project as parse and validate do and answers with the same pure lookup() the guardlink_lookup MCP tool uses, so it adds no input surface beyond the query text, which lookup's anchored patterns already bound"
+program
+  .command('lookup')
+  .description('Query the threat model with the guardlink_lookup forms, e.g. "unentitled reaches", "agents", "effects for #db", "cwe:CWE-89". Prints JSON; an unrecognised form lists the supported ones')
+  .argument('<query...>', 'Query form')
+  .option('-d, --dir <dir>', 'Project directory', '.')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('--fail-on-found', 'Exit 1 if the query returns any result (CI mode, e.g. no unentitled reaches)')
+  .action(async (queryParts: string[], opts: { dir: string; project?: string; failOnFound?: boolean }) => {
+    const root = resolve(opts.dir);
+    const { model } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    const result = lookup(model, queryParts.join(' '));
+    console.log(JSON.stringify(result, null, 2));
+    if (result.type === 'no_match') process.exit(2);
+    if (opts.failOnFound && result.count > 0) process.exit(1);
   });
 
 // ─── sarif ───────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@
  *
  * @flows ThreatModel -> #gate via lintAnnotations -- "Claims and their descriptions"
  * @comment -- "Errors are what the gate rejects; warnings are what it reports. Governance verbs (@accepts, @entitles) are errors only for claims under check, because a human may legitimately have written the others"
+ * @comment -- "@agents, @reaches, @effects and @gates are observations an agent may write, so no rule rejects them. A @gates that does not say what the approval step is gets the vague-description warning, because a gate claim is what a reviewer reads to decide a route is held"
  */
 import type { ThreatModel, ThreatModelExposure, ThreatModelConfirmed } from '../types/index.js';
 import { relationRecords } from '../parser/claim-key.js';
@@ -170,6 +171,7 @@ export function lintAnnotations(model: ThreatModel, opts: LintOptions = {}): Vio
   for (const c of model.comments) if (under(c.location) && isVague(c.description)) push('description-vague', 'warn', 'comment', c, `"${c.description ?? ''}" says nothing a reader can use`);
   for (const t of model.transfers) if (under(t.location) && isVague(t.description)) push('description-vague', 'warn', 'transfers', t, `"${t.description ?? ''}" does not say who holds the risk or how`);
   for (const a of model.assumptions) if (under(a.location) && isVague(a.description)) push('description-vague', 'warn', 'assumes', a, `"${a.description ?? ''}" does not say what must hold`);
+  for (const g of model.gates || []) if (under(g.location) && isVague(g.description)) push('description-vague', 'warn', 'gates', g, `"${g.description ?? ''}" does not say what the approval step is or how it blocks`);
 
   return out.sort((x, y) => (x.file < y.file ? -1 : x.file > y.file ? 1 : x.line - y.line || x.rule.localeCompare(y.rule)));
 }

@@ -130,6 +130,10 @@ function allRecords(model: ThreatModel): { verb: string; location: SourceLocatio
   add('accepts', model.acceptances);
   add('actor', model.actors);
   add('entitles', model.entitlements);
+  add('agents', (model.reaches || []).filter(r => r.agent));
+  add('reaches', (model.reaches || []).filter(r => !r.agent));
+  add('effects', model.effects);
+  add('gates', model.gates);
   add('transfers', model.transfers);
   add('flows', model.flows);
   add('boundary', model.boundaries);
@@ -163,6 +167,10 @@ function assetRefsOf(verb: string, row: any): string[] {
     // names one only through its optional `on <asset>` clause.
     case 'actor':     return [];
     case 'entitles':  return row.asset ? [row.asset] : [];
+    case 'agents':
+    case 'reaches':   return [row.asset, row.identity].filter(Boolean);
+    case 'effects':   return [row.asset, row.identity].filter(Boolean);
+    case 'gates':     return [row.asset];
     case 'exposes':
     case 'mitigates':
     case 'confirmed':

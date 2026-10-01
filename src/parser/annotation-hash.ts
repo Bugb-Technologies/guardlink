@@ -162,6 +162,17 @@ export function canonicalAnnotationRecords(model: ThreatModel): string[] {
   for (const en of model.entitlements ?? []) {
     out.push(record('entitles', s(en.actor), s(en.canonical_capability), s(en.asset), s(en.threat), s(en.description), f(en.location.file)));
   }
+  // Reach, effect and gate records exist only where those verbs are written, so
+  // a model without them hashes exactly as it did before they existed.
+  for (const r of model.reaches ?? []) {
+    out.push(record(r.agent ? 'agents' : 'reaches', s(r.actor), s(r.canonical_capability), s(r.asset), s(r.identity), s(r.description), f(r.location.file)));
+  }
+  for (const ef of model.effects ?? []) {
+    out.push(record('effects', s(ef.effect), s(ef.asset), s(ef.identity), s(ef.description), f(ef.location.file)));
+  }
+  for (const g of model.gates ?? []) {
+    out.push(record('gates', s(g.asset), s(g.approver), s(g.canonical_capability), s(g.description), f(g.location.file)));
+  }
   for (const a of model.assumptions ?? []) {
     out.push(record('assumes', s(a.asset), s(a.description), f(a.location.file)));
   }

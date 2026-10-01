@@ -28,6 +28,7 @@ const GUARDLINK_VERBS = new Set([
   'asset', 'threat', 'control', 'actor',
   'mitigates', 'exposes', 'confirmed', 'accepts', 'entitles', 'transfers', 'flows', 'boundary',
   'validates', 'audit', 'owns', 'handles', 'assumes',
+  'agents', 'reaches', 'effects', 'gates',
   'comment', 'source', 'shield', 'shield:begin', 'shield:end',
   // v1 compat
   'review', 'connects',

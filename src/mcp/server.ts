@@ -64,7 +64,7 @@ import { z } from 'zod';
 // MERGE: main added the entitlement validators and the proposal module; ours
 // kept `crossRepoTag` (D19). Union — main's list had dropped crossRepoTag only
 // because it branched before D19 landed.
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findAgentReachConflicts, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
 import { readAcceptancePolicy, acceptanceBlastRadius, formatBlastRadius, ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
 import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
@@ -363,6 +363,8 @@ export function createServer(): McpServer {
       // Entitlement checks: undeclared actor is an error, an uncited (inert)
       // entitlement is a warning — it parses but can never demote a finding.
       const actorDiags = findUndeclaredActors(model);
+      // One actor under both @agents and @reaches is an error.
+      const agentReachDiags = findAgentReachConflicts(model);
       const inertDiags = findInertEntitlements(model);
       const impreciseDiags = findImpreciseEntitlements(model);
       // §3.6: an @entitles no human accepted. Only checked where the project has
@@ -379,7 +381,7 @@ export function createServer(): McpServer {
           warnings: boundaryDiags.map(d => ({ file: d.file, line: d.line, code: d.code, message: d.message })),
         };
       }
-      const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...boundaryDiags];
+      const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...actorDiags, ...agentReachDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...boundaryDiags];
 
       const errors = allDiags.filter(d => d.level === 'error');
       const warnings = allDiags.filter(d => d.level === 'warning');
@@ -473,10 +475,10 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_lookup',
-    'Query the threat model graph. Reaches every relation type the model carries: assets, threats, controls, mitigations, exposures, confirmed, acceptances, transfers, flows, boundaries, validations, audits, ownership, data classification, assumptions, actors, entitlements, shields, features, comments and cross-repo refs. Examples: "threats for #auth", "owner of #api", "handles pii", "assumptions for #api", "flows into Scanner", "unmitigated", "actors", "entitlements for #ns-admin". A query that is not one of the supported forms returns no_match listing them — it is never answered by guesswork.',
+    'Query the threat model graph. Reaches every relation type the model carries: assets, threats, controls, mitigations, exposures, confirmed, acceptances, transfers, flows, boundaries, validations, audits, ownership, data classification, assumptions, actors, entitlements, reaches (@agents/@reaches), effects, gates, shields, features, comments and cross-repo refs. Examples: "threats for #auth", "owner of #api", "handles pii", "assumptions for #api", "flows into Scanner", "unmitigated", "actors", "entitlements for #ns-admin", "unentitled reaches", "effects for #db". A query that is not one of the supported forms returns no_match listing them — it is never answered by guesswork.',
     {
       root: z.string().describe('Project root directory').default('.'),
-      query: z.string().describe('A supported query form: "unmitigated", "confirmed", "features", "asset <id>", "threat <id>", "control <id>", "threats for <asset>", "controls for <asset>", "exposures for <asset>", "mitigations for <asset>", "flows into <asset>", "flows from <asset>", "boundary for <asset>", "owner of <asset>", "handles <pii|phi|financial|secrets|internal|public>", "handles for <asset>", "assumptions for <asset>", "audits [for <asset>]", "validations for <asset-or-control>", "acceptances [for <asset>]", "transfers [for <threat-or-asset>]", "actors", "entitlements [for <actor>]", "comments [for <file-or-asset>]", "shields [for <file-or-asset>]", or a bare identifier. TWO DIFFERENT REF QUERIES, do not confuse them: "cwe:CWE-89" / "CWE-89" / "owasp:A03" asks about external identifiers declared on threats — the scanner bridge, and returns external_id.declared so you can tell \'never heard of this weakness\' from \'declared, nothing exposed\'; "cross-repo refs" asks about sibling-repo tags from workspace.yaml and is unrelated. Every entitlements row carries inert: an uncited claim is carried and visible but cannot demote a finding (actor-entitlement design §3.4). @comment and @shield record no asset, so scoping them by an asset joins by co-location (same file) and the result says so. Free-form questions are not parsed.'),
+      query: z.string().describe('A supported query form: "unmitigated", "confirmed", "features", "asset <id>", "threat <id>", "control <id>", "threats for <asset>", "controls for <asset>", "exposures for <asset>", "mitigations for <asset>", "flows into <asset>", "flows from <asset>", "boundary for <asset>", "owner of <asset>", "handles <pii|phi|financial|secrets|internal|public>", "handles for <asset>", "assumptions for <asset>", "audits [for <asset>]", "validations for <asset-or-control>", "acceptances [for <asset>]", "transfers [for <threat-or-asset>]", "actors", "entitlements [for <actor>]", "reaches [for <actor>]", "agents [for <actor>]", "unentitled reaches [for <actor>]", "effects [for <asset>]", "gates [for <asset>]", "comments [for <file-or-asset>]", "shields [for <file-or-asset>]", or a bare identifier. TWO DIFFERENT REF QUERIES, do not confuse them: "cwe:CWE-89" / "CWE-89" / "owasp:A03" asks about external identifiers declared on threats — the scanner bridge, and returns external_id.declared so you can tell \'never heard of this weakness\' from \'declared, nothing exposed\'; "cross-repo refs" asks about sibling-repo tags from workspace.yaml and is unrelated. Every entitlements row carries inert: an uncited claim is carried and visible but cannot demote a finding (actor-entitlement design §3.4). "unentitled reaches" is can minus may: each @agents/@reaches capability no cited @entitles for the same actor and capability (and the same asset, when the reach names one) covers, with near_misses saying why an entitlement that almost matched does not count. @comment and @shield record no asset, so scoping them by an asset joins by co-location (same file) and the result says so. Free-form questions are not parsed.'),
     },
     async ({ root, query }) => {
       const { model } = await getModel(root);

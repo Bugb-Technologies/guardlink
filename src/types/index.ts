@@ -16,6 +16,8 @@ export type AnnotationVerb =
   | 'asset' | 'threat' | 'control' | 'actor'
   // Relationship
   | 'mitigates' | 'exposes' | 'accepts' | 'transfers' | 'flows' | 'boundary' | 'entitles'
+  // Reach — what a principal can invoke, what code does, and who approves it
+  | 'agents' | 'reaches' | 'effects' | 'gates'
   // Evidence
   | 'confirmed'
   // Lifecycle
@@ -176,6 +178,76 @@ export interface EntitlesAnnotation extends BaseAnnotation {
   threat?: string;
 }
 
+/**
+ * The closed set of things code can do to an asset, for `@effects`.
+ *
+ * Closed for the reason `DataClassification` is: an open string cannot be
+ * compared across repositories or drive a mechanical query. `delete`, `spend`
+ * (money or quota) and `notify` (an outbound message) are kept apart from
+ * `write` because they are the irreversible actions a reviewer looks for first.
+ * Egress is not here: `@flows X -> External.Y` already says it.
+ */
+export type EffectClass = 'read' | 'write' | 'delete' | 'execute' | 'spend' | 'notify';
+
+/**
+ * "This principal can invoke this capability." Written where the capability is
+ * handed out — a tool registration, an MCP server mount, a job's credentials.
+ *
+ * Two verbs share this shape. `@agents` names an LLM agent, and writing it is
+ * what marks the actor as one; `@reaches` names any other principal (a CI
+ * runner, a service account). One actor under both is a validation error.
+ *
+ * The factual twin of `@entitles`: that says an actor *may* (a human's
+ * decision), this says it *can* (an observation an agent may write). The
+ * capability id is shared, so "can minus may" — a reach no entitlement covers —
+ * is a join. Like `@entitles` it has no export semantics: it removes nothing
+ * from SARIF and closes no finding.
+ */
+export interface ReachesAnnotation extends BaseAnnotation {
+  verb: 'agents' | 'reaches';
+  /** Actor ref — `#id` or a declared actor name. */
+  actor: string;
+  /** Capability as written: one identifier, the same token `@entitles` uses. */
+  capability: string;
+  /** §2.10-normalised capability: the label a reach and an entitlement join on. */
+  canonical_capability: string;
+  /** `on <asset>` — the surface the capability is exposed on. */
+  asset?: string;
+  /** `as <identity>` — the identity the caller presents. An asset ref. */
+  identity?: string;
+}
+
+/**
+ * "Running this code does <effect> to <asset>." Written on the code that acts.
+ * `as <identity>` is whose credentials the effect runs under; when that differs
+ * from the caller's `@agents … as <identity>` with no `@gates` between them, the
+ * code is a confused deputy.
+ */
+export interface EffectsAnnotation extends BaseAnnotation {
+  verb: 'effects';
+  effect: EffectClass;
+  asset: string;
+  /** `as <identity>` — the execution identity. An asset ref. */
+  identity?: string;
+}
+
+/**
+ * "A named principal decides here before effects on <asset> land." Written on
+ * the approval step. It suppresses nothing: a gate is a node on a path, not a
+ * control keyed on (asset, threat), so it is not a `@mitigates`.
+ */
+export interface GatesAnnotation extends BaseAnnotation {
+  verb: 'gates';
+  /** The asset whose effects this gate stands in front of. */
+  asset: string;
+  /** `by <actor>` — whose decision is required. */
+  approver: string;
+  /** `for <capability>` — narrows the gate to one capability. Absent: every route to the asset. */
+  capability?: string;
+  /** §2.10-normalised capability, when present. */
+  canonical_capability?: string;
+}
+
 export interface TransfersAnnotation extends BaseAnnotation {
   verb: 'transfers';
   threat: string;
@@ -250,6 +322,9 @@ export type Annotation =
   | ConfirmedAnnotation
   | AcceptsAnnotation
   | EntitlesAnnotation
+  | ReachesAnnotation
+  | EffectsAnnotation
+  | GatesAnnotation
   | TransfersAnnotation
   | FlowsAnnotation
   | BoundaryAnnotation
@@ -392,6 +467,12 @@ export interface ThreatModel {
   actors?: ThreatModelActor[];
   /** Entitlement claims (@entitles). Optional for the same reason as `actors`. */
   entitlements?: ThreatModelEntitlement[];
+  /** Capability grants (@agents and @reaches). Optional for the same reason as `actors`. */
+  reaches?: ThreatModelReach[];
+  /** What code does to an asset (@effects). */
+  effects?: ThreatModelEffect[];
+  /** Approval steps (@gates). */
+  gates?: ThreatModelGate[];
   mitigations: ThreatModelMitigation[];
   exposures: ThreatModelExposure[];
   confirmed: ThreatModelConfirmed[];
@@ -440,6 +521,40 @@ export interface ThreatModelActor {
   name: string;
   canonical_name: string;
   id?: string;
+  description?: string;
+  location: SourceLocation;
+}
+
+/** One `@agents` or `@reaches` claim: this actor can invoke this capability. */
+export interface ThreatModelReach {
+  actor: string;
+  /** True when written `@agents`: the actor is an LLM agent. False for `@reaches`. */
+  agent: boolean;
+  capability: string;
+  canonical_capability: string;
+  asset?: string;
+  /** Caller identity the actor presents. */
+  identity?: string;
+  description?: string;
+  location: SourceLocation;
+}
+
+/** One `@effects` claim: running this code does <effect> to <asset>. */
+export interface ThreatModelEffect {
+  effect: EffectClass;
+  asset: string;
+  /** Execution identity: whose credentials the effect runs under. */
+  identity?: string;
+  description?: string;
+  location: SourceLocation;
+}
+
+/** One `@gates` claim: <approver> decides before effects on <asset> land. */
+export interface ThreatModelGate {
+  asset: string;
+  approver: string;
+  capability?: string;
+  canonical_capability?: string;
   description?: string;
   location: SourceLocation;
 }
@@ -756,8 +871,10 @@ export type DiagnosticCode =
   | 'dangling-ref'
   /** A directed `@boundary from <outer> to <inner>` names a side that is no declared asset and no `@flows` endpoint. */
   | 'unresolved-boundary-side'
-  /** `@entitles` names an actor never declared with `@actor`. */
+  /** `@entitles`, `@agents`, `@reaches` or `@gates` names an actor never declared with `@actor`. */
   | 'undeclared-actor'
+  /** One actor is named under both `@agents` and `@reaches`: it is an agent or it is not. */
+  | 'agent-reach-conflict'
   /** `@entitles` cites no authz code, so it can never demote a finding. */
   | 'inert-entitlement'
   /** `@entitles` cites authz code too imprecisely to be checked. */

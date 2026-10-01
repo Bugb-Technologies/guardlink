@@ -132,6 +132,9 @@ export function filterByFeature(model: ThreatModel, featureNames: string[]): Thr
   const dataHandling = inFeature(model.data_handling);
   const assumptions = inFeature(model.assumptions);
   const entitlements = inFeature(model.entitlements || []);
+  const reaches = inFeature(model.reaches || []);
+  const effects = inFeature(model.effects || []);
+  const gates = inFeature(model.gates || []);
 
   // ── Definitions: resolved from what the kept relations reference ──
   //
@@ -154,6 +157,9 @@ export function filterByFeature(model: ThreatModel, featureNames: string[]): Thr
   for (const t of transfers) { assetRefs.add(bare(t.source)); assetRefs.add(bare(t.target)); }
   for (const b of boundaries) { assetRefs.add(bare(b.asset_a)); assetRefs.add(bare(b.asset_b)); }
   for (const en of entitlements) if (en.asset) assetRefs.add(bare(en.asset));
+  for (const r of reaches) for (const ref of [r.asset, r.identity]) if (ref) assetRefs.add(bare(ref));
+  for (const ef of effects) for (const ref of [ef.asset, ef.identity]) if (ref) assetRefs.add(bare(ref));
+  for (const g of gates) assetRefs.add(bare(g.asset));
 
   const threatRefs = new Set<string>();
   for (const r of [...exposures, ...mitigations, ...confirmed, ...acceptances, ...transfers]) threatRefs.add(bare(r.threat));
@@ -165,6 +171,8 @@ export function filterByFeature(model: ThreatModel, featureNames: string[]): Thr
 
   const actorRefs = new Set<string>();
   for (const en of entitlements) actorRefs.add(bare(en.actor));
+  for (const r of reaches) actorRefs.add(bare(r.actor));
+  for (const g of gates) actorRefs.add(bare(g.approver));
 
   const assets = model.assets.filter(a =>
     assetRefs.has(bare(a.id || '')) || assetRefs.has(bare(a.path.join('.'))));
@@ -232,6 +240,9 @@ export function filterByFeature(model: ThreatModel, featureNames: string[]): Thr
     controls,
     actors,
     entitlements,
+    reaches,
+    effects,
+    gates,
     mitigations,
     exposures,
     confirmed,

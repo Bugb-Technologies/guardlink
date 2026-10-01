@@ -8,6 +8,7 @@
  * @comment -- "@confirmed refs validated same as @exposes for asset and threat"
  * @comment -- "findUnresolvedBoundarySides errors on a directed @boundary whose outer or inner side names no declared asset and no @flows endpoint, so a declared direction cannot point consumers at nothing"
  * @comment -- "findUndeclaredActors / findInertEntitlements implement the two mechanical @entitles checks from docs/prd/actor-entitlement-design.md §3.7 — both typo-class; entitlement intent is not machine-checkable"
+ * @comment -- "findUndeclaredActors also covers the actor on @agents/@reaches and the approver on @gates; findAgentReachConflicts errors when one actor is written under both @agents and @reaches, because which verb names an actor is what says whether it is an agent"
  */
 
 import {
@@ -20,6 +21,7 @@ import type { ThreatModel, ParseDiagnostic, SourceLocation } from '../types/inde
 import { normalizeName } from './normalize.js';
 import { canonicaliser } from './canonical-ref.js';
 import { entitlementDemotionBlockers } from './parse-project.js';
+import { actorResolver } from './reach.js';
 
 /**
  * Find all dangling #id references in the threat model.
@@ -94,6 +96,18 @@ export function findDanglingRefs(model: ThreatModel): ParseDiagnostic[] {
     if (en.asset) checkRef(en.asset, en.location);
     if (en.threat) checkRef(en.threat, en.location);
   }
+
+  // Reach, effect and gate. Actors (the reaching actor, the approver) are
+  // checked by findUndeclaredActors, as on @entitles; assets and identities here.
+  for (const r of model.reaches || []) {
+    if (r.asset) checkRef(r.asset, r.location);
+    if (r.identity) checkRef(r.identity, r.location);
+  }
+  for (const ef of model.effects || []) {
+    checkRef(ef.asset, ef.location);
+    if (ef.identity) checkRef(ef.identity, ef.location);
+  }
+  for (const g of model.gates || []) checkRef(g.asset, g.location);
 
   // Lifecycle annotations — check asset refs
   for (const v of model.validations) {
@@ -174,7 +188,8 @@ export { findUnmitigatedExposures, findAcceptedExposures, normalizeRef } from '.
 import { normalizeRef } from './coverage.js';
 
 /**
- * Find @entitles annotations naming an actor that was never declared with @actor.
+ * Find annotations naming an actor that was never declared with @actor: the
+ * actor on `@entitles`, `@agents` and `@reaches`, and the approver on `@gates`.
  *
  * This is one of the two mechanical checks §3.7 of the actor/entitlement design
  * calls for — both are typo-class. Neither can verify *intent*: whether an actor
@@ -182,7 +197,9 @@ import { normalizeRef } from './coverage.js';
  * can derive from the code. It is an error rather than a warning because an
  * entitlement pointing at a non-existent principal can never be joined
  * downstream, so it is silently inoperative — the failure mode this design is
- * built to avoid.
+ * built to avoid. The same holds for a reach: one naming a misspelt actor joins
+ * no entitlement and reads as unentitled for a principal that does not exist,
+ * and a gate whose approver is nobody is not a gate.
  */
 export function findUndeclaredActors(model: ThreatModel): ParseDiagnostic[] {
   const diagnostics: ParseDiagnostic[] = [];
@@ -193,18 +210,57 @@ export function findUndeclaredActors(model: ThreatModel): ParseDiagnostic[] {
     declared.add(ac.canonical_name);
   }
 
-  for (const en of model.entitlements || []) {
-    const bare = normalizeRef(en.actor);
-    if (declared.has(bare) || declared.has(normalizeName(bare))) continue;
+  const check = (actor: string, claim: string, location: SourceLocation) => {
+    const bare = normalizeRef(actor);
+    if (declared.has(bare) || declared.has(normalizeName(bare))) return;
     diagnostics.push({
       level: 'error',
       code: 'undeclared-actor',
-      message: `@entitles names actor ${en.actor} which is never declared with @actor`,
-      file: en.location.file,
-      line: en.location.line,
+      message: `${claim} names actor ${actor} which is never declared with @actor`,
+      file: location.file,
+      line: location.line,
     });
+  };
+
+  for (const en of model.entitlements || []) check(en.actor, '@entitles', en.location);
+  for (const r of model.reaches || []) check(r.actor, r.agent ? '@agents' : '@reaches', r.location);
+  for (const g of model.gates || []) check(g.approver, '@gates', g.location);
+
+  return diagnostics;
+}
+
+/**
+ * Find actors named under both `@agents` and `@reaches`.
+ *
+ * Writing `@agents` about an actor is what marks it as an LLM agent; `@reaches`
+ * is the same claim for every other principal. An actor under both verbs is
+ * therefore both an agent and not one, and every check that keys on agents
+ * (the injection-to-tool routes among them) would answer differently depending
+ * on which line it read. It is an error, reported on each `@reaches` line,
+ * because the fix is to choose one verb for the actor.
+ */
+export function findAgentReachConflicts(model: ThreatModel): ParseDiagnostic[] {
+  const actorKey = actorResolver(model);
+  const agentLines = new Map<string, SourceLocation>();
+  for (const r of model.reaches || []) {
+    const key = actorKey(r.actor);
+    if (r.agent && !agentLines.has(key)) agentLines.set(key, r.location);
   }
 
+  const diagnostics: ParseDiagnostic[] = [];
+  for (const r of model.reaches || []) {
+    if (r.agent) continue;
+    const agentAt = agentLines.get(actorKey(r.actor));
+    if (!agentAt) continue;
+    diagnostics.push({
+      level: 'error',
+      code: 'agent-reach-conflict',
+      message: `@reaches names ${r.actor}, which @agents marks as an agent at ${agentAt.file}:${agentAt.line}. `
+        + 'An actor is an agent or it is not: write @agents for an LLM agent and @reaches for every other principal.',
+      file: r.location.file,
+      line: r.location.line,
+    });
+  }
   return diagnostics;
 }
 
