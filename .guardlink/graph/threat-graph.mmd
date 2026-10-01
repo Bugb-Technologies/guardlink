@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:43ad313ae90e5e1a0f300c86060f958ea649cfd57cb5606357f52641404d583f
+%% annotation_hash: sha256-v3:a9ec60de2a3a302843cdd616ba5681d1bfdd04fa1ca9364d60c049443e0954d6
 %% generator:       guardlink@2.1.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 47 nodes / 174 edges, past the 12 / 16 legibility budget (47 nodes against 12, 174 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 48 nodes / 179 edges, past the 12 / 16 legibility budget (48 nodes against 12, 179 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -53,6 +53,7 @@ graph LR
   suggest["🔷 GuardLink.Suggest"]
   estate_view["🔷 Workspace.Estate"]
   merge_engine["🔷 Workspace.Merge"]
+  report_metadata["🔷 Workspace.Metadata"]
   report["🔷 GuardLink.Report [PII]"]
   workspace_config["🔷 Workspace.Config"]
   api_key_exposure["🟠 API_Key_Exposure (cwe:CWE-798)"]:::threat
@@ -99,6 +100,7 @@ graph LR
   llm_client -. exposes .-> api_key_exposure
   llm_client -. exposes .-> prompt_injection
   llm_client -. exposes .-> dos
+  sarif -. exposes .-> dos
   sarif -. exposes .-> data_exposure
   dashboard -. exposes .-> arbitrary_write
   blame -. exposes .-> path_traversal
@@ -156,6 +158,7 @@ graph LR
   estate_view -. exposes .-> vacuous_pass
   estate_view -. exposes .-> insecure_deser
   merge_engine -. exposes .-> vacuous_pass
+  report_metadata -. exposes .-> data_exposure
   key_redaction -- mitigates --> api_key_exposure
   key_redaction -. protects .-> agent_launcher
   path_validation -- mitigates --> path_traversal
@@ -176,6 +179,7 @@ graph LR
   glob_filtering -- mitigates --> path_traversal
   glob_filtering -. protects .-> llm_client
   resource_limits -. protects .-> llm_client
+  resource_limits -. protects .-> sarif
   path_validation -. protects .-> dashboard
   path_validation -. protects .-> blame
   resource_limits -. protects .-> blame
@@ -235,6 +239,8 @@ graph LR
   config_validation -. protects .-> estate_view
   prefix_ownership -. protects .-> merge_engine
   fail_closed -. protects .-> merge_engine
+  key_redaction -- mitigates --> data_exposure
+  key_redaction -. protects .-> report_metadata
   yaml_validation -- mitigates --> config_tamper
   yaml_validation -. protects .-> workspace_config
   resource_limits -. validates .-> codegraph

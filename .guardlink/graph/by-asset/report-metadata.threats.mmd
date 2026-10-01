@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
-%% artifact:        by-asset/gate.threats.mmd
-%% scope:           PARTIAL — #gate only — its own threats and controls
+%% artifact:        by-asset/report-metadata.threats.mmd
+%% scope:           PARTIAL — #report-metadata only — its own threats and controls
 %% annotation_hash: sha256-v3:a9ec60de2a3a302843cdd616ba5681d1bfdd04fa1ca9364d60c049443e0954d6
 %% generator:       guardlink@2.1.0
 %% ---
@@ -11,11 +11,11 @@
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
 graph LR
-  gate["🔷 GuardLink.Gate"]
-  arbitrary_write["🟠 Arbitrary_File_Write (cwe:CWE-73)"]:::threat
-  path_validation["🛡️ Path_Validation"]:::control
-  gate -. exposes .-> arbitrary_write
-  path_validation -- mitigates --> arbitrary_write
-  path_validation -. protects .-> gate
+  report_metadata["🔷 Workspace.Metadata"]
+  data_exposure["🟡 Sensitive_Data_Exposure (cwe:CWE-200)"]:::threat
+  key_redaction["🛡️ Key_Redaction"]:::control
+  report_metadata -. exposes .-> data_exposure
+  key_redaction -- mitigates --> data_exposure
+  key_redaction -. protects .-> report_metadata
   classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
   classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px

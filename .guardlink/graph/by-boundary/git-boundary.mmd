@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-boundary/git-boundary.mmd
 %% scope:           PARTIAL — the Trust boundary at git command execution between diff and gitrepo, and what flows across it
-%% annotation_hash: sha256-v3:43ad313ae90e5e1a0f300c86060f958ea649cfd57cb5606357f52641404d583f
+%% annotation_hash: sha256-v3:a9ec60de2a3a302843cdd616ba5681d1bfdd04fa1ca9364d60c049443e0954d6
 %% generator:       guardlink@2.1.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -23,6 +23,7 @@ graph LR
   changedfilelist["🧩 ChangedFileList"]
   mcp["🧩 GuardLink.MCP"]
   tui["👤 GuardLink.TUI"]
+  report_metadata["🧩 Workspace.Metadata"]
   diff -.-|🧱 Trust boundary at git command execution| gitrepo
   blame -- "📡 formatBlameText" --> cli
   gitrepo -- "🗄️ execFileSync" --> blame
@@ -38,3 +39,4 @@ graph LR
   gitrepo -- "🗄️ readFileSync" --> mcp
   gitrepo -- "📡 computeBlame" --> mcp
   gitrepo -- "📡 computeBlame" --> tui
+  gitrepo -- "📡 execSync" --> report_metadata
