@@ -44,7 +44,7 @@ import { describeConfigSource } from '../agents/config.js';
 import { getReviewableExposures, applyReviewAction, summarizeReview, horizonFrom, ReviewRejected, type ReviewResult } from '../review/index.js';
 import { readAcceptancePolicy, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
 import { explicitDecider, identitySuggestion } from '../review/entitlements.js';
-import { loadWorkspaceConfig, linkProject, addToWorkspace, removeFromWorkspace, mergeReports, formatMergeSummary, diffMergedReports } from '../workspace/index.js';
+import { loadWorkspaceConfig, readVersionControl, linkProject, addToWorkspace, removeFromWorkspace, mergeReports, formatMergeSummary, diffMergedReports } from '../workspace/index.js';
 import type { MergedReport } from '../workspace/index.js';
 import { describeCoverage } from '../parser/coverage.js';
 
@@ -1042,6 +1042,7 @@ export async function cmdSarif(args: string, ctx: TuiContext): Promise<void> {
     const sarif = generateSarif(ctx.model, diagnostics, danglingDiags, {
       includeDiagnostics: true,
       includeDanglingRefs: true,
+      versionControl: readVersionControl(ctx.root),
     });
 
     const json = JSON.stringify(sarif, null, 2);

@@ -19,7 +19,7 @@ export { generateReport, generateMermaid } from './report/index.js';
 export { diffModels, formatDiff, formatDiffMarkdown, parseAtRef } from './diff/index.js';
 export type { ThreatModelDiff, DiffSummary, Change, ChangeKind } from './diff/index.js';
 export { generateSarif } from './analyzer/index.js';
-export type { SarifOptions } from './analyzer/index.js';
+export type { SarifOptions, SarifVersionControl } from './analyzer/index.js';
 export { runCiChecks, formatCiReport, CI_SCHEMA } from './ci/index.js';
 export type { CiReport, CiSummary, CiOptions } from './ci/index.js';
 export { computeBlame, attachBlame, buildBlamePayload, formatBlameText, readBlameConfig, DEFAULT_TOOL_RULES, BLAME_SCHEMA } from './blame/index.js';

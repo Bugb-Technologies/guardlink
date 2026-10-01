@@ -87,7 +87,7 @@ import { loadWorklist, reachFor, worklistSummaryLine, type Worklist } from '../c
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
-import { loadWorkspaceConfig } from '../workspace/index.js';
+import { loadWorkspaceConfig, readVersionControl } from '../workspace/index.js';
 import { computeBlame, buildBlamePayload } from '../blame/index.js';
 import { getPackageVersion } from '../version.js';
 import type { ThreatModel } from '../types/index.js';
@@ -829,7 +829,13 @@ export function createServer(): McpServer {
       const { model, diagnostics } = await getModel(root);
       const { writeFile } = await import('node:fs/promises');
       const { resolve } = await import('node:path');
-      const sarif = generateSarif(model, diagnostics, [], { includeDiagnostics: true, includeDanglingRefs: true });
+      // Dangling refs computed exactly as `guardlink sarif` computes them: one
+      // model must give one SARIF whichever front end exported it.
+      const sarif = generateSarif(model, diagnostics, findDanglingRefs(model), {
+        includeDiagnostics: true,
+        includeDanglingRefs: true,
+        versionControl: readVersionControl(root),
+      });
       await writeFile(resolve(root, output), JSON.stringify(sarif, null, 2) + '\n');
       const resultCount = sarif.runs[0]?.results?.length ?? 0;
       return {

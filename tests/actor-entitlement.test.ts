@@ -606,6 +606,46 @@ describe('§3.2 still holds with the threat slot', () => {
   });
 });
 
+describe('§3.2 still holds with the declared context in the SARIF', () => {
+  // taxa, relatedLocations, codeFlows and run.graphs are derived from the model
+  // around each result, so §3.2 has to be re-proved for them: neither an
+  // entitlement nor an actor may contribute a related location, a chain, a graph
+  // node or a taxon.
+  const file = 'common/archiver/filestore/archiver.go';
+  const base = {
+    assets: [{ path: ['Archiver', 'FS'], id: 'archival-fs', location: loc('.guardlink/definitions.ts', 1) }],
+    exposures: [{
+      asset: '#archival-fs', threat: '#path-traversal', severity: 'high' as const,
+      external_refs: ['cwe:CWE-22', 'owasp:A01:2021'], description: 'archival URI is used as a filesystem path',
+      location: loc(file, 61),
+    }],
+    flows: [{ source: 'Namespace_Admin', target: '#archival-fs', mechanism: 'archival URI', location: loc(file, 60) }],
+    boundaries: [{ asset_a: 'Namespace_Admin', asset_b: '#archival-fs', id: 'archive-edge', location: loc(file, 59) }],
+    assumptions: [{ asset: '#archival-fs', description: 'URI validated by the API layer', location: loc(file, 58) }],
+  };
+
+  it('produces byte-identical results, tool, graphs and taxonomies', () => {
+    const without = generateSarif(model(base as Partial<ThreatModel>)).runs[0];
+    const with_ = generateSarif(model({
+      ...(base as Partial<ThreatModel>),
+      actors: [actor('ns-admin', 'Namespace_Admin')],
+      entitlements: [effective()],
+    })).runs[0];
+    // The context is really there, so this is not passing on absent members.
+    expect(without.results[0].codeFlows).toHaveLength(1);
+    expect(without.results[0].relatedLocations?.length).toBe(2);
+    expect(without.results[0].taxa?.length).toBe(2);
+    expect(without.graphs?.[0].nodes.length).toBe(2);
+
+    const { properties: _w, ...withRun } = with_;
+    const { properties: _o, ...withoutRun } = without;
+    expect(JSON.stringify(withRun)).toBe(JSON.stringify(withoutRun));
+    // An actor with the same name as a flow endpoint is not promoted to a node
+    // of its own, nor marked declared.
+    expect(with_.graphs?.[0].nodes.find(n => n.id === 'namespace_admin')?.properties['guardlink/declared']).toBe(false);
+  });
+});
+
 describe('§9.7 diff keys on the join triple', () => {
   it('reports a capability edit on the same triple as a modification', () => {
     const diff = diffModels(

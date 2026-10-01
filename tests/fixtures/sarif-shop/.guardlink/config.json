@@ -1,0 +1,15 @@
+{
+  "version": "1.1.0",
+  "project": "sarif-shop",
+  "language": "typescript",
+  "annotation_mode": "inline",
+  "definitions": "definitions.ts",
+  "include": [
+    "**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    ".git"
+  ]
+}

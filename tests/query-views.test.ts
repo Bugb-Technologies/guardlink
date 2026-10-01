@@ -194,7 +194,11 @@ describe('the node counter against browser-measured geometry', () => {
     // `Workspace.Estate (#estate-view)` with its flows and by putting
     // #vacuous-pass / #fail-closed on a second asset. The optional code-graph
     // adapter took 33/80/46 to 34/88/47 by declaring `GuardLink.CodeGraph
-    // (#codegraph)` with its exposures, controls, @validates and flows.
+    // (#codegraph)` with its exposures, controls, @validates and flows. The
+    // SARIF version-control provenance took the whole model from 47 to 48 by
+    // giving `Workspace.Metadata (#report-metadata)` its first exposure — the
+    // git remote it reads may embed credentials — which the filtered graph,
+    // showing high and critical only, does not draw.
     // When they move, re-render the diagram in a browser and count the SVG
     // again; never bump them to whatever the counter says, which leaves it
     // checking itself.
@@ -205,12 +209,13 @@ describe('the node counter against browser-measured geometry', () => {
     // confirmed to be 1440x900, counting `.node` and `path.flowchart-link` in
     // the SVG. Chrome reported filtered {nodes:34, links:88, clusters:8} and
     // whole model {nodes:47, links:174}; Chrome and measureLegibility agree on
-    // both pairs.
+    // both pairs. Re-measured for 48 the same way: filtered {nodes:34, links:88,
+    // clusters:8}, whole model {nodes:48, links:179}, and the counter agrees.
     const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
     expect(m.nodes).toBe(34);
     expect(m.edges).toBe(88);
-    // And the whole model is 47 nodes, which is the number this work exists for.
-    expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(47);
+    // And the whole model is 48 nodes, which is the number this work exists for.
+    expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(48);
   });
 });
 

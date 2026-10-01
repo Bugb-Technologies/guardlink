@@ -13,6 +13,14 @@
  *   3. Parse errors (annotation syntax problems)
  *   4. Dangling references (broken #id refs)
  *
+ * That list, the order, every rule id and every message are a contract:
+ * consumers key on the result index and on `message.text`. Everything else the
+ * model declares around a finding — its enclosing symbol, CWE/OWASP taxa, the
+ * boundaries and assumptions on its asset, the `@flows` chain into it, the
+ * whole flow/boundary graph — is APPENDED by `sarif-context.ts` as SARIF
+ * members those consumers ignore. Stripping them gives back the earlier export
+ * byte for byte (tests/sarif-enrichment.test.ts).
+ *
  * We deliberately emit NOTHING for @entitles. @mitigates and @accepts already
  * remove an exposure from this export, and a suppression that also prevents
  * verification is how a threat model becomes confidently wrong. An entitlement
@@ -40,6 +48,8 @@
  * @comment -- "Exposure and confirmed results carry codegraph_reachability{http_method,http_path} from the route @flows declared on the finding's own handler, else its file, else its asset (route_attribution says which), so downstream HTTP consumers can target the endpoint; emitted verbatim from the annotation, no base path assumed. When the model does not tie a finding to one route it carries route_attribution 'ambiguous' and route_candidates instead, never a guessed route"
  * @comment -- "EXPOSURE results carry the claim key as partialFingerprints['guardlink/claimKey'], mirrored to properties.claimKey — the same identity the hypothesis ledger keys an entry on (src/parser/claim-key.ts). The threat id is derived from (asset, threat, file) and so is shared by siblings in one file; the claim key digests the claim's own words, so it separates those siblings and is unchanged by any edit that is not the claim — including a line move and an edit to the code beneath it"
  * @comment -- "CONFIRMED results carry threatId and no claim key, on purpose: the verb is part of the key digest, so an @exposes and the @confirmed proving it hold different keys, and the ledger keys entries by exposure only. A key stamped from a confirmed result could join to nothing, so guardlink does not emit one rather than emitting an identifier that cannot be used"
+ * @comment -- "Declared context (taxa, relatedLocations, codeFlows, run.graphs, rule help and security-severity, automationDetails, versionControlProvenance) is appended after every existing member; results, their order, rule ids and message.text do not change, and the strip test pins that against an export cut before the context existed"
+ * @comment -- "--min-severity filters unmitigated exposures only: a @confirmed result is a reproduced exploit and is always exported"
  * @flows ThreatModel -> #sarif via generateSarif -- "Model input"
  * @flows #sarif -> SarifLog via return -- "SARIF output"
  */
@@ -54,6 +64,10 @@ import { ACCEPTANCE_REGISTER_ID } from '../parser/acceptance.js';
 import { computeAnnotationHash, ANNOTATION_HASH_VERSION } from '../parser/annotation-hash.js';
 import { relationRecords, CLAIM_KEY_FINGERPRINT, CLAIM_KEY_PROPERTY } from '../parser/claim-key.js';
 import { getPackageVersion } from '../version.js';
+import {
+  buildSarifContext, physicalLocation,
+  type SarifLocation, type SarifTaxonReference, type SarifCodeFlow, type SarifGraph, type SarifTaxonomy,
+} from './sarif-context.js';
 
 // ─── SARIF 2.1.0 types (subset) ─────────────────────────────────────
 
@@ -99,7 +113,29 @@ interface SarifRun {
      * rather than by an authenticated decision.
      */
     acceptance_register: typeof ACCEPTANCE_REGISTER_ID;
+    /**
+     * The shape of this export, so a consumer can tell which members to expect
+     * without sniffing for them. Absent on an export cut before the declared
+     * context (`taxa`, `relatedLocations`, `codeFlows`, `graphs`, …) was added;
+     * `1` is that additive shape. Bumped only when the shape changes.
+     */
+    sarif_profile_version: typeof SARIF_PROFILE_VERSION;
   };
+  /** Keeps GuardLink results in their own GitHub code scanning category. */
+  automationDetails: { id: string };
+  /** Present only when the caller knows the repository's web-hosted origin. */
+  versionControlProvenance?: { repositoryUri: string; revisionId?: string; branch?: string }[];
+  /** CWE and OWASP, holding only the taxa the results reference. */
+  taxonomies?: SarifTaxonomy[];
+  /** The declared `@flows` / `@boundary` graph. Absent when the model declares nothing. */
+  graphs?: SarifGraph[];
+}
+
+/** Where the export was cut from; a null or absent field is left out of the SARIF. */
+export interface SarifVersionControl {
+  repositoryUri: string;
+  revisionId?: string | null;
+  branch?: string | null;
 }
 
 interface SarifRule {
@@ -111,6 +147,7 @@ interface SarifRule {
   defaultConfiguration: {
     level: 'error' | 'warning' | 'note';
   };
+  help?: { text: string; markdown: string };
   properties?: Record<string, unknown>;
 }
 
@@ -141,16 +178,12 @@ interface SarifResult {
    */
   partialFingerprints?: Record<string, string>;
   properties?: Record<string, unknown>;
-}
-
-interface SarifLocation {
-  physicalLocation: {
-    artifactLocation: { uri: string };
-    region: {
-      startLine: number;
-      startColumn?: number;
-    };
-  };
+  /** CWE / OWASP refs of the claim, pointing into `run.taxonomies`. */
+  taxa?: SarifTaxonReference[];
+  /** Context annotations on the claim's asset: @boundary, @assumes, @handles, @transfers, @audit. */
+  relatedLocations?: SarifLocation[];
+  /** Declared @flows chains into the claim, only when the last hop is the claim's own. */
+  codeFlows?: SarifCodeFlow[];
 }
 
 // ─── Rule definitions ────────────────────────────────────────────────
@@ -198,6 +231,73 @@ const RULES: SarifRule[] = [
   },
 ];
 
+/**
+ * What each rule adds for GitHub code scanning, appended to the rule after its
+ * existing members so `RULES` itself — ids, names, descriptions, levels — is
+ * untouched.
+ *
+ * `security-severity` is how GitHub bands a security alert (critical ≥ 9.0,
+ * high 7.0–8.9, medium 4.0–6.9, low < 4.0). Rules are per coverage state, not
+ * per threat, so a band is the most a rule can say: `unmitigated-critical`
+ * covers critical AND high exposures and sits in the high band, and
+ * `unmitigated-exposure` covers medium, low and unset and sits in medium. The
+ * result's own `properties.severity` keeps the exact value. Diagnostics carry
+ * no `security-severity` and no `security` tag: an annotation typo is not a
+ * security finding.
+ */
+const RULE_EXTRAS: Record<string, Pick<SarifRule, 'help' | 'properties'>> = {
+  'guardlink/unmitigated-exposure': {
+    help: {
+      text: 'An @exposes annotation declares this risk and no @mitigates or @accepts covers it (GuardLink SPEC §3.6.1). Add the control and record it with @mitigates, or have the accountable person record an @accepts.',
+      markdown: 'An `@exposes` annotation declares this risk and no `@mitigates` or `@accepts` covers it (GuardLink SPEC §3.6.1 says which ones do).\n\n'
+        + '- Fix the weakness and record the control with `@mitigates <asset> against <threat> using <control>`.\n'
+        + '- Or, if the risk is knowingly taken, have the accountable person record `@accepts`. That is a governance decision, not a code change.\n\n'
+        + 'Related locations show the boundaries, assumptions, data classes, transfers and audits declared on the same asset; code flows, when present, show the declared `@flows` chain into the claim.',
+    },
+    properties: { tags: ['security', 'threat-model'], 'security-severity': '5.0' },
+  },
+  'guardlink/unmitigated-critical': {
+    help: {
+      text: 'A critical or high severity @exposes has no @mitigates or @accepts covering it (GuardLink SPEC §3.6.1). Address it before deployment.',
+      markdown: 'A critical or high severity `@exposes` has no `@mitigates` or `@accepts` covering it (GuardLink SPEC §3.6.1). Address it before deployment.\n\n'
+        + 'The result\'s `properties.severity` holds the exact severity; this rule covers both critical and high.',
+    },
+    properties: { tags: ['security', 'threat-model'], 'security-severity': '8.9' },
+  },
+  'guardlink/confirmed-exploitable': {
+    help: {
+      text: 'A @confirmed annotation records that this threat was reproduced by a pentest, scanner or manual test. It is not a false positive.',
+      markdown: 'A `@confirmed` annotation records that this threat was reproduced by a pentest, a scanner or a manual test. It is not a false positive and needs remediation.',
+    },
+    properties: { tags: ['security', 'threat-model'], 'security-severity': '9.0' },
+  },
+  'guardlink/parse-error': {
+    help: {
+      text: 'A GuardLink annotation could not be parsed, so the claim it makes is missing from the threat model. Fix its syntax.',
+      markdown: 'A GuardLink annotation could not be parsed, so the claim it makes is missing from the threat model. Fix its syntax; `guardlink validate .` reports the same error locally.',
+    },
+    properties: { tags: ['threat-model'] },
+  },
+  'guardlink/dangling-ref': {
+    help: {
+      text: 'An annotation names a #id that no @asset, @threat or @control defines. Define it, or correct the reference.',
+      markdown: 'An annotation names a `#id` that no `@asset`, `@threat` or `@control` defines. Define it in the definitions file, or correct the reference.',
+    },
+    properties: { tags: ['threat-model'] },
+  },
+};
+
+/**
+ * Version of the export's shape, in `runs[0].properties.sarif_profile_version`.
+ * 1 — the declared context: taxa, relatedLocations, codeFlows, graphs, rule help
+ * and tags, automationDetails, versionControlProvenance. Purely additive over
+ * the unversioned export before it.
+ */
+export const SARIF_PROFILE_VERSION = 1 as const;
+
+/** `runs[0].automationDetails.id`: the GitHub code scanning category, trailing slash and all. */
+export const SARIF_AUTOMATION_ID = 'guardlink/threat-model/';
+
 // ─── Generator ───────────────────────────────────────────────────────
 
 export interface SarifOptions {
@@ -205,8 +305,21 @@ export interface SarifOptions {
   includeDiagnostics?: boolean;
   /** Include dangling reference warnings */
   includeDanglingRefs?: boolean;
-  /** Only include unmitigated exposures at or above this severity */
+  /**
+   * Only include unmitigated exposures at or above this severity.
+   *
+   * `@confirmed` results are always included. A confirmed result is a
+   * reproduced exploit, the strongest evidence this export carries, and a
+   * severity filter that could drop one would turn a noise control into a way
+   * of hiding verified findings.
+   */
   minSeverity?: Severity;
+  /**
+   * Where the export was cut from, written to `runs[0].versionControlProvenance`.
+   * The exporter does no I/O, so a front end that knows the repository supplies
+   * it; without a `repositoryUri` (which SARIF requires) nothing is written.
+   */
+  versionControl?: SarifVersionControl | null;
 }
 
 export function generateSarif(
@@ -224,6 +337,10 @@ export function generateSarif(
   // suppressed exposure here never becomes an alert at all — measured on
   // expense-api, the critical #db → #sqli was one of two findings dropped.
   const coverage = buildCoverageIndex(model);
+
+  // The declared context each finding result gains (sarif-context.ts). Every
+  // member it adds is appended; nothing above it changes.
+  const context = buildSarifContext(model);
 
   // Which HTTP route reaches each finding. A route `@flows` (mechanism
   // "METHOD./path") belongs to the handler it is declared on (SPEC §3.6.2); a
@@ -298,6 +415,7 @@ export function generateSarif(
         ...reachabilityFor(e.asset, e.location),
       },
     });
+    context.enrich(results[results.length - 1], e, 'exposes');
   }
 
   // ── Confirmed exploitable ──
@@ -323,6 +441,7 @@ export function generateSarif(
         ...reachabilityFor(c.asset, c.location),
       },
     });
+    context.enrich(results[results.length - 1], c, 'confirmed');
   }
 
   // ── Parse errors ──
@@ -350,6 +469,10 @@ export function generateSarif(
     }
   }
 
+  const vcs = options.versionControl;
+  const taxonomies = context.taxonomies();
+  const graph = context.graph();
+
   return {
     $schema: 'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json',
     version: '2.1.0',
@@ -359,7 +482,7 @@ export function generateSarif(
           name: 'GuardLink',
           version: getPackageVersion(),
           informationUri: 'https://guardlink.bugb.io',
-          rules: RULES,
+          rules: RULES.map(rule => ({ ...rule, ...RULE_EXTRAS[rule.id] })),
         },
       },
       results,
@@ -368,7 +491,18 @@ export function generateSarif(
         annotation_hash_version: ANNOTATION_HASH_VERSION,
         generator: `guardlink@${getPackageVersion()}`,
         acceptance_register: ACCEPTANCE_REGISTER_ID,
+        sarif_profile_version: SARIF_PROFILE_VERSION,
       },
+      automationDetails: { id: SARIF_AUTOMATION_ID },
+      ...(vcs?.repositoryUri ? {
+        versionControlProvenance: [{
+          repositoryUri: vcs.repositoryUri,
+          ...(vcs.revisionId ? { revisionId: vcs.revisionId } : {}),
+          ...(vcs.branch ? { branch: vcs.branch } : {}),
+        }],
+      } : {}),
+      ...(taxonomies.length ? { taxonomies } : {}),
+      ...(graph ? { graphs: [graph] } : {}),
     }],
   };
 }
@@ -410,14 +544,7 @@ export function threatId(asset: string, threat: string, file: string): string {
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function locationFrom(file: string, line: number): SarifLocation {
-  // SARIF uses forward-slash URIs
-  const uri = file.replace(/\\/g, '/');
-  return {
-    physicalLocation: {
-      artifactLocation: { uri },
-      region: { startLine: line },
-    },
-  };
+  return { physicalLocation: physicalLocation(file, line) };
 }
 
 const SEV_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };

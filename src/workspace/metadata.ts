@@ -7,6 +7,9 @@
  * @asset Workspace.Metadata (#report-metadata) -- "Report provenance data"
  * @flows GitRepo -> #report-metadata via execSync -- "Git info extraction"
  * @flows #report-metadata -> ThreatModel via populateMetadata -- "Metadata injection"
+ * @flows GitConfig -> #report-metadata via readVersionControl -- "remote.origin.url, HEAD and branch for SARIF versionControlProvenance"
+ * @exposes #report-metadata to #data-exposure [low] cwe:CWE-200 -- "remote.origin.url may embed user:token@host credentials, and the SARIF it lands in is uploaded to code scanning"
+ * @mitigates #report-metadata against #data-exposure using #key-redaction -- "readVersionControl keeps only linksFromRemote().web, rebuilt from hostname and path; userinfo is dropped, and a remote that is not http(s)/ssh yields no provenance at all"
  */
 
 import { execSync } from 'node:child_process';
@@ -16,6 +19,7 @@ import { computeAnnotationHash } from '../parser/annotation-hash.js';
 import { getPackageVersion } from '../version.js';
 import type { ThreatModel, ReportMetadata, ReportParseState, ParseDiagnostic } from '../types/index.js';
 import type { WorkspaceConfig } from './types.js';
+import { linksFromRemote } from '../dashboard/links.js';
 
 /**
  * Current report JSON schema version.
@@ -91,6 +95,27 @@ function getBranch(root: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Where a SARIF export is cut from: the repository's web URL, HEAD and branch.
+ *
+ * Null when the repository has no origin that `linksFromRemote` accepts — not a
+ * git checkout, no `origin`, or a local-path remote. SARIF requires a
+ * `repositoryUri` on every `versionControlProvenance` entry, so without one
+ * there is nothing honest to write. The URL is rebuilt from hostname and path
+ * only, so credentials embedded in the remote never reach the export.
+ */
+export function readVersionControl(root: string): { repositoryUri: string; revisionId: string | null; branch: string | null } | null {
+  let remote: string;
+  try {
+    remote = execSync('git config --get remote.origin.url', { cwd: root, encoding: 'utf-8', stdio: 'pipe' }).trim();
+  } catch {
+    return null;
+  }
+  const links = remote ? linksFromRemote(remote) : null;
+  if (!links) return null;
+  return { repositoryUri: links.web, revisionId: getCommitSha(root), branch: getBranch(root) };
 }
 
 /**

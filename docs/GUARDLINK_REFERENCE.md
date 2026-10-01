@@ -134,7 +134,7 @@ guardlink ci . --expiring-within 30                # Days of notice before an @a
 # Reports & Export
 guardlink report [dir]                  # Generate threat-model.md + optional JSON
 guardlink dashboard [dir]               # Interactive HTML dashboard with Mermaid diagrams
-guardlink sarif [dir] [-o file]         # SARIF 2.1.0 for GitHub Advanced Security / VS Code; @exposes and @confirmed results carry guardlink/threatId, and @exposes results also carry guardlink/claimKey
+guardlink sarif [dir] [-o file]         # SARIF 2.1.0 for GitHub Advanced Security / VS Code; @exposes and @confirmed results carry guardlink/threatId, and @exposes results also carry guardlink/claimKey; each also carries its declared context — CWE/OWASP taxa, boundaries and assumptions on its asset, the @flows chain into it — and the run carries the flow/boundary graph (SPEC §6.6)
 guardlink diff [ref]                    # Compare threat model against a git ref (default: HEAD~1)
 guardlink paths [dir] [--all]           # Undefended source-to-sink routes, derived from @flows (no LLM)
 
