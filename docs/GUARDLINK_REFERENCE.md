@@ -123,6 +123,7 @@ guardlink init [dir]                    # Initialize .guardlink/ and agent instr
 guardlink parse [dir]                   # Parse annotations → ThreatModel JSON
 guardlink status [dir]                  # Risk grade + coverage summary
 guardlink validate [dir] [--strict]     # Syntax errors, dangling refs, unmitigated exposures
+guardlink validate [dir] --code-graph   # Also check each @boundary against an optional code graph (warnings only)
 guardlink verify [dir] [targets...]     # Lock claims to the code beneath them → .guardlink/verified.json
 guardlink ci [dir] [--strict]           # The gate: parse errors, unmitigated exposures, confirmed
                                         #   exploits, unqualified acceptances, anchor drift, stale claims
@@ -144,6 +145,7 @@ guardlink threat-reports                # List saved threat reports
 guardlink annotate <prompt> [--playbook map|exploitable|chains|diff|coverage|verify] [--mode inline|external]  # Launch coding agent; the playbook is the method, the prompt is scope; the gate checks the result
 guardlink lint [dir] [--since <ref>] [--json]   # Check annotations against the evidence bar; --since checks only what a session added
 guardlink hypothesis list|next|refute|confirm   # What happened when an exposure was tested (see below)
+guardlink hypothesis boundaries|support|contradict   # ...and when a declared @boundary was tested
 guardlink translate [prompt]            # Generate CERT-X-GEN pentest templates from threat findings
 guardlink ask <query>                   # Ask questions about the threat model and codebase
 guardlink config <show|set|clear>       # Manage LLM provider / CLI agent configuration
@@ -269,6 +271,27 @@ guardlink hypothesis confirm --from-scan .guardlink/pentest/<report>.json [--wri
   before the bound — so a page cannot be read as the whole set, by a person or by a consumer.
   `total` is additive exactly as `key` is, and the schema stays `/v1` for the same reason. A run
   that hides nothing is unchanged: no marker, no notice.
+- **A declared boundary is a claim too.** A `@boundary` says trust changes between two sides and,
+  in its description, what holds the line, which a probe can test from the outer side. The ledger
+  records that against the boundary's claim key as `supported` (refused where the boundary says)
+  or `contradicted` (it got through), with the same evidence rule (a contradiction is held to the
+  confirmation's bar) and the same expiry (supported lapses to `unverified`, contradicted becomes
+  `retest`). A boundary outcome never moves an exposure, and nothing is written into source for
+  one; record what got through as an `@exposes` on the inner side.
+
+  ```bash
+  guardlink hypothesis boundaries [dir] [--state unverified|supported|contradicted|retest] [--json]   # guardlink.boundary-claims/v1
+  guardlink hypothesis contradict '#http-boundary' --evidence "GET /export with no session returned 200 and the data"
+  guardlink hypothesis support src/app.ts:12 --evidence "GET /admin without a session redirected to /login (302)"
+  ```
+
+  A target is the boundary's claim key, its `#id`, or the `file:line` of its `@boundary`. Under
+  `confirm --from-scan`, a finding whose claim key names a boundary records that boundary
+  `contradicted` (or `supported`, when the finding carries `boundary_outcome: "supported"`). A
+  finding can also carry `boundary_claim_key` (or `boundaryClaimKey`, at either level or in
+  `properties`) beside an exposure's key, and then reports on both claims. A boundary key alone
+  never falls to the coarse exposure joins. A ledger holding a boundary outcome reads as corrupt
+  to a GuardLink older than this, which refuses to write it rather than dropping the entry.
 - **A stamped claim key resolves the join, before anything coarser is tried.** A finding carrying
   the claim key is looked up across the whole model. A key matches at most one claim, so that
   lookup is the answer. If it names no claim the finding is **stale**: the claim it was tested

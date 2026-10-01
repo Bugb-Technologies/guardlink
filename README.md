@@ -185,6 +185,17 @@ graph reports that it resolved too few calls to rank honestly, the worklist is
 left out and the prompt says why. `GUARDLINK_CODEGRAPH_MCP` points at a specific
 `codegraph-mcp` binary.
 
+When the graph also classifies route access (`codegraph_auth_boundary`), each route
+in the worklist carries its level (`public`, `authenticated`, `elevated`, or
+`unknown` with the reason) and the guard it rests on, and the prompt suggests the
+`@boundary` lines the code shows: a caller boundary per route, naming that guard as
+what enforces it, and a data, process, egress or filesystem boundary per sink class.
+`guardlink validate --code-graph` (or `guardlink_validate` with `code_graph: true`)
+checks declared boundaries the other way: a description that says "authenticated"
+in front of a route the graph classifies `public`, a route handler reaching a sink
+with no boundary to the outside, and a boundary nothing crosses. These are warnings
+about claims to verify, never findings.
+
 ---
 
 ## Real-world results

@@ -13,7 +13,7 @@
  */
 import type { ThreatModel, ThreatModelExposure, ExposureHypothesis, SourceLocation } from '../types/index.js';
 import { relationRecords } from '../parser/claim-key.js';
-import type { HypothesesRead, HypothesisEntry, HypothesisOutcomeRecord } from './ledger.js';
+import { isExposureEntry, type HypothesesRead, type HypothesisEntry, type HypothesisOutcomeRecord } from './ledger.js';
 
 export type HypothesisState = 'untested' | 'confirmed' | 'refuted' | 'retest';
 
@@ -47,7 +47,7 @@ export interface HypothesisClassification {
 
 export function classifyHypotheses(model: ThreatModel, read: HypothesesRead): HypothesisClassification {
   const entries = new Map<string, HypothesisEntry>();
-  for (const e of read.ledger?.entries ?? []) entries.set(e.key, e);
+  for (const e of read.ledger?.entries ?? []) if (isExposureEntry(e)) entries.set(e.key, e);
   const records: HypothesisRecord[] = [];
   const summary: HypothesisSummary = { untested: 0, confirmed: 0, refuted: 0, retest: 0 };
 

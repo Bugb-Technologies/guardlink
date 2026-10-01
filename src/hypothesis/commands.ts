@@ -28,7 +28,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
-import type { ThreatModel } from '../types/index.js';
+import type { ThreatModel, SourceLocation } from '../types/index.js';
 import { hasEvidenceWords } from '../gate/lint.js';
 import { redactEvidence } from '../analyze/format.js';
 import { CLAIM_KEY_NAMES, CLAIM_KEY_SURFACES, isClaimKey } from '../parser/claim-key.js';
@@ -38,8 +38,10 @@ import { blockCommentDelimiters, breakCommentDelimiters, commentFormAt, isStanda
 // annotation write site; reused rather than re-implemented so a third copy cannot
 // drift. No cycle: src/review only imports parser modules and types.
 import { oneLine, escapeDesc } from '../review/index.js';
-import { readHypotheses, writeHypotheses, emptyHypotheses, type HypothesisEntry, type HypothesisOutcome, type HypothesisSource, type HypothesesLedger, type JoinedBy } from './ledger.js';
+import { readHypotheses, writeHypotheses, emptyHypotheses, isBoundaryOutcome, type HypothesisEntry, type HypothesisOutcome, type HypothesisOutcomeRecord, type HypothesisSource, type HypothesesLedger, type JoinedBy, type LedgerEntry, type LedgerOutcome } from './ledger.js';
 import { classifyHypotheses, type HypothesisRecord } from './classify.js';
+import { classifyBoundaryClaims, resolveBoundaryTarget, type BoundaryClaimRecord } from './boundary.js';
+import type { BoundaryEntry, BoundaryOutcome } from './ledger.js';
 
 export interface OutcomeInput {
   evidence: string;
@@ -58,7 +60,14 @@ const inside = (root: string, p: string): string => {
 
 /** The exposure at `file:line`, or an error that says what is there instead. */
 export function resolveTarget(model: ThreatModel, target: string): HypothesisRecord {
-  const m = /^(.+):(\d+)$/.exec(target.trim());
+  // A claim key (`<digest>:<n>`) is also shaped like file:line, so it is told apart first.
+  const t = target.trim();
+  if (isClaimKey(t) || t.startsWith('#')) {
+    let boundary = false;
+    try { resolveBoundaryTarget(model, t); boundary = true; } catch { /* not a boundary either */ }
+    if (boundary) throw new Error(`${t} names a @boundary, not an exposure; record its outcome with guardlink hypothesis support|contradict`);
+  }
+  const m = /^(.+):(\d+)$/.exec(t);
   if (!m) throw new Error(`Target must be file:line, got ${JSON.stringify(target)}`);
   const file = m[1].replace(/\\/g, '/');
   const line = Number(m[2]);
@@ -76,19 +85,27 @@ function checkEvidence(outcome: HypothesisOutcome, evidence: string): void {
   }
 }
 
-function upsert(ledger: HypothesesLedger, record: HypothesisRecord, outcome: HypothesisOutcome, input: OutcomeInput): HypothesisEntry {
+/** What an outcome is recorded against: an exposure's record or a boundary's. */
+interface OutcomeTarget { key: string; claim: string; file: string; line: number; location: SourceLocation }
+
+function upsert<O extends LedgerOutcome>(ledger: HypothesesLedger, record: OutcomeTarget, outcome: O, input: OutcomeInput): HypothesisEntry<O> {
   const anchor = record.location.anchor ? { scope: record.location.anchor.scope, symbol: record.location.anchor.symbol, hash: record.location.anchor.hash } : null;
-  const fresh = { outcome, evidence: input.evidence.trim(), by: input.by, at: input.at, anchor, source: input.source ?? { kind: 'manual' as const } };
+  const fresh: HypothesisOutcomeRecord<O> = { outcome, evidence: input.evidence.trim(), by: input.by, at: input.at, anchor, source: input.source ?? { kind: 'manual' as const } };
   const i = ledger.entries.findIndex(e => e.key === record.key);
   if (i >= 0) {
     const old = ledger.entries[i];
-    const { history, key: _k, claim: _c, file: _f, line: _l, ...prior } = old;
-    const entry: HypothesisEntry = { key: record.key, claim: record.claim, file: record.file, line: record.line, ...fresh, history: [prior, ...history] };
-    ledger.entries[i] = entry;
+    // The verb is part of the key, so an exposure and a boundary never share one;
+    // an entry of the other kind here means the file was edited by hand.
+    if (isBoundaryOutcome(old.outcome) !== isBoundaryOutcome(outcome)) {
+      throw new Error(`.guardlink/hypotheses.json holds a ${old.outcome} outcome under ${record.key}, which cannot take a ${outcome} one; fix the entry by hand`);
+    }
+    const { history, key: _k, claim: _c, file: _f, line: _l, ...prior } = old as unknown as HypothesisEntry<O>;
+    const entry: HypothesisEntry<O> = { key: record.key, claim: record.claim, file: record.file, line: record.line, ...fresh, history: [prior, ...history] };
+    ledger.entries[i] = entry as unknown as LedgerEntry;
     return entry;
   }
-  const entry: HypothesisEntry = { key: record.key, claim: record.claim, file: record.file, line: record.line, ...fresh, history: [] };
-  ledger.entries.push(entry);
+  const entry: HypothesisEntry<O> = { key: record.key, claim: record.claim, file: record.file, line: record.line, ...fresh, history: [] };
+  ledger.entries.push(entry as unknown as LedgerEntry);
   return entry;
 }
 
@@ -96,6 +113,28 @@ function loadForWrite(root: string): HypothesesLedger {
   const read = readHypotheses(root);
   if (read.status === 'corrupt') throw new Error(`.guardlink/hypotheses.json is unreadable (${read.error}); fix or remove it before recording an outcome`);
   return read.ledger ?? emptyHypotheses();
+}
+
+/**
+ * A contradiction says an outer principal got past a boundary, which is a
+ * finding in all but name, so it is held to the confirmation's bar. Support
+ * needs evidence too: what was sent from the outer side, and that it was refused.
+ */
+function checkBoundaryEvidence(outcome: BoundaryOutcome, evidence: string): void {
+  if (!evidence || evidence.trim().length === 0) throw new Error('An outcome needs evidence: what was sent from the outer side and what came back.');
+  if (outcome === 'contradicted' && !hasEvidenceWords(evidence)) {
+    throw new Error('A contradiction needs evidence in hand: the request an outer principal sent past the boundary and the response that should have been refused.');
+  }
+}
+
+/** Record one outcome for the boundary `target` names: its claim key, `#id`, or `file:line`. */
+export function recordBoundaryOutcome(root: string, model: ThreatModel, target: string, outcome: BoundaryOutcome, input: OutcomeInput): { record: BoundaryClaimRecord; entry: BoundaryEntry } {
+  checkBoundaryEvidence(outcome, input.evidence);
+  const record = resolveBoundaryTarget(model, target);
+  const ledger = loadForWrite(root);
+  const entry = upsert(ledger, record, outcome, input);
+  writeHypotheses(root, ledger);
+  return { record, entry };
 }
 
 /** Record one outcome for the exposure at `target` (file:line). */
@@ -153,8 +192,26 @@ export interface ScanFinding {
    * malformed one, so hiding it is worse than hiding junk, not equally bad.
    */
   rival_stamps: ScanStamp[];
+  /**
+   * The claim key of a declared boundary this finding tested, read under every
+   * name in `BOUNDARY_CLAIM_KEY_NAMES` at the finding's top level, in its
+   * annotation, or in either one's `properties`. A probe can test a boundary and
+   * an exposure at once, so this sits beside `claim_key` rather than replacing it.
+   * Null when absent, and when every value found is unshaped (`boundary_malformed`).
+   */
+  boundary_claim_key: string | null;
+  boundary_malformed: ScanStamp | null;
+  /** What the probe found about the boundary: `contradicted` unless the finding says `supported`. */
+  boundary_outcome: BoundaryOutcome;
   evidence: { request: string | null; response: string | null; matched_patterns: string[]; data: Record<string, unknown> };
 }
+
+/**
+ * Every name a scan report may carry a boundary's claim key under. Separate from
+ * `CLAIM_KEY_NAMES` because a finding stamped with both is reporting on two
+ * claims, an exposure and the boundary in front of it, not contradicting itself.
+ */
+export const BOUNDARY_CLAIM_KEY_NAMES: readonly string[] = ['boundary_claim_key', 'boundaryClaimKey'];
 
 /** A value found under one of the claim key's accepted names, and where. */
 export interface ScanStamp {
@@ -168,6 +225,8 @@ export type { JoinedBy } from './ledger.js';
 export interface ImportResult {
   scanId: string;
   confirmed: { finding: ScanFinding; record: HypothesisRecord; entry: HypothesisEntry; joinedBy: JoinedBy }[];
+  /** Outcomes recorded against a declared boundary's claim key. Never written into source. */
+  boundaries: { finding: ScanFinding; record: BoundaryClaimRecord; entry: BoundaryEntry }[];
   ambiguous: { finding: ScanFinding; candidates: HypothesisRecord[] }[];
   /**
    * The finding's claim key names no claim in the model: the claim it was tested
@@ -175,7 +234,7 @@ export interface ImportResult {
    * have matched is a different claim, and recording this evidence against it by
    * hand is the exact confirmation the key just refused.
    */
-  stale: { finding: ScanFinding }[];
+  stale: { finding: ScanFinding; /** The stale key named a boundary, not an exposure. */ boundary?: true }[];
   /**
    * A stamp arrived under one of our names that is not a claim key. Reported,
    * never joined: it says nothing about which claim was tested, so guessing from
@@ -235,6 +294,23 @@ function findingStamps(o: Record<string, unknown>, ann: Record<string, unknown> 
   return found;
 }
 
+/** The boundary claim keys a finding carries, at its top level or its annotation, directly or in `properties`. */
+function boundaryStamps(o: Record<string, unknown>, ann: Record<string, unknown> | undefined): ScanStamp[] {
+  const found: ScanStamp[] = [];
+  const at2 = o.annotation ? 'annotation.' : 'location.';
+  for (const [level, at] of [[o, ''], [ann, at2]] as const) {
+    if (!level) continue;
+    for (const [c, prefix] of [[level, at], [bag(level.properties), `${at}properties.`]] as const) {
+      if (!c) continue;
+      for (const name of BOUNDARY_CLAIM_KEY_NAMES) {
+        const v = str(c[name]);
+        if (v) found.push({ value: v, field: `${prefix}${name}` });
+      }
+    }
+  }
+  return found;
+}
+
 function coerceFinding(raw: unknown, i: number): ScanFinding | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
@@ -248,6 +324,9 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
   // ordinary shape and agreement, not a conflict. Only a DIFFERENT well-formed
   // key is a rival: the report contradicting itself about which claim was tested.
   const rivals = valid.filter(s => s.value !== valid[0]?.value);
+  const bStamps = boundaryStamps(o, ann);
+  const bValid = bStamps.filter(s => isClaimKey(s.value));
+  const outcomeRaw = str(o.boundary_outcome) ?? str(ann?.boundary_outcome);
   return {
     id: str(o.id) ?? `finding-${i + 1}`,
     template_id: str(o.template_id) ?? 'unknown-template',
@@ -262,6 +341,9 @@ function coerceFinding(raw: unknown, i: number): ScanFinding | null {
     malformed_stamp: valid.length === 0 ? invalid[0] ?? null : null,
     junk_stamps: valid.length > 0 ? invalid : [],
     rival_stamps: rivals,
+    boundary_claim_key: bValid[0]?.value ?? null,
+    boundary_malformed: bValid.length === 0 ? bStamps[0] ?? null : null,
+    boundary_outcome: outcomeRaw === 'supported' ? 'supported' : 'contradicted',
     evidence: {
       request: str(ev.request), response: str(ev.response),
       matched_patterns: Array.isArray(ev.matched_patterns) ? ev.matched_patterns.filter((p): p is string => typeof p === 'string') : [],
@@ -367,13 +449,35 @@ export function importScan(root: string, model: ThreatModel, scanPath: string, i
     return own;
   };
 
-  const result: ImportResult = { scanId, confirmed: [], ambiguous: [], stale: [], malformed: [], unmatched: [] };
+  const result: ImportResult = { scanId, confirmed: [], boundaries: [], ambiguous: [], stale: [], malformed: [], unmatched: [] };
   const ledger = loadForWrite(root);
   const byKey = new Map(records.map(r => [r.key, r]));
+  const boundaryByKey = new Map(classifyBoundaryClaims(model, { status: 'absent', ledger: null }).records.map(r => [r.key, r]));
+  const recordBoundary = (f: ScanFinding, record: BoundaryClaimRecord) => {
+    const entry = upsert(ledger, record, f.boundary_outcome, {
+      evidence: scanEvidence(scanId, f), by: `${input.by}:${f.template_id}`, at: input.at,
+      source: { kind: 'scan', scan_id: scanId, template_id: f.template_id, confidence: f.confidence, joined_by: 'claim-key' },
+    });
+    result.boundaries.push({ finding: f, record, entry });
+  };
   for (const f of findings) {
     let candidates: HypothesisRecord[] = [];
     let joinedBy: JoinedBy | null = null;
     if (f.malformed_stamp) { result.malformed.push({ finding: f, stamp: f.malformed_stamp }); continue; }
+    // A boundary is tested by its own key. A claim key that names a boundary is
+    // that boundary's outcome, not a stale exposure; a boundary key beside an
+    // exposure key reports on both claims; a boundary key alone never falls to
+    // the coarse exposure tiers, which would match whatever exposure sits where
+    // the boundary is declared.
+    const keyIsBoundary = f.claim_key ? boundaryByKey.get(f.claim_key) : undefined;
+    if (keyIsBoundary) { recordBoundary(f, keyIsBoundary); continue; }
+    if (f.boundary_malformed) { result.malformed.push({ finding: f, stamp: f.boundary_malformed }); continue; }
+    if (f.boundary_claim_key) {
+      const named = boundaryByKey.get(f.boundary_claim_key);
+      if (!named) { result.stale.push({ finding: f, boundary: true }); continue; }
+      recordBoundary(f, named);
+      if (!f.claim_key) continue;
+    }
     if (f.claim_key) {
       const named = byKey.get(f.claim_key);
       if (!named) { result.stale.push({ finding: f }); continue; }
@@ -405,7 +509,7 @@ export function importScan(root: string, model: ThreatModel, scanPath: string, i
     });
     result.confirmed.push({ finding: f, record, entry, joinedBy });
   }
-  if (result.confirmed.length > 0) writeHypotheses(root, ledger);
+  if (result.confirmed.length > 0 || result.boundaries.length > 0) writeHypotheses(root, ledger);
   return result;
 }
 

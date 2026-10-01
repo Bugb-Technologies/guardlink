@@ -7,6 +7,14 @@
  * of `verified.json`, which records that a claim matches its code; this one
  * records that a claim was checked against the world.
  *
+ * Two kinds of claim are tested. An exposure is confirmed (exploitable) or
+ * refuted. A declared boundary is supported (a probe from the outer side was
+ * refused where the boundary says it should be) or contradicted (it got
+ * through). Both live in one `entries` list keyed by claim key; the outcome
+ * says which kind an entry is, and one entry never mixes the two. A reader
+ * that predates boundary outcomes rejects a ledger holding one as corrupt
+ * rather than dropping it on its next write.
+ *
  * @exposes #cli to #arbitrary-write [low] cwe:CWE-73 -- "writeHypotheses() writes .guardlink/hypotheses.json under the root the caller resolved"
  * @mitigates #cli against #arbitrary-write using #path-validation -- "The path is fixed relative to the project root (HYPOTHESES_FILE); nothing in an entry chooses where the file goes"
  * @flows LedgerFile -> #cli via readHypotheses -- "Outcomes read back for classification"
@@ -23,6 +31,9 @@ export const HYPOTHESES_FILE = '.guardlink/hypotheses.json';
 export const HYPOTHESES_SCHEMA = 'guardlink.hypotheses/v1';
 
 export type HypothesisOutcome = 'confirmed' | 'refuted';
+/** What testing a declared boundary found: the line held, or it did not. */
+export type BoundaryOutcome = 'supported' | 'contradicted';
+export type LedgerOutcome = HypothesisOutcome | BoundaryOutcome;
 
 /**
  * Which identity joined a scan finding to its claim. `claim-key` is the only one
@@ -49,8 +60,8 @@ export type HypothesisSource =
 
 export interface HypothesisAnchor { scope: AnchorScope; symbol: string | null; hash: string }
 
-export interface HypothesisOutcomeRecord {
-  outcome: HypothesisOutcome;
+export interface HypothesisOutcomeRecord<O extends LedgerOutcome = HypothesisOutcome> {
+  outcome: O;
   evidence: string;
   /** `human:<name>` or `cxg:<template>`. */
   by: string;
@@ -61,7 +72,7 @@ export interface HypothesisOutcomeRecord {
   source: HypothesisSource;
 }
 
-export interface HypothesisEntry extends HypothesisOutcomeRecord {
+export interface HypothesisEntry<O extends LedgerOutcome = HypothesisOutcome> extends HypothesisOutcomeRecord<O> {
   /** Stable claim key from `relationRecords`. */
   key: string;
   /** Display only; never matched on. */
@@ -69,13 +80,17 @@ export interface HypothesisEntry extends HypothesisOutcomeRecord {
   file: string;
   line: number;
   /** Earlier outcomes for the same key, newest first. */
-  history: HypothesisOutcomeRecord[];
+  history: HypothesisOutcomeRecord<O>[];
 }
+
+/** An outcome recorded against a declared boundary's claim key. */
+export type BoundaryEntry = HypothesisEntry<BoundaryOutcome>;
+export type LedgerEntry = HypothesisEntry | BoundaryEntry;
 
 export interface HypothesesLedger {
   schema: typeof HYPOTHESES_SCHEMA;
   anchor_hash_version: number;
-  entries: HypothesisEntry[];
+  entries: LedgerEntry[];
 }
 
 export type HypothesesStatus = 'present' | 'absent' | 'corrupt';
@@ -90,9 +105,15 @@ export function emptyHypotheses(): HypothesesLedger {
   return { schema: HYPOTHESES_SCHEMA, anchor_hash_version: ANCHOR_HASH_VERSION, entries: [] };
 }
 
-const OUTCOMES = new Set<string>(['confirmed', 'refuted']);
+const EXPOSURE_OUTCOMES = new Set<string>(['confirmed', 'refuted']);
+const BOUNDARY_OUTCOMES = new Set<string>(['supported', 'contradicted']);
+const OUTCOMES = new Set<string>([...EXPOSURE_OUTCOMES, ...BOUNDARY_OUTCOMES]);
 
-function isOutcomeRecord(v: unknown): v is HypothesisOutcomeRecord {
+export const isBoundaryOutcome = (o: string): o is BoundaryOutcome => BOUNDARY_OUTCOMES.has(o);
+export const isBoundaryEntry = (e: LedgerEntry): e is BoundaryEntry => isBoundaryOutcome(e.outcome);
+export const isExposureEntry = (e: LedgerEntry): e is HypothesisEntry => EXPOSURE_OUTCOMES.has(e.outcome);
+
+function isOutcomeRecord(v: unknown): v is HypothesisOutcomeRecord<LedgerOutcome> {
   if (!v || typeof v !== 'object') return false;
   const o = v as Record<string, unknown>;
   const anchor = o.anchor as Record<string, unknown> | null | undefined;
@@ -102,11 +123,13 @@ function isOutcomeRecord(v: unknown): v is HypothesisOutcomeRecord {
     && !!source && typeof source === 'object' && (source.kind === 'manual' || (source.kind === 'scan' && typeof source.scan_id === 'string' && typeof source.template_id === 'string'));
 }
 
-function isEntry(v: unknown): v is HypothesisEntry {
+function isEntry(v: unknown): v is LedgerEntry {
   if (!isOutcomeRecord(v)) return false;
   const o = v as unknown as Record<string, unknown>;
+  // One entry is one kind of claim: its history may not mix exposure and boundary outcomes.
+  const family = isBoundaryOutcome(v.outcome);
   return typeof o.key === 'string' && typeof o.claim === 'string' && typeof o.file === 'string' && typeof o.line === 'number'
-    && Array.isArray(o.history) && o.history.every(isOutcomeRecord);
+    && Array.isArray(o.history) && o.history.every(h => isOutcomeRecord(h) && isBoundaryOutcome(h.outcome) === family);
 }
 
 export function readHypotheses(root: string): HypothesesRead {
@@ -120,7 +143,7 @@ export function readHypotheses(root: string): HypothesesRead {
   const o = data as Record<string, unknown>;
   if (o.schema !== HYPOTHESES_SCHEMA) return { status: 'corrupt', ledger: null, error: `schema ${JSON.stringify(o.schema ?? null)}, expected ${HYPOTHESES_SCHEMA}` };
   if (typeof o.anchor_hash_version !== 'number' || !Array.isArray(o.entries) || !o.entries.every(isEntry)) return { status: 'corrupt', ledger: null, error: 'entries do not match the schema' };
-  return { status: 'present', ledger: { schema: HYPOTHESES_SCHEMA, anchor_hash_version: o.anchor_hash_version, entries: o.entries as HypothesisEntry[] } };
+  return { status: 'present', ledger: { schema: HYPOTHESES_SCHEMA, anchor_hash_version: o.anchor_hash_version, entries: o.entries as LedgerEntry[] } };
 }
 
 /** Deterministic serialisation: entries by file, line, key. */
