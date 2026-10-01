@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-boundary/codegraph-boundary.mmd
 %% scope:           PARTIAL — the Process boundary: an external binary's JSON is parsed defensively and never executed between codegraph and codegraphserver, and what flows across it
-%% annotation_hash: sha256-v3:a9ec60de2a3a302843cdd616ba5681d1bfdd04fa1ca9364d60c049443e0954d6
+%% annotation_hash: sha256-v3:d02b387aba43c6c331700247d8cc308a417da789071942746f01a06ec68bfa1e
 %% generator:       guardlink@2.1.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -25,14 +25,15 @@ graph LR
   llm_client["👤 GuardLink.LLM_Client"]
   tui["👤 GuardLink.TUI"]
   estate_view["🧩 Workspace.Estate"]
-  merge_engine["🧩 Workspace.Merge"]
   codegraph -.-|🧱 Process boundary: an external binary's JSON is parsed defensively and never executed| codegraphserver
   codegraph -- "📡 worklist" --> agent_launcher
   blame -- "📡 formatBlameText" --> cli
   blame -- "🗄️ buildBlamePayload" --> cli
   cli -- "📡 loadWorklist" --> codegraph
   cli -- "📡 runGate" --> gate
+  codegraph -- "📡 checkBoundaries" --> cli
   codegraphserver -- "📡 stdout" --> codegraph
+  codegraphserver -- "📡 codegraph_auth_boundary" --> codegraph
   codegraph -- "📡 spawn" --> codegraphserver
   mcp -- "📡 generateThreatReport" --> llm_client
   mcp -- "📡 guardlink_worklist" --> codegraph
@@ -40,4 +41,3 @@ graph LR
   tui -- "📡 launchAgent" --> agent_launcher
   tui -- "📡 chatCompletion" --> llm_client
   estate_view -- "📡 estateReport" --> cli
-  merge_engine -- "📡 mergeVerdict" --> cli
