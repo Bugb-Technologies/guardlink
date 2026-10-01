@@ -7,7 +7,8 @@
  * @comment -- "formatImport() prints the stale and malformed buckets beside ambiguous and unmatched. A finding whose stamped claim key names no claim in the model says so and offers no by-hand target, because every claim it could name there is a different claim; a finding whose stamp is not a claim key at all names the value and the field it arrived in, so the producer can be fixed. Each confirmation is labelled with the identity that joined it, and a report carrying no stamps at all says that the weaker join was used — a key-verified confirmation and an unverified one must not read the same"
  */
 import type { HypothesisClassification, HypothesisRecord, RankedHypothesis } from './classify.js';
-import type { HypothesisEntry } from './ledger.js';
+import type { HypothesisEntry, BoundaryEntry } from './ledger.js';
+import type { BoundaryClaimClassification, BoundaryClaimRecord } from './boundary.js';
 import type { ImportResult, ScanFinding } from './commands.js';
 import { CLAIM_KEY_FINGERPRINT, CLAIM_KEY_PATTERN } from '../parser/claim-key.js';
 
@@ -79,7 +80,7 @@ export function formatIntake(q: RankedHypothesis[], project: string, total: numb
  * disagreed establishes less than an uncontested stamp; printing both the same
  * way would overstate one of them.
  */
-function joinNote(source: HypothesisEntry['source']): string | null {
+function joinNote(source: HypothesisEntry['source'] | BoundaryEntry['source']): string | null {
   if (source.kind !== 'scan') return null;
   switch (source.joined_by) {
     case 'claim-key': return '  joined    by claim-key — the stamp named this exact claim';
@@ -117,12 +118,53 @@ export function formatOutcome(record: HypothesisRecord, entry: HypothesisEntry, 
   return lines.join('\n');
 }
 
+/** How a boundary reads in a heading: its #id, or its two sides. */
+function boundaryLabel(r: BoundaryClaimRecord): string {
+  return r.id ? `#${r.id} (between ${r.asset_a} and ${r.asset_b})` : `between ${r.asset_a} and ${r.asset_b}`;
+}
+
+/** One boundary outcome, as a block. Like `formatOutcome`, it names the claim, not a position. */
+export function formatBoundaryOutcome(record: BoundaryClaimRecord, entry: BoundaryEntry): string {
+  const head = entry.outcome === 'contradicted' ? 'Contradicted' : 'Supported';
+  const lines = [
+    `${head}  boundary ${boundaryLabel(record)}`,
+    `  by        ${entry.by}  on ${entry.at.slice(0, 10)}${entry.source.kind === 'scan' ? `  (scan ${entry.source.scan_id}, confidence ${entry.source.confidence ?? 'n/a'})` : ''}`,
+    `  evidence  ${short(entry.evidence, 160)}`,
+    `  code      ${entry.anchor ? `${entry.anchor.hash.slice(0, 22)}…  (the outcome is tied to this version of the code)` : 'no anchor — the outcome cannot expire on its own'}`,
+    `  key       ${entry.key.slice(0, 16)}…  (.guardlink/hypotheses.json)`,
+  ];
+  const join = joinNote(entry.source);
+  if (join) lines.push(join);
+  if (entry.history.length > 0) lines.push(`  history   ${entry.history.length} earlier ${entry.history.length === 1 ? 'outcome' : 'outcomes'} kept`);
+  lines.push(entry.outcome === 'contradicted'
+    ? '  The boundary did not hold where its description says it does. Record what got through as an @exposes on the inner side; nothing is written to source for a boundary.'
+    : '  Nothing is written to source for a boundary; the outcome lives in the ledger and lapses when the code beneath it changes.');
+  return lines.join('\n');
+}
+
+export function formatBoundaryList(c: BoundaryClaimClassification, state?: string): string {
+  const rows = state ? c.records.filter(r => r.state === state) : c.records;
+  const s = c.summary;
+  const lines = [`${s.unverified} unverified · ${s.supported} supported · ${s.contradicted} contradicted · ${s.retest} retest${c.ledger === 'corrupt' ? '   (ledger unreadable — every boundary shown unverified)' : ''}`, ''];
+  lines.push(`  ${pad('state', 13)}${pad('boundary', 22)}${pad('between', 34)}${pad('where', 34)}outcome`);
+  for (const r of rows) {
+    const e = r.entry;
+    const outcome = r.state === 'unverified' && r.previous ? `previously ${r.previous.outcome} ${r.previous.at.slice(0, 10)} by ${r.previous.by} — code changed since`
+      : r.state === 'retest' && e ? `contradicted ${e.at.slice(0, 10)} by ${e.by} — code changed since, retest`
+      : e ? `${e.at.slice(0, 10)} by ${e.by}` : '';
+    lines.push(`  ${pad(r.state, 13)}${pad(short(r.id ? `#${r.id}` : '(no id)', 21), 22)}${pad(short(`${r.asset_a} ↔ ${r.asset_b}`, 33), 34)}${pad(short(`${r.file}:${r.line}`, 33), 34)}${outcome}`);
+  }
+  if (rows.length === 0) lines.push('  (none)');
+  return lines.join('\n');
+}
+
 export function formatImport(r: ImportResult): string {
-  const lines = [`${r.confirmed.length} ${r.confirmed.length === 1 ? 'finding' : 'findings'} joined to a claim, ${r.ambiguous.length} ambiguous, ${r.stale.length} stale, ${r.malformed.length} malformed, ${r.unmatched.length} unmatched  (scan ${r.scanId})`];
+  const boundaryCount = r.boundaries.length > 0 ? `; ${r.boundaries.length} boundary ${r.boundaries.length === 1 ? 'outcome' : 'outcomes'} recorded` : '';
+  const lines = [`${r.confirmed.length} ${r.confirmed.length === 1 ? 'finding' : 'findings'} joined to a claim, ${r.ambiguous.length} ambiguous, ${r.stale.length} stale, ${r.malformed.length} malformed, ${r.unmatched.length} unmatched${boundaryCount}  (scan ${r.scanId})`];
   // Whether the REPORT carried a stamp is a property of every finding the import
   // saw, not of the ones that happened to confirm: a stamped finding whose claim
   // is gone lands in `stale`, never in `confirmed`.
-  const findings = [...r.confirmed.map(c => c.finding), ...r.ambiguous.map(a => a.finding), ...r.stale.map(s => s.finding), ...r.malformed.map(m => m.finding), ...r.unmatched];
+  const findings = [...new Set([...r.confirmed.map(c => c.finding), ...r.boundaries.map(b => b.finding), ...r.ambiguous.map(a => a.finding), ...r.stale.map(s => s.finding), ...r.malformed.map(m => m.finding), ...r.unmatched])];
   const anyStamp = findings.some(f => f.claim_key);
   const stamped = r.confirmed.filter(c => c.joinedBy === 'claim-key' || c.joinedBy === 'claim-key-contested').length;
   if (r.confirmed.length > 0 && !anyStamp) {
@@ -132,9 +174,16 @@ export function formatImport(r: ImportResult): string {
   }
   // @comment -- "One block per FINDING, deliberately — the header counts findings and two probes hitting one claim is worth seeing. So a claim several findings joined to appears more than once, each block showing the entry that finding produced. Withholding and the exit code are the opposite case: those are decisions about a CLAIM, are derived per claim in the CLI, and must not be read off a per-finding list"
   for (const c of r.confirmed) lines.push('', formatOutcome(c.record, c.entry));
+  for (const b of r.boundaries) lines.push('', formatBoundaryOutcome(b.record, b.entry));
   // @comment -- "This formatter emits NO model coordinate. It runs before --write splices anything, so every line it could name is a pre-write position, and a target handed to an operator has to name where the claim is once this run is finished — a key-verified write higher up the same file moves an ambiguous candidate as readily as it moves a withheld one. The by-hand commands for an ambiguous finding therefore live in the CLI beside the withheld ones, after the writes, through the one afterWrites calculation. The only file:line left below is the SCAN REPORT's own, which is correct as the report's claim about what it tested and is not ours to shift"
   for (const s of r.stale) {
     const at = s.finding.annotation ? `, stamped at ${s.finding.annotation.file}:${s.finding.annotation.line}` : '';
+    if (s.boundary) {
+      lines.push('', `Stale      ${s.finding.id} (${s.finding.template_id}) was tested against a boundary that is no longer in the model — deleted, or its sides, id, description or file edited.`);
+      lines.push(`           boundary claim key ${short(s.finding.boundary_claim_key ?? '', 24)}${at}`);
+      lines.push(`           Nothing was recorded for this finding. Re-test against the boundaries as they are (guardlink hypothesis boundaries).`);
+      continue;
+    }
     lines.push('', `Stale      ${s.finding.id} (${s.finding.template_id}) was tested against a claim that is no longer in the model — deleted, or its asset, threat, refs, description or file edited.`);
     lines.push(`           claim key ${short(s.finding.claim_key ?? '', 24)}${at}`);
     lines.push(`           Nothing was recorded. Any claim standing there now is a different claim, so this evidence does not belong to it — re-test against the tree as it is (guardlink hypothesis next).`);

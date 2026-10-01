@@ -198,7 +198,9 @@ describe('the node counter against browser-measured geometry', () => {
     // SARIF version-control provenance took the whole model from 47 to 48 by
     // giving `Workspace.Metadata (#report-metadata)` its first exposure — the
     // git remote it reads may embed credentials — which the filtered graph,
-    // showing high and critical only, does not draw.
+    // showing high and critical only, does not draw. The boundary checks took
+    // the filtered links from 88 to 89, and the whole model's from 179 to 180,
+    // with one flow, #codegraph -> #cli.
     // When they move, re-render the diagram in a browser and count the SVG
     // again; never bump them to whatever the counter says, which leaves it
     // checking itself.
@@ -211,9 +213,11 @@ describe('the node counter against browser-measured geometry', () => {
     // whole model {nodes:47, links:174}; Chrome and measureLegibility agree on
     // both pairs. Re-measured for 48 the same way: filtered {nodes:34, links:88,
     // clusters:8}, whole model {nodes:48, links:179}, and the counter agrees.
+    // Re-measured for 89 the same way: filtered {nodes:34, links:89,
+    // clusters:8}, whole model {nodes:48, links:180}, and the counter agrees.
     const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
     expect(m.nodes).toBe(34);
-    expect(m.edges).toBe(88);
+    expect(m.edges).toBe(89);
     // And the whole model is 48 nodes, which is the number this work exists for.
     expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(48);
   });

@@ -13,12 +13,19 @@
  * route table (which function serves each HTTP route, for the frameworks it
  * recognises) and, per route handler, the classes of sink it reaches through the
  * call graph — data layer, exec, template, outbound network, filesystem, crypto.
- * This module reads four of its queries:
+ * This module reads five of its queries:
  *
  *   codegraph_attack_surface  handlers ranked by the sinks they reach (the worklist)
  *   codegraph_routes          the route table (bound and unbound registrations)
+ *   codegraph_auth_boundary   who may reach each route: public, authenticated, elevated or unknown
  *   codegraph_reachable_sinks what one function reaches, with one example path per class
  *   codegraph_entry_reach     whether any recognised entry point reaches one function
+ *
+ * codegraph_auth_boundary is asked as an OPTIONAL call: a graph too old to
+ * publish it still yields the worklist, with no access levels. Its routes answer
+ * is never asked for access instead, because an older codegraph_routes ignores
+ * an unknown `access` argument and returns every route unclassified, which
+ * would read as all-public.
  *
  * THE GRAPH IS OPTIONAL, ALWAYS
  * Nothing here is required, installed or built. With no graph tooling, no graph
@@ -40,6 +47,11 @@
  * graph's stated reason is carried instead, so an empty or thin list can never be
  * read as a small attack surface.
  *
+ * Access levels have a gate of their own: they are carried only when the
+ * auth-boundary verdict is `classified`. Under any other verdict the levels are
+ * withheld and the graph's note is carried instead, and an `unknown` level is
+ * always rendered as unknown with its reason, never as public.
+ *
  * @exposes #codegraph to #child-proc-injection [high] cwe:CWE-78 -- "Spawns codegraph-mcp or bravos found on PATH, or the binary named by GUARDLINK_CODEGRAPH_MCP"
  * @mitigates #codegraph against #child-proc-injection using #param-commands -- "spawn/execFile with an argv array and shell:false; the only caller-derived arguments are the project root and a symbol address, each passed as one argv element"
  * @exposes #codegraph to #config-tamper [medium] cwe:CWE-15 -- "GUARDLINK_CODEGRAPH_MCP names the binary to run; whoever controls the environment chooses what executes"
@@ -49,6 +61,8 @@
  * @exposes #codegraph to #prompt-injection [medium] cwe:CWE-77 -- "Route paths, symbol names and sink call text come from the repository's own source and are rendered into the annotate prompt"
  * @audit #codegraph -- "Same trust as the source files the agent is told to read; the worklist adds no content the agent could not read itself, but a crafted route string is prose in the prompt"
  * @flows CodeGraphServer -> #codegraph via stdout -- "JSON answers to routes, attack_surface, reachable_sinks, entry_reach"
+ * @flows CodeGraphServer -> #codegraph via codegraph_auth_boundary -- "Route access levels with the guard text and file:line each rests on; read only under the classified verdict"
+ * @comment -- "Guard evidence text (a decorator or middleware as written) and the boundary suggestions built from it reach the annotate prompt under the same prompt-injection exposure as route paths: source-derived prose the agent could read itself, never an instruction"
  * @flows #codegraph -> CodeGraphServer via spawn -- "Project root and symbol address as argv / tools/call arguments"
  * @boundary between #codegraph and CodeGraphServer (#codegraph-boundary) -- "Process boundary: an external binary's JSON is parsed defensively and never executed"
  * @validates #resource-limits for #codegraph -- "tests/codegraph.test.ts: a stand-in server that never answers costs the timeout and yields status error, not a hung run"
@@ -72,9 +86,12 @@ export const TOOL_ROUTES = 'codegraph_routes';
 export const TOOL_SURFACE = 'codegraph_attack_surface';
 export const TOOL_SINKS = 'codegraph_reachable_sinks';
 export const TOOL_ENTRY_REACH = 'codegraph_entry_reach';
+export const TOOL_AUTH_BOUNDARY = 'codegraph_auth_boundary';
 
 /** The one attack-surface verdict under which the ranking is used. */
 export const USABLE_VERDICT = 'sinks_reached';
+/** The one auth-boundary verdict under which route access levels are used. */
+export const ACCESS_USABLE_VERDICT = 'classified';
 
 /**
  * A graph query is a read over an index that already exists. The ceiling is for a
@@ -91,12 +108,21 @@ export type CodeGraphStatus = 'off' | 'unavailable' | 'unsupported' | 'no_graph'
 
 // ─── Transport ───────────────────────────────────────────────────────
 
-export interface ToolCall { tool: string; args: Record<string, unknown> }
+export interface ToolCall {
+  tool: string;
+  args: Record<string, unknown>;
+  /**
+   * A server that does not publish this tool answers `ok: false, unsupported: true`
+   * for it instead of failing the whole query, so an older graph still answers
+   * the calls it does publish.
+   */
+  optional?: boolean;
+}
 
 /** One query's answer: the decoded JSON, or the graph's own refusal (a symbol it could not resolve). */
 export type ToolAnswer =
   | { ok: true; value: any }
-  | { ok: false; message: string; data?: unknown };
+  | { ok: false; message: string; data?: unknown; unsupported?: boolean };
 
 /** How a query reaches the graph. Tests inject a stub; production discovers one. */
 export interface CodeGraphTransport {
@@ -207,6 +233,9 @@ export function mcpTransport(binary: string, timeoutMs = QUERY_TIMEOUT_MS): Code
   return {
     via: MCP_BIN,
     async query(root, calls) {
+      // Every call is sent up front. An optional call to a tool the server does
+      // not publish gets the server's error back, and is answered as unsupported
+      // once tools/list says so.
       const msgs: object[] = [
         { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'guardlink', version: '1' } } },
         { jsonrpc: '2.0', method: 'notifications/initialized' },
@@ -226,10 +255,11 @@ export function mcpTransport(binary: string, timeoutMs = QUERY_TIMEOUT_MS): Code
       const listed = answers.get(2);
       if (!listed) throw new Error(`${binary} did not answer tools/list`);
       const names = new Set<string>(((listed.result?.tools) || []).map((t: any) => t?.name));
-      const missing = calls.map(c => c.tool).filter(t => !names.has(t));
+      const missing = calls.filter(c => !c.optional).map(c => c.tool).filter(t => !names.has(t));
       if (missing.length) throw new GraphUnsupported([...new Set(missing)].join(', '));
 
       return calls.map((c, i): ToolAnswer => {
+        if (!names.has(c.tool)) return { ok: false, message: `the installed code graph does not answer ${c.tool}`, unsupported: true };
         const msg = answers.get(3 + i);
         if (!msg) return { ok: false, message: `${c.tool} returned no answer` };
         if (msg.error) return { ok: false, message: String(msg.error.message || `${c.tool} failed`), data: msg.error.data };
@@ -261,7 +291,11 @@ export function bravosTransport(binary: string, timeoutMs = QUERY_TIMEOUT_MS): C
           argv.push('--' + key.replace(/_/g, '-'), String(value));
         }
         const { stdout, stderr } = await runChild(binary, argv, null, timeoutMs, () => {}, () => false);
-        if (/has no question called/.test(stdout + stderr)) throw new GraphUnsupported(c.tool);
+        if (/has no question called/.test(stdout + stderr)) {
+          if (!c.optional) throw new GraphUnsupported(c.tool);
+          out.push({ ok: false, message: `the installed code graph does not answer ${c.tool}`, unsupported: true });
+          continue;
+        }
         if (!stdout.trim() && /not installed/.test(stderr)) throw new GraphToolingMissing(stderr.trim().split('\n')[0].slice(0, 300));
         let doc: any = null;
         try { doc = JSON.parse(stdout); } catch { /* handled below */ }
@@ -360,6 +394,30 @@ export interface SinkReach {
   example: string;
 }
 
+/** Who may reach one route, as the graph's auth-boundary classifier measured it. */
+export interface RouteAccess {
+  /** The route, spelt exactly as in `WorklistEntry.routes`. */
+  route: string;
+  /** public | authenticated | elevated | unknown */
+  level: string;
+  /** declared | handler | explicit_public | absence; '' when the level is unknown. */
+  basis: string;
+  /** Why the level is unknown, in the graph's vocabulary; '' otherwise. */
+  unknown_reason: string;
+  /** The graph's one sentence: the level and what it rests on. */
+  evidence_summary: string;
+  /** Up to three pieces of evidence, each `what matched at file:line`: the guard to name as the enforcement. */
+  evidence: string[];
+  /** The graph's own qualifications, e.g. a handler role check that may gate one branch only. */
+  caveats: string[];
+}
+
+export interface ResolverDensitySummary {
+  sufficient: boolean;
+  edges_per_callable: number | null;
+  shortfalls: string[];
+}
+
 export interface WorklistEntry {
   /** 1-based position in the worklist (unannotated first, then heaviest reach). */
   position: number;
@@ -375,6 +433,12 @@ export interface WorklistEntry {
   score: number;
   reaches: SinkReach[];
   annotated: AnnotationState;
+  /**
+   * The access level of each of `routes` the graph classified, in the same
+   * order. Empty when the graph does not classify access, or its auth-boundary
+   * verdict is not `classified` (see `Worklist.access_withheld_reason`).
+   */
+  access: RouteAccess[];
 }
 
 export interface Worklist extends StatusFields {
@@ -394,18 +458,35 @@ export interface Worklist extends StatusFields {
   routes_dynamic: number;
   /** Set when the graph was built from a different tree than the one on disk. */
   currency_caveat: string;
+  /**
+   * The auth-boundary verdict: `classified`, `insufficient_resolution`,
+   * `no_routes`, `not_classified`, `graph_predates_classification`, or '' when
+   * the graph does not answer the query at all. Access levels are carried only
+   * under `classified`.
+   */
+  auth_verdict: string;
+  /** Why access levels are not carried, in the graph's words where it gave them; '' when they are. */
+  access_withheld_reason: string;
+  /** The graph's measure of its own call resolution, as the auth-boundary answer reported it. */
+  resolver_density: ResolverDensitySummary | null;
 }
 
 function emptyWorklist(s: StatusFields): Worklist {
   return {
     ...s, verdict: '', withheld_reason: '', message: '', entry_rule: '', entries: [],
     routes_unbound: 0, unbound_examples: [], routes_dynamic: 0, currency_caveat: '',
+    auth_verdict: '', access_withheld_reason: '', resolver_density: null,
   };
 }
 
 /** Is the ranking usable? Available, the graph vouched for it, and it ranked something. */
 export function worklistUsable(w: Worklist): boolean {
   return w.status === 'available' && w.verdict === USABLE_VERDICT && w.entries.length > 0;
+}
+
+/** Are route access levels carried? The ranking is usable and the graph vouched for its classification. */
+export function accessUsable(w: Worklist): boolean {
+  return worklistUsable(w) && w.auth_verdict === ACCESS_USABLE_VERDICT;
 }
 
 interface Span { start: number; end: number; symbol: string | null }
@@ -461,16 +542,80 @@ export async function loadWorklist(root: string, model: ThreatModel | null, opts
   const asked = await ask(root, [
     { tool: TOOL_SURFACE, args: { limit: SURFACE_LIMIT } },
     { tool: TOOL_ROUTES, args: { limit: ROUTE_LIMIT } },
+    { tool: TOOL_AUTH_BOUNDARY, args: { limit: ROUTE_LIMIT }, optional: true },
   ], opts);
   if (asked.status !== 'available' || !asked.answers) return emptyWorklist(asked);
   try {
-    return buildWorklist(asked, asked.answers[0], asked.answers[1], model);
+    return buildWorklist(asked, asked.answers[0], asked.answers[1], asked.answers[2], model);
   } catch (e) {
     return emptyWorklist({ status: 'error', via: asked.via, note: `unreadable code graph answer: ${String((e as Error)?.message ?? e).slice(0, 300)}` });
   }
 }
 
-function buildWorklist(s: StatusFields, surfaceAns: ToolAnswer, routesAns: ToolAnswer, model: ThreatModel | null): Worklist {
+/**
+ * A route as the attack surface labels it: `METHODS path`, methods comma-joined
+ * (`ANY` when none), the computed-path expression when there is no template.
+ * The join from an auth-boundary row to a worklist route is on this label, so it
+ * is spelt the way the graph spells the attack surface's own `routes`.
+ */
+function routeLabel(r: any): string {
+  const methods = Array.isArray(r?.methods) && r.methods.length ? (r.methods as unknown[]).map(String).join(',') : 'ANY';
+  return `${methods} ${r?.path ?? r?.path_expr ?? ''}`;
+}
+
+function routeAccess(route: string, a: any): RouteAccess {
+  const evidence = ((a?.evidence ?? []) as any[]).slice(0, 3)
+    .map(e => `${String(e?.text ?? e?.rule ?? '').trim()}${e?.at ? ` at ${e.at}` : ''}`)
+    .filter(Boolean);
+  return {
+    route,
+    level: String(a?.level ?? 'unknown'),
+    basis: a?.basis ? String(a.basis) : '',
+    unknown_reason: a?.unknown_reason ? String(a.unknown_reason) : '',
+    evidence_summary: String(a?.summary ?? ''),
+    evidence,
+    caveats: ((a?.caveats ?? []) as unknown[]).map(String).filter(Boolean),
+  };
+}
+
+/** Read the auth-boundary answer into the worklist: the verdict always, the levels only when it is `classified`. */
+function attachAccess(w: Worklist, authAns: ToolAnswer | undefined): void {
+  if (!authAns || !authAns.ok) {
+    w.access_withheld_reason = !authAns || authAns.unsupported
+      ? `the installed code graph does not classify route access (${TOOL_AUTH_BOUNDARY})`
+      : `${TOOL_AUTH_BOUNDARY} failed: ${authAns.message.slice(0, 300)}`;
+    return;
+  }
+  const auth = authAns.value ?? {};
+  w.auth_verdict = String(auth.verdict ?? '');
+  const density = auth.resolver_density;
+  if (density && typeof density === 'object') {
+    w.resolver_density = {
+      sufficient: density.sufficient === true,
+      edges_per_callable: typeof density.edges_per_callable === 'number' ? density.edges_per_callable : null,
+      shortfalls: ((density.shortfalls ?? []) as unknown[]).map(String).filter(Boolean),
+    };
+  }
+  if (w.auth_verdict !== ACCESS_USABLE_VERDICT) {
+    const note = String(auth.verdict_note ?? '').trim();
+    w.access_withheld_reason = `the graph's route access verdict is '${w.auth_verdict || 'none'}'${note ? `: ${note}` : ''}`;
+    return;
+  }
+  const byHandler = new Map<string, Map<string, any>>();
+  for (const r of (auth.routes ?? []) as any[]) {
+    if (!r?.handler || !r.access) continue;
+    const labels = byHandler.get(String(r.handler)) ?? new Map<string, any>();
+    labels.set(routeLabel(r), r.access);
+    byHandler.set(String(r.handler), labels);
+  }
+  for (const e of w.entries) {
+    const labels = byHandler.get(e.handler);
+    if (!labels) continue;
+    e.access = e.routes.filter(route => labels.has(route)).map(route => routeAccess(route, labels.get(route)));
+  }
+}
+
+function buildWorklist(s: StatusFields, surfaceAns: ToolAnswer, routesAns: ToolAnswer, authAns: ToolAnswer | undefined, model: ThreatModel | null): Worklist {
   const w = emptyWorklist(s);
   if (!surfaceAns.ok) {
     return { ...w, status: 'error', note: `${TOOL_SURFACE} failed: ${surfaceAns.message.slice(0, 300)}` };
@@ -521,6 +666,7 @@ function buildWorklist(s: StatusFields, surfaceAns: ToolAnswer, routesAns: ToolA
       score: Number(r.score ?? 0),
       reaches: ((r.classes ?? []) as any[]).map(sinkReach).sort((a, b) => b.weighted - a.weighted),
       annotated: annotationState(spans, file, line, name),
+      access: [],
     };
   });
   entries.sort((a, b) =>
@@ -530,6 +676,7 @@ function buildWorklist(s: StatusFields, surfaceAns: ToolAnswer, routesAns: ToolA
     || a.handler.localeCompare(b.handler));
   entries.forEach((e, i) => { e.position = i + 1; });
   w.entries = entries;
+  attachAccess(w, authAns);
   return w;
 }
 
@@ -632,11 +779,92 @@ function describeReaches(reaches: SinkReach[]): string {
   return reaches.map(c => `${c.class} ${c.sinks}${c.example ? ` (e.g. ${c.example})` : ''}`).join('; ');
 }
 
-/** One worklist row as a line of prose. */
+/** `public: absence`, `authenticated: declared`, `unknown: ambiguous_handler_check`. */
+function accessTag(a: RouteAccess): string {
+  const why = a.level === 'unknown' ? a.unknown_reason : a.basis;
+  return why ? `${a.level}: ${why}` : a.level;
+}
+
+/**
+ * One worklist row as a line of prose. A route the graph classified carries its
+ * access level in brackets; with no classification the row reads as it always did.
+ */
 export function formatWorklistEntry(e: WorklistEntry): string {
   const where = `${e.file}${e.line != null ? `:${e.line}` : ''} ${e.name}`.trim();
-  const routes = e.routes.length ? e.routes.join(', ') : '(entry point, no route)';
+  const access = new Map((e.access ?? []).map(a => [a.route, a]));
+  const routes = e.routes.length
+    ? e.routes.map(r => (access.has(r) ? `${r} [${accessTag(access.get(r)!)}]` : r)).join(', ')
+    : '(entry point, no route)';
   return `${String(e.position).padStart(2)}. [${e.annotated}] ${routes} → ${where} — reach ${e.score}: ${describeReaches(e.reaches)}`;
+}
+
+/**
+ * The kind of trust boundary a sink class sits behind. Template rendering and
+ * crypto stay inside the process that calls them, so they suggest none.
+ */
+export const SINK_BOUNDARY_KIND: Readonly<Record<string, string>> = {
+  data_layer: 'data boundary',
+  exec: 'process boundary',
+  network: 'vendor/egress boundary',
+  filesystem: 'filesystem boundary',
+};
+
+/** How many routes of one handler get their own caller-boundary line. */
+const SUGGESTED_ROUTES_PER_ENTRY = 3;
+
+/** The caller-side boundary one classified route implies, with what holds it. */
+function callerBoundaryLine(a: RouteAccess): string {
+  const enforced = a.evidence.length ? a.evidence.join('; ') : a.evidence_summary;
+  const caveat = a.caveats.length ? ` (the graph's caveat: ${a.caveats.join('; ')})` : '';
+  switch (a.level) {
+    case 'public':
+      return a.basis === 'explicit_public'
+        ? `caller boundary, ${a.route}: public by an explicit opt-out (${enforced || 'see the route'}); the line is open on purpose, so say so in the description`
+        : `caller boundary, ${a.route}: public — the graph found no guard before or inside the handler; if the route is meant to be open, say so in the description, and if it is not, that is an @exposes, not a boundary`;
+    case 'authenticated':
+    case 'elevated':
+      return `caller boundary, ${a.route}: ${a.level} (${a.basis || 'basis not stated'}) — enforced by ${enforced || 'a guard the graph did not cite'}${caveat}`;
+    default:
+      return `caller boundary, ${a.route}: access unknown (${a.unknown_reason || 'no reason given'}) — read the guard yourself, and name none the code does not show`;
+  }
+}
+
+/**
+ * The boundaries one worklist row suggests: one per classified route, between
+ * an outside caller and the handler, and one per sink class that sits behind a
+ * trust change, anchored at the graph's example sink call. Empty when the row
+ * suggests none.
+ */
+export function suggestBoundaries(e: WorklistEntry): string[] {
+  const lines: string[] = [];
+  const access = e.access ?? [];
+  for (const a of access.slice(0, SUGGESTED_ROUTES_PER_ENTRY)) lines.push(callerBoundaryLine(a));
+  if (access.length > SUGGESTED_ROUTES_PER_ENTRY) lines.push(`${access.length - SUGGESTED_ROUTES_PER_ENTRY} more route(s) on this handler; guardlink_worklist lists their access`);
+  for (const c of e.reaches) {
+    const kind = SINK_BOUNDARY_KIND[c.class];
+    if (kind) lines.push(`${kind} (${c.class})${c.example ? ` at ${c.example}` : ''}`);
+  }
+  return lines;
+}
+
+/** The boundary-suggestion section for the rows shown, or [] when none of them suggests one. */
+function renderBoundarySuggestions(shown: WorklistEntry[]): string[] {
+  const blocks: string[] = [];
+  for (const e of shown) {
+    const lines = suggestBoundaries(e);
+    if (lines.length === 0) continue;
+    const where = `${e.file}${e.line != null ? `:${e.line}` : ''} ${e.name}`.trim();
+    blocks.push(`- ${String(e.position).padStart(2)}. ${where}`, ...lines.map(l => `    ${l}`));
+  }
+  if (blocks.length === 0) return [];
+  return [
+    '',
+    '### Boundaries the graph suggests',
+    'Each row above crosses trust lines the code shows: an outside caller reaching the handler, and the handler reaching storage, a spawned process, the network or the filesystem. '
+    + 'Where the model does not already declare one (guardlink_lookup "boundary for <asset>"), write a `@boundary` between the handler\'s asset and the other side — `Client` or an `External.*` asset for a caller, the store, process or vendor for a sink — '
+    + 'and name what enforces the line in its description: the guard the graph cites, once you have read it in source. A suggestion is where to look, not a claim; write none you cannot see in the code.',
+    ...blocks,
+  ];
 }
 
 /**
@@ -663,6 +891,11 @@ export function renderWorklistBlock(w: Worklist | null | undefined, playbookUse 
     + 'a sink reached is where to look, not proof that attacker input arrives there unchecked — the evidence bar still applies to every claim.',
   );
   lines.push('`[none]` = its file has no annotations; `[file]` = the file does, but none is anchored on this handler; `[handler]` = annotated here.');
+  if (accessUsable(w)) {
+    lines.push('A route\'s bracket is who may reach it, as the graph classified it from guards in source: `public`, `authenticated` or `elevated`, with the basis (`declared` = middleware, router scope, API spec or decorator; `handler` = a check inside it; `explicit_public` = an opt-out; `absence` = nothing found and everything readable), or `unknown` with the reason. Read unknown as unknown, never as public.');
+  } else if (w.auth_verdict) {
+    lines.push(`Route access levels are withheld: ${w.access_withheld_reason}.`);
+  }
   if (w.currency_caveat) lines.push(`Caveat: ${w.currency_caveat}.`);
   lines.push('');
   lines.push(...shown.map(formatWorklistEntry));
@@ -676,6 +909,7 @@ export function renderWorklistBlock(w: Worklist | null | undefined, playbookUse 
   tail.push('The list covers only the frameworks the graph recognises; an entry point it does not recognise (a CLI command, a message consumer, another framework) is absent, not safe.');
   tail.push('Before writing an @exposes or @flows for one of these, guardlink_reach(symbol) shows what that function reaches and by which path.');
   lines.push('', ...tail);
+  lines.push(...renderBoundarySuggestions(shown));
   if (playbookUse) lines.push('', playbookUse.trim());
   return lines.join('\n');
 }
@@ -686,5 +920,6 @@ export function worklistSummaryLine(w: Worklist): string {
   if (w.status !== 'available') return `Code graph: not used — ${w.note}`;
   if (!worklistUsable(w)) return `Code graph (via ${w.via}): worklist withheld — ${w.withheld_reason}`;
   const open = w.entries.filter(e => e.annotated !== 'handler').length;
-  return `Code graph (via ${w.via}): ${w.entries.length} entry point(s) ranked, ${open} not yet annotated at the handler; worklist added to the prompt`;
+  const access = accessUsable(w) ? ', route access classified' : w.auth_verdict ? `, route access withheld (${w.auth_verdict})` : '';
+  return `Code graph (via ${w.via}): ${w.entries.length} entry point(s) ranked, ${open} not yet annotated at the handler${access}; worklist added to the prompt`;
 }

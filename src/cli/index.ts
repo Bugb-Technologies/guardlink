@@ -19,7 +19,7 @@
  *   guardlink ask <query>             Ask questions about threats and codebase context
  *   guardlink annotate <prompt>       Launch coding agent to add annotations (a playbook supplies the method; the gate checks the result)
  *   guardlink lint [dir]              Check annotations against the evidence bar; --since <ref> for what a session added
- *   guardlink hypothesis <cmd>        What happened when an exposure was tested: list, next, refute, confirm (--from-scan)
+ *   guardlink hypothesis <cmd>        What happened when an exposure was tested: list, next, refute, confirm (--from-scan); and a boundary: boundaries, support, contradict
  *   guardlink review [dir]            Interactive governance review of unmitigated exposures
  *   guardlink entitle [dir]           Accept/reject/defer proposed @entitles claims
  *   guardlink config <action>         Manage LLM provider configuration
@@ -66,11 +66,12 @@ import { generateDashboardHTML, loadSince } from '../dashboard/index.js';
 import type { SinceInput } from '../dashboard/analytics.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt, buildTranslatePrompt, buildAskPrompt, resolveAnnotationMode } from '../agents/index.js';
 import { loadWorklist, worklistSummaryLine } from '../codegraph/index.js';
+import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary-check.js';
 import { selectAnnotatePlaybook, selectReportShape, ANNOTATE_PLAYBOOKS, REPORT_SHAPES } from '../playbooks/index.js';
 import { lintAnnotations, runGate, formatGateReport, buildGateFollowUp, stripViolations, RULE_FIX } from '../gate/index.js';
 import { relationRecords, CLAIM_KEY_NAMES, CLAIM_KEY_SURFACES } from '../parser/claim-key.js';
 import { parseFindingsBlock, validateFindings } from '../analyze/findings.js';
-import { readHypotheses, classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, confirmedLine, writeConfirmedLine, formatHypothesisList, formatQueue, formatIntake, formatOutcome, formatImport, HYPOTHESES_FILE } from '../hypothesis/index.js';
+import { readHypotheses, classifyHypotheses, attachHypotheses, rankUntested, recordOutcome, importScan, confirmedLine, writeConfirmedLine, formatHypothesisList, formatQueue, formatIntake, formatOutcome, formatImport, HYPOTHESES_FILE, classifyBoundaryClaims, recordBoundaryOutcome, formatBoundaryOutcome, formatBoundaryList, BOUNDARY_CLAIM_KEY_NAMES } from '../hypothesis/index.js';
 import type { HypothesisClassification } from '../hypothesis/index.js';
 import { resolveConfig, saveProjectConfig, saveGlobalConfig, loadProjectConfig, loadGlobalConfig, maskKey, describeConfigSource } from '../agents/config.js';
 import {
@@ -349,7 +350,8 @@ program
   .option('--strict', 'Also fail on unmitigated exposures (for CI gates)')
   .option('--artifacts', 'Also check .guardlink/graph/ artifacts against the current model; exits non-zero on drift')
   .option('--sync', 'Also refresh agent instruction files (this used to happen unasked — see D16)')
-  .action(async (dir: string, opts: { project: string; strict?: boolean; artifacts?: boolean; sync?: boolean }) => {
+  .option('--code-graph', 'Also check declared @boundary claims against a code graph, when one is installed and built: a stated access level a route contradicts, a route handler with no boundary to the outside, a boundary nothing crosses. Warnings only')
+  .action(async (dir: string, opts: { project: string; strict?: boolean; artifacts?: boolean; sync?: boolean; codeGraph?: boolean }) => {
     const root = resolve(dir);
     const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
 
@@ -394,7 +396,18 @@ program
     const ledgerRead = readLedger(root);
     const ledgerDiags = ledgerRead.diagnostic ? [ledgerRead.diagnostic] : [];
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...acceptanceDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags];
+    // Opt-in, so validate without the flag never consults a graph and prints what
+    // it always printed. The checks are warnings: the graph's measurement
+    // disagrees with a claim a human wrote, and a human decides which is wrong.
+    let boundaryDiags: ParseDiagnostic[] = [];
+    if (opts.codeGraph) {
+      // @flows #cli -> #codegraph via loadWorklist -- "validate --code-graph: project root; ranked entry points with route access, or a status"
+      const worklist = await loadWorklist(root, model);
+      boundaryDiags = checkBoundaries(model, worklist);
+      console.error(boundaryCheckSummaryLine(worklist, boundaryDiags));
+    }
+
+    const allDiags = [...diagnostics, ...danglingDiags, ...acceptAuditDiags, ...acceptanceDiags, ...actorDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags, ...boundaryDiags];
 
     // Check for unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);
@@ -1703,7 +1716,7 @@ program
 
 const hypothesis = program
   .command('hypothesis')
-  .description('What happened when an exposure was tested: record confirmed or refuted outcomes with evidence, see what is untested, and what to test next');
+  .description('What happened when an exposure was tested: record confirmed or refuted outcomes with evidence, see what is untested, and what to test next. Declared boundaries are claims too: record them supported or contradicted');
 
 /** Parse, classify, and hand back both — every subcommand starts here. */
 async function hypothesisContext(dir: string, projectOpt?: string): Promise<{ root: string; project: string; model: ThreatModel; c: HypothesisClassification }> {
@@ -1857,11 +1870,67 @@ hypothesis
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--evidence <text>', 'The request and response, the reproduction, or the scan proof (required without --from-scan)')
   // @comment -- "The accepted names and containers are INTERPOLATED from the one shared definition, not written out here. A hand-written copy drifts benignly when the definition widens (the help under-advertises) and harmfully when it narrows: the help then advertises a name the reader refuses, which is the one thing this definition exists to make impossible. The no-stamp banner in format.ts interpolates for the same reason, and both are pinned by tests that take the names out of the text and require the reader to accept them"
-  .option('--from-scan <file>', `A cxg scan report (JSON). A finding carrying the claim key (${CLAIM_KEY_NAMES.join(', ')} — at the finding's top level or in its annotation, spread or as a forwarded ${CLAIM_KEY_SURFACES.map(s => s.container).join('/')} map) resolves to the claim with that key, or is reported stale; only an unstamped finding falls to the weaker joins — location, then asset and threat, then CWE`)
+  .option('--from-scan <file>', `A cxg scan report (JSON). A finding carrying the claim key (${CLAIM_KEY_NAMES.join(', ')} — at the finding's top level or in its annotation, spread or as a forwarded ${CLAIM_KEY_SURFACES.map(s => s.container).join('/')} map) resolves to the claim with that key, or is reported stale; only an unstamped finding falls to the weaker joins — location, then asset and threat, then CWE. A key that names a @boundary, or one under ${BOUNDARY_CLAIM_KEY_NAMES.join('/')} beside the exposure's, records that boundary contradicted (supported when the finding's boundary_outcome says so), in the ledger only`)
   .option('--by <name>', 'Who tested it (default: human:<git user.name>; cxg for --from-scan)')
   // @comment -- "ONE string stating BOTH behaviours, because --write sits on `confirm` and genuinely serves both paths. An author writing against this flag reads --help, not our runtime output: 'inserts the @confirmed line' alone over-promises on the one surface that writes into someone else's repository, and an operator who believes every joined confirmation landed stops checking the ones that did not — which is exactly the knowledge the withholding rule exists to give them. Two per-path wordings were rejected for the reason this branch has already corrected on names, containers, grammars and positions: two descriptions of one thing can disagree, and one string cannot contradict itself"
   .option('--write', 'Also insert the @confirmed line into the source. On the manual confirm <file:line> path it goes beneath that @exposes; under --from-scan only uncontested key-verified confirmations are written — the rest stay in the ledger alone and are reported with the command to record them by hand')
   .action(outcomeAction('confirmed'));
+
+hypothesis
+  .command('boundaries')
+  .description('Every declared @boundary with its tested state: unverified, supported, contradicted, or retest (contradicted, then the code changed)')
+  .argument('[dir]', 'Project directory', '.')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('--state <state>', 'Only this state: unverified, supported, contradicted, retest')
+  .option('--json', 'Machine-readable output (guardlink.boundary-claims/v1)')
+  .action(async (dir: string, opts: { project?: string; state?: string; json?: boolean }) => {
+    const { root, model } = await hypothesisContext(dir, opts.project);
+    if (opts.state && !['unverified', 'supported', 'contradicted', 'retest'].includes(opts.state)) { console.error(`Unknown state ${opts.state}`); process.exitCode = 1; return; }
+    // @flows LedgerFile -> #cli via classifyBoundaryClaims -- "Boundary outcomes read back by claim key"
+    const c = classifyBoundaryClaims(model, readHypotheses(root));
+    if (opts.json) {
+      const records = (opts.state ? c.records.filter(r => r.state === opts.state) : c.records).map(r => ({
+        key: r.key, claim: r.claim, id: r.id || null, asset_a: r.asset_a, asset_b: r.asset_b, description: r.description, file: r.file, line: r.line, state: r.state, expired: r.expired,
+        outcome: r.entry ? { outcome: r.entry.outcome, evidence: r.entry.evidence, by: r.entry.by, at: r.entry.at, source: r.entry.source, history: r.entry.history.length } : null,
+        previous: r.previous ? { outcome: r.previous.outcome, by: r.previous.by, at: r.previous.at } : null,
+      }));
+      console.log(JSON.stringify({ schema: 'guardlink.boundary-claims/v1', root, ledger: c.ledger, summary: c.summary, records }, null, 2));
+      return;
+    }
+    console.log(formatBoundaryList(c, opts.state));
+  });
+
+const boundaryAction = (outcome: 'supported' | 'contradicted') => async (target: string, dir: string, opts: { project?: string; evidence?: string; by?: string }) => {
+  const { root, model } = await hypothesisContext(dir, opts.project);
+  if (!opts.evidence) { console.error(`--evidence is required: say what was sent from the outer side and what came back. A boundary marked ${outcome} without it is a guess.`); process.exitCode = 1; return; }
+  try {
+    const { record, entry } = recordBoundaryOutcome(root, model, target, outcome, { evidence: opts.evidence, by: opts.by || defaultVerifier(root), at: nowIso() });
+    console.log(formatBoundaryOutcome(record, entry));
+  } catch (e) {
+    console.error(`✗ ${(e as Error).message}`);
+    process.exitCode = 1;
+  }
+};
+
+hypothesis
+  .command('support')
+  .description('Record that a declared @boundary held when tested: a probe from the outer side was refused where the boundary says it is')
+  .argument('<target>', 'The boundary: its claim key, its #id, or the file:line of its @boundary')
+  .argument('[dir]', 'Project directory', '.')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('--evidence <text>', 'What was sent from the outer side and what came back (required)')
+  .option('--by <name>', 'Who tested it (default: human:<git user.name>)')
+  .action(boundaryAction('supported'));
+
+hypothesis
+  .command('contradict')
+  .description('Record that a declared @boundary did not hold: a probe from the outer side got through where the boundary says it is refused')
+  .argument('<target>', 'The boundary: its claim key, its #id, or the file:line of its @boundary')
+  .argument('[dir]', 'Project directory', '.')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('--evidence <text>', 'The request that got through and its response (required)')
+  .option('--by <name>', 'Who tested it (default: human:<git user.name>)')
+  .action(boundaryAction('contradicted'));
 
 // ─── translate ───────────────────────────────────────────────────────
 
