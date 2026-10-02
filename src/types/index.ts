@@ -490,6 +490,13 @@ export interface ThreatModel {
   comments: ThreatModelComment[];
 
   coverage: CoverageStats;
+
+  /**
+   * Derived on export (SPEC §5.5): unentitled reaches and the gating of each
+   * mutating effect. Written by `withReachAnalysis` only when the model declares
+   * a reach, effect or gate; never read back as input.
+   */
+  reach_analysis?: import('../parser/reach.js').ReachAnalysis;
 }
 
 export interface ThreatModelAsset {

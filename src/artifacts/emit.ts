@@ -49,6 +49,7 @@ import { canonicaliser } from '../mcp/subgraph.js';
 import { listFeatures, filterByFeature } from '../parser/feature-filter.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 import { computeAnnotationHash } from '../parser/annotation-hash.js';
+import { withReachAnalysis } from '../parser/reach.js';
 import { readGitSha } from '../workspace/metadata.js';
 import { getPackageVersion } from '../version.js';
 import type { ThreatModel } from '../types/index.js';
@@ -428,7 +429,10 @@ export function emitArtifacts({ root, model, dryRun = false }: EmitOptions): Emi
   // actual model carried nothing. So a `model.json` from three commits ago sat
   // in a repo looking exactly like a current one, and `validate --artifacts`
   // said "Artifacts are current" because the diagrams happened to be.
-  const { generated_at, ...durableModel } = ordered;
+  //
+  // `reach_analysis` (SPEC §5.5) is built from the ordered model, so its
+  // indexes point into the arrays written beside it.
+  const { generated_at, ...durableModel } = withReachAnalysis(ordered);
   write(join(guardlinkDir, 'model.json'), '.guardlink/model.json',
     JSON.stringify({ provenance, ...durableModel }, (key, value) => (key === 'anchor' || key === 'blame' || key === 'blame_context' || key === 'hypothesis' ? undefined : value), 2) + '\n');
 

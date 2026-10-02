@@ -78,7 +78,7 @@ the same change.** This includes: new endpoints, authentication/authorization lo
   guessing** — send it a bad query to get the list. Beyond `asset`/`threat`/`control`, it reaches
   every relation the model holds: `owner of X`, `handles pii`, `assumptions for X`, `audits for X`,
   `validations for X`, `acceptances`, `transfers`, `comments for X`, `shields`, `cross-repo refs`,
-  `agents`, `unentitled reaches`, `effects for X`, `gates for X`,
+  `agents`, `unentitled reaches`, `effects for X`, `gates for X`, `ungated effects`,
   and `cwe:CWE-89` / `owasp:A03` for scanner findings. Without MCP, `guardlink lookup "<form>"` answers the same forms.
 - Reference matches report `matched_via: exact | alias | substring`. A substring match is a
   suggestion, not an identification; `ambiguous` with `candidates` means several records tied.
@@ -170,7 +170,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - LLMConfig -> #llm-client via chatCompletion
 - #llm-client -> LLMProvider via fetch
 - LLMProvider -> #llm-client via response
-- … and 182 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
+- … and 183 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
 
 ### Features (filter with `--feature`)
 
@@ -179,11 +179,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-884 annotations, 20 assets, 16 threats, 14 controls, 127 exposures, 0 confirmed, 130 mitigations, 3 actors, 1 entitlements, 202 flows, 2 features
+885 annotations, 20 assets, 16 threats, 14 controls, 127 exposures, 0 confirmed, 130 mitigations, 3 actors, 1 entitlements, 203 flows, 2 features
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v3:58a5b22940f27108f0890a80cc509fe5e68f0e97f88f9812332529f9e00b729a`
+- `annotation_hash`: `sha256-v3:9babda79ed52b602afa4ff8920c7a1e2743162457b8a33a234491d30019b2293`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.

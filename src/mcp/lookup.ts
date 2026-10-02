@@ -17,6 +17,7 @@
  *   - "unentitled reaches [for #actor]" → reaches no cited @entitles covers (can minus may)
  *   - "effects [for #asset]" → @effects claims: what code does to an asset, as whom
  *   - "gates [for #asset]" → @gates claims: who approves before effects on an asset land
+ *   - "ungated effects [for #asset]" → mutating @effects no @gates covers
  *   - "boundary #config" → boundaries involving asset
  *   - Free text → fuzzy match across assets, threats, controls
  *
@@ -24,12 +25,13 @@
  * @mitigates #mcp against #redos using #regex-anchoring -- "Patterns are simple and bounded"
  * @flows QueryString -> #mcp via lookup -- "Query input path"
  * @comment -- "Pure function; no I/O; operates on in-memory ThreatModel"
- * @comment -- "The reach forms project the parsed model and add no input surface. `unentitled reaches` answers from findUnentitledReaches, the same join diff uses, so the two cannot disagree about can minus may"
+ * @comment -- "The reach forms project the parsed model and add no input surface. `unentitled reaches` answers from findUnentitledReaches, the same join diff uses, so the two cannot disagree about can minus may; `ungated effects` answers from buildReachAnalysis, the block the model export carries"
  */
 
 import { buildCoverageIndex, findUnmitigatedExposures } from '../parser/coverage.js';
 import { ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
-import { actorResolver, findUnentitledReaches } from '../parser/reach.js';
+import { actorResolver, findUnentitledReaches, buildReachAnalysis } from '../parser/reach.js';
+import { relationRecords } from '../parser/claim-key.js';
 import type {
   ThreatModel, ThreatModelAsset, ThreatModelThreat, ThreatModelControl,
   ThreatModelTransfer, ThreatModelAcceptance,
@@ -103,6 +105,7 @@ export const SUPPORTED_QUERY_FORMS = [
   'unentitled reaches [for <actor>]  (capabilities reached with no cited @entitles covering them: can minus may)',
   'effects [for <asset>]     (what code does to an asset: read, write, delete, execute, spend, notify)',
   'gates [for <asset>]       (approval steps: who decides before effects on an asset land)',
+  'ungated effects [for <asset>]  (write, delete, execute, spend or notify with no @gates covering it)',
   'cross-repo refs [for <repo-or-tag>]  (sibling-repo tags from workspace.yaml — NOT cwe:/owasp: — accepts `external refs` as an alias)',
   'cwe:CWE-89 | owasp:A03 | CWE-89  (external identifiers declared on threats — the scanner bridge)',
   '<id>            (bare identifier, fuzzy match across all categories)',
@@ -202,6 +205,23 @@ export function lookup(model: ThreatModel, query: string): LookupResult {
   const unentitledQ = q.match(/^unentitled\s+(?:reach(?:es)?|agents?)(?:\s+(?:for|of|by)\s+(.+))?$/);
   if (unentitledQ) {
     return lookupUnentitledReaches(model, query, unentitledQ[1]?.trim());
+  }
+
+  // ── "ungated effects [for <asset>]" — before the plain effects form, for
+  //    the same reason as `unentitled reaches`. ──
+  const ungatedQ = q.match(/^ungated\s+(?:effects?|mutations?)(?:\s+(?:for|on)\s+(.+))?$/);
+  if (ungatedQ) {
+    const rows = buildReachAnalysis(model).mutating_effects.filter(e => !e.gated);
+    const project = (e: typeof rows[number]) => ({
+      effect: e.effect, asset: e.asset, execution_identity: e.identity ?? undefined,
+      description: e.description ?? undefined, file: e.file, line: e.line, claim_key: e.claim_key,
+      gate_near_misses: e.gate_near_misses.map(g => ({
+        blocker: g.blocker, approver: g.approver, capability: g.canonical_capability, file: g.file, line: g.line,
+      })),
+      colocated_reaches: e.colocated_reaches.map(r => ({ actor: r.actor, agent: r.agent, capability: r.canonical_capability })),
+    });
+    if (!ungatedQ[1]) return { query, type: 'ungated_effects', count: rows.length, results: rows.map(project) };
+    return lookupAssetRelation(model, query, 'ungated_effects', ungatedQ[1].trim(), resolve, rows, e => e.asset, project);
   }
 
   // ── "reaches [for <actor>]" / "agents [for <actor>]" ──
@@ -558,6 +578,9 @@ function lookupReaches(model: ThreatModel, query: string, agentsOnly: boolean, a
 function lookupUnentitledReaches(model: ThreatModel, query: string, actorRef?: string): LookupResult {
   const actorKey = actorResolver(model);
   const wanted = actorRef ? actorKey(actorRef) : undefined;
+  // The claim key joins a row to the model export's reach_analysis and to the
+  // SARIF pentest profile's guardlink/agent-reach result for the same claim.
+  const keyOf = new Map<object, string>(relationRecords(model).map(r => [r.location, r.key]));
   const results = findUnentitledReaches(model)
     .filter(u => !wanted || actorKey(u.reach.actor) === wanted)
     .map(({ reach: r, near_misses }) => ({
@@ -568,6 +591,7 @@ function lookupUnentitledReaches(model: ThreatModel, query: string, actorRef?: s
       caller_identity: r.identity,
       description: r.description,
       ...loc(r.location),
+      claim_key: keyOf.get(r.location),
       near_misses: near_misses.map(n => ({
         blocker: n.blocker,
         asset: n.entitlement.asset,

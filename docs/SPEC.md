@@ -761,7 +761,9 @@ async function requireApproval(refund: Refund) { … }
 
 **Can minus may.** `@entitles` (§3.2) says an actor *may* hold a capability, and only a human writes it. `@agents`/`@reaches` say an actor *can*, and are observations an agent may write. A reach that no entitlement covers is an **unentitled reach**: a capability the code hands out that nobody approved — for an LLM agent, the Excessive Agency list. An entitlement covers a reach when it names the same actor (resolving `#id` and declared name to one identity) and the same normalised capability, it is cited (an inert entitlement covers nothing), and, when the reach names an asset, it names the same asset. An entitlement naming no asset does not cover a reach that names one. Every rule errs toward reporting the reach. `guardlink_lookup("unentitled reaches")` answers it (§8.2), and `guardlink diff` reports a reach that becomes unentitled (§7.1).
 
-All four verbs are agent-writable. None of them has export semantics: they add no SARIF result, remove none, and never close a finding (§6.1). `guardlink validate` reports an actor or approver never declared with `@actor` as `undeclared-actor` (an error, as on `@entitles`) and an undefined asset or identity `#id` as `dangling-ref`.
+**Gated and ungated effects.** A gate covers an `@effects` on the same asset when it names no capability, or when every reach bound to the same code as the effect — the `@agents` written in the effect's doc-block — is the capability the gate names. An effect with no reach bound to its code has no known route, so a capability-scoped gate does not cover it. A mutating effect (any but `read`) that no gate covers is **ungated**. Whether the gate really sits on the route at runtime is a code-graph question; this join only says what the annotations declare. The model export carries both answers, unentitled reaches and the gating of each mutating effect, as `reach_analysis` (§5.5).
+
+All four verbs are agent-writable. None of them has export semantics: they add no `github`-profile SARIF result, remove none, and never close a finding (§6.1). The `pentest` profile lists every reach and every mutating effect as a target to test (§6.8). `guardlink validate` reports an actor or approver never declared with `@actor` as `undeclared-actor` (an error, as on `@entitles`) and an undefined asset or identity `#id` as `dangling-ref`.
 
 ### 3.3. Lifecycle Annotations
 
@@ -1115,9 +1117,13 @@ Parsing all annotations in a codebase produces a **ThreatModel** — a typed dat
     "unannotated_critical": [
       { "file": "src/api/admin.ts", "line": 10, "kind": "function", "name": "deleteUser" }
     ]
-  }
+  },
+
+  "reach_analysis": { "version": 1, "summary": { "…": 0 }, "unentitled_reaches": [], "mutating_effects": [] }
 }
 ```
+
+`reach_analysis` is derived, not declared: §5.5.
 
 ### 5.2. Location Object
 
@@ -1157,6 +1163,68 @@ An `@assumes` annotation on an asset is a **latent risk** — if the assumption 
 
 A `@validates` annotation with no corresponding test execution data is **unverified** — the control exists in code but has no proof it works.
 
+### 5.5. Reach Analysis (derived)
+
+`reaches`, `effects` and `gates` are what the annotations say. `reach_analysis` is what follows from them by the two joins of §3.2.1 — can minus may, and the gating of each effect — computed by the exporter so a consumer does not reimplement either join and drift from it. It is written beside the declared arrays wherever the model is exported (below), as the last key of the document.
+
+```json
+"reach_analysis": {
+  "version": 1,
+  "summary": {
+    "reaches": 7, "agent_reaches": 6, "unentitled_reaches": 5,
+    "effects": 9, "mutating_effects": 7, "ungated_effects": 5, "gates": 2
+  },
+  "unentitled_reaches": [
+    {
+      "index": 2, "claim_key": "<sha256>:0", "file": "src/tools.ts", "line": 14,
+      "verb": "agents", "actor": "#support-agent", "agent": true,
+      "capability": "run-sql", "canonical_capability": "run_sql",
+      "asset": "#tool-surface", "identity": null, "description": "Debug tool, still registered",
+      "near_misses": [],
+      "colocated_effects": [
+        { "index": 4, "claim_key": "<sha256>:0", "file": "src/tools.ts", "line": 15,
+          "effect": "delete", "asset": "#orders-db", "identity": null, "description": "runRaw executes the model's SQL" }
+      ]
+    }
+  ],
+  "mutating_effects": [
+    {
+      "index": 1, "claim_key": "<sha256>:0", "file": "src/billing.ts", "line": 5,
+      "effect": "spend", "asset": "#payments", "identity": "#billing-sa", "description": "Nightly sweep retries failed refunds",
+      "gated": false,
+      "gates": [],
+      "gate_near_misses": [
+        { "index": 0, "claim_key": "<sha256>:0", "file": "src/approval.ts", "line": 5,
+          "asset": "#payments", "approver": "#support-human",
+          "capability": "issue-refund", "canonical_capability": "issue_refund", "blocker": "capability-unknown" }
+      ],
+      "colocated_reaches": []
+    }
+  ]
+}
+```
+
+- **`version`** is `1`. It is bumped when a key is renamed or removed, or when a rule of §3.2.1 changes what a row means. Adding a key does not bump it; a reader ignores keys it does not know.
+- **Every row points at its claim twice:** `index` into the array of the same document (`reaches`, `effects`, `gates` or `entitlements`, by what the row is), and `claim_key` (§6.5), which is also the claim key of the claim's SARIF result (§6.8). Indexes are only valid against the arrays they were written beside; the claim key survives reordering. `file` and `line` are the claim's location.
+- **`unentitled_reaches`** — every `@agents` or `@reaches` no entitlement covers, in model order. `near_misses` lists each entitlement naming the same actor and capability that still does not count, with `blocker` `uncited`, `no-asset` or `other-asset`, and `cited`. Entitled reaches are not listed; they are the `reaches` whose `index` no row names.
+- **`mutating_effects`** — every `@effects` except `read`, in model order, with `gated`. `gates` are the gates that cover it; `gate_near_misses` the gates on the same asset that do not, with `blocker` `capability-unknown` (no reach is bound to the effect's code, so nothing says which capability reaches it) or `other-capability` (a reach bound there is a capability the gate does not name).
+- **`colocated_effects` / `colocated_reaches`** — the claims bound to the same code: the same file and the same structure-layer anchor (§5.2), which is what writing them in one doc-block gives. A file-scope anchor binds nothing together. These are the only links from a reach to an effect the model holds; a code graph gives the rest.
+- Values the annotation leaves out are `null`, never absent.
+
+**When it is written.** Only when the model declares at least one reach, effect or gate. A model without those verbs exports the same bytes it did before the block existed, and its annotation hash (§8.2.2) is unchanged either way: the block is derived from the claims the hash already covers. A reader tells "no reach verbs" from "an exporter that predates the block" by `reaches`, which every exporter that writes the block also writes, empty or not.
+
+**Where a consumer reads it.**
+
+| Surface | What it carries |
+|---|---|
+| `guardlink parse [-o file]`, `guardlink report --format json`, MCP `guardlink_parse` (full form), the `guardlink://model` resource and the MCP report's `.json` | The model with `reach_analysis`, in model order |
+| `.guardlink/model.json` (`guardlink artifacts`) | The same, canonically ordered, with indexes into the ordered arrays |
+| `guardlink lookup` / MCP `guardlink_lookup` | `reaches`, `agents`, `unentitled reaches` (with `claim_key` and near misses), `effects`, `gates` and `ungated effects`, each optionally `for <actor>` or `for <asset>` (§8.2) |
+| `guardlink sarif --profile pentest` | One `guardlink/agent-reach` result per reach and per mutating effect (§6.8), keyed by the same claim keys |
+| `guardlink diff` | Reach, effect and gate changes, and `NEW_UNENTITLED_REACH` (§7.1) |
+
+A dashboard, an IDE plugin or a canvas that draws an agent's reach reads `reaches`, `effects` and `gates` for the declared facts and `reach_analysis` for the two joins: the reach map is `reaches` × the effects in `colocated_effects` / `colocated_reaches`, the Excessive Agency list is `unentitled_reaches`, and the ungated mutations are the `mutating_effects` with `gated: false`. A scanner reads the SARIF results and joins them to `reach_analysis` on the claim key, which is the only place whether a reach is entitled is recorded (§6.1). `compact` MCP output and a merged estate report (`guardlink merge`) do not carry the block; recompute it from a single repository's export.
+
 ---
 
 ## 6. SARIF Output Mapping
@@ -1191,9 +1259,9 @@ Every other annotation is **not** a result:
 | `@transfers` | `relatedLocations` on results for the same asset and threat (§6.6). A transfer does not cover an exposure. | Context, not findings. |
 | `@validates`, `@owns`, `@feature`, `@comment`, `@shield` | Not exported | — |
 | `@actor` / `@entitles` | **Not exported.** No result, no suppression, no property on any result, and nothing in the declared context | See below. |
-| `@agents`, `@reaches`, `@effects`, `@gates` | Not exported in this version | Context for reviewers and query surfaces. A reach result would change the result index every consumer keys on, so if one is added it belongs in the `pentest` profile (§6.8). |
+| `@agents`, `@reaches`, `@effects`, `@gates` | Not in the `github` profile. The `pentest` profile appends a `guardlink/agent-reach` result per reach and per mutating effect (§6.8). | Targets to test, not findings. A reach result would change the result index every consumer keys on, which is why it is only appended, and only in `pentest`. |
 
-New result kinds — covered exposures with their suppressions, `@boundary` claims, review items for `@assumes` and `@audit` — would change the result index every existing consumer keys on and open a GitHub alert per annotation. The first two exist only in the `pentest` profile, appended after every result above (§6.8); none of them is ever added to the `github` profile.
+New result kinds — covered exposures with their suppressions, `@boundary` claims, review items for `@assumes` and `@audit` — would change the result index every existing consumer keys on and open a GitHub alert per annotation. The first two exist only in the `pentest` profile, appended after every result above (§6.8), as does a result per declared reach and mutating effect; none of them is ever added to the `github` profile.
 
 `@entitles` is deliberately absent from this mapping. Two annotations already remove an exposure from the export (`@mitigates`, `@accepts`), and an exposure hidden from the export cannot be tested. Entitlement is a claim about *purpose* that no probe can verify, so it must never be the third such mechanism: a conforming exporter MUST produce **byte-identical `runs[].results` and `runs[].tool`** for a model with entitlements and the same model without them. Only the downstream *recommendation* may change (§3.2). The declared context is held to the same rule: no related location, chain, graph node or taxon may be derived from an `@entitles` or an `@actor`.
 
@@ -1583,7 +1651,7 @@ A conforming exporter keeps these invariants across versions of this export: `me
 | `github` (default) | Code scanning: what should become an alert | §6.1–§6.7, exactly. Passing `--profile github` gives the same bytes as passing nothing |
 | `pentest` | A test run: what to probe, including what is claimed to be safe | The `github` export, plus the members below |
 
-**Appended, never inserted.** Result `i` of a `github` export is result `i` of the `pentest` export of the same model, and rule `i` is rule `i`. The `pentest` results come after every `github` result: covered exposures first, then boundary claims, each in model order. Its two rules come after the five `github` rules. A reader that keys on the result index, on `message.text` or on rule ids reads the shared prefix exactly as it reads a `github` export. Nothing in either profile is derived from `@entitles` or `@actor` (§6.1).
+**Appended, never inserted.** Result `i` of a `github` export is result `i` of the `pentest` export of the same model, and rule `i` is rule `i`. The `pentest` results come after every `github` result: covered exposures first, then boundary claims, then agent-reach results, each in model order. Its three rules come after the five `github` rules. A reader that keys on the result index, on `message.text` or on rule ids reads the shared prefix exactly as it reads a `github` export. Nothing in either profile is derived from `@entitles` or `@actor` (§6.1).
 
 **`guardlink/mitigated-exposure`** — one result per `@exposes` that a `@mitigates` or `@accepts` covers (§3.6.1), and that `--min-severity` keeps. It is the result an uncovered exposure would have been — the same `message.text`, `locations`, `partialFingerprints`, `properties` and declared context (§6.6) — under this rule, at `level: "note"`. Its `kind` is absent, which SARIF reads as `fail`: a declared control is a claim, and the result is exported so a test can check it holds. It adds `suppressions[]`, one per covering annotation, mitigations first:
 
@@ -1612,6 +1680,23 @@ Only an acceptance that covers the exposure appears: one sited in its file and n
 | `relatedLocations` | one per inner route, at its `@flows` line |
 
 `basis` is `"declared"` when the boundary is written `from <outer> to <inner>` (§3.2): `outer` is `a` and `inner` is `b`, as declared. An undirected boundary states no side, so `basis` is `"undeclared-endpoint"` when exactly one side is an endpoint no `@asset` declares, and that side is `outer`, the other `inner` — the convention `guardlink paths` reads entries by (§3.2). Otherwise `basis` is `"unknown"` and neither `outer` nor `inner` is written; a reader must not infer them. `inner_routes` lists routes into the inner side whenever there is one, declared or inferred. `run.graphs[0]` states the same sides as `guardlink/side`.
+
+**`guardlink/agent-reach`** — one result per `@agents` or `@reaches`, then one per `@effects` other than `read`, each in model order. Like a boundary claim it is a target to test, never a finding: `kind: "review"`, `level: "none"`. It never suppresses, closes or demotes another result.
+
+The list is complete on purpose. Nothing in either profile may be derived from `@entitles` (§6.1), so an entitled reach is listed exactly as an unentitled one is — an entitlement never takes a capability out of what is tested — and whether a reach is entitled is not on its result: a consumer that wants the unentitled subset joins on the claim key to `reach_analysis.unentitled_reaches` (§5.5). A gate suppresses nothing (§3.2.1), so a gated effect is listed too, with its gates: the gate is the thing a probe should try to get past.
+
+| Member | A reach | A mutating effect |
+|---|---|---|
+| `message.text` | `@agents {actor} to {capability}[ on {asset}][ as {identity}]` (`@reaches` for a non-agent), then `: {description}` when there is one | `@effects {effect} on {asset}[ as {identity}] (ungated)`, or `(gated by {approvers})`, then `: {description}` when there is one |
+| `locations[0]` | the annotation's line | the annotation's line |
+| `partialFingerprints["guardlink/claimKey"]`, `properties.claimKey` | the claim key (§6.5) | the claim key |
+| `properties.subject` | `"reach"` | `"effect"` |
+| `properties.reach` / `properties.effect` | `{ verb, actor, agent, capability, canonical_capability, asset, identity }` | `{ effect, asset, identity }` |
+| `properties.description` | the description, `""` when there is none | the same |
+| further `properties` | `colocated_effects: [{ effect, asset, identity, mutating, claimKey, file, line }]` | `gated`; `gates` and `gate_near_misses` (with `blocker`), each `[{ approver, capability, canonical_capability, claimKey, file, line }]`; `colocated_reaches: [{ …reach, claimKey, file, line }]` |
+| `relatedLocations` | the colocated effects | the gates, the near-miss gates, then the colocated reaches |
+
+Actors, assets and identities are as written in the annotation: no `@actor` is resolved to build a result. `identity`, `asset` and `capability` are `null` when the annotation leaves them out. Agent-reach results carry no hypothesis state in this version.
 
 **`properties["guardlink/hypothesis"]`** — on every `@exposes` result (uncovered or covered), every `@confirmed` result and every boundary claim, the claim's state in the hypothesis ledger (`.guardlink/hypotheses.json`): `{ state, evidence, by, at, expired, previous_outcome }`. `state` is `untested`, `confirmed`, `refuted` or `retest` for an exposure (a source `@confirmed` is always `confirmed`), and `unverified`, `supported`, `contradicted` or `retest` for a boundary. A ledger outcome holds while the code beneath the claim is unchanged; `expired: true` with `previous_outcome` says it lapsed. With no ledger every claim is `untested` or `unverified`. A corrupt ledger stamps nothing. `run.properties.hypothesis_ledger` is `present`, `absent` or `corrupt`. Parse-error and dangling-ref results carry none.
 

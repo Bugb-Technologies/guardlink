@@ -130,7 +130,7 @@ with three different fixes, and each is a warning rather than a silent zero. A s
 ```bash
 # Core
 guardlink init [dir]                    # Initialize .guardlink/ and agent instruction files
-guardlink parse [dir]                   # Parse annotations → ThreatModel JSON
+guardlink parse [dir]                   # Parse annotations → ThreatModel JSON (with reach_analysis when the model declares reach; SPEC §5.5)
 guardlink status [dir]                  # Risk grade + coverage summary
 guardlink validate [dir] [--strict]     # Syntax errors, dangling refs, unmitigated exposures
 guardlink validate [dir] --code-graph   # Also check each @boundary against an optional code graph (warnings only)
@@ -148,7 +148,7 @@ guardlink ci . --expiring-within 30                # Days of notice before an @a
 guardlink report [dir]                  # Generate threat-model.md + optional JSON
 guardlink dashboard [dir]               # Interactive HTML dashboard with Mermaid diagrams
 guardlink sarif [dir] [-o file]         # SARIF 2.1.0 for GitHub Advanced Security / VS Code; @exposes and @confirmed results carry guardlink/threatId, and @exposes results also carry guardlink/claimKey; each also carries its declared context — CWE/OWASP taxa, boundaries and assumptions on its asset, the @flows chain into it — and the run carries the flow/boundary graph (SPEC §6.6)
-guardlink sarif [dir] --profile pentest [--baseline old.sarif]   # the same results, then covered exposures (guardlink/mitigated-exposure, with suppressions) and one guardlink/boundary-claim per @boundary appended after them; every claim carries its hypothesis-ledger state; --baseline sets baselineState (SPEC §6.8)
+guardlink sarif [dir] --profile pentest [--baseline old.sarif]   # the same results, then covered exposures (guardlink/mitigated-exposure, with suppressions), one guardlink/boundary-claim per @boundary and one guardlink/agent-reach per reach and per mutating effect appended after them; every claim carries its hypothesis-ledger state; --baseline sets baselineState (SPEC §6.8)
 guardlink diff [ref]                    # Compare threat model against a git ref (default: HEAD~1)
 guardlink paths [dir] [--all]           # Undefended source-to-sink routes, derived from @flows (no LLM)
 
@@ -495,7 +495,7 @@ Run `guardlink tui` for the interactive terminal interface:
 
 When connected via `.mcp.json`, use:
 - `guardlink_parse` — parse annotations, return threat model
-- `guardlink_lookup` — query threats, controls, exposures by ID (try `unmitigated`, `confirmed`, `actors`, `entitlements`, `agents`, `unentitled reaches`, `effects for #db`, `gates`)
+- `guardlink_lookup` — query threats, controls, exposures by ID (try `unmitigated`, `confirmed`, `actors`, `entitlements`, `agents`, `unentitled reaches`, `effects for #db`, `gates`, `ungated effects`)
 - `guardlink_suggest` — get annotation suggestions for a file
 - `guardlink_validate` — check for syntax errors
 - `guardlink_status` — coverage stats
@@ -504,6 +504,29 @@ When connected via `.mcp.json`, use:
 - `guardlink_blame` — who introduced, declared and fixed each claim, and which AI tool co-authored those commits (read from git; optional `file`)
 
 There is deliberately no entitlement *accept* tool. Acceptance is a human decision recorded by name, through `guardlink entitle`.
+
+## Reach in the exports: what a consumer reads
+
+`@agents`, `@reaches`, `@effects` and `@gates` (SPEC §3.2.1) reach a dashboard, an IDE plugin,
+a canvas or a scanner through three outputs. All three key a claim by the same claim key.
+
+| Output | What it holds | Read it for |
+|---|---|---|
+| The model JSON — `guardlink parse`, `report --format json`, `.guardlink/model.json`, MCP `guardlink_parse` | `reaches[]` (each with `agent: true\|false`), `effects[]`, `gates[]`, and the derived `reach_analysis` (SPEC §5.5): `version`, `summary`, `unentitled_reaches` with near misses, and every `mutating_effects` row with `gated`, its gates and the gates that miss it | The reach map (actor × asset, effect in each cell), the Excessive Agency list, the ungated mutations, the gated money path |
+| `guardlink lookup` / `guardlink_lookup` | `reaches`, `agents`, `unentitled reaches`, `effects`, `gates`, `ungated effects`, each `for <actor>` or `for <asset>` | One question at a time, from an agent or a CI step (`--fail-on-found`) |
+| `guardlink sarif --profile pentest` | One `guardlink/agent-reach` result per reach and per mutating effect, with the actor, capability, asset, effect, `gated` and gates in `properties` (SPEC §6.8) | Targets for a scanner or a pentest run |
+
+Two rules decide what is where:
+
+- **An entitlement never changes what is tested.** The SARIF lists every reach, entitled or not,
+  and does not say which are entitled. The unentitled subset is `reach_analysis.unentitled_reaches`;
+  join it to the SARIF on `claim_key` = `properties.claimKey`.
+- **A gate suppresses nothing.** A gated effect stays in the SARIF with `gated: true` and its gates,
+  because the gate is what a probe should try to get past.
+
+`reach_analysis` is written only when the model declares a reach, effect or gate, so a model
+without them exports exactly what it did before. Its `version` is `1`; a renamed or removed key
+bumps it, an added one does not. A merged estate report does not carry it.
 
 ## Attribution (`guardlink blame`)
 
