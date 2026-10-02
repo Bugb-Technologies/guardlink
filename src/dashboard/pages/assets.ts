@@ -9,6 +9,8 @@ import type { PageContext } from './context.js';
 
 export function renderAssetsPage(ctx: PageContext): string {
   const { heatmap, scope } = ctx;
+  // A flow can name an agent actor as an endpoint, which puts it on this grid; say what it is.
+  const agentRefs = new Set(ctx.reach.actors.filter(a => a.agent).flatMap(a => [a.ref.toLowerCase(), a.name.toLowerCase()]));
   const counts = { critical: 0, high: 0, medium: 0, low: 0, none: 0 };
   for (const a of heatmap) counts[a.riskLevel]++;
   return `
@@ -28,7 +30,7 @@ export function renderAssetsPage(ctx: PageContext): string {
   <div class="heatmap" data-list="assets">
     ${heatmap.map((a, i) => `
     <div class="heatmap-cell risk-cell-${a.riskLevel} clickable" data-ff-asset="${esc(a.aliases.join('|'))}" data-search="${esc(`${a.aliases.join(' ')} ${a.riskLevel} ${a.dataHandling.join(' ')}`.toLowerCase())}" onclick="openDrawer('asset', ${i})">
-      <div class="heatmap-name">${esc(a.name)}</div>
+      <div class="heatmap-name">${esc(a.name)}${agentRefs.has(a.name.toLowerCase()) ? ' <span class="reach-kind agent">AI agent</span>' : ''}</div>
       <div class="heatmap-stats">
         <span title="Exposures">${icon('alert')}${a.exposures}</span>
         <span title="Mitigations">${icon('shield')}${a.mitigations}</span>

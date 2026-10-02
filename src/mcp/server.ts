@@ -75,7 +75,7 @@ import {
 } from '../review/entitlements.js';
 import { generateSarif, SARIF_PROFILES } from '../analyzer/index.js';
 import { readHypotheses } from '../hypothesis/index.js';
-import { generateReport } from '../report/index.js';
+import { generateReport, generateAgentReachReport } from '../report/index.js';
 import { generateDashboardHTML, generateThreatGraph } from '../dashboard/index.js';
 import { diffModels, parseAtRef } from '../diff/index.js';
 import { findUnmitigatedPaths, classifyEndpoints } from '../paths/index.js';
@@ -771,12 +771,14 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_report',
-    'Generate a markdown threat model report with Mermaid diagram. Also writes threat-model.json alongside.',
+    'Generate a markdown threat model report with Mermaid diagram. Also writes threat-model.json alongside. With agents: true, writes only the agent threat model (reach map, unentitled reaches, ungated mutations, OWASP LLM mapping) and no JSON.',
     {
       root: z.string().describe('Project root directory').default('.'),
-      output: z.string().describe('Output filename (default: threat-model.md)').default('threat-model.md'),
+      output: z.string().describe('Output filename (default: threat-model.md, or threat-model-agents.md with agents)').optional(),
+      agents: z.boolean().describe('Write only the agent threat model, the same section the full report carries').default(false),
     },
-    async ({ root, output }) => {
+    async ({ root, output: requested, agents }) => {
+      const output = requested ?? (agents ? 'threat-model-agents.md' : 'threat-model.md');
       const { model } = await getModel(root);
       if (model.annotations_parsed === 0) {
         return { content: [{ type: 'text', text: JSON.stringify({ error: 'No annotations found.' }) }] };
@@ -790,6 +792,10 @@ export function createServer(): McpServer {
         if (promptContent.trim()) model.prompt = promptContent.trim();
       } catch { /* no prompt file */ }
 
+      if (agents) {
+        await writeFile(resolve(root, output), generateAgentReachReport(model) + '\n');
+        return { content: [{ type: 'text', text: JSON.stringify({ report: output, annotations: model.annotations_parsed, reaches: (model.reaches || []).length }) }] };
+      }
       const report = generateReport(model);
       await writeFile(resolve(root, output), report + '\n');
       const jsonFile = output.replace(/\.md$/, '.json');

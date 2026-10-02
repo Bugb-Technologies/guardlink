@@ -119,6 +119,7 @@ const TOOLS = `
 const SW = (c: string): string => `<i class="sw" style="background:${c}"></i>`;
 const LEGEND_THREAT = `<span class="diagram-legend"><span>${icon('square')} asset</span><span>${icon('hexagon')} threat</span><span>${icon('pill')} control</span><span>${SW('#ea1d1d')} critical / high</span><span>${SW('#55899e')} medium</span><span>${SW('#0360a2')} low</span><span>dashed box: trust zone</span></span>`;
 const LEGEND_FLOW = `<span class="diagram-legend"><span>${icon('pill')} client or user</span><span>${icon('flag')} external party</span><span>${icon('cylinder')} data store</span><span>${icon('square')} service</span><span>dashed box: trust zone</span></span>`;
+const LEGEND_REACH = `<span class="diagram-legend"><span>${icon('pill')} AI agent</span><span>${icon('square')} principal</span><span>${SW('#33d49d')} entitled, or gated</span><span>${SW('#ea1d1d')} unentitled, or a mutation with no gate</span></span>`;
 const LEGEND_SURFACE = `<span class="diagram-legend"><span>${icon('hexagon')} confirmed</span><span>${icon('square')} open</span><span>${icon('pill')} mitigated</span><span>${icon('slant')} accepted</span><span>colour is severity</span></span>`;
 
 function shell(id: string, title: string, body: string, meta: string, extra = '', active = false): string {
@@ -176,6 +177,12 @@ export function renderDiagramsPage(ctx: PageContext): string {
     const b = budgeted('Attack Surface', attackSurface);
     panels.push(shell('attack-surface', 'Attack Surface', `${budgetBanner(b.reasons)}${legibilityNotice([b.tooBig].filter(Boolean))}<pre class="mermaid">\n${esc(b.src)}\n</pre>`,
       budgetMeta(b.reasons.length > 0, `Exposures per asset. ${LEGEND_SURFACE}`), '', panels.length === 0));
+  }
+  if (ctx.diagrams.reach) {
+    tabs.push({ id: 'agent-reach', label: 'Agent Reach', icon: icon('zap') });
+    const b = budgeted('Agent Reach', ctx.diagrams.reach);
+    panels.push(shell('agent-reach', 'Agent Reach', `${budgetBanner(b.reasons)}${legibilityNotice([b.tooBig].filter(Boolean))}<pre class="mermaid">\n${esc(b.src)}\n</pre>`,
+      budgetMeta(b.reasons.length > 0, `What each agent and principal can reach. ${LEGEND_REACH} The same data as a table: <a href="#agents">Agents &amp; Reach</a>.`), '', panels.length === 0));
   }
 
   if (tabs.length === 0) {

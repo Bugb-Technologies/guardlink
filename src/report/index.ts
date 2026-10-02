@@ -7,4 +7,5 @@
 
 export { generateMermaid } from './mermaid.js';
 export { generateReport } from './report.js';
+export { generateAgentReachReport, emitAgentReach } from './agent-reach.js';
 export { generateSequenceDiagram } from './sequence.js';

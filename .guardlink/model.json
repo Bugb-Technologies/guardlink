@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:9babda79ed52b602afa4ff8920c7a1e2743162457b8a33a234491d30019b2293",
+    "annotation_hash": "sha256-v3:7699fd36a4f42f9233f7bb6b81030a15c52f45618f34baa20928da749b08203b",
     "generator": "guardlink@2.1.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 165,
-  "annotations_parsed": 885,
+  "source_files": 169,
+  "annotations_parsed": 891,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -47,6 +47,7 @@
     "src/dashboard/html.ts",
     "src/dashboard/index.ts",
     "src/dashboard/links.ts",
+    "src/dashboard/pages/agents.ts",
     "src/dashboard/pages/analytics.ts",
     "src/dashboard/pages/assets.ts",
     "src/dashboard/pages/attribution.ts",
@@ -126,6 +127,9 @@
     "src/playbooks/select.ts",
     "src/playbooks/skills.ts",
     "src/playbooks/types.ts",
+    "src/reach/index.ts",
+    "src/reach/summary.ts",
+    "src/report/agent-reach.ts",
     "src/report/index.ts",
     "src/report/mermaid.ts",
     "src/report/report.ts",
@@ -948,7 +952,7 @@
       "description": "join() constrains reads to .guardlink/",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 799
+        "line": 839
       }
     },
     {
@@ -1208,7 +1212,7 @@
       "description": "Diagram labels are sanitized before emission as Mermaid source",
       "location": {
         "file": "src/dashboard/diagrams.ts",
-        "line": 15
+        "line": 16
       }
     },
     {
@@ -1228,7 +1232,7 @@
       "description": "esc() HTML-encodes every interpolated value in every page module; serialized data escapes closing script tags before embedding in <script>",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 24
+        "line": 26
       }
     },
     {
@@ -1238,7 +1242,7 @@
       "description": "resolve() with root constrains file access (annotations.ts)",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 26
+        "line": 28
       }
     },
     {
@@ -1248,7 +1252,7 @@
       "description": "Feature scope names come from @feature annotations and the --feature flag; every one is rendered through esc()",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 35
+        "line": 37
       }
     },
     {
@@ -1299,6 +1303,16 @@
       "location": {
         "file": "src/dashboard/links.ts",
         "line": 84
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Actor, asset and capability names, descriptions and citations are model text; every one goes through esc(), including chip titles",
+      "location": {
+        "file": "src/dashboard/pages/agents.ts",
+        "line": 13
       }
     },
     {
@@ -2725,7 +2739,7 @@
       "description": "generateDashboardHTML() interpolates model descriptions, asset names, git identities and commit trailers into the page markup and the embedded JSON constants",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 23
+        "line": 25
       }
     },
     {
@@ -2738,7 +2752,7 @@
       "description": "readFileSync reads code files for annotation context",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 25
+        "line": 27
       }
     },
     {
@@ -3979,7 +3993,7 @@
       "description": "Reads CXG scan results for dashboard and report context",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 726
+        "line": 766
       }
     },
     {
@@ -4430,7 +4444,7 @@
       "description": "report --blame attaches attribution before the metadata spread, so the shared records carry it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 871
+        "line": 872
       }
     },
     {
@@ -4441,7 +4455,7 @@
       "description": "pentest profile: each claim's tested state goes into the SARIF",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1289
+        "line": 1300
       }
     },
     {
@@ -4452,7 +4466,7 @@
       "description": "Project root; the graph answers with ranked entry points or a status",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1650
+        "line": 1661
       }
     },
     {
@@ -4463,7 +4477,7 @@
       "description": "The model before and after the agent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1697
+        "line": 1708
       }
     },
     {
@@ -4474,7 +4488,7 @@
       "description": "Which assets sit on an undefended path, for the ranking",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1832
+        "line": 1843
       }
     },
     {
@@ -4485,7 +4499,7 @@
       "description": "cxg findings recorded as confirmations, joined to claims",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1852
+        "line": 1863
       }
     },
     {
@@ -4496,7 +4510,7 @@
       "description": "Boundary outcomes read back by claim key",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1959
+        "line": 1970
       }
     },
     {
@@ -4507,7 +4521,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3067
+        "line": 3078
       }
     },
     {
@@ -4518,7 +4532,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3070
+        "line": 3081
       }
     },
     {
@@ -4584,7 +4598,7 @@
       "description": "Claim states for the badges and the stale-claims action",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 521
+        "line": 547
       }
     },
     {
@@ -4595,7 +4609,7 @@
       "description": "Threat model relationships rendered as Mermaid source",
       "location": {
         "file": "src/dashboard/diagrams.ts",
-        "line": 14
+        "line": 15
       }
     },
     {
@@ -4617,7 +4631,7 @@
       "description": "The model at --since <ref>, diffed against the one rendered",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 21
+        "line": 23
       }
     },
     {
@@ -4628,7 +4642,7 @@
       "description": "Model statistics input",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 27
+        "line": 29
       }
     },
     {
@@ -4639,7 +4653,7 @@
       "description": "Code snippet reads",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 28
+        "line": 30
       }
     },
     {
@@ -4650,7 +4664,7 @@
       "description": "Claim states for badges and the stale-claims action",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 29
+        "line": 31
       }
     },
     {
@@ -4661,7 +4675,7 @@
       "description": "The remote's web host, for file and commit links",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 30
+        "line": 32
       }
     },
     {
@@ -4672,7 +4686,7 @@
       "description": "Generated HTML output",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 31
+        "line": 33
       }
     },
     {
@@ -4683,7 +4697,7 @@
       "description": "Outcomes for the badges, the drawer and the open count",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 136
+        "line": 140
       }
     },
     {
@@ -4717,6 +4731,17 @@
       "location": {
         "file": "src/dashboard/links.ts",
         "line": 15
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#dashboard",
+      "mechanism": "summarizeReach",
+      "route": null,
+      "description": "Reaches, effects, gates, entitlements and flows for the Agents page",
+      "location": {
+        "file": "src/dashboard/pages/agents.ts",
+        "line": 14
       }
     },
     {
@@ -5189,7 +5214,7 @@
       "description": "Attribution read from blame, log -L and commit trailers for the connected agent",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1214
+        "line": 1220
       }
     },
     {
@@ -5564,6 +5589,17 @@
       "location": {
         "file": "src/paths/index.ts",
         "line": 17
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#report",
+      "mechanism": "summarizeReach",
+      "route": null,
+      "description": "Reaches, effects, gates, entitlements and flows for the agent section",
+      "location": {
+        "file": "src/report/agent-reach.ts",
+        "line": 13
       }
     },
     {
@@ -6458,7 +6494,7 @@
       "description": "Processes pentest scan output (JSON/SARIF)",
       "location": {
         "file": "src/analyze/index.ts",
-        "line": 727
+        "line": 767
       }
     },
     {
@@ -6566,7 +6602,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3948
+        "line": 3959
       }
     },
     {
@@ -6584,7 +6620,7 @@
       "description": "Author identities from git, already in the configured identity mode",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 291
+        "line": 292
       }
     },
     {
@@ -6593,7 +6629,7 @@
       "description": "Processes and displays threat model data",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 32
+        "line": 34
       }
     },
     {
@@ -6602,7 +6638,7 @@
       "description": "Author identities from attribution, in the configured identity mode",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 33
+        "line": 35
       }
     },
     {
@@ -6683,7 +6719,7 @@
       "description": "Author identities, in the configured identity mode (blame.identity in config.json), reach the MCP client",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1215
+        "line": 1221
       }
     },
     {
@@ -6710,7 +6746,7 @@
       "description": "Author identities from git, in the configured identity mode",
       "location": {
         "file": "src/report/report.ts",
-        "line": 1519
+        "line": 1538
       }
     },
     {
@@ -7028,7 +7064,7 @@
       "description": "Interactive HTML threat model dashboard",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 34
+        "line": 36
       }
     },
     {
@@ -7395,175 +7431,175 @@
       "description": "guardlink lookup is read-only: it parses the project as parse and validate do and answers with the same pure lookup() the guardlink_lookup MCP tool uses, so it adds no input surface beyond the query text, which lookup's anchored patterns already bound",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1234
+        "line": 1245
       }
     },
     {
       "description": "--baseline reads a file the caller names, relative to the cwd like any CLI path argument; it is parsed as JSON and only compared, never written or executed",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1274
+        "line": 1285
       }
     },
     {
       "description": "ONE bound, applied before any renderer runs. `--intake` used to take the whole queue while --json and the table took -n, so the renderer built for the downstream consumer was the one that could not be asked for a bounded brief — `-n 3 --intake` printed all 142 on temporal. A per-renderer slice is the shape that drifts; a renderer added later inherits this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1836
+        "line": 1847
       }
     },
     {
       "description": "`key` is the claim key, the same one hypotheses-list/v1 carries and `hypothesis confirm`/`--from-scan` join on, so a consumer can address a queued claim instead of joining back to `hypothesis list` on (asset, threat, file, line). That join is positional and GAP-58 proved it unsafe: this population collides at the coarser (asset, threat, file) tier. The schema stays at v1 deliberately — the field is purely additive, nothing v1 carried is renamed or removed, and a consumer tells whether a build has it by the field's presence; bumping would strand consumers pinned to the v1 string for a change that breaks none of them",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1839
+        "line": 1850
       }
     },
     {
       "description": "`total` is the queue length before the bound, carried into all three renderers because a bounded queue that does not say it is bounded reads as the whole of what there is to test — the failure this guards is an operator handing bugb a 10-item plan off a 142-claim queue believing nothing else is outstanding. It is additive exactly as `key` is, so the schema stays at v1: nothing v1 carried is renamed or removed, and a consumer holding a page tells it apart from a whole queue by the field's presence",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1840
+        "line": 1851
       }
     },
     {
       "description": "`defaultVerifier` already returns `human:<name>` (src/parser/verify.ts:172), so prefixing it here recorded `human:human:<name>` — the form the ledger schema and this command's own --by help both say it is not. Do NOT 'repair' older entries that carry the doubled form: `by` is display and provenance metadata, never a join key — upsert and every reader match on the claim key — so pre-fix and post-fix entries coexist in one ledger and nothing stops matching. An explicit --by is passed through verbatim on this path, which is how `--by cxg:login-sqli` names its scheme",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1847
+        "line": 1858
       }
     },
     {
       "description": "Withheld is a fact about a CLAIM, not about a finding. Several findings can join to one claim — a stamped one beside an unstamped one during a cxg stamp rollout, or two templates probing the same exposure — so a per-finding list printed one claim's remediation command twice and, worse, could report a claim as skipped in the very run that wrote it. Keyed by record.key on the same rule `writes` uses, last occurrence kept because that is the entry the ledger ends up holding",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1855
+        "line": 1866
       }
     },
     {
       "description": "THE one calculation of where a line sits once the writes are done, used by every coordinate this command hands a user: the confirmations that landed, the ones already present, and the by-hand commands for both the withheld and the ambiguous. Each done.line is a PRE-write coordinate — descending order guarantees nothing at or above a target had been spliced when it was written — so an insertion at or at a lower number than a pre-write position pushes that position down by one. Only SUCCESSFUL writes are in `done`, so a write that threw shifts nothing, and with no --write it is empty and this is the identity. Two sites computing this independently is the shape that disagrees silently, and this command has already produced that defect twice",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1858
+        "line": 1869
       }
     },
     {
       "description": "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1862
+        "line": 1873
       }
     },
     {
       "description": "ONE CLAIM, ONE WRITE. Two findings can carry the same claim key — the ordinary shape when two cxg templates probe one exposure — and both resolve to the same record and fold into ONE ledger entry, so writing per finding attempted the same insertion twice and the second was refused as a failure. Keyed by record.key, keeping the LAST occurrence: upsert replaces the entry object on every call, so only the final one is the entry the ledger actually holds",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1863
+        "line": 1874
       }
     },
     {
       "description": "An exit code is a claim about what happened, and it has to be true in BOTH directions: honest about an under-write and honest about a success. A confirmation already in the source is the state we were asked to reach — from an earlier run, or a re-import of the same report — so it is separated from a real failure by the TYPE writeConfirmedLine returns, never by matching the wording of an error. Every remaining throw is a failure and still exits non-zero",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1866
+        "line": 1877
       }
     },
     {
       "description": "Reconciled against what the writes actually did. A claim whose confirmation IS in the source — inserted just now or already there — was not withheld, whatever else joined to it coarsely, so it is neither told to the operator as skipped nor counted toward the exit status. The rule it serves is the one the exit check states: the code is a claim about what happened and has to be true in BOTH directions, and reporting a claim as withheld in the run that wrote it is the half that was still false",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1877
+        "line": 1888
       }
     },
     {
       "description": "An inserted @confirmed comes to rest directly above the line it displaced, so it is that line's new position less one — derived from afterWrites rather than counted a second way. Printed in reading order, not in the order the writes went in",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1879
+        "line": 1890
       }
     },
     {
       "description": "Said in terms of what is true rather than as an error: the confirmation is there. The line an already-present @confirmed was found at is a pre-write coordinate like any other — the scan that found it stops at the next @exposes, and descending order means every insertion so far sits below that — so it goes through the same afterWrites",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1882
+        "line": 1893
       }
     },
     {
       "description": "--write only inserts an UNCONTESTED key-verified confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), and a contested one came from a report that named two different claims at once, so identity is in doubt in both cases. Losing that throughput is the point: those are exactly the joins that can be wrong",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1884
+        "line": 1895
       }
     },
     {
       "description": "Reported AFTER the writes, at the line the withheld claim occupies once they have landed. Printing pre-write lines here handed the operator a command naming a line that this same run then moved: with consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator writes a confirmation against an exposure the probe never tested — GAP-58 one layer out, in a human's fingers instead of ours. Documenting the hazard one block down was not guarding against it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1885
+        "line": 1896
       }
     },
     {
       "description": "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so every command printed here is position-dependent and is correct AT THE MOMENT OF PRINTING and no longer — a later write, or an edit, moves the target again. Tracked there, not widened here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1886
+        "line": 1897
       }
     },
     {
       "description": "The candidates for an ambiguous finding are by-hand targets like the withheld ones, so they are emitted here rather than inside formatImport: that formatter runs BEFORE the writes, and a key-verified write higher up the same file moves an ambiguous candidate exactly as it moves a withheld claim. With consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator records a confirmation against an exposure the probe never tested — GAP-58 through a human's fingers, on our own instruction. Stays on stdout, where it was",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1898
+        "line": 1909
       }
     },
     {
       "description": "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so these are correct AT THE MOMENT OF PRINTING and no longer. That residue is the addressing scheme and is tracked there; a command this run itself invalidated is a different problem and is fixed here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1899
+        "line": 1910
       }
     },
     {
       "description": "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'. A --write that withheld any confirmation is the same fact about the same run, so it exits non-zero too — PARTIALLY written included, not only the all-withheld case. The reader of this exit code is bravos, which orchestrates this loop and never sees the `! skipped` lines on stderr: give 0 two meanings and a half-written run is indistinguishable from a complete one, and the orchestrator proceeds believing the corpus carries confirmations that are not in it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1904
+        "line": 1915
       }
     },
     {
       "description": "The by-hand path reads the same typed outcome as --from-scan. A claim whose source already carries this confirmation is in the state that was asked for, so it is reported and exits 0; it used to throw into the ✗ handler and exit non-zero on a run that changed nothing and needed to change nothing",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1915
+        "line": 1926
       }
     },
     {
       "description": "The accepted names and containers are INTERPOLATED from the one shared definition, not written out here. A hand-written copy drifts benignly when the definition widens (the help under-advertises) and harmfully when it narrows: the help then advertises a name the reader refuses, which is the one thing this definition exists to make impossible. The no-stamp banner in format.ts interpolates for the same reason, and both are pinned by tests that take the names out of the text and require the reader to accept them",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1942
+        "line": 1953
       }
     },
     {
       "description": "ONE string stating BOTH behaviours, because --write sits on `confirm` and genuinely serves both paths. An author writing against this flag reads --help, not our runtime output: 'inserts the @confirmed line' alone over-promises on the one surface that writes into someone else's repository, and an operator who believes every joined confirmation landed stops checking the ones that did not — which is exactly the knowledge the withholding rule exists to give them. Two per-path wordings were rejected for the reason this branch has already corrected on names, containers, grammars and positions: two descriptions of one thing can disagree, and one string cannot contradict itself",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1945
+        "line": 1956
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3871
+        "line": 3882
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3949
+        "line": 3960
       }
     },
     {
@@ -7633,35 +7669,35 @@
       "description": "Stats mirror the model's own scope: on a --feature model these are the feature's numbers, and the dashboard suppresses the ones that only mean something project-wide",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 99
+        "line": 100
       }
     },
     {
       "description": "Pure projection of record.blame; the summariser is shared with the CLI and the report so every surface agrees on the numbers",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 292
+        "line": 293
       }
     },
     {
       "description": "Every item points somewhere: a hash route into the filtered view, a guardlink command, or both. Nothing here is a bare number",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 390
+        "line": 393
       }
     },
     {
       "description": "Reads .guardlink/verified.json once; the classification itself is the parser's, not re-derived here",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 522
+        "line": 548
       }
     },
     {
       "description": "Alias map collapses #id / name / path-joined ref forms so all three diagrams agree on identity",
       "location": {
         "file": "src/dashboard/diagrams.ts",
-        "line": 16
+        "line": 17
       }
     },
     {
@@ -7675,7 +7711,7 @@
       "description": "A model narrowed with --feature carries filtered_by_features. The page then declares itself a slice in the title, the top bar and a banner, and suppresses the project-wide measures (file coverage, unannotated files) that a slice cannot answer",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 36
+        "line": 38
       }
     },
     {
@@ -8095,7 +8131,7 @@
       "description": "Non-mutating: computeBlame leaves the cached model untouched, so a later guardlink_parse in the same session never carries blame unasked. Nothing is written to the repository",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1216
+        "line": 1222
       }
     },
     {
@@ -8561,6 +8597,27 @@
       }
     },
     {
+      "description": "Re-exports only; the derivation lives in summary.ts and the joins in parser/reach.ts",
+      "location": {
+        "file": "src/reach/index.ts",
+        "line": 5
+      }
+    },
+    {
+      "description": "Pure functions over an assembled ThreatModel; no I/O and no input surface. Every row keeps the file:line of the annotation it came from, so each picture can be traced back to source",
+      "location": {
+        "file": "src/reach/summary.ts",
+        "line": 38
+      }
+    },
+    {
+      "description": "Pure function: ThreatModel to markdown lines. Model text lands in markdown table cells, where mdCell keeps a pipe or newline from breaking out of the cell; no HTML or shell is produced here",
+      "location": {
+        "file": "src/report/agent-reach.ts",
+        "line": 12
+      }
+    },
+    {
       "description": "Report generation is pure transformation; no I/O in this module",
       "location": {
         "file": "src/report/index.ts",
@@ -8613,7 +8670,7 @@
       "description": "AI credit is what a commit declared in a trailer, never detected from code; a claim whose commits carry no trailer stays human. Every degraded status is listed so the reader never mistakes an unattributed claim for a clean one",
       "location": {
         "file": "src/report/report.ts",
-        "line": 1520
+        "line": 1539
       }
     },
     {
@@ -8779,7 +8836,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 885,
+    "annotation_count": 891,
     "coverage_percent": 86
   },
   "external_refs": []

@@ -25,6 +25,7 @@ import { type LLMConfig, chatCompletion } from './llm.js';
 import { GUARDLINK_TOOLS, createToolExecutor } from './tools.js';
 import { formatConfidence, redactEvidence } from './format.js';
 import { loadProjectConfig } from '../agents/config.js';
+import { hasReach, summarizeReach } from '../reach/index.js';
 import { findUnmitigatedExposures, annotationCount } from '../parser/coverage.js';
 import { parseFindingsBlock, validateFindings, stripFindingsBlock, type Finding, type Unresolved } from './findings.js';
 import type { ReportShapeId } from '../playbooks/index.js';
@@ -420,6 +421,8 @@ export function serializeModel(model: ThreatModel): string {
     description: en.description, citation: en.citation?.raw, inert: en.inert,
     file: en.location.file, line: en.location.line,
   }));
+  const reach = serializeAgentReach(model);
+  if (reach) compact.agent_reach = reach;
   if (model.comments.length) compact.comments = model.comments.map(c => ({
     description: c.description, file: c.location.file, line: c.location.line,
   }));
@@ -447,6 +450,39 @@ export function serializeModel(model: ThreatModel): string {
   }
 
   return JSON.stringify(compact, null, 2);
+}
+
+/**
+ * The agent part of the model, for a threat report's LLM: every reach, effect
+ * and gate with its location, and the derived lists the report section prints
+ * (unentitled reaches, ungated mutations, egress, and the OWASP LLM Top 10
+ * rows), so a framework report reasons from the same can-minus-may answer as
+ * `guardlink report`. Absent when the model has no reach annotation.
+ */
+export function serializeAgentReach(model: ThreatModel): Record<string, unknown> | undefined {
+  if (!hasReach(model)) return undefined;
+  const s = summarizeReach(model);
+  const at = (l: { file: string; line: number }) => `${l.file}:${l.line}`;
+  return {
+    reaches: (model.reaches || []).map(r => ({
+      actor: r.actor, agent: r.agent, capability: r.canonical_capability, asset: r.asset, identity: r.identity,
+      description: r.description, file: r.location.file, line: r.location.line,
+    })),
+    effects: (model.effects || []).map(e => ({
+      effect: e.effect, asset: e.asset, identity: e.identity, description: e.description,
+      file: e.location.file, line: e.location.line,
+    })),
+    gates: (model.gates || []).map(g => ({
+      asset: g.asset, approver: g.approver, capability: g.canonical_capability, description: g.description,
+      file: g.location.file, line: g.location.line,
+    })),
+    unentitled_reaches: s.unentitled.map(u => `${u.actor}${u.agent ? ' (agent)' : ''} to ${u.capability}${u.asset ? ` on ${u.asset}` : ''} (${at(u.loc)})${u.near_misses.length ? ` — ${u.near_misses.map(n => n.reason).join('; ')}` : ''}`),
+    ungated_mutations: s.ungated.map(u => `${u.effect} on ${u.asset} (${at(u.loc)})${u.via.length ? ` via ${u.via.map(v => `${v.actor} ${v.capability}`).join(', ')}` : ''}`),
+    egress: s.egress.map(e => `${e.actors.join(', ')}: ${e.source} -> ${e.target}${e.boundaries.length ? ` crossing ${e.boundaries.join(', ')}` : ''} (${at(e.loc)})`),
+    owasp_llm: s.owasp.filter(o => o.items.length > 0).map(o => ({
+      id: o.id, title: o.title, items: o.items.map(i => `${i.facet}: ${i.agent} ${i.text} (${at(i.loc)})`),
+    })),
+  };
 }
 
 /**
@@ -532,6 +568,10 @@ export function serializeModelCompact(model: ThreatModel): string {
   if (model.data_handling.length) {
     compact.data_handling = model.data_handling.map(h => `${h.asset}: ${h.classification}`);
   }
+
+  // What agents can reach, and what of it is unentitled or ungated — the LLM part of the model
+  const reach = serializeAgentReach(model);
+  if (reach) compact.agent_reach = reach;
 
   // Mitigation count per asset (not full details — just "how defended is each asset?")
   if (model.mitigations.length) {

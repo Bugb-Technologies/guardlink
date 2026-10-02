@@ -59,6 +59,9 @@ You will receive:
 - **@assumes** — a security assumption the developer is relying on (potential blind spot)
 - **@actor** — a principal in the authorization model (a role, not a person)
 - **@entitles** — a capability an actor holds **by design**: the privilege needed to trigger the effect is a privilege that already grants that effect. It is NOT a mitigation and NOT an acceptance — the exposure is still real and still testable. Only treat it as a reason a finding is by-design when the *measured* minimum privilege matches the entitled actor, and never for an ownership question (IDOR, tenant isolation), where both peers hold the capability. An entitlement whose description cites no authorization code is inert; ignore it.
+- **@agents** / **@reaches** — an LLM agent (\`@agents\`) or another principal (\`@reaches\`) **can** invoke a capability: what the harness hands out. Not a permission. \`agent_reach.unentitled_reaches\` lists the ones no cited @entitles covers — for an agent, the OWASP LLM06 Excessive Agency list.
+- **@effects** — what code **does** to an asset: read, write, delete, execute, spend or notify, optionally as an execution identity. A mutating effect with no @gates in front of it is listed in \`agent_reach.ungated_mutations\`.
+- **@gates** — a named approver decides before effects on an asset land. It suppresses nothing; it is a node on a path, not a mitigation.
 - **@audit** — marks an asset as requiring human review
 - **hypothesis** (a field on an @exposes row, when present) — what happened when it was tested: 'confirmed' with evidence is proven; 'refuted' with evidence was tried and found not exploitable and is **not an open risk** (report it as refuted, keep it out of the priority list); 'retest' was confirmed before and the code beneath it changed since
 
@@ -70,6 +73,7 @@ You will receive:
 - Challenge accepted risks: "You accepted this — is that reasonable given the severity and blast radius?"
 - Distinguish **pentest-confirmable threats** from **governance/design-only gaps**. Pentest-confirmable issues should include concrete validation ideas; governance/design-only risks should be called out explicitly as **audit-required** items with suggested @audit/@comment annotations instead of fake exploit claims.
 - Always reference **specific files, assets, and threat IDs** from the model. Never give generic advice.
+- If the model carries **agent_reach**, include an **Agents and LLM reach** section: each agent, what it can reach, which reaches are unentitled and which mutations are ungated, mapped to the OWASP Top 10 for LLM Applications rows in \`agent_reach.owasp_llm\` (LLM06 Excessive Agency, LLM01 Prompt Injection, LLM05 Improper Output Handling). Treat each as a target to verify against the code, not as a proven finding.
 
 ## Output structure
 

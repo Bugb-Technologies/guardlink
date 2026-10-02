@@ -53,7 +53,7 @@ import { runCiChecks, formatCiReport, ESTATE_ROUTE } from '../ci/index.js';
 import type { CiWorkspaceScope } from '../ci/index.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { ensurePromptMd } from '../init/migrate.js';
-import { generateReport, generateMermaid } from '../report/index.js';
+import { generateReport, generateMermaid, generateAgentReachReport } from '../report/index.js';
 import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getChangedFiles } from '../diff/index.js';
 import { findUnmitigatedPaths, classifyEndpoints } from '../paths/index.js';
 import { formatPaths } from '../paths/format.js';
@@ -843,7 +843,8 @@ program
   .option('--json', 'Also output threat-model.json alongside the report (legacy; prefer --format)')
   .option('--feature <names>', 'Filter report to specific feature(s) (comma-separated)')
   .option('--blame', 'Add an Attribution section: who introduced and fixed each claim, per person and per AI tool (read from git)')
-  .action(async (dir: string, opts: { project: string; output?: string; format: string; diagramOnly?: boolean; json?: boolean; feature?: string; blame?: boolean }) => {
+  .option('--agents', 'Write only the agent threat model: what each agent and principal can reach, unentitled reaches, ungated mutations and the OWASP LLM mapping (default file threat-model-agents.md)')
+  .action(async (dir: string, opts: { project: string; output?: string; format: string; diagramOnly?: boolean; json?: boolean; feature?: string; blame?: boolean; agents?: boolean }) => {
     const root = resolve(dir);
 
     // Validate --format before doing any work. An unrecognised value used to
@@ -909,6 +910,16 @@ program
     }
 
     const { writeFile } = await import('node:fs/promises');
+
+    // The agent threat model alone: the same section the full report carries,
+    // with no JSON beside it, because the export is the whole model's.
+    if (opts.agents) {
+      const mdFile = opts.output || 'threat-model-agents.md';
+      await writeFile(resolve(root, mdFile), generateAgentReachReport(enrichedModel) + '\n');
+      console.error(`✓ Wrote agent threat model to ${mdFile}`);
+      return;
+    }
+
     const wantJson = opts.format === 'json' || opts.format === 'both' || opts.json;
     const wantMd = opts.format === 'md' || opts.format === 'both' || opts.json;
 

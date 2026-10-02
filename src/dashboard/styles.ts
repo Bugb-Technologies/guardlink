@@ -1527,4 +1527,40 @@ table.heat .heat-col span { font-size: .68rem; }
 .diagram-toobig ul { margin: 0 0 .5rem; padding-left: 1.1rem; }
 .diagram-toobig li { margin-bottom: .2rem; }
 .diagram-toobig p { margin: 0; color: var(--muted); }
+
+/* ── Agents & Reach ─────────────────────────────────────────────── */
+table.heat.reach-map { border-spacing: 4px; }
+.table-wrap table.heat.reach-map td.reach-cell { padding: 5px; vertical-align: top; background: var(--surface2); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); min-width: 108px; max-width: 220px; }
+.table-wrap table.heat.reach-map td.reach-cell.empty { background: transparent; border-color: transparent; }
+.table-wrap table.heat.reach-map td.reach-cell.empty::after { content: "·"; color: var(--text-dim); display: block; text-align: center; }
+table.heat.reach-map .reach-actor { vertical-align: top; padding-top: .35rem; }
+table.heat.reach-map .reach-actor span:first-child { max-width: 170px; }
+.reach-kind { display: inline-block; font-family: var(--font-ui, inherit); font-size: .58rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: .05rem .4rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+table.heat .reach-actor span.reach-kind { display: inline-block; max-width: none; margin-top: .2rem; }
+.reach-kind.agent { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-soft); }
+.reach-kind.loose { border-style: dashed; }
+.reach-chip { display: flex; align-items: center; gap: .25rem; width: max-content; max-width: 100%; font-family: var(--font-mono); font-size: .66rem; font-weight: 500; line-height: 1.35; padding: .1rem .4rem; margin: 0 0 3px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+td > .reach-chip, li > .reach-chip, .d-value .reach-chip { display: inline-flex; margin: 0; vertical-align: middle; }
+.reach-chip .ico { width: 11px; height: 11px; flex: none; }
+.reach-cap.ok { color: var(--green-text); border-color: color-mix(in oklab, var(--green) 45%, transparent); background: color-mix(in oklab, var(--green) 10%, var(--surface)); }
+.reach-cap.bad, .reach-eff.ungated { color: var(--badge-red-fg, var(--red)); border-color: color-mix(in oklab, var(--red) 50%, transparent); background: var(--badge-red-bg); }
+.reach-eff.gated { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-soft); }
+.reach-eff.read { color: var(--muted); }
+.reach-legend { display: flex; flex-wrap: wrap; gap: .4rem 1rem; align-items: center; font-size: .7rem; color: var(--muted); margin: .2rem 0 1.4rem; }
+.reach-legend > span { display: inline-flex; align-items: center; gap: .35rem; }
+.reach-legend .reach-chip { margin: 0; }
+.d-reach > div { font-size: .74rem; padding: .18rem 0; border-bottom: 1px dashed var(--border-subtle); display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.d-reach > div:last-child { border-bottom: 0; }
+.reach-miss { margin-bottom: .2rem; font-size: .74rem; }
+.reach-example { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: .8rem 1rem; font-size: .74rem; overflow-x: auto; max-width: 100%; }
+.reach-owasp { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: .7rem; margin-bottom: 1.2rem; }
+.reach-owasp-item { background: var(--surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: .75rem .9rem; min-width: 0; }
+.reach-owasp-item.has { border-left: 3px solid var(--red); }
+.reach-owasp-h { font-weight: 650; font-size: .82rem; display: flex; align-items: baseline; gap: .45rem; margin-bottom: .35rem; }
+.reach-owasp-id { font-family: var(--font-mono); font-size: .7rem; color: var(--accent); }
+.reach-owasp-n { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); }
+.reach-owasp-item.has .reach-owasp-n { color: var(--red); }
+.reach-owasp-item ul { margin: 0; padding-left: 1rem; font-size: .74rem; line-height: 1.5; }
+.reach-owasp-item li { margin-bottom: .3rem; }
+.reach-facet { font-size: .6rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; color: var(--muted); }
 `;

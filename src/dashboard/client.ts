@@ -467,6 +467,16 @@ function renderAssetDrawer(idx) {
        + a.flowsOut.map(function (f) { return '<div><b>' + esc(a.name) + '</b> <span class="muted">→</span> <code>' + esc(f.to) + '</code>' + (f.via ? ' <span class="muted">via ' + esc(f.via) + '</span>' : '') + '</div>'; }).join('')
        + '</div></div>';
   }
+  if (a.reach) {
+    var rp = [];
+    a.reach.capabilities.forEach(function (c) { rp.push('<div><code>' + esc(c.actor) + '</code>' + (c.agent ? ' <span class="reach-kind agent">AI agent</span>' : '') + ' <span class="muted">can</span> <span class="reach-chip reach-cap ' + (c.entitled ? 'ok' : 'bad') + '" title="' + (c.entitled ? 'Entitled' : 'No cited @entitles covers it') + '">' + esc(c.capability) + '</span></div>'); });
+    a.reach.effects.forEach(function (e) {
+      var st = e.gated === null ? 'read' : e.gated ? 'gated' : 'ungated';
+      rp.push('<div>' + (e.actor ? '<code>' + esc(e.actor) + '</code>' : '<span class="muted">code not tied to a reach</span>') + ' <span class="muted">does</span> <span class="reach-chip reach-eff ' + st + '">' + esc(e.effect) + (e.gated === false ? ' · no gate' : e.gated ? ' · gated by ' + esc(e.approvers.join(', ')) : '') + '</span>' + (e.via.length ? ' <span class="muted">via ' + esc(e.via.join(', ')) + '</span>' : '') + '</div>');
+    });
+    a.reach.gates.forEach(function (g) { rp.push('<div><code>' + esc(g.approver) + '</code> <span class="muted">approves first' + (g.capability ? ' for</span> <code>' + esc(g.capability) + '</code>' : '</span>') + '</div>'); });
+    h += '<div class="d-section"><div class="d-label">Reach</div><div class="d-value d-reach">' + rp.join('') + '</div><div class="d-value"><a href="#agents">Open Agents &amp; Reach</a></div></div>';
+  }
   var facts = [];
   if (a.dataHandling.length) facts.push(sec('Handles', a.dataHandling.map(function (d) { return '<span class="badge badge-blue">' + esc(d) + '</span>'; }).join(' ')));
   if (a.boundaries.length) facts.push(sec('Trust boundaries with', a.boundaries.map(function (b) { return '<code>' + esc(b) + '</code>'; }).join(' ')));

@@ -3,6 +3,7 @@
  * Converts ThreatModel into dashboard-ready statistics.
  */
 
+import type { ReachSummary } from '../reach/index.js';
 import type { ExposureHypothesis, ThreatModel } from '../types/index.js';
 import { buildCoverageIndex, annotationCount } from '../parser/coverage.js';
 import { entriesFromModel, summarise } from '../blame/summary.js';
@@ -369,6 +370,8 @@ export interface ActionInput {
   verification: VerificationReport | null;
   attribution: AttributionData | null;
   scope: string[] | null;
+  /** What agents and principals can reach; absent in callers that predate it. */
+  reach?: ReachSummary;
 }
 
 const sevKey = (s: string): string => {
@@ -451,6 +454,29 @@ export function computeActions(input: ActionInput): DashboardAction[] {
         href: '#attribution?who=ai',
       });
     }
+  }
+
+  if (input.reach && input.reach.totals.unentitled > 0) {
+    const u = input.reach.unentitled;
+    const agents = u.filter(r => r.agent).length;
+    out.push({
+      id: 'unentitled-reaches', level: agents > 0 ? 'high' : 'medium', count: u.length,
+      title: `${u.length} ${plural(u.length, 'capability', 'capabilities')} handed out that nobody approved`,
+      detail: `${agents} held by an AI agent (OWASP LLM06 Excessive Agency), ${u.length - agents} by another principal. Remove the tool, or have a human accept an entitlement for it.`,
+      href: '#agents',
+      command: 'guardlink lookup "unentitled reaches"',
+    });
+  }
+  if (input.reach && input.reach.totals.ungated > 0) {
+    const g = input.reach.ungated;
+    const agents = g.filter(r => r.agent).length;
+    out.push({
+      id: 'ungated-mutations', level: agents > 0 ? 'high' : 'medium', count: g.length,
+      title: `${g.length} ${plural(g.length, 'mutation')} with no one deciding first`,
+      detail: `${agents} reachable by an AI agent. A write, delete, execute, spend or notify with no @gates in front of it lands on the model's say-so alone.`,
+      href: '#agents',
+      command: 'guardlink lookup "effects"',
+    });
   }
 
   const inert = (model.entitlements || []).filter(e => e.inert).length;

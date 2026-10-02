@@ -22,6 +22,8 @@ import { findUnmitigatedExposures, normalizeRef } from '../parser/coverage.js';
 import { ACCEPTANCE_REGISTER_SHORT, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
 import { normalizeName } from '../parser/normalize.js';
 import { entitlementDemotionBlockers } from '../parser/parse-project.js';
+import { hasReach, summarizeReach } from '../reach/index.js';
+import { emitAgentReach } from './agent-reach.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Feature slice — is this document the project, or one slice of it?
@@ -232,6 +234,17 @@ export function generateReport(rawModel: ThreatModel): string {
   }
 
   // ══════════════════════════════════════════════════════════════════════
+  // SECTION 11: Agents and LLM Reach (conditional)
+  // ══════════════════════════════════════════════════════════════════════
+  // Only when some reach annotation exists, so a model without them reports
+  // exactly as before. `guardlink report --agents` prints this section alone.
+  if (hasReach(model)) {
+    lines.push(h2('Agents and LLM Reach', slice));
+    lines.push('');
+    emitAgentReach(model, lines, slice.headingSuffix);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
   // EXISTING SECTIONS: Executive Summary + Findings
   // ══════════════════════════════════════════════════════════════════════
 
@@ -265,6 +278,12 @@ export function generateReport(rawModel: ThreatModel): string {
   lines.push(`| Validations | ${model.validations.length} |`);
   lines.push(`| Ownership records | ${model.ownership.length} |`);
   if (model.shields.length > 0) lines.push(`| Shielded regions | ${model.shields.length} |`);
+  if (hasReach(model)) {
+    const reach = summarizeReach(model);
+    lines.push(`| Agent and principal reaches | ${reach.totals.reaches} |`);
+    lines.push(`| **Unentitled reaches** | **${reach.totals.unentitled}** |`);
+    lines.push(`| **Ungated mutations** | **${reach.totals.ungated}** |`);
+  }
   lines.push('');
 
   // ── Threat Model Diagram ──

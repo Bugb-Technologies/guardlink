@@ -20,6 +20,7 @@ export function renderDataPage(ctx: PageContext): string {
   add('validations', 'Validations', model.validations.length);
   add('ownership', 'Ownership', model.ownership.length);
   add('audits', 'Audit Items', model.audits.length);
+  add('actors', 'Actors', ctx.reach.actors.length);
   add('entitlements', 'Entitlements', (model.entitlements || []).length);
   add('assumptions', 'Assumptions', model.assumptions.length);
   add('shields', 'Shielded Regions', model.shields.length);
@@ -135,6 +136,26 @@ export function renderDataPage(ctx: PageContext): string {
     </tbody>
   </table></div>
   ${pager('audits')}` : ''}
+
+  ${ctx.reach.actors.length > 0 ? `
+  ${subHead('Actors', '', `<span data-count-for="actors">${ctx.reach.actors.length}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="data-actors">')}
+  <p class="guide">Principals in the authorization model. An actor is an <strong>AI agent</strong> when some <code>@agents</code> names it; <a href="#agents">Agents &amp; Reach</a> shows what each one can reach.</p>
+  <div class="table-wrap"><table id="actors" class="sortable" data-paginate="25">
+    ${sortableHead([{ key: 'actor', label: 'Actor' }, { key: 'kind', label: 'Kind' }, { key: 'reaches', label: 'Reaches' }, { key: 'unentitled', label: 'Unentitled' }, { key: 'approves', label: 'Approves' }, { key: 'description', label: 'Description', plain: true }, { key: 'location', label: 'Location', cls: 'loc' }])}
+    <tbody>
+    ${ctx.reach.actors.map(a => `
+    <tr ${rowAttrs({ file: a.loc?.file, search: ['actor', a.agent ? 'agent' : a.reaches > 0 ? 'principal' : '', a.approves > 0 ? 'approver' : '', a.declared ? '' : 'undeclared', a.ref, a.name, a.description ?? ''] })}>
+      <td><code>${esc(a.ref)}</code></td>
+      <td>${a.agent ? '<span class="reach-kind agent">AI agent</span>' : a.reaches > 0 ? '<span class="reach-kind">principal</span>' : a.approves > 0 ? '<span class="reach-kind">approver</span>' : '<span class="muted">—</span>'}${a.declared ? '' : ' <strong style="color:var(--sev-high)">undeclared</strong>'}</td>
+      <td>${a.reaches}</td>
+      <td>${a.unentitled > 0 ? `<strong style="color:var(--sev-high)">${a.unentitled}</strong>` : '0'}</td>
+      <td>${a.approves}</td>
+      ${descCell(a.description, '—')}
+      ${loc(a.loc)}
+    </tr>`).join('')}
+    </tbody>
+  </table></div>
+  ${pager('actors')}` : ''}
 
   ${(model.entitlements || []).length > 0 ? `
   ${subHead('Entitlements', '', `<span data-count-for="entitlements">${model.entitlements!.length}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="data-entitlements">')}

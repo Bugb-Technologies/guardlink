@@ -14,7 +14,9 @@
  *
  * Pages: Summary (with a "what changed since <ref>" strip under --since),
  * Analytics (heatmaps, owners, sensitive data and distributions over the same
- * claim rows the tables show, recomputed per feature), Threats, Diagrams (with
+ * claim rows the tables show, recomputed per feature), Threats, Agents & Reach
+ * (the reach map, unentitled reaches, ungated mutations, gates and the OWASP
+ * LLM rows, with an empty state when nothing declares reach), Diagrams (with
  * one focused graph per exposed asset), Code (riskiest file first), Reports,
  * Data, Assets and, with --blame, Attribution.
  *
@@ -43,7 +45,7 @@ import type { ThreatReportWithContent } from '../analyze/index.js';
 import { computeStats, computeSeverity, computeSeverityOf, computeExposures, computeConfirmed, computeAssetHeatmap, computeAttribution, computeActions, computeLedgerStates, computeAssetDetails, computeOwnership, computeFileRisk, fileRiskRank, computeChanges, newClaimKeys } from './data.js';
 import type { SinceInput } from './analytics.js';
 import type { SeverityBreakdown } from './data.js';
-import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface } from './diagrams.js';
+import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface, generateReachDiagram } from './diagrams.js';
 import { detectRepoLinks } from './links.js';
 import { readHypotheses, classifyHypotheses, attachHypotheses } from '../hypothesis/index.js';
 import { buildFileAnnotations, buildAnalysisData } from './annotations.js';
@@ -63,6 +65,8 @@ import { renderAssetsPage } from './pages/assets.js';
 import { renderAttributionPage } from './pages/attribution.js';
 import { renderAnalyticsPage, type AnalyticsVariant } from './pages/analytics.js';
 import { buildExploreData } from './explore.js';
+import { renderAgentsPage } from './pages/agents.js';
+import { summarizeReach } from '../reach/index.js';
 
 export function computeRiskGrade(sev: SeverityBreakdown, unmitigatedCount: number, totalExposures: number, confirmedCount = 0): { grade: string; label: string; summary: string } {
   if (confirmedCount > 0) return { grade: 'F', label: 'Critical Risk', summary: `${confirmedCount} confirmed exploitable finding(s) — immediate remediation required` };
@@ -119,7 +123,7 @@ function countByAsset(rows: { asset: string }[], model: ThreatModel): Map<string
   return counts;
 }
 
-const NAV_ICON: Record<string, string> = { summary: 'layout', analytics: 'grid', threats: 'alert', explore: 'search', diagrams: 'diagram', code: 'code', 'ai-analysis': 'file', data: 'lock', assets: 'map', attribution: 'users' };
+const NAV_ICON: Record<string, string> = { summary: 'layout', analytics: 'grid', threats: 'alert', agents: 'zap', explore: 'search', diagrams: 'diagram', code: 'code', 'ai-analysis': 'file', data: 'lock', assets: 'map', attribution: 'users' };
 
 function navLink(page: string, label: string, active = false, badge?: string): string {
   return `<a href="#${page}" data-page="${page}"${active ? ' class="active"' : ''}><span class="nav-icon">${icon(NAV_ICON[page] ?? 'square')}</span> <span class="nav-text">${label}</span>${badge ? `<span class="nav-badge">${badge}</span>` : ''}</a>`;
@@ -180,9 +184,11 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
     const fm = filterByFeature(model, [f]);
     return { feature: f, input: { scope: [f], model: fm, claims: buildClaims(fm, links, ledger, { newKeys }), attribution: computeAttribution(fm), heatmap: computeAssetHeatmap(fm) } };
   });
-  const actions = computeActions({ model, exposures, confirmed, verification: ledgerRead?.report ?? null, attribution, scope, unownedExposed: ownership.unowned.map(u => u.asset) });
+  // What agents and other principals can reach: the Agents page, the asset drawer, the actor table and the actions read it.
+  const reach = summarizeReach(model);
+  const actions = computeActions({ model, exposures, confirmed, verification: ledgerRead?.report ?? null, attribution, scope, unownedExposed: ownership.unowned.map(u => u.asset), reach });
   // One record per heatmap tile, in tile order: the asset drawer indexes it by the tile's position.
-  const assetsData = computeAssetDetails(model, claims, heatmap, attribution?.as_of ?? null);
+  const assetsData = computeAssetDetails(model, claims, heatmap, attribution?.as_of ?? null, reach);
   // Every Explore answer, selected and drawn here rather than in the browser —
   // see src/dashboard/explore.ts for why the selection stays on this side.
   const exploreData = buildExploreData({
@@ -195,7 +201,7 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   const ctx: PageContext = {
     model, scope, scopeFiles, links, hostLabel: hostLabel(links),
     stats, severity, exposures, confirmed, unmitigated, mitigatedCount, mitigationCoveragePercent, risk,
-    claims, ledger, attribution, actions, heatmap, fileAnnotations,
+    claims, ledger, attribution, actions, heatmap, fileAnnotations, reach,
     diagrams: {
       // No emoji on the page: shapes and severity classes carry what the
       // committed .mmd artifacts say with icons.
@@ -204,6 +210,7 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
       dataFlow: generateDataFlowDiagram(model, { icons: 'none' }),
       attackSurface: generateAttackSurface(model, { icons: 'none' }),
       focus,
+      reach: generateReachDiagram(reach),
     },
     analyses: analyses || [],
     changes,
@@ -293,6 +300,7 @@ ${scope ? `<div id="scope-banner" class="scope-banner" role="note">
     ${navLink('summary', 'Executive Summary', true)}
     ${navLink('analytics', 'Analytics')}
     ${navLink('threats', 'Threats &amp; Exposures', false, unmitigated.length > 0 ? String(unmitigated.length) : undefined)}
+    ${navLink('agents', 'Agents &amp; Reach', false, reach.totals.unentitled + reach.totals.ungated > 0 ? String(reach.totals.unentitled + reach.totals.ungated) : undefined)}
     ${navLink('explore', 'Explore')}
     ${navLink('diagrams', 'Diagrams')}
     ${navLink('code', 'Code &amp; Annotations')}
@@ -315,6 +323,7 @@ ${renderSummaryPage(ctx)}
 ${renderAnalyticsPage(ctx, variants)}
 ${renderReportsPage(ctx)}
 ${renderThreatsPage(ctx)}
+${renderAgentsPage(ctx, reach)}
 ${renderExplorePage(ctx, exploreData)}
 ${renderDiagramsPage(ctx)}
 ${renderCodePage(ctx)}
