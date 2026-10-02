@@ -1536,7 +1536,7 @@ table.heat.reach-map { border-spacing: 4px; }
 table.heat.reach-map .reach-actor { vertical-align: top; padding-top: .35rem; }
 table.heat.reach-map .reach-actor span:first-child { max-width: 170px; }
 .reach-kind { display: inline-block; font-family: var(--font-ui, inherit); font-size: .58rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: .05rem .4rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
-table.heat .reach-actor .reach-kind { margin-top: .2rem; }
+table.heat .reach-actor span.reach-kind { display: inline-block; max-width: none; margin-top: .2rem; }
 .reach-kind.agent { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-soft); }
 .reach-kind.loose { border-style: dashed; }
 .reach-chip { display: flex; align-items: center; gap: .25rem; width: max-content; max-width: 100%; font-family: var(--font-mono); font-size: .66rem; font-weight: 500; line-height: 1.35; padding: .1rem .4rem; margin: 0 0 3px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
