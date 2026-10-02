@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseProject } from '../src/parser/parse-project.js';
 import {
-  findDanglingRefs, findUndeclaredActors, findInertEntitlements,
+  findDanglingRefs, findUndeclaredActors, findAgentReachConflicts, findInertEntitlements,
   findImpreciseEntitlements, findAcceptedWithoutAudit, findOffConventionGalFiles,
 } from '../src/parser/validate.js';
 import { checkEntitlementProvenance } from '../src/review/entitlements.js';
@@ -45,6 +45,8 @@ beforeAll(async () => {
     + ' * @accepts #sqli on #api -- "accepted with no audit"\n'
     + ' * @entitles #ghost to doathing -- "no citation, no asset, no threat"\n'
     + ' * @entitles #admin to configure-thing on #api against #sqli -- "By design. Authz: app/a.ts:2"\n'
+    + ' * @agents #admin to configure-thing on #api\n'
+    + ' * @reaches #admin to configure-thing on #api -- "the same actor under both verbs"\n'
     + ' */\n'
     + 'export function f() {}\n');
 
@@ -69,6 +71,7 @@ describe('every diagnostic kind is machine-classifiable', () => {
     ['duplicate-id', 'parse', () => parseDiagnostics],
     ['dangling-ref', 'validate', () => findDanglingRefs(model)],
     ['undeclared-actor', 'validate', () => findUndeclaredActors(model)],
+    ['agent-reach-conflict', 'validate', () => findAgentReachConflicts(model)],
     ['inert-entitlement', 'validate', () => findInertEntitlements(model)],
     ['imprecise-entitlement', 'validate', () => findImpreciseEntitlements(model)],
     ['accepted-without-audit', 'validate', () => findAcceptedWithoutAudit(model)],
@@ -88,6 +91,7 @@ describe('every diagnostic kind is machine-classifiable', () => {
       ...parseDiagnostics,
       ...findDanglingRefs(model),
       ...findUndeclaredActors(model),
+      ...findAgentReachConflicts(model),
       ...findInertEntitlements(model),
       ...findImpreciseEntitlements(model),
       ...findAcceptedWithoutAudit(model),

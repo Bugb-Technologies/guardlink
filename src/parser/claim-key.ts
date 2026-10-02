@@ -26,11 +26,13 @@ import type {
   ThreatModelTransfer, ThreatModelFlow, ThreatModelBoundary, ThreatModelValidation,
   ThreatModelAudit, ThreatModelOwnership, ThreatModelDataHandling, ThreatModelAssumption,
   ThreatModelFeature, ThreatModelComment, ThreatModelEntitlement,
+  ThreatModelReach, ThreatModelEffect, ThreatModelGate,
 } from '../types/index.js';
 
 export type ClaimVerb =
   | 'mitigates' | 'exposes' | 'confirmed' | 'accepts' | 'transfers' | 'flows' | 'boundary'
-  | 'validates' | 'audit' | 'owns' | 'handles' | 'assumes' | 'feature' | 'comment' | 'entitles';
+  | 'validates' | 'audit' | 'owns' | 'handles' | 'assumes' | 'feature' | 'comment' | 'entitles'
+  | 'agents' | 'reaches' | 'effects' | 'gates';
 
 /** Verbs whose staleness can hide an exposure: the two that remove one from the export. */
 export const DEMOTABLE_VERBS: ReadonlySet<AnnotationVerb> = new Set(['mitigates', 'accepts']);
@@ -112,7 +114,8 @@ type Rec =
   | ['accepts', ThreatModelAcceptance] | ['transfers', ThreatModelTransfer] | ['flows', ThreatModelFlow]
   | ['boundary', ThreatModelBoundary] | ['validates', ThreatModelValidation] | ['audit', ThreatModelAudit]
   | ['owns', ThreatModelOwnership] | ['handles', ThreatModelDataHandling] | ['assumes', ThreatModelAssumption]
-  | ['feature', ThreatModelFeature] | ['comment', ThreatModelComment] | ['entitles', ThreatModelEntitlement];
+  | ['feature', ThreatModelFeature] | ['comment', ThreatModelComment] | ['entitles', ThreatModelEntitlement]
+  | ['agents', ThreatModelReach] | ['reaches', ThreatModelReach] | ['effects', ThreatModelEffect] | ['gates', ThreatModelGate];
 
 /** Identity fields per verb, in a fixed order. Description last, file after that. */
 function identity([verb, r]: Rec): string[] {
@@ -139,6 +142,10 @@ function identity([verb, r]: Rec): string[] {
     case 'feature':   return [s(r.feature)];
     case 'comment':   return [];
     case 'entitles':  return [s(r.actor), s(r.capability), s(r.asset), s(r.threat)];
+    case 'agents':
+    case 'reaches':   return [s(r.actor), s(r.capability), s(r.asset), s(r.identity)];
+    case 'effects':   return [s(r.effect), s(r.asset), s(r.identity)];
+    case 'gates':     return [s(r.asset), s(r.approver), s(r.capability)];
   }
 }
 
@@ -161,6 +168,10 @@ export function claimText(rec: Rec): string {
     case 'feature':   return `"${r.feature}"`;
     case 'comment':   return `"${(r.description ?? '').slice(0, 60)}"`;
     case 'entitles':  return `${r.actor} to ${r.capability}${r.asset ? ` on ${r.asset}` : ''}${r.threat ? ` against ${r.threat}` : ''}`;
+    case 'agents':
+    case 'reaches':   return `${r.actor} to ${r.capability}${r.asset ? ` on ${r.asset}` : ''}${r.identity ? ` as ${r.identity}` : ''}`;
+    case 'effects':   return `${r.effect} on ${r.asset}${r.identity ? ` as ${r.identity}` : ''}`;
+    case 'gates':     return `${r.asset} by ${r.approver}${r.capability ? ` for ${r.capability}` : ''}`;
   }
 }
 
@@ -192,6 +203,9 @@ function allRecords(model: ThreatModel): Rec[] {
   for (const r of model.features ?? []) out.push(['feature', r]);
   for (const r of model.comments ?? []) out.push(['comment', r]);
   for (const r of model.entitlements ?? []) out.push(['entitles', r]);
+  for (const r of model.reaches ?? []) out.push([r.agent ? 'agents' : 'reaches', r]);
+  for (const r of model.effects ?? []) out.push(['effects', r]);
+  for (const r of model.gates ?? []) out.push(['gates', r]);
   return out;
 }
 

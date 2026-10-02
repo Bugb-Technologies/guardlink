@@ -350,6 +350,8 @@ Verb keyword sets:
 | `@flows` | `->` |
 | `@boundary` | `between`, `and`, `\|`; `from` only as the first word of the arguments |
 | `@validates`, `@owns` | `for` |
+| `@agents`, `@reaches` | `to` |
+| `@effects` | an effect class (`read`, `write`, `delete`, `execute`, `spend`, `notify`) only as the first word of the arguments |
 | all others | *(none — structure comes from a ref or a `--`)* |
 
 **The two tiers.**
@@ -438,7 +440,7 @@ Names a security control, defense mechanism, or mitigation strategy that is impl
 @actor <name> [(#id)] [-- "<description>"]
 ```
 
-Names a principal in the system's authorization model — a **role**, not a person. Actors are the subjects of `@entitles` (§3.2), which is what makes the question *"is the caller already entitled to this effect?"* answerable from the model instead of by inference.
+Names a principal in the system's authorization model — a **role**, not a person. Actors are the subjects of `@entitles` (§3.2), which is what makes the question *"is the caller already entitled to this effect?"* answerable from the model instead of by inference. They are also the subjects of `@agents` and `@reaches` and the approvers named by `@gates` (§3.2.1). There is no separate declaration for an LLM agent: an actor is one when some `@agents` names it.
 
 ```go
 // @actor Namespace_Admin (#ns-admin) -- "Administers one namespace's configuration"
@@ -715,6 +717,51 @@ A direction is a claim like any other. Declaring one, removing one or reversing 
 ```
 
 `asset_a` and `asset_b` are the two sides in the order written. `directed` is `true` only for the `from … to …` form, and then `asset_a` is the outer side and `asset_b` the inner side. For the undirected forms it is absent, and the order of `asset_a` and `asset_b` carries no meaning; a reader MUST NOT infer a direction from it. `id` (without its `#`) and `description` are absent when not declared. The conformance corpus [`conformance/boundaries.json`](../conformance/README.md) pins each rule here to annotation text in and expected records, sides and validation results out.
+
+#### 3.2.1. Reach: `@agents`, `@reaches`, `@effects`, `@gates`
+
+An application that embeds an LLM agent hands it capabilities through its harness: tool definitions, MCP servers, file and shell access, database clients, internal methods. `@flows` describes traffic the authors expect; it does not describe what a tool makes *possible*. These four verbs declare it, each where its fact lives in the code, so a reviewer and a scanner can see what an agent's blast radius is.
+
+```
+@agents  <agent actor> to <capability> [on <asset>] [as <identity>] [-- "<description>"]
+@reaches <actor> to <capability> [on <asset>] [as <identity>] [-- "<description>"]
+@effects <read|write|delete|execute|spend|notify> on <asset> [as <identity>] [-- "<description>"]
+@gates   <asset> by <approver actor> [for <capability>] [-- "<description>"]
+```
+
+```ts
+// .guardlink/definitions.ts
+// @actor Support_Agent (#support-agent) -- "LLM agent; acts for the signed-in customer"
+// @actor Support_Human (#support-human) -- "Approves refunds in the review queue"
+
+/**
+ * @agents #support-agent to run-sql on #tool-surface -- "Debug tool, still registered in production"
+ * @effects write on #users-db as #db-service -- "Runs model-written SQL verbatim via db.raw"
+ * @exposes #users-db to #excessive-agency [high] cwe:CWE-862 -- "Reachable from the agent's tool surface, nothing approves the write"
+ * @audit #users-db -- "Should run_sql exist outside development?"
+ */
+tools.register('run_sql', ({ sql }) => db.raw(sql));
+
+/**
+ * @gates #payments by #support-human for issue-refund -- "requireApproval() parks the refund until a human approves it"
+ */
+async function requireApproval(refund: Refund) { … }
+```
+
+**`@agents` and `@reaches` — can invoke.** Written on the code that hands a capability out: a tool registration, an MCP server mount, the credentials a job runs with. Both verbs have one shape. `@agents` names an LLM agent; `@reaches` names every other principal (a CI runner, a service account). Two rules follow from having two verbs:
+
+1. **Writing `@agents` about an actor is what marks it an agent.** No definition-level flag exists, so an agent is defined by its reach, and checks that apply only to agents — prompt-injection-to-tool routes among them — key on `@agents`.
+2. **One actor under both verbs is a validation error** (`agent-reach-conflict`). An actor is an agent or it is not; a model that says both answers every agent-only question two ways.
+
+`<capability>` is the same single-token identifier `@entitles` uses (§2.10), in the same position. `on <asset>` is the surface the capability is exposed on. `as <identity>` is the identity the caller presents — an asset reference such as a scoped session token.
+
+**`@effects` — does.** Written on the code that acts on an asset. The effect is a closed set, like `@handles` classifications: `read`, `write`, `delete`, `execute`, `spend` (money or quota) and `notify` (an outbound message). `delete`, `spend` and `notify` are kept apart from `write` because they are the irreversible actions a reviewer looks for first. `as <identity>` is whose credentials the effect runs under; when that differs from the caller's identity with no gate between them, the code is a confused deputy. Egress has no effect class: `@flows … -> External.X` already says it, and a second spelling would leave the model ambiguous about which one is authoritative.
+
+**`@gates` — who decides.** Written on an approval step that blocks until the named actor decides. `by <actor>` is required: a gate with no approver would let "something happens here" read as "someone decides here", which is the one thing the annotation exists to tell apart. `for <capability>` narrows the gate to one capability; without it the gate stands in front of every effect on the asset. A gate suppresses nothing — it is a node on a path, not a control keyed on `(asset, threat)`, which is why it is not a `@mitigates`. This version has no advisory/blocking qualifier: write `@gates` only where the code waits.
+
+**Can minus may.** `@entitles` (§3.2) says an actor *may* hold a capability, and only a human writes it. `@agents`/`@reaches` say an actor *can*, and are observations an agent may write. A reach that no entitlement covers is an **unentitled reach**: a capability the code hands out that nobody approved — for an LLM agent, the Excessive Agency list. An entitlement covers a reach when it names the same actor (resolving `#id` and declared name to one identity) and the same normalised capability, it is cited (an inert entitlement covers nothing), and, when the reach names an asset, it names the same asset. An entitlement naming no asset does not cover a reach that names one. Every rule errs toward reporting the reach. `guardlink_lookup("unentitled reaches")` answers it (§8.2), and `guardlink diff` reports a reach that becomes unentitled (§7.1).
+
+All four verbs are agent-writable. None of them has export semantics: they add no SARIF result, remove none, and never close a finding (§6.1). `guardlink validate` reports an actor or approver never declared with `@actor` as `undeclared-actor` (an error, as on `@entitles`) and an undefined asset or identity `#id` as `dangling-ref`.
 
 ### 3.3. Lifecycle Annotations
 
@@ -1016,6 +1063,39 @@ Parsing all annotations in a codebase produces a **ThreatModel** — a typed dat
     }
   ],
 
+  "reaches": [
+    {
+      "actor": "#support-agent",
+      "agent": true,
+      "capability": "run-sql",
+      "canonical_capability": "run_sql",
+      "asset": "#tool-surface",
+      "description": "Debug tool, still registered in production",
+      "location": { "file": "src/agent/tools.ts", "line": 12, "parent_symbol": null }
+    }
+  ],
+
+  "effects": [
+    {
+      "effect": "write",
+      "asset": "#users-db",
+      "identity": "#db-service",
+      "description": "Runs model-written SQL verbatim via db.raw",
+      "location": { "file": "src/agent/tools.ts", "line": 13, "parent_symbol": null }
+    }
+  ],
+
+  "gates": [
+    {
+      "asset": "#payments",
+      "approver": "#support-human",
+      "capability": "issue-refund",
+      "canonical_capability": "issue_refund",
+      "description": "requireApproval() parks the refund until a human approves it",
+      "location": { "file": "src/agent/approval.ts", "line": 4, "parent_symbol": null }
+    }
+  ],
+
   "acceptances": [],
   "transfers": [],
   "flows": [],
@@ -1111,6 +1191,7 @@ Every other annotation is **not** a result:
 | `@transfers` | `relatedLocations` on results for the same asset and threat (§6.6). A transfer does not cover an exposure. | Context, not findings. |
 | `@validates`, `@owns`, `@feature`, `@comment`, `@shield` | Not exported | — |
 | `@actor` / `@entitles` | **Not exported.** No result, no suppression, no property on any result, and nothing in the declared context | See below. |
+| `@agents`, `@reaches`, `@effects`, `@gates` | Not exported in this version | Context for reviewers and query surfaces. A reach result would change the result index every consumer keys on, so if one is added it belongs in the `pentest` profile (§6.8). |
 
 New result kinds — covered exposures with their suppressions, `@boundary` claims, review items for `@assumes` and `@audit` — would change the result index every existing consumer keys on and open a GitHub alert per annotation. The first two exist only in the `pentest` profile, appended after every result above (§6.8); none of them is ever added to the `github` profile.
 
@@ -1557,6 +1638,7 @@ When comparing threat models between two git refs (e.g., a feature branch vs. `m
 | `ACCEPTED` | New `@accepts` acknowledging a known risk | **Pass** (with note) |
 | `INFO` | Changes to `@flows`, `@boundary`, `@owns`, `@handles`, `@assumes`, `@actor` | **Pass** |
 | `STALE_ENTITLEMENT` | An `@entitles` is unchanged, but the authorization code its description cites changed | **Warn** |
+| `NEW_UNENTITLED_REACH` | An `@agents`/`@reaches` claim no cited `@entitles` covers (§3.2.1) that was covered, or absent, before | **Warn** |
 
 An entitlement whose cited file changed is reported as **stale**, not as removed: the claim still stands, but the basis a reviewer accepted it on has moved, so it needs a fresh look. Because the entitlement itself did not change, this is reported even when the delta is otherwise empty. An uncited (inert) entitlement has no basis and cannot go stale.
 

@@ -22,7 +22,8 @@ import type {
   Annotation, ThreatModel, ParseDiagnostic,
   AssetAnnotation, ThreatAnnotation, ControlAnnotation, ActorAnnotation,
   MitigatesAnnotation, ExposesAnnotation, ConfirmedAnnotation, AcceptsAnnotation,
-  EntitlesAnnotation, TransfersAnnotation, FlowsAnnotation, BoundaryAnnotation,
+  EntitlesAnnotation, ReachesAnnotation, EffectsAnnotation, GatesAnnotation,
+  TransfersAnnotation, FlowsAnnotation, BoundaryAnnotation,
   ValidatesAnnotation, AuditAnnotation, OwnsAnnotation,
   HandlesAnnotation, AssumesAnnotation, ShieldAnnotation,
   FeatureAnnotation, CommentAnnotation,
@@ -421,6 +422,9 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
     controls: [],
     actors: [],
     entitlements: [],
+    reaches: [],
+    effects: [],
+    gates: [],
     mitigations: [],
     exposures: [],
     confirmed: [],
@@ -512,6 +516,36 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
           // there is nothing to match a finding against.
           imprecise: !en.asset || !en.threat,
           location: en.location,
+        });
+        break;
+      }
+      // Both reach verbs land in one collection: they are one claim about
+      // two kinds of principal, and the unentitled-reach join spans both.
+      case 'agents':
+      case 'reaches': {
+        const r = ann as ReachesAnnotation;
+        model.reaches!.push({
+          actor: r.actor, agent: r.verb === 'agents',
+          capability: r.capability, canonical_capability: r.canonical_capability,
+          asset: r.asset, identity: r.identity,
+          description: r.description, location: r.location,
+        });
+        break;
+      }
+      case 'effects': {
+        const ef = ann as EffectsAnnotation;
+        model.effects!.push({
+          effect: ef.effect, asset: ef.asset, identity: ef.identity,
+          description: ef.description, location: ef.location,
+        });
+        break;
+      }
+      case 'gates': {
+        const g = ann as GatesAnnotation;
+        model.gates!.push({
+          asset: g.asset, approver: g.approver,
+          capability: g.capability, canonical_capability: g.canonical_capability,
+          description: g.description, location: g.location,
         });
         break;
       }
@@ -818,6 +852,20 @@ function detectExternalRefs(model: ThreatModel, root: string): ExternalRef[] {
     // names a threat nobody declared joins nothing, and a typo there is exactly
     // the silent miss §9 is about.
     if (en.threat) checkTag(en.threat, 'entitles', en.location);
+  }
+  for (const r of model.reaches || []) {
+    const verb = r.agent ? 'agents' : 'reaches';
+    checkTag(r.actor, verb, r.location);
+    if (r.asset) checkTag(r.asset, verb, r.location);
+    if (r.identity) checkTag(r.identity, verb, r.location);
+  }
+  for (const ef of model.effects || []) {
+    checkTag(ef.asset, 'effects', ef.location);
+    if (ef.identity) checkTag(ef.identity, 'effects', ef.location);
+  }
+  for (const g of model.gates || []) {
+    checkTag(g.asset, 'gates', g.location);
+    checkTag(g.approver, 'gates', g.location);
   }
 
   return refs;

@@ -598,6 +598,9 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     controls: [],
     actors: [],
     entitlements: [],
+    reaches: [],
+    effects: [],
+    gates: [],
     mitigations: [],
     exposures: [],
     confirmed: [],
@@ -651,6 +654,12 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     combined.confirmed.push(...prefixAll(m.confirmed || [], repo));
     combined.acceptances.push(...prefixAll(m.acceptances, repo));
     combined.entitlements!.push(...prefixAll(m.entitlements || [], repo));
+    // Like every relation, the location is prefixed and the refs are not: one
+    // agent across services is one actor only if every repository spells it with
+    // the same tag.
+    combined.reaches!.push(...prefixAll(m.reaches || [], repo));
+    combined.effects!.push(...prefixAll(m.effects || [], repo));
+    combined.gates!.push(...prefixAll(m.gates || [], repo));
     combined.transfers.push(...prefixAll(m.transfers, repo));
     combined.flows.push(...prefixAll(m.flows, repo));
     combined.boundaries.push(...prefixAll(m.boundaries, repo));
@@ -1093,6 +1102,7 @@ function emptyMergedReport(workspace: string, statuses: RepoStatus[]): MergedRep
       generated_at: new Date().toISOString(), source_files: 0,
       annotations_parsed: 0, annotated_files: [], unannotated_files: [],
       assets: [], threats: [], controls: [], actors: [], entitlements: [],
+      reaches: [], effects: [], gates: [],
       mitigations: [], exposures: [],
       confirmed: [], acceptances: [], transfers: [], flows: [], boundaries: [],
       validations: [], audits: [], ownership: [], data_handling: [],

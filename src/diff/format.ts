@@ -55,6 +55,17 @@ export function formatDiff(diff: ThreatModelDiff): string {
     lines.push('');
   }
 
+  // ── New unentitled reaches ──
+  // Next to new unmitigated exposures for the same reason: a capability the
+  // harness hands out that no human approved is the reach a reviewer must see.
+  if (diff.newUnentitledReaches.length > 0) {
+    lines.push('── New Unentitled Reaches (no cited @entitles covers them) ──');
+    for (const r of diff.newUnentitledReaches) {
+      lines.push(`  + ${describeReach(r)} (${r.location.file}:${r.location.line})`);
+    }
+    lines.push('');
+  }
+
   // ── Stale entitlements ──
   // Not a "change" in the model — the claim is unchanged; the authz code it was
   // reviewed against is not. Surfaced so a human re-checks the citation (§3.7).
@@ -78,11 +89,19 @@ export function formatDiff(diff: ThreatModelDiff): string {
   emitSection('Entitlements', diff.entitlements, lines, e =>
     `${e.actor} entitled to ${e.capability}${e.asset ? ` on ${e.asset}` : ''}${e.threat ? ` against ${e.threat}` : ''}`
     + entitlementCaveat(e));
+  emitSection('Reaches', diff.reaches, lines, describeReach);
+  emitSection('Effects', diff.effects, lines, e => `${e.effect} on ${e.asset}${e.identity ? ` as ${e.identity}` : ''}`);
+  emitSection('Gates', diff.gates, lines, g => `${g.asset} by ${g.approver}${g.capability ? ` for ${g.capability}` : ''}`);
   emitSection('Flows', diff.flows, lines, f => `${f.source} → ${f.target}${f.mechanism ? ` via ${f.mechanism}` : ''}`);
   emitSection('Boundaries', diff.boundaries, lines, b => (b.directed ? `${b.asset_a} → ${b.asset_b} (outer → inner)` : `${b.asset_a} ↔ ${b.asset_b}`));
   emitSection('Transfers', diff.transfers, lines, t => `${t.source} → ${t.target} (${t.threat})`);
 
   return lines.join('\n');
+}
+
+/** A reach in its own words: `@agents #bot to run-sql on #api as #svc`. */
+function describeReach(r: { agent: boolean; actor: string; capability: string; asset?: string; identity?: string }): string {
+  return `${r.agent ? '@agents' : '@reaches'} ${r.actor} to ${r.capability}${r.asset ? ` on ${r.asset}` : ''}${r.identity ? ` as ${r.identity}` : ''}`;
 }
 
 /** Why a claim cannot demote, or '' when it can. Both halves of the join are
@@ -176,6 +195,29 @@ export function formatDiffMarkdown(diff: ThreatModelDiff): string {
     }
     lines.push('');
     lines.push('> An entitlement changes only what triage *recommends*. It never suppresses a finding and never gates testing.');
+    lines.push('');
+  }
+
+  if (diff.newUnentitledReaches.length > 0) {
+    lines.push('#### 🧰 New Unentitled Reaches');
+    lines.push('');
+    lines.push('No cited `@entitles` covers these: a capability the code hands out that nobody approved.');
+    lines.push('');
+    lines.push('| Verb | Actor | Capability | Asset | Location |');
+    lines.push('|------|-------|------------|-------|----------|');
+    for (const r of diff.newUnentitledReaches) {
+      lines.push(`| ${r.agent ? '@agents' : '@reaches'} | ${r.actor} | ${r.capability} | ${r.asset || '—'} | \`${r.location.file}:${r.location.line}\` |`);
+    }
+    lines.push('');
+  }
+
+  if (diff.reaches.length + diff.effects.length + diff.gates.length > 0) {
+    lines.push('#### Reach, effects and gates');
+    lines.push('');
+    const mark = (k: string) => (k === 'added' ? '+' : k === 'removed' ? '-' : '~');
+    for (const c of diff.reaches) lines.push(`- ${mark(c.kind)} ${describeReach(c.item)}${c.details ? ` (${c.details})` : ''}`);
+    for (const c of diff.effects) lines.push(`- ${mark(c.kind)} @effects ${c.item.effect} on ${c.item.asset}${c.item.identity ? ` as ${c.item.identity}` : ''}`);
+    for (const c of diff.gates) lines.push(`- ${mark(c.kind)} @gates ${c.item.asset} by ${c.item.approver}${c.item.capability ? ` for ${c.item.capability}` : ''}`);
     lines.push('');
   }
 

@@ -48,6 +48,9 @@ const QUERY_FOR: Record<string, string> = {
   comments: 'comments',
   actors: 'actors',
   entitlements: 'entitlements',
+  reaches: 'reaches',
+  effects: 'effects for #db',
+  gates: 'gates for #db',
   external_refs: 'external refs',
 };
 
@@ -58,6 +61,9 @@ const DEFINITIONS = `/**
  * @threat Auth_Bypass (#auth-bypass) [high] -- "Authentication sidestepped"
  * @control Prepared_Statements (#prepared-stmts) -- "Parameterized queries"
  * @actor Namespace_Admin (#ns-admin) -- "Administers one namespace's configuration"
+ * @actor Support_Agent (#support-agent) -- "LLM agent with a tool surface"
+ * @actor On_Call (#oncall) -- "Human who answers approval requests"
+ * @asset Identity.AgentSession (#agent-session) -- "Scoped token the agent presents"
  */
 export {};
 `;
@@ -81,6 +87,9 @@ const SOURCE = `/**
  * @feature "Checkout" -- "Cart and order placement"
  * @comment -- "Rate limit: 100 req/15min"
  * @entitles #ns-admin to configure-archival-destination on #api against #sqli -- "By design: this is namespace configuration. Authz: src/authz.ts:12"
+ * @agents #support-agent to query-users on #api as #agent-session -- "Registered as a tool"
+ * @effects write on #db as #agent-session -- "UPDATE under the caller's own token"
+ * @gates #db by #oncall for query-users -- "Blocking approval before the write lands"
  * @flows "#sibling-lib.tokens" -> #api via header -- "Cross-repo token handoff (quoted: the unquoted form does not parse — see report)"
  */
 export function handler(): void {}

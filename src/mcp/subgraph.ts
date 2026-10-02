@@ -61,7 +61,8 @@ export type Direction = 'in' | 'out' | 'both';
 export const SELECTABLE_KINDS = [
   'exposures', 'mitigations', 'confirmed', 'acceptances', 'transfers',
   'flows', 'boundaries', 'validations', 'audits', 'ownership',
-  'data_handling', 'assumptions', 'entitlements', 'comments', 'shields', 'features',
+  'data_handling', 'assumptions', 'entitlements', 'reaches', 'effects', 'gates',
+  'comments', 'shields', 'features',
 ] as const;
 export type SelectableKind = typeof SELECTABLE_KINDS[number];
 
@@ -382,6 +383,7 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
       audits: inFile(base.audits), ownership: inFile(base.ownership),
       data_handling: inFile(base.data_handling), assumptions: inFile(base.assumptions),
       actors: inFile(base.actors || []), entitlements: inFile(base.entitlements || []),
+      reaches: inFile(base.reaches || []), effects: inFile(base.effects || []), gates: inFile(base.gates || []),
       shields: inFile(base.shields), features: inFile(base.features), comments: inFile(base.comments),
     };
   }
@@ -417,6 +419,11 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
   // subgraph and is kept only when no selection narrows the graph.
   const entitlements = pick('entitlements', (base.entitlements || [])
     .filter(en => (en.asset ? inSet(en.asset) : selected === null)));
+  // A reach scopes by its `on <asset>` clause exactly as an entitlement does.
+  const reaches = pick('reaches', (base.reaches || [])
+    .filter(r => (r.asset ? inSet(r.asset) : selected === null)));
+  const effects = pick('effects', (base.effects || []).filter(e => inSet(e.asset)));
+  const gates   = pick('gates',   (base.gates || []).filter(g => inSet(g.asset)));
 
   // Node definitions are always kept: an edge whose endpoint has no declaration
   // renders as a bare id and reads as missing data rather than as a filter.
@@ -437,7 +444,8 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
   const files = new Set<string>();
   for (const row of [...assets, ...threats, ...controls, ...exposures, ...mitigations,
     ...confirmed, ...acceptances, ...transfers, ...flows, ...boundaries, ...validations,
-    ...audits, ...ownership, ...dataHandling, ...assumptions, ...entitlements]) files.add(row.location.file);
+    ...audits, ...ownership, ...dataHandling, ...assumptions, ...entitlements,
+    ...reaches, ...effects, ...gates]) files.add(row.location.file);
   const byFile = <T extends { location: { file: string } }>(rows: T[]) => rows.filter(r => files.has(r.location.file));
 
   const comments = pick('comments', byFile(base.comments));
@@ -447,12 +455,16 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
   // An actor is a definition, so it follows the same always-kept rule as
   // @asset/@threat/@control: dropping it would leave entitlements naming a
   // principal with no declaration, which reads as missing data, not as a filter.
-  const actors = (base.actors || []).filter(ac =>
-    entitlements.some(en => bare(en.actor) === bare(ac.id || ac.canonical_name)));
+  const actors = (base.actors || []).filter(ac => {
+    const id = bare(ac.id || ac.canonical_name);
+    return entitlements.some(en => bare(en.actor) === id)
+      || reaches.some(r => bare(r.actor) === id)
+      || gates.some(g => bare(g.approver) === id);
+  });
 
   const arrays = [assets, threats, controls, actors, mitigations, exposures, confirmed,
     acceptances, transfers, flows, boundaries, validations, audits, ownership,
-    dataHandling, assumptions, entitlements, shields, features, comments];
+    dataHandling, assumptions, entitlements, reaches, effects, gates, shields, features, comments];
 
   return {
     ...base,
@@ -472,7 +484,8 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
     unannotated_files: base.unannotated_files.filter(f => files.has(f)),
     assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances,
     transfers, flows, boundaries, validations, audits, ownership,
-    data_handling: dataHandling, assumptions, entitlements, shields, features, comments,
+    data_handling: dataHandling, assumptions, entitlements, reaches, effects, gates,
+    shields, features, comments,
   };
 }
 

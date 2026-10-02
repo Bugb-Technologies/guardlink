@@ -29,7 +29,8 @@ Every time you write or modify code that touches security-relevant behavior, you
 - Use @confirmed for verified exploits. When pentest/scanning/manual reproduction proves a threat is exploitable: @confirmed #threat on Asset [severity] -- "evidence". Distinct from @exposes (theoretical) — @confirmed means real, verified, no false positives. Without evidence in hand, @exposes stands and you do not promote it — reading the code is not reproduction. To get evidence: `bugb intake "<brief>"` builds a plan an operator approves, never you.
 - Preserve existing annotations — do not delete or mangle them.
 - Definitions (@asset, @threat, @control with (#id)) live in .guardlink/definitions.ts. Reuse IDs — never redefine. Add new definitions there first, then reference in source files.
-- Source files use relationship verbs: @mitigates, @exposes, @confirmed, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers, @feature. (@actor is a definition — it lives with @asset/@threat/@control. @entitles is proposed, not written.)
+- Source files use relationship verbs: @mitigates, @exposes, @confirmed, @flows, @handles, @boundary, @comment, @validates, @audit, @owns, @assumes, @transfers, @feature, @agents, @reaches, @effects, @gates. (@actor is a definition — it lives with @asset/@threat/@control. @entitles is proposed, not written.)
+- Code hands an LLM agent a tool, MCP server, file/shell/DB access → @agents #agent to <capability> on Asset on the registration, @effects <read|write|delete|execute|spend|notify> on Asset on the code that acts, @gates Asset by #approver on an approval step. @reaches for a principal that is not an agent; never both verbs for one actor.
 - Triggers for the four verbs everyone forgets: wrote a test that pins a control → @validates #control for Asset. Code trusts a caller/library/platform to hold a property it never checks → @assumes Asset -- "what must hold". A threat becomes a vendor's or another team's responsibility → @transfers #threat from Source to Target (both ends must be declared assets; a vendor needs an External.* asset first). You know the accountable team → @owns team-id for Asset (bare token — no quotes, no #).
 - Write coupled annotation blocks: risk + control (or audit) + data flow + context note — plus @boundary when that flow crosses a trust change (from <outer> to <inner> when you know which side is less trusted), and @handles when the asset touches classified data.
 - Avoid @shield unless a human explicitly asks to hide code from AI.
@@ -53,6 +54,8 @@ Every time you write or modify code that touches security-relevant behavior, you
 - @confirmed #sqli on App.API [critical] cwe:CWE-89 -- "Pentest verified: raw SQL injection via email param"
 - @feature "SSO Login" -- "Single sign-on authentication flow"
 - @owns security-team for App.API -- "Team responsible"
+- @agents #support-agent to run-sql on #tool-surface -- "run_sql tool registered in tools.ts"
+- @effects write on #users-db -- "Executes the model-written SQL via db.raw"
 - @comment -- "Rate limit: 100 req/15min"
 
 ## Live Threat Model Context (auto-synced by `guardlink sync`)
@@ -120,11 +123,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-874 annotations, 20 assets, 16 threats, 14 controls, 127 exposures, 0 confirmed, 129 mitigations, 3 actors, 1 entitlements, 202 flows, 2 features
+884 annotations, 20 assets, 16 threats, 14 controls, 127 exposures, 0 confirmed, 130 mitigations, 3 actors, 1 entitlements, 202 flows, 2 features
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v3:95e447ec72ce4924c563d83aae0d3e594f518789e71d00ded358ac3255cf772a`
+- `annotation_hash`: `sha256-v3:58a5b22940f27108f0890a80cc509fe5e68f0e97f88f9812332529f9e00b729a`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.

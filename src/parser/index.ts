@@ -14,7 +14,7 @@ export { canEntitlementDemote, entitlementDemotionBlockers } from './parse-proje
 export { parseLine, crossRepoTag, CROSS_REPO_TAG_PATTERN } from './parse-line.js';
 export { normalizeName, resolveSeverity, unescapeDescription } from './normalize.js';
 export { stripCommentPrefix, commentStyleForExt } from './comment-strip.js';
-export { findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides } from './validate.js';
+export { findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides } from './validate.js';
 // What an acceptance has to be before it counts as one. One implementation,
 // shared by the gate that re-checks acceptances and the writer that creates them.
 export {
@@ -53,6 +53,7 @@ export { migrateAnnotationMode, readGalBlocks } from './migrate-mode.js';
 export type { MigrateOptions, MigrateResult, TargetMode } from './migrate-mode.js';
 // Stale claim detection (docs/superpowers/specs/2026-09-03-stale-claim-detection-design.md).
 export { relationRecords, claimText, DEMOTABLE_VERBS } from './claim-key.js';
+export { findUnentitledReaches, actorResolver, reachKey, type UnentitledReach, type ReachCoverBlocker } from './reach.js';
 export type { ClaimSource, ClaimVerb } from './claim-key.js';
 export { readLedger, writeLedger, serializeLedger, emptyLedger, LEDGER_FILE, LEDGER_SCHEMA } from './ledger.js';
 export type { Ledger, LedgerEntry, LedgerRead, LedgerStatus } from './ledger.js';

@@ -11,8 +11,8 @@ accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 874 annotations · 20 assets · 16 threats · 14 controls · 127 exposures · 202 flows
-Content hash: `sha256-v3:95e447ec72ce4924c563d83aae0d3e594f518789e71d00ded358ac3255cf772a` — identical hash means identical model.
+Current model: 884 annotations · 20 assets · 16 threats · 14 controls · 127 exposures · 202 flows
+Content hash: `sha256-v3:58a5b22940f27108f0890a80cc509fe5e68f0e97f88f9812332529f9e00b729a` — identical hash means identical model.
 
 ---
 
@@ -122,6 +122,10 @@ Assets are referenced as `#id` or as a `Dotted.Path`; both resolve to the same n
 | `@owns` | `@owns <team> for <asset> -- "who reviews changes here"` |
 | `@handles` | `@handles <pii\|phi\|financial\|secrets\|internal\|public> on <asset> -- "what data"` |
 | `@assumes` | `@assumes <asset> -- "what must hold for this to be safe"` |
+| `@agents` | `@agents <agent actor> to <capability> on <asset> as <identity> -- "the tool registration"` — an LLM agent can invoke this |
+| `@reaches` | `@reaches <actor> to <capability> on <asset> as <identity> -- "where it is granted"` — the same, for a principal that is not an agent |
+| `@effects` | `@effects <read\|write\|delete\|execute\|spend\|notify> on <asset> as <identity> -- "what this code does"` |
+| `@gates` | `@gates <asset> by <approver actor> for <capability> -- "the approval step"` |
 | `@feature` | `@feature "Name" -- "what it groups"` |
 | `@comment` | `@comment -- "context that fits no other verb"` |
 | `@accepts` | `@accepts <threat> on <asset> by "<who>" until <YYYY-MM-DD> -- "why"` — **human only, never write this** |

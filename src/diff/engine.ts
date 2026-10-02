@@ -14,17 +14,19 @@
  *
  * @comment -- "Pure model-vs-model comparator; no I/O. Entitlement staleness is the one thing it cannot derive from the two models, so the changed-file list is passed in by the caller (see getChangedFiles in git.ts)"
  * @flows ThreatModel -> #diff via diffModels -- "Before/after models compared into a structured delta"
+ * @comment -- "A reach that becomes unentitled is reported on its own, like a new unmitigated exposure: newUnentitledReaches comes from findUnentitledReaches, the join lookup answers with"
  */
 
 import type {
   ThreatModel,
   ThreatModelAsset, ThreatModelThreat, ThreatModelControl, ThreatModelActor,
   ThreatModelMitigation, ThreatModelExposure, ThreatModelConfirmed, ThreatModelAcceptance,
-  ThreatModelEntitlement,
+  ThreatModelEntitlement, ThreatModelReach, ThreatModelEffect, ThreatModelGate,
   ThreatModelFlow, ThreatModelBoundary, ThreatModelTransfer,
 } from '../types/index.js';
 import { findUnmitigatedExposures, normalizeRef } from '../parser/coverage.js';
 import { citationMatchesFile } from '../parser/citation.js';
+import { findUnentitledReaches, reachKey as reachKeyIn } from '../parser/reach.js';
 
 // ─── Delta types ─────────────────────────────────────────────────────
 
@@ -51,6 +53,10 @@ export interface ThreatModelDiff {
   confirmed: Change<ThreatModelConfirmed>[];
   acceptances: Change<ThreatModelAcceptance>[];
   entitlements: Change<ThreatModelEntitlement>[];
+  /** Reach claims: @agents and @reaches */
+  reaches: Change<ThreatModelReach>[];
+  effects: Change<ThreatModelEffect>[];
+  gates: Change<ThreatModelGate>[];
   flows: Change<ThreatModelFlow>[];
   boundaries: Change<ThreatModelBoundary>[];
   transfers: Change<ThreatModelTransfer>[];
@@ -60,6 +66,13 @@ export interface ThreatModelDiff {
 
   /** Risk-relevant: previously unmitigated exposures now resolved */
   resolvedExposures: ThreatModelExposure[];
+
+  /**
+   * Risk-relevant: reaches no cited @entitles covers after the change that were
+   * not uncovered before — a new capability nobody approved, or an approval
+   * withdrawn from an existing one.
+   */
+  newUnentitledReaches: ThreatModelReach[];
 
   /**
    * Entitlements whose cited authorization code changed in this delta (§3.7).
@@ -94,6 +107,8 @@ export interface DiffSummary {
   riskDelta: 'increased' | 'decreased' | 'unchanged';
   /** Entitlements whose cited authorization code changed */
   staleEntitlements: number;
+  /** Reaches newly without a covering entitlement */
+  newUnentitledReaches: number;
 }
 
 // ─── Diff computation ────────────────────────────────────────────────
@@ -111,6 +126,17 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
   const flows = diffByKey(before.flows, after.flows, flowKey, flowChanged);
   const boundaries = diffByKey(before.boundaries, after.boundaries, boundaryKey, boundaryChanged);
   const transfers = diffByKey(before.transfers, after.transfers, transferKey);
+  // Identity per model: each resolves actor and asset spellings against its own
+  // declarations, so renaming `#db` to its dotted path is not a remove plus an add.
+  const reaches = diffByKey(before.reaches || [], after.reaches || [], reachKeyIn(before), reachChanged, reachKeyIn(after));
+  const effects = diffByKey(before.effects || [], after.effects || [], effectKey, effectChanged);
+  const gates = diffByKey(before.gates || [], after.gates || [], gateKey, gateChanged);
+
+  const beforeUnentitled = new Set(findUnentitledReaches(before).map(u => reachKeyIn(before)(u.reach)));
+  const afterReachKey = reachKeyIn(after);
+  const newUnentitledReaches = findUnentitledReaches(after)
+    .map(u => u.reach)
+    .filter(r => !beforeUnentitled.has(afterReachKey(r)));
 
   // Compute unmitigated exposure delta
   const beforeUnmitigated = computeUnmitigated(before);
@@ -130,7 +156,7 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
 
   const staleEntitlements = findStaleEntitlements(after, options.changedFiles);
 
-  const allChanges = [assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances, entitlements, flows, boundaries, transfers];
+  const allChanges = [assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances, entitlements, reaches, effects, gates, flows, boundaries, transfers];
   const totalChanges = allChanges.reduce((sum, c) => sum + c.length, 0);
   const added = allChanges.reduce((sum, c) => sum + c.filter(x => x.kind === 'added').length, 0);
   const removed = allChanges.reduce((sum, c) => sum + c.filter(x => x.kind === 'removed').length, 0);
@@ -147,10 +173,12 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
       resolvedUnmitigated: resolvedExposures.length,
       riskDelta,
       staleEntitlements: staleEntitlements.length,
+      newUnentitledReaches: newUnentitledReaches.length,
     },
-    assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances, entitlements, flows, boundaries, transfers,
+    assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances, entitlements, reaches, effects, gates, flows, boundaries, transfers,
     newUnmitigatedExposures,
     resolvedExposures,
+    newUnentitledReaches,
     staleEntitlements,
   };
 }
@@ -185,13 +213,14 @@ function diffByKey<T>(
   after: T[],
   keyFn: (item: T) => string,
   changedFn?: (a: T, b: T) => string | null,
+  afterKeyFn: (item: T) => string = keyFn,
 ): Change<T>[] {
   const changes: Change<T>[] = [];
   const beforeMap = new Map<string, T>();
   const afterMap = new Map<string, T>();
 
   for (const item of before) beforeMap.set(keyFn(item), item);
-  for (const item of after) afterMap.set(keyFn(item), item);
+  for (const item of after) afterMap.set(afterKeyFn(item), item);
 
   // Removed: in before but not in after
   for (const [key, item] of beforeMap) {
@@ -260,6 +289,16 @@ function entitlementKey(e: ThreatModelEntitlement): string {
 
 function normalizeActorRef(ref: string): string {
   return ref.startsWith('#') ? ref.slice(1) : ref;
+}
+
+/** A side effect is identified by what it does to what, and as whom. */
+function effectKey(e: ThreatModelEffect): string {
+  return `${e.effect}::${normalizeRef(e.asset)}::${normalizeRef(e.identity ?? '')}`;
+}
+
+/** A gate is identified by what it guards, who decides, and for which capability. */
+function gateKey(g: ThreatModelGate): string {
+  return `${normalizeRef(g.asset)}::${normalizeRef(g.approver)}::${g.canonical_capability ?? ''}`;
 }
 
 function mitigationKey(m: ThreatModelMitigation): string {
@@ -337,6 +376,28 @@ function entitlementChanged(a: ThreatModelEntitlement, b: ThreatModelEntitlement
   if (a.inert !== b.inert) changes.push(b.inert ? 'became inert (citation lost)' : 'no longer inert (citation added)');
   if (a.description !== b.description) changes.push('description changed');
   return changes.length > 0 ? changes.join('; ') : null;
+}
+
+/**
+ * Actor, capability and asset are the key. What can change under it is the
+ * verb — the actor stopped or started being declared an agent — the caller
+ * identity, the capability as written, and the description.
+ */
+function reachChanged(a: ThreatModelReach, b: ThreatModelReach): string | null {
+  const changes: string[] = [];
+  if (a.agent !== b.agent) changes.push(`verb: ${a.agent ? '@agents' : '@reaches'} → ${b.agent ? '@agents' : '@reaches'}`);
+  if (a.identity !== b.identity) changes.push(`identity: ${a.identity || 'none'} → ${b.identity || 'none'}`);
+  if (a.capability !== b.capability) changes.push(`capability: ${a.capability} → ${b.capability}`);
+  if (a.description !== b.description) changes.push('description changed');
+  return changes.length > 0 ? changes.join('; ') : null;
+}
+
+function effectChanged(a: ThreatModelEffect, b: ThreatModelEffect): string | null {
+  return a.description !== b.description ? 'description changed' : null;
+}
+
+function gateChanged(a: ThreatModelGate, b: ThreatModelGate): string | null {
+  return a.description !== b.description ? 'description changed' : null;
 }
 
 function exposureChanged(a: ThreatModelExposure, b: ThreatModelExposure): string | null {

@@ -126,6 +126,9 @@ export function buildFileAnnotations(model: ThreatModel, root?: string, join: An
   for (const a of model.assumptions) addEntry('assumes', as(a), `Assumes: ${a.asset}`);
   for (const ac of model.actors || []) addEntry('actor', as(ac), `Actor: ${ac.name}`);
   for (const en of model.entitlements || []) addEntry('entitles', as(en), `${en.actor} entitled to ${en.capability}${en.inert ? ' (inert)' : ''}`);
+  for (const r of model.reaches || []) addEntry(r.agent ? 'agents' : 'reaches', as(r), `${r.actor} can ${r.capability}${r.asset ? ` on ${r.asset}` : ''}`);
+  for (const ef of model.effects || []) addEntry('effects', as(ef), `${ef.effect} on ${ef.asset}${ef.identity ? ` as ${ef.identity}` : ''}`);
+  for (const g of model.gates || []) addEntry('gates', as(g), `${g.asset} gated by ${g.approver}`);
   for (const s of model.shields) addEntry('shield', as(s), s.reason || 'Shielded region');
   for (const c of model.comments) addEntry('comment', as(c), c.description || 'Developer note');
 

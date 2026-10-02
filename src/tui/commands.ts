@@ -23,7 +23,7 @@
 
 import { resolve, basename } from 'node:path';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { generateReport } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
@@ -902,10 +902,11 @@ export async function cmdValidate(ctx: TuiContext): Promise<void> {
 
     // Entitlement checks: undeclared actor (error) and uncited/inert claim (warning)
     const actorDiags = findUndeclaredActors(model);
+    const agentReachDiags = findAgentReachConflicts(model);
     const inertDiags = findInertEntitlements(model);
     const impreciseDiags = findImpreciseEntitlements(model);
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...acceptAuditDiags, ...actorDiags, ...inertDiags, ...impreciseDiags];
+    const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...acceptAuditDiags, ...actorDiags, ...agentReachDiags, ...inertDiags, ...impreciseDiags];
 
     // Unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);
