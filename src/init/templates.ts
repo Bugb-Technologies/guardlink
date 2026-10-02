@@ -512,7 +512,7 @@ the same change.** This includes: new endpoints, authentication/authorization lo
   guessing** — send it a bad query to get the list. Beyond \`asset\`/\`threat\`/\`control\`, it reaches
   every relation the model holds: \`owner of X\`, \`handles pii\`, \`assumptions for X\`, \`audits for X\`,
   \`validations for X\`, \`acceptances\`, \`transfers\`, \`comments for X\`, \`shields\`, \`cross-repo refs\`,
-  \`agents\`, \`unentitled reaches\`, \`effects for X\`, \`gates for X\`,
+  \`agents\`, \`unentitled reaches\`, \`effects for X\`, \`gates for X\`, \`ungated effects\`,
   and \`cwe:CWE-89\` / \`owasp:A03\` for scanner findings. Without MCP, \`guardlink lookup "<form>"\` answers the same forms.
 - Reference matches report \`matched_via: exact | alias | substring\`. A substring match is a
   suggestion, not an identification; \`ambiguous\` with \`candidates\` means several records tied.

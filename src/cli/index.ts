@@ -47,7 +47,7 @@
 import { Command } from 'commander';
 import { resolve, basename, join, isAbsolute, relative } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides, checkHandoff, HANDOFF_COMMAND, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides, checkHandoff, HANDOFF_COMMAND, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE, withReachAnalysis } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { runCiChecks, formatCiReport, ESTATE_ROUTE } from '../ci/index.js';
 import type { CiWorkspaceScope } from '../ci/index.js';
@@ -57,7 +57,7 @@ import { generateReport, generateMermaid } from '../report/index.js';
 import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getChangedFiles } from '../diff/index.js';
 import { findUnmitigatedPaths, classifyEndpoints } from '../paths/index.js';
 import { formatPaths } from '../paths/format.js';
-import { generateSarif, isSarifProfile, SARIF_PROFILES, MITIGATED_RULE_ID, BOUNDARY_CLAIM_RULE_ID } from '../analyzer/index.js';
+import { generateSarif, isSarifProfile, SARIF_PROFILES, MITIGATED_RULE_ID, BOUNDARY_CLAIM_RULE_ID, AGENT_REACH_RULE_ID } from '../analyzer/index.js';
 import { emitArtifacts, checkArtifactDrift, checkArtifactRenderability } from '../artifacts/emit.js';
 import { describeViolation, ARTIFACT_FALLBACK, MERMAID_LIMITS_SOURCE } from '../dashboard/render-budget.js';
 import { startStdioServer } from '../mcp/index.js';
@@ -281,7 +281,11 @@ program
     // indistinguishable from a current one, and `validate --artifacts` had
     // nothing to compare. Additive: `metadata` is a new key beside every field
     // this command already emitted.
-    const stamped = populateMetadata(model, root, diagnostics);
+    //
+    // `reach_analysis` (SPEC §5.5) is derived here, from the model as exported,
+    // and only when it declares a reach, effect or gate — a model without them
+    // exports exactly what it did before.
+    const stamped = withReachAnalysis(populateMetadata(model, root, diagnostics));
 
     // Output model
     const json = JSON.stringify(stamped, null, opts.pretty ? 2 : 0);
@@ -921,7 +925,7 @@ program
         : (opts.output || 'threat-model').replace(/\.md$/, '') + '.json';
       await writeFile(
         resolve(root, jsonFile),
-        JSON.stringify(enrichedModel, null, 2) + '\n',
+        JSON.stringify(withReachAnalysis(enrichedModel), null, 2) + '\n',
       );
       console.error(`✓ Wrote threat model JSON to ${jsonFile} (schema v${enrichedModel.metadata?.schema_version})`);
     }
@@ -1321,7 +1325,8 @@ program
       const all = sarif.runs[0]?.results ?? [];
       const mitigated = all.filter(r => r.ruleId === MITIGATED_RULE_ID).length;
       const boundaries = all.filter(r => r.ruleId === BOUNDARY_CLAIM_RULE_ID).length;
-      console.error(`Pentest profile: ${mitigated} mitigated exposure(s), ${boundaries} boundary claim(s) appended; hypothesis ledger ${sarif.runs[0]?.properties.hypothesis_ledger}`);
+      const reach = all.filter(r => r.ruleId === AGENT_REACH_RULE_ID).length;
+      console.error(`Pentest profile: ${mitigated} mitigated exposure(s), ${boundaries} boundary claim(s)${reach ? `, ${reach} agent-reach target(s)` : ''} appended; hypothesis ledger ${sarif.runs[0]?.properties.hypothesis_ledger}`);
       const b = sarif.runs[0]?.properties.baseline;
       if (b) {
         const count = (state: string) => all.filter(r => r.baselineState === state).length;
