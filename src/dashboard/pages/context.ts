@@ -12,6 +12,7 @@
  * @handles pii on #dashboard -- "Author identities from attribution, already in the configured identity mode"
  * @comment -- "Pure; every string here is raw and is escaped by the page that renders it"
  */
+import type { ReachSummary } from '../../reach/index.js';
 import type { ExposureHypothesis, ThreatModel } from '../../types/index.js';
 import type { ClaimState, VerificationReport } from '../../parser/verification.js';
 import { buildCoverageIndex } from '../../parser/coverage.js';
@@ -98,12 +99,14 @@ export interface PageContext {
   actions: DashboardAction[];
   heatmap: AssetHeatmapEntry[];
   fileAnnotations: FileAnnotationGroup[];
-  diagrams: { threatGraph: string; threatGraphFull: string; dataFlow: string; attackSurface: string; focus: { name: string; src: string }[] };
+  diagrams: { threatGraph: string; threatGraphFull: string; dataFlow: string; attackSurface: string; focus: { name: string; src: string }[]; /** Empty when nothing declares reach. */ reach?: string };
   analyses: ThreatReportWithContent[];
   /** What changed since --since <ref>, or null without the flag. */
   changes: ChangeSummary | null;
   /** Per annotated file: what it carries, for the Code page order and badges. */
   fileRisk: Map<string, FileRisk>;
+  /** What agents and other principals can reach (src/reach). */
+  reach: ReachSummary;
 }
 
 const aiLabel = (ref: CommitRef): string[] => ref.assisted_by.map(a => (a.model ? `${a.tool} (${a.model})` : a.tool));

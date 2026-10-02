@@ -1,0 +1,34 @@
+%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 90, "curve": "basis", "htmlLabels": false}}}%%
+graph LR
+  A_support_agent(["#support-agent · AI agent"]):::agent
+  A_ci_runner["#ci-runner"]:::principal
+  A_support_human(("#support-human")):::approver
+  S_registry[("#registry")]
+  A_ci_runner -. "unentitled: publish-package" .-> S_registry
+  A_ci_runner == "write · no gate" ==> S_registry
+  S_tool_surface[("#tool-surface")]
+  A_support_agent -. "unentitled: run-sql, search-kb, fetch-url, mcp-files · entitled: lookup-order, issue-refund" .-> S_tool_surface
+  S_orders_db[("#orders-db")]
+  A_support_agent == "delete · no gate" ==> S_orders_db
+  A_support_agent -- "read" --> S_orders_db
+  S_users_db[("#users-db")]
+  A_support_agent == "write · no gate" ==> S_users_db
+  S_payments[("#payments")]
+  A_support_agent -- "spend gated" --> S_payments
+  S_kb[("#kb")]
+  A_support_agent -- "read" --> S_kb
+  S_host_fs[("#host-fs")]
+  A_support_agent == "write · no gate" ==> S_host_fs
+  X_loose["code not tied to a reach"]:::loose
+  S_outbox[("#outbox")]
+  X_loose -- "notify" --> S_outbox
+  X_loose == "spend" ==> S_payments
+  A_support_human -. "gates issue-refund" .-> S_payments
+  A_support_human -. "gates" .-> S_outbox
+  classDef agent stroke:#33d49d,stroke-width:2px
+  classDef principal stroke:#1a98d0,stroke-width:1.5px
+  classDef approver stroke:#33d49d,stroke-dasharray:4 3
+  classDef loose stroke-dasharray:4 3
+  classDef external stroke:#ea1d1d,stroke-dasharray:4 3
+  linkStyle 0,1,2,3,5,8,10 stroke:#ea1d1d,stroke-width:2px
+  linkStyle 11,12 stroke:#33d49d

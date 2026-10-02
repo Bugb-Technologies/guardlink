@@ -31,3 +31,11 @@ The `@entitles` lines have no accepted proposal behind them, so
 
 It does not perturb this repository's own model: `**/tests/**` is in the
 parser's `DEFAULT_EXCLUDE`.
+
+`golden/` holds what `tests/agent-reach-surfaces.test.ts` pins from this
+fixture for the human-facing surfaces: the derived view the dashboard's Agents
+& Reach page and the report both draw (`reach-summary.json`), the report's
+"Agents and LLM Reach" section (`agent-reach-section.md`), the agent-only
+report (`threat-model-agents.md`) and the reach diagram (`agent-reach.mmd`).
+Editing the fixture changes them too; regenerate with
+`npx vitest run tests/agent-reach-surfaces.test.ts -u` and read the diff.

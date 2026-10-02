@@ -1,10 +1,11 @@
 /**
  * GuardLink Dashboard — diagram generators.
  *
- * Three Mermaid diagrams.
+ * Four Mermaid diagrams.
  *   - generateThreatGraph      — LR flowchart of assets, threats, controls, mitigations
  *   - generateDataFlowDiagram  — LR flow graph with trust boundary groupings
  *   - generateAttackSurface    — TB grouping of exposures per asset, severity-coloured
+ *   - generateReachDiagram     — LR graph of what agents and principals reach, from a ReachSummary
  *
  * All three generators share a single alias map so that #id, bare id, name, and
  * path.join() forms of an asset/threat/control collapse onto the same node.
@@ -18,6 +19,7 @@
 
 import type { ThreatModel } from '../types/index.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
+import type { ReachSummary } from '../reach/index.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * Shared sanitizers and ranking utilities
@@ -770,5 +772,101 @@ export function generateAttackSurface(model: ThreatModel, opts: DiagramOptions =
   lines.push('  classDef sev_low fill:#10263b,stroke:#0360a2,color:#f0f0f0');
   lines.push('  classDef sev_unset fill:#223942,stroke:#3b6779,color:#f0f0f0');
 
+  return lines.join('\n');
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Diagram 4: Agent Reach
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * LR graph of what each agent and principal can reach: one edge per actor and
+ * asset for the capabilities (dashed and red when one is unentitled), one per
+ * actor and asset for the effects (red when a mutation has no gate), and a
+ * dotted edge from each approver to the asset it gates. Built from the same
+ * `ReachSummary` the Agents page tabulates, so the two cannot disagree.
+ * Empty when nothing declares reach.
+ */
+export function generateReachDiagram(s: ReachSummary): string {
+  if (s.totals.reaches === 0 && s.totals.effects === 0) return '';
+  const lines: string[] = [
+    '%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 90, "curve": "basis", "htmlLabels": false}}}%%',
+    'graph LR',
+  ];
+  const red: number[] = [];
+  const ok: number[] = [];
+  let edge = 0;
+  const actorId = (k: string) => `A_${mid(k)}`;
+  const assetId = (k: string) => `S_${mid(k)}`;
+  const colRef = new Map(s.columns.map(c => [c.key, c.ref]));
+  const used = new Set<string>();
+
+  for (const a of s.actors) {
+    if (a.reaches === 0 && a.approves === 0) continue;
+    const text = labelFull(a.ref);
+    lines.push(a.agent
+      ? `  ${actorId(a.key)}(["${text} · AI agent"]):::agent`
+      : a.reaches > 0 ? `  ${actorId(a.key)}["${text}"]:::principal` : `  ${actorId(a.key)}(("${text}")):::approver`);
+  }
+  const node = (k: string) => {
+    if (used.has(k)) return assetId(k);
+    used.add(k);
+    lines.push(`  ${assetId(k)}[("${labelFull(colRef.get(k) ?? k)}")]`);
+    return assetId(k);
+  };
+
+  for (const c of s.cells) {
+    const to = node(c.asset);
+    const granted = c.capabilities.filter(x => x.entitled).map(x => x.capability);
+    const unapproved = c.capabilities.filter(x => !x.entitled).map(x => x.capability);
+    // One capability edge per cell, so two labels never stack on the same pair of nodes.
+    if (unapproved.length > 0) {
+      const text = `unentitled: ${unapproved.join(', ')}${granted.length > 0 ? ` · entitled: ${granted.join(', ')}` : ''}`;
+      lines.push(`  ${actorId(c.actor)} -. "${label(text, 140)}" .-> ${to}`);
+      red.push(edge++);
+    } else if (granted.length > 0) {
+      lines.push(`  ${actorId(c.actor)} -- "${label(granted.join(', '), 60)}" --> ${to}`);
+      ok.push(edge++);
+    }
+    const ungated = c.effects.filter(e => e.gated === false).map(e => e.effect);
+    const rest = c.effects.filter(e => e.gated !== false).map(e => (e.gated ? `${e.effect} (gated)` : e.effect));
+    if (ungated.length > 0) { lines.push(`  ${actorId(c.actor)} == "${label(`${[...new Set(ungated)].join(', ')} · no gate`, 60)}" ==> ${to}`); red.push(edge++); }
+    if (rest.length > 0) { lines.push(`  ${actorId(c.actor)} -- "${label([...new Set(rest)].join(', '), 60)}" --> ${to}`); edge++; }
+  }
+  if (s.loose.length > 0) {
+    lines.push('  X_loose["code not tied to a reach"]:::loose');
+    for (const l of s.loose) {
+      const to = node(l.asset);
+      const ungated = l.effects.some(e => e.gated === false);
+      lines.push(`  X_loose ${ungated ? '==' : '--'} "${label([...new Set(l.effects.map(e => e.effect))].join(', '), 60)}" ${ungated ? '==>' : '-->'} ${to}`);
+      if (ungated) red.push(edge);
+      edge++;
+    }
+  }
+  for (const g of s.gates) {
+    const approver = s.actors.find(a => a.ref === g.approver);
+    if (!approver) continue;
+    const k = s.columns.find(c => c.ref === g.asset)?.key;
+    if (!k) continue;
+    lines.push(`  ${actorId(approver.key)} -. "gates${g.capability ? ` ${label(g.capability, 30)}` : ''}" .-> ${node(k)}`);
+    ok.push(edge++);
+  }
+  for (const e of s.egress) {
+    const from = s.columns.find(c => c.ref === e.source)?.key;
+    const src = from ? node(from) : null;
+    if (!src) continue;
+    const tid = `E_${mid(e.target)}`;
+    if (!used.has(tid)) { used.add(tid); lines.push(`  ${tid}>"${labelFull(e.target)}"]:::external`); }
+    lines.push(`  ${src} -- "${label(`${e.mechanism ?? 'egress'}${e.boundaries.length ? ` · crosses ${e.boundaries.join(', ')}` : ''}`, 60)}" --> ${tid}`);
+    edge++;
+  }
+
+  lines.push('  classDef agent stroke:#33d49d,stroke-width:2px');
+  lines.push('  classDef principal stroke:#1a98d0,stroke-width:1.5px');
+  lines.push('  classDef approver stroke:#33d49d,stroke-dasharray:4 3');
+  lines.push('  classDef loose stroke-dasharray:4 3');
+  lines.push('  classDef external stroke:#ea1d1d,stroke-dasharray:4 3');
+  if (red.length > 0) lines.push(`  linkStyle ${red.join(',')} stroke:#ea1d1d,stroke-width:2px`);
+  if (ok.length > 0) lines.push(`  linkStyle ${ok.join(',')} stroke:#33d49d`);
   return lines.join('\n');
 }

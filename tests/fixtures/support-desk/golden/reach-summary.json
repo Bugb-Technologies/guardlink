@@ -1,0 +1,677 @@
+{
+  "actors": [
+    {
+      "key": "support-agent",
+      "ref": "#support-agent",
+      "name": "Support_Agent",
+      "description": "LLM agent; acts for the signed-in customer",
+      "agent": true,
+      "declared": true,
+      "reaches": 6,
+      "unentitled": 4,
+      "ungated": 3,
+      "approves": 0,
+      "loc": {
+        "file": ".guardlink/definitions.ts",
+        "line": 16
+      }
+    },
+    {
+      "key": "ci-runner",
+      "ref": "#ci-runner",
+      "name": "CI_Runner",
+      "description": "Release pipeline",
+      "agent": false,
+      "declared": true,
+      "reaches": 1,
+      "unentitled": 1,
+      "ungated": 1,
+      "approves": 0,
+      "loc": {
+        "file": ".guardlink/definitions.ts",
+        "line": 18
+      }
+    },
+    {
+      "key": "support-human",
+      "ref": "#support-human",
+      "name": "Support_Human",
+      "description": "Approves refunds and outbound email in the review queue",
+      "agent": false,
+      "declared": true,
+      "reaches": 0,
+      "unentitled": 0,
+      "ungated": 0,
+      "approves": 2,
+      "loc": {
+        "file": ".guardlink/definitions.ts",
+        "line": 17
+      }
+    }
+  ],
+  "columns": [
+    {
+      "key": "tool-surface",
+      "ref": "#tool-surface",
+      "declared": true
+    },
+    {
+      "key": "orders-db",
+      "ref": "#orders-db",
+      "declared": true
+    },
+    {
+      "key": "users-db",
+      "ref": "#users-db",
+      "declared": true
+    },
+    {
+      "key": "payments",
+      "ref": "#payments",
+      "declared": true
+    },
+    {
+      "key": "kb",
+      "ref": "#kb",
+      "declared": true
+    },
+    {
+      "key": "host-fs",
+      "ref": "#host-fs",
+      "declared": true
+    },
+    {
+      "key": "registry",
+      "ref": "#registry",
+      "declared": true
+    },
+    {
+      "key": "outbox",
+      "ref": "#outbox",
+      "declared": true
+    }
+  ],
+  "cells": [
+    {
+      "actor": "ci-runner",
+      "asset": "registry",
+      "capabilities": [
+        {
+          "capability": "publish-package",
+          "entitled": false,
+          "loc": {
+            "file": "src/billing.ts",
+            "line": 12
+          }
+        }
+      ],
+      "effects": [
+        {
+          "effect": "write",
+          "mutating": true,
+          "gated": false,
+          "approvers": [],
+          "via": [
+            "publish-package"
+          ],
+          "loc": {
+            "file": "src/billing.ts",
+            "line": 13
+          }
+        }
+      ]
+    },
+    {
+      "actor": "support-agent",
+      "asset": "tool-surface",
+      "capabilities": [
+        {
+          "capability": "lookup-order",
+          "entitled": true,
+          "identity": "#agent-session",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 5
+          }
+        },
+        {
+          "capability": "run-sql",
+          "entitled": false,
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 14
+          }
+        },
+        {
+          "capability": "issue-refund",
+          "entitled": true,
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 25
+          }
+        },
+        {
+          "capability": "search-kb",
+          "entitled": false,
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 34
+          }
+        },
+        {
+          "capability": "fetch-url",
+          "entitled": false,
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 43
+          }
+        },
+        {
+          "capability": "mcp-files",
+          "entitled": false,
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 51
+          }
+        }
+      ],
+      "effects": []
+    },
+    {
+      "actor": "support-agent",
+      "asset": "orders-db",
+      "capabilities": [],
+      "effects": [
+        {
+          "effect": "read",
+          "mutating": false,
+          "gated": null,
+          "approvers": [],
+          "via": [
+            "lookup-order"
+          ],
+          "identity": "#agent-session",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 6
+          }
+        },
+        {
+          "effect": "delete",
+          "mutating": true,
+          "gated": false,
+          "approvers": [],
+          "via": [
+            "run-sql"
+          ],
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 15
+          }
+        }
+      ]
+    },
+    {
+      "actor": "support-agent",
+      "asset": "users-db",
+      "capabilities": [],
+      "effects": [
+        {
+          "effect": "write",
+          "mutating": true,
+          "gated": false,
+          "approvers": [],
+          "via": [
+            "run-sql"
+          ],
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 16
+          }
+        }
+      ]
+    },
+    {
+      "actor": "support-agent",
+      "asset": "payments",
+      "capabilities": [],
+      "effects": [
+        {
+          "effect": "spend",
+          "mutating": true,
+          "gated": true,
+          "approvers": [
+            "#support-human"
+          ],
+          "via": [
+            "issue-refund"
+          ],
+          "identity": "#billing-sa",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 26
+          }
+        }
+      ]
+    },
+    {
+      "actor": "support-agent",
+      "asset": "kb",
+      "capabilities": [],
+      "effects": [
+        {
+          "effect": "read",
+          "mutating": false,
+          "gated": null,
+          "approvers": [],
+          "via": [
+            "search-kb"
+          ],
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 35
+          }
+        }
+      ]
+    },
+    {
+      "actor": "support-agent",
+      "asset": "host-fs",
+      "capabilities": [],
+      "effects": [
+        {
+          "effect": "write",
+          "mutating": true,
+          "gated": false,
+          "approvers": [],
+          "via": [
+            "mcp-files"
+          ],
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 52
+          }
+        }
+      ]
+    }
+  ],
+  "loose": [
+    {
+      "asset": "outbox",
+      "effects": [
+        {
+          "effect": "notify",
+          "mutating": true,
+          "gated": true,
+          "approvers": [
+            "#support-human"
+          ],
+          "via": [],
+          "loc": {
+            "file": "src/approval.ts",
+            "line": 13
+          }
+        }
+      ]
+    },
+    {
+      "asset": "payments",
+      "effects": [
+        {
+          "effect": "spend",
+          "mutating": true,
+          "gated": false,
+          "approvers": [],
+          "via": [],
+          "identity": "#billing-sa",
+          "loc": {
+            "file": "src/billing.ts",
+            "line": 5
+          }
+        }
+      ]
+    }
+  ],
+  "unentitled": [
+    {
+      "actor": "#ci-runner",
+      "agent": false,
+      "capability": "publish-package",
+      "asset": "#registry",
+      "description": "npm publish in the release workflow",
+      "loc": {
+        "file": "src/billing.ts",
+        "line": 12
+      },
+      "near_misses": []
+    },
+    {
+      "actor": "#support-agent",
+      "agent": true,
+      "capability": "run-sql",
+      "asset": "#tool-surface",
+      "description": "Debug tool, still registered",
+      "loc": {
+        "file": "src/tools.ts",
+        "line": 14
+      },
+      "near_misses": []
+    },
+    {
+      "actor": "#support-agent",
+      "agent": true,
+      "capability": "search-kb",
+      "asset": "#tool-surface",
+      "loc": {
+        "file": "src/tools.ts",
+        "line": 34
+      },
+      "near_misses": [
+        {
+          "blocker": "other-asset",
+          "reason": "the entitlement is for another asset",
+          "asset": "#kb",
+          "citation": "src/agent/policy.ts:18",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 36
+          }
+        }
+      ]
+    },
+    {
+      "actor": "#support-agent",
+      "agent": true,
+      "capability": "fetch-url",
+      "asset": "#tool-surface",
+      "description": "Fetches any URL the model names",
+      "loc": {
+        "file": "src/tools.ts",
+        "line": 43
+      },
+      "near_misses": [
+        {
+          "blocker": "uncited",
+          "reason": "the entitlement cites no authorization code, so it covers nothing",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 44
+          }
+        }
+      ]
+    },
+    {
+      "actor": "#support-agent",
+      "agent": true,
+      "capability": "mcp-files",
+      "asset": "#tool-surface",
+      "description": "Filesystem MCP server rooted at /",
+      "loc": {
+        "file": "src/tools.ts",
+        "line": 51
+      },
+      "near_misses": []
+    }
+  ],
+  "ungated": [
+    {
+      "effect": "spend",
+      "asset": "#payments",
+      "identity": "#billing-sa",
+      "description": "Nightly sweep retries failed refunds",
+      "loc": {
+        "file": "src/billing.ts",
+        "line": 5
+      },
+      "via": [],
+      "gate_near_misses": [
+        {
+          "approver": "#support-human",
+          "capability": "issue-refund",
+          "blocker": "capability-unknown",
+          "reason": "the gate is for one capability, and no reach on this code says which capability gets here"
+        }
+      ],
+      "agent": false
+    },
+    {
+      "effect": "write",
+      "asset": "#registry",
+      "description": "publish",
+      "loc": {
+        "file": "src/billing.ts",
+        "line": 13
+      },
+      "via": [
+        {
+          "actor": "#ci-runner",
+          "agent": false,
+          "capability": "publish-package"
+        }
+      ],
+      "gate_near_misses": [],
+      "agent": false
+    },
+    {
+      "effect": "delete",
+      "asset": "#orders-db",
+      "description": "runRaw executes the model's SQL",
+      "loc": {
+        "file": "src/tools.ts",
+        "line": 15
+      },
+      "via": [
+        {
+          "actor": "#support-agent",
+          "agent": true,
+          "capability": "run-sql"
+        }
+      ],
+      "gate_near_misses": [],
+      "agent": true
+    },
+    {
+      "effect": "write",
+      "asset": "#users-db",
+      "description": "runRaw executes the model's SQL",
+      "loc": {
+        "file": "src/tools.ts",
+        "line": 16
+      },
+      "via": [
+        {
+          "actor": "#support-agent",
+          "agent": true,
+          "capability": "run-sql"
+        }
+      ],
+      "gate_near_misses": [],
+      "agent": true
+    },
+    {
+      "effect": "write",
+      "asset": "#host-fs",
+      "description": "mountFiles",
+      "loc": {
+        "file": "src/tools.ts",
+        "line": 52
+      },
+      "via": [
+        {
+          "actor": "#support-agent",
+          "agent": true,
+          "capability": "mcp-files"
+        }
+      ],
+      "gate_near_misses": [],
+      "agent": true
+    }
+  ],
+  "gates": [
+    {
+      "asset": "#payments",
+      "approver": "#support-human",
+      "capability": "issue-refund",
+      "description": "requireApproval() parks the refund until a human approves it",
+      "loc": {
+        "file": "src/approval.ts",
+        "line": 5
+      },
+      "covers": [
+        {
+          "effect": "spend",
+          "asset": "#payments",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 26
+          }
+        }
+      ]
+    },
+    {
+      "asset": "#outbox",
+      "approver": "#support-human",
+      "description": "Every outbound email waits in the review queue",
+      "loc": {
+        "file": "src/approval.ts",
+        "line": 12
+      },
+      "covers": [
+        {
+          "effect": "notify",
+          "asset": "#outbox",
+          "loc": {
+            "file": "src/approval.ts",
+            "line": 13
+          }
+        }
+      ]
+    }
+  ],
+  "egress": [],
+  "injection": [],
+  "owasp": [
+    {
+      "id": "LLM06",
+      "title": "Excessive Agency",
+      "basis": "Unentitled @agents (functionality), an effect running as a broader identity than the agent presents (permissions), and mutations with no @gates (autonomy).",
+      "items": [
+        {
+          "facet": "functionality",
+          "agent": "#support-agent",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 14
+          },
+          "text": "can run-sql on #tool-surface and no cited @entitles covers it"
+        },
+        {
+          "facet": "functionality",
+          "agent": "#support-agent",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 34
+          },
+          "text": "can search-kb on #tool-surface and no cited @entitles covers it"
+        },
+        {
+          "facet": "functionality",
+          "agent": "#support-agent",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 43
+          },
+          "text": "can fetch-url on #tool-surface and no cited @entitles covers it"
+        },
+        {
+          "facet": "functionality",
+          "agent": "#support-agent",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 51
+          },
+          "text": "can mcp-files on #tool-surface and no cited @entitles covers it"
+        },
+        {
+          "facet": "autonomy",
+          "agent": "#support-agent",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 15
+          },
+          "text": "delete on #orders-db through run-sql, with no @gates in front of it"
+        },
+        {
+          "facet": "autonomy",
+          "agent": "#support-agent",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 16
+          },
+          "text": "write on #users-db through run-sql, with no @gates in front of it"
+        },
+        {
+          "facet": "autonomy",
+          "agent": "#support-agent",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 52
+          },
+          "text": "write on #host-fs through mcp-files, with no @gates in front of it"
+        }
+      ]
+    },
+    {
+      "id": "LLM01",
+      "title": "Prompt Injection",
+      "basis": "Input from outside the model that @flows into an agent which can reach an ungated mutation.",
+      "items": []
+    },
+    {
+      "id": "LLM05",
+      "title": "Improper Output Handling",
+      "basis": "A write, delete, execute or notify bound to the same code as the agent's tool, so model output reaches it directly.",
+      "items": [
+        {
+          "facet": "model output into an effect",
+          "agent": "#support-agent",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 15
+          },
+          "text": "run-sql hands model-written arguments to a delete on #orders-db in the same code"
+        },
+        {
+          "facet": "model output into an effect",
+          "agent": "#support-agent",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 16
+          },
+          "text": "run-sql hands model-written arguments to a write on #users-db in the same code"
+        },
+        {
+          "facet": "model output into an effect",
+          "agent": "#support-agent",
+          "loc": {
+            "file": "src/tools.ts",
+            "line": 52
+          },
+          "text": "mcp-files hands model-written arguments to a write on #host-fs in the same code"
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "agents": 1,
+    "principals": 1,
+    "reaches": 7,
+    "unentitled": 5,
+    "effects": 9,
+    "mutations": 7,
+    "ungated": 5,
+    "gates": 2,
+    "egress": 0,
+    "injection": 0
+  }
+}

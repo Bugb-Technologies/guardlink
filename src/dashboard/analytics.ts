@@ -13,6 +13,8 @@ import type { ThreatModel } from '../types/index.js';
 import type { ClaimState } from '../parser/verification.js';
 import type { ThreatModelDiff } from '../diff/engine.js';
 import type { AssetHeatmapEntry } from './data.js';
+import type { ReachSummary } from '../reach/index.js';
+import { canonicaliser } from '../parser/canonical-ref.js';
 
 export type SevKey = 'critical' | 'high' | 'medium' | 'low' | 'unset';
 export const SEV_ORDER: SevKey[] = ['critical', 'high', 'medium', 'low', 'unset'];
@@ -427,13 +429,39 @@ export interface AssetDetail {
   attribution: { introducers: { identity: string; count: number }[]; ai: number; aiTools: string[]; oldestOpenDays: number | null } | null;
   /** Indices into claimsData for this asset's claims. */
   claimIdx: number[];
+  /** Who can reach this asset and what the code does to it; null when no reach annotation names it. */
+  reach: {
+    capabilities: { actor: string; agent: boolean; capability: string; entitled: boolean }[];
+    effects: { actor: string | null; effect: string; gated: boolean | null; approvers: string[]; via: string[] }[];
+    gates: { approver: string; capability: string | null }[];
+  } | null;
 }
 
 const DAY = 86_400_000;
 
 /** Everything the asset drawer shows, one entry per heatmap tile (same order). */
-export function computeAssetDetails(model: ThreatModel, claims: ClaimLike[], heatmap: AssetHeatmapEntry[], asOf: string | null): AssetDetail[] {
+export function computeAssetDetails(model: ThreatModel, claims: ClaimLike[], heatmap: AssetHeatmapEntry[], asOf: string | null, reach?: ReachSummary): AssetDetail[] {
   const key = (ref: string): string => ref.trim().toLowerCase();
+  const reachKey = canonicaliser(model);
+  const actorOf = new Map((reach?.actors ?? []).map(a => [a.key, a]));
+  const reachFor = (names: Set<string>): AssetDetail['reach'] => {
+    if (!reach) return null;
+    const keys = new Set([...names].map(n => reachKey(n)));
+    const cells = reach.cells.filter(c => keys.has(c.asset));
+    const loose = reach.loose.filter(l => keys.has(l.asset));
+    const gates = reach.gates.filter(g => keys.has(reachKey(g.asset)));
+    if (cells.length === 0 && loose.length === 0 && gates.length === 0) return null;
+    return {
+      capabilities: cells.flatMap(c => c.capabilities.map(cap => ({
+        actor: actorOf.get(c.actor)?.ref ?? c.actor, agent: actorOf.get(c.actor)?.agent ?? false, capability: cap.capability, entitled: cap.entitled,
+      }))),
+      effects: [
+        ...cells.flatMap(c => c.effects.map(e => ({ actor: actorOf.get(c.actor)?.ref ?? c.actor, effect: e.effect, gated: e.gated, approvers: e.approvers, via: e.via }))),
+        ...loose.flatMap(l => l.effects.map(e => ({ actor: null, effect: e.effect, gated: e.gated, approvers: e.approvers, via: [] }))),
+      ],
+      gates: gates.map(g => ({ approver: g.approver, capability: g.capability ?? null })),
+    };
+  };
   const asOfMs = asOf ? Date.parse(asOf) : Number.NaN;
   return heatmap.map(tile => {
     const names = new Set([tile.name, ...tile.aliases].map(key));
@@ -499,6 +527,7 @@ export function computeAssetDetails(model: ThreatModel, claims: ClaimLike[], hea
         oldestOpenDays: oldest,
       } : null,
       claimIdx: mine.map(c => c.idx),
+      reach: reachFor(names),
     };
   });
 }
