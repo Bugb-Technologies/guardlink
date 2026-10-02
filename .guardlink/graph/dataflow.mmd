@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:58a5b22940f27108f0890a80cc509fe5e68f0e97f88f9812332529f9e00b729a
+%% annotation_hash: sha256-v3:9babda79ed52b602afa4ff8920c7a1e2743162457b8a33a234491d30019b2293
 %% generator:       guardlink@2.1.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 77 nodes / 192 edges, past the 12 / 16 legibility budget (77 nodes against 12, 192 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 77 nodes / 193 edges, past the 12 / 16 legibility budget (77 nodes against 12, 193 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -165,6 +165,7 @@ graph LR
   threatmodel -- "📡 buildPentestAppendix" --> sarif
   ledgerfile -- "📡 HypothesesRead" --> sarif
   baselinesarif -- "📡 applyBaseline" --> sarif
+  threatmodel -- "📡 agentReachResults" --> sarif
   threatmodel -- "📡 generateSarif" --> sarif
   sarif -- "📡 return" --> sariflog
   threatmodel -- "📡 emitArtifacts" --> dashboard
