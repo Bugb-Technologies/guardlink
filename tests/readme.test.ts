@@ -321,6 +321,14 @@ describe('GL-402/F2 — an agent can EXTEND the model from this file alone', () 
     expect(zeroFootprint).toContain(guardlinkOnly);
   });
 
+  // A whole-repository parse, deliberately: `cwe:CWE-89` is written in grammar
+  // examples across src/, not only in the init template, so the second
+  // assertion is only as good as the scan behind it. That parse is ~0.7s
+  // alone and 3.1-3.8s on a shared CI runner with the other workers, and on
+  // Node 18 it has crossed the 5000ms default outright. The siblings that
+  // parse this repository do it in `beforeAll`, whose default is 10s; this
+  // one parses in the test body, so it gets a timeout sized to that cost. The
+  // global `testTimeout` stays where it is.
   it('D22: the grammar examples do not register as real annotations', async () => {
     // Everything in this template parses as GAL once the comment prefix is
     // stripped. The whole builder sits inside @shield:begin/@shield:end for
@@ -331,5 +339,5 @@ describe('GL-402/F2 — an agent can EXTEND the model from this file alone', () 
     ].filter(r => r.location.file.includes('init/templates.ts'));
     expect(fromTemplates).toEqual([]);
     expect(model.threats.some(t => (t.external_refs || []).includes('cwe:CWE-89'))).toBe(false);
-  });
+  }, 30_000);
 });
