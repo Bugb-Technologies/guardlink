@@ -49,8 +49,8 @@ const parse = async (root: string) => (await parseProject({ root, project: 'supp
 
 /** The section between one `<div id="sec-…">` and the next. */
 function page(html: string, id: string): string {
-  const start = html.indexOf(`<div id="sec-${id}"`);
-  const next = html.indexOf('<div id="sec-', start + 1);
+  const start = html.indexOf(`<section id="sec-${id}"`);
+  const next = html.indexOf('<section id="sec-', start + 1);
   return html.slice(start, next < 0 ? undefined : next);
 }
 
@@ -250,13 +250,17 @@ describe('the dashboard', () => {
     expect(agents.match(/reach-chip reach-cap bad/g)!.length).toBeGreaterThanOrEqual(5);
   });
 
-  it('draws the reach map as a diagram tab, matching the golden Mermaid source', async () => {
-    expect(page(html, 'diagrams')).toContain('Agent Reach');
+  it('draws the reach as a diagram tab with every reach and effect, and keeps the golden Mermaid source for the artifacts', async () => {
+    const diagrams = page(html, 'diagrams');
+    expect(diagrams).toContain('data-plot="reach"');
+    // The fixture's golden totals: 7 reaches, 9 effects, 5 unentitled, 5 of 7 mutations ungated, 2 gates.
+    expect(diagrams).toContain('<b class="num">7</b> of 7 reaches · <b class="num">9</b> of 9 effects drawn');
+    expect(diagrams).toContain('5 unentitled · 5 of 7 mutations ungated · 2 gates');
     await expect(`${generateReachDiagram(summarizeReach(model))}\n`).toMatchFileSnapshot(`${GOLDEN}/agent-reach.mmd`);
   });
 
   it('marks agents in the actor table, and gives reached assets a reach section in their drawer', () => {
-    const data = page(html, 'data');
+    const data = page(html, 'agents');
     expect(data).toContain('id="actors"');
     expect(data).toMatch(/<code>#support-agent<\/code><\/td>\s*<td><span class="reach-kind agent">AI agent<\/span>/);
     expect(data).toMatch(/<code>#support-human<\/code><\/td>\s*<td><span class="reach-kind">approver<\/span>/);
@@ -274,7 +278,7 @@ describe('the dashboard', () => {
   });
 
   it('puts unentitled reaches and ungated mutations on the summary\'s to-do list', () => {
-    const summary = page(html, 'summary');
+    const summary = page(html, 'overview');
     expect(summary).toContain('5 capabilities handed out that nobody approved');
     expect(summary).toContain('5 mutations with no one deciding first');
   });
@@ -288,8 +292,8 @@ describe('the dashboard', () => {
     const agents = page(out, 'agents');
     expect(agents).toContain('class="empty-state"');
     expect(agents).not.toContain('id="reach-map"');
-    expect(page(out, 'diagrams')).not.toContain('Agent Reach');
-    expect(page(out, 'summary')).not.toContain('nobody approved');
+    expect(page(out, 'diagrams')).not.toContain('data-plot="reach"');
+    expect(page(out, 'overview')).not.toContain('nobody approved');
   });
 
   it('escapes reach text from the model', async () => {
@@ -298,7 +302,7 @@ describe('the dashboard', () => {
       'src/a.ts': 'const x = 1;\n\n/**\n * @agents #bot to run-sql on #tools -- "<script>alert(1)</script>"\n */\nexport function q(): void {}\n',
     }));
     const out = generateDashboardHTML(m);
-    for (const id of ['agents', 'data']) {
+    for (const id of ['agents', 'diagrams']) {
       expect(page(out, id)).not.toContain('<img src=x');
       expect(page(out, id)).not.toContain('<script>alert');
     }

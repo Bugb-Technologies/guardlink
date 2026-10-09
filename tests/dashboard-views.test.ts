@@ -123,7 +123,7 @@ describe('what changed since a ref', () => {
     expect(h).toContain('id="since-strip"');
     expect(h).toContain('since <code>v1.0</code>');
     expect(h.match(/data-change="new"/g)).toHaveLength(2);
-    expect(h).toContain('href="#threats?change=new"');
+    expect(h).toContain('href="#exposures?change=new"');
     expect(h).not.toContain('id="since-strip-missing"');
     expect(generateDashboardHTML(model, root)).not.toContain('id="since-strip"');
   });
@@ -158,19 +158,19 @@ describe('markup', () => {
     expect(h).toContain('id="sensitive"');
     expect(h).toContain('data-owner="platform"');
     expect(h).toContain('data-handles="pii"');
-    expect(h).toContain('href="#threats?owner=platform&amp;status=open"');
-    expect(h).toContain('href="#threats?handles=pii&amp;status=open"');
+    expect(h).toContain('href="#exposures?owner=platform&amp;status=open"');
+    expect(h).toContain('href="#exposures?handles=pii&amp;status=open"');
     expect(h).toContain('class="whole-model-note');
-    for (const fn of ['function onFeatureFilter(', 'function linkifyIds(', 'function themeMermaid(', 'function diagramFocus(', 'function diagramFind(']) expect(h).toContain(fn);
+    for (const fn of ['function applyFeatureFilter(', 'function linkifyIds(', 'function applyDiagrams(', 'function renderHoodSvg(', 'function renderMatrix(']) expect(h).toContain(fn);
   });
 
-  it('embeds a focused threat graph per exposed asset', async () => {
+  it('lets every exposed asset be pinned on the threat graph and opened as a neighbourhood', async () => {
     const root = await project();
     const { model } = await parseProject({ root, project: 'v' });
     const h = generateDashboardHTML(model, root);
-    expect(h).toContain('class="diagram-focus"');
-    expect(h).toContain('data-focus="#api"');
-    expect(h).toContain('data-focus="#web"');
-    expect(h).toContain('class="diagram-find"');
+    for (const key of ['api', 'web', 'db']) expect(h).toMatch(new RegExp(`data-node="a\\d+"[^>]*data-key="${key}"`));
+    expect(h).toContain('href="#diagrams?tab=threat&amp;pin=api"');
+    expect(h).toContain('href="#diagrams?tab=flow&amp;view=hood&amp;focus=api"');
+    expect(h).toContain('<select data-focus-select');
   });
 });

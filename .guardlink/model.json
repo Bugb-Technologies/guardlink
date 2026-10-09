@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:7699fd36a4f42f9233f7bb6b81030a15c52f45618f34baa20928da749b08203b",
+    "annotation_hash": "sha256-v3:054099e5208031357a91f5151e35f70caa634167fc557d47ba2135fe870c7528",
     "generator": "guardlink@2.2.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 169,
-  "annotations_parsed": 891,
+  "source_files": 176,
+  "annotations_parsed": 894,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -38,27 +38,33 @@
     "src/codegraph/index.ts",
     "src/dashboard/analytics.ts",
     "src/dashboard/annotations.ts",
-    "src/dashboard/client-legacy.ts",
     "src/dashboard/client.ts",
     "src/dashboard/data.ts",
     "src/dashboard/diagrams.ts",
-    "src/dashboard/explore.ts",
     "src/dashboard/generate.ts",
     "src/dashboard/html.ts",
     "src/dashboard/index.ts",
+    "src/dashboard/layout/graph.ts",
+    "src/dashboard/layout/hood.ts",
+    "src/dashboard/layout/matrix.ts",
+    "src/dashboard/layout/reach.ts",
+    "src/dashboard/layout/ribbons.ts",
+    "src/dashboard/layout/shelves.ts",
+    "src/dashboard/layout/text.ts",
+    "src/dashboard/layout/threat-graph.ts",
+    "src/dashboard/layout/tripartite.ts",
     "src/dashboard/links.ts",
+    "src/dashboard/markdown.ts",
     "src/dashboard/pages/agents.ts",
-    "src/dashboard/pages/analytics.ts",
     "src/dashboard/pages/assets.ts",
     "src/dashboard/pages/attribution.ts",
     "src/dashboard/pages/code.ts",
     "src/dashboard/pages/context.ts",
-    "src/dashboard/pages/data-boundaries.ts",
     "src/dashboard/pages/diagrams.ts",
-    "src/dashboard/pages/explore.ts",
+    "src/dashboard/pages/exposures.ts",
+    "src/dashboard/pages/overview.ts",
     "src/dashboard/pages/reports.ts",
-    "src/dashboard/pages/summary.ts",
-    "src/dashboard/pages/threats.ts",
+    "src/dashboard/pages/tables.ts",
     "src/dashboard/render-budget.ts",
     "src/dashboard/since.ts",
     "src/dashboard/styles.ts",
@@ -170,6 +176,7 @@
     "scripts/postbuild-chmod.mjs",
     "scripts/query-set.mjs",
     "src/analyze/format.ts",
+    "src/dashboard/grade.ts",
     "src/graph/index.ts",
     "src/index.ts",
     "src/init/picker.ts",
@@ -1199,10 +1206,10 @@
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
-      "description": "Every value the drawer renders from the embedded data passes through the client esc(); URLs are pre-built server-side and attribute-escaped here",
+      "description": "Every value the drawers, twins and tooltip render from the embedded data passes through esc() or textContent; URLs are pre-built server-side and attribute-escaped here",
       "location": {
         "file": "src/dashboard/client.ts",
-        "line": 15
+        "line": 26
       }
     },
     {
@@ -1219,20 +1226,10 @@
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
-      "description": "Every value here is raw; pages/explore.ts escapes each one through esc() at the point it is interpolated, including Mermaid source, which is escaped into the <pre> and read back as text",
-      "location": {
-        "file": "src/dashboard/explore.ts",
-        "line": 21
-      }
-    },
-    {
-      "asset": "#dashboard",
-      "threat": "#xss",
-      "control": "#output-encoding",
-      "description": "esc() HTML-encodes every interpolated value in every page module; serialized data escapes closing script tags before embedding in <script>",
+      "description": "esc() HTML-encodes every interpolated value in every page module, the layout modules escape every SVG label, report prose is escaped before markup is added back, and serialized data escapes closing script tags before embedding in <script>",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 26
+        "line": 29
       }
     },
     {
@@ -1242,7 +1239,7 @@
       "description": "resolve() with root constrains file access (annotations.ts)",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 28
+        "line": 31
       }
     },
     {
@@ -1252,7 +1249,7 @@
       "description": "Feature scope names come from @feature annotations and the --feature flag; every one is rendered through esc()",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 37
+        "line": 40
       }
     },
     {
@@ -1262,7 +1259,7 @@
       "description": "esc() HTML-encodes every interpolated value; hrefs built here are encoded too, so a hash route carrying a search term cannot break out of the attribute",
       "location": {
         "file": "src/dashboard/html.ts",
-        "line": 8
+        "line": 16
       }
     },
     {
@@ -1273,6 +1270,76 @@
       "location": {
         "file": "src/dashboard/index.ts",
         "line": 5
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "renderHoodSvg and renderNodeDetail escape every label, mechanism, path and description with their own esc(); keys in hrefs go through encodeURIComponent",
+      "location": {
+        "file": "src/dashboard/layout/hood.ts",
+        "line": 21
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "renderMatrix escapes every asset, group and threat label with its own esc()",
+      "location": {
+        "file": "src/dashboard/layout/matrix.ts",
+        "line": 17
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Actor, capability, asset, approver and identity names reach the SVG only through xml() and attrs()",
+      "location": {
+        "file": "src/dashboard/layout/reach.ts",
+        "line": 17
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Node labels, mechanisms, descriptions and boundary labels reach the SVG only through xml() and attrs()",
+      "location": {
+        "file": "src/dashboard/layout/ribbons.ts",
+        "line": 20
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Asset labels, threat labels, paths and classifications are escaped through xml() and attrs()",
+      "location": {
+        "file": "src/dashboard/layout/shelves.ts",
+        "line": 15
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "xml() encodes &, <, > and both quotes for every text node and attribute the diagram modules emit",
+      "location": {
+        "file": "src/dashboard/layout/text.ts",
+        "line": 10
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Asset, threat and control labels and descriptions reach the SVG only through xml() and attrs()",
+      "location": {
+        "file": "src/dashboard/layout/threat-graph.ts",
+        "line": 13
       }
     },
     {
@@ -1309,6 +1376,16 @@
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
+      "description": "renderMarkdown escapes the whole report before adding markup back; link targets are allow-listed by scheme",
+      "location": {
+        "file": "src/dashboard/markdown.ts",
+        "line": 17
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
       "description": "Actor, asset and capability names, descriptions and citations are model text; every one goes through esc(), including chip titles",
       "location": {
         "file": "src/dashboard/pages/agents.ts",
@@ -1319,20 +1396,10 @@
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
-      "description": "Asset, threat, control, file and identity names are escaped by heatTable/barList; routes are attribute-escaped",
-      "location": {
-        "file": "src/dashboard/pages/analytics.ts",
-        "line": 11
-      }
-    },
-    {
-      "asset": "#dashboard",
-      "threat": "#xss",
-      "control": "#output-encoding",
-      "description": "Asset names and classifications are escaped",
+      "description": "Asset names, paths, threat labels and classifications are escaped",
       "location": {
         "file": "src/dashboard/pages/assets.ts",
-        "line": 4
+        "line": 11
       }
     },
     {
@@ -1359,40 +1426,20 @@
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
-      "description": "Every cell is escaped, including owner names, rationale and entitlement citations",
-      "location": {
-        "file": "src/dashboard/pages/data-boundaries.ts",
-        "line": 6
-      }
-    },
-    {
-      "asset": "#dashboard",
-      "threat": "#xss",
-      "control": "#output-encoding",
-      "description": "Mermaid source is escaped into the <pre>; the client reads it back as text",
+      "description": "Labels reach the SVG through the layout modules' xml()/attrs(); everything interpolated here goes through esc()",
       "location": {
         "file": "src/dashboard/pages/diagrams.ts",
-        "line": 5
+        "line": 24
       }
     },
     {
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
-      "description": "Every interpolated value — asset ids, threat names, file paths, descriptions, boundary labels and the Mermaid source itself — goes through esc(); the Mermaid text is escaped into the <pre> and read back by the client as textContent",
+      "description": "Every cell, attribute and identity is escaped; the search text is escaped as an attribute value; the matrix SVG escapes its own labels",
       "location": {
-        "file": "src/dashboard/pages/explore.ts",
-        "line": 30
-      }
-    },
-    {
-      "asset": "#dashboard",
-      "threat": "#xss",
-      "control": "#output-encoding",
-      "description": "Framework names in the command chips are fixed strings; nothing from a report is interpolated server-side",
-      "location": {
-        "file": "src/dashboard/pages/reports.ts",
-        "line": 7
+        "file": "src/dashboard/pages/exposures.ts",
+        "line": 20
       }
     },
     {
@@ -1401,18 +1448,28 @@
       "control": "#output-encoding",
       "description": "Every model value, action text and identity is rendered through esc(); hrefs are attribute-escaped",
       "location": {
-        "file": "src/dashboard/pages/summary.ts",
-        "line": 9
+        "file": "src/dashboard/pages/overview.ts",
+        "line": 17
       }
     },
     {
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
-      "description": "Every cell, attribute and identity is escaped; the search text is escaped as an attribute value",
+      "description": "Report prose goes through renderMarkdown (escape first, allow-listed link schemes); every finding field goes through esc()",
       "location": {
-        "file": "src/dashboard/pages/threats.ts",
-        "line": 11
+        "file": "src/dashboard/pages/reports.ts",
+        "line": 12
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Every cell is escaped, including owner names, rationale and entitlement citations",
+      "location": {
+        "file": "src/dashboard/pages/tables.ts",
+        "line": 13
       }
     },
     {
@@ -2723,23 +2780,10 @@
       "external_refs": [
         "cwe:CWE-79"
       ],
-      "description": "buildExploreData carries asset ids, threat names, file paths and annotation descriptions from the model into strings the Explore page renders",
-      "location": {
-        "file": "src/dashboard/explore.ts",
-        "line": 20
-      }
-    },
-    {
-      "asset": "#dashboard",
-      "threat": "#xss",
-      "severity": "high",
-      "external_refs": [
-        "cwe:CWE-79"
-      ],
-      "description": "generateDashboardHTML() interpolates model descriptions, asset names, git identities and commit trailers into the page markup and the embedded JSON constants",
+      "description": "generateDashboardHTML() interpolates model descriptions, asset names, git identities, commit trailers and report prose into the page markup, the SVG diagrams and the embedded JSON constants",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 25
+        "line": 28
       }
     },
     {
@@ -2752,7 +2796,7 @@
       "description": "readFileSync reads code files for annotation context",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 27
+        "line": 30
       }
     },
     {
@@ -4613,17 +4657,6 @@
       }
     },
     {
-      "source": "ThreatModel",
-      "target": "#dashboard",
-      "mechanism": "buildExploreData",
-      "route": null,
-      "description": "Model narrowed into one budgeted answer per view",
-      "location": {
-        "file": "src/dashboard/explore.ts",
-        "line": 22
-      }
-    },
-    {
       "source": "GitRepo",
       "target": "#dashboard",
       "mechanism": "loadSince",
@@ -4631,7 +4664,7 @@
       "description": "The model at --since <ref>, diffed against the one rendered",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 23
+        "line": 26
       }
     },
     {
@@ -4642,7 +4675,7 @@
       "description": "Model statistics input",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 29
+        "line": 32
       }
     },
     {
@@ -4653,7 +4686,7 @@
       "description": "Code snippet reads",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 30
+        "line": 33
       }
     },
     {
@@ -4664,7 +4697,7 @@
       "description": "Claim states for badges and the stale-claims action",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 31
+        "line": 34
       }
     },
     {
@@ -4675,7 +4708,7 @@
       "description": "The remote's web host, for file and commit links",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 32
+        "line": 35
       }
     },
     {
@@ -4686,7 +4719,7 @@
       "description": "Generated HTML output",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 33
+        "line": 36
       }
     },
     {
@@ -4697,7 +4730,7 @@
       "description": "Outcomes for the badges, the drawer and the open count",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 140
+        "line": 102
       }
     },
     {
@@ -4731,6 +4764,17 @@
       "location": {
         "file": "src/dashboard/links.ts",
         "line": 15
+      }
+    },
+    {
+      "source": "SavedReport",
+      "target": "#dashboard",
+      "mechanism": "renderMarkdown",
+      "route": null,
+      "description": "Threat-report prose rendered to HTML at generation time",
+      "location": {
+        "file": "src/dashboard/markdown.ts",
+        "line": 18
       }
     },
     {
@@ -6602,7 +6646,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3959
+        "line": 3955
       }
     },
     {
@@ -6629,7 +6673,7 @@
       "description": "Processes and displays threat model data",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 34
+        "line": 37
       }
     },
     {
@@ -6638,16 +6682,7 @@
       "description": "Author identities from attribution, in the configured identity mode",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 35
-      }
-    },
-    {
-      "classification": "pii",
-      "asset": "#dashboard",
-      "description": "Introducer identities in the people × time heatmap",
-      "location": {
-        "file": "src/dashboard/pages/analytics.ts",
-        "line": 12
+        "line": 38
       }
     },
     {
@@ -6666,6 +6701,15 @@
       "location": {
         "file": "src/dashboard/pages/context.ts",
         "line": 12
+      }
+    },
+    {
+      "classification": "pii",
+      "asset": "#dashboard",
+      "description": "Introducer identities in the people × time grid",
+      "location": {
+        "file": "src/dashboard/pages/exposures.ts",
+        "line": 21
       }
     },
     {
@@ -7064,7 +7108,7 @@
       "description": "Interactive HTML threat model dashboard",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 36
+        "line": 39
       }
     },
     {
@@ -7592,14 +7636,14 @@
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3882
+        "line": 3878
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3960
+        "line": 3956
       }
     },
     {
@@ -7638,31 +7682,10 @@
       }
     },
     {
-      "description": "Verbatim from the previous generate.ts; behaviour unchanged. Model data never reaches these strings at generation time — they read the embedded arrays at run time",
-      "location": {
-        "file": "src/dashboard/client-legacy.ts",
-        "line": 9
-      }
-    },
-    {
-      "description": "One exception to 'no generation-time data': MERMAID_LIMITS is interpolated into mermaid.initialize, so the renderer is configured with the same two numbers the render budget measured against",
-      "location": {
-        "file": "src/dashboard/client-legacy.ts",
-        "line": 10
-      }
-    },
-    {
-      "description": "Second exception, same kind: ACCEPTANCE_REGISTER_NOTE is interpolated as a JSON literal so the Accepted Risks block names the register it read — one sentence, one definition, shared with the CLI and the server-rendered pages",
-      "location": {
-        "file": "src/dashboard/client-legacy.ts",
-        "line": 11
-      }
-    },
-    {
-      "description": "No network: the clipboard API with a textarea fallback, history.replaceState for filters, localStorage only for theme and sidebar state",
+      "description": "No network: the clipboard API with a textarea fallback, history.replaceState for filters, localStorage only for theme and rail state",
       "location": {
         "file": "src/dashboard/client.ts",
-        "line": 16
+        "line": 27
       }
     },
     {
@@ -7701,24 +7724,24 @@
       }
     },
     {
-      "description": "Pure over an already-parsed model: no file I/O, no user input, no network",
-      "location": {
-        "file": "src/dashboard/explore.ts",
-        "line": 23
-      }
-    },
-    {
       "description": "A model narrowed with --feature carries filtered_by_features. The page then declares itself a slice in the title, the top bar and a banner, and suppresses the project-wide measures (file coverage, unannotated files) that a slice cannot answer",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 38
+        "line": 41
       }
     },
     {
-      "description": "statCard keeps its exact markup: the feature-slice test greps the Open Threats tile by that string",
+      "description": "No remote reference of any kind is emitted: the page renders offline and under a host policy that blocks every network origin",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 42
+      }
+    },
+    {
+      "description": "statCard keeps its exact markup: the feature filter rewrites the inventory tiles by label, and a test greps the Open Threats tile by that string",
       "location": {
         "file": "src/dashboard/html.ts",
-        "line": 9
+        "line": 17
       }
     },
     {
@@ -7726,6 +7749,27 @@
       "location": {
         "file": "src/dashboard/index.ts",
         "line": 7
+      }
+    },
+    {
+      "description": "Pure: no I/O, no DOM. Every string here is raw model text; the renderers escape it at the point they emit markup",
+      "location": {
+        "file": "src/dashboard/layout/graph.ts",
+        "line": 15
+      }
+    },
+    {
+      "description": "Pure string helpers; nothing here reads a document",
+      "location": {
+        "file": "src/dashboard/layout/text.ts",
+        "line": 11
+      }
+    },
+    {
+      "description": "Pure geometry over keys; no DOM, no measurement. The callers own every label and every colour",
+      "location": {
+        "file": "src/dashboard/layout/tripartite.ts",
+        "line": 21
       }
     },
     {
@@ -7750,17 +7794,24 @@
       }
     },
     {
-      "description": "Pure rendering over the analytics builders; the same claim rows feed every grid so the numbers agree with the tables",
+      "description": "Replaces the CDN copy of marked: the page makes no network request to render a report",
       "location": {
-        "file": "src/dashboard/pages/analytics.ts",
-        "line": 13
+        "file": "src/dashboard/markdown.ts",
+        "line": 19
       }
     },
     {
-      "description": "Cells keep data-ff-asset (every alias of the tile, |-separated) and the asset drawer; the legend and search text are new",
+      "description": "Chips carry state the design way: a capability is an outlined chip with ✓ (entitled) or ✕ (unentitled), a gated effect carries ⊢, an ungated mutation is a filled warm chip, a read is a plain tag",
+      "location": {
+        "file": "src/dashboard/pages/agents.ts",
+        "line": 15
+      }
+    },
+    {
+      "description": "Rows keep data-ff-asset (every alias of the asset, |-separated) so the feature filter can hide what a feature never touches",
       "location": {
         "file": "src/dashboard/pages/assets.ts",
-        "line": 5
+        "line": 12
       }
     },
     {
@@ -7778,6 +7829,13 @@
       }
     },
     {
+      "description": "No inline handlers: a file header carries data-toggle-file and an annotation data-annotation, and the page's one delegated listener acts on them",
+      "location": {
+        "file": "src/dashboard/pages/code.ts",
+        "line": 13
+      }
+    },
+    {
       "description": "Pure; every string here is raw and is escaped by the page that renders it",
       "location": {
         "file": "src/dashboard/pages/context.ts",
@@ -7785,52 +7843,31 @@
       }
     },
     {
-      "description": "The empty-state sentence and its condition are unchanged (flows are not part of it) because the feature-slice test pins the sentence",
+      "description": "Scope wording lives in a note, not in headings: the client feature filter rewrites headings by textContent",
       "location": {
-        "file": "src/dashboard/pages/data-boundaries.ts",
-        "line": 7
+        "file": "src/dashboard/pages/exposures.ts",
+        "line": 22
       }
     },
     {
-      "description": "Ported from the first generate.ts with the same panel ids and data-variant hooks the diagram script expects; the toolbar is a segmented zoom group plus copy-source",
+      "description": "The inventory keeps statCard markup and labels: the feature filter rewrites the Open Threats and Mitigated tiles by label, and a test greps the tile",
       "location": {
-        "file": "src/dashboard/pages/diagrams.ts",
-        "line": 6
-      }
-    },
-    {
-      "description": "Panes carry .diagram-panel so the existing zoom, find and copy-source controls work unchanged; .explore-pane is what the router shows and hides",
-      "location": {
-        "file": "src/dashboard/pages/explore.ts",
-        "line": 31
-      }
-    },
-    {
-      "description": "Nothing is selected in the browser: buildExploreData has already run every query at generation time, so the page holds answers rather than a query engine",
-      "location": {
-        "file": "src/dashboard/pages/explore.ts",
-        "line": 32
+        "file": "src/dashboard/pages/overview.ts",
+        "line": 18
       }
     },
     {
       "description": "Whole-project documents: --feature does not narrow them, and the page says so on a slice. With no saved report the page renders its own empty state so the copy buttons exist without the client",
       "location": {
         "file": "src/dashboard/pages/reports.ts",
-        "line": 8
+        "line": 13
       }
     },
     {
-      "description": "The Open Threats tile keeps its exact markup and label, and the coverage panel keeps .coverage-pct / .posture-fill / the 'exposures mitigated' sentence: the client feature filter rewrites those by label, and a test greps the tile",
+      "description": "The empty-state sentence and its condition are kept word for word (flows are not part of it): the feature-slice test pins the sentence",
       "location": {
-        "file": "src/dashboard/pages/summary.ts",
-        "line": 10
-      }
-    },
-    {
-      "description": "Scope wording lives in a note, not in headings: the client feature filter rewrites headings by textContent",
-      "location": {
-        "file": "src/dashboard/pages/threats.ts",
-        "line": 12
+        "file": "src/dashboard/pages/tables.ts",
+        "line": 14
       }
     },
     {
@@ -7848,10 +7885,10 @@
       }
     },
     {
-      "description": "Static CSS only; nothing here interpolates model data",
+      "description": "Static CSS only; nothing here interpolates model data, and nothing here references a remote resource",
       "location": {
         "file": "src/dashboard/styles.ts",
-        "line": 9
+        "line": 26
       }
     },
     {
@@ -8836,7 +8873,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 891,
+    "annotation_count": 894,
     "coverage_percent": 86
   },
   "external_refs": []

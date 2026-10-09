@@ -69,14 +69,14 @@ describe('computeActions', () => {
     const severe = actions[0];
     expect(severe.level).toBe('critical');
     expect(severe.count).toBe(1);               // the critical sqli; the high xss is mitigated
-    expect(severe.href).toBe('#threats?sev=critical,high&status=open');
+    expect(severe.href).toBe('#exposures?sev=critical,high&status=open');
 
     const stale = actions[1];
     expect(stale.count).toBe(2);
     expect(stale.command).toBe('guardlink verify --stale');
     expect(stale.detail).toMatch(/1 of them (is a|are) mitigation/);
 
-    expect(actions[2]).toMatchObject({ count: 1, href: '#data?q=audit' });
+    expect(actions[2]).toMatchObject({ count: 1, href: '#assets?q=audit' });
     expect(actions[3].command).toMatch(/^guardlink annotate/);
   });
 
@@ -87,7 +87,7 @@ describe('computeActions', () => {
       model, exposures: computeExposures(model), confirmed: computeConfirmed(model),
       verification: verification({ unverified: 4 }, 'absent'), attribution: null, scope: null,
     });
-    expect(actions[0]).toMatchObject({ id: 'confirmed', level: 'critical', count: 1, href: '#threats?status=confirmed' });
+    expect(actions[0]).toMatchObject({ id: 'confirmed', level: 'critical', count: 1, href: '#exposures?status=confirmed' });
     const first = actions.find(a => a.id === 'start-verifying');
     expect(first).toMatchObject({ command: 'guardlink verify --all', count: 4 });
   });

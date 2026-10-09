@@ -109,7 +109,9 @@ describe('the block', () => {
     expect(reports[0].content).not.toContain('guardlink-findings');
     const { model } = await parseProject({ root, project: 'f' });
     const h = generateDashboardHTML(model, root, reports);
-    expect(h).toContain('"findings":[{"id":"F-1"');
-    expect(h).toContain('function renderFindingsTable(');
+    // Rendered at generation time: one row per finding, each id a way into the Exposures table.
+    expect(h).toContain('class="sortable fixed findings-table"');
+    expect(h).toContain('<td><code>F-1</code></td>');
+    expect(h).toMatch(/<td><code>F-2<\/code><\/td>/);
   });
 });

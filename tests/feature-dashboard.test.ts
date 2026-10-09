@@ -128,7 +128,7 @@ describe('a feature-scoped dashboard declares its scope', () => {
 
   it('marks each page, not only the summary', () => {
     const h = html();
-    for (const section of ['sec-summary', 'sec-threats', 'sec-diagrams', 'sec-code', 'sec-data', 'sec-assets']) {
+    for (const section of ['sec-overview', 'sec-exposures', 'sec-diagrams', 'sec-assets', 'sec-code']) {
       const start = h.indexOf(`id="${section}"`);
       expect(start, section).toBeGreaterThan(-1);
       const page = h.slice(start, h.indexOf('id="sec-', start + 10));
@@ -203,8 +203,12 @@ describe('a narrowed model keeps the definitions its relations reference', () =>
 
   it('shows the same resolved nodes in the dashboard\'s diagram panel', () => {
     const scoped = generateDashboardHTML(narrowed(projectModel(), ['Dashboard']));
-    // The page draws no emoji: severity is the node's class, the name is resolved.
-    expect(scoped).toContain('Cross_Site_Scripting (cwe:CWE-79)&quot;}}:::sev_high');
+    // The page draws no emoji: the threat is one slab under its declared id, its
+    // definition resolved (name and severity in the readout), never a second
+    // phantom node for the bare id.
+    const plot = scoped.slice(scoped.indexOf('data-plot="threat"'), scoped.indexOf('</svg>', scoped.indexOf('data-plot="threat"')));
+    expect(plot.match(/data-name="#xss"/g)).toHaveLength(1);
+    expect(plot).toMatch(/data-tip="#xss" data-tip-rows="name\tCross_Site_Scripting\ndeclared severity\thigh/);
     expect(scoped).not.toContain('⚪ xss');
     expect(scoped).not.toContain('🟠');
   });

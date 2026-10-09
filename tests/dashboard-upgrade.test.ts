@@ -53,20 +53,24 @@ async function html(opts: { remote?: string } = {}): Promise<{ root: string; htm
 }
 
 describe('routes and navigation', () => {
-  it('every page is reachable by hash and the sidebar links carry the hash', async () => {
+  it('every page of the rail is reachable by hash, and the old page names redirect', async () => {
     const { html: h } = await html();
-    for (const page of ['summary', 'threats', 'diagrams', 'code', 'data', 'assets']) {
+    for (const page of ['overview', 'exposures', 'diagrams', 'assets', 'code', 'agents', 'reports']) {
       expect(h).toContain(`id="sec-${page}"`);
-      expect(h).toContain(`href="#${page}"`);
+      expect(h).toContain(`href="#${page}" data-page="${page}"`);
+    }
+    // Links written against the ten-page layout keep working.
+    for (const [old, now] of [['summary', 'overview'], ['analytics', 'exposures'], ['threats', 'exposures'], ['explore', 'diagrams'], ['data', 'diagrams'], ['ai-analysis', 'reports']]) {
+      expect(h).toContain(`${old.includes('-') ? `'${old}'` : old}: '${now}'`);
     }
     expect(h).toContain('function showSection(');
     expect(h).toContain("addEventListener('popstate'");
   });
 
-  it('the summary KPIs link to the view behind the number', async () => {
+  it('the Overview numbers link to the view behind them', async () => {
     const { html: h } = await html();
-    expect(h).toMatch(/<a class="kpi[^"]*" href="#threats\?status=open"/);
-    expect(h).toMatch(/<a class="kpi[^"]*" href="#threats\?sev=critical,high&amp;status=open"/);
+    expect(h).toMatch(/<a class="big" href="#exposures\?status=open"/);
+    expect(h).toContain('href="#exposures?sev=critical&amp;status=open"');
   });
 
   it('carries a "What to do next" list with a copyable command', async () => {

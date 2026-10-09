@@ -171,6 +171,17 @@ Other tools key on the SARIF export's result index, `message.text`, rule ids and
 
 The `github` profile (the default) is also pinned whole against `tests/fixtures/sarif-baseline/*.github.sarif`, so anything for a test run goes in the `pentest` profile (`src/analyzer/sarif-pentest.ts`, SPEC §6.8), appended after every `github` result. `tests/sarif-pentest.test.ts` pins that profile against `tests/fixtures/sarif-pentest/`, which other tools test their readers against; regenerate those as its README says, and only for an intended change.
 
+## Dashboard Changes
+
+`guardlink dashboard` writes one file that hosts embed as it is, including an editor webview under a strict content security policy. `tests/dashboard-self-contained.test.ts` holds a change to four rules:
+
+- **No network at render time.** No `<script src>`, stylesheet or font link, or remote `import()`. Anything the page needs is generated into it.
+- **No inline `on*` handlers**, in the markup or in markup the page script builds. Add a `data-*` hook and handle it in a listener delegated from `document` in `src/dashboard/client.ts`; navigate with hash links.
+- **No DOM measurement to lay a diagram out.** The diagrams are laid out in `src/dashboard/layout/` from data and estimated glyph widths, so a hidden panel draws like a visible one.
+- **No colour literal outside `TOKENS_CSS`** in `src/dashboard/styles.ts`. Paint with the role tokens.
+
+`renderHoodSvg`, `renderNodeDetail` and `renderMatrix` are embedded in the page by source (`fn.toString()`), so the browser redraws with the same code the generator ran. Keep them self-contained: no imports and no references outside the function body. `tests/dashboard-layout.test.ts` runs them that way in an empty context. `tsx` adds a `__name` helper call to function source; the page defines a no-op `__name` before the embedded renderers for that reason.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the MIT License.

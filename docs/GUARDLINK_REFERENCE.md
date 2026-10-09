@@ -147,7 +147,7 @@ guardlink ci . --expiring-within 30                # Days of notice before an @a
 # Reports & Export
 guardlink report [dir]                  # Generate threat-model.md + optional JSON
 guardlink report . --agents             # Agent threat model alone: reach map, unentitled reaches, ungated mutations, OWASP LLM mapping
-guardlink dashboard [dir]               # Interactive HTML dashboard with Mermaid diagrams
+guardlink dashboard [dir]               # Interactive, self-contained HTML dashboard (no network at render time)
 guardlink sarif [dir] [-o file]         # SARIF 2.1.0 for GitHub Advanced Security / VS Code; @exposes and @confirmed results carry guardlink/threatId, and @exposes results also carry guardlink/claimKey; each also carries its declared context — CWE/OWASP taxa, boundaries and assumptions on its asset, the @flows chain into it — and the run carries the flow/boundary graph (SPEC §6.6)
 guardlink sarif [dir] --profile pentest [--baseline old.sarif]   # the same results, then covered exposures (guardlink/mitigated-exposure, with suppressions), one guardlink/boundary-claim per @boundary and one guardlink/agent-reach per reach and per mutating effect appended after them; every claim carries its hypothesis-ledger state; --baseline sets baselineState (SPEC §6.8)
 guardlink diff [ref]                    # Compare threat model against a git ref (default: HEAD~1)
@@ -590,13 +590,14 @@ skips it), a severity-weighted risk score, the age of the oldest open exposure, 
 rewritten under open exposures, and a click on any identity that narrows the claims table. The
 dashboard also links every `file:line` and commit to the repository's web host when `.git/config`
 names a GitHub, GitLab or Bitbucket origin, and shows verified / stale / unverified per claim
-when a ledger exists. The Analytics page charts the model itself — asset × threat, severity ×
-status, threats by frequency, control coverage (including controls nothing uses), the files with
-the most open exposures, open risk per owning team (`@owns`) with the exposed assets nobody owns,
-open exposure per data classification (`@handles`), and with `--blame` people × quarter and AI
-tool × severity — with every cell linking into the filtered Threats table. `--since <ref>` adds a
-strip under the summary saying what changed since a tag, branch or commit: exposures added and
-resolved, newly confirmed, new mitigations, and verified claims gone stale in files that changed.
+when a ledger exists. The Exposures page charts the model itself — the asset × threat matrix over
+the claims table, then severity × status, threats by frequency, control coverage (including
+controls nothing uses), the files with the most open exposures, open risk per owning team
+(`@owns`) with the exposed assets nobody owns, open exposure per data classification (`@handles`),
+and with `--blame` people × quarter and AI tool × severity — with every cell linking into the
+filtered table. `--since <ref>` adds a strip to the Overview saying what changed since a tag,
+branch or commit: exposures added and resolved, newly confirmed, new mitigations, and verified
+claims gone stale in files that changed.
 
 Attribution is opt-in and computed at run time. Without `--blame` every command's output is exactly
 what it was; with it, exposures, confirmed findings and mitigations carry a `blame` field that is

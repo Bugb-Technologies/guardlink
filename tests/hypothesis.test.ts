@@ -239,7 +239,7 @@ describe('where the state shows', () => {
     expect(lintAnnotations(model).filter(v => v.rule === 'exposes-unpaired')).toEqual([]);
 
     const h = generateDashboardHTML(await parse(root), root);
-    expect(h).toContain('<span class="kpi-v">2</span><span class="kpi-l">Open threats</span>');
+    expect(h).toContain('<span class="tn-k">Open</span> <span class="tn-v">2</span>');
     expect(h).toContain('data-status="refuted"');
     expect(h).toContain('"hypothesis":{"state":"refuted"');
     expect(h).toContain('function hypothesisBand(');

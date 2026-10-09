@@ -1,209 +1,165 @@
 /**
- * GuardLink Dashboard — Diagrams: threat graph, data flow, attack surface.
- * Mermaid sources are embedded escaped and rendered client-side.
+ * GuardLink Dashboard — Diagrams: four tabs, each drawn as our own SVG.
  *
- * @mitigates #dashboard against #xss using #output-encoding -- "Mermaid source is escaped into the <pre>; the client reads it back as text"
- * @comment -- "Ported from the first generate.ts with the same panel ids and data-variant hooks the diagram script expects; the toolbar is a segmented zoom group plus copy-source"
+ *   Threat graph    assets → threats → controls, one thread per exposure and per mitigation
+ *   Data flow       the whole model as flow ribbons; any node opens its neighbourhood
+ *   Attack surface  every asset on a shelf, one tick per exposure
+ *   Agent reach     who acts → capability → the effect it lands
+ *
+ * Every whole-model picture is laid out here, at generation time, from data
+ * alone, and emitted as SVG. Nothing is handed to a third-party layout engine
+ * in the browser, so nothing can be laid out into a hidden or zero-size panel
+ * and come back NaN, and nothing has to be re-drawn when a tab is shown. The
+ * client adds hover and pin by toggling classes; the neighbourhood is redrawn
+ * on a walk by the same self-contained renderer that drew its first frame.
+ *
+ * This page also holds what were the Explore and Data & Boundaries pages:
+ * Explore's questions are the entry points that pick a neighbourhood's focus,
+ * its undefended routes sit under the data flow, and the flow, boundary and
+ * classification tables are the data flow's table twin.
+ *
+ * Mermaid text is still generated for the `.mmd` artifacts and the report;
+ * none of it is on this page.
+ *
+ * @mitigates #dashboard against #xss using #output-encoding -- "Labels reach the SVG through the layout modules' xml()/attrs(); everything interpolated here goes through esc()"
  */
-import { esc, scopeLabel, sectionHead, icon, wholeModelNote } from '../html.js';
-import {
-  checkRenderBudget, oversizedStub, describeViolation,
-  DASHBOARD_FALLBACK, MERMAID_LIMITS_SOURCE,
-} from '../render-budget.js';
-import { checkLegibility, describeLegibility, LEGIBILITY_BUDGET } from '../../graph/legibility.js';
+import { esc, sectionHead, wholeModelNote, scopeLabel, locInline, stateChip } from '../html.js';
+import { plural } from '../layout/text.js';
 import type { PageContext } from './context.js';
+import type { DiagramModel } from '../layout/graph.js';
+import { renderThreatGraph } from '../layout/threat-graph.js';
+import { renderRibbons } from '../layout/ribbons.js';
+import { renderHoodSvg, renderNodeDetail, type HoodPayload } from '../layout/hood.js';
+import { renderShelves } from '../layout/shelves.js';
+import { renderReachDiagram } from '../layout/reach.js';
+import { flowTables } from './tables.js';
+import type { PathFinding } from '../../paths/index.js';
 
-/**
- * A diagram is embedded only if something will draw it.
- *
- * The dashboard's failure at scale was not that the picture got crowded — it was
- * that Mermaid's text-size limit fails SILENTLY. `mermaid.render` resolves, the
- * console stays empty, and the page draws one pink box reading "Maximum text
- * size in diagram exceeded" while keeping the zoom controls, the Find box, the
- * focus dropdown and a legend describing a diagram that is not there.
- *
- * So the check happens here, where the source is placed into the page, and an
- * over-budget diagram is swapped for a stub that says what exceeded and by how
- * much. The stub goes inside the same `<pre class="mermaid">` on purpose: the
- * variant toggle, the focus dropdown and `diagramFind` all address these
- * elements by class and `data-` attribute, and a different element here would
- * make the toggle silently do nothing — one more control that looks live and is
- * not. The banner above the panel carries the same facts as real HTML, for the
- * reader who should not have to read a diagram to learn that the diagram is
- * missing.
- */
-interface BudgetedDiagram {
-  /** The Mermaid source to embed — the stub when the original is over budget. */
-  src: string;
-  /** One line per violation, empty when the diagram is fine. */
-  reasons: string[];
-  /**
-   * How far past READABLE this diagram is, when it is. Empty when it fits.
-   *
-   * A second question about the same drawing, and the one that fails first. The
-   * render budget above asks whether anything will draw it; this asks whether
-   * anyone can read what gets drawn, and between the two limits sits every
-   * whole-model diagram GuardLink has ever produced — 43 nodes on this
-   * repository against a measured ceiling of 12, drawn perfectly and telling
-   * the reader nothing. Saying so is the difference between a picture that is
-   * honest about its size and one presented as though it were fine.
-   */
-  tooBig: string;
+export interface DiagramsInput {
+  graph: DiagramModel;
+  hood: HoodPayload;
+  nodeIndex: Map<string, number>;
+  /** The node the neighbourhood opens on when no focus is in the route. */
+  defaultFocus: number;
+  paths: PathFinding[];
+  pathsTotal: number;
+  endpoints: { entries: string[]; exits: string[] };
 }
 
-function budgeted(name: string, src: string): BudgetedDiagram {
-  if (!src) return { src, reasons: [], tooBig: '' };
-  const legibility = checkLegibility(src);
-  const tooBig = legibility.legible ? '' : `${name} — ${describeLegibility(legibility)}`;
-  const verdict = checkRenderBudget(src);
-  if (verdict.renderable) return { src, reasons: [], tooBig };
-  return {
-    src: oversizedStub(name, verdict, DASHBOARD_FALLBACK),
-    reasons: verdict.violations.map(v => `${name} — ${describeViolation(v)}. ${v.symptom}`),
-    // A diagram that was not drawn at all has no drawn size to be honest about;
-    // the render-budget banner above it already says what happened.
-    tooBig: '',
-  };
+const TABS: [string, string][] = [['threat', 'Threat graph'], ['flow', 'Data flow'], ['surface', 'Attack surface'], ['reach', 'Agent reach']];
+
+const legendSw = (cls: string, text: string): string => `<span><i class="lg ${cls}"></i>${text}</span>`;
+
+function pinBar(plot: string): string {
+  return `<div class="pin-bar" data-pin-bar="${plot}" hidden><span class="eyebrow">Pinned</span> <b class="mono" data-pin-label></b><span class="subtle" data-pin-count></span><button class="btn ghost" data-unpin="${plot}">Clear pin</button></div>
+  <div class="twin" data-twin="${plot}" hidden></div>`;
 }
 
-/**
- * The notice above a whole-model diagram that draws but cannot be read.
- *
- * Deliberately not styled as an error and deliberately not a refusal: the
- * drawing stays, because on a small repository it is the right picture and
- * because panning around a big one is sometimes what a reader wants. What
- * changes is that the page stops implying it is legible, and names the surface
- * that answers the same question at a size that is.
- */
-function legibilityNotice(tooBig: string[]): string {
-  if (tooBig.length === 0) return '';
-  return `<div class="diagram-toobig" role="note">
-          <strong>${tooBig.length > 1 ? 'These are whole-model diagrams' : 'This is a whole-model diagram'}, past the size anyone can read.</strong>
-          <ul>${tooBig.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
-          <p>The budget is ${LEGIBILITY_BUDGET.nodes} nodes and ${LEGIBILITY_BUDGET.edges} edges, measured against this panel at its label size — past it the drawing grows taller than the panel and "Fit" shrinks the labels below reading size rather than fitting. It still draws, and zoom and pan still work, so it is kept: on a small model it is the right picture. For a model this size, <a href="#explore">Explore</a> answers one question at a time and every answer is sized to be read.</p>
-        </div>`;
-}
-
-/**
- * What the panel footer says when nothing in it was drawn.
- *
- * The legend is a key to shapes and colours that are not on the page. Leaving it
- * under a stub is a smaller version of the same defect — a control describing
- * content that is not there — so a fully-stubbed panel drops it.
- */
-function budgetMeta(allStubbed: boolean, meta: string): string {
-  return allStubbed
-    ? 'No diagram is drawn at this size — see the notice above. The legend is omitted because there is nothing to key.'
-    : meta;
-}
-
-/** The plain-HTML notice that sits above a panel holding at least one stub. */
-function budgetBanner(reasons: string[]): string {
-  if (reasons.length === 0) return '';
-  return `<div class="diagram-budget" role="status">
-          <strong>${reasons.length > 1 ? 'These diagrams were' : 'This diagram was'} not drawn.</strong>
-          <ul>${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-          <p>The limits are Mermaid's own (${esc(MERMAID_LIMITS_SOURCE)}), so this model does not draw in GitHub or mermaid.live either — it is the picture that does not fit, not the model. ${esc(DASHBOARD_FALLBACK)} Tagging code with <code>@feature</code> also gives one smaller graph per feature, in <code>.guardlink/graph/by-feature/</code>.</p>
-        </div>`;
-}
-
-const TOOLS = `
-            <input class="diagram-find" type="search" placeholder="Find node" aria-label="Find a node in the diagram" oninput="diagramFind(this.value)">
-            <div class="diagram-seg" role="group" aria-label="Zoom">
-              <button class="diagram-btn" onclick="diagramZoom('out')" title="Zoom out">−</button>
-              <button class="diagram-btn" onclick="diagramZoom('fit')" title="Fit to panel (or double-click the diagram)">Fit</button>
-              <button class="diagram-btn" onclick="diagramZoom('in')" title="Zoom in">+</button>
-            </div>
-            <button class="diagram-btn" data-copy-diagram title="Copy the Mermaid source — paste it into mermaid.live or a markdown file">${icon('copy')} Source</button>`;
-
-const SW = (c: string): string => `<i class="sw" style="background:${c}"></i>`;
-const LEGEND_THREAT = `<span class="diagram-legend"><span>${icon('square')} asset</span><span>${icon('hexagon')} threat</span><span>${icon('pill')} control</span><span>${SW('#ea1d1d')} critical / high</span><span>${SW('#55899e')} medium</span><span>${SW('#0360a2')} low</span><span>dashed box: trust zone</span></span>`;
-const LEGEND_FLOW = `<span class="diagram-legend"><span>${icon('pill')} client or user</span><span>${icon('flag')} external party</span><span>${icon('cylinder')} data store</span><span>${icon('square')} service</span><span>dashed box: trust zone</span></span>`;
-const LEGEND_REACH = `<span class="diagram-legend"><span>${icon('pill')} AI agent</span><span>${icon('square')} principal</span><span>${SW('#33d49d')} entitled, or gated</span><span>${SW('#ea1d1d')} unentitled, or a mutation with no gate</span></span>`;
-const LEGEND_SURFACE = `<span class="diagram-legend"><span>${icon('hexagon')} confirmed</span><span>${icon('square')} open</span><span>${icon('pill')} mitigated</span><span>${icon('slant')} accepted</span><span>colour is severity</span></span>`;
-
-function shell(id: string, title: string, body: string, meta: string, extra = '', active = false): string {
-  return `<div id="dtab-${id}" class="diagram-panel${active ? ' active' : ''}">
-      <div class="diagram-shell">
-        <div class="diagram-toolbar">
-          <span class="diagram-title">${title}</span>
-          <div class="diagram-actions">${extra}${TOOLS}
-          </div>
-        </div>
-        <div class="mermaid-wrap">${body}</div>
-        <div class="diagram-meta">${meta}</div>
-      </div>
-    </div>`;
-}
-
-export function renderDiagramsPage(ctx: PageContext): string {
-  const { scope } = ctx;
-  const { threatGraph, threatGraphFull, dataFlow, attackSurface, focus } = ctx.diagrams;
-  const tabs: { id: string; label: string; icon: string }[] = [];
-  const panels: string[] = [];
-
-  if (threatGraph) {
-    tabs.push({ id: 'threat-graph', label: 'Threat Graph', icon: icon('diagram') });
-    const hasFullVariant = !!threatGraphFull && threatGraphFull !== threatGraph;
-    const bFiltered = budgeted('Threat Graph (high/critical)', threatGraph);
-    const bFull = budgeted('Threat Graph (all severities)', hasFullVariant ? threatGraphFull : '');
-    const bFocus = focus.map(f => ({ name: f.name, ...budgeted(`Threat Graph — ${f.name}`, f.src) }));
-    panels.push(shell('threat-graph', 'Threat Graph',
-      `${budgetBanner([...bFiltered.reasons, ...bFull.reasons, ...bFocus.flatMap(f => f.reasons)])}
-          ${legibilityNotice([bFiltered.tooBig, bFull.tooBig].filter(Boolean))}
-          <pre class="mermaid" data-variant="filtered">\n${esc(bFiltered.src)}\n</pre>
-          ${hasFullVariant ? `<pre class="mermaid" data-variant="full" style="display:none">\n${esc(bFull.src)}\n</pre>` : ''}
-          ${bFocus.map(f => `<pre class="mermaid" data-focus="${esc(f.name)}" style="display:none">\n${esc(f.src)}\n</pre>`).join('\n          ')}
-        `,
-      budgetMeta(
-        bFiltered.reasons.length > 0
-          && (!hasFullVariant || bFull.reasons.length > 0)
-          && bFocus.every(f => f.reasons.length > 0),
-        `Assets, threats, controls, and mitigations. ${hasFullVariant ? 'Filtered to high/critical by default — click <em>All severities</em> to expand. ' : ''}${LEGEND_THREAT}`),
-      (focus.length > 0 ? `
-            <select class="diagram-focus" onchange="diagramFocus(this.value)" title="Show one asset with its threats, controls and neighbours"><option value="">Whole graph</option>${focus.map(f => `<option value="${esc(f.name)}">${esc(f.name)}</option>`).join('')}</select>` : '') + (hasFullVariant ? `
-            <button id="threatGraphToggle" class="diagram-btn" onclick="toggleThreatGraphAll(this)" title="Show all threat severities (not just high/critical)">All severities</button>` : ''),
-      true));
-  }
-  if (dataFlow) {
-    tabs.push({ id: 'data-flow', label: 'Data Flow', icon: icon('arrows') });
-    const b = budgeted('Data Flow', dataFlow);
-    panels.push(shell('data-flow', 'Data Flow', `${budgetBanner(b.reasons)}${legibilityNotice([b.tooBig].filter(Boolean))}<pre class="mermaid">\n${esc(b.src)}\n</pre>`,
-      budgetMeta(b.reasons.length > 0,
-        `Data movement across trust boundaries; each boundary shows both sides of the trust line. ${LEGEND_FLOW}`), '', panels.length === 0));
-  }
-  if (attackSurface) {
-    tabs.push({ id: 'attack-surface', label: 'Attack Surface', icon: icon('alert') });
-    const b = budgeted('Attack Surface', attackSurface);
-    panels.push(shell('attack-surface', 'Attack Surface', `${budgetBanner(b.reasons)}${legibilityNotice([b.tooBig].filter(Boolean))}<pre class="mermaid">\n${esc(b.src)}\n</pre>`,
-      budgetMeta(b.reasons.length > 0, `Exposures per asset. ${LEGEND_SURFACE}`), '', panels.length === 0));
-  }
-  if (ctx.diagrams.reach) {
-    tabs.push({ id: 'agent-reach', label: 'Agent Reach', icon: icon('zap') });
-    const b = budgeted('Agent Reach', ctx.diagrams.reach);
-    panels.push(shell('agent-reach', 'Agent Reach', `${budgetBanner(b.reasons)}${legibilityNotice([b.tooBig].filter(Boolean))}<pre class="mermaid">\n${esc(b.src)}\n</pre>`,
-      budgetMeta(b.reasons.length > 0, `What each agent and principal can reach. ${LEGEND_REACH} The same data as a table: <a href="#agents">Agents &amp; Reach</a>.`), '', panels.length === 0));
-  }
-
-  if (tabs.length === 0) {
-    return `
-<div id="sec-diagrams" class="section-content">
-  ${sectionHead(icon('diagram'), 'Diagrams', scope)}
-  <p class="empty-state">${scope
-    ? `Nothing to draw for ${esc(scopeLabel(scope))} — the files tagged with ${scope.length > 1 ? 'these features' : 'this feature'} carry no <code>@exposes</code>, <code>@flows</code> or <code>@mitigates</code>. The project's own diagrams are not shown on a slice; regenerate without <code>--feature</code> to see them.`
-    : 'No diagram data — add @exposes, @flows, or @mitigates annotations.'}</p>
-</div>`;
-  }
-
+function threatTab(g: DiagramModel): string {
+  if (g.exposures.length === 0 && g.mitigations.length === 0) return '<p class="empty-state">This model declares no <code>@exposes</code> or <code>@mitigates</code>, so there is no threat graph to draw.</p>';
+  const r = renderThreatGraph(g);
   return `
-<div id="sec-diagrams" class="section-content">
-  ${sectionHead(icon('diagram'), 'Diagrams', scope)}
-  ${wholeModelNote()}
-  <p class="diagram-hint"><strong>These are the whole model in one picture.</strong> That is the right thing on a small repository and stops being readable at about a dozen components — each panel below says its own size, and <a href="#explore">Explore</a> is where a question gets an answer scaled to be read. Scroll to zoom, drag to pan, double-click or press <em>Fit</em> to reset. <em>Find</em> dims everything that does not match; on the threat graph, pick an asset to see only it and its neighbours. <em>Source</em> copies the Mermaid text.</p>
-${scope ? `  <p class="scope-note">These are <strong>narrowed</strong> diagrams: the edges are this feature's relations, and the nodes are the assets, threats and controls those relations reference. A node the feature never touches is absent — an absent node does not mean the project lacks it. The same narrowed graph is written to <code>.guardlink/graph/by-feature/</code>.</p>` : ''}
-  <div class="diagram-tabs">
-    ${tabs.map((t, i) => `<button class="diagram-tab${i === 0 ? ' active' : ''}" onclick="switchDiagramTab('${t.id}', this)">${t.icon} ${t.label}</button>`).join('')}
+  <p class="guide">One column per kind: assets in model order, threats as labelled slabs ordered to cut crossings, controls on the right. An asset → threat thread is one exposure — warm in its severity while open, a mint wash once mitigated or refuted, dashed when accepted; a threat → control thread is one mitigation. Hover a node to follow it through; click to pin it and list its exposures below.</p>
+  <div class="panel plot-panel"><div class="plot-scroll">${r.svg}</div></div>
+  <div class="fidelity"><span><b class="num">${r.exposuresDrawn}</b> of ${r.exposures} exposures and <b class="num">${r.mitigationsDrawn}</b> of ${r.mitigations} mitigations drawn</span><span>${plural(r.assets, 'asset')} · ${plural(r.threats, 'threat')} · ${plural(r.controls, 'control')}</span>${r.uncontrolled ? `<span>${plural(r.uncontrolled, 'mitigation')} name no control (the dashed tick)</span>` : ''}${r.folded ? `<span>${plural(r.folded, 'name')} folded so names stay 11 px apart — hover a tick for it</span>` : ''}</div>
+  <div class="legend">${legendSw('thr-open', 'open, by severity')}${legendSw('thr-res', 'mitigated or refuted')}${legendSw('thr-acc', 'accepted')}${legendSw('thr-ctl', 'mitigation → control')}</div>
+  ${pinBar('threat')}`;
+}
+
+function flowTab(ctx: PageContext, d: DiagramsInput): string {
+  const g = d.graph;
+  if (g.flows.length === 0) {
+    return `<p class="empty-state">This model declares no <code>@flows</code>, so there is no data flow to draw. The threat graph and attack surface still draw every exposure.</p>${flowTables(ctx)}`;
+  }
+  const r = renderRibbons(g, d.nodeIndex);
+  const hood = renderHoodSvg(d.hood, d.defaultFocus);
+  const nodes = d.hood.nodes;
+  // Explore's questions, as entry points that pick the neighbourhood's focus.
+  const byOpen = nodes.map((n, i) => ({ n, i })).filter(x => !x.n.x && x.n.o > 0).sort((a, b) => b.n.o - a.n.o || a.i - b.i)[0];
+  const degree = (i: number): number => d.hood.flows.filter(f => f[0] === i || f[1] === i).length;
+  const byFlows = nodes.map((n, i) => ({ n, i })).sort((a, b) => degree(b.i) - degree(a.i) || a.i - b.i)[0];
+  const byTrust = nodes.map((n, i) => ({ n, i })).filter(x => x.n.b.length > 0).sort((a, b) => b.n.b.length - a.n.b.length || degree(b.i) - degree(a.i) || a.i - b.i)[0];
+  const entry = (label: string, x: { n: { k: string; l: string }; i: number } | undefined): string =>
+    x ? `<a class="chip" href="#diagrams?tab=flow&amp;view=hood&amp;focus=${encodeURIComponent(x.n.k)}"><span class="subtle">${esc(label)}</span> <span class="mono">${esc(x.n.l)}</span></a>` : '';
+  const usedNodes = nodes.map((n, i) => ({ n, i })).filter(x => degree(x.i) > 0);
+  const paths = d.paths;
+  return `
+  <div class="view-bar">
+    <div class="seg" role="group" aria-label="View">
+      <a class="seg-btn" href="#diagrams?tab=flow&amp;view=ribbons" data-view-btn="ribbons">Whole model · flow ribbons</a>
+      <a class="seg-btn" href="#diagrams?tab=flow&amp;view=hood" data-view-btn="hood">Neighbourhood</a>
+    </div>
+    <div class="entry-chips"><span class="eyebrow">Start from</span>${entry('most open', byOpen)}${entry('most flows', byFlows)}${entry('on a trust line', byTrust)}
+      <select data-focus-select aria-label="Open the neighbourhood of a node">${usedNodes.map(x => `<option value="${esc(x.n.k)}"${x.i === d.defaultFocus ? ' selected' : ''}>${esc(x.n.l)}${x.n.o ? ` — ${x.n.o} open` : ''}</option>`).join('')}</select>
+    </div>
   </div>
-  ${panels.join('\n')}
-</div>`;
+
+  <div data-view-panel="ribbons">
+    <p class="guide">FROM on the left, TO on the right, both listing the same zones in the same order: endpoints across a trust line, endpoints outside the model, then each asset group. Every <code>@flows</code> is one thread; threads between two zones run together as a ribbon, and a thread that crosses a declared trust line is drawn in stronger ink and counted in its pill as <code>⊢n</code>. Click a node to pin it and see its detail; its neighbourhood is one click further.</p>
+    <div class="panel plot-panel"><div class="plot-scroll">${r.svg}</div></div>
+    <div class="fidelity"><span><b class="num">${r.drawn}</b> of ${r.flows} flows drawn · ${plural(r.nodes, 'node')} · ${plural(r.ribbons, 'ribbon')}</span><span>${r.crossing} cross a declared trust line (stronger ink, ⊢ in the pill)</span>${r.folded ? `<span>${plural(r.folded, 'tick name')} folded to avoid collisions — hover a tick for it</span>` : ''}</div>
+    <div class="legend">${legendSw('m-open s-high', 'asset with an open exposure (worst severity)')}${legendSw('m-res', 'asset, all mitigated')}${legendSw('m-empty', 'asset, nothing declared')}${legendSw('m-ext', 'outside the model')}${legendSw('thr-cross', 'crosses a trust line')}</div>
+  </div>
+
+  <div data-view-panel="hood" hidden>
+    <div class="trail" data-hood-trail><span class="eyebrow">Focus</span> <b class="mono" data-hood-focus>${esc(nodes[d.defaultFocus].l)}</b></div>
+    <div class="panel plot-panel"><div class="plot-scroll" data-hood-host>${hood.svg}</div></div>
+    <div class="fidelity" data-hood-footer><span><b class="num">${hood.drawn}</b> flows drawn among ${plural(hood.nodes, 'node')} (budget: 7 per column)</span>${hood.undrawn ? `<span>${hood.undrawn} flows among these nodes run backwards or within a column and are listed in the table, not drawn</span>` : ''}<span>Mechanisms are named where a card has at most two lines out; hover any line for its mechanism. Click a card to walk; the trail goes back. A bar across a line marks a declared trust line.</span></div>
+  </div>
+
+  <div class="panel" data-node-detail>${renderNodeDetail(d.hood, d.defaultFocus, 'ribbons')}</div>
+
+  <h3 class="block-h">Undefended routes</h3>
+  <p class="guide">Entry to sink with nothing in the way: routes derived from <code>@flows</code> between ${plural(d.endpoints.entries.length, 'entry point')} and ${plural(d.endpoints.exits.length, 'sink')}, where no component on the route carries a <code>@mitigates</code>. ${paths.length} of ${plural(d.pathsTotal, 'route')}.</p>
+  ${paths.length > 0 ? `<div class="paths">${paths.map(p => `
+    <div class="path-finding">
+      <div class="path-chain">${p.chain.map((n, i) => `${i > 0 ? '<span class="path-arrow">→</span>' : ''}<code class="path-node${p.assetsOnPath.includes(n) ? ' path-asset' : ''}">${esc(n)}</code>`).join('')}</div>
+      <div class="path-meta">${p.crossesBoundary ? stateChip('open', `crosses ${p.boundariesCrossed.join(', ')}`) : stateChip('accepted', 'no declared boundary on this route')}<span class="path-hops">${p.hops.map(h => locInline(h.via.file, h.via.line, ctx.links)).join(' · ')}</span></div>
+    </div>`).join('')}</div>` : `<p class="empty-state">No undefended route found. Every one of the ${plural(d.pathsTotal, 'entry-to-sink route')} in this model passes through at least one component carrying a <code>@mitigates</code>.</p>`}
+
+  <h3 class="block-h">The same flows, as rows</h3>
+  <div class="filter-status" hidden><span class="filter-status-text"></span><button class="btn ghost" data-clear-filters>Clear</button></div>
+  ${flowTables(ctx)}`;
+}
+
+function surfaceTab(g: DiagramModel): string {
+  if (g.assets.length === 0) return '<p class="empty-state">No assets to put on a shelf.</p>';
+  const r = renderShelves(g);
+  return `
+  <p class="guide">Every asset on a shelf, grouped as the model declares them. A card's width follows how much it carries; the rule under its name is the open share; each tick is one exposure — warm while open, mint once mitigated, hollow when accepted. Nothing here can overflow: rows wrap. Click a card for its exposures.</p>
+  ${r.html}
+  <div class="fidelity"><span><b class="num">${r.cards}</b> asset cards on ${plural(r.shelves, 'shelf', 'shelves')} · ${plural(r.exposures, 'exposure')} drawn as ticks</span></div>
+  <div class="legend">${legendSw('tk-open', 'tick: open, by severity')}${legendSw('tk-res', 'mitigated or refuted')}${legendSw('tk-acc', 'accepted')}<span>rule: open share · dashed: nothing declared</span><span>⊢ trust lines · tags: data it handles</span></div>
+  ${pinBar('surface')}`;
+}
+
+function reachTab(ctx: PageContext): string {
+  const r = renderReachDiagram(ctx.reach);
+  if (!r) {
+    return `<p class="empty-state">${ctx.scope
+      ? `No <code>@agents</code>, <code>@reaches</code> or <code>@effects</code> in the files tagged ${esc(scopeLabel(ctx.scope))}.`
+      : 'This model declares no <code>@agents</code>, <code>@reaches</code> or <code>@effects</code>, so nothing says what an embedded agent or another principal can reach.'} <a href="#agents">Agents &amp; reach</a> shows how to declare it.</p>`;
+  }
+  const t = ctx.reach.totals;
+  return `
+  <p class="guide">Who acts, the capability the code hands them, and the effect it lands. A capability is ✓ when a cited <code>@entitles</code> covers it and ✕ when nothing does; an effect is warm when it mutates with no gate, carries a bar and its approver when a human must say yes first, and is quiet when it only reads.</p>
+  <div class="panel plot-panel"><div class="plot-scroll">${r.svg}</div></div>
+  <div class="fidelity"><span><b class="num">${r.reaches}</b> of ${t.reaches} reaches · <b class="num">${r.effects}</b> of ${t.effects} effects drawn</span><span>${t.unentitled} unentitled · ${t.ungated} of ${t.mutations} mutations ungated · ${t.gates} gates</span><span>the same facts as rows: <a href="#agents">Agents &amp; reach</a></span></div>
+  <div class="legend">${legendSw('cap-ok', '✓ entitled capability')}${legendSw('cap-bad', '✕ unentitled')}${legendSw('eff-ungated', 'mutation, no gate')}${legendSw('eff-gated', 'gated: a named approver decides first')}${legendSw('eff-read', 'reads only')}</div>`;
+}
+
+export function renderDiagramsPage(ctx: PageContext, d: DiagramsInput): string {
+  const { scope } = ctx;
+  return `
+<section id="sec-diagrams" class="section-content" aria-label="Diagrams">
+  ${sectionHead('', 'Diagrams', scope)}
+  ${wholeModelNote()}
+  <p class="lead">The model as four pictures, each drawn so it reads at any size: nothing is filtered out to make a drawing fit, and each footer says what was drawn.</p>
+${scope ? `  <p class="scope-note">These are <strong>narrowed</strong> diagrams: the edges are this feature's relations, and the nodes are the assets, threats and controls those relations reference. A node the feature never touches is absent — an absent node does not mean the project lacks it. The same narrowed graph is written to <code>.guardlink/graph/by-feature/</code>.</p>` : ''}
+  <nav class="tabs" role="tablist" aria-label="Diagram">${TABS.map(([k, l]) => `<a class="tab" role="tab" href="#diagrams?tab=${k}" data-tab="${k}">${l}</a>`).join('')}</nav>
+  <div class="tab-panel" data-tab-panel="threat">${threatTab(d.graph)}</div>
+  <div class="tab-panel" data-tab-panel="flow" hidden>${flowTab(ctx, d)}</div>
+  <div class="tab-panel" data-tab-panel="surface" hidden>${surfaceTab(d.graph)}</div>
+  <div class="tab-panel" data-tab-panel="reach" hidden>${reachTab(ctx)}</div>
+</section>`;
 }

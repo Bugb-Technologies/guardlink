@@ -1,10 +1,21 @@
 /**
  * GuardLink Dashboard — HTML generator. Composition root.
  *
- * One self-contained page: sidebar navigation driven by the URL hash, a
- * search box, a drawer, and one section per page rendered by `pages/*`.
- * Mermaid, marked and d3 come from CDNs; no build step. The model is
- * embedded verbatim for the client-side feature filter and the drawers.
+ * One self-contained page: a rail of seven pages (Overview, Exposures,
+ * Diagrams, Assets, Code, Agents & reach, Reports — plus Attribution with
+ * --blame) driven by the URL hash, a search box, a feature filter, a drawer,
+ * and one section per page rendered by `pages/*`.
+ *
+ * SELF-CONTAINED: the page makes no network request when it renders. There is
+ * no CDN script, no stylesheet or font host, no remote `import()`. Every
+ * diagram is our own SVG, laid out here from data (`layout/*`); reports are
+ * rendered to HTML here (`markdown.ts`); the type is the system stack. The one
+ * script is inline, and the generated markup carries no inline `on*` handler —
+ * every interaction is a `data-*` hook with a delegated listener (`client.ts`).
+ *
+ * The page follows the OS light/dark preference, with a toggle; `theme` pins
+ * one. Inside a VS Code webview a host can set `data-host="vscode"` on the root
+ * and every colour role is then read from the editor's own theme variables.
  *
  * D25/D23 — the dashboard is an emission boundary, so it canonicalises the
  * model's array order and drops `generated_at`: `docs/examples/threat-dashboard.html`
@@ -12,18 +23,10 @@
  * Everything else the page reads is content-derived or, for attribution,
  * fixed per HEAD (the as-of date is the HEAD commit's).
  *
- * Pages: Summary (with a "what changed since <ref>" strip under --since),
- * Analytics (heatmaps, owners, sensitive data and distributions over the same
- * claim rows the tables show, recomputed per feature), Threats, Agents & Reach
- * (the reach map, unentitled reaches, ungated mutations, gates and the OWASP
- * LLM rows, with an empty state when nothing declares reach), Diagrams (with
- * one focused graph per exposed asset), Code (riskiest file first), Reports,
- * Data, Assets and, with --blame, Attribution.
- *
  * @flows GitRepo -> #dashboard via loadSince -- "The model at --since <ref>, diffed against the one rendered"
  *
- * @exposes #dashboard to #xss [high] cwe:CWE-79 -- "generateDashboardHTML() interpolates model descriptions, asset names, git identities and commit trailers into the page markup and the embedded JSON constants"
- * @mitigates #dashboard against #xss using #output-encoding -- "esc() HTML-encodes every interpolated value in every page module; serialized data escapes closing script tags before embedding in <script>"
+ * @exposes #dashboard to #xss [high] cwe:CWE-79 -- "generateDashboardHTML() interpolates model descriptions, asset names, git identities, commit trailers and report prose into the page markup, the SVG diagrams and the embedded JSON constants"
+ * @mitigates #dashboard against #xss using #output-encoding -- "esc() HTML-encodes every interpolated value in every page module, the layout modules escape every SVG label, report prose is escaped before markup is added back, and serialized data escapes closing script tags before embedding in <script>"
  * @exposes #dashboard to #path-traversal [medium] cwe:CWE-22 -- "readFileSync reads code files for annotation context"
  * @mitigates #dashboard against #path-traversal using #path-validation -- "resolve() with root constrains file access (annotations.ts)"
  * @flows ThreatModel -> #dashboard via computeStats -- "Model statistics input"
@@ -36,102 +39,60 @@
  * @feature "Dashboard" -- "Interactive HTML threat model dashboard"
  * @mitigates #dashboard against #xss using #output-encoding -- "Feature scope names come from @feature annotations and the --feature flag; every one is rendered through esc()"
  * @comment -- "A model narrowed with --feature carries filtered_by_features. The page then declares itself a slice in the title, the top bar and a banner, and suppresses the project-wide measures (file coverage, unannotated files) that a slice cannot answer"
+ * @comment -- "No remote reference of any kind is emitted: the page renders offline and under a host policy that blocks every network origin"
  */
 import type { ThreatModel } from '../types/index.js';
 import { listFeatures, filterByFeature } from '../parser/feature-filter.js';
-import { selectSubgraph, canonicaliser } from '../mcp/subgraph.js';
+import { canonicaliser } from '../mcp/subgraph.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 import type { ThreatReportWithContent } from '../analyze/index.js';
 import { computeStats, computeSeverity, computeSeverityOf, computeExposures, computeConfirmed, computeAssetHeatmap, computeAttribution, computeActions, computeLedgerStates, computeAssetDetails, computeOwnership, computeFileRisk, fileRiskRank, computeChanges, newClaimKeys } from './data.js';
 import type { SinceInput } from './analytics.js';
-import type { SeverityBreakdown } from './data.js';
-import { generateThreatGraph, generateDataFlowDiagram, generateAttackSurface, generateReachDiagram } from './diagrams.js';
+import { computeRiskGrade } from './grade.js';
 import { detectRepoLinks } from './links.js';
 import { readHypotheses, classifyHypotheses, attachHypotheses } from '../hypothesis/index.js';
-import { buildFileAnnotations, buildAnalysisData } from './annotations.js';
+import { buildFileAnnotations } from './annotations.js';
 import { esc, featureScope, scopeLabel, hostLabel, icon } from './html.js';
-import { BASE_CSS, UPGRADE_CSS } from './styles.js';
+import { STYLES } from './styles.js';
 import { CLIENT_JS } from './client.js';
-import { FEATURE_FILTER_JS, DIAGRAMS_AND_REPORTS_JS, LEGACY_DRAWER_JS } from './client-legacy.js';
 import { buildClaims, type PageContext } from './pages/context.js';
-import { renderSummaryPage } from './pages/summary.js';
-import { renderReportsPage } from './pages/reports.js';
-import { renderThreatsPage } from './pages/threats.js';
+import { renderOverviewPage, type OverviewVariant } from './pages/overview.js';
+import { renderExposuresPage, type BreakdownVariant } from './pages/exposures.js';
 import { renderDiagramsPage } from './pages/diagrams.js';
-import { renderExplorePage } from './pages/explore.js';
-import { renderCodePage } from './pages/code.js';
-import { renderDataPage } from './pages/data-boundaries.js';
 import { renderAssetsPage } from './pages/assets.js';
-import { renderAttributionPage } from './pages/attribution.js';
-import { renderAnalyticsPage, type AnalyticsVariant } from './pages/analytics.js';
-import { buildExploreData } from './explore.js';
+import { renderCodePage } from './pages/code.js';
 import { renderAgentsPage } from './pages/agents.js';
+import { renderReportsPage } from './pages/reports.js';
+import { renderAttributionPage } from './pages/attribution.js';
 import { summarizeReach } from '../reach/index.js';
+import { findUnmitigatedPaths, classifyEndpoints } from '../paths/index.js';
+import { buildDiagramModel } from './layout/graph.js';
+import { buildHoodPayload, renderHoodSvg, renderNodeDetail } from './layout/hood.js';
+import { buildMatrixData, renderMatrix } from './layout/matrix.js';
 
-export function computeRiskGrade(sev: SeverityBreakdown, unmitigatedCount: number, totalExposures: number, confirmedCount = 0): { grade: string; label: string; summary: string } {
-  if (confirmedCount > 0) return { grade: 'F', label: 'Critical Risk', summary: `${confirmedCount} confirmed exploitable finding(s) — immediate remediation required` };
-  if (sev.critical > 0) return { grade: 'F', label: 'Critical Risk', summary: `${sev.critical} critical exposure(s) require immediate attention` };
-  if (sev.high >= 3 || unmitigatedCount >= 5) return { grade: 'D', label: 'High Risk', summary: `${unmitigatedCount} unmitigated exposure(s), ${sev.high} high severity` };
-  if (sev.high >= 1 || unmitigatedCount >= 3) return { grade: 'C', label: 'Moderate Risk', summary: `${unmitigatedCount} unmitigated exposure(s) need remediation` };
-  if (unmitigatedCount >= 1) return { grade: 'B', label: 'Low Risk', summary: `${unmitigatedCount} minor unmitigated exposure(s)` };
-  if (totalExposures === 0) return { grade: 'A', label: 'Excellent', summary: 'No exposures detected — consider adding more annotations' };
-  return { grade: 'A', label: 'Excellent', summary: 'All exposures mitigated or accepted' };
-}
-
-/**
- * Whole-model diagrams start fitted to their panel instead of at natural size:
- * the svg's box shrinks to the panel width while its viewBox keeps the whole
- * drawing, so the browser scales it and "Fit" (the identity transform) means
- * fitted. A no-op when the legacy block changes shape.
- *
- * **Explore panes are excluded, deliberately.** The 0.6 floor on that scale
- * exists so labels stay legible and does not achieve it — Mermaid's label font
- * is 11px, so 0.6 is 6.6px — and every whole-model diagram measured sits
- * exactly at the floor, which means "Fit" both fails to fit AND fails to keep
- * the labels readable. On a budgeted diagram it is worse than useless: the
- * diagram is already small enough to read, so shrinking it can only take that
- * away. Measured on this repository, `src/mcp/server.ts`'s blast radius is 7
- * nodes and 16 edges — comfortably inside the budget — and lays out 1,905px
- * wide because its flow labels are long; fitted, its labels came out at 6.1px.
- *
- * So an Explore diagram is drawn at natural size and the panel scrolls. That is
- * the guarantee the node-and-edge budget can actually deliver: labels at their
- * full size, always, with panning for a drawing wider than the panel. Bounding
- * the canvas WIDTH is a different thing that no generation-time check can do —
- * it depends on font metrics in a browser — which is exactly why the answer is
- * to stop scaling rather than to add a second budget nobody can measure.
- */
-const DIAGRAMS_JS = DIAGRAMS_AND_REPORTS_JS.replace(
-  ".style('overflow', 'visible');",
-  ".style('overflow', 'visible');\n            var wrap = el.closest('.mermaid-wrap');\n            if (wrap && wrap.clientWidth && !el.closest('.explore-pane')) { var avail = Math.max(320, wrap.clientWidth - 36); if (viewW > avail) { var s = Math.max(0.6, avail / viewW); svg.attr('width', Math.ceil(viewW * s)).attr('height', Math.max(320, Math.ceil(viewH * s))); } }",
-);
+export { computeRiskGrade };
 
 const embed = (value: unknown): string => JSON.stringify(value).replace(/<\//g, '<\\/');
 
-/**
- * Claims per canonical asset key, for ordering the Explore component picker.
- *
- * Canonicalised rather than keyed on the raw `asset` string, because one
- * component is spelled several ways across a repository — `#mcp`,
- * `GuardLink.MCP` — and a picker that listed those as two entries would offer
- * two half-answers about the same thing.
- */
-function countByAsset(rows: { asset: string }[], model: ThreatModel): Map<string, number> {
-  const key = canonicaliser(model);
-  const counts = new Map<string, number>();
-  for (const r of rows) counts.set(key(r.asset), (counts.get(key(r.asset)) ?? 0) + 1);
-  return counts;
-}
+const RAIL: { page: string; label: string; icon: string }[] = [
+  { page: 'overview', label: 'Overview', icon: 'layout' },
+  { page: 'exposures', label: 'Exposures', icon: 'alert' },
+  { page: 'diagrams', label: 'Diagrams', icon: 'diagram' },
+  { page: 'assets', label: 'Assets', icon: 'map' },
+  { page: 'code', label: 'Code', icon: 'code' },
+  { page: 'agents', label: 'Agents &amp; reach', icon: 'zap' },
+  { page: 'reports', label: 'Reports', icon: 'file' },
+];
 
-const NAV_ICON: Record<string, string> = { summary: 'layout', analytics: 'grid', threats: 'alert', agents: 'zap', explore: 'search', diagrams: 'diagram', code: 'code', 'ai-analysis': 'file', data: 'lock', assets: 'map', attribution: 'users' };
-
-function navLink(page: string, label: string, active = false, badge?: string): string {
-  return `<a href="#${page}" data-page="${page}"${active ? ' class="active"' : ''}><span class="nav-icon">${icon(NAV_ICON[page] ?? 'square')}</span> <span class="nav-text">${label}</span>${badge ? `<span class="nav-badge">${badge}</span>` : ''}</a>`;
+function railLink(page: string, label: string, ico: string, active = false, badge?: string): string {
+  return `<a href="#${page}" data-page="${page}"${active ? ' class="active" aria-current="page"' : ''}><span class="nav-icon">${icon(ico)}</span><span class="nav-text">${label}</span>${badge ? `<span class="nav-badge num">${badge}</span>` : ''}</a>`;
 }
 
 export interface DashboardOptions {
-  /** What changed since a git ref, from `loadSince`; adds the summary strip and marks new rows. */
+  /** What changed since a git ref, from `loadSince`; adds the Overview strip and marks new rows. */
   since?: SinceInput;
+  /** Pin a theme instead of following the OS preference (the CLI's --light). */
+  theme?: 'dark' | 'light';
 }
 
 export function generateDashboardHTML(rawModel: ThreatModel, root?: string, analyses?: ThreatReportWithContent[], opts: DashboardOptions = {}): string {
@@ -163,7 +124,6 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   // is not the same thing: definitions the feature references live in
   // `.guardlink/definitions.*`, which carries no tag.
   const scopeFiles = scope ? new Set(model.features.map(f => f.location.file)).size : 0;
-  const analysisData = buildAnalysisData(exposures);
   const newKeys = opts.since ? newClaimKeys(opts.since) : undefined;
   const claims = buildClaims(model, links, ledger, { newKeys });
   const changes = opts.since ? computeChanges(opts.since, claims) : null;
@@ -175,52 +135,42 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   fileAnnotations.sort((a, b) => fileRiskRank(fileRisk.get(a.file)) - fileRiskRank(fileRisk.get(b.file))
     || (fileRisk.get(b.file)?.open ?? 0) - (fileRisk.get(a.file)?.open ?? 0)
     || (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
-  // One focused threat graph per exposed asset: the asset, its threats and controls, and its flow neighbours.
-  const focus = heatmap.filter(t => t.exposures > 0).slice(0, 40)
-    .map(t => ({ name: t.name, src: generateThreatGraph(selectSubgraph(model, { from: t.name, depth: 1, direction: 'both' }), { showAll: true, icons: 'none' }) }))
-    .filter(f => f.src.length > 0);
-  // The Analytics grids recomputed per feature, so the top-bar dropdown can swap them in.
-  const variants: AnalyticsVariant[] = featureNames.map(f => {
-    const fm = filterByFeature(model, [f]);
-    return { feature: f, input: { scope: [f], model: fm, claims: buildClaims(fm, links, ledger, { newKeys }), attribution: computeAttribution(fm), heatmap: computeAssetHeatmap(fm) } };
-  });
   // What agents and other principals can reach: the Agents page, the asset drawer, the actor table and the actions read it.
   const reach = summarizeReach(model);
   const actions = computeActions({ model, exposures, confirmed, verification: ledgerRead?.report ?? null, attribution, scope, unownedExposed: ownership.unowned.map(u => u.asset), reach });
-  // One record per heatmap tile, in tile order: the asset drawer indexes it by the tile's position.
+  // One record per asset, in heatmap order: the asset drawer indexes it.
   const assetsData = computeAssetDetails(model, claims, heatmap, attribution?.as_of ?? null, reach);
-  // Every Explore answer, selected and drawn here rather than in the browser —
-  // see src/dashboard/explore.ts for why the selection stays on this side.
-  const exploreData = buildExploreData({
-    model,
-    openByAsset: countByAsset(claims.filter(c => c.status === 'open' || c.status === 'confirmed'), model),
-    totalByAsset: countByAsset(claims.filter(c => c.verb !== 'mitigates'), model),
-    changes,
-  });
+
+  // The diagrams' one model, and the compact payloads the client's renderers read.
+  const graph = buildDiagramModel(model, claims);
+  const { payload: hood, index: nodeIndex } = buildHoodPayload(graph);
+  const degree = (i: number): number => hood.flows.filter(f => f[0] === i || f[1] === i).length;
+  const withFlows = hood.nodes.map((n, i) => ({ n, i })).filter(x => degree(x.i) > 0);
+  const defaultFocus = withFlows.sort((a, b) => b.n.o - a.n.o || degree(b.i) - degree(a.i) || a.i - b.i)[0]?.i ?? 0;
+  const matrixData = buildMatrixData(graph);
 
   const ctx: PageContext = {
     model, scope, scopeFiles, links, hostLabel: hostLabel(links),
     stats, severity, exposures, confirmed, unmitigated, mitigatedCount, mitigationCoveragePercent, risk,
     claims, ledger, attribution, actions, heatmap, fileAnnotations, reach,
-    diagrams: {
-      // No emoji on the page: shapes and severity classes carry what the
-      // committed .mmd artifacts say with icons.
-      threatGraph: generateThreatGraph(model, { icons: 'none' }),
-      threatGraphFull: generateThreatGraph(model, { showAll: true, icons: 'none' }),
-      dataFlow: generateDataFlowDiagram(model, { icons: 'none' }),
-      attackSurface: generateAttackSurface(model, { icons: 'none' }),
-      focus,
-      reach: generateReachDiagram(reach),
-    },
     analyses: analyses || [],
     changes,
     fileRisk,
   };
 
-  // `akey` is the canonical asset key. The Explore panes are addressed by it —
-  // one component is spelled `#mcp` in one file and `GuardLink.MCP` in another,
-  // and a row filter on the raw string would split one component's claims
-  // across two panes that each looked complete.
+  // The Overview numbers and the Exposures breakdowns recomputed per feature, so the top-bar dropdown can swap them in.
+  const variants = featureNames.map(f => {
+    const fm = filterByFeature(model, [f]);
+    const fClaims = buildClaims(fm, links, ledger, { newKeys });
+    const files = new Set(fm.features.map(x => x.location.file)).size;
+    return {
+      overview: { feature: f, input: { scope: [f], claims: fClaims, model: fm, stats: computeStats(fm), scopeFiles: files } } as OverviewVariant,
+      breakdown: { feature: f, input: { scope: [f], model: fm, claims: fClaims, attribution: computeAttribution(fm), heatmap: computeAssetHeatmap(fm) } } as BreakdownVariant,
+    };
+  });
+
+  // `akey` is the canonical asset key: one component spelled `#mcp` in one
+  // file and `GuardLink.MCP` in another is one asset to every view.
   const assetKey = canonicaliser(model);
   const claimsData = claims.map(c => ({
     idx: c.idx, verb: c.verb, status: c.status, statusLabel: c.statusLabel, asset: c.asset, akey: assetKey(c.asset), threat: c.threat, severity: c.severity,
@@ -228,54 +178,49 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
     owners: c.owners, handles: c.handles, change: c.change, hypothesis: c.hypothesis, blame: c.blame,
   }));
 
+  const filesAnnotated = model.annotated_files?.length || 0;
+  const filesTotal = filesAnnotated + (model.unannotated_files || []).length;
+  const openCount = claims.filter(c => c.status === 'open' || c.status === 'confirmed').length;
+  const theme = opts.theme ? ` data-theme="${opts.theme}" data-theme-pinned` : '';
+
   return `<!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en"${theme}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:,">
 <title>GuardLink — ${esc(model.project)} Threat Model${scope ? ` — PARTIAL: ${scope.length > 1 ? 'features' : 'feature'} ${esc(scopeLabel(scope))}` : ''}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-${BASE_CSS}
-${UPGRADE_CSS}
+${STYLES}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 <body${scope ? ' class="scoped"' : ''}>
 
-<!-- ═══════════ TOP NAV ═══════════ -->
-<div class="topnav">
-  <div class="topnav-left">
-    <div class="logo">TS</div>
-    <h1>${esc(model.project)}</h1>
-    <span class="badge">Threat Model</span>
+<header class="topbar">
+  <button class="icon-btn rail-btn" data-action="rail" title="Collapse or expand the page rail" aria-label="Toggle the page rail">${icon('layout')}</button>
+  <div class="brand"><b class="project">${esc(model.project)}</b><span class="eyebrow">threat model</span>
 ${scope ? `    <span class="badge badge-scope" title="This page was generated with --feature and covers only part of the threat model">◑ Feature slice — ${esc(scope.join(', '))}</span>` : ''}
   </div>
-  <div class="topnav-right">
-    <div class="topnav-metrics">
-      <div class="tn-stat"><span class="tn-k">Assets</span> <span class="tn-v blue">${stats.assets}</span></div>
-      <div class="tn-stat"><span class="tn-k">Open</span> <span class="tn-v red">${unmitigated.length}</span></div>
-      <div class="tn-stat"><span class="tn-k">Controls</span> <span class="tn-v green">${stats.controls}</span></div>
+  <div class="topbar-metrics">
+    <div class="tn-stat"><span class="tn-k">Assets</span> <span class="tn-v">${stats.assets}</span></div>
+    <div class="tn-stat"><span class="tn-k">Open</span> <span class="tn-v">${unmitigated.length}</span></div>
+    <div class="tn-stat"><span class="tn-k">Controls</span> <span class="tn-v">${stats.controls}</span></div>
 ${scope
     // Repository file coverage means nothing on a slice (see the code page);
     // a slice reports the one coverage it can defend.
-    ? `      <div class="tn-stat" title="Exposures mitigated within this feature. Project file coverage is not shown on a slice."><span class="tn-k">Mitigated</span> <span class="tn-v ${mitigationCoveragePercent >= 70 ? 'green' : mitigationCoveragePercent >= 40 ? 'yellow' : 'red'}">${mitigationCoveragePercent}%</span></div>`
-    : `      <div class="tn-stat"><span class="tn-k">Coverage</span> <span class="tn-v ${stats.coveragePercent >= 70 ? 'green' : stats.coveragePercent >= 40 ? 'yellow' : 'red'}">${stats.coveragePercent}%</span></div>`}
-    </div>
-    <div class="search-wrap"><span class="search-icon">${icon('search')}</span><input id="search" type="search" placeholder="Search this page…" autocomplete="off" oninput="onSearchInput(this)" aria-label="Search this page"><kbd>/</kbd></div>
-${featureNames.length > 0 ? `    <div class="feature-filter-wrap">
-      <select id="featureFilter" class="feature-filter-select" onchange="applyFeatureFilter(this.value)" title="${scope ? 'Narrow further within this slice — the page already excludes everything outside it' : 'Filter by feature'}">
-        <option value="">${scope ? 'All in this slice' : 'All Features'}</option>
-${featureNames.map(f => `        <option value="${esc(f)}">${esc(f)}</option>`).join('\n')}
-      </select>
-    </div>` : ''}
-    <button id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark mode">
-      <span class="icon-sun">${icon('sun')}</span><span class="icon-moon">${icon('moon')}</span>
-    </button>
+    ? `    <div class="tn-stat" title="Exposures mitigated within this feature. Project file coverage is not shown on a slice."><span class="tn-k">Mitigated</span> <span class="tn-v">${mitigationCoveragePercent}%</span></div>`
+    : `    <div class="tn-stat"><span class="tn-k">Coverage</span> <span class="tn-v">${stats.coveragePercent}%</span></div>`}
   </div>
-</div>
+  <div class="search-wrap"><span class="search-icon">${icon('search')}</span><input id="search" type="search" placeholder="Search this page…" autocomplete="off" aria-label="Search this page"><kbd>/</kbd></div>
+${featureNames.length > 0 ? `  <select id="featureFilter" class="feature-filter-select" aria-label="Filter by feature" title="${scope ? 'Narrow further within this slice — the page already excludes everything outside it' : 'Filter by feature'}">
+    <option value="">${scope ? 'All in this slice' : 'All features'}</option>
+${featureNames.map(f => `    <option value="${esc(f)}">${esc(f)}</option>`).join('\n')}
+  </select>` : ''}
+  <button class="icon-btn" id="themeToggle" data-action="theme" title="Switch between light and dark" aria-label="Switch between light and dark">
+    <span class="icon-sun">${icon('sun')}</span><span class="icon-moon">${icon('moon')}</span>
+  </button>
+</header>
 
 <!-- Generation-time scope banner. Static, always visible, never dismissible:
      a screenshot of this page must not be mistakable for the whole model. -->
@@ -284,84 +229,73 @@ ${scope ? `<div id="scope-banner" class="scope-banner" role="note">
   <span class="scope-banner-text">Narrowed to ${scope.length > 1 ? 'features' : 'feature'} ${esc(scopeLabel(scope))} — the ${scopeFiles} file(s) tagged <code>@feature</code>, plus the definitions they reference. <strong>Every count, chart, table and diagram below describes ${scope.length > 1 ? 'these features' : 'this feature'} only, not the whole project.</strong> Project-wide file coverage and unannotated files are omitted, because a slice cannot answer them. Regenerate without <code>--feature</code> for the full model.</span>
 </div>` : ''}
 
-<!-- Feature filter banner -->
-<div id="feature-banner" class="feature-banner">
-  <span>Filtered to feature:</span>
+<div id="feature-banner" class="feature-banner" role="status" hidden>
+  <span>Filtered to feature</span>
   <strong id="feature-banner-name"></strong>
-  <span id="feature-banner-files" class="feature-banner-files"></span>
-  <button class="feature-banner-clear" onclick="document.getElementById('featureFilter').value='';applyFeatureFilter('')">Clear Filter</button>
+  <span id="feature-banner-files" class="subtle"></span>
+  <button class="btn ghost" data-action="feature-clear">Clear filter</button>
 </div>
 
 <div class="layout">
 
-<!-- ═══════════ SIDEBAR ═══════════ -->
-<nav class="sidebar" id="sidebar">
-  <div class="sidebar-nav">
-    ${navLink('summary', 'Executive Summary', true)}
-    ${navLink('analytics', 'Analytics')}
-    ${navLink('threats', 'Threats &amp; Exposures', false, unmitigated.length > 0 ? String(unmitigated.length) : undefined)}
-    ${navLink('agents', 'Agents &amp; Reach', false, reach.totals.unentitled + reach.totals.ungated > 0 ? String(reach.totals.unentitled + reach.totals.ungated) : undefined)}
-    ${navLink('explore', 'Explore')}
-    ${navLink('diagrams', 'Diagrams')}
-    ${navLink('code', 'Code &amp; Annotations')}
-    ${navLink('ai-analysis', 'Threat Reports', false, ctx.analyses.length > 0 ? String(ctx.analyses.length) : undefined)}
-    <div class="sep"></div>
-    ${navLink('data', 'Data &amp; Boundaries')}
-    ${navLink('assets', 'Asset Heatmap')}
-    ${attribution ? navLink('attribution', 'Attribution') : ''}
+<nav class="rail" id="sidebar" aria-label="Dashboard pages">
+  <div class="rail-nav">
+    ${RAIL.map((r, i) => railLink(r.page, r.label, r.icon, i === 0,
+      r.page === 'exposures' && openCount > 0 ? String(openCount)
+      : r.page === 'agents' && reach.totals.unentitled + reach.totals.ungated > 0 ? String(reach.totals.unentitled + reach.totals.ungated)
+      : r.page === 'reports' && ctx.analyses.length > 0 ? String(ctx.analyses.length) : undefined)).join('\n    ')}
+    ${attribution ? `<div class="sep"></div>${railLink('attribution', 'Attribution', 'users')}` : ''}
   </div>
-  <button id="sidebarToggle" onclick="toggleSidebar()" title="Collapse sidebar">
-    <svg class="chevron-left" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M10 2L4 8l6 6V2z"/></svg>
-    <svg class="chevron-right" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6 2v12l6-6-6-6z"/></svg>
-  </button>
+  <div class="rail-foot">
+    ${scope
+      ? `<div>${scopeFiles} tagged file(s)</div><div class="subtle">Scope: ${esc(scopeLabel(scope))}</div>`
+      : `<div>${filesAnnotated} of ${filesTotal} files annotated</div><div class="gauge"><i class="g-structure" style="width:${filesTotal ? Math.max(1, Math.round((filesAnnotated / filesTotal) * 100)) : 0}%"></i></div><div class="subtle">Scope: all features</div>`}
+  </div>
 </nav>
 
-<!-- ═══════════ MAIN ═══════════ -->
-<div class="main">
+<main class="main" id="main">
 
-${renderSummaryPage(ctx)}
-${renderAnalyticsPage(ctx, variants)}
-${renderReportsPage(ctx)}
-${renderThreatsPage(ctx)}
-${renderAgentsPage(ctx, reach)}
-${renderExplorePage(ctx, exploreData)}
-${renderDiagramsPage(ctx)}
+${renderOverviewPage(ctx, variants.map(v => v.overview))}
+${renderExposuresPage(ctx, matrixData, variants.map(v => v.breakdown))}
+${renderDiagramsPage(ctx, { graph, hood, nodeIndex, defaultFocus, paths: findUnmitigatedPaths(model), pathsTotal: findUnmitigatedPaths(model, { includeMitigated: true }).length, endpoints: classifyEndpoints(model) })}
+${renderAssetsPage(ctx, graph)}
 ${renderCodePage(ctx)}
-${renderDataPage(ctx)}
-${renderAssetsPage(ctx)}
+${renderAgentsPage(ctx, reach)}
+${renderReportsPage(ctx)}
 ${attribution ? renderAttributionPage(attribution, ctx) : ''}
 
-</div><!-- /main -->
-</div><!-- /layout -->
+</main>
+</div>
 
-<!-- ═══════════ DRAWER ═══════════ -->
-<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
-<div class="drawer" id="drawer">
+<div class="drawer-overlay" id="drawer-overlay"></div>
+<aside class="drawer" id="drawer" aria-labelledby="drawer-title">
   <div class="drawer-header">
     <h3 id="drawer-title">Details</h3>
-    <button class="drawer-close" onclick="closeDrawer()">${icon('x')} Close</button>
+    <button class="btn ghost drawer-close" data-action="drawer-close">${icon('x')} Close</button>
   </div>
   <div class="drawer-body" id="drawer-body"></div>
-</div>
+</aside>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="tip" id="tip" role="tooltip" hidden></div>
 
 <script>
 /* ===== DATA ===== */
 const fileAnnotations = ${embed(fileAnnotations)};
-const analysisData = ${embed(analysisData)};
 const exposuresData = ${embed(exposures)};
-const confirmedData = ${embed(confirmed)};
-const savedAnalyses = ${embed(analyses || [])};
-const heatmapData = ${embed(heatmap)};
+const savedAnalyses = ${embed((analyses || []).map(a => ({ label: a.label, framework: a.framework, timestamp: a.timestamp, model: a.model, content: a.content })))};
 const threatModel = ${embed(durableModel)};
 const claimsData = ${embed(claimsData)};
 const assetsData = ${embed(assetsData)};
+const matrixData = ${embed(matrixData)};
+const hoodData = ${embed({ ...hood, initial: defaultFocus })};
 const openOnHost = ${JSON.stringify(`Open on ${hostLabel(links)}`)};
 const ICONS = ${JSON.stringify({ copy: icon('copy'), external: icon('external'), x: icon('x') })};
+/* ===== RENDERERS: the generator's own, embedded by source (src/dashboard/layout) ===== */
+var __name = function (f) { return f; };
+${renderHoodSvg.toString()}
+${renderNodeDetail.toString()}
+${renderMatrix.toString()}
 ${CLIENT_JS}
-${LEGACY_DRAWER_JS}
-${FEATURE_FILTER_JS}
-${DIAGRAMS_JS}
 </script>
 
 </body>

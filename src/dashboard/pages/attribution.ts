@@ -10,7 +10,7 @@
  * @handles pii on #dashboard -- "Author identities rendered into a page that is often committed; blame.identity=hash in config.json is the setting for a shared dashboard"
  * @comment -- "No wall clock: ages are measured to the HEAD commit's date, so two generations at the same HEAD are byte-identical"
  */
-import { esc, kpi, chip, sortableHead, rowAttrs, numCell, sevBadge, sevRank, locCellShort, whoLink, badge, sectionHead, subHead, plural, num, pager, colgroup, icon, wholeModelNote } from '../html.js';
+import { esc, kpi, chip, sortableHead, rowAttrs, numCell, sevBadge, sevRank, locCellShort, whoLink, badge, stateChip, sectionHead, subHead, plural, num, pager, colgroup, icon, wholeModelNote } from '../html.js';
 import type { AttributionData } from '../data.js';
 import type { PageContext, ClaimView, DrawerRef } from './context.js';
 import type { Cohort, TrendBucket } from '../../blame/types.js';
@@ -100,15 +100,15 @@ function claimRow(c: ClaimView, ctx: PageContext): string {
   const b = c.blame!;
   return `
     <tr class="clickable${c.status === 'open' || c.status === 'confirmed' ? ' row-open' : ''}" data-claim="${c.idx}" ${rowAttrs({ file: c.file, sev: c.severity, status: c.status, who: c.who, state: c.state, search: [c.search, b.status] })}>
-      <td data-v="${esc(c.status)}">${badge(c.status === 'control' ? 'control' : c.status, c.status === 'open' || c.status === 'confirmed' ? 'red' : c.status === 'mitigated' ? 'green' : c.status === 'accepted' ? 'blue' : 'neutral')}</td>
+      <td data-v="${esc(c.status)}">${stateChip(c.status)}</td>
       ${numCell(sevRank(c.severity), c.verb === 'mitigates' ? '—' : sevBadge(c.severity))}
       <td data-v="${esc(`${c.asset} ${c.threat}`)}"><div class="claim-cell" title="${esc(`${c.asset} → ${c.threat}`)}"><code class="cc-asset">${esc(c.asset)}</code><code class="cc-threat">${esc(c.threat)}</code></div></td>
       ${locCellShort(c.file, c.line, ctx.links)}
       ${c.verb === 'mitigates' ? '<td data-v="">—</td>' : refCell(b.introduced, ctx.links)}
       ${refCell(b.declared, ctx.links)}
-      ${c.verb === 'mitigates' ? '<td data-v="">—</td>' : b.fixed ? refCell(b.fixed, ctx.links) : '<td data-v="">' + badge('open', 'red') + '</td>'}
+      ${c.verb === 'mitigates' ? '<td data-v="">—</td>' : b.fixed ? refCell(b.fixed, ctx.links) : '<td data-v="">' + stateChip('open') + '</td>'}
       ${numCell(b.days)}
-      <td data-v="${esc(b.status)}">${b.status === 'ok' ? badge('ok', 'green') : badge(b.status, 'neutral')}${b.lowerBound ? ' ' + badge('lower bound', 'neutral', 'History is truncated or the file has uncommitted edits: the true introduction may be older') : ''}</td>
+      <td data-v="${esc(b.status)}">${b.status === 'ok' ? stateChip('mitigated', 'ok') : badge(b.status, 'neutral')}${b.lowerBound ? ' ' + badge('lower bound', 'neutral', 'History is truncated or the file has uncommitted edits: the true introduction may be older') : ''}</td>
     </tr>`;
 }
 
@@ -129,7 +129,7 @@ export function renderAttributionPage(a: AttributionData, ctx: PageContext): str
   const aiShareIntro = cmp ? pct(cmp.ai.introduced, cmp.human.introduced + cmp.ai.introduced) : null;
 
   return `
-<div id="sec-attribution" class="section-content">
+<section id="sec-attribution" class="section-content" aria-label="Attribution">
   ${sectionHead(icon('users'), 'Attribution', scope, a.as_of ? `<span class="muted">as of ${esc(a.as_of.slice(0, 10))}</span>` : '')}
   ${wholeModelNote()}
   <p class="lead">Who introduced the code beneath each claim, who declared it, who declared its fix, and which AI tool co-authored those commits — read from git history. AI credit is <strong>declared</strong> by commit trailers (<code>Co-Authored-By</code>, <code>Assisted-by</code>), never detected from code; a commit with no trailer stays human. Click any person or tool to see exactly their claims.</p>
@@ -219,7 +219,7 @@ export function renderAttributionPage(a: AttributionData, ctx: PageContext): str
     ${chip('status', 'mitigated', 'Mitigated', { count: attributed.filter(c => c.status === 'mitigated').length })}
     ${chip('status', 'control', 'Controls', { count: attributed.filter(c => c.status === 'control').length })}
   </div>
-  <div class="who-filter" hidden><span>Showing claims credited to</span> <strong class="who-filter-name"></strong><button class="btn btn-ghost" data-clear-filters style="margin-left:auto">Clear</button></div>
+  <div class="who-filter" hidden><span>Showing claims credited to</span> <strong class="who-filter-name"></strong><button class="btn ghost" data-clear-filters>Clear</button></div>
   <div class="filter-status" hidden><span class="filter-status-text"></span><button class="btn btn-ghost" data-clear-filters>Clear</button></div>
   <div class="table-wrap"><table id="claims" class="sortable fixed" data-paginate="25">
     ${colgroup(['9%', '10%', '13%', '16%', '12%', '12%', '11%', '6%', ''])}
@@ -230,5 +230,5 @@ export function renderAttributionPage(a: AttributionData, ctx: PageContext): str
   <div class="no-match" data-count-for="claims" hidden>No claim matches the current filters.</div>
   ${a.degraded.length > 0 ? `<p class="guide">Not fully attributed: ${a.degraded.map(d => `<code>${esc(d.status)}</code> ×${d.count}`).join(', ')}. <code>no-git</code>: not a git checkout · <code>uncommitted</code>: the line or its span has changes git has not seen · <code>shallow</code>: history is truncated, so every introduction is a lower bound · <code>no-anchor</code>: the claim has no code span, only its own line.</p>` : ''}
   <p class="guide">${plural(attributed.length, 'claim')} read from git at ${a.as_of ? esc(a.as_of.slice(0, 10)) : 'HEAD'}. Identities are shown as configured by <code>blame.identity</code> (name, email or hash).</p>
-</div>`;
+</section>`;
 }

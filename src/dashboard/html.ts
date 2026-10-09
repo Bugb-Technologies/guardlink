@@ -1,12 +1,20 @@
 /**
  * GuardLink Dashboard — shared markup helpers. Pure string builders.
  *
+ * The page's components live here, so every page draws them the same way:
+ *   - a SEVERITY chip is filled — a swatch in the severity colour beside plain
+ *     text — because severity is the alarm;
+ *   - a STATE chip is an outlined pill carrying a glyph and a word (✕ proven,
+ *     ◐ needs review, ○ open, ✓ resolved, — accepted), so a state is never
+ *     carried by colour alone;
+ *   - the mix bar and the accounting bar encode by length, in a fixed order.
+ *
  * Every value that came from the model, from git, or from a file name passes
  * through `esc()` here or in the page that calls these. The one exception is
  * markup these helpers build themselves.
  *
  * @mitigates #dashboard against #xss using #output-encoding -- "esc() HTML-encodes every interpolated value; hrefs built here are encoded too, so a hash route carrying a search term cannot break out of the attribute"
- * @comment -- "statCard keeps its exact markup: the feature-slice test greps the Open Threats tile by that string"
+ * @comment -- "statCard keeps its exact markup: the feature filter rewrites the inventory tiles by label, and a test greps the Open Threats tile by that string"
  */
 import type { RepoLinks } from './links.js';
 import type { ThreatModel } from '../types/index.js';
@@ -40,8 +48,59 @@ export function sevRank(s: string | undefined | null): number {
   return { critical: 0, high: 1, medium: 2, low: 3, unset: 4 }[normSev(s)];
 }
 
-export function sevBadge(s: string | undefined | null): string {
-  return `<span class="fc-sev ${sevClass(s)}">${esc(normSev(s) === 'unset' ? (s || 'unset') : normSev(s))}</span>`;
+/** A filled severity chip: a swatch in the severity colour beside plain text. Text never wears the severity colour. */
+export function sevBadge(s: string | undefined | null, label?: string): string {
+  const k = normSev(s);
+  return `<span class="chip sev-${k}"><i class="sw"></i>${esc(label ?? (k === 'unset' ? (s || 'unset') : k))}</span>`;
+}
+
+/** The glyph each claim state carries, so a state never rests on colour alone. */
+export const STATE_GLYPH: Record<string, string> = {
+  open: '○', confirmed: '✕', mitigated: '✓', refuted: '✓', accepted: '—', control: '⊢',
+  verified: '✓', stale: '◐', unverified: '○', review: '◐',
+};
+
+/** An outlined state chip with its glyph: open, confirmed (proven), mitigated, refuted, accepted, control. */
+export function stateChip(state: string, label?: string, title?: string): string {
+  return `<span class="state st-${esc(state)}"${title ? ` title="${esc(title)}"` : ''}><span class="g" aria-hidden="true">${STATE_GLYPH[state] ?? '·'}</span>${esc(label ?? state)}</span>`;
+}
+
+export interface Segment {
+  label: string;
+  n: number;
+  /** Class that paints the segment: `s-critical`…`s-low`, `res`, `acc`, `review`, `stipple`, `open`. */
+  cls: string;
+  href?: string;
+}
+
+/**
+ * One 100% bar in a fixed order with 2 px gaps; a label above each segment that
+ * fits, a legend with counts beneath. Segments with n = 0 are left out of the
+ * bar but stay in the legend, so a zero is said rather than implied.
+ */
+export function mixBar(segs: Segment[], title: string, opts: { legend?: boolean } = {}): string {
+  const total = segs.reduce((a, s) => a + s.n, 0);
+  const live = segs.filter(s => s.n > 0);
+  const bar = total === 0
+    ? '<div class="mix-bar empty" role="img" aria-label="nothing to count"></div>'
+    : `<div class="mix-bar" role="img" aria-label="${esc(`${title}: ${segs.map(s => `${s.n} ${s.label}`).join(', ')}`)}">${live.map(s => `<span class="seg ${esc(s.cls)}" style="flex:${s.n} 1 0" title="${esc(`${s.n} ${s.label}`)}">${s.n / total >= 0.12 ? `<b>${s.n}</b>` : ''}</span>`).join('')}</div>`;
+  const legend = opts.legend === false ? '' : `<div class="mix-legend">${segs.map(s => {
+    const body = `<i class="key ${esc(s.cls)}"></i>${esc(s.label)} <b class="num">${s.n}</b>`;
+    return s.href ? `<a href="${esc(s.href)}">${body}</a>` : `<span>${body}</span>`;
+  }).join('')}</div>`;
+  return bar + legend;
+}
+
+/** The quiet stat tile: an eyebrow, a number, a line saying what it means. Only the page's lead number is big. */
+export function statTile(k: string, v: string | number, sub = '', opts: { big?: boolean; href?: string; id?: string } = {}): string {
+  const body = `<span class="k">${esc(k)}</span><span class="${opts.big ? 'big' : 'v'}">${esc(v)}</span>${sub ? `<span class="s">${esc(sub)}</span>` : ''}`;
+  const id = opts.id ? ` data-stat="${esc(opts.id)}"` : '';
+  return opts.href ? `<a class="stat" href="${esc(opts.href)}"${id}>${body}</a>` : `<div class="stat"${id}>${body}</div>`;
+}
+
+/** A page head: title, an optional lead sentence, and a right-hand slot. */
+export function pageHead(title: string, scope: string[] | null, lead = '', right = ''): string {
+  return `<div class="page-head"><div class="ph-text"><h2 class="ph-title">${title}${scopeTag(scope)}</h2>${lead ? `<p class="lead">${lead}</p>` : ''}</div>${right ? `<div class="ph-right">${right}</div>` : ''}</div>`;
 }
 
 export function badge(text: string, tone: 'red' | 'green' | 'blue' | 'neutral' = 'neutral', title?: string): string {
@@ -166,12 +225,13 @@ export function whoLink(identity: string): string {
   return `<a class="who" href="#attribution?who=${encodeURIComponent(identity)}" title="${esc(identity)}">${shown}</a>`;
 }
 
+/** The ledger state of a claim, as an outlined chip: ✓ verified, ◐ stale (needs a look), ○ unverified. */
 export function claimStateBadge(state: ClaimState | undefined): string {
   if (!state) return '';
   const title = state === 'verified' ? 'The code beneath this claim matches the verified hash'
     : state === 'stale' ? 'The code beneath this claim changed since it was verified'
     : 'Never verified — run guardlink verify';
-  return `<span class="claim-state ${state}" title="${title}">${state}</span>`;
+  return `<span class="claim-state ${state}" title="${title}"><span class="g" aria-hidden="true">${STATE_GLYPH[state]}</span>${state}</span>`;
 }
 
 export interface Column {
@@ -254,9 +314,9 @@ export function scopeTag(scope: string[] | null): string {
   return scope ? ` <span class="scope-tag">feature ${esc(scopeLabel(scope))}</span>` : '';
 }
 
-/** Section heading with an optional right-hand toolbar. */
-export function sectionHead(icon: string, title: string, scope: string[] | null, toolbar = ''): string {
-  return `<div class="sec-h"><span class="sec-icon">${icon}</span> ${title}${scopeTag(scope)}${toolbar ? `<span class="sec-tools">${toolbar}</span>` : ''}</div>`;
+/** Section heading with an optional right-hand toolbar. The icon argument is kept for callers; the rail carries the icons now. */
+export function sectionHead(_icon: string, title: string, scope: string[] | null, toolbar = ''): string {
+  return `<div class="sec-h"><h2 class="ph-title">${title}${scopeTag(scope)}</h2>${toolbar ? `<span class="sec-tools">${toolbar}</span>` : ''}</div>`;
 }
 
 export function subHead(title: string, cls = '', right = ''): string {
@@ -339,7 +399,11 @@ export interface HeatSpec {
   colLabel?: (col: string) => string;
 }
 
-/** A heatmap as a table: colour intensity is `--h`, tone is a class, every cell can link into a filtered page. */
+/**
+ * A count grid as a table — people × time, tool × severity, severity × status.
+ * Intensity is `--h` on ONE role per grid (the tone): warm for exposure counts,
+ * mint for resolved ones, neutral otherwise. Every cell can link into a filtered page.
+ */
 export function heatTable(spec: HeatSpec): string {
   const rl = spec.rowLabel ?? ((r: string) => r);
   const cl = spec.colLabel ?? ((c: string) => c);
@@ -359,13 +423,17 @@ export function heatTable(spec: HeatSpec): string {
   return `<div class="table-wrap heat-wrap"><table class="heat"${spec.id ? ` id="${esc(spec.id)}"` : ''}>${head}${body}</table></div>`;
 }
 
-/** A horizontal bar list: label, value, bar scaled to the max. */
-export function barList(items: { label: string; value: number; href?: string; tone?: string; hint?: string }[], max?: number): string {
+/**
+ * A ranked bar list: label, a bar whose length is the value, the value. `tone`
+ * picks the role that paints the bar: `open` (warm), `res` (mint), `ctl`
+ * (the people pole, for controls) or `neutral` (structure ink).
+ */
+export function barList(items: { label: string; value: number; href?: string; tone?: 'open' | 'res' | 'ctl' | 'neutral'; hint?: string }[], max?: number): string {
   const top = max ?? Math.max(1, ...items.map(i => i.value));
   return `<div class="bars">${items.map(i => `
   <div class="bar-row">
-    <span class="bar-label">${i.href ? `<a href="${esc(i.href)}">${esc(i.label)}</a>` : esc(i.label)}</span>
-    <div class="sev-track"><div class="sev-fill ${i.tone ?? 'attr-fill'}" style="width:${Math.round((i.value / top) * 100)}%"></div></div>
-    <span class="bar-value">${i.value}${i.hint ? ` <span class="muted">${esc(i.hint)}</span>` : ''}</span>
+    <span class="bar-label mono" title="${esc(i.label)}">${i.href ? `<a href="${esc(i.href)}">${esc(i.label)}</a>` : esc(i.label)}</span>
+    <div class="bar-track"><i class="bar-fill b-${i.tone ?? 'neutral'}" style="width:${Math.round((i.value / top) * 100)}%"></i></div>
+    <span class="bar-value num">${i.value}${i.hint ? ` <span class="subtle">${esc(i.hint)}</span>` : ''}</span>
   </div>`).join('')}</div>`;
 }
