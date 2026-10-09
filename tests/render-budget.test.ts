@@ -127,16 +127,17 @@ describe('the limits are Mermaid\'s, not ours', () => {
     expect(MERMAID_LIMITS.maxEdges).toBe(500);
   });
 
-  it('the dashboard states them rather than inheriting them', async () => {
-    // The page loads `mermaid@11` from a CDN, so an implicit default could move
-    // underneath the budget on any patch release and the two would disagree.
+  it('the dashboard has no limits to state: it renders no Mermaid', async () => {
+    // These limits govern the .mmd artifacts and every renderer that draws them.
+    // The dashboard draws its own SVG and loads no Mermaid, so nothing on the page
+    // can be configured against one set of limits and enforced against another.
     const root = await mkdtemp(join(tmpdir(), 'guardlink-rb-init-'));
     await mkdir(join(root, 'src'), { recursive: true });
     await writeFile(join(root, 'src', 'api.ts'), SMALL);
     const { model } = await parseProject({ root, project: 'rb' });
     const html = generateDashboardHTML(model, root);
-    expect(html).toContain(`maxTextSize: ${MERMAID_LIMITS.maxTextSize}`);
-    expect(html).toContain(`maxEdges: ${MERMAID_LIMITS.maxEdges}`);
+    expect(html).not.toContain('maxTextSize');
+    expect(html).not.toMatch(/<pre class="mermaid"/);
     await rm(root, { recursive: true, force: true });
   });
 });
@@ -354,40 +355,24 @@ describe('emission at 257 annotated files — the measured size', () => {
 // ─── The dashboard at the same size ──────────────────────────────────
 
 describe('the dashboard at the measured size', () => {
-  it('never serves a diagram that would draw the pink box', async () => {
+  /** The SVG of one plot, by its data-plot hook. */
+  const plot = (html: string, name: string): string => {
+    const at = html.indexOf(`data-plot="${name}"`);
+    return html.slice(at, html.indexOf('</svg>', at));
+  };
+
+  it('draws a model past Mermaid\'s own limits in full, with no stub and no NaN', async () => {
     const root = await mkdtemp(join(tmpdir(), 'guardlink-rb-dash-'));
-    await writeScaleRepo(root, 64);
-    const { model } = await parseProject({ root, project: 'rb' });
-    const html = generateDashboardHTML(model, root);
-
-    // Every `<pre class="mermaid">` on the page is within budget.
-    const blocks = [...html.matchAll(/<pre class="mermaid"[^>]*>\n([\s\S]*?)\n<\/pre>/g)]
-      .map(m => m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
-    expect(blocks.length).toBeGreaterThan(0);
-    for (const block of blocks) expect(checkRenderBudget(block).renderable).toBe(true);
-
-    // And the page says out loud which one is missing, in HTML a reader can see
-    // without rendering a diagram to find out the diagram is gone.
-    expect(html).toContain('<div class="diagram-budget"');
-    expect(html).toContain('was not drawn');
-    // The whole-graph variants are stubbed, but the per-asset focus slices still
-    // draw, so the panel's legend still keys something and stays. Suppression is
-    // for a panel where NOTHING was drawn, not for a panel with one stub in it.
-    expect(html).toContain('Assets, threats, controls, and mitigations.');
-    await rm(root, { recursive: true, force: true });
-  }, 30_000);
-
-  it('drops the legend on a panel where nothing at all was drawn', async () => {
-    // Data Flow is a single-variant panel, so past the cap the whole panel is a
-    // stub — and a legend keying shapes and colours that are not on the page is
-    // a smaller copy of the defect this change exists to remove.
-    const root = await mkdtemp(join(tmpdir(), 'guardlink-rb-legend-'));
     await writeScaleRepo(root, 160);
     const { model } = await parseProject({ root, project: 'rb' });
+    // The fixture really is past the cap as a Mermaid drawing.
+    expect(checkRenderBudget(generateDataFlowDiagram(canonicalizeModelOrder(model))).renderable).toBe(false);
     const html = generateDashboardHTML(model, root);
 
-    expect(html).toContain('The legend is omitted because there is nothing to key');
-    expect(html).not.toContain('Data movement across trust boundaries');
+    expect(html).not.toContain('was not drawn');
+    expect((plot(html, 'ribbons').match(/class="thr x-(flow|cross)"/g) ?? []).length).toBe(model.flows.length);
+    expect((plot(html, 'threat').match(/class="thr x-(open|res|acc) ?[^"]*"/g) ?? []).length).toBe(model.exposures.length);
+    for (const name of ['ribbons', 'threat', 'hood']) expect(plot(html, name), name).not.toMatch(/="[^"]*NaN/);
     await rm(root, { recursive: true, force: true });
   }, 60_000);
 });
@@ -439,14 +424,11 @@ describe('a normal repository is untouched', () => {
     }
   });
 
-  it('the dashboard embeds the diagrams with no notice attached', async () => {
+  it('the dashboard draws its diagrams with no notice attached', async () => {
     const html = generateDashboardHTML(model, root);
-    expect(html).not.toContain('<div class="diagram-budget"');
     expect(html).not.toContain('was not drawn');
-    expect(html).toContain('<pre class="mermaid"');
-    // The legend is untouched where the diagram is drawn.
-    expect(html).toContain('Assets, threats, controls, and mitigations.');
-    expect(html).not.toContain('The legend is omitted');
+    expect(html).toContain('data-plot="threat"');
+    expect(html).toContain('data-plot="ribbons"');
   });
 });
 

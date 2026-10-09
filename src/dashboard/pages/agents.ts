@@ -12,10 +12,12 @@
  *
  * @mitigates #dashboard against #xss using #output-encoding -- "Actor, asset and capability names, descriptions and citations are model text; every one goes through esc(), including chip titles"
  * @flows ThreatModel -> #dashboard via summarizeReach -- "Reaches, effects, gates, entitlements and flows for the Agents page"
+ * @comment -- "Chips carry state the design way: a capability is an outlined chip with ✓ (entitled) or ✕ (unentitled), a gated effect carries ⊢, an ungated mutation is a filled warm chip, a read is a plain tag"
  */
-import { esc, scopeLabel, sectionHead, subHead, sortableHead, rowAttrs, locCellShort, descCell, pager, icon, plural } from '../html.js';
+import { esc, scopeLabel, pageHead, subHead, sortableHead, rowAttrs, locCellShort, descCell, pager, plural, statTile } from '../html.js';
 import type { ReachSummary, ReachEffectChip, ReachCapabilityChip, ReachLoc } from '../../reach/index.js';
 import type { PageContext } from './context.js';
+import { actorTables } from './tables.js';
 
 const where = (l: ReachLoc): string => `${l.file}:${l.line}`;
 
@@ -31,12 +33,12 @@ const REACH_EXAMPLE = [
 
 function capChip(c: ReachCapabilityChip): string {
   const title = `${c.entitled ? 'Entitled' : 'Unentitled: no cited @entitles covers it'}${c.identity ? ` · as ${c.identity}` : ''} · ${where(c.loc)}`;
-  return `<span class="reach-chip reach-cap ${c.entitled ? 'ok' : 'bad'}" title="${esc(title)}">${c.entitled ? icon('check') : icon('x')}${esc(c.capability)}</span>`;
+  return `<span class="reach-chip reach-cap ${c.entitled ? 'ok' : 'bad'}" title="${esc(title)}"><span class="g" aria-hidden="true">${c.entitled ? '✓' : '✕'}</span>${esc(c.capability)}</span>`;
 }
 
 function effectChip(e: ReachEffectChip): string {
   const state = e.gated === null ? 'read' : e.gated ? 'gated' : 'ungated';
-  const label = e.gated === null ? e.effect : e.gated ? `${e.effect} · gated` : `${e.effect} · no gate`;
+  const label = e.gated === null ? e.effect : e.gated ? `⊢ ${e.effect} · gated` : `${e.effect} · no gate`;
   const title = [
     e.gated === null ? 'Read: no gate needed' : e.gated ? `Gated by ${e.approvers.join(', ')}` : 'Mutation with no @gates in front of it',
     e.via.length ? `via ${e.via.join(', ')}` : '',
@@ -44,14 +46,12 @@ function effectChip(e: ReachEffectChip): string {
     e.identity ? `runs as ${e.identity}` : '',
     where(e.loc),
   ].filter(Boolean).join(' · ');
-  return `<span class="reach-chip reach-eff ${state}" title="${esc(title)}">${esc(label)}</span>`;
+  return `<span class="reach-chip reach-eff ${state}" title="${esc(title)}">${state === 'ungated' ? '<i class="sw"></i>' : ''}${esc(label)}</span>`;
 }
 
-const jump = (id: string): string =>
-  `onclick="event.preventDefault();var t=document.getElementById('${id}');if(t)t.scrollIntoView({behavior:'smooth',block:'start'})"`;
-
-function kpiJump(value: number, label: string, target: string, tone: string, hint: string): string {
-  return `<a class="kpi${tone ? ` kpi-${tone}` : ''}" href="#agents" ${jump(target)}><span class="kpi-v">${value}</span><span class="kpi-l">${esc(label)}</span><span class="kpi-h">${esc(hint)}</span></a>`;
+/** A stat tile that scrolls to its table: the hash stays on the page, the delegated listener reads data-jump. */
+function tileJump(value: number | string, label: string, target: string, hint: string, big = false): string {
+  return statTile(label, value, hint, { href: '#agents', big }).replace('<a class="stat" href="#agents"', `<a class="stat" href="#agents" data-jump="${target}"`);
 }
 
 function reachMap(s: ReachSummary): string {
@@ -74,10 +74,10 @@ function reachMap(s: ReachSummary): string {
     : '';
   return `<div class="table-wrap heat-wrap"><table class="heat reach-map" id="reach-map">${head}<tbody>${body}${loose}</tbody></table></div>
   <div class="reach-legend">
-    <span><span class="reach-chip reach-cap ok">${icon('check')}capability</span> entitled</span>
-    <span><span class="reach-chip reach-cap bad">${icon('x')}capability</span> no cited <code>@entitles</code></span>
-    <span><span class="reach-chip reach-eff ungated">write · no gate</span> mutation, no <code>@gates</code></span>
-    <span><span class="reach-chip reach-eff gated">spend · gated</span> a named approver decides first</span>
+    <span><span class="reach-chip reach-cap ok"><span class="g">✓</span>capability</span> entitled</span>
+    <span><span class="reach-chip reach-cap bad"><span class="g">✕</span>capability</span> no cited <code>@entitles</code></span>
+    <span><span class="reach-chip reach-eff ungated"><i class="sw"></i>write · no gate</span> mutation, no <code>@gates</code></span>
+    <span><span class="reach-chip reach-eff gated">⊢ spend · gated</span> a named approver decides first</span>
     <span><span class="reach-chip reach-eff read">read</span> read</span>
   </div>`;
 }
@@ -90,33 +90,34 @@ export function renderAgentsPage(ctx: PageContext, s: ReachSummary): string {
 
   if (empty) {
     return `
-<div id="sec-agents" class="section-content">
-  ${sectionHead(icon('zap'), 'Agents &amp; Reach', scope)}
+<section id="sec-agents" class="section-content" aria-label="Agents and reach">
+  ${pageHead('Agents &amp; reach', scope)}
   <p class="empty-state">${scope
     ? `No <code>@agents</code>, <code>@reaches</code>, <code>@effects</code> or <code>@gates</code> in the files tagged ${esc(scopeLabel(scope))}. The project may declare them elsewhere — this slice does not show them.`
     : 'No <code>@agents</code>, <code>@reaches</code>, <code>@effects</code> or <code>@gates</code> annotations, so nothing in the model says what an embedded agent or another principal can reach.'}</p>
   <p class="guide">Declare it where each fact lives in the code — on the tool registration, the code that acts, and the approval step:</p>
-  <pre class="reach-example"><code>${REACH_EXAMPLE}</code></pre>
-</div>`;
+  <pre class="well reach-example"><code>${REACH_EXAMPLE}</code></pre>
+  ${actorTables(ctx)}
+</section>`;
   }
 
   const llm = s.owasp.reduce((n, o) => n + o.items.length, 0);
   return `
-<div id="sec-agents" class="section-content">
-  ${sectionHead(icon('zap'), 'Agents &amp; Reach', scope, `<span class="muted">${t.agents} ${plural(t.agents, 'agent')} · ${t.principals} other ${plural(t.principals, 'principal')}</span>`)}
+<section id="sec-agents" class="section-content" aria-label="Agents and reach">
+  ${pageHead('Agents &amp; reach', scope, '', `<span class="muted">${t.agents} ${plural(t.agents, 'agent')} · ${t.principals} other ${plural(t.principals, 'principal')}</span>`)}
   <p class="lead">What each embedded LLM agent (<code>@agents</code>) and other principal (<code>@reaches</code>) can invoke, what the code does (<code>@effects</code>), who decides first (<code>@gates</code>), and what of it a human approved (<code>@entitles</code>). An effect sits in an actor's row only when it is written in the same doc-block as the actor's reach, so both are bound to the same code.${scope ? ` Only reach annotations in the files tagged ${esc(scopeLabel(scope))} are shown.` : ''}</p>
-  <div class="kpis">
-    ${kpiJump(t.reaches, 'Reaches', 'agents-map', '', `${t.agents} ${plural(t.agents, 'agent')}, ${t.principals} other`)}
-    ${kpiJump(t.unentitled, 'Unentitled', 'agents-unentitled', t.unentitled > 0 ? 'danger' : 'success', 'can, but no one approved')}
-    ${kpiJump(t.ungated, 'Ungated mutations', 'agents-ungated', t.ungated > 0 ? 'danger' : 'success', `of ${t.mutations} ${plural(t.mutations, 'mutation')}`)}
-    ${kpiJump(t.gates, 'Gates', 'agents-gates', '', 'a named approver decides')}
-    ${kpiJump(t.egress, 'Egress', 'agents-egress', t.egress > 0 ? 'warn' : '', 'leaves the model or a boundary')}
-    ${kpiJump(llm, 'OWASP LLM items', 'agents-owasp', llm > 0 ? 'warn' : '', 'LLM06 · LLM01 · LLM05')}
+  <div class="panel tiles">
+    ${tileJump(t.reaches, 'Reaches', 'agents-map', `${t.agents} ${plural(t.agents, 'agent')}, ${t.principals} other`)}
+    ${tileJump(t.unentitled, 'Unentitled', 'agents-unentitled', 'can, but no one approved', true)}
+    ${tileJump(`${t.ungated} of ${t.mutations}`, 'Ungated mutations', 'agents-ungated', 'nothing stands in front of them')}
+    ${tileJump(t.gates, 'Gates', 'agents-gates', 'a named approver decides')}
+    ${tileJump(t.egress, 'Egress', 'agents-egress', 'leaves the model or a boundary')}
+    ${tileJump(llm, 'OWASP LLM items', 'agents-owasp', 'LLM06 · LLM01 · LLM05')}
   </div>
-  <div class="filter-status" hidden><span class="filter-status-text"></span><button class="btn btn-ghost" data-clear-filters>Clear</button></div>
+  <div class="filter-status" hidden><span class="filter-status-text"></span><button class="btn ghost" data-clear-filters>Clear</button></div>
 
   ${subHead('Reach map', '', `<span class="muted">${s.columns.length} ${plural(s.columns.length, 'asset')}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="agents-map">')}
-  <p class="guide">Rows are actors, columns the assets they reach; each cell holds the capabilities exposed on that asset and the effects the actor's tools have on it. The <a href="#diagrams">Diagrams</a> page draws the same as a graph.</p>
+  <p class="guide">Rows are actors, columns the assets they reach; each cell holds the capabilities exposed on that asset and the effects the actor's tools have on it. <a href="#diagrams?tab=reach">Diagrams › Agent reach</a> draws the same facts.</p>
   ${reachMap(s)}
 
   ${subHead('Unentitled reaches', '', `<span data-count-for="agent-unentitled">${s.unentitled.length}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="agents-unentitled">')}
@@ -132,7 +133,7 @@ export function renderAgentsPage(ctx: PageContext, s: ReachSummary): string {
       <td>${u.asset ? `<code>${esc(u.asset)}</code>` : '—'}</td>
       <td>${u.near_misses.length === 0
         ? '<span class="muted">No <code>@entitles</code> for this actor and capability</span>'
-        : u.near_misses.map(n => `<div class="reach-miss"><span class="badge badge-red">${esc(n.blocker)}</span> ${esc(n.reason)} <span class="muted">${esc(where(n.loc))}</span></div>`).join('')}</td>
+        : u.near_misses.map(n => `<div class="reach-miss"><span class="state st-review"><span class="g">◐</span>${esc(n.blocker)}</span> ${esc(n.reason)} <span class="muted">${esc(where(n.loc))}</span></div>`).join('')}</td>
       ${loc(u.loc)}
     </tr>`).join('')}
     </tbody>
@@ -150,7 +151,7 @@ export function renderAgentsPage(ctx: PageContext, s: ReachSummary): string {
       <td><span class="reach-chip reach-eff ungated">${esc(u.effect)}</span></td>
       <td><code>${esc(u.asset)}</code></td>
       <td>${u.identity ? `<code>${esc(u.identity)}</code>` : '—'}</td>
-      <td>${u.via.length > 0 ? u.via.map(v => `<code>${esc(v.actor)}</code> <code>${esc(v.capability)}</code>${v.agent ? ' <span class="reach-kind agent">AI agent</span>' : ''}`).join('<br>') : '<span class="muted">No reach on this code</span>'}${u.gate_near_misses.map(n => `<div class="reach-miss"><span class="badge badge-red">${esc(n.blocker)}</span> ${esc(n.approver)}${n.capability ? ` for <code>${esc(n.capability)}</code>` : ''}: ${esc(n.reason)}</div>`).join('')}</td>
+      <td>${u.via.length > 0 ? u.via.map(v => `<code>${esc(v.actor)}</code> <code>${esc(v.capability)}</code>${v.agent ? ' <span class="reach-kind agent">AI agent</span>' : ''}`).join('<br>') : '<span class="muted">No reach on this code</span>'}${u.gate_near_misses.map(n => `<div class="reach-miss"><span class="state st-review"><span class="g">◐</span>${esc(n.blocker)}</span> ${esc(n.approver)}${n.capability ? ` for <code>${esc(n.capability)}</code>` : ''}: ${esc(n.reason)}</div>`).join('')}</td>
       ${descCell(u.description, '—')}
       ${loc(u.loc)}
     </tr>`).join('')}
@@ -203,5 +204,6 @@ export function renderAgentsPage(ctx: PageContext, s: ReachSummary): string {
       ${o.items.length > 0 ? `<ul>${o.items.map(i => `<li data-search="${esc(`${o.id} ${i.facet} ${i.agent} ${i.text}`.toLowerCase())}"><span class="reach-facet">${esc(i.facet)}</span> <code>${esc(i.agent)}</code> ${esc(i.text)} <span class="muted">${esc(where(i.loc))}</span></li>`).join('')}</ul>` : '<p class="muted">Nothing found.</p>'}
     </div>`).join('')}
   </div>` : ''}
-</div>`;
+  ${actorTables(ctx)}
+</section>`;
 }

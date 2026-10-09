@@ -401,7 +401,7 @@ export function computeActions(input: ActionInput): DashboardAction[] {
       id: 'confirmed', level: 'critical', count: confirmed.length,
       title: `${confirmed.length} confirmed exploitable ${plural(confirmed.length, 'finding')}`,
       detail: 'Verified by test, scan or reproduction — not theoretical. Fix, or accept with explicit security sign-off, before anything else.',
-      href: '#threats?status=confirmed',
+      href: '#exposures?status=confirmed',
     });
   }
 
@@ -413,7 +413,7 @@ export function computeActions(input: ActionInput): DashboardAction[] {
       id: 'open-severe', level: crit > 0 ? 'critical' : 'high', count: severe.length,
       title: `${severe.length} critical or high ${plural(severe.length, 'exposure')} open`,
       detail: `${crit} critical, ${severe.length - crit} high. Each needs a @mitigates with a real control, or a human @accepts with a reason.`,
-      href: '#threats?sev=critical,high&status=open',
+      href: '#exposures?sev=critical,high&status=open',
       command: 'guardlink review .',
     });
   }
@@ -431,7 +431,7 @@ export function computeActions(input: ActionInput): DashboardAction[] {
       id: 'stale-claims', level: s.demotable_stale > 0 ? 'high' : 'medium', count: s.stale,
       title: `${s.stale} ${plural(s.stale, 'claim')} went stale`,
       detail: `The code beneath ${s.stale === 1 ? 'it' : 'them'} changed since ${s.stale === 1 ? 'it was' : 'they were'} verified; ${s.demotable_stale} of them ${s.demotable_stale === 1 ? 'is a' : 'are'} ${plural(s.demotable_stale, 'mitigation or acceptance', 'mitigations or acceptances')} that may no longer hold. Re-check the code, then re-lock.`,
-      href: '#threats?state=stale',
+      href: '#exposures?state=stale',
       command: 'guardlink verify --stale',
     });
   } else if (verification && verification.ledger === 'absent' && !scope) {
@@ -485,7 +485,7 @@ export function computeActions(input: ActionInput): DashboardAction[] {
       id: 'inert-entitlements', level: 'medium', count: inert,
       title: `${inert} ${plural(inert, 'entitlement')} cite${inert === 1 ? 's' : ''} no authorization code`,
       detail: 'An @entitles without a file:line citation is inert: parsed, then ignored. Add the citation or drop the claim.',
-      href: '#data?q=inert',
+      href: '#agents?q=inert',
     });
   }
 
@@ -495,7 +495,7 @@ export function computeActions(input: ActionInput): DashboardAction[] {
       id: 'unowned', level: 'medium', count: n,
       title: `${n} exposed ${plural(n, 'asset has', 'assets have')} no owner`,
       detail: `${input.unownedExposed.slice(0, 4).join(', ')}${n > 4 ? ` and ${n - 4} more` : ''} carry open exposures but no @owns, so nobody is accountable for closing them. Name the team in the definitions file.`,
-      href: '#analytics',
+      href: '#exposures',
     });
   }
 
@@ -505,7 +505,7 @@ export function computeActions(input: ActionInput): DashboardAction[] {
       id: 'audits', level: 'medium', count: n,
       title: `${n} audit ${plural(n, 'item')} ${n === 1 ? 'awaits' : 'await'} human review`,
       detail: 'Each @audit marks a risk with no control yet. Review it and either add a control or record a decision.',
-      href: '#data?q=audit',
+      href: '#assets?q=audit',
     });
   }
 

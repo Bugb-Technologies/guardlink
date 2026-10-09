@@ -99,7 +99,6 @@ export interface PageContext {
   actions: DashboardAction[];
   heatmap: AssetHeatmapEntry[];
   fileAnnotations: FileAnnotationGroup[];
-  diagrams: { threatGraph: string; threatGraphFull: string; dataFlow: string; attackSurface: string; focus: { name: string; src: string }[]; /** Empty when nothing declares reach. */ reach?: string };
   analyses: ThreatReportWithContent[];
   /** What changed since --since <ref>, or null without the flag. */
   changes: ChangeSummary | null;

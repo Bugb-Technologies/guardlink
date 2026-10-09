@@ -31,7 +31,6 @@ import { parseProject } from '../src/parser/parse-project.js';
 import { canonicalizeModelOrder } from '../src/parser/canonical-order.js';
 import { generateThreatGraph, generateDataFlowDiagram } from '../src/dashboard/diagrams.js';
 import { generateDashboardHTML } from '../src/dashboard/generate.js';
-import { buildExploreData } from '../src/dashboard/explore.js';
 import { selectSubgraph } from '../src/mcp/subgraph.js';
 import { checkRenderBudget } from '../src/dashboard/render-budget.js';
 import {
@@ -39,7 +38,7 @@ import {
   countMermaidClusters, describeLegibility, legibilityImpliesDrawable,
 } from '../src/graph/legibility.js';
 import {
-  GRAPH_VIEWS, growWithinBudget, assetThreatPlane, keepHighSeverity,
+  growWithinBudget, assetThreatPlane, keepHighSeverity,
   assetsDeclaredIn, boundarySides, FLOW_KINDS,
 } from '../src/graph/views.js';
 import {
@@ -375,15 +374,23 @@ describe('selectSubgraph\'s explicit node set', () => {
   });
 });
 
-// ─── The Explore page ────────────────────────────────────────────────
+// ─── The dashboard: every view drawn, at any size ────────────────────
 
-describe('the Explore page', () => {
+/**
+ * The dashboard no longer hands a whole model to a node-link layout engine and
+ * then apologises for the hairball. Its Diagrams page draws the model as
+ * ribbons — one thread per relation, which reads at 10 relations and at 1,000 —
+ * and folds Explore's question-sized answers into each node's neighbourhood.
+ * The legibility budget above still governs the .mmd artifacts; on the page
+ * there is no diagram for it to refuse.
+ */
+describe('the dashboard draws the whole model, past the node-link budget', () => {
   let root: string;
   let model: ThreatModel;
   let html: string;
 
   beforeAll(async () => {
-    root = await mkdtemp(join(tmpdir(), 'guardlink-explore-'));
+    root = await mkdtemp(join(tmpdir(), 'guardlink-whole-'));
     await writeHubRepo(root);
     ({ model } = await parseProject({ root, project: 'hub' }));
     model = canonicalizeModelOrder(model);
@@ -392,111 +399,39 @@ describe('the Explore page', () => {
 
   afterAll(async () => { await rm(root, { recursive: true, force: true }); });
 
-  it('every diagram it embeds is within the budget — the whole claim, on a model that is not', () => {
-    const data = buildExploreData({ model, openByAsset: new Map(), totalByAsset: new Map(), changes: null });
-    const every = [
-      ...data.assets.flatMap(a => [a.threatPlane, a.flowPlane]),
-      ...data.boundaries.map(b => b.diagram),
-      ...data.files.map(f => f.diagram),
-    ];
-    expect(every.length).toBeGreaterThan(0);
-    for (const d of every) {
-      if (!d.source) continue;
-      const v = checkLegibility(d.source);
-      expect(v.legible, `${d.budgetNote}`).toBe(true);
-      // And therefore drawable, without needing a second check.
-      expect(checkRenderBudget(d.source).renderable).toBe(true);
-    }
+  it('the fixture is past the budget as a node-link drawing — otherwise this proves nothing', () => {
+    expect(checkLegibility(generateDataFlowDiagram(model)).legible).toBe(false);
   });
 
-  it('says what every view is for, in the reader\'s words', () => {
-    for (const v of GRAPH_VIEWS) {
-      if (v.id === 'diff') continue; // only present under --since
-      expect(html, v.id).toContain(v.question);
-    }
+  it('carries no Mermaid: every tab is our own SVG', () => {
+    expect(html).not.toMatch(/<pre class="mermaid"/);
+    expect(html).not.toContain('mermaid.initialize');
+    expect(html).toContain('data-plot="ribbons"');
+    expect(html).toContain('data-plot="threat"');
   });
 
-  it('tells the reader the feature dropdown does not narrow these answers', () => {
-    // The top-bar feature filter hides rows by file; an Explore pane carries no
-    // file, so selecting a feature cannot narrow it. wholeModelNote() is the
-    // sentence that says so — and it only works if filterPage stops clobbering
-    // it, because it carries `filter-status` as well as `whole-model-note` and
-    // the lookup returns the first match. Measured in a browser before the fix:
-    // onFeatureFilter un-hid the note and filterPage re-hid it in the same tick,
-    // so a feature could be selected on Explore with no effect and no
-    // explanation.
+  it('draws every flow as a thread, with nothing filtered for size', () => {
+    const ribbons = html.slice(html.indexOf('data-plot="ribbons"'), html.indexOf('</svg>', html.indexOf('data-plot="ribbons"')));
+    const threads = (ribbons.match(/class="thr x-(flow|cross)"/g) ?? []).length;
+    expect(threads).toBe(model.flows.length);
+    expect(html).toContain(`${model.flows.length}</b> of ${model.flows.length} flows drawn`);
+  });
+
+  it('keeps Explore reachable: the old route redirects into the neighbourhood', () => {
+    expect(html).toContain("explore: 'diagrams'");
+    expect(html).toContain('data-view-panel="hood"');
+  });
+
+  it('tells the reader the feature dropdown does not narrow these pictures', () => {
+    // wholeModelNote() carries `filter-status` as well as `whole-model-note`,
+    // so filterPage must not treat it as the filter bar.
     expect(html).toContain('whole-model-note');
     expect(html).toContain('but this page shows the whole model');
-    expect(html).toContain(".filter-status:not(.whole-model-note)");
-  });
-
-  it('says why a view that is not a diagram is not a diagram', () => {
-    const list = GRAPH_VIEWS.find(v => v.id === 'threat')!;
-    expect(list.shape).toBe('list');
-    expect(html).toContain('Answered as a list, not a diagram');
-    expect(html).toContain('Answered as a matrix, not a diagram');
-  });
-
-  it('offers no subject that has no pane behind it', () => {
-    const panes = new Set<string>();
-    for (const m of html.matchAll(/data-view="([^"]*)" data-subject="([^"]*)"/g)) panes.add(`${m[1]} ${m[2]}`);
-    for (const sel of html.matchAll(/<select class="explore-subject" data-view="([^"]+)"[\s\S]*?<\/select>/g)) {
-      const view = sel[1];
-      for (const opt of sel[0].matchAll(/<option value="([^"]*)"/g)) {
-        expect(panes.has(`${view} ${opt[1]}`), `${view}:${opt[1]}`).toBe(true);
-      }
-    }
-  });
-
-  it('states the size of every diagram it does draw, and what fell outside', () => {
-    const data = buildExploreData({ model, openByAsset: new Map(), totalByAsset: new Map(), changes: null });
-    const hub = data.assets.find(a => a.key === 'hub')!;
-    expect(hub.flowPlane.budgetNote).toContain('legibility budget');
-    expect(hub.flowPlane.omitted.length).toBeGreaterThan(0);
-    expect(hub.threatPlane.narrowing).toBe('high-severity-only');
-  });
-
-  it('says why there is nothing to draw, rather than showing an empty canvas', () => {
-    const data = buildExploreData({ model, openByAsset: new Map(), totalByAsset: new Map(), changes: null });
-    const quiet = data.assets.find(a => a.key === 'quiet')!;
-    expect(quiet.flowPlane.source).toBe('');
-    expect(quiet.flowPlane.emptyReason).toBeTruthy();
+    expect(html).toContain('.filter-status:not(.whole-model-note)');
   });
 
   it('says how many routes it searched, so "no findings" cannot be read as "no routes"', () => {
-    const data = buildExploreData({ model, openByAsset: new Map(), totalByAsset: new Map(), changes: null });
-    expect(data.pathsTotal).toBeGreaterThanOrEqual(data.paths.length);
-  });
-});
-
-describe('the whole-model Diagrams page', () => {
-  it('names its own size when it is past readable, instead of presenting it as fine', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'guardlink-whole-'));
-    try {
-      await writeHubRepo(root);
-      const { model } = await parseProject({ root, project: 'hub' });
-      const html = generateDashboardHTML(canonicalizeModelOrder(model), root);
-      // The class name alone would match the stylesheet, which every page
-      // carries. The notice is what has to be there.
-      expect(html).toContain('past the size anyone can read');
-      expect(html).toContain('<div class="diagram-toobig" role="note">');
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it('says nothing of the kind on a model small enough to read whole', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'guardlink-whole-ok-'));
-    try {
-      await mkdir(join(root, 'src'), { recursive: true });
-      await writeFile(join(root, 'src', 'api.ts'), TINY);
-      const { model } = await parseProject({ root, project: 'ok' });
-      const html = generateDashboardHTML(canonicalizeModelOrder(model), root);
-      expect(html).not.toContain('<div class="diagram-toobig" role="note">');
-      expect(html).not.toContain('past the size anyone can read');
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
+    expect(html).toMatch(/\d+ of \d+ routes?\./);
   });
 });
 

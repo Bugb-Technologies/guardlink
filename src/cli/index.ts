@@ -3047,11 +3047,11 @@ program
 
 program
   .command('dashboard')
-  .description('Generate an interactive HTML threat model dashboard with diagrams')
+  .description('Generate an interactive, self-contained HTML threat model dashboard')
   .argument('[dir]', 'Project directory to scan', '.')
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('-o, --output <file>', 'Output file (default: threat-dashboard.html)')
-  .option('--light', 'Default to light theme instead of dark')
+  .option('--light', 'Pin the light theme (by default the page follows the OS preference)')
   .option('--feature <names>', 'Filter dashboard to specific feature(s) (comma-separated)')
   .option('--blame', 'Add an Attribution page: exposures introduced and fixed per person and per AI tool (read from git)')
   .option('--since <ref>', 'Add a "what changed" strip: exposures added and resolved, and claims gone stale, since a git ref (tag, branch, commit)')
@@ -3092,18 +3092,14 @@ program
     }
 
     const analyses = loadThreatReportsForDashboard(root);
-    let html = generateDashboardHTML(model, root, analyses, { since });
-
-    // Switch default theme if requested
-    if (opts.light) {
-      html = html.replace('data-theme="dark"', 'data-theme="light"');
-    }
+    // The page follows the OS light/dark preference; --light pins light.
+    const html = generateDashboardHTML(model, root, analyses, { since, theme: opts.light ? 'light' : undefined });
 
     const outFile = opts.output || 'threat-dashboard.html';
     const { writeFile } = await import('node:fs/promises');
     await writeFile(resolve(root, outFile), html);
     console.error(`✓ Dashboard generated: ${outFile}`);
-    console.error(`  Open in browser to view. Toggle ☀️/🌙 for light/dark mode.`);
+    console.error(`  Open in a browser to view. It follows the OS light/dark setting; the top bar toggles it.`);
   });
 
 // ─── link-project ────────────────────────────────────────────────────

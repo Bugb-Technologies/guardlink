@@ -109,17 +109,21 @@ describe('analytics builders', () => {
 });
 
 describe('markup', () => {
-  it('renders the Analytics page with clickable heatmap cells, and paginates long tables', async () => {
+  it('puts the asset × threat matrix and the breakdowns on Exposures, with clickable cells, and paginates long tables', async () => {
     const root = await project();
     const { model } = await parseProject({ root, project: 'an' });
     const h = generateDashboardHTML(model, root);
-    expect(h).toContain('id="sec-analytics"');
-    expect(h).toContain('href="#analytics"');
+    expect(h).toContain('id="sec-exposures"');
+    expect(h).toContain('href="#exposures"');
+    // One cell per distinct (asset, threat) pair, each pinnable.
+    expect(h.match(/<g class="cell nd [^"]*" data-node="x[\d.]+" data-cell="/g)).toHaveLength(3);
     expect(h).toMatch(/<td class="heat-cell[^"]*"[^>]*style="--h:/);
-    expect(h).toContain('href="#threats?q=%23api+%23sqli"');
-    expect(h).toMatch(/<table id="exposures" class="sortable fixed" data-paginate="25"/);
-    expect(h).toContain('data-pager-for="exposures"');
+    expect(h).toContain('href="#exposures?sev=critical&amp;status=open"');
+    expect(h).toMatch(/<table id="exposure-rows" class="sortable fixed" data-paginate="25"/);
+    expect(h).toContain('data-pager-for="exposure-rows"');
     expect(h).toContain('function paginate(');
+    // The old page names still land: links in saved reports keep working.
+    expect(h).toContain("analytics: 'exposures'");
   });
 
   it('gives the reports page a toolbar with copy actions, even with no saved report', async () => {
@@ -157,13 +161,18 @@ describe('markup', () => {
 // Emoji and the symbol blocks the old page used for icons (geometric shapes, arrows-as-glyphs, misc technical).
 const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{25A0}-\u{25FF}\u{2300}-\u{23FF}\u{2980}-\u{29FF}\u{2B00}-\u{2BFF}]/u;
 
+/** ✕ proven · ◐ needs review · ○ open · ✓ resolved · ⊢ gated — always beside a word. */
+const STATE_GLYPHS = /[✕◐○✓⊢]/gu;
+
 describe('icons, not emoji', () => {
   it('the page carries inline svg icons and no emoji, while the generators keep emoji by default for the .mmd artifacts', async () => {
     const root = await project();
     const { model } = await parseProject({ root, project: 'an' });
     const h = generateDashboardHTML(model, root);
     expect(h).toContain('<svg class="ico"');
-    expect(EMOJI.test(h)).toBe(false);
+    // The page's state glyphs are typography, not icons: each sits in a chip beside its word.
+    expect(EMOJI.test(h.replace(STATE_GLYPHS, ''))).toBe(false);
+    expect(/[\u{1F000}-\u{1FAFF}]/u.test(h)).toBe(false);
     expect(EMOJI.test(generateThreatGraph(model))).toBe(true);
     const plain = generateThreatGraph(model, { icons: 'none', showAll: true });
     expect(EMOJI.test(plain)).toBe(false);

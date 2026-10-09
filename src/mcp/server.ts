@@ -815,7 +815,7 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_dashboard',
-    'Generate an interactive HTML threat model dashboard with diagrams, charts, code annotations, and heatmap.',
+    'Generate an interactive, self-contained HTML threat model dashboard: overview, the asset × threat matrix, diagrams (threat graph, data-flow ribbons, attack surface, agent reach), assets, code annotations and reports.',
     {
       root: z.string().describe('Project root directory').default('.'),
       output: z.string().describe('Output filename (default: threat-dashboard.html)').default('threat-dashboard.html'),

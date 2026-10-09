@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/dashboard.flows.mmd
-%% scope:           PARTIAL — #dashboard and its flow neighbourhood, grown until the drawing stopped fitting — 12 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:7699fd36a4f42f9233f7bb6b81030a15c52f45618f34baa20928da749b08203b
+%% scope:           PARTIAL — #dashboard and its flow neighbourhood, grown until the drawing stopped fitting — 13 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:054099e5208031357a91f5151e35f70caa634167fc557d47ba2135fe870c7528
 %% generator:       guardlink@2.2.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -15,17 +15,16 @@ graph LR
   filesystem["🧩 FileSystem"]
   gitrepo["🧩 GitRepo"]
   blame["🧩 GuardLink.Blame"]
-  sourcefiles["🧩 SourceFiles"]
   ledgerfile["🧩 LedgerFile"]
   gitconfig["🧩 GitConfig"]
   html["🧩 HTML"]
   dashboardhtml["🧩 DashboardHTML"]
+  savedreport["🧩 SavedReport"]
   diagramsource["🧩 DiagramSource"]
   dashboard -- "🗄️ writeFileSync" --> filesystem
   gitrepo -- "🗄️ execFileSync" --> blame
   gitrepo -- "📡 listCommits" --> blame
   blame -- "📡 summarise" --> dashboard
-  sourcefiles -- "🗄️ readFileSync" --> dashboard
   ledgerfile -- "📡 readLedger" --> dashboard
   gitrepo -- "📡 loadSince" --> dashboard
   ledgerfile -- "📡 computeLedgerStates" --> dashboard
@@ -34,6 +33,7 @@ graph LR
   ledgerfile -- "📡 readHypotheses" --> dashboard
   gitconfig -- "🗄️ readFileSync" --> dashboard
   dashboard -- "📡 RepoLinks" --> dashboardhtml
+  savedreport -- "📡 renderMarkdown" --> dashboard
   diagramsource -- "📡 checkRenderBudget" --> dashboard
   gitrepo -- "📡 parseAtRef" --> dashboard
   diagramsource -- "📡 measureLegibility" --> dashboard
