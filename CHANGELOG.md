@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - **`guardlink paths` no longer reports a clean result when it walked nothing.** A route needs an entry and a sink, and both are flow endpoints that are not declared assets, so a model whose flows all end on declared assets — a `#db`, an `External.*` vendor — has no sink, and the walk has nowhere to go. That model used to print "No unmitigated source-to-sink paths found" and "the annotated graph holds no undefended route", which read as a pass. It now prints `No annotated flow ends outside the declared assets, so no source-to-sink route was evaluated` (or `starts`, when there is no entry) and says this is not a clean result. The same wording reaches the TUI `/paths`, the dashboard's Undefended routes block, and a `note` field in `paths --json` and `guardlink_paths` that appears only in this case. What counts as an entry or a sink, and how routes are walked, is unchanged; a model with both prints exactly what it printed before.
+- **The same project now parses to the same model on every run.** Files were parsed in the order the directory scan returned them, and that scan walks sibling directories concurrently, so the order varied between runs on an identical tree. Every list in the model inherited it, so the order of `unentitled reaches`, `paths --all` and other listings could change from one run to the next. Files are now sorted by path before parsing; annotation sidecars still come after source files.
 
 ## \[2.2.0\] — 2026-10-07
 

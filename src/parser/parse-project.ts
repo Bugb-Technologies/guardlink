@@ -283,7 +283,11 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     dot: true,
   });
 
-  const files = [...new Set([...scanned, ...sidecars])];
+  // fast-glob walks directories concurrently, so the order it returns varies
+  // from run to run on an identical tree. Every model array inherits file
+  // order, so sort here — by code unit, not locale — or the same project
+  // parses to differently ordered models. Sidecars stay after source files.
+  const files = [...new Set([...scanned.sort(), ...sidecars.sort()])];
 
   // Parse all files
   const allAnnotations: Annotation[] = [];
