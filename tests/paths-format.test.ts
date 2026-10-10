@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { formatPaths } from '../src/paths/format.js';
+import { formatPaths, unevaluatedReason } from '../src/paths/format.js';
 import type { PathFinding, EndpointClassification } from '../src/paths/index.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -72,9 +72,26 @@ describe('formatPaths', () => {
   it('says an empty result is about the annotated graph, not about the code', () => {
     // The failure this guards: reading "no paths found" as "no undefended route
     // exists", when it can equally mean nobody wrote the @flows yet.
-    const out = formatPaths([], { entries: [], exits: [] });
+    const out = formatPaths([], endpoints);
     expect(out).toMatch(/not that none exists/i);
     expect(out).toMatch(/@flows/);
+  });
+
+  it('says which side is missing when no route could be evaluated', () => {
+    // With no entry or no sink the walk never ran, so the empty result is not
+    // the "found nothing undefended" kind and must not be worded as one.
+    const cases: Array<[EndpointClassification, string]> = [
+      [{ entries: ['UserInput'], exits: [] }, 'ends'],
+      [{ entries: [], exits: ['FileSystem'] }, 'starts'],
+      [{ entries: [], exits: [] }, 'starts or ends'],
+    ];
+    for (const [ends, side] of cases) {
+      const out = formatPaths([], ends);
+      expect(out).toContain(`No annotated flow ${side} outside the declared assets, so no source-to-sink route was evaluated.`);
+      expect(out).not.toMatch(/not that none exists/i);
+      expect(unevaluatedReason(ends)).not.toBeNull();
+    }
+    expect(unevaluatedReason(endpoints)).toBeNull();
   });
 });
 

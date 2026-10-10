@@ -34,6 +34,7 @@ import { renderShelves } from '../layout/shelves.js';
 import { renderReachDiagram } from '../layout/reach.js';
 import { flowTables } from './tables.js';
 import type { PathFinding } from '../../paths/index.js';
+import { unevaluatedReason } from '../../paths/format.js';
 
 export interface DiagramsInput {
   graph: DiagramModel;
@@ -115,7 +116,7 @@ function flowTab(ctx: PageContext, d: DiagramsInput): string {
     <div class="path-finding">
       <div class="path-chain">${p.chain.map((n, i) => `${i > 0 ? '<span class="path-arrow">→</span>' : ''}<code class="path-node${p.assetsOnPath.includes(n) ? ' path-asset' : ''}">${esc(n)}</code>`).join('')}</div>
       <div class="path-meta">${p.crossesBoundary ? stateChip('open', `crosses ${p.boundariesCrossed.join(', ')}`) : stateChip('accepted', 'no declared boundary on this route')}<span class="path-hops">${p.hops.map(h => locInline(h.via.file, h.via.line, ctx.links)).join(' · ')}</span></div>
-    </div>`).join('')}</div>` : `<p class="empty-state">No undefended route found. Every one of the ${plural(d.pathsTotal, 'entry-to-sink route')} in this model passes through at least one component carrying a <code>@mitigates</code>.</p>`}
+    </div>`).join('')}</div>` : unevaluatedReason(d.endpoints) ? `<p class="empty-state">${esc(unevaluatedReason(d.endpoints)!)} Entries and sinks are <code>@flows</code> endpoints that are not declared <code>@asset</code>s, so this is not a clean result: no route was examined.</p>` : `<p class="empty-state">No undefended route found. Every one of the ${plural(d.pathsTotal, 'entry-to-sink route')} in this model passes through at least one component carrying a <code>@mitigates</code>.</p>`}
 
   <h3 class="block-h">The same flows, as rows</h3>
   <div class="filter-status" hidden><span class="filter-status-text"></span><button class="btn ghost" data-clear-filters>Clear</button></div>

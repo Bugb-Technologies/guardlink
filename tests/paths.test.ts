@@ -17,6 +17,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseProject } from '../src/parser/parse-project.js';
 import { findUnmitigatedPaths, classifyEndpoints } from '../src/paths/index.js';
+import { formatPaths, pathsPayload } from '../src/paths/format.js';
+import { generateDashboardHTML } from '../src/dashboard/index.js';
 import type { ThreatModel } from '../src/types/index.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -213,6 +215,98 @@ describe('findUnmitigatedPaths — trust boundary crossing', () => {
     expect(findings).toHaveLength(2);
     expect(findings[0].crossesBoundary).toBe(true);
     expect(findings[0].exit).toBe('FileSystem');
+  });
+});
+
+/**
+ * User -> #api -> #db, with #db declared and exposed to SQL injection.
+ *
+ * The shape the definitions-file convention produces: the sink is modelled as a
+ * declared asset, so no flow ends outside the declared system and the walk has
+ * no sink to reach. Flows and exposures are both present; the view is empty.
+ */
+function declaredSinkModel(): ThreatModel {
+  return emptyModel({
+    assets: [
+      { id: 'api', path: ['App', 'API'], description: '', location: at('def.ts') } as any,
+      { id: 'db', path: ['App', 'DB'], description: '', location: at('def.ts') } as any,
+    ],
+    flows: [
+      { source: 'User', target: '#api', mechanism: 'HTTPS', location: at('a.ts', 1) },
+      { source: 'Admin', target: '#api', mechanism: 'HTTPS', location: at('a.ts', 2) },
+      { source: '#api', target: '#db', mechanism: 'pg.query', location: at('a.ts', 3) },
+    ],
+    exposures: [{
+      asset: '#db', threat: '#sqli', severity: 'critical', description: 'email concatenated into SQL',
+      location: at('a.ts', 4),
+    } as any],
+  });
+}
+
+describe('paths on a model with no sink — nothing was walked, and every surface says so', () => {
+  const HONEST = 'No annotated flow ends outside the declared assets, so no source-to-sink route was evaluated.';
+
+  it('has entries and flows but no exit, so no route is found even with includeMitigated', () => {
+    // The derivation is unchanged: declared assets are never exits.
+    const model = declaredSinkModel();
+    expect(classifyEndpoints(model)).toEqual({ entries: ['Admin', 'User'], exits: [] });
+    expect(findUnmitigatedPaths(model)).toEqual([]);
+    expect(findUnmitigatedPaths(model, { includeMitigated: true })).toEqual([]);
+  });
+
+  it('CLI and TUI text says no route was evaluated, never that none is undefended', () => {
+    const model = declaredSinkModel();
+    for (const includeMitigated of [false, true]) {
+      const out = formatPaths(findUnmitigatedPaths(model, { includeMitigated }), classifyEndpoints(model), { includeMitigated });
+      expect(out).toContain('Flow graph: 2 entries, 0 exits');
+      expect(out).toContain(HONEST);
+      expect(out).toMatch(/not a\s+clean result/);
+      expect(out).not.toMatch(/No unmitigated source-to-sink paths found/);
+      expect(out).not.toMatch(/No source-to-sink paths run through a declared asset/);
+      expect(out).not.toMatch(/holds no undefended route/);
+    }
+  });
+
+  it('JSON for paths --json and guardlink_paths carries the same note', () => {
+    const model = declaredSinkModel();
+    const payload = pathsPayload(classifyEndpoints(model), findUnmitigatedPaths(model));
+    expect(payload).toEqual({ endpoints: { entries: ['Admin', 'User'], exits: [] }, findings: [], note: HONEST });
+  });
+
+  it('the dashboard Undefended routes block says no route was evaluated', () => {
+    const html = generateDashboardHTML(declaredSinkModel());
+    const block = html.slice(html.indexOf('Undefended routes</h3>'), html.indexOf('The same flows, as rows'));
+    expect(block).toContain(HONEST);
+    expect(block).not.toContain('No undefended route found');
+  });
+
+  it('a model with a real undefended path renders it, with no note anywhere', () => {
+    const model = linearModel();
+    const endpoints = classifyEndpoints(model);
+    const findings = findUnmitigatedPaths(model);
+    expect(findings).toHaveLength(1);
+    const out = formatPaths(findings, endpoints);
+    expect(out).toContain('1 path from an entry point to a sink, through a declared asset');
+    expect(out).toContain('UserInput --req.body--> #api --writeFileSync--> FileSystem');
+    expect(out).not.toContain('was evaluated');
+    expect(pathsPayload(endpoints, findings)).toEqual({ endpoints, findings });
+    expect(generateDashboardHTML(model)).not.toContain('no source-to-sink route was evaluated');
+  });
+
+  it('a model whose routes are all defended keeps the defended-empty wording', () => {
+    // Entries and a sink exist and the walk ran, so "no undefended route" is
+    // the true answer here and must not be replaced by the not-evaluated note.
+    const model = linearModel({
+      mitigations: [{
+        asset: '#api', threat: '#path-traversal', control: '#path-validation',
+        description: 'resolve() constrains writes', location: at('a.ts', 15),
+      }],
+    });
+    const endpoints = classifyEndpoints(model);
+    const out = formatPaths(findUnmitigatedPaths(model), endpoints);
+    expect(out).toContain('No unmitigated source-to-sink paths found.');
+    expect(out).not.toContain('was evaluated');
+    expect(pathsPayload(endpoints, [])).toEqual({ endpoints, findings: [] });
   });
 });
 

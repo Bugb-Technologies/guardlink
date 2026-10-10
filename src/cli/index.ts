@@ -56,7 +56,7 @@ import { ensurePromptMd } from '../init/migrate.js';
 import { generateReport, generateMermaid, generateAgentReachReport } from '../report/index.js';
 import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getChangedFiles } from '../diff/index.js';
 import { findUnmitigatedPaths, classifyEndpoints } from '../paths/index.js';
-import { formatPaths } from '../paths/format.js';
+import { formatPaths, pathsPayload } from '../paths/format.js';
 import { generateSarif, isSarifProfile, SARIF_PROFILES, MITIGATED_RULE_ID, BOUNDARY_CLAIM_RULE_ID, AGENT_REACH_RULE_ID } from '../analyzer/index.js';
 import { emitArtifacts, checkArtifactDrift, checkArtifactRenderability } from '../artifacts/emit.js';
 import { describeViolation, ARTIFACT_FALLBACK, MERMAID_LIMITS_SOURCE } from '../dashboard/render-budget.js';
@@ -1232,7 +1232,7 @@ program
     if (opts.boundaryOnly) findings = findings.filter(f => f.crossesBoundary);
 
     if (opts.json) {
-      console.log(JSON.stringify({ endpoints, findings }, null, 2));
+      console.log(JSON.stringify(pathsPayload(endpoints, findings), null, 2));
     } else {
       console.log(formatPaths(findings, endpoints, { includeMitigated: opts.all }));
     }
