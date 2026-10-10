@@ -20,6 +20,33 @@ function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/**
+ * Why no route was evaluated, or null when the graph has an entry and a sink.
+ *
+ * Entries and sinks are flow endpoints that are not declared assets, so a model
+ * whose flows all end on declared assets — `#db`, an `External.*` vendor — has
+ * no sink for the walk to reach. "No undefended route" would then read as a
+ * clean result for a question that was never asked. Every surface that renders
+ * an empty paths result takes its wording from here.
+ */
+export function unevaluatedReason(endpoints: EndpointClassification): string | null {
+  const noEntry = endpoints.entries.length === 0;
+  const noExit = endpoints.exits.length === 0;
+  if (!noEntry && !noExit) return null;
+  const side = noEntry && noExit ? 'starts or ends' : noEntry ? 'starts' : 'ends';
+  return `No annotated flow ${side} outside the declared assets, so no source-to-sink route was evaluated.`;
+}
+
+/**
+ * The JSON shape `paths --json` and `guardlink_paths` share. `note` appears only
+ * when no route was evaluated, so a model that has entries and sinks serialises
+ * exactly as before.
+ */
+export function pathsPayload(endpoints: EndpointClassification, findings: PathFinding[]) {
+  const note = unevaluatedReason(endpoints);
+  return note ? { endpoints, findings, note } : { endpoints, findings };
+}
+
 export function formatPaths(
   findings: PathFinding[],
   endpoints: EndpointClassification,
@@ -32,6 +59,16 @@ export function formatPaths(
     `${plural(endpoints.exits.length, 'exit', 'exits')}`,
   );
   lines.push('');
+
+  const unevaluated = unevaluatedReason(endpoints);
+  if (unevaluated) {
+    lines.push(unevaluated);
+    lines.push('');
+    lines.push('Entries and sinks are @flows endpoints that are not declared @assets, so data');
+    lines.push('that only moves between declared assets never reaches one. This is not a');
+    lines.push('clean result: no route was examined.');
+    return lines.join('\n');
+  }
 
   if (findings.length === 0) {
     lines.push(opts.includeMitigated

@@ -79,6 +79,7 @@ import { generateReport, generateAgentReachReport } from '../report/index.js';
 import { generateDashboardHTML, generateThreatGraph } from '../dashboard/index.js';
 import { diffModels, parseAtRef } from '../diff/index.js';
 import { findUnmitigatedPaths, classifyEndpoints } from '../paths/index.js';
+import { pathsPayload } from '../paths/format.js';
 import { lookup } from './lookup.js';
 import { fileContext, normalizeContextPath } from './context.js';
 import { selectSubgraph, traverseGraph, findPath, summariseGraphPayload, withoutFileInventory } from './subgraph.js';
@@ -909,7 +910,7 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_paths',
-    'Undefended routes through the flow graph: every path from a point where data enters the system to a point where it leaves, running through a declared asset with no control on it. Derived from @flows and @mitigates with no model in the loop, so every hop cites a real annotation location. Entry and exit are structural — an endpoint present in the graph but not declared as an @asset, with no inbound flow (entry) or no outbound flow (exit). Ask this instead of tracing reachability by reading source.',
+    'Undefended routes through the flow graph: every path from a point where data enters the system to a point where it leaves, running through a declared asset with no control on it. Derived from @flows and @mitigates with no model in the loop, so every hop cites a real annotation location. Entry and exit are structural — an endpoint present in the graph but not declared as an @asset, with no inbound flow (entry) or no outbound flow (exit). When the graph has no entry or no exit, the response carries a `note` saying no route was evaluated, and its empty findings are not a clean result. Ask this instead of tracing reachability by reading source.',
     {
       root: z.string().describe('Project root directory').default('.'),
       include_mitigated: z.boolean().describe('Include routes a control already covers').default(false),
@@ -922,7 +923,7 @@ export function createServer(): McpServer {
         let findings = findUnmitigatedPaths(model, { includeMitigated: include_mitigated });
         if (boundary_only) findings = findings.filter(f => f.crossesBoundary);
         return {
-          content: [{ type: 'text', text: JSON.stringify({ endpoints, findings }, null, 2) }],
+          content: [{ type: 'text', text: JSON.stringify(pathsPayload(endpoints, findings), null, 2) }],
         };
       } catch (err: any) {
         return {
