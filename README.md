@@ -274,4 +274,4 @@ MIT, see [LICENSE](LICENSE). The GuardLink specification is published under CC-B
 
 ---
 
-Built by [BugB Technologies](https://bugb.io).
+Built by [BugB Technologies](https://www.bugb.io).

@@ -85,7 +85,7 @@
     "code-annotations",
     "threat-model"
   ],
-  "author": "BugB Technologies (https://bugb.io)",
+  "author": "BugB Technologies (https://www.bugb.io)",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -94,7 +94,7 @@
   "bugs": {
     "url": "https://github.com/Bugb-Technologies/guardlink/issues"
   },
-  "homepage": "https://github.com/Bugb-Technologies/guardlink#readme",
+  "homepage": "https://guardlink.bugb.io",
   "engines": {
     "node": ">=18"
   },
