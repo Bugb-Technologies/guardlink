@@ -26,7 +26,7 @@
  * @flows GitRepo -> #dashboard via loadSince -- "The model at --since <ref>, diffed against the one rendered"
  *
  * @exposes #dashboard to #xss [high] cwe:CWE-79 -- "generateDashboardHTML() interpolates model descriptions, asset names, git identities, commit trailers and report prose into the page markup, the SVG diagrams and the embedded JSON constants"
- * @mitigates #dashboard against #xss using #output-encoding -- "esc() HTML-encodes every interpolated value in every page module, the layout modules escape every SVG label, report prose is escaped before markup is added back, and serialized data escapes closing script tags before embedding in <script>"
+ * @mitigates #dashboard against #xss using #output-encoding -- "esc() HTML-encodes every interpolated value in every page module, the layout modules escape every SVG label, report prose is escaped before markup is added back, and serialized data escapes every < before embedding in a script element, so no tag-like text survives in it"
  * @exposes #dashboard to #path-traversal [medium] cwe:CWE-22 -- "readFileSync reads code files for annotation context"
  * @mitigates #dashboard against #path-traversal using #path-validation -- "resolve() with root constrains file access (annotations.ts)"
  * @flows ThreatModel -> #dashboard via computeStats -- "Model statistics input"
@@ -50,7 +50,7 @@ import { computeStats, computeSeverity, computeSeverityOf, computeExposures, com
 import type { SinceInput } from './analytics.js';
 import { computeRiskGrade } from './grade.js';
 import { detectRepoLinks } from './links.js';
-import { readHypotheses, classifyHypotheses, attachHypotheses } from '../hypothesis/index.js';
+import { readHypotheses, classifyHypotheses, attachHypotheses, classifyBoundaryClaims } from '../hypothesis/index.js';
 import { buildFileAnnotations } from './annotations.js';
 import { esc, featureScope, scopeLabel, hostLabel, icon } from './html.js';
 import { STYLES } from './styles.js';
@@ -72,7 +72,14 @@ import { buildMatrixData, renderMatrix } from './layout/matrix.js';
 
 export { computeRiskGrade };
 
-const embed = (value: unknown): string => JSON.stringify(value).replace(/<\//g, '<\\/');
+/**
+ * JSON for an inline `<script>`, with no `<` left in it: model text can say
+ * `<script>` or `</script>`, and a host that rewrites script tags in the page
+ * (adding a CSP nonce to each `<script`) would otherwise rewrite one inside a
+ * string literal and break the whole page script. `\u003c` is the same string
+ * to the parser. U+2028/2029 are escaped too, as older engines end a line there.
+ */
+const embed = (value: unknown): string => JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 
 const RAIL: { page: string; label: string; icon: string }[] = [
   { page: 'overview', label: 'Overview', icon: 'layout' },
@@ -99,7 +106,8 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   const model = canonicalizeModelOrder(rawModel);
   // The tested state of every exposure, when a ledger exists: a refuted claim is not open.
   // @flows LedgerFile -> #dashboard via readHypotheses -- "Outcomes for the badges, the drawer and the open count"
-  const hypotheses = root ? classifyHypotheses(model, readHypotheses(root)) : null;
+  const hypothesesRead = root ? readHypotheses(root) : null;
+  const hypotheses = hypothesesRead ? classifyHypotheses(model, hypothesesRead) : null;
   if (hypotheses) attachHypotheses(model, hypotheses);
   // Read from rawModel: canonicalisation reorders, it does not add fields.
   const scope = featureScope(rawModel);
@@ -148,6 +156,8 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   const withFlows = hood.nodes.map((n, i) => ({ n, i })).filter(x => degree(x.i) > 0);
   const defaultFocus = withFlows.sort((a, b) => b.n.o - a.n.o || degree(b.i) - degree(a.i) || a.i - b.i)[0]?.i ?? 0;
   const matrixData = buildMatrixData(graph);
+  // What the ledger says about each declared boundary: the system model labels its zones with it.
+  const boundaryStates = new Map((hypothesesRead ? classifyBoundaryClaims(model, hypothesesRead).records : []).map(r => [`${r.file}:${r.line}`, r.state] as const));
 
   const ctx: PageContext = {
     model, scope, scopeFiles, links, hostLabel: hostLabel(links),
@@ -257,7 +267,7 @@ ${scope ? `<div id="scope-banner" class="scope-banner" role="note">
 
 ${renderOverviewPage(ctx, variants.map(v => v.overview))}
 ${renderExposuresPage(ctx, matrixData, variants.map(v => v.breakdown))}
-${renderDiagramsPage(ctx, { graph, hood, nodeIndex, defaultFocus, paths: findUnmitigatedPaths(model), pathsTotal: findUnmitigatedPaths(model, { includeMitigated: true }).length, endpoints: classifyEndpoints(model) })}
+${renderDiagramsPage(ctx, { graph, boundaryStates, hood, nodeIndex, defaultFocus, paths: findUnmitigatedPaths(model), pathsTotal: findUnmitigatedPaths(model, { includeMitigated: true }).length, endpoints: classifyEndpoints(model) })}
 ${renderAssetsPage(ctx, graph)}
 ${renderCodePage(ctx)}
 ${renderAgentsPage(ctx, reach)}

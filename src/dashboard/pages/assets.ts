@@ -62,11 +62,11 @@ export function renderAssetsPage(ctx: PageContext, g: DiagramModel): string {
 
   return `
 <section id="sec-assets" class="section-content" aria-label="Assets">
-  ${pageHead('Assets', scope, `Every asset, riskiest first: what is open on it, one tick per exposure, what controls and flows it has, the trust lines it sits on and the data it handles. Click a header to sort by risk, exposures or name; click a row for its exposures and the way onto the diagrams. The picture of the same assets is <a href="#diagrams?tab=surface">Diagrams › Attack surface</a>.${scope ? ' Only assets this feature touches appear, and each row counts only its exposures.' : ''}`, `<span class="muted"><span data-count-for="assets-ledger">${rows.length}</span> ${plural(rows.length, 'asset')}</span>`)}
+  ${pageHead('Assets', scope, `Every asset, riskiest first: what is open on it, one tick per exposure, what controls and flows it has, the trust boundaries it sits on and the data it handles. Click a header to sort by risk, exposures or name; click a row for its exposures and the way onto the diagrams. The picture of the same assets is <a href="#diagrams?tab=surface">Diagrams › Attack surface</a>.${scope ? ' Only assets this feature touches appear, and each row counts only its exposures.' : ''}`, `<span class="muted"><span data-count-for="assets-ledger">${rows.length}</span> ${plural(rows.length, 'asset')}</span>`)}
   <div class="filter-status" hidden><span class="filter-status-text"></span><button class="btn ghost" data-clear-filters>Clear</button></div>
   ${rows.length > 0 ? `
   <div class="table-wrap"><table id="assets-ledger" class="sortable ledger" data-sort-groups>
-    ${sortableHead([{ key: 'asset', label: 'Asset' }, { key: 'risk', label: 'Open', numeric: true }, { key: 'exposures', label: 'Exposures, one tick each', numeric: true }, { key: 'controls', label: 'Controls', numeric: true }, { key: 'flows', label: 'Flows', numeric: true }, { key: 'trust', label: 'Trust lines', numeric: true }, { key: 'handles', label: 'Handles', plain: true }])}
+    ${sortableHead([{ key: 'asset', label: 'Asset' }, { key: 'risk', label: 'Open', numeric: true }, { key: 'exposures', label: 'Exposures, one tick each', numeric: true }, { key: 'controls', label: 'Controls', numeric: true }, { key: 'flows', label: 'Flows', numeric: true }, { key: 'trust', label: 'Trust boundaries', numeric: true }, { key: 'handles', label: 'Handles', plain: true }])}
     ${body}
   </table></div>
   <div class="no-match" data-count-for="assets-ledger" hidden>No asset matches the current filters.</div>` : `<p class="empty-state">${scope ? 'No assets are referenced by the files tagged with this feature.' : 'No assets found.'}</p>`}

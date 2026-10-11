@@ -165,7 +165,7 @@ export function renderHoodSvg(data: HoodPayload, focus: number): HoodRender {
         : `M${f1(x1)} ${f1(y1)}H${f1(xm - r)}Q${f1(xm)} ${f1(y1)} ${f1(xm)} ${f1(y1 + dir * r)}V${f1(y2 - dir * r)}Q${f1(xm)} ${f1(y2)} ${f1(xm + r)} ${f1(y2)}H${f1(x2 - 1)}`;
       const cross = !!e.f[3];
       const src = data.nodes[e.f[0]], dst = data.nodes[e.f[1]];
-      out.push(`<path class="edge${cross ? ' cross' : ''}" d="${d}" marker-end="url(#hood-arrow)" data-tip="${esc(`${src.l} → ${dst.l}`)}" data-tip-rows="${esc(tipRows([['via', e.f[2] || '—'], ['why', e.f[5] || '—'], ['where', e.f[4] || '—'], ...(cross ? [['trust line', e.f[3]] as [string, string]] : [])]))}"/>`);
+      out.push(`<path class="edge${cross ? ' cross' : ''}" d="${d}" marker-end="url(#hood-arrow)" data-tip="${esc(`${src.l} → ${dst.l}`)}" data-tip-rows="${esc(tipRows([['via', e.f[2] || '—'], ['why', e.f[5] || '—'], ['where', e.f[4] || '—'], ...(cross ? [['trust boundary', e.f[3]] as [string, string]] : [])]))}"/>`);
       if (cross) labels.push(`<line class="gate" x1="${f1(xm - 6)}" x2="${f1(xm + 6)}" y1="${f1((y1 + y2) / 2)}" y2="${f1((y1 + y2) / 2)}"/>`);
       // A mechanism is named on its line only where it cannot collide: at most two lines leave the card, three enter the target.
       // Cut to what fits in the gap at 9.5 px mono, so a label never runs onto the next card.
@@ -177,7 +177,7 @@ export function renderHoodSvg(data: HoodPayload, focus: number): HoodRender {
   for (const [n, p] of pos) {
     const N = data.nodes[n];
     const isFocus = n === focus;
-    const kind = N.x ? (N.b.length ? 'outside the model · across a trust line' : 'outside the model') : N.o ? `${N.o} open · worst ${SEV[N.w]}` : N.n ? `all ${N.n} mitigated or accepted` : 'no exposure declared';
+    const kind = N.x ? (N.b.length ? 'outside the model · across a trust boundary' : 'outside the model') : N.o ? `${N.o} open · worst ${SEV[N.w]}` : N.n ? `all ${N.n} mitigated or accepted` : 'no exposure declared';
     const ins = data.flows.filter(f => f[1] === n).length, outsN = data.flows.filter(f => f[0] === n).length;
     out.push(`<g class="card nd${isFocus ? ' focus' : ''}${N.x ? ' ext' : ''}" data-node="h${n}" data-hood-walk="${n}" data-key="${esc(N.k)}" role="button" aria-label="${esc(`${N.l}: ${kind}`)}" data-tip="${esc(N.l)}" data-tip-rows="${esc(tipRows([['kind', kind], ['flows in', ins], ['flows out', outsN]]))}">`);
     out.push(`<rect class="card-box" x="${f1(p.x)}" y="${f1(p.y)}" width="${CW}" height="${f1(p.h)}" rx="6"/>`);
@@ -189,7 +189,7 @@ export function renderHoodSvg(data: HoodPayload, focus: number): HoodRender {
     out.push(`<text class="nm hot strong" x="${f1(p.x + 10)}" y="${f1(p.y + 16)}">${esc(cut(N.l, N.b.length ? 19 : 22))}</text>`);
     if (N.b.length) out.push(`<text class="sub" x="${f1(p.x + CW - 10)}" y="${f1(p.y + 16)}" text-anchor="end">⊢${N.b.length}</text>`);
     if (N.x) {
-      out.push(`<text class="sub" x="${f1(p.x + 10)}" y="${f1(p.y + 32)}">${N.b.length ? 'outside · across a trust line' : 'outside the model'}</text>`);
+      out.push(`<text class="sub" x="${f1(p.x + 10)}" y="${f1(p.y + 32)}">${N.b.length ? 'outside · across a trust boundary' : 'outside the model'}</text>`);
     } else {
       let yy = p.y + 40;
       for (const t of N.t.slice(0, 3)) {
@@ -226,7 +226,7 @@ export function renderNodeDetail(data: HoodPayload, n: number, view: string): st
   const N = data.nodes[n];
   const routeFor = (k: string, v: string): string => `#diagrams?tab=flow&view=${v}&focus=${encodeURIComponent(k)}`;
   const route = (v: string): string => routeFor(N.k, v);
-  const kind = N.x ? (N.b.length ? 'outside the model · across a trust line' : 'outside the model') : N.o ? `${N.o} open · worst ${SEV[N.w]}` : N.n ? `all ${N.n} mitigated or accepted` : 'no exposure declared';
+  const kind = N.x ? (N.b.length ? 'outside the model · across a trust boundary' : 'outside the model') : N.o ? `${N.o} open · worst ${SEV[N.w]}` : N.n ? `all ${N.n} mitigated or accepted` : 'no exposure declared';
   const flowRow = (i: number, dir: 'in' | 'out'): string => {
     const f = data.flows[i];
     const other = data.nodes[dir === 'in' ? f[0] : f[1]];

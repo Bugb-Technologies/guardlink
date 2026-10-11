@@ -132,8 +132,8 @@ export function overviewBody(input: OverviewInput, featureFiles?: number): strin
           ? statTile('Files in this slice', featureFiles ?? scopeFiles, `tagged @feature ${scopeLabel(scope)}`, { href: '#code' })
           : statTile('Files annotated', files, filesTotal ? `of ${filesTotal} · ${Math.round((files / filesTotal) * 100)}%` : 'no source files', { href: '#code' })}
         ${statTile('Controls', stats.controls, `${model.mitigations.length} ${plural(model.mitigations.length, 'mitigation')}`, { href: '#diagrams?tab=threat' })}
-        ${statTile('Trust lines', stats.boundaries, 'declared @boundary', { href: '#diagrams?tab=flow' })}
-        ${statTile('Flows', stats.flows, `${crossing} cross a trust line`, { href: '#diagrams?tab=flow' })}
+        ${statTile('Trust boundaries', stats.boundaries, 'declared @boundary', { href: '#diagrams?tab=system' })}
+        ${statTile('Flows', stats.flows, `${crossing} cross a trust boundary`, { href: '#diagrams?tab=flow' })}
       </div>
     </div>
   </div>`;

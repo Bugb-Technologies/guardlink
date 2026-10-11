@@ -751,6 +751,17 @@ function twinTable(idxs) {
     }).join('') + '</tbody></table></div>';
 }
 
+/* The same claims, narrow enough for the drawer: worst first, one row each. Rows open the claim drawer. */
+function claimList(idxs) {
+  var rows = idxs.map(function (i) { return claimsData[i]; }).filter(Boolean).sort(function (a, b) {
+    return (STATE_RANK[a.status] - STATE_RANK[b.status]) || (SEV_RANK[normSev(a.severity)] - SEV_RANK[normSev(b.severity)]) || (a.idx - b.idx);
+  });
+  return '<table class="tbl d-claims"><tbody>' + rows.map(function (c) {
+    return '<tr class="clickable" data-claim="' + c.idx + '"><td>' + sevChip(c.severity) + '</td><td><div class="d-claim-h"><code>' + esc(c.asset) + '</code> → <code>' + esc(c.threat) + '</code> ' + stateChip(c.status) + '</div>'
+      + (c.description ? '<div class="subtle small">' + esc(c.description) + '</div>' : '') + '<div class="mono small subtle"><bdi>' + esc(c.file + ':' + c.line) + '</bdi></div></td></tr>';
+  }).join('') + '</tbody></table>';
+}
+
 /* ===== DIAGRAMS: tabs, the data-flow views, the neighbourhood walk ===== */
 var _hoodFocus = null, _detailFocus = null, _trail = [], _walking = false;
 function nodeIndex(key) {
@@ -971,7 +982,13 @@ document.addEventListener('click', function (e) {
 function pinNode(node) {
   var plot = plotOf(node);
   var kind = plot ? plot.getAttribute('data-plot') : (node.classList.contains('shelf-card') ? 'surface' : '');
-  if (kind === 'threat') { setParam('pin', _pins.threat === node.getAttribute('data-node') ? '' : node.getAttribute('data-node')); return; }
+  /* Every pin also answers in the drawer: it is fixed to the viewport, so the answer is in view however far down the page the mark sits. */
+  if (kind === 'threat') {
+    var again = _pins.threat === node.getAttribute('data-node');
+    setParam('pin', again ? '' : node.getAttribute('data-node'));
+    if (!again) revealNode(node);
+    return;
+  }
   if (kind === 'ribbons') {
     var k = node.getAttribute('data-key');
     setParam('focus', _route.params.get('focus') === k ? '' : k);
@@ -979,13 +996,52 @@ function pinNode(node) {
   }
   if (kind === 'surface') {
     var host = $('#sec-diagrams [data-tab-panel="surface"]');
-    var again = node.classList.contains('pin');
+    var again2 = node.classList.contains('pin');
     $$('.shelf-card.pin').forEach(function (n) { n.classList.remove('pin'); n.setAttribute('aria-pressed', 'false'); });
-    if (!again) { node.setAttribute('aria-pressed', 'true'); }
-    setPin('surface', host, again ? null : node);
+    if (!again2) { node.setAttribute('aria-pressed', 'true'); }
+    setPin('surface', host, again2 ? null : node);
+    if (!again2) revealNode(node);
     return;
   }
-  if (plot) setPin(kind, plot, _pins[kind] === node.getAttribute('data-node') ? null : node);
+  if (plot) {
+    var again3 = _pins[kind] === node.getAttribute('data-node');
+    setPin(kind, plot, again3 ? null : node);
+    if (!again3 && kind === 'system') revealNode(node);
+  }
+}
+/* The drawer for a clicked mark: an asset's own drawer, an endpoint's flows, or the claims a threat or control carries. */
+function assetIndex(name) {
+  if (typeof assetsData === 'undefined' || !name) return -1;
+  for (var i = 0; i < assetsData.length; i++) if (assetsData[i].name === name) return i;
+  return -1;
+}
+function revealNode(node) {
+  var name = node.getAttribute('data-name') || '';
+  var claims = (node.getAttribute('data-claims') || '').split(' ').filter(Boolean).map(Number);
+  var hi = nodeIndex(node.getAttribute('data-key'));
+  if (hi >= 0 && hoodData.nodes[hi].x) { renderEndpointDrawer(hi, node.getAttribute('data-tip-rows') || ''); return; }
+  var ai = assetIndex(name);
+  if (ai >= 0) {
+    renderAssetDrawer(ai);
+    /* The asset's own exposures, as rows, right under its status: what the click promised. */
+    var st = $('#drawer-body .d-status');
+    if (st && claims.length) st.insertAdjacentHTML('afterend', '<div class="d-section"><div class="d-label">' + _plural(claims.length, 'exposure') + '</div>' + claimList(claims) + '</div>');
+    return;
+  }
+  var title = document.getElementById('drawer-title'), body = document.getElementById('drawer-body');
+  title.textContent = name;
+  body.innerHTML = '<div class="d-status">' + stateChip(claims.length ? 'open' : 'accepted', _plural(claims.length, 'claim')) + '</div>'
+    + (claims.length ? claimList(claims) : '<p class="empty-state">Nothing declared here.</p>');
+  _drawerCtx = null;
+  openDrawerShell();
+}
+function renderEndpointDrawer(hi, rows) {
+  var title = document.getElementById('drawer-title'), body = document.getElementById('drawer-body');
+  title.textContent = hoodData.nodes[hi].l;
+  var kind = rows.split('\\n').map(function (r) { return r.split('\\t'); }).filter(function (r) { return r[0] === 'kind'; })[0];
+  body.innerHTML = (kind ? '<p class="subtle">' + esc(kind[1]) + '</p>' : '') + renderNodeDetail(hoodData, hi, 'ribbons');
+  _drawerCtx = null;
+  openDrawerShell();
 }
 
 document.addEventListener('mouseover', function (e) {
@@ -1016,6 +1072,7 @@ document.addEventListener('change', function (e) {
   if (t.hasAttribute('data-page-size')) { pagerSize(t); return; }
   if (t.id === 'featureFilter') { applyFeatureFilter(t.value); return; }
   if (t.hasAttribute('data-report-select')) { showReport(); return; }
+  if (t.hasAttribute('data-system-implied')) { var sp = $('[data-plot="system"]'); if (sp) sp.classList.toggle('no-implied', !t.checked); return; }
   if (t.hasAttribute('data-matrix-compact')) { _compact = t.checked; _matrixKey = ''; filterPage('exposures'); return; }
   if (t.hasAttribute('data-focus-select')) { location.hash = '#diagrams?tab=flow&view=hood&focus=' + encodeURIComponent(t.value); }
 });
