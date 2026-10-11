@@ -54,13 +54,13 @@ export function copyToClipboard(text: string): boolean {
 // ─── Foreground spawn (CLI terminal agents) ──────────────────────────
 
 /**
- * Launch a CLI agent in the foreground — takes over the current terminal.
+ * Launch a CLI agent in the foreground, seeded with the full built prompt.
  * The agent gets full stdin/stdout/stderr (stdio: 'inherit').
  * Returns when the agent exits. Works cross-platform.
  *
  * This is the `git commit` / `$EDITOR` pattern.
  */
-export function launchAgentForeground(agent: AgentEntry, cwd: string): {
+export function launchAgentForeground(agent: AgentEntry, cwd: string, prompt: string): {
   exitCode: number | null;
   error?: string;
 } {
@@ -69,7 +69,8 @@ export function launchAgentForeground(agent: AgentEntry, cwd: string): {
   }
 
   try {
-    const result = spawnSync(agent.cmd, [], {
+    const args = agent.id === 'gemini' ? ['-i', prompt] : [prompt];
+    const result = spawnSync(agent.cmd, args, {
       cwd,
       stdio: 'inherit',
       env: { ...process.env },
@@ -314,7 +315,7 @@ export interface LaunchResult {
 /**
  * Launch an agent with a prompt. Always copies to clipboard first.
  *
- * For terminal agents (claude, codex, gemini): foreground spawn.
+ * For terminal agents (claude, codex, gemini): foreground spawn with prompt.
  * For IDE agents (cursor, windsurf): open app.
  * For clipboard: copy only.
  */
@@ -335,7 +336,7 @@ export function launchAgent(agent: AgentEntry, prompt: string, cwd: string): Lau
 
   // Step 3: Terminal agent — foreground spawn
   if (agent.cmd) {
-    const { exitCode, error } = launchAgentForeground(agent, cwd);
+    const { exitCode, error } = launchAgentForeground(agent, cwd, prompt);
     if (error) {
       return { launched: false, clipboardCopied, error, exitCode };
     }
