@@ -178,6 +178,10 @@ describe('the legibility budget', () => {
  * counter agrees with what Mermaid actually draws.
  */
 describe('the node counter against browser-measured geometry', () => {
+  // 30s, because this parses the whole repository: ~0.7s locally and 1.7–2.4s
+  // on CI, and a sibling of the same shape in dashboard-system went from 2.3s to
+  // past 5s when the order test files ran in changed. The cost grows with the
+  // repository; the global testTimeout stays, so the NEXT slow test surfaces.
   it('agrees with the rendered SVG on this repository\'s own threat graph', async () => {
     const { model } = await parseProject({ root: '.', project: 'guardlink' });
     const ordered = canonicalizeModelOrder(model);
@@ -219,7 +223,7 @@ describe('the node counter against browser-measured geometry', () => {
     expect(m.edges).toBe(89);
     // And the whole model is 48 nodes, which is the number this work exists for.
     expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(48);
-  });
+  }, 30_000);
 });
 
 // ─── Selection ───────────────────────────────────────────────────────

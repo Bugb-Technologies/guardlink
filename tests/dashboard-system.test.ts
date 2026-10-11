@@ -104,6 +104,11 @@ describe('system model layout', () => {
     expect(renderSystemModel(g)).toBeNull();
   });
 
+  // 30s, because nearly all of this is parsing the whole repository: ~0.7s
+  // locally, against 4–19ms for renderSystemModel itself. On CI it took
+  // 1.8–2.3s, then past 5s on all three Node versions once the order test files
+  // ran in changed — what the runner is doing alongside it, not the layout. The
+  // global testTimeout stays, so the NEXT slow test still surfaces.
   it('draws every element and every flow of this repository\'s own model', async () => {
     const { g } = await graphOf(ROOT, 'guardlink');
     const r = renderSystemModel(g)!;
@@ -114,7 +119,7 @@ describe('system model layout', () => {
     expect((r.svg.match(/<g class="el nd/g) ?? []).length).toBe(r.elements);
     expect(r.boundaries).toBe(g.boundaryList.length);
     noNaN(r.svg);
-  });
+  }, 30_000);
 });
 
 describe('element kinds are inferred', () => {
