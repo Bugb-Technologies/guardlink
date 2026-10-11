@@ -310,6 +310,13 @@ describe('MCP server — freshness envelope (GL-102)', () => {
     }
   });
 
+  // 30s, because with no tool call to name a root the server answers for its
+  // working directory — this whole repository — so the read parses all of it.
+  // That is ~0.8s locally, the same on this tree as on the commit before the
+  // dashboard diagram landed, and 2.8–3.8s on a CI runner when main was green:
+  // already most of the 5000ms default, which it crossed (5.1s) on a busier run.
+  // Its cost grows with the repository, not with anything this test checks. The
+  // global testTimeout stays where it is, so the NEXT slow test still surfaces.
   it('a resource read before any tool call says the root was assumed', async () => {
     const fresh = await connect();
     try {
@@ -320,7 +327,7 @@ describe('MCP server — freshness envelope (GL-102)', () => {
     } finally {
       await fresh.close();
     }
-  });
+  }, 30_000);
 });
 
 // ─── GL-104: two repos, two answers, each labelled ───────────────────
