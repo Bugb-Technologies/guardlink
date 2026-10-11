@@ -1,7 +1,7 @@
 {
   "provenance": {
     "annotation_hash": "sha256-v3:054099e5208031357a91f5151e35f70caa634167fc557d47ba2135fe870c7528",
-    "generator": "guardlink@2.2.0"
+    "generator": "guardlink@2.3.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
@@ -4730,7 +4730,7 @@
       "description": "Outcomes for the badges, the drawer and the open count",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 102
+        "line": 101
       }
     },
     {
@@ -5258,7 +5258,7 @@
       "description": "Attribution read from blame, log -L and commit trailers for the connected agent",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1220
+        "line": 1221
       }
     },
     {
@@ -6763,7 +6763,7 @@
       "description": "Author identities, in the configured identity mode (blame.identity in config.json), reach the MCP client",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1221
+        "line": 1222
       }
     },
     {
@@ -8168,7 +8168,7 @@
       "description": "Non-mutating: computeBlame leaves the cached model untouched, so a later guardlink_parse in the same session never carries blame unasked. Nothing is written to the repository",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1222
+        "line": 1223
       }
     },
     {

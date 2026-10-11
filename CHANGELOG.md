@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## \[Unreleased\]
 
+## \[2.3.0\] — 2026-10-11
+
 ### Changed
 
 - **The dashboard is redesigned, and it is now one self-contained file.** `guardlink dashboard` writes a page that makes no network request when it renders: no CDN script, no web font, no remote `import()`. It opens offline and under a content security policy that blocks every network origin. The page carries no inline `on*` handler either — every control is a `data-*` hook read by listeners delegated from `document`, and navigation is hash links — so a host can admit it without `'unsafe-inline'` for scripts.
