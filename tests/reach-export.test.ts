@@ -131,6 +131,22 @@ describe('withReachAnalysis', () => {
   });
 });
 
+/**
+ * The two CLI cases below spawn `node dist/cli/index.js`, and the parse case
+ * spawns it twice. Each spawn is ~265ms locally — measured the same on this
+ * tree and on the commit before the dashboard diagram landed, so nothing in
+ * the parse path got slower. On a shared CI runner the same test took 1.2–1.5s
+ * when main was green and 3.4–7.7s on the run that went red, while its
+ * single-spawn sibling took 1.1–3.0s across both: the cost of a process start
+ * depends on what else the runner is doing, which the 5000ms default does not
+ * allow for.
+ *
+ * The global `testTimeout` stays where it is, so a genuinely slow NEW test still
+ * surfaces; these are annotated because it is known and measured that they
+ * spawn a process.
+ */
+const CLI_SPAWN_TIMEOUT_MS = 30_000;
+
 describe('where a consumer reads it', () => {
   it('guardlink parse writes it, and writes nothing new for a model without the verbs', () => {
     const out = JSON.parse(execFileSync('node', [cli, 'parse', fixture('support-desk')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
@@ -140,14 +156,14 @@ describe('where a consumer reads it', () => {
     expect(written.summary).toEqual(buildReachAnalysis(model).summary);
     const plain = JSON.parse(execFileSync('node', [cli, 'parse', fixture('boundary-direction')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
     expect('reach_analysis' in plain).toBe(false);
-  });
+  }, CLI_SPAWN_TIMEOUT_MS);
 
   it('guardlink report --format json writes it', () => {
     const root = copyOf('support-desk');
     execFileSync('node', [cli, 'report', root, '--format', 'json', '-o', 'tm.json'], { cwd: root, stdio: 'pipe' });
     const report = JSON.parse(readFileSync(join(root, 'tm.json'), 'utf-8'));
     expect(report.reach_analysis.summary.unentitled_reaches).toBe(5);
-  });
+  }, CLI_SPAWN_TIMEOUT_MS);
 
   it('.guardlink/model.json carries it, indexed into the canonically ordered arrays beside it', () => {
     const root = copyOf('support-desk');
