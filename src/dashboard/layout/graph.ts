@@ -67,8 +67,10 @@ export interface GFlow {
   description: string;
   file: string;
   line: number;
-  /** The boundary this flow crosses, by label, or null. */
+  /** The boundaries this flow crosses, by label, joined with ', ', or null. */
   boundary: string | null;
+  /** Every boundary that names this flow's pair: one pair can carry several. */
+  boundaries: string[];
 }
 
 export interface GNode {
@@ -88,6 +90,22 @@ export interface GNode {
   /** Labels of the trust boundaries this node sits on. */
   boundaries: string[];
   handles: string[];
+  /** An external node that names an `@actor`: a principal, not a component. */
+  actor: boolean;
+}
+
+/** One `@boundary`, with both sides on canonical node keys. */
+export interface GBoundary {
+  label: string;
+  /** The `#id` without the `#`; '' when it has none. */
+  id: string;
+  /** Node keys. When `directed`, `a` is the outer, less-trusted side. */
+  a: string;
+  z: string;
+  directed: boolean;
+  description: string;
+  file: string;
+  line: number;
 }
 
 export interface GThreat { key: string; label: string; sev: Sev; /** The definition's name, when one is declared. */ name: string }
@@ -103,6 +121,7 @@ export interface DiagramModel {
   exposures: GExposure[];
   mitigations: GMitigation[];
   flows: GFlow[];
+  boundaryList: GBoundary[];
   /** Zone keys of externals named by a @boundary. */
   boundaryExternals: Set<string>;
   assetKey: (ref: string) => string;
@@ -139,7 +158,7 @@ export function buildDiagramModel(model: ThreatModel, claims: ClaimView[]): Diag
 
   const nodes = new Map<string, GNode>();
   const blank = (key: string, label: string, external: boolean, group: string, order: number, description = ''): GNode => ({
-    key, label, external, group, order, description, exposures: [], open: 0, worst: null, flowsIn: [], flowsOut: [], boundaries: [], handles: [],
+    key, label, external, group, order, description, exposures: [], open: 0, worst: null, flowsIn: [], flowsOut: [], boundaries: [], handles: [], actor: false,
   });
   model.assets.forEach((a, i) => {
     const key = assetKey(a.id || a.path.join('.'));
@@ -164,6 +183,7 @@ export function buildDiagramModel(model: ThreatModel, claims: ClaimView[]): Diag
     if (known) return known;
     if (ref.trim().startsWith('#') && !actorKeys.has(key)) return ensureAsset(ref);
     const n = blank(key, ref.trim(), true, '', 1e6 + nodes.size);
+    n.actor = actorKeys.has(key);
     nodes.set(key, n);
     return n;
   };
@@ -203,8 +223,10 @@ export function buildDiagramModel(model: ThreatModel, claims: ClaimView[]): Diag
     if (n && !n.handles.includes(h.classification)) n.handles.push(h.classification);
   }
 
-  const boundaryOf = new Map<string, string>();
+  // A pair can carry several boundaries (`@boundary` at the transport and again at argument parsing): keep them all.
+  const boundaryOf = new Map<string, string[]>();
   const boundaryExternals = new Set<string>();
+  const boundaryList: GBoundary[] = [];
   model.boundaries.forEach((b, i) => {
     const label = b.id ? `#${b.id}` : b.description ? `${b.asset_a} ↔ ${b.asset_b}` : `boundary ${i + 1}`;
     const a = ensureEndpoint(b.asset_a), z = ensureEndpoint(b.asset_b);
@@ -212,16 +234,24 @@ export function buildDiagramModel(model: ThreatModel, claims: ClaimView[]): Diag
       if (!n.boundaries.includes(label)) n.boundaries.push(label);
       if (n.external) boundaryExternals.add(n.key);
     }
-    boundaryOf.set(`${a.key}\u0000${z.key}`, label);
-    boundaryOf.set(`${z.key}\u0000${a.key}`, label);
+    for (const k of [`${a.key}\u0000${z.key}`, `${z.key}\u0000${a.key}`]) {
+      const list = boundaryOf.get(k) ?? [];
+      if (!list.includes(label)) list.push(label);
+      boundaryOf.set(k, list);
+    }
+    boundaryList.push({
+      label, id: b.id ?? '', a: a.key, z: z.key, directed: b.directed === true, description: b.description ?? '',
+      file: b.location?.origin_file ?? b.location?.file ?? '', line: b.location?.origin_line ?? b.location?.line ?? 0,
+    });
   });
 
   const flows: GFlow[] = model.flows.map((f, i) => {
     const s = ensureEndpoint(f.source), t = ensureEndpoint(f.target);
     const g: GFlow = {
       i, source: s.key, target: t.key, via: f.mechanism ?? '', description: f.description ?? '',
-      file: f.location?.file ?? '', line: f.location?.line ?? 0, boundary: boundaryOf.get(`${s.key}\u0000${t.key}`) ?? null,
+      file: f.location?.file ?? '', line: f.location?.line ?? 0, boundary: null, boundaries: boundaryOf.get(`${s.key}\u0000${t.key}`) ?? [],
     };
+    g.boundary = g.boundaries.length ? g.boundaries.join(', ') : null;
     s.flowsOut.push(g);
     t.flowsIn.push(g);
     return g;
@@ -239,7 +269,7 @@ export function buildDiagramModel(model: ThreatModel, claims: ClaimView[]): Diag
     nodes,
     assets: all.filter(n => !n.external).sort((a, b) => a.order - b.order),
     externals: all.filter(n => n.external).sort((a, b) => a.order - b.order),
-    threats, controls, exposures, mitigations, flows, boundaryExternals,
+    threats, controls, exposures, mitigations, flows, boundaryList, boundaryExternals,
     assetKey, threatKey, controlKey,
   };
 }
@@ -256,7 +286,7 @@ export function markOf(n: GNode): NodeMark {
 
 export function markLabel(n: GNode): string {
   const m = markOf(n);
-  if (m.kind === 'external') return n.boundaries.length ? 'outside the model · across a trust line' : 'outside the model';
+  if (m.kind === 'external') return n.boundaries.length ? 'outside the model · across a trust boundary' : 'outside the model';
   if (m.kind === 'open') return `${n.open} open · worst ${m.sev}`;
   if (m.kind === 'resolved') return `all ${n.exposures.length} mitigated or accepted`;
   return 'no exposure declared';

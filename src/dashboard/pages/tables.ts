@@ -55,7 +55,7 @@ export function flowTables(ctx: Ctx): string {
     ${model.boundaries.map(b => `
     <tr ${rowAttrs({ file: b.location?.file, search: ['boundary', b.asset_a, b.asset_b, b.description ?? '', b.location?.file ?? ''] })}>
       <td><code>${esc(b.asset_a)}</code></td>
-      <td class="flow-arrow" title="${b.directed ? 'from the less-trusted side to the more-trusted side' : 'a trust line between the two'}">${b.directed ? '⊢→' : '⊢'}</td>
+      <td class="flow-arrow" title="${b.directed ? 'from the less-trusted side to the more-trusted side' : 'a trust boundary between the two'}">${b.directed ? '⊢→' : '⊢'}</td>
       <td><code>${esc(b.asset_b)}</code></td>
       ${descCell(b.description, '—')}
       ${loc(b.location)}

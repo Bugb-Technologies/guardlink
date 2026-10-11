@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:054099e5208031357a91f5151e35f70caa634167fc557d47ba2135fe870c7528",
+    "annotation_hash": "sha256-v3:d7078802ce79c86a2b838c784bc233f31dd8b7e53bd872cf1d09be911164c0ce",
     "generator": "guardlink@2.2.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 176,
-  "annotations_parsed": 894,
+  "source_files": 177,
+  "annotations_parsed": 895,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agents/config.ts",
@@ -50,6 +50,7 @@
     "src/dashboard/layout/reach.ts",
     "src/dashboard/layout/ribbons.ts",
     "src/dashboard/layout/shelves.ts",
+    "src/dashboard/layout/system.ts",
     "src/dashboard/layout/text.ts",
     "src/dashboard/layout/threat-graph.ts",
     "src/dashboard/layout/tripartite.ts",
@@ -1226,7 +1227,7 @@
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
-      "description": "esc() HTML-encodes every interpolated value in every page module, the layout modules escape every SVG label, report prose is escaped before markup is added back, and serialized data escapes closing script tags before embedding in <script>",
+      "description": "esc() HTML-encodes every interpolated value in every page module, the layout modules escape every SVG label, report prose is escaped before markup is added back, and serialized data escapes every < before embedding in a script element, so no tag-like text survives in it",
       "location": {
         "file": "src/dashboard/generate.ts",
         "line": 29
@@ -1320,6 +1321,16 @@
       "location": {
         "file": "src/dashboard/layout/shelves.ts",
         "line": 15
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Node labels, mechanisms, descriptions and boundary text reach the SVG only through xml() and attrs()",
+      "location": {
+        "file": "src/dashboard/layout/system.ts",
+        "line": 35
       }
     },
     {
@@ -1429,7 +1440,7 @@
       "description": "Labels reach the SVG through the layout modules' xml()/attrs(); everything interpolated here goes through esc()",
       "location": {
         "file": "src/dashboard/pages/diagrams.ts",
-        "line": 24
+        "line": 25
       }
     },
     {
@@ -4730,7 +4741,7 @@
       "description": "Outcomes for the badges, the drawer and the open count",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 102
+        "line": 108
       }
     },
     {
@@ -5258,7 +5269,7 @@
       "description": "Attribution read from blame, log -L and commit trailers for the connected agent",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1220
+        "line": 1221
       }
     },
     {
@@ -6763,7 +6774,7 @@
       "description": "Author identities, in the configured identity mode (blame.identity in config.json), reach the MCP client",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1221
+        "line": 1222
       }
     },
     {
@@ -8168,7 +8179,7 @@
       "description": "Non-mutating: computeBlame leaves the cached model untouched, so a later guardlink_parse in the same session never carries blame unasked. Nothing is written to the repository",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1222
+        "line": 1223
       }
     },
     {
@@ -8873,7 +8884,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 894,
+    "annotation_count": 895,
     "coverage_percent": 86
   },
   "external_refs": []

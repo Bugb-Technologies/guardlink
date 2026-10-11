@@ -5,6 +5,7 @@
  *   Data flow       the whole model as flow ribbons; any node opens its neighbourhood
  *   Attack surface  every asset on a shelf, one tick per exposure
  *   Agent reach     who acts → capability → the effect it lands
+ *   System model    the data-flow diagram, with trust boundaries drawn as zones
  *
  * Every whole-model picture is laid out here, at generation time, from data
  * alone, and emitted as SVG. Nothing is handed to a third-party layout engine
@@ -32,12 +33,15 @@ import { renderRibbons } from '../layout/ribbons.js';
 import { renderHoodSvg, renderNodeDetail, type HoodPayload } from '../layout/hood.js';
 import { renderShelves } from '../layout/shelves.js';
 import { renderReachDiagram } from '../layout/reach.js';
+import { renderSystemModel, type BoundaryState } from '../layout/system.js';
 import { flowTables } from './tables.js';
 import type { PathFinding } from '../../paths/index.js';
 import { unevaluatedReason } from '../../paths/format.js';
 
 export interface DiagramsInput {
   graph: DiagramModel;
+  /** Tested state per declared boundary, keyed `file:line`. */
+  boundaryStates: Map<string, BoundaryState>;
   hood: HoodPayload;
   nodeIndex: Map<string, number>;
   /** The node the neighbourhood opens on when no focus is in the route. */
@@ -47,7 +51,7 @@ export interface DiagramsInput {
   endpoints: { entries: string[]; exits: string[] };
 }
 
-const TABS: [string, string][] = [['threat', 'Threat graph'], ['flow', 'Data flow'], ['surface', 'Attack surface'], ['reach', 'Agent reach']];
+const TABS: [string, string][] = [['threat', 'Threat graph'], ['flow', 'Data flow'], ['surface', 'Attack surface'], ['reach', 'Agent reach'], ['system', 'System model']];
 
 const legendSw = (cls: string, text: string): string => `<span><i class="lg ${cls}"></i>${text}</span>`;
 
@@ -60,7 +64,7 @@ function threatTab(g: DiagramModel): string {
   if (g.exposures.length === 0 && g.mitigations.length === 0) return '<p class="empty-state">This model declares no <code>@exposes</code> or <code>@mitigates</code>, so there is no threat graph to draw.</p>';
   const r = renderThreatGraph(g);
   return `
-  <p class="guide">One column per kind: assets in model order, threats as labelled slabs ordered to cut crossings, controls on the right. An asset → threat thread is one exposure — warm in its severity while open, a mint wash once mitigated or refuted, dashed when accepted; a threat → control thread is one mitigation. Hover a node to follow it through; click to pin it and list its exposures below.</p>
+  <p class="guide">Assets → threats → controls. One line per exposure: <b>warm</b> open, <b>mint</b> mitigated, <b>dashed</b> accepted. Hover to trace it; click to list its exposures.</p>
   <div class="panel plot-panel"><div class="plot-scroll">${r.svg}</div></div>
   <div class="fidelity"><span><b class="num">${r.exposuresDrawn}</b> of ${r.exposures} exposures and <b class="num">${r.mitigationsDrawn}</b> of ${r.mitigations} mitigations drawn</span><span>${plural(r.assets, 'asset')} · ${plural(r.threats, 'threat')} · ${plural(r.controls, 'control')}</span>${r.uncontrolled ? `<span>${plural(r.uncontrolled, 'mitigation')} name no control (the dashed tick)</span>` : ''}${r.folded ? `<span>${plural(r.folded, 'name')} folded so names stay 11 px apart — hover a tick for it</span>` : ''}</div>
   <div class="legend">${legendSw('thr-open', 'open, by severity')}${legendSw('thr-res', 'mitigated or refuted')}${legendSw('thr-acc', 'accepted')}${legendSw('thr-ctl', 'mitigation → control')}</div>
@@ -90,28 +94,28 @@ function flowTab(ctx: PageContext, d: DiagramsInput): string {
       <a class="seg-btn" href="#diagrams?tab=flow&amp;view=ribbons" data-view-btn="ribbons">Whole model · flow ribbons</a>
       <a class="seg-btn" href="#diagrams?tab=flow&amp;view=hood" data-view-btn="hood">Neighbourhood</a>
     </div>
-    <div class="entry-chips"><span class="eyebrow">Start from</span>${entry('most open', byOpen)}${entry('most flows', byFlows)}${entry('on a trust line', byTrust)}
+    <div class="entry-chips"><span class="eyebrow">Start from</span>${entry('most open', byOpen)}${entry('most flows', byFlows)}${entry('on a trust boundary', byTrust)}
       <select data-focus-select aria-label="Open the neighbourhood of a node">${usedNodes.map(x => `<option value="${esc(x.n.k)}"${x.i === d.defaultFocus ? ' selected' : ''}>${esc(x.n.l)}${x.n.o ? ` — ${x.n.o} open` : ''}</option>`).join('')}</select>
     </div>
   </div>
 
   <div data-view-panel="ribbons">
-    <p class="guide">FROM on the left, TO on the right, both listing the same zones in the same order: endpoints across a trust line, endpoints outside the model, then each asset group. Every <code>@flows</code> is one thread; threads between two zones run together as a ribbon, and a thread that crosses a declared trust line is drawn in stronger ink and counted in its pill as <code>⊢n</code>. Click a node to pin it and see its detail; its neighbourhood is one click further.</p>
+    <p class="guide">Every flow, from where data starts (left) to where it lands (right). Flows between the same groups bundle into a ribbon. <b>Bold</b> flows cross a trust boundary — ⊢ counts them. Click a node for its detail.</p>
     <div class="panel plot-panel"><div class="plot-scroll">${r.svg}</div></div>
-    <div class="fidelity"><span><b class="num">${r.drawn}</b> of ${r.flows} flows drawn · ${plural(r.nodes, 'node')} · ${plural(r.ribbons, 'ribbon')}</span><span>${r.crossing} cross a declared trust line (stronger ink, ⊢ in the pill)</span>${r.folded ? `<span>${plural(r.folded, 'tick name')} folded to avoid collisions — hover a tick for it</span>` : ''}</div>
-    <div class="legend">${legendSw('m-open s-high', 'asset with an open exposure (worst severity)')}${legendSw('m-res', 'asset, all mitigated')}${legendSw('m-empty', 'asset, nothing declared')}${legendSw('m-ext', 'outside the model')}${legendSw('thr-cross', 'crosses a trust line')}</div>
+    <div class="fidelity"><span><b class="num">${r.drawn}</b> of ${r.flows} flows drawn · ${plural(r.nodes, 'node')} · ${plural(r.ribbons, 'ribbon')}</span><span>${r.crossing} cross a declared trust boundary (stronger ink, ⊢ in the pill)</span>${r.folded ? `<span>${plural(r.folded, 'tick name')} folded to avoid collisions — hover a tick for it</span>` : ''}</div>
+    <div class="legend">${legendSw('m-open s-high', 'asset with an open exposure (worst severity)')}${legendSw('m-res', 'asset, all mitigated')}${legendSw('m-empty', 'asset, nothing declared')}${legendSw('m-ext', 'outside the model')}${legendSw('thr-cross', 'crosses a trust boundary')}</div>
   </div>
 
   <div data-view-panel="hood" hidden>
     <div class="trail" data-hood-trail><span class="eyebrow">Focus</span> <b class="mono" data-hood-focus>${esc(nodes[d.defaultFocus].l)}</b></div>
     <div class="panel plot-panel"><div class="plot-scroll" data-hood-host>${hood.svg}</div></div>
-    <div class="fidelity" data-hood-footer><span><b class="num">${hood.drawn}</b> flows drawn among ${plural(hood.nodes, 'node')} (budget: 7 per column)</span>${hood.undrawn ? `<span>${hood.undrawn} flows among these nodes run backwards or within a column and are listed in the table, not drawn</span>` : ''}<span>Mechanisms are named where a card has at most two lines out; hover any line for its mechanism. Click a card to walk; the trail goes back. A bar across a line marks a declared trust line.</span></div>
+    <div class="fidelity" data-hood-footer><span><b class="num">${hood.drawn}</b> flows drawn among ${plural(hood.nodes, 'node')} (budget: 7 per column)</span>${hood.undrawn ? `<span>${hood.undrawn} flows among these nodes run backwards or within a column and are listed in the table, not drawn</span>` : ''}<span>Click a card to step to it; the trail takes you back. A bar ⊢ marks a trust boundary. Hover a line to see how the data moves.</span></div>
   </div>
 
   <div class="panel" data-node-detail>${renderNodeDetail(d.hood, d.defaultFocus, 'ribbons')}</div>
 
   <h3 class="block-h">Undefended routes</h3>
-  <p class="guide">Entry to sink with nothing in the way: routes derived from <code>@flows</code> between ${plural(d.endpoints.entries.length, 'entry point')} and ${plural(d.endpoints.exits.length, 'sink')}, where no component on the route carries a <code>@mitigates</code>. ${paths.length} of ${plural(d.pathsTotal, 'route')}.</p>
+  <p class="guide">Routes from an entry point to a sink with no mitigation anywhere on the way. Between ${plural(d.endpoints.entries.length, 'entry point')} and ${plural(d.endpoints.exits.length, 'sink')}: ${paths.length} of ${plural(d.pathsTotal, 'route')}.</p>
   ${paths.length > 0 ? `<div class="paths">${paths.map(p => `
     <div class="path-finding">
       <div class="path-chain">${p.chain.map((n, i) => `${i > 0 ? '<span class="path-arrow">→</span>' : ''}<code class="path-node${p.assetsOnPath.includes(n) ? ' path-asset' : ''}">${esc(n)}</code>`).join('')}</div>
@@ -127,10 +131,10 @@ function surfaceTab(g: DiagramModel): string {
   if (g.assets.length === 0) return '<p class="empty-state">No assets to put on a shelf.</p>';
   const r = renderShelves(g);
   return `
-  <p class="guide">Every asset on a shelf, grouped as the model declares them. A card's width follows how much it carries; the rule under its name is the open share; each tick is one exposure — warm while open, mint once mitigated, hollow when accepted. Nothing here can overflow: rows wrap. Click a card for its exposures.</p>
+  <p class="guide">One card per asset, one tick per exposure: <b>warm</b> open, <b>mint</b> mitigated, <b>hollow</b> accepted. Wider card, more exposures. Click a card to see them.</p>
   ${r.html}
   <div class="fidelity"><span><b class="num">${r.cards}</b> asset cards on ${plural(r.shelves, 'shelf', 'shelves')} · ${plural(r.exposures, 'exposure')} drawn as ticks</span></div>
-  <div class="legend">${legendSw('tk-open', 'tick: open, by severity')}${legendSw('tk-res', 'mitigated or refuted')}${legendSw('tk-acc', 'accepted')}<span>rule: open share · dashed: nothing declared</span><span>⊢ trust lines · tags: data it handles</span></div>
+  <div class="legend">${legendSw('tk-open', 'tick: open, by severity')}${legendSw('tk-res', 'mitigated or refuted')}${legendSw('tk-acc', 'accepted')}<span>rule: open share · dashed: nothing declared</span><span>⊢ trust boundaries · tags: data it handles</span></div>
   ${pinBar('surface')}`;
 }
 
@@ -143,10 +147,21 @@ function reachTab(ctx: PageContext): string {
   }
   const t = ctx.reach.totals;
   return `
-  <p class="guide">Who acts, the capability the code hands them, and the effect it lands. A capability is ✓ when a cited <code>@entitles</code> covers it and ✕ when nothing does; an effect is warm when it mutates with no gate, carries a bar and its approver when a human must say yes first, and is quiet when it only reads.</p>
+  <p class="guide">Who acts → what they may do → what it changes. ✓ approved, ✕ not. <b>Warm</b>: changes something with no sign-off. A bar: a person approves first.</p>
   <div class="panel plot-panel"><div class="plot-scroll">${r.svg}</div></div>
   <div class="fidelity"><span><b class="num">${r.reaches}</b> of ${t.reaches} reaches · <b class="num">${r.effects}</b> of ${t.effects} effects drawn</span><span>${t.unentitled} unentitled · ${t.ungated} of ${t.mutations} mutations ungated · ${t.gates} gates</span><span>the same facts as rows: <a href="#agents">Agents &amp; reach</a></span></div>
   <div class="legend">${legendSw('cap-ok', '✓ entitled capability')}${legendSw('cap-bad', '✕ unentitled')}${legendSw('eff-ungated', 'mutation, no gate')}${legendSw('eff-gated', 'gated: a named approver decides first')}${legendSw('eff-read', 'reads only')}</div>`;
+}
+
+function systemTab(d: DiagramsInput): string {
+  const r = renderSystemModel(d.graph, { states: d.boundaryStates });
+  if (!r) return '<p class="empty-state">This model declares no <code>@flows</code>, so there is no system to draw. The threat graph and attack surface still draw every exposure.</p>';
+  return `
+  <p class="guide">Your system as a data-flow diagram. Dashed boxes are trust zones; a bar ⊢ marks where a flow crosses one. A <b>dashed</b> flow leaves a zone with no boundary declared — worth a look. Click anything for its flows.</p>
+  ${r.implied ? `<div class="plot-head"><label class="toggle"><input type="checkbox" data-system-implied checked> Show flows that leave a zone with no boundary declared (${r.implied})</label></div>` : ''}
+  <div class="panel plot-panel"><div class="plot-scroll">${r.svg}</div></div>
+  <div class="fidelity"><span><b class="num">${r.flows}</b> of ${r.flows} flows drawn, as ${plural(r.lines, 'line')} (repeat flows between one pair share a line — hover for each)</span><span><b class="num">${r.elements}</b> of ${r.elements} elements: ${plural(r.processes, 'process', 'processes')} · ${plural(r.stores, 'data store')} · ${plural(r.entities, 'external entity', 'external entities')} — kinds inferred from names and mechanisms</span><span>${plural(r.boundaries, 'boundary', 'boundaries')} · ${plural(r.outerZones + (r.innerZones > 1 ? r.innerZones : 0), 'trust zone')} · ${r.crossing} flows cross one as declared${r.implied ? ` · ${r.implied} leave a zone with none declared` : ''}</span>${r.silent.length ? `<span>no flow crosses ${esc(r.silent.join(', '))} as declared</span>` : ''}${r.unsplit.length ? `<span>${esc(r.unsplit.join(', '))}: a route around it, so drawn as a gate, not a zone</span>` : ''}</div>
+  <div class="legend">${legendSw('k-proc', 'process: a declared asset')}${legendSw('k-store', 'data store')}${legendSw('k-ent', 'external entity')}${legendSw('k-zone', 'trust zone')}${legendSw('thr-cross', 'crosses a trust boundary ⊢')}${legendSw('thr-implied', 'leaves a zone, no boundary declared')}${legendSw('thr-flow', 'flow inside the system')}<span>○ boundary untested · ✓ held · ✕ broken</span></div>`;
 }
 
 export function renderDiagramsPage(ctx: PageContext, d: DiagramsInput): string {
@@ -155,12 +170,13 @@ export function renderDiagramsPage(ctx: PageContext, d: DiagramsInput): string {
 <section id="sec-diagrams" class="section-content" aria-label="Diagrams">
   ${sectionHead('', 'Diagrams', scope)}
   ${wholeModelNote()}
-  <p class="lead">The model as four pictures, each drawn so it reads at any size: nothing is filtered out to make a drawing fit, and each footer says what was drawn.</p>
+  <p class="lead">Five views of one model. Nothing is left out — each footer says what is drawn.</p>
 ${scope ? `  <p class="scope-note">These are <strong>narrowed</strong> diagrams: the edges are this feature's relations, and the nodes are the assets, threats and controls those relations reference. A node the feature never touches is absent — an absent node does not mean the project lacks it. The same narrowed graph is written to <code>.guardlink/graph/by-feature/</code>.</p>` : ''}
   <nav class="tabs" role="tablist" aria-label="Diagram">${TABS.map(([k, l]) => `<a class="tab" role="tab" href="#diagrams?tab=${k}" data-tab="${k}">${l}</a>`).join('')}</nav>
   <div class="tab-panel" data-tab-panel="threat">${threatTab(d.graph)}</div>
   <div class="tab-panel" data-tab-panel="flow" hidden>${flowTab(ctx, d)}</div>
   <div class="tab-panel" data-tab-panel="surface" hidden>${surfaceTab(d.graph)}</div>
   <div class="tab-panel" data-tab-panel="reach" hidden>${reachTab(ctx)}</div>
+  <div class="tab-panel" data-tab-panel="system" hidden>${systemTab(d)}</div>
 </section>`;
 }

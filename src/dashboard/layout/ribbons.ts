@@ -51,7 +51,7 @@ const NAME_GAP = 11;
 export function zonesOf(m: DiagramModel): { zones: Zone[]; zoneOf: (n: GNode) => number } {
   const groups: string[] = [];
   for (const a of m.assets) if (!groups.includes(a.group)) groups.push(a.group);
-  const zones: Zone[] = [{ key: 'trust', label: 'Across a trust line' }, { key: 'local', label: 'Outside the model' }, ...groups.map(g => ({ key: `g:${g}`, label: g }))];
+  const zones: Zone[] = [{ key: 'trust', label: 'Across a trust boundary' }, { key: 'local', label: 'Outside the model' }, ...groups.map(g => ({ key: `g:${g}`, label: g }))];
   const index = new Map(zones.map((z, i) => [z.key, i]));
   const zoneOf = (n: GNode): number => index.get(n.external ? (m.boundaryExternals.has(n.key) ? 'trust' : 'local') : `g:${n.group}`) ?? 1;
   return { zones, zoneOf };
@@ -142,7 +142,7 @@ export function renderRibbons(m: DiagramModel, nodeIndex: Map<string, number>): 
   const idx = (n: GNode): number => nodeIndex.get(n.key)!;
   const crossingTotal = m.flows.filter(f => f.boundary).length;
   const out: string[] = [];
-  out.push(`<svg${attrs({ class: 'dg', 'data-plot': 'ribbons', width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'group', tabindex: 0, 'aria-label': `Data flow: ${m.flows.length} flows between ${used.size} nodes in ${ribList.length} ribbons; ${crossingTotal} cross a declared trust line. Arrow keys step through the nodes, Enter pins one.` })}>`);
+  out.push(`<svg${attrs({ class: 'dg', 'data-plot': 'ribbons', width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'group', tabindex: 0, 'aria-label': `Data flow: ${m.flows.length} flows between ${used.size} nodes in ${ribList.length} ribbons; ${crossingTotal} cross a declared trust boundary. Arrow keys step through the nodes, Enter pins one.` })}>`);
   out.push(`<defs>${dotPattern('dots-ribbons')}</defs><rect class="ground" width="${W}" height="${H}" fill="url(#dots-ribbons)"/>`);
 
   // Ribbon bodies.
@@ -156,7 +156,7 @@ export function renderRibbons(m: DiagramModel, nodeIndex: Map<string, number>): 
   out.push('</g><g class="threads">');
   // Threads: plain first, crossings on top.
   for (const th of threads.slice().sort((p, q) => Number(!!p.f.boundary) - Number(!!q.f.boundary) || p.f.i - q.f.i)) {
-    out.push(`<path${attrs({ class: `thr ${th.f.boundary ? 'x-cross' : 'x-flow'}`, d: pathOf(th), 'data-k': `n${idx(th.s)} n${idx(th.t)}`, ...tip(`${th.s.label} → ${th.t.label}`, [['via', th.f.via || '—'], ['why', th.f.description || '—'], ['where', th.f.file ? `${th.f.file}:${th.f.line}` : '—'], ...(th.f.boundary ? [['trust line', th.f.boundary] as [string, string]] : [])]) })}/>`);
+    out.push(`<path${attrs({ class: `thr ${th.f.boundary ? 'x-cross' : 'x-flow'}`, d: pathOf(th), 'data-k': `n${idx(th.s)} n${idx(th.t)}`, ...tip(`${th.s.label} → ${th.t.label}`, [['via', th.f.via || '—'], ['why', th.f.description || '—'], ['where', th.f.file ? `${th.f.file}:${th.f.line}` : '—'], ...(th.f.boundary ? [['trust boundary', th.f.boundary] as [string, string]] : [])]) })}/>`);
   }
   out.push('</g><g class="pills">');
 
@@ -177,7 +177,7 @@ export function renderRibbons(m: DiagramModel, nodeIndex: Map<string, number>): 
     }
     if (!spot) continue;
     pills.push(spot);
-    out.push(`<g${attrs({ class: 'pill', ...tip(`${zones[r.zs].label} → ${zones[r.zt].label}`, [['flows', r.threads.length], ['cross a trust line', crossing]]) })}><rect x="${f1(spot.x - w / 2)}" y="${f1(spot.y - 8)}" width="${f1(w)}" height="16" rx="8"/><text x="${f1(spot.x)}" y="${f1(spot.y + 3.5)}" text-anchor="middle">${xml(text)}</text></g>`);
+    out.push(`<g${attrs({ class: 'pill', ...tip(`${zones[r.zs].label} → ${zones[r.zt].label}`, [['flows', r.threads.length], ['cross a trust boundary', crossing]]) })}><rect x="${f1(spot.x - w / 2)}" y="${f1(spot.y - 8)}" width="${f1(w)}" height="16" rx="8"/><text x="${f1(spot.x)}" y="${f1(spot.y + 3.5)}" text-anchor="middle">${xml(text)}</text></g>`);
   }
   out.push('</g><g class="nodes">');
 
@@ -194,7 +194,7 @@ export function renderRibbons(m: DiagramModel, nodeIndex: Map<string, number>): 
       }
       const n = it.node!;
       const i = idx(n);
-      out.push(`<g${attrs({ class: 'nd', 'data-node': `n${i}`, 'data-lights': `n${i}`, 'data-claims': n.exposures.map(e => e.claim).join(' '), 'data-name': n.label, 'data-key': n.key, role: 'button', 'aria-label': `${n.label}: ${markLabel(n)}; ${n.flowsIn.length} in, ${n.flowsOut.length} out`, ...tip(n.label, [['kind', markLabel(n)], ['flows in', n.flowsIn.length], ['flows out', n.flowsOut.length], ...(n.boundaries.length ? [['trust lines', n.boundaries.join(', ')] as [string, string]] : [])]) })}>`);
+      out.push(`<g${attrs({ class: 'nd', 'data-node': `n${i}`, 'data-lights': `n${i}`, 'data-claims': n.exposures.map(e => e.claim).join(' '), 'data-name': n.label, 'data-key': n.key, role: 'button', 'aria-label': `${n.label}: ${markLabel(n)}; ${n.flowsIn.length} in, ${n.flowsOut.length} out`, ...tip(n.label, [['kind', markLabel(n)], ['flows in', n.flowsIn.length], ['flows out', n.flowsOut.length], ...(n.boundaries.length ? [['trust boundaries', n.boundaries.join(', ')] as [string, string]] : [])]) })}>`);
       out.push(`<rect class="pinbox" x="${f1(x - 2.5)}" y="${f1(it.y - 2.5)}" width="10" height="${f1(it.h + 5)}" rx="2"/>`);
       out.push(`<rect class="tick ${tickClass(n)}" x="${f1(x)}" y="${f1(it.y)}" width="5" height="${f1(it.h)}" rx="1"/>`);
       if (named.has(n.key)) {
