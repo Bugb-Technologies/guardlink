@@ -64,6 +64,12 @@ export interface SourceLocation {
   origin_line?: number | null;
   /** Populated by parseProject unless `anchors: false`. Null when the logical file could not be read. */
   anchor?: Anchor | null;
+  /**
+   * Generated rows only (SPEC §5.6): rows that share a binding were read off
+   * the same configuration entry, and are bound together the way claims in
+   * one doc-block are bound to one declaration. The JSON pointer of the entry.
+   */
+  binding?: string;
 }
 
 // ─── Parsed Annotations ──────────────────────────────────────────────
@@ -435,6 +441,137 @@ export interface ExternalRef {
   inferred_repo?: string;
 }
 
+// ─── Agent configuration (SPEC §5.6) ────────────────────────────────
+
+/** Where a model row came from. Absent means an annotation; the only other value is generated from agent configuration. */
+export type RowOrigin = 'agent-config';
+
+/**
+ * `root` and `nested` configuration is what this repository's own agents load.
+ * `packaged` ships to others (templates, plugins, product assets) and creates
+ * no reach here. `fixture` is test data.
+ */
+export type AgentConfigScope = 'root' | 'nested' | 'packaged' | 'fixture';
+
+/** When a harness honours a file or key: always, only after the folder is trusted, or in a headless run. */
+export type AgentConfigLoadedWhen = 'always' | 'after-trust' | 'headless';
+
+/** The harness semantics that interpreted one key (`harness/<harness>.json`). */
+export interface AgentConfigSemantics {
+  /** `<table>@<version>`, e.g. `claude-code@2026-10`. */
+  table: string;
+  /** The rule in that table, e.g. `bash-prefix`. */
+  rule: string;
+  /** What the key admits beyond its own name, e.g. `network-write`. */
+  admits?: string[];
+  /** The vendor documentation the rule was read from. */
+  doc: string;
+}
+
+/** The provenance of a generated row: who granted it, and how GuardLink read it. */
+export interface AgentConfigSource {
+  harness: string;
+  file_kind: string;
+  /** RFC 6901 pointer to the granting value in the file (for markdown, the frontmatter key). */
+  pointer: string;
+  /** The value as written, e.g. `Bash(gh api:*)`. */
+  raw: string;
+  scope: AgentConfigScope;
+  /** Whether the harness asks the developer before using it. */
+  gated: boolean;
+  loaded_when: AgentConfigLoadedWhen[];
+  semantics: AgentConfigSemantics;
+}
+
+export interface AgentConfigFile {
+  path: string;
+  kind: string;
+  harnesses: string[];
+  scope: AgentConfigScope;
+  /** Symlinked paths that reach the same file, as `link -> target`. */
+  via?: string[];
+}
+
+export interface AgentConfigMcpServer {
+  name: string;
+  harness: string;
+  file: string;
+  line: number;
+  scope: AgentConfigScope;
+  transport: 'stdio' | 'http';
+  /** stdio: what starts. Never env values. */
+  launch?: { command: string; args: string[] };
+  /** http: the host only. */
+  host?: string;
+  /** This repository's own code starts it: a bin of its own package, or a source file in it. */
+  resolves_to?: { kind: 'own-bin' | 'repo-file'; file: string; package?: string; bin?: string };
+  /** For a package runner (npx, uvx, …): the package and whether its version is pinned. */
+  package?: { spec: string; pinned: boolean; auto_yes: boolean };
+  /** Names of env vars and headers that look like credentials; never their values. */
+  credential_env: string[];
+  /** It reads content from a third-party service an attacker can write to. */
+  returns_third_party_content: boolean;
+  disabled: boolean;
+}
+
+export interface AgentConfigHook {
+  harness: string;
+  event: string;
+  matcher?: string;
+  file: string;
+  line: number;
+  scope: AgentConfigScope;
+  command: string;
+  /** Files in this repository the command runs. */
+  runs: string[];
+  /** What the command (and the scripts it runs) does: `package-install`, `net-fetch`, … */
+  does: string[];
+}
+
+export interface AgentConfigInstructionFile {
+  path: string;
+  kind: string;
+  harnesses: string[];
+  scope: AgentConfigScope;
+  bytes: number;
+  /** The GuardLink block in it, when it has one. */
+  guardlink_block?: {
+    /** Line of the `<!-- guardlink:begin -->` marker. */
+    line: number;
+    /** The `annotation_hash` the block was written from; null when it carries no stamp. */
+    stamp: string | null;
+    /** The `agent_config_hash` the block was written from; null when it carries no stamp. */
+    agent_config_stamp: string | null;
+    /** Both stamps match the model this block sits beside. */
+    current: boolean;
+  };
+  hidden_unicode: { line: number; column: number; kind: string; count: number; severity: 'error' | 'warning'; decoded?: string }[];
+}
+
+export interface AgentConfigBlock {
+  version: 1;
+  /** `sha256:<hex>` over the configuration's reach, servers, hooks and file list. Moves independently of `annotation_hash`. */
+  agent_config_hash: string;
+  /** Harness → semantics table version that read it. */
+  semantics: Record<string, string>;
+  files: AgentConfigFile[];
+  mcp_servers: AgentConfigMcpServer[];
+  hooks: AgentConfigHook[];
+  instruction_files: AgentConfigInstructionFile[];
+  /** Assets the generated rows name, with what each is. */
+  assets: { id: string; description: string }[];
+  /** Rules that narrow reach (deny lists), for review; they generate no row. */
+  denies: { harness: string; file: string; line: number; raw: string }[];
+  /**
+   * Places untrusted text enters an agent's context: instruction files, skills
+   * and commands the agent loads, and MCP servers that return third-party
+   * content. Each entry names the agents it reaches.
+   */
+  untrusted_sources: { source: string; kind: 'instruction-file' | 'mcp-server'; file: string; line: number; agents: string[] }[];
+  /** Files that could not be read, with why. A file that cannot be read is reported, never skipped silently. */
+  unreadable: { file: string; line: number; message: string }[];
+}
+
 // ─── Threat Model (§5.1) ─────────────────────────────────────────────
 
 export interface ThreatModel {
@@ -497,6 +634,14 @@ export interface ThreatModel {
    * a reach, effect or gate; never read back as input.
    */
   reach_analysis?: import('../parser/reach.js').ReachAnalysis;
+
+  /**
+   * The repository's coding-agent configuration, read as data (SPEC §5.6).
+   * Present when the reader ran, absent when it is switched off. The rows it
+   * generates sit in `actors`, `reaches`, `effects` and `gates` with
+   * `origin: "agent-config"`; this block is the inventory behind them.
+   */
+  agent_config?: AgentConfigBlock;
 }
 
 export interface ThreatModelAsset {
@@ -530,6 +675,8 @@ export interface ThreatModelActor {
   id?: string;
   description?: string;
   location: SourceLocation;
+  /** Absent on an annotation. `agent-config` on an actor the config reader declared (SPEC §5.6). */
+  origin?: RowOrigin;
 }
 
 /** One `@agents` or `@reaches` claim: this actor can invoke this capability. */
@@ -544,6 +691,10 @@ export interface ThreatModelReach {
   identity?: string;
   description?: string;
   location: SourceLocation;
+  /** Absent on an annotation; `agent-config` on a row generated from configuration (SPEC §5.6). */
+  origin?: RowOrigin;
+  /** On a generated row: the harness, file, key and semantics that granted it. */
+  source?: AgentConfigSource;
 }
 
 /** One `@effects` claim: running this code does <effect> to <asset>. */
@@ -554,6 +705,9 @@ export interface ThreatModelEffect {
   identity?: string;
   description?: string;
   location: SourceLocation;
+  /** See ThreatModelReach.origin. */
+  origin?: RowOrigin;
+  source?: AgentConfigSource;
 }
 
 /** One `@gates` claim: <approver> decides before effects on <asset> land. */
@@ -564,6 +718,9 @@ export interface ThreatModelGate {
   canonical_capability?: string;
   description?: string;
   location: SourceLocation;
+  /** See ThreatModelReach.origin. */
+  origin?: RowOrigin;
+  source?: AgentConfigSource;
 }
 
 /**
@@ -905,6 +1062,17 @@ export type DiagnosticCode =
   | 'unrecognised-gal'
   /** A `.gal` sidecar's `@source` names a file that is not on disk. */
   | 'missing-gal-source'
+  // ── Agent configuration (src/parser/validate.ts, SPEC §5.6) ──
+  /** Invisible characters in an instruction file, skill or command; an error when they decode to text. */
+  | 'hidden-unicode'
+  /** A GuardLink block in an instruction file carries no provenance stamp. */
+  | 'agent-block-unstamped'
+  /** A GuardLink block's stamp names another annotation or configuration hash than the current model's. */
+  | 'agent-block-stale'
+  /** An agent configuration file could not be read. */
+  | 'agent-config-unreadable'
+  /** An annotation claims reach for a coding agent whose reach is generated from configuration. */
+  | 'hand-written-coding-agent-reach'
   // ── Verification ledger (src/parser/ledger.ts) ──
   /** `.guardlink/verified.json` exists but does not parse or fails shape validation. */
   | 'ledger-corrupt'

@@ -9,17 +9,21 @@
  * @mitigates #diff against #arbitrary-write using #path-validation -- "mkdtempSync creates isolated temp dir; rmSync cleans up"
  * @exposes #diff to #path-traversal [medium] cwe:CWE-22 -- "git show extracts files based on ls-tree output"
  * @mitigates #diff against #path-traversal using #glob-filtering -- "Files constrained to relevantFiles from git ls-tree"
+ * @exposes #diff to #path-traversal [medium] cwe:CWE-59 -- "Symlinks at the ref are recreated in the temp tree, and a link target is repository content"
+ * @mitigates #diff against #path-traversal using #path-validation -- "Only the agent-config reader follows the links, and it drops any whose real path leaves the temp tree; nothing is written through a link"
+ * @mitigates #diff against #cmd-injection using #param-commands -- "ls-tree and show run through execFileSync with an argument vector, so a file name from the repository never reaches a shell"
  * @flows GitRef -> #diff via execSync -- "Git command execution"
  * @flows #diff -> TempDir via writeFileSync -- "Extracted file writes"
  * @flows #diff -> ThreatModel via parseProject -- "Parsed model output"
  * @boundary #diff and GitRepo (#git-boundary) -- "Trust boundary at git command execution"
  */
 
-import { execSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
+import { execSync, execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseProject } from '../parser/index.js';
+import { isAgentConfigPath } from '../agentconfig/discover.js';
 import type { ThreatModel } from '../types/index.js';
 
 /**
@@ -41,31 +45,42 @@ export async function parseAtRef(root: string, ref: string, project: string): Pr
     throw new Error(`Invalid git ref: ${ref}`);
   }
 
-  // Get list of files at that ref
-  const filesRaw = execSync(`git ls-tree -r --name-only ${ref}`, { cwd: root, encoding: 'utf-8' });
-  const allFiles = filesRaw.trim().split('\n').filter(Boolean);
+  // Every entry at that ref with its mode, so a symlink is recreated as one.
+  // NUL-separated: a path may hold any byte but NUL.
+  const treeRaw = execFileSync('git', ['ls-tree', '-r', '-z', ref], { cwd: root, encoding: 'utf-8', maxBuffer: 512 * 1024 * 1024 });
+  const entries = treeRaw.split('\0').filter(Boolean).map(line => {
+    const tab = line.indexOf('\t');
+    const [mode] = line.slice(0, tab).split(' ');
+    return { mode, path: line.slice(tab + 1) };
+  });
 
-  // Filter to likely annotated files (source code + standalone GAL annotations)
+  // Filter to likely annotated files (source code + standalone GAL annotations),
+  // the repository's agent configuration and the scripts its hooks run.
   const extensions = new Set([
     '.ts', '.tsx', '.js', '.jsx', '.py', '.rs', '.go', '.java', '.rb',
     '.c', '.cpp', '.h', '.cs', '.php', '.swift', '.kt', '.scala',
     '.yaml', '.yml', '.toml', '.json', '.gal',
+    '.sh', '.bash', '.zsh', '.ps1', '.mjs', '.cjs',
   ]);
-  const relevantFiles = allFiles.filter(f => {
+  const relevant = entries.filter(({ path: f }) => {
     const ext = f.substring(f.lastIndexOf('.')).toLowerCase();
-    return extensions.has(ext) || f.includes('.guardlink/');
+    return extensions.has(ext) || f.includes('.guardlink/') || isAgentConfigPath(f);
   });
+  // A symlinked directory is one entry in git; the files beneath it are reached through it.
+  const links = entries.filter(e => e.mode === '120000' && !relevant.includes(e));
 
   // Create temp directory and extract files
   const tmpDir = mkdtempSync(join(tmpdir(), 'guardlink-diff-'));
 
   try {
-    for (const file of relevantFiles) {
+    for (const { mode, path: file } of [...relevant, ...links]) {
       try {
-        const content = execSync(`git show ${ref}:${file}`, { cwd: root, encoding: 'utf-8' });
+        const content = execFileSync('git', ['show', `${ref}:${file}`], { cwd: root, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 });
         const outPath = join(tmpDir, file);
         mkdirSync(join(outPath, '..'), { recursive: true });
-        writeFileSync(outPath, content);
+        // The reader follows a link only when it resolves inside the extracted tree.
+        if (mode === '120000') symlinkSync(content, outPath);
+        else writeFileSync(outPath, content);
       } catch {
         // File might not exist at this ref (deleted), skip
       }

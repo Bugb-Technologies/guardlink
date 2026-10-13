@@ -26,8 +26,7 @@ import {
   agentInstructionsWithModel,
   cursorRulesContent,
   cursorRulesContentWithModel,
-  cursorMdcContent,
-  cursorMdcContentWithModel,
+  CURSOR_MDC_FRONTMATTER,
   definitionsContent,
   configContent,
   mcpConfig,
@@ -42,6 +41,9 @@ import {
   type ModelContextFreshness,
 } from './templates.js';
 import { computeAnnotationHash } from '../parser/annotation-hash.js';
+import { readAgentConfig } from '../agentconfig/index.js';
+import { readAgentConfigEnabled } from '../parser/annotation-mode.js';
+import { classifyScope } from '../agentconfig/discover.js';
 import { detectAnnotationMode, readConfiguredMode } from '../parser/annotation-mode.js';
 // The mode a repo can be OBSERVED in, which includes 'mixed'. `InitOptions.mode`
 // stays the narrower 'inline' | 'external' — init chooses one, sync reports what
@@ -119,8 +121,19 @@ export interface InitOptions {
   reset?: boolean;
   /** Dry run — show what would be created without writing */
   dryRun?: boolean;
-  /** Explicit agent IDs to create files for (when no existing agent files found) */
+  /**
+   * Agents whose instruction files this run may CREATE when they do not exist.
+   * Without it, init writes its block only into instruction files that already
+   * exist: GuardLink does not add files to a repository it was not asked to.
+   */
   agentIds?: string[];
+  /**
+   * The model as parsed before init ran, when the caller has one. Decides the
+   * block's opening (a repository being re-initialised may already have
+   * annotations) and its provenance stamp. Without it the stamp is computed
+   * for an empty annotation set, which is what a first `init` describes.
+   */
+  model?: ThreatModel | null;
   /**
    * Where annotations LIVE. Nothing else.
    *
@@ -374,20 +387,9 @@ export function initProject(options: InitOptions): InitResult {
     (existingAttrs ? updated : created).push('.gitattributes');
   }
 
-  // ── 7. Update/create agent instruction files ──
-  // Written under external mode too, since GL-506: an agent that never learns
-  // GuardLink exists cannot annotate in either mode.
-
-  if (!skipAgentFiles && rootFiles) {
-    // D45's rule, not a guess: `init` knows where it just put the reference,
-    // so the block it writes points at the file that is actually there.
-    const agentResults = updateAgentFiles(root, project, force, dryRun, mode, refRelative, options.agentIds);
-    created.push(...agentResults.created);
-    updated.push(...agentResults.updated);
-    skipped.push(...agentResults.skipped);
-  }
-
-  // ── 8. Create .mcp.json for Claude Code MCP integration ──
+  // ── 7. Create .mcp.json for Claude Code MCP integration ──
+  // Before the agent files: the block each one carries is stamped with the
+  // agent-config hash, and this file is part of what that hash covers.
   // --no-root-files: inside .guardlink/ as a reference template — not auto-discovered
   //   by MCP clients, but it documents the config for devs who want it locally.
   // default: at the project root, where Claude Code and other MCP clients find it.
@@ -410,6 +412,20 @@ export function initProject(options: InitOptions): InitResult {
     }
   }
 
+  // ── 8. Update/create agent instruction files ──
+  // Written under external mode too, since GL-506: an agent that never learns
+  // GuardLink exists cannot annotate in either mode.
+
+  if (!skipAgentFiles && rootFiles) {
+    // D45's rule, not a guess: `init` knows where it just put the reference,
+    // so the block it writes points at the file that is actually there.
+    const agentResults = updateAgentFiles(root, project, force, dryRun, mode, refRelative, options.agentIds,
+      options.model ?? null, () => blockStamp(root, options.model ?? null));
+    created.push(...agentResults.created);
+    updated.push(...agentResults.updated);
+    skipped.push(...agentResults.skipped);
+  }
+
   const scopeRefreshOnly = created.length === 0
     && updated.length === 1 && updated[0] === '.guardlink/config.json (include refreshed)';
   return { project, scope, scopeWritten, scopeMissing, scopeRefreshOnly, created, updated, skipped, preserved };
@@ -428,14 +444,18 @@ function updateAgentFiles(
   // Where `init` wrote the annotation reference in this repository. Threaded
   // rather than assumed: `--no-root-files` puts it inside `.guardlink/`.
   referencePath: string,
-  agentIds?: string[],
+  agentIds: string[] | undefined,
+  model: ThreatModel | null,
+  // Taken after the skill files below are written, since they are agent configuration the stamp covers.
+  stampNow: () => ModelContextFreshness,
 ): { created: string[]; updated: string[]; skipped: string[] } {
   const created: string[] = [];
   const updated: string[] = [];
   const skipped: string[] = [];
 
-  // Default: write ALL agent files so switching agents is seamless
-  const ids = agentIds ?? AGENT_CHOICES.map(c => c.id);
+  // Every agent's file is updated where it exists; only an agent named in
+  // `agentIds` gets its file created.
+  const ids = AGENT_CHOICES.map(c => c.id).filter(id => agentIds?.includes(id) || agentFileExists(root, AGENT_CHOICES.find(c => c.id === id)!.file));
 
   // The playbooks as Claude Code skills, one file each. A skill file a person
   // wrote (no generated marker) is theirs and stays.
@@ -456,6 +476,7 @@ function updateAgentFiles(
     }
   }
 
+  const stamp = stampNow();
   for (const id of ids) {
     const choice = AGENT_CHOICES.find(c => c.id === id);
     if (!choice) continue;
@@ -470,7 +491,7 @@ function updateAgentFiles(
         skipped.push(`${choice.file} (already has GuardLink)`);
         continue;
       }
-      const result = injectIntoAgentFile(root, choice.file, project, force, dryRun, mode, referencePath);
+      const result = injectIntoAgentFile(root, choice.file, project, force, dryRun, mode, referencePath, model, stamp);
       if (result === 'updated') updated.push(choice.file);
       else if (result === 'skipped') skipped.push(choice.file);
       else skipped.push(result.skippedReason);
@@ -480,14 +501,14 @@ function updateAgentFiles(
       // directory) skips just this agent file with a warning instead of crashing init.
       let content: string;
       if (choice.file.endsWith('.mdc')) {
-        content = cursorMdcContent(project, mode);
+        content = `${CURSOR_MDC_FRONTMATTER}\n${wrapMarkers(cursorRulesContentWithModel(project, model, stamp, mode), stamp)}`;
       } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
-        content = wrapMarkers(cursorRulesContent(project, mode));
+        content = wrapMarkers(cursorRulesContentWithModel(project, model, stamp, mode), stamp);
       } else {
         // Markdown-based (CLAUDE.md, AGENTS.md, copilot-instructions.md, .gemini/GEMINI.md)
-        content = buildClaudeMdFromScratch(project, mode, referencePath);
+        content = buildMdFromScratch(project, model, stamp, mode, referencePath);
       }
-      const res = safeWriteAgentFile(filePath, content, dryRun, project, mode);
+      const res = safeWriteAgentFile(filePath, content, dryRun, project, mode, stamp);
       if (!res.ok) skipped.push(res.skipReason);
       else if (res.action === 'merged') updated.push(`${choice.file} → merged into existing .cursor/rules`);
       else created.push(choice.file);
@@ -505,6 +526,8 @@ function injectIntoAgentFile(
   dryRun: boolean,
   mode: AnnotationMode,
   referencePath: string,
+  model: ThreatModel | null,
+  stamp: ModelContextFreshness,
 ): 'updated' | 'skipped' | { skippedReason: string } {
   const fullPath = join(root, relPath);
 
@@ -514,9 +537,9 @@ function injectIntoAgentFile(
     return { skippedReason: `${relPath} (exists as a directory; expected a file — skipped)` };
   }
 
-  // Special handling for Cursor .mdc files
+  // Special handling for Cursor .mdc files: the whole file is GuardLink's.
   if (relPath.endsWith('.mdc')) {
-    const res = safeWriteAgentFile(fullPath, cursorMdcContent(project, mode), dryRun, project, mode);
+    const res = safeWriteAgentFile(fullPath, `${CURSOR_MDC_FRONTMATTER}\n${wrapMarkers(cursorRulesContentWithModel(project, model, stamp, mode), stamp)}`, dryRun, project, mode, stamp);
     if (!res.ok) return { skippedReason: res.skipReason };
     return 'updated';
   }
@@ -527,7 +550,7 @@ function injectIntoAgentFile(
     if (existing.includes('GuardLink') && !force) return 'skipped';
 
     if (!dryRun) {
-      const block = wrapMarkers(cursorRulesContent(project, mode));
+      const block = wrapMarkers(cursorRulesContentWithModel(project, model, stamp, mode), stamp);
       const newContent = replaceOrAppend(existing, block);
       writeFileSync(fullPath, newContent);
     }
@@ -544,21 +567,46 @@ function injectIntoAgentFile(
   if (existing.includes('GuardLink') && !force) return 'skipped';
 
   if (!dryRun) {
-    const block = wrapMarkers(agentInstructions(project, mode, { referencePath }));
+    const block = wrapMarkers(agentInstructions(project, mode, { referencePath, model }), stamp);
     const newContent = replaceOrAppend(existing, block);
     writeFileSync(fullPath, newContent);
   }
   return 'updated';
 }
 
-function buildClaudeMdFromScratch(project: ProjectInfo, mode: AnnotationMode, referencePath: string): string {
-  return buildMdFromScratch(project, null, undefined, mode, referencePath);
+/**
+ * Whether an agent's instruction file exists. Cursor's counts when the legacy
+ * single-file `.cursor/rules` exists in place of the `.cursor/rules/` directory:
+ * that file is where the block is merged (see safeWriteAgentFile).
+ */
+function agentFileExists(root: string, file: string): boolean {
+  if (existsSync(join(root, file))) return true;
+  const legacy = join(root, '.cursor', 'rules');
+  return file.endsWith('.mdc') && existsSync(legacy) && statSync(legacy).isFile();
+}
+
+/**
+ * The provenance stamp for a block written now: the annotation hash of
+ * `model` (of an empty annotation set when there is none yet, which is what a
+ * first `init` describes) and the hash of what the repository's agent
+ * configuration grants, unless reading it is switched off.
+ */
+export function blockStamp(root: string, model: ThreatModel | null): ModelContextFreshness {
+  const annotation_hash = computeAnnotationHash(model ?? ({} as ThreatModel));
+  if (model) return { annotation_hash, agent_config_hash: model.agent_config?.agent_config_hash ?? null };
+  return { annotation_hash, agent_config_hash: readAgentConfigEnabled(root) ? readAgentConfig(root).block.agent_config_hash : null };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-function wrapMarkers(content: string): string {
-  return `${GUARDLINK_MARKER}\n${content}\n${GUARDLINK_MARKER_END}\n`;
+/**
+ * The block between its markers, with its provenance stamp on the line after
+ * the begin marker. `guardlink validate` reads the stamp back and warns when
+ * either hash no longer matches the model (SPEC §5.6).
+ */
+function wrapMarkers(content: string, stamp: ModelContextFreshness): string {
+  const fields = [`annotation_hash=${stamp.annotation_hash}`, ...(stamp.agent_config_hash ? [`agent_config_hash=${stamp.agent_config_hash}`] : [])];
+  return `${GUARDLINK_MARKER}\n<!-- guardlink:stamp ${fields.join(' ')} -->\n${content}\n${GUARDLINK_MARKER_END}\n`;
 }
 
 /**
@@ -656,6 +704,7 @@ function safeWriteAgentFile(
   // Only used by the legacy `.cursor/rules`-is-a-file merge path below, which
   // regenerates the block itself instead of writing `content`.
   mode: ObservedAnnotationMode | null = null,
+  stamp: ModelContextFreshness = { annotation_hash: computeAnnotationHash({} as ThreatModel) },
 ): { ok: true; action: 'created' | 'merged' } | { ok: false; skipReason: string } {
   // CASE B: target path is itself a directory — cannot write a file there.
   if (existsSync(filePath) && statSync(filePath).isDirectory()) {
@@ -672,7 +721,7 @@ function safeWriteAgentFile(
     if (isCursorLegacy) {
       if (!dryRun) {
         const existing = readFileSync(parent, 'utf-8');
-        const block = wrapMarkers(cursorRulesContent(project, mode));
+        const block = wrapMarkers(cursorRulesContent(project, mode), stamp);
         writeFileSync(parent, replaceOrAppend(existing, block));
       }
       return { ok: true, action: 'merged' };
@@ -708,13 +757,13 @@ function toPascalCase(s: string): string {
 function buildMdFromScratch(
   project: ProjectInfo,
   model: ThreatModel | null,
-  freshness?: ModelContextFreshness,
+  freshness: ModelContextFreshness,
   mode: ObservedAnnotationMode | null = null,
   referencePath?: string,
 ): string {
   return `# ${toPascalCase(project.name)} — Project Instructions
 
-${wrapMarkers(agentInstructionsWithModel(project, model, freshness, mode, { referencePath }))}`;
+${wrapMarkers(agentInstructionsWithModel(project, model, freshness, mode, { referencePath }), freshness)}`;
 }
 
 /**
@@ -745,7 +794,7 @@ export interface SyncResult {
 }
 
 /**
- * Regenerate ALL agent instruction files with live threat model context.
+ * Rewrite the stamped GuardLink block in every agent instruction file that exists.
  * Called after parse/validate/annotate to keep instructions up to date.
  * Uses marker-based replacement so user content outside markers is preserved.
  */
@@ -755,19 +804,14 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
   const updated: string[] = [];
   const skipped: string[] = [];
 
-  // Freshness for the synced block: the content hash alone.
-  //
-  // synced_at and git_sha were here and are gone. These are TRACKED files
-  // regenerated on every sync, so a field moving for reasons unrelated to the
-  // block’s content turns every regeneration into a diff — measured at a 9-line
-  // diff across 7 files per `guardlink validate`. Both still ship in the MCP
-  // envelope, computed per call and written nowhere.
-  //
-  // This does not fix D16. It restores the property that made D16 tolerable:
-  // rewriting unchanged content produces no diff.
-  const freshness: ModelContextFreshness | undefined = model && model.annotations_parsed > 0
-    ? { annotation_hash: computeAnnotationHash(model) }
-    : undefined;
+  // The provenance stamp every block carries: the content hashes, nothing
+  // volatile. synced_at and git_sha used to be in the block and are gone —
+  // these are TRACKED files regenerated on every sync, and a field that moves
+  // for reasons unrelated to the content turns every regeneration into a diff.
+  // Both still ship in the MCP envelope, computed per call and written nowhere.
+  // The empty-model block is stamped too: "nothing recorded yet" is a claim
+  // about a particular model, and validate can only check a claim it can read.
+  const freshness: ModelContextFreshness = blockStamp(root, model);
 
   // Regenerate .guardlink/README.md so it cannot drift from what the tooling
   // actually does. Mode comes from config where recorded, and is otherwise
@@ -789,7 +833,7 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
     mode: readmeMode,
     modeSource: readmeModeSource,
     model,
-    annotationHash: model && model.annotations_parsed > 0 ? computeAnnotationHash(model) : null,
+    annotationHash: model && model.annotations_parsed > 0 ? freshness.annotation_hash : null,
     mcpAtRoot: existsSync(join(root, '.mcp.json')),
     referencePath: observedReferencePath(root),
   });
@@ -809,60 +853,59 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
     updated.push('.guardlink/prompt.md');
   }
 
+  // GuardLink writes its block only into instruction files that already
+  // exist, and never into one that ships to others (a packaged or fixture
+  // path): adding an agent's file is the repository owner's call, made with
+  // `guardlink init --agent <id>`.
   for (const choice of AGENT_CHOICES) {
     const filePath = join(root, choice.file);
-    const exists = existsSync(filePath);
-
-    if (!exists) {
-      // Create fresh with model context. Route through safeWriteAgentFile so a
-      // pre-existing path-type conflict skips just this file instead of crashing sync.
-      if (choice.file.endsWith('settings.json')) {
-        skipped.push(`${choice.file} (json format — not supported)`);
-        continue;
-      }
-      let content: string;
-      if (choice.file.endsWith('.mdc')) {
-        content = cursorMdcContentWithModel(project, model, freshness, mode);
-      } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
-        content = wrapMarkers(cursorRulesContentWithModel(project, model, freshness, mode));
-      } else {
-        // Markdown-based: CLAUDE.md, AGENTS.md, copilot-instructions.md, etc.
-        content = buildMdFromScratch(project, model, freshness, mode, observedReferencePath(root));
-      }
-      const res = safeWriteAgentFile(filePath, content, dryRun, project, mode);
+    if (!agentFileExists(root, choice.file)) {
+      skipped.push(`${choice.file} (absent — sync writes only into instruction files that exist)`);
+      continue;
+    }
+    if (!existsSync(filePath)) {
+      // The legacy single-file .cursor/rules: merge into it.
+      const res = safeWriteAgentFile(filePath, '', dryRun, project, mode, freshness);
       if (!res.ok) skipped.push(res.skipReason);
-      else updated.push(res.action === 'merged' ? `${choice.file} → merged into existing .cursor/rules` : choice.file);
+      else updated.push(`${choice.file} → merged into existing .cursor/rules`);
+      continue;
+    }
+    const scope = classifyScope(choice.file, () => false);
+    if (scope === 'packaged' || scope === 'fixture') {
+      skipped.push(`${choice.file} (${scope} — not this repository's own instructions)`);
+      continue;
+    }
+    // Guard: an existing path that is a DIRECTORY would make readFileSync/writeFileSync
+    // below throw EISDIR. Skip it with a reason instead of crashing sync.
+    if (statSync(filePath).isDirectory()) {
+      skipped.push(`${choice.file} (exists as a directory; expected a file — skipped)`);
+      continue;
+    }
+    if (choice.file.endsWith('settings.json')) {
+      skipped.push(`${choice.file} (json format — not supported)`);
+      continue;
+    }
+    // File exists — update the GuardLink block (marker-based replacement)
+    if (choice.file.endsWith('.mdc')) {
+      if (!dryRun) {
+        writeFileSync(filePath, `${CURSOR_MDC_FRONTMATTER}\n${wrapMarkers(cursorRulesContentWithModel(project, model, freshness, mode), freshness)}`);
+      }
+      updated.push(choice.file);
+    } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
+      const existing = readFileSync(filePath, 'utf-8');
+      if (!dryRun) {
+        const block = wrapMarkers(cursorRulesContentWithModel(project, model, freshness, mode), freshness);
+        writeFileSync(filePath, replaceOrAppend(existing, block));
+      }
+      updated.push(choice.file);
     } else {
-      // Guard: an existing path that is a DIRECTORY would make readFileSync/writeFileSync
-      // below throw EISDIR. Skip it with a reason instead of crashing sync.
-      if (statSync(filePath).isDirectory()) {
-        skipped.push(`${choice.file} (exists as a directory; expected a file — skipped)`);
-        continue;
+      const existing = readFileSync(filePath, 'utf-8');
+      if (!dryRun) {
+        const block = wrapMarkers(agentInstructionsWithModel(project, model, freshness, mode,
+          { referencePath: observedReferencePath(root) }), freshness);
+        writeFileSync(filePath, replaceOrAppend(existing, block));
       }
-      // File exists — update the GuardLink block (marker-based replacement)
-      if (choice.file.endsWith('.mdc')) {
-        if (!dryRun) {
-          writeFileSync(filePath, cursorMdcContentWithModel(project, model, freshness, mode));
-        }
-        updated.push(choice.file);
-      } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
-        const existing = readFileSync(filePath, 'utf-8');
-        if (!dryRun) {
-          const block = wrapMarkers(cursorRulesContentWithModel(project, model, freshness, mode));
-          writeFileSync(filePath, replaceOrAppend(existing, block));
-        }
-        updated.push(choice.file);
-      } else if (choice.file.endsWith('settings.json')) {
-        skipped.push(`${choice.file} (json format — not supported)`);
-      } else {
-        const existing = readFileSync(filePath, 'utf-8');
-        if (!dryRun) {
-          const block = wrapMarkers(agentInstructionsWithModel(project, model, freshness, mode,
-            { referencePath: observedReferencePath(root) }));
-          writeFileSync(filePath, replaceOrAppend(existing, block));
-        }
-        updated.push(choice.file);
-      }
+      updated.push(choice.file);
     }
   }
 

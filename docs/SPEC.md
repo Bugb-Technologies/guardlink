@@ -767,6 +767,8 @@ All four verbs are agent-writable. None of them has export semantics: they add n
 
 **Where they are read.** `guardlink report` adds an *Agents and LLM Reach* section when any of the four verbs is present (`guardlink report --agents` writes it as a document of its own), and the dashboard draws the same data on its *Agents & Reach* page. Both show the reach map (actor × asset, with the capabilities and effects in each cell), the unentitled reaches with each near miss's reason, the ungated effects with the gate near misses (the join above, the one `reach_analysis` carries), the gates, and `@flows` out of a reached surface that leave the model or cross a `@boundary`. An effect sits in an actor's row only when a reach of that actor is bound to the same code; an effect with none is shown as not tied to a reach, because reaching it through calls across handlers is a call-graph question. The OWASP Top 10 for LLM Applications (2025) rows key on `@agents`: **LLM06** Excessive Agency (an unentitled reach; an effect running as a different identity than the agent presents with no gate between; an ungated mutation bound to the agent's reach), **LLM01** Prompt Injection (a `@flows` source that is neither a declared asset nor an actor, with nothing flowing into it, reaching an agent that has an ungated mutation), and **LLM05** Improper Output Handling (a write, delete, execute or notify bound to the same code as the agent's tool). Each is a target for review or test, never a finding.
 
+**Coding agents are generated, not written.** The coding agents that work *in* a repository — Claude Code, Cursor, Copilot, Codex, Gemini CLI — get the same rows, generated from the repository's agent configuration with the line that grants each one (§5.6), marked `origin: "agent-config"`. Every join above reads them unchanged, so an `@entitles` closes a coding agent's reach exactly as it closes an embedded agent's. A hand-written `@agents` or `@reaches` naming one of those actors is a validation error (`hand-written-coding-agent-reach`): a copy of a settings file drifts from the file. The views count coding agents apart from embedded agents, and LLM06 and LLM05 stay about embedded agents; an instruction file, skill or third-party MCP server that a coding agent loads is an untrusted source, so one reaching an agent with an ungated mutation is an LLM01 injection-to-tool route.
+
 ### 3.3. Lifecycle Annotations
 
 These annotations support security process and governance.
@@ -1174,7 +1176,8 @@ A `@validates` annotation with no corresponding test execution data is **unverif
   "version": 1,
   "summary": {
     "reaches": 7, "agent_reaches": 6, "unentitled_reaches": 5,
-    "effects": 9, "mutating_effects": 7, "ungated_effects": 5, "gates": 2
+    "effects": 9, "mutating_effects": 7, "ungated_effects": 5, "gates": 2,
+    "coding_agent_reaches": 0, "unentitled_coding_agent_reaches": 0
   },
   "unentitled_reaches": [
     {
@@ -1212,6 +1215,7 @@ A `@validates` annotation with no corresponding test execution data is **unverif
 - **`mutating_effects`** — every `@effects` except `read`, in model order, with `gated`. `gates` are the gates that cover it; `gate_near_misses` the gates on the same asset that do not, with `blocker` `capability-unknown` (no reach is bound to the effect's code, so nothing says which capability reaches it) or `other-capability` (a reach bound there is a capability the gate does not name).
 - **`colocated_effects` / `colocated_reaches`** — the claims bound to the same code: the same file and the same structure-layer anchor (§5.2), which is what writing them in one doc-block gives. A file-scope anchor binds nothing together. These are the only links from a reach to an effect the model holds; a code graph gives the rest.
 - Values the annotation leaves out are `null`, never absent.
+- **Generated rows** (§5.6) appear in these arrays like annotated ones and add two keys: `origin` (`"agent-config"`) and `source`, the provenance object of §5.6. Both are absent on a row from an annotation. `summary.coding_agent_reaches` counts the generated reaches and `summary.unentitled_coding_agent_reaches` those of them no entitlement covers; both are also counted in `reaches` and `unentitled_reaches`, so a consumer that wants the embedded-agent figure subtracts them.
 
 **When it is written.** Only when the model declares at least one reach, effect or gate. A model without those verbs exports the same bytes it did before the block existed, and its annotation hash (§8.2.2) is unchanged either way: the block is derived from the claims the hash already covers. A reader tells "no reach verbs" from "an exporter that predates the block" by `reaches`, which every exporter that writes the block also writes, empty or not.
 
@@ -1221,11 +1225,88 @@ A `@validates` annotation with no corresponding test execution data is **unverif
 |---|---|
 | `guardlink parse [-o file]`, `guardlink report --format json`, MCP `guardlink_parse` (full form), the `guardlink://model` resource and the MCP report's `.json` | The model with `reach_analysis`, in model order |
 | `.guardlink/model.json` (`guardlink artifacts`) | The same, canonically ordered, with indexes into the ordered arrays |
-| `guardlink lookup` / MCP `guardlink_lookup` | `reaches`, `agents`, `unentitled reaches` (with `claim_key` and near misses), `effects`, `gates` and `ungated effects`, each optionally `for <actor>` or `for <asset>` (§8.2) |
-| `guardlink sarif --profile pentest` | One `guardlink/agent-reach` result per reach and per mutating effect (§6.8), keyed by the same claim keys |
-| `guardlink diff` | Reach, effect and gate changes, and `NEW_UNENTITLED_REACH` (§7.1) |
+| `guardlink lookup` / MCP `guardlink_lookup` | `reaches`, `agents`, `unentitled reaches` (with `claim_key` and near misses), `effects`, `gates` and `ungated effects`, each optionally `for <actor>` or `for <asset>` (§8.2); for generated rows also `agent config`, `unentitled coding-agent reach` and `what can <agent> run without asking` (§5.6) |
+| `guardlink sarif --profile pentest` | One `guardlink/agent-reach` result per annotated reach and per annotated mutating effect (§6.8), keyed by the same claim keys. Generated rows are not exported (§5.6) |
+| `guardlink diff` | Reach, effect and gate changes, and `NEW_UNENTITLED_REACH` (§7.1); generated rows as the agent-configuration changes of §7.1 |
 
 A dashboard, an IDE plugin or a canvas that draws an agent's reach reads `reaches`, `effects` and `gates` for the declared facts and `reach_analysis` for the two joins: the reach map is `reaches` × the effects in `colocated_effects` / `colocated_reaches`, the Excessive Agency list is `unentitled_reaches`, and the ungated mutations are the `mutating_effects` with `gated: false`. A scanner reads the SARIF results and joins them to `reach_analysis` on the claim key, which is the only place whether a reach is entitled is recorded (§6.1). `compact` MCP output and a merged estate report (`guardlink merge`) do not carry the block; recompute it from a single repository's export.
+
+### 5.6. Agent Configuration (generated)
+
+A repository's coding-agent configuration decides what an agent working in it may run, read, write or call without asking: Claude Code's `.claude/settings.json` and `.mcp.json`, Cursor's `.cursor/{mcp,cli,hooks,environment}.json`, VS Code's `.vscode/{mcp,settings,tasks}.json`, Codex's `.codex/config.toml`, Gemini CLI's `.gemini/settings.json`, and the instruction files, rules, skills, commands and subagents they load. A conforming exporter MAY read it into the model; GuardLink does by default. Reading it is offline and deterministic: it never starts an MCP server, runs a hook or helper, fetches a package, calls a model or contacts the network. It is switched off by `"agent_config": {"enabled": false}` in `.guardlink/config.json` or by `--no-agent-config` on any command.
+
+**What it produces.**
+
+- Rows in `reaches`, `effects` and `gates`, in GuardLink's own vocabulary (§3.2.1): an `@agents` reach for each capability the configuration grants an agent, an `@effects` for what using a dangerous one does to the developer's machine, and a `@gates` for each rule that makes the agent ask first. Each carries `origin: "agent-config"` and `source`. Its `location` is the configuration file and the line of the granting value; `location.binding` is the entry's JSON pointer, and rows read off one entry share it, so the reach and the effect one allow rule grants are bound together the way claims in one doc-block are (§5.5 `colocated_*`).
+- Actors for the agents (`#claude-code`, `#cursor`, `#copilot`, `#codex`, `#gemini-cli`, and `#developer` as the approver of a gate), with `origin: "agent-config"`, unless an annotation declares the same id.
+- The `agent_config` block, below.
+
+```json
+{
+  "actor": "#claude-code", "agent": true,
+  "capability": "bash.gh-api", "canonical_capability": "bash.gh_api",
+  "asset": "#dev-workstation",
+  "description": "permissions.allow Bash(gh api:*): any GitHub REST or GraphQL call with the developer's token, including POST and DELETE, without asking",
+  "location": { "file": ".claude/settings.json", "line": 15, "binding": "/permissions/allow/11" },
+  "origin": "agent-config",
+  "source": {
+    "harness": "claude-code", "file_kind": "claude-settings",
+    "pointer": "/permissions/allow/11", "raw": "Bash(gh api:*)",
+    "scope": "root", "gated": false, "loaded_when": ["after-trust", "headless"],
+    "semantics": {
+      "table": "claude-code@2026-10", "rule": "bash-prefix", "admits": ["network-write"],
+      "doc": "https://code.claude.com/docs/en/permissions#wildcard-patterns"
+    }
+  }
+}
+```
+
+`source.gated` says whether the harness asks the developer before using the capability. `loaded_when` says when the harness honours the file: `always`, `after-trust` (once the developer accepts the folder's trust prompt) or `headless` (in a non-interactive run, which never shows one). `semantics` names the table and rule that read the key; the tables are `harness/<harness>.json` in the GuardLink package, one per harness and documented version, every rule with the vendor documentation it was read from, and `harness/shell.json` holds what arbitrary arguments after a pre-approved command prefix make possible. A harness's own protections are applied — Claude Code never auto-approves the command-running forms of `find` or the exec wrappers, so `Bash(find:*)` grants no execution there.
+
+**Scope decides meaning.** `root` and `nested` configuration is what this repository's own agents load and is the only kind that creates rows. `packaged` configuration — under a plugin bundle (an ancestor holds `.claude-plugin/`), a template or examples tree, or a product's own source — ships to others, and is listed in the block (its MCP servers and hooks included) without creating reach here. `fixture` configuration is test data and is listed only. Files git ignores are left out, so a developer's local `.claude/settings.local.json` never enters the model. Symlinks are followed inside the repository only; a file reached by two paths is read once, loaded by every agent either path names.
+
+**The `agent_config` block.**
+
+```json
+"agent_config": {
+  "version": 1,
+  "agent_config_hash": "sha256-v1:9c1e…",
+  "semantics": { "claude-code": "2026-10", "cursor": "2026-10" },
+  "files": [
+    { "path": ".agents/skills/setup-dev/SKILL.md", "kind": "skill", "harnesses": ["claude-code", "codex"], "scope": "root",
+      "via": [".claude/skills -> .agents/skills"] }
+  ],
+  "mcp_servers": [
+    { "name": "guardlink", "harness": "claude-code", "file": ".mcp.json", "line": 3, "scope": "root", "transport": "stdio",
+      "launch": { "command": "guardlink", "args": ["mcp"] },
+      "resolves_to": { "kind": "own-bin", "file": "src/cli/index.ts", "package": "guardlink", "bin": "dist/cli/index.js" },
+      "credential_env": [], "returns_third_party_content": false, "disabled": false }
+  ],
+  "hooks": [
+    { "harness": "claude-code", "event": "SessionStart", "matcher": "startup", "file": ".claude/settings.json", "line": 19,
+      "scope": "root", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/scripts/install_pkgs.sh",
+      "runs": [".claude/scripts/install_pkgs.sh"], "does": ["package-install"] }
+  ],
+  "instruction_files": [
+    { "path": "CLAUDE.md", "kind": "instructions", "harnesses": ["claude-code", "copilot-review"], "scope": "root", "bytes": 2930,
+      "guardlink_block": { "line": 1, "stamp": "sha256-v3:dd87…", "agent_config_stamp": "sha256-v1:9c1e…", "current": true },
+      "hidden_unicode": [] }
+  ],
+  "assets": [{ "id": "#dev-workstation", "description": "Developer machine: …" }],
+  "denies": [{ "harness": "claude-code", "file": ".claude/settings.json", "line": 40, "raw": "Read(.env)" }],
+  "untrusted_sources": [{ "source": "CLAUDE.md", "kind": "instruction-file", "file": "CLAUDE.md", "line": 1, "agents": ["#claude-code"] }],
+  "unreadable": []
+}
+```
+
+- **`agent_config_hash`** covers the file list, every generated row by its words and its key (never its line), the MCP servers, hooks, deny rules and semantics versions. It moves independently of `annotation_hash`, which does not cover generated rows. It does not cover instruction-file text: the GuardLink block written into those files carries this hash, and a hash over their text could never match the block that states it.
+- **MCP servers** record what starts (never env values), whether it is this repository's own code (a bin of its `package.json`, reported against its source, or a source file), whether a package launch is pinned, and the *names* of credential-like env vars and headers. `returns_third_party_content` marks a server whose name, host or launch names a service an outsider can write to (an issue tracker, a browser, a search engine).
+- **`untrusted_sources`** are the places text enters an agent's context: each instruction file, rule, skill, command or subagent a coding agent loads, and each third-party-content MCP server, with the agents it reaches.
+- **Assets** the generated rows name are declared here, not as `@asset`, so they do not enter the asset inventory; an `@entitles` may name them.
+
+**Lints** (`guardlink validate`): `hidden-unicode` — invisible characters in an instruction file, skill or command, an error when Unicode Tag characters or variation selectors decode to text, a warning otherwise (the rules, and the emoji, Indic and CJK sequences that are exempt, are pinned by `conformance/hidden-unicode.json`); `agent-block-unstamped` and `agent-block-stale` — a GuardLink block (§8.1) with no stamp, or one stamped from another model; `agent-config-unreadable`; and `hand-written-coding-agent-reach` (§3.2.1). Fixture files are not linted.
+
+**Closing reach.** A generated reach is closed like any other, by a cited `@entitles`. `guardlink entitle --from-config --propose` drafts one proposal per unentitled coding-agent capability, each citing the line that grants it; a human accepts each one.
 
 ---
 
@@ -1262,6 +1343,7 @@ Every other annotation is **not** a result:
 | `@validates`, `@owns`, `@feature`, `@comment`, `@shield` | Not exported | — |
 | `@actor` / `@entitles` | **Not exported.** No result, no suppression, no property on any result, and nothing in the declared context | See below. |
 | `@agents`, `@reaches`, `@effects`, `@gates` | Not in the `github` profile. The `pentest` profile appends a `guardlink/agent-reach` result per reach and per mutating effect (§6.8). | Targets to test, not findings. A reach result would change the result index every consumer keys on, which is why it is only appended, and only in `pentest`. |
+| Rows generated from agent configuration (§5.6) | Not in either profile. | What configuration *allows* is judged by a scanner that reads it; the export lists the claims people wrote. The rows are in the model export with their `source`, which a scanner's finding joins on through the claim key. |
 
 New result kinds — covered exposures with their suppressions, `@boundary` claims, review items for `@assumes` and `@audit` — would change the result index every existing consumer keys on and open a GitHub alert per annotation. The first two exist only in the `pentest` profile, appended after every result above (§6.8), as does a result per declared reach and mutating effect; none of them is ever added to the `github` profile.
 
@@ -1726,6 +1808,10 @@ When comparing threat models between two git refs (e.g., a feature branch vs. `m
 | `INFO` | Changes to `@flows`, `@boundary`, `@owns`, `@handles`, `@assumes`, `@actor` | **Pass** |
 | `STALE_ENTITLEMENT` | An `@entitles` is unchanged, but the authorization code its description cites changed | **Warn** |
 | `NEW_UNENTITLED_REACH` | An `@agents`/`@reaches` claim no cited `@entitles` covers (§3.2.1) that was covered, or absent, before | **Warn** |
+| `NEW_CODING_AGENT_REACH` | The agent configuration grants a coding agent a capability it did not before (§5.6) | **Warn** |
+| `NEW_BYPASS_MODE` | The agent configuration newly switches an agent's prompts off: a bypass or auto-approve mode, a trusted server, `approval_policy = "never"` | **Warn** |
+| `MCP_LAUNCH_CHANGED` | An MCP server keeps its name while what it starts (command and arguments, or URL host) changes. A developer approved the old command once, and some harnesses do not ask again | **Warn** |
+| `NEW_AUTOMATIC_COMMAND` | The agent configuration newly runs a command on its own: a hook, a folder-open task, a background-agent install step | **Warn** |
 
 An entitlement whose cited file changed is reported as **stale**, not as removed: the claim still stands, but the basis a reviewer accepted it on has moved, so it needs a fresh look. Because the entitlement itself did not change, this is reported even when the delta is otherwise empty. An uncited (inert) entitlement has no basis and cannot go stale.
 
@@ -1778,6 +1864,14 @@ A conforming instruction file should contain:
 2. Rules for when to add annotations (security-relevant code changes)
 3. The constraint that agents only add annotations and do not modify functional code, execute commands, change CI configuration, or modify secrets
 4. Examples in the project's primary language
+
+**The block GuardLink writes** is a short pointer (about 25 lines) between `<!-- guardlink:begin -->` and `<!-- guardlink:end -->`: whether a model exists (or is empty, and what that means), where annotations go, the decisions an agent must leave to a person, and where the syntax and the live model are. It does not copy the model, which would go stale between syncs and be read as current. The line after the begin marker is its provenance stamp:
+
+```
+<!-- guardlink:stamp annotation_hash=sha256-v3:… agent_config_hash=sha256-v1:… -->
+```
+
+Every block is stamped, the empty-model block included, and `guardlink validate` reports one whose stamp no longer matches the model (§5.6). `guardlink sync` writes the block only into instruction files that already exist, never into a packaged or fixture one; `guardlink init` creates an agent's file only when it is named with `--agent`.
 
 ### 5.4. Attribution (optional `blame` field)
 

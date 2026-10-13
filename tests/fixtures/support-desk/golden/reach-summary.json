@@ -14,7 +14,9 @@
       "loc": {
         "file": ".guardlink/definitions.ts",
         "line": 16
-      }
+      },
+      "config_reaches": 0,
+      "generated": false
     },
     {
       "key": "ci-runner",
@@ -30,7 +32,9 @@
       "loc": {
         "file": ".guardlink/definitions.ts",
         "line": 18
-      }
+      },
+      "config_reaches": 0,
+      "generated": false
     },
     {
       "key": "support-human",
@@ -46,7 +50,9 @@
       "loc": {
         "file": ".guardlink/definitions.ts",
         "line": 17
-      }
+      },
+      "config_reaches": 0,
+      "generated": false
     }
   ],
   "columns": [
@@ -662,6 +668,14 @@
       ]
     }
   ],
+  "coding": {
+    "agents": [],
+    "reaches": [],
+    "by_file": [],
+    "automatic": [],
+    "mcp_servers": [],
+    "untrusted_sources": 0
+  },
   "totals": {
     "agents": 1,
     "principals": 1,
@@ -672,6 +686,11 @@
     "ungated": 5,
     "gates": 2,
     "egress": 0,
-    "injection": 0
+    "injection": 0,
+    "coding_agents": 0,
+    "coding_reaches": 0,
+    "coding_unentitled": 0,
+    "coding_ungated": 0,
+    "coding_automatic": 0
   }
 }

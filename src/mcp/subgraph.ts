@@ -549,6 +549,10 @@ export function summariseGraphPayload(payload: { traversal: Traversal; model: Th
   };
 
   const model: Record<string, unknown> = { ...(payload.model as unknown as Record<string, unknown>) };
+  // The agent-config inventory describes the whole repository's configuration,
+  // not a neighbourhood: its generated rows are already filtered like any other
+  // row, and the inventory itself is prose-heavy, so summary leaves it out.
+  delete model.agent_config;
   for (const name of ALL_ROW_ARRAYS) {
     const rows = model[name];
     if (Array.isArray(rows)) model[name] = rows.map(r => compactRow(r as Record<string, unknown>));

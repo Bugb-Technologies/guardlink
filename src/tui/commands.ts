@@ -1834,8 +1834,7 @@ export async function cmdSync(ctx: TuiContext): Promise<void> {
   }
 
   console.log('');
-  console.log(`  ${C.dim(`${ctx.model.assets.length} assets, ${ctx.model.threats.length} threats, ${ctx.model.controls.length} controls, ${ctx.model.exposures.length} exposures synced.`)}`);
-  console.log(C.dim('  Any coding agent (Cursor, Claude, Copilot, Windsurf, etc.) will see these IDs.'));
+  console.log(C.dim('  Each block is stamped with this model; guardlink validate warns when one goes stale.'));
   console.log('');
 }
 

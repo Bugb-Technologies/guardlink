@@ -51,7 +51,7 @@
  */
 import type {
   ThreatModel, ThreatModelReach, ThreatModelEntitlement, ThreatModelEffect, ThreatModelGate,
-  EffectClass, SourceLocation,
+  EffectClass, SourceLocation, RowOrigin, AgentConfigSource,
 } from '../types/index.js';
 import { canonicaliser } from './canonical-ref.js';
 import { normalizeName } from './normalize.js';
@@ -151,6 +151,10 @@ export function reachKey(model: ThreatModel): (reach: ThreatModelReach) => strin
  * claim in it as bound together would invent links the author never wrote.
  */
 export function boundCode(location: SourceLocation): string | null {
+  // A row generated from agent configuration is bound to the entry it was
+  // read from (its JSON pointer): the reach and the effect one allow rule
+  // grants are one claim, as an @agents and @effects in one doc-block are.
+  if (location.binding) return `${location.file}\u0000config\u0000${location.binding}`;
   const a = location.anchor;
   if (!a || a.scope === 'file') return null;
   return `${location.file}\u0000${a.start_line}\u0000${a.end_line}`;
@@ -248,7 +252,13 @@ interface ClaimRef {
   line: number;
 }
 
-export interface ReachAnalysisReach extends ClaimRef {
+/** On a row generated from agent configuration (SPEC §5.6): where it came from. Absent on an annotation. */
+interface GeneratedRef {
+  origin?: RowOrigin;
+  source?: AgentConfigSource;
+}
+
+export interface ReachAnalysisReach extends ClaimRef, GeneratedRef {
   verb: 'agents' | 'reaches';
   actor: string;
   agent: boolean;
@@ -259,14 +269,14 @@ export interface ReachAnalysisReach extends ClaimRef {
   description: string | null;
 }
 
-export interface ReachAnalysisEffect extends ClaimRef {
+export interface ReachAnalysisEffect extends ClaimRef, GeneratedRef {
   effect: EffectClass;
   asset: string;
   identity: string | null;
   description: string | null;
 }
 
-export interface ReachAnalysisGate extends ClaimRef {
+export interface ReachAnalysisGate extends ClaimRef, GeneratedRef {
   asset: string;
   approver: string;
   capability: string | null;
@@ -290,6 +300,14 @@ export interface ReachAnalysis {
     mutating_effects: number;
     ungated_effects: number;
     gates: number;
+    /**
+     * Of `reaches`, those generated from coding-agent configuration, and of
+     * `unentitled_reaches`, those of them no cited entitlement covers. Counted
+     * apart so a consumer can tell the agents a product embeds from the agents
+     * its developers run; both kinds are rows in the arrays below.
+     */
+    coding_agent_reaches: number;
+    unentitled_coding_agent_reaches: number;
   };
   /** Can minus may: every reach no cited entitlement covers, in model order. */
   unentitled_reaches: (ReachAnalysisReach & {
@@ -332,6 +350,8 @@ export function buildReachAnalysis(model: ThreatModel): ReachAnalysis {
   const ref = (index: number, location: SourceLocation): ClaimRef => ({
     index, claim_key: keyOf.get(location) ?? null, file: location.file, line: location.line,
   });
+  const generated = (r: { origin?: RowOrigin; source?: AgentConfigSource }): GeneratedRef =>
+    (r.origin ? { origin: r.origin, ...(r.source ? { source: r.source } : {}) } : {});
 
   const reachRow = (r: ThreatModelReach): ReachAnalysisReach => ({
     ...ref(reachIndex(r), r.location),
@@ -343,6 +363,7 @@ export function buildReachAnalysis(model: ThreatModel): ReachAnalysis {
     asset: r.asset ?? null,
     identity: r.identity ?? null,
     description: r.description ?? null,
+    ...generated(r),
   });
   const effectRow = (e: ThreatModelEffect): ReachAnalysisEffect => ({
     ...ref(effectIndex(e), e.location),
@@ -350,6 +371,7 @@ export function buildReachAnalysis(model: ThreatModel): ReachAnalysis {
     asset: e.asset,
     identity: e.identity ?? null,
     description: e.description ?? null,
+    ...generated(e),
   });
   const gateRow = (g: ThreatModelGate): ReachAnalysisGate => ({
     ...ref(gateIndex(g), g.location),
@@ -357,6 +379,7 @@ export function buildReachAnalysis(model: ThreatModel): ReachAnalysis {
     approver: g.approver,
     capability: g.capability ?? null,
     canonical_capability: g.canonical_capability ?? null,
+    ...generated(g),
   });
 
   const gating = classifyEffects(model);
@@ -400,6 +423,8 @@ export function buildReachAnalysis(model: ThreatModel): ReachAnalysis {
       mutating_effects: mutating.length,
       ungated_effects: mutating.filter(m => !m.gated).length,
       gates: model.gates?.length ?? 0,
+      coding_agent_reaches: (model.reaches ?? []).filter(r => r.origin).length,
+      unentitled_coding_agent_reaches: unentitled.filter(u => u.origin).length,
     },
     unentitled_reaches: unentitled,
     mutating_effects: mutating,

@@ -35,9 +35,24 @@
  *
  * Each is a target for review or test, never a finding the model has proved.
  *
+ * ── Coding agents, counted apart ─────────────────────────────────────
+ *
+ * Rows generated from the repository's agent configuration (`origin`, SPEC
+ * §5.6) say what Claude Code, Cursor, Copilot, Codex or Gemini may do in this
+ * repository without asking. They go through the same joins — an `@entitles`
+ * closes one exactly as it closes an annotated reach — but they are summarised
+ * in `coding`, beside the embedded-agent picture rather than inside it: one
+ * shared allow list can grant a hundred capabilities, and folding those into
+ * the unentitled count and LLM06 would bury the agent the product ships under
+ * the agents its developers use. They do take part in LLM01: an instruction
+ * file or a third-party MCP server is text an attacker can write, entering an
+ * agent that may then act without asking, which is an injection-to-tool route.
+ *
  * @comment -- "Pure functions over an assembled ThreatModel; no I/O and no input surface. Every row keeps the file:line of the annotation it came from, so each picture can be traced back to source"
  */
-import type { ThreatModel, ThreatModelReach, EffectClass, SourceLocation } from '../types/index.js';
+import type {
+  ThreatModel, ThreatModelReach, EffectClass, SourceLocation, AgentConfigSource, AgentConfigHook, AgentConfigMcpServer,
+} from '../types/index.js';
 import {
   actorResolver, boundCode, findUnentitledReaches, classifyEffects, isMutatingEffect,
   type EffectGating, type GateCoverBlocker, type ReachCoverBlocker,
@@ -65,6 +80,10 @@ export interface ReachActorRow {
   /** `@gates` naming this actor as the approver. */
   approves: number;
   loc?: ReachLoc;
+  /** Reaches generated from agent configuration; not counted in `reaches`. */
+  config_reaches: number;
+  /** Declared by the config reader rather than by an `@actor` annotation. */
+  generated: boolean;
 }
 
 export interface ReachColumn { key: string; ref: string; declared: boolean }
@@ -115,6 +134,55 @@ export interface UnentitledRow {
   description?: string;
   loc: ReachLoc;
   near_misses: NearMissRow[];
+}
+
+/** Who granted a generated row: the configuration line, and how GuardLink read it. */
+export interface GrantedBy {
+  file: string;
+  line: number;
+  raw: string;
+  pointer: string;
+  harness: string;
+  scope: string;
+  rule: string;
+  doc: string;
+  loaded_when: string[];
+}
+
+/** One capability a coding agent holds through the repository's configuration. */
+export interface CodingReachRow {
+  actor: string;
+  capability: string;
+  asset?: string;
+  identity?: string;
+  description?: string;
+  /** The harness asks the developer before using it. */
+  gated: boolean;
+  /** A cited `@entitles` covers it. */
+  entitled: boolean;
+  near_misses: NearMissRow[];
+  /** What using it does, read off the same configuration entry; mutating ones are ungated by construction. */
+  effects: EffectClass[];
+  granted_by: GrantedBy;
+}
+
+export interface CodingFileGroup {
+  file: string;
+  harnesses: string[];
+  reaches: CodingReachRow[];
+}
+
+export interface CodingSummary {
+  /** Coding agents with a generated reach, with their counts. */
+  agents: { actor: string; name: string; reaches: number; unentitled: number; ungated: number }[];
+  /** Every generated reach, in model order. */
+  reaches: CodingReachRow[];
+  /** The same rows grouped by the configuration file that grants them. */
+  by_file: CodingFileGroup[];
+  /** Commands the configuration runs automatically (hooks, folder-open tasks, helpers). */
+  automatic: AgentConfigHook[];
+  mcp_servers: AgentConfigMcpServer[];
+  untrusted_sources: number;
 }
 
 export interface UngatedRow {
@@ -197,9 +265,15 @@ export interface ReachSummary {
   egress: EgressRow[];
   injection: InjectionRoute[];
   owasp: OwaspRow[];
+  /** Coding agents configured in this repository (SPEC §5.6). Empty when the reader did not run or found nothing. */
+  coding: CodingSummary;
   totals: {
     agents: number; principals: number; reaches: number; unentitled: number;
     effects: number; mutations: number; ungated: number; gates: number; egress: number; injection: number;
+    /** Coding agents with generated reach, their reaches, and those no cited @entitles covers. */
+    coding_agents: number; coding_reaches: number; coding_unentitled: number;
+    /** Mutating effects the configuration grants with nothing in front of them, and commands it runs automatically. */
+    coding_ungated: number; coding_automatic: number;
   };
 }
 
@@ -222,6 +296,11 @@ const NEAR_MISS_REASON: Record<ReachCoverBlocker, string> = {
   'other-asset': 'the entitlement is for another asset',
 };
 
+const grantedBy = (src: AgentConfigSource, l: SourceLocation): GrantedBy => ({
+  file: l.file, line: l.line, raw: src.raw, pointer: src.pointer, harness: src.harness, scope: src.scope,
+  rule: src.semantics.rule, doc: src.semantics.doc, loaded_when: src.loaded_when,
+});
+
 /** True when the model carries any reach annotation at all. */
 export function hasReach(model: ThreatModel): boolean {
   return (model.reaches ?? []).length > 0 || (model.effects ?? []).length > 0 || (model.gates ?? []).length > 0;
@@ -232,13 +311,17 @@ export function summarizeReach(rawModel: ThreatModel): ReachSummary {
   const model = canonicalizeModelOrder(rawModel);
   const actorKey = actorResolver(model);
   const assetKey = canonicaliser(model);
-  const reaches = model.reaches ?? [];
-  const gating: Gated[] = classifyEffects(model).map(g => {
+  const allReaches = model.reaches ?? [];
+  // The embedded-agent picture is drawn from annotations; generated rows are summarised in `coding`.
+  const reaches = allReaches.filter(r => !r.origin);
+  const allGating: Gated[] = classifyEffects(model).map(g => {
     const mutating = isMutatingEffect(g.effect.effect);
     return { ...g, mutating, gated: mutating && g.gates.length > 0 };
   });
-  const unentitledReaches = findUnentitledReaches(model);
-  const unentitledSet = new Set(unentitledReaches.map(u => u.reach));
+  const gating = allGating.filter(g => !g.effect.origin);
+  const allUnentitled = findUnentitledReaches(model);
+  const unentitledReaches = allUnentitled.filter(u => !u.reach.origin);
+  const unentitledSet = new Set(allUnentitled.map(u => u.reach));
 
   // ── Display labels ──
   const assetRef = new Map<string, { ref: string; declared: boolean }>();
@@ -254,23 +337,25 @@ export function summarizeReach(rawModel: ThreatModel): ReachSummary {
     actorRows.set(key, {
       key, ref: ac.id ? `#${ac.id}` : ac.name, name: ac.name, description: ac.description,
       agent: false, declared: true, reaches: 0, unentitled: 0, ungated: 0, approves: 0, loc: loc(ac.location),
+      config_reaches: 0, generated: ac.origin === 'agent-config',
     });
   }
   const actorRow = (ref: string): ReachActorRow => {
     const key = actorKey(ref);
     let row = actorRows.get(key);
     if (!row) {
-      row = { key, ref, name: ref.replace(/^#/, ''), agent: false, declared: false, reaches: 0, unentitled: 0, ungated: 0, approves: 0 };
+      row = { key, ref, name: ref.replace(/^#/, ''), agent: false, declared: false, reaches: 0, unentitled: 0, ungated: 0, approves: 0, config_reaches: 0, generated: false };
       actorRows.set(key, row);
     }
     return row;
   };
   const actorLabel = (ref: string): string => actorRow(ref).ref;
 
-  for (const r of reaches) {
+  for (const r of allReaches) {
     const row = actorRow(r.actor);
-    row.reaches++;
     if (r.agent) row.agent = true;
+    if (r.origin) { row.config_reaches++; continue; }
+    row.reaches++;
     if (unentitledSet.has(r)) row.unentitled++;
   }
   for (const g of model.gates ?? []) actorRow(g.approver).approves++;
@@ -361,8 +446,9 @@ export function summarizeReach(rawModel: ThreatModel): ReachSummary {
   }));
 
   const egress = findEgress(model, reaches, actorKey, assetKey, actorLabel, assetLabel);
-  const injection = findInjectionRoutes(model, gating, actorKey, assetKey, actorLabel, assetLabel);
+  const injection = findInjectionRoutes(model, allGating, actorKey, assetKey, actorLabel, assetLabel);
   const owasp = mapOwasp(unentitled, gating, injection, actorKey, actorLabel, assetLabel);
+  const coding = summarizeCoding(model, allUnentitled, allGating, actorKey, actorLabel, assetLabel);
 
   const actors = [...actorRows.values()].sort((a, b) =>
     Number(b.agent) - Number(a.agent) || Number(b.reaches > 0) - Number(a.reaches > 0) || a.ref.localeCompare(b.ref));
@@ -386,8 +472,10 @@ export function summarizeReach(rawModel: ThreatModel): ReachSummary {
     egress,
     injection,
     owasp,
+    coding,
     totals: {
-      agents: actors.filter(a => a.agent).length,
+      // An embedded agent is one an annotation says can reach something; coding agents are counted in coding_agents.
+      agents: actors.filter(a => a.agent && a.reaches > 0).length,
       principals: actors.filter(a => !a.agent && a.reaches > 0).length,
       reaches: reaches.length,
       unentitled: unentitled.length,
@@ -397,7 +485,79 @@ export function summarizeReach(rawModel: ThreatModel): ReachSummary {
       gates: gates.length,
       egress: egress.length,
       injection: injection.length,
+      coding_agents: coding.agents.length,
+      coding_reaches: coding.reaches.length,
+      coding_unentitled: coding.reaches.filter(r => !r.entitled).length,
+      coding_ungated: allGating.filter(g => g.effect.origin && g.mutating && !g.gated).length,
+      coding_automatic: coding.automatic.filter(h => h.scope === 'root' || h.scope === 'nested').length,
     },
+  };
+}
+
+/** The coding-agent half: every generated reach with who granted it, grouped by file. */
+function summarizeCoding(
+  model: ThreatModel, unentitled: ReturnType<typeof findUnentitledReaches>, gating: Gated[],
+  actorKey: Resolve, actorLabel: Resolve, assetLabel: Resolve,
+): CodingSummary {
+  const misses = new Map(unentitled.map(u => [u.reach, u.near_misses]));
+  const effectsAt = new Map<string, EffectClass[]>();
+  for (const g of gating) {
+    if (!g.effect.origin) continue;
+    for (const r of g.colocated_reaches) {
+      const list = effectsAt.get(`${r.location.file}\u0000${r.location.binding}`) ?? [];
+      if (!list.includes(g.effect.effect)) list.push(g.effect.effect);
+      effectsAt.set(`${r.location.file}\u0000${r.location.binding}`, list);
+    }
+  }
+  const rows: CodingReachRow[] = (model.reaches ?? []).filter(r => r.origin && r.source).map(r => ({
+    actor: actorLabel(r.actor), capability: r.capability,
+    asset: r.asset ? assetLabel(r.asset) : undefined, identity: r.identity, description: r.description,
+    gated: r.source!.gated,
+    entitled: !misses.has(r),
+    near_misses: (misses.get(r) ?? []).map(n => ({
+      blocker: n.blocker, reason: NEAR_MISS_REASON[n.blocker],
+      asset: n.entitlement.asset ? assetLabel(n.entitlement.asset) : undefined,
+      citation: n.entitlement.citation?.raw, loc: loc(n.entitlement.location),
+    })),
+    effects: effectsAt.get(`${r.location.file}\u0000${r.location.binding}`) ?? [],
+    granted_by: grantedBy(r.source!, r.location),
+  }));
+
+  const byFile = new Map<string, CodingFileGroup>();
+  const fileHarnesses = new Map((model.agent_config?.files ?? []).map(f => [f.path, f.harnesses]));
+  for (const row of rows) {
+    const f = row.granted_by.file;
+    let g = byFile.get(f);
+    if (!g) { g = { file: f, harnesses: fileHarnesses.get(f) ?? [row.granted_by.harness], reaches: [] }; byFile.set(f, g); }
+    g.reaches.push(row);
+  }
+
+  const agents = new Map<string, CodingSummary['agents'][number]>();
+  const nameOf = new Map((model.actors ?? []).map(a => [actorKey(a.id ? `#${a.id}` : a.name), a.name]));
+  for (const r of model.reaches ?? []) {
+    if (!r.origin) continue;
+    const k = actorKey(r.actor);
+    const a = agents.get(k) ?? { actor: actorLabel(r.actor), name: nameOf.get(k) ?? r.actor, reaches: 0, unentitled: 0, ungated: 0 };
+    a.reaches++;
+    if (misses.has(r)) a.unentitled++;
+    agents.set(k, a);
+  }
+  for (const g of gating) {
+    if (!g.effect.origin || !g.mutating || g.gated) continue;
+    for (const k of new Set(g.colocated_reaches.map(r => actorKey(r.actor)))) {
+      const a = agents.get(k);
+      if (a) a.ungated++;
+    }
+  }
+
+  const block = model.agent_config;
+  return {
+    agents: [...agents.values()],
+    reaches: rows,
+    by_file: [...byFile.values()],
+    automatic: block?.hooks ?? [],
+    mcp_servers: block?.mcp_servers ?? [],
+    untrusted_sources: block?.untrusted_sources.length ?? 0,
   };
 }
 
@@ -495,6 +655,17 @@ function findInjectionRoutes(
   }
 
   const out: InjectionRoute[] = [];
+  // Text the repository's agent configuration loads into an agent — an
+  // instruction file, a skill, a third-party MCP server — enters that agent
+  // directly (SPEC §5.6): a one-hop route with no @flows of its own.
+  for (const u of model.agent_config?.untrusted_sources ?? []) {
+    for (const agentRef of u.agents) {
+      const a = agents.get(actorKey(agentRef));
+      if (!a || a.effects.length === 0) continue;
+      const hop = { file: u.file, line: u.line };
+      out.push({ entry: u.source, chain: [u.source, actorLabel(agentRef)], agent: actorLabel(agentRef), hops: [hop], effects: a.effects });
+    }
+  }
   for (const entry of entries) {
     const prev = new Map<string, { from: string; flow: ReachLoc }>();
     const seen = new Set([entry]);

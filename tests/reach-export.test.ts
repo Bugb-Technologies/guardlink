@@ -53,6 +53,8 @@ describe('buildReachAnalysis', () => {
     expect(a.summary).toEqual({
       reaches: 7, agent_reaches: 6, unentitled_reaches: 5,
       effects: 9, mutating_effects: 7, ungated_effects: 5, gates: 2,
+      // The support-desk fixture configures no coding agent.
+      coding_agent_reaches: 0, unentitled_coding_agent_reaches: 0,
     });
     expect(Object.keys(a)).toEqual(['version', 'summary', 'unentitled_reaches', 'mutating_effects']);
   });

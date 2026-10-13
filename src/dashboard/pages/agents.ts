@@ -12,10 +12,11 @@
  *
  * @mitigates #dashboard against #xss using #output-encoding -- "Actor, asset and capability names, descriptions and citations are model text; every one goes through esc(), including chip titles"
  * @flows ThreatModel -> #dashboard via summarizeReach -- "Reaches, effects, gates, entitlements and flows for the Agents page"
+ * @mitigates #dashboard against #xss using #output-encoding -- "Configuration values (rules, commands, hosts, file paths, doc URLs) are repository text and go through esc() like model text; doc links open with rel=noopener noreferrer"
  * @comment -- "Chips carry state the design way: a capability is an outlined chip with ✓ (entitled) or ✕ (unentitled), a gated effect carries ⊢, an ungated mutation is a filled warm chip, a read is a plain tag"
  */
 import { esc, scopeLabel, pageHead, subHead, sortableHead, rowAttrs, locCellShort, descCell, pager, plural, statTile } from '../html.js';
-import type { ReachSummary, ReachEffectChip, ReachCapabilityChip, ReachLoc } from '../../reach/index.js';
+import type { ReachSummary, ReachEffectChip, ReachCapabilityChip, ReachLoc, GrantedBy } from '../../reach/index.js';
 import type { PageContext } from './context.js';
 import { actorTables } from './tables.js';
 
@@ -82,11 +83,84 @@ function reachMap(s: ReachSummary): string {
   </div>`;
 }
 
+const grantedBy = (g: GrantedBy): string =>
+  `<code title="${esc(`${g.pointer} · read by ${g.harness} as ${g.rule}`)}">${esc(g.raw.length > 64 ? `${g.raw.slice(0, 61)}...` : g.raw)}</code>`;
+
+/**
+ * Coding agents configured in this repository (SPEC §5.6): every capability the
+ * configuration grants, with the line that granted it, grouped by file; then the
+ * commands it runs automatically and the MCP servers it starts. Generated rows,
+ * counted apart from the embedded agents above.
+ */
+function codingSection(s: ReachSummary, loc: (l: ReachLoc) => string): string {
+  const c = s.coding;
+  if (c.reaches.length === 0 && c.automatic.length === 0 && c.mcp_servers.length === 0) return '';
+  const own = (scope: string) => scope === 'root' || scope === 'nested';
+  const auto = c.automatic.filter(h => own(h.scope));
+  const servers = c.mcp_servers.filter(m => own(m.scope));
+  const rows = c.by_file.flatMap(g => g.reaches.map(r => ({ g, r })));
+  return `
+  ${subHead('Coding agents configured here', '', `<span data-count-for="agent-coding">${c.reaches.length}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="agents-coding">')}
+  <p class="guide">Generated from the repository's own agent configuration, not from annotations: what ${c.agents.map(a => `<code>${esc(a.actor)}</code>`).join(', ') || 'each coding agent'} may do here, grouped by the file that grants it and read off that line under the agent's documented behaviour. <b>Asks first</b> is whether the agent prompts the developer before using it. A human closes one with <code>@entitles</code>; <code>guardlink entitle --from-config --propose</code> drafts them for review.</p>
+  ${rows.length > 0 ? `
+  <div class="table-wrap"><table id="agent-coding" class="sortable" data-paginate="50">
+    ${sortableHead([{ key: 'actor', label: 'Agent' }, { key: 'capability', label: 'Capability' }, { key: 'asset', label: 'On' }, { key: 'asks', label: 'Asks first' }, { key: 'entitled', label: 'Entitled' }, { key: 'does', label: 'Does' }, { key: 'granted', label: 'Granted by', plain: true }, { key: 'location', label: 'Location', cls: 'loc' }])}
+    <tbody>
+    ${rows.map(({ g, r }) => `
+    <tr ${rowAttrs({ file: r.granted_by.file, search: ['coding', g.file, r.actor, r.capability, r.asset ?? '', r.granted_by.raw, r.granted_by.harness, r.granted_by.rule, r.entitled ? 'entitled' : 'unentitled', r.gated ? 'asks' : 'without asking', ...r.effects] })}>
+      <td><code>${esc(r.actor)}</code> <span class="reach-kind agent">coding agent</span></td>
+      <td><code>${esc(r.capability)}</code></td>
+      <td>${r.asset ? `<code>${esc(r.asset)}</code>` : '—'}</td>
+      <td>${r.gated ? 'yes' : '<strong>no</strong>'}</td>
+      <td>${r.entitled ? '<span class="reach-chip reach-cap ok"><span class="g">✓</span>entitled</span>' : '<span class="reach-chip reach-cap bad"><span class="g">✕</span>no</span>'}</td>
+      <td>${r.effects.length > 0 ? r.effects.map(e => `<span class="reach-chip reach-eff ungated"><i class="sw"></i>${esc(e)} · no gate</span>`).join('') : '<span class="muted">—</span>'}</td>
+      <td>${grantedBy(r.granted_by)}${r.granted_by.doc ? ` <a class="muted" href="${esc(r.granted_by.doc)}" rel="noopener noreferrer" target="_blank">${esc(r.granted_by.rule)}</a>` : ''}</td>
+      ${loc({ file: r.granted_by.file, line: r.granted_by.line })}
+    </tr>`).join('')}
+    </tbody>
+  </table></div>
+  ${pager('agent-coding')}` : ''}
+  ${auto.length > 0 ? `
+  <p class="guide"><b>Runs automatically</b> — outside the model's loop, with the developer's privileges.</p>
+  <div class="table-wrap"><table id="agent-coding-auto" class="sortable">
+    ${sortableHead([{ key: 'agent', label: 'Agent' }, { key: 'event', label: 'Event' }, { key: 'command', label: 'Command', plain: true }, { key: 'runs', label: 'Runs' }, { key: 'does', label: 'Does' }, { key: 'location', label: 'Location', cls: 'loc' }])}
+    <tbody>
+    ${auto.map(h => `
+    <tr ${rowAttrs({ file: h.file, search: ['automatic', h.harness, h.event, h.matcher ?? '', h.command, ...h.runs, ...h.does] })}>
+      <td><code>${esc(h.harness)}</code></td>
+      <td>${esc(h.event)}${h.matcher ? ` <span class="muted">${esc(h.matcher)}</span>` : ''}</td>
+      <td><code>${esc(h.command.length > 100 ? `${h.command.slice(0, 97)}...` : h.command)}</code></td>
+      <td>${h.runs.length > 0 ? h.runs.map(r => `<code>${esc(r)}</code>`).join('<br>') : '—'}</td>
+      <td>${h.does.length > 0 ? h.does.map(d => `<span class="reach-chip reach-eff ungated"><i class="sw"></i>${esc(d)}</span>`).join('') : '<span class="muted">local commands only</span>'}</td>
+      ${loc({ file: h.file, line: h.line })}
+    </tr>`).join('')}
+    </tbody>
+  </table></div>` : ''}
+  ${servers.length > 0 ? `
+  <p class="guide"><b>MCP servers</b> the configuration starts.</p>
+  <div class="table-wrap"><table id="agent-coding-mcp" class="sortable">
+    ${sortableHead([{ key: 'server', label: 'Server' }, { key: 'agent', label: 'Agent' }, { key: 'starts', label: 'Starts', plain: true }, { key: 'own', label: 'Built from this repository' }, { key: 'pinned', label: 'Pinned' }, { key: 'content', label: 'Third-party content' }, { key: 'location', label: 'Location', cls: 'loc' }])}
+    <tbody>
+    ${servers.map(m => `
+    <tr ${rowAttrs({ file: m.file, search: ['mcp', m.name, m.harness, m.transport, m.host ?? '', m.launch?.command ?? ''] })}>
+      <td><code>${esc(m.name)}</code>${m.disabled ? ' <span class="muted">disabled</span>' : ''}</td>
+      <td><code>${esc(m.harness)}</code></td>
+      <td>${m.transport === 'http' ? `http <code>${esc(m.host ?? '')}</code>` : `<code>${esc([m.launch?.command ?? '', ...(m.launch?.args ?? [])].join(' ').slice(0, 80))}</code>`}</td>
+      <td>${m.resolves_to ? `<code>${esc(m.resolves_to.file)}</code>` : '—'}</td>
+      <td>${m.package ? (m.package.pinned ? 'yes' : `<strong>no</strong> <code>${esc(m.package.spec)}</code>`) : '—'}</td>
+      <td>${m.returns_third_party_content ? '<strong>yes</strong>' : 'no'}</td>
+      ${loc({ file: m.file, line: m.line })}
+    </tr>`).join('')}
+    </tbody>
+  </table></div>` : ''}`;
+}
+
 export function renderAgentsPage(ctx: PageContext, s: ReachSummary): string {
   const { scope, links } = ctx;
   const loc = (l: ReachLoc): string => locCellShort(l.file, l.line, links);
   const t = s.totals;
-  const empty = t.reaches === 0 && t.effects === 0 && t.gates === 0;
+  const empty = t.reaches === 0 && t.effects === 0 && t.gates === 0
+    && t.coding_reaches === 0 && s.coding.automatic.length === 0 && s.coding.mcp_servers.length === 0;
 
   if (empty) {
     return `
@@ -102,20 +176,25 @@ export function renderAgentsPage(ctx: PageContext, s: ReachSummary): string {
   }
 
   const llm = s.owasp.reduce((n, o) => n + o.items.length, 0);
+  // Annotated reach to draw; without it the page is the coding-agent section alone.
+  const embedded = t.reaches + t.effects + t.gates > 0;
   return `
 <section id="sec-agents" class="section-content" aria-label="Agents and reach">
-  ${pageHead('Agents &amp; reach', scope, '', `<span class="muted">${t.agents} ${plural(t.agents, 'agent')} · ${t.principals} other ${plural(t.principals, 'principal')}</span>`)}
-  <p class="lead">What each embedded LLM agent (<code>@agents</code>) and other principal (<code>@reaches</code>) can invoke, what the code does (<code>@effects</code>), who decides first (<code>@gates</code>), and what of it a human approved (<code>@entitles</code>). An effect sits in an actor's row only when it is written in the same doc-block as the actor's reach, so both are bound to the same code.${scope ? ` Only reach annotations in the files tagged ${esc(scopeLabel(scope))} are shown.` : ''}</p>
+  ${pageHead('Agents &amp; reach', scope, '', `<span class="muted">${t.agents} ${plural(t.agents, 'agent')} · ${t.principals} other ${plural(t.principals, 'principal')}${t.coding_agents > 0 ? ` · ${t.coding_agents} coding ${plural(t.coding_agents, 'agent')}` : ''}</span>`)}
+  <p class="lead">What each embedded LLM agent (<code>@agents</code>) and other principal (<code>@reaches</code>) can invoke, what the code does (<code>@effects</code>), who decides first (<code>@gates</code>), and what of it a human approved (<code>@entitles</code>). An effect sits in an actor's row only when it is written in the same doc-block as the actor's reach, so both are bound to the same code.${t.coding_reaches > 0 ? ' What the coding agents its developers run may do here is read from the repository\'s agent configuration and counted on its own, below.' : ''}${scope ? ` Only reach annotations in the files tagged ${esc(scopeLabel(scope))} are shown.` : ''}</p>
   <div class="panel tiles">
+    ${embedded ? `
     ${tileJump(t.reaches, 'Reaches', 'agents-map', `${t.agents} ${plural(t.agents, 'agent')}, ${t.principals} other`)}
     ${tileJump(t.unentitled, 'Unentitled', 'agents-unentitled', 'can, but no one approved', true)}
     ${tileJump(`${t.ungated} of ${t.mutations}`, 'Ungated mutations', 'agents-ungated', 'nothing stands in front of them')}
     ${tileJump(t.gates, 'Gates', 'agents-gates', 'a named approver decides')}
-    ${tileJump(t.egress, 'Egress', 'agents-egress', 'leaves the model or a boundary')}
+    ${tileJump(t.egress, 'Egress', 'agents-egress', 'leaves the model or a boundary')}` : ''}
     ${tileJump(llm, 'OWASP LLM items', 'agents-owasp', 'LLM06 · LLM01 · LLM05')}
+    ${t.coding_reaches > 0 || s.coding.automatic.length > 0 ? tileJump(`${t.coding_unentitled} of ${t.coding_reaches}`, 'Coding-agent reach', 'agents-coding', 'unentitled, granted by configuration') : ''}
   </div>
   <div class="filter-status" hidden><span class="filter-status-text"></span><button class="btn ghost" data-clear-filters>Clear</button></div>
 
+  ${embedded ? `
   ${subHead('Reach map', '', `<span class="muted">${s.columns.length} ${plural(s.columns.length, 'asset')}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="agents-map">')}
   <p class="guide">Rows are actors, columns the assets they reach; each cell holds the capabilities exposed on that asset and the effects the actor's tools have on it. <a href="#diagrams?tab=reach">Diagrams › Agent reach</a> draws the same facts.</p>
   ${reachMap(s)}
@@ -193,7 +272,12 @@ export function renderAgentsPage(ctx: PageContext, s: ReachSummary): string {
     </tbody>
   </table></div>` : ''}
 
-  ${t.agents > 0 ? `
+` : `
+  <p class="empty-state">No <code>@agents</code>, <code>@reaches</code>, <code>@effects</code> or <code>@gates</code> annotations: nothing in the model says what an agent this code embeds can reach. The coding agents this repository configures are below.</p>`}
+
+  ${codingSection(s, loc)}
+
+  ${t.agents > 0 || s.injection.length > 0 ? `
   ${subHead('OWASP Top 10 for LLM Applications', '', `<span>${llm}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="agents-owasp">')}
   <p class="guide">What the reach annotations add up to for the 2025 list. Each row is a target for review or a test, not a finding the model has proved.</p>
   <div class="reach-owasp">

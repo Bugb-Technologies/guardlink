@@ -529,6 +529,28 @@ Two rules decide what is where:
 without them exports exactly what it did before. Its `version` is `1`; a renamed or removed key
 bumps it, an added one does not. A merged estate report does not carry it.
 
+## Coding-agent configuration
+
+GuardLink reads the repository's coding-agent configuration into the model (SPEC §5.6): what Claude Code,
+Cursor, Copilot and VS Code, Codex and Gemini CLI may run, read, write or call without asking, each row
+generated from the line that grants it. Do not write `@agents` or `@reaches` for those agents — `validate`
+reports a hand-written one — and never write the `@entitles` that approves one: propose it.
+
+```bash
+guardlink lookup "agent config"                          # what each coding agent can do here, who granted it, who approved it
+guardlink lookup "unentitled coding-agent reach"         # capabilities no cited @entitles covers
+guardlink lookup "what can claude-code run without asking"
+guardlink report --agents                                # the "Coding agents configured in this repository" section
+guardlink entitle --from-config --propose                # one cited proposal per unentitled capability, for a human to accept
+guardlink diff HEAD~1                                    # new reach, bypass modes, hooks, and same-name MCP launch changes
+guardlink --no-agent-config parse .                      # leave it out of one run; .guardlink/config.json "agent_config": {"enabled": false} for good
+```
+
+`guardlink validate` also checks it: hidden Unicode in instruction files, skills and commands
+(`hidden-unicode`, an error when it decodes to text), a GuardLink block with no provenance stamp or a stale
+one (`agent-block-unstamped`, `agent-block-stale` — run `guardlink sync`), configuration it could not read,
+and hand-written coding-agent reach.
+
 ## Attribution (`guardlink blame`)
 
 Every relationship claim sits on a span of code. `guardlink blame` reads git history for each

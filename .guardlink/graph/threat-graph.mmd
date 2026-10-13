@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:dd87eea316249140ad2dba5cba72f188d49a6e263b299aedb154f312ca385c5c
+%% annotation_hash: sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 48 nodes / 185 edges, past the 12 / 16 legibility budget (48 nodes against 12, 185 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 49 nodes / 196 edges, past the 12 / 16 legibility budget (49 nodes against 12, 196 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -21,28 +21,31 @@
 %% has one per trust line, and index.md says which question each answers.
 %%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
 graph LR
-  subgraph TZ0["🧱 Trust boundary at process spawn"]
+  subgraph TZ0["🧱 Repository content is untrusted input t…"]
+    agent_config["🔷 GuardLink.AgentConfig"]
+  end
+  subgraph TZ1["🧱 Trust boundary at process spawn"]
     agent_launcher["🔷 GuardLink.Agent_Launcher [SECRETS, INTERNAL]"]
   end
-  subgraph TZ1["🧱 Trust boundary at external API call"]
+  subgraph TZ2["🧱 Trust boundary at external API call"]
     llm_client["🔷 GuardLink.LLM_Client [INTERNAL, SECRETS]"]
   end
-  subgraph TZ3["🧱 Trust boundary at CLI argument parsing"]
+  subgraph TZ4["🧱 Trust boundary at CLI argument parsing"]
     cli["🔷 GuardLink.CLI [SECRETS, PII, INTERNAL]"]
   end
-  subgraph TZ4["🧱 Process boundary: an external binary's …"]
+  subgraph TZ5["🧱 Process boundary: an external binary's …"]
     codegraph["🔷 GuardLink.CodeGraph"]
   end
-  subgraph TZ5["🧱 Trust boundary at git command execution"]
+  subgraph TZ6["🧱 Trust boundary at git command execution"]
     diff["🔷 GuardLink.Diff"]
   end
-  subgraph TZ6["🧱 Trust boundary at MCP protocol"]
+  subgraph TZ7["🧱 Trust boundary at MCP protocol"]
     mcp["🔷 GuardLink.MCP [INTERNAL, PII]"]
   end
-  subgraph TZ8["🧱 Trust boundary between parser and disk …"]
+  subgraph TZ9["🧱 Trust boundary between parser and disk …"]
     parser["🔷 GuardLink.Parser [INTERNAL]"]
   end
-  subgraph TZ9["🧱 Trust boundary at interactive input"]
+  subgraph TZ10["🧱 Trust boundary at interactive input"]
     tui["🔷 GuardLink.TUI [SECRETS, PII]"]
   end
   sarif["🔷 GuardLink.SARIF [INTERNAL]"]
@@ -56,26 +59,26 @@ graph LR
   report_metadata["🔷 Workspace.Metadata"]
   report["🔷 GuardLink.Report [PII]"]
   workspace_config["🔷 Workspace.Config"]
+  path_traversal["🟠 Path_Traversal (cwe:CWE-22, cwe:CWE-59)"]:::threat
+  dos["🟡 Denial_of_Service (cwe:CWE-400)"]:::threat
+  cmd_injection["🔴 Command_Injection (cwe:CWE-78)"]:::threat
+  data_exposure["🟡 Sensitive_Data_Exposure (cwe:CWE-200, cwe:CWE-532)"]:::threat
+  prompt_injection["🟠 Prompt_Injection (cwe:CWE-77, cwe:CWE-74)"]:::threat
   api_key_exposure["🟠 API_Key_Exposure (cwe:CWE-798)"]:::threat
-  path_traversal["🟠 Path_Traversal (cwe:CWE-22)"]:::threat
   arbitrary_write["🟠 Arbitrary_File_Write (cwe:CWE-73, cwe:CWE-74)"]:::threat
   child_proc_injection["🔴 Child_Process_Injection (cwe:CWE-78)"]:::threat
-  prompt_injection["🟠 Prompt_Injection (cwe:CWE-77)"]:::threat
-  dos["🟡 Denial_of_Service (cwe:CWE-400)"]:::threat
   config_tamper["🟡 Config_Tampering (cwe:CWE-15)"]:::threat
   insecure_deser["🟡 Insecure_Deserialization (cwe:CWE-502, cwe:CWE-20)"]:::threat
-  data_exposure["🟡 Sensitive_Data_Exposure (cwe:CWE-200)"]:::threat
   ssrf["🟡 Server_Side_Request_Forgery (cwe:CWE-918)"]:::threat
   redos["🟡 ReDoS (cwe:CWE-1333)"]:::threat
-  cmd_injection["🔴 Command_Injection (cwe:CWE-78)"]:::threat
   xss["🟠 Cross_Site_Scripting (cwe:CWE-79)"]:::threat
   info_disclosure["🔵 Information_Disclosure (cwe:CWE-200)"]:::threat
   vacuous_pass["🟠 Vacuous_Pass (cwe:CWE-754)"]:::threat
   tag_collision["🟡 Tag_Collision"]:::threat
-  key_redaction["🛡️ Key_Redaction"]:::control
   path_validation["🛡️ Path_Validation"]:::control
-  param_commands["🛡️ Parameterized_Commands"]:::control
   resource_limits["🛡️ Resource_Limits"]:::control
+  param_commands["🛡️ Parameterized_Commands"]:::control
+  key_redaction["🛡️ Key_Redaction"]:::control
   config_validation["🛡️ Config_Validation"]:::control
   input_sanitize["🛡️ Input_Sanitization"]:::control
   glob_filtering["🛡️ Glob_Pattern_Filtering"]:::control
@@ -85,6 +88,11 @@ graph LR
   prefix_ownership["🛡️ Prefix_Ownership"]:::control
   fail_closed["🛡️ Fail_Closed"]:::control
   yaml_validation["🛡️ YAML_Validation"]:::control
+  agent_config -. exposes .-> path_traversal
+  agent_config -. exposes .-> dos
+  agent_config -. exposes .-> cmd_injection
+  agent_config -. exposes .-> data_exposure
+  agent_config -. exposes .-> prompt_injection
   agent_launcher -. exposes .-> api_key_exposure
   agent_launcher -. exposes .-> path_traversal
   agent_launcher -. exposes .-> arbitrary_write
@@ -161,15 +169,20 @@ graph LR
   estate_view -. exposes .-> insecure_deser
   merge_engine -. exposes .-> vacuous_pass
   report_metadata -. exposes .-> data_exposure
+  path_validation -- mitigates --> path_traversal
+  path_validation -. protects .-> agent_config
+  resource_limits -- mitigates --> dos
+  resource_limits -. protects .-> agent_config
+  param_commands -- mitigates --> cmd_injection
+  param_commands -. protects .-> agent_config
+  key_redaction -- mitigates --> data_exposure
+  key_redaction -. protects .-> agent_config
   key_redaction -- mitigates --> api_key_exposure
   key_redaction -. protects .-> agent_launcher
-  path_validation -- mitigates --> path_traversal
   path_validation -. protects .-> agent_launcher
   path_validation -- mitigates --> arbitrary_write
   param_commands -- mitigates --> child_proc_injection
   param_commands -. protects .-> agent_launcher
-  param_commands -- mitigates --> cmd_injection
-  resource_limits -- mitigates --> dos
   resource_limits -. protects .-> agent_launcher
   config_validation -- mitigates --> insecure_deser
   config_validation -. protects .-> llm_client
@@ -204,6 +217,7 @@ graph LR
   input_sanitize -. protects .-> diff
   path_validation -. protects .-> diff
   glob_filtering -. protects .-> diff
+  param_commands -. protects .-> diff
   path_validation -. protects .-> gate
   config_validation -. protects .-> cli
   input_sanitize -- mitigates --> arbitrary_write
@@ -244,7 +258,6 @@ graph LR
   config_validation -. protects .-> estate_view
   prefix_ownership -. protects .-> merge_engine
   fail_closed -. protects .-> merge_engine
-  key_redaction -- mitigates --> data_exposure
   key_redaction -. protects .-> report_metadata
   yaml_validation -- mitigates --> config_tamper
   yaml_validation -. protects .-> workspace_config
@@ -266,6 +279,7 @@ graph LR
   mcp -- "📡 generateThreatReport" --> llm_client
   mcp -- "📡 guardlink_worklist" --> codegraph
   mcp -- "📡 guardlink_reach" --> codegraph
+  agent_config -- "📡 mergeAgentConfig" --> parser
   tui -- "📡 launchAgent" --> agent_launcher
   tui -- "📡 chatCompletion" --> llm_client
   estate_view -- "📡 estateReport" --> cli

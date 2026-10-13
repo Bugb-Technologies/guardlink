@@ -30,6 +30,7 @@
  * @assumes #parser -- "location.file is the logical source path in both inline and external mode (parse-file.ts resolves @source before the model is assembled)"
  * @comment -- "Excludes line, origin_file, origin_line and parent_symbol so inline and external authoring of the same model hash identically"
  * @comment -- "v2 adds @actor and @entitles records. Before that a migration could drop or rewrite every entitlement in a repo and the hash gate would still report the model unchanged — a silent all-clear, which is the failure mode the entitlement design exists to prevent (actor-entitlement design §2)"
+ * @comment -- "Rows generated from agent configuration carry origin and are excluded: they have their own agent_config_hash, so config edits and annotation edits are judged stale independently"
  * @comment -- "v3 adds an acceptance's accepted_by and expires. Those two fields decide whether an acceptance still covers anything, so a hash that could not see them would call a renewed or re-signed governance decision 'unchanged'"
  */
 
@@ -83,7 +84,7 @@ function everyLocation(model: ThreatModel): SourceLocation[] {
     // have discarded it without counting it in what it refuses over.
     ...(model.actors ?? []), ...(model.entitlements ?? []),
     ...(model.shields ?? []), ...(model.features ?? []), ...(model.comments ?? []),
-  ].map(r => r?.location).filter(Boolean);
+  ].filter(r => !(r as { origin?: unknown }).origin).map(r => r?.location).filter(Boolean);
 }
 
 /**
@@ -153,7 +154,12 @@ export function canonicalAnnotationRecords(model: ThreatModel): string[] {
   for (const d of model.data_handling ?? []) {
     out.push(record('handles', s(d.classification), s(d.asset), s(d.description), f(d.location.file)));
   }
-  for (const ac of model.actors ?? []) {
+  // Rows generated from agent configuration (`origin`, SPEC §5.6) are not
+  // annotations: they are hashed into `agent_config.agent_config_hash`, so the
+  // two kinds of freshness are judged independently and editing a settings
+  // file never reads as an annotation change.
+  const annotated = <T extends { origin?: unknown }>(xs: T[] | undefined): T[] => (xs ?? []).filter(x => !x.origin);
+  for (const ac of annotated(model.actors)) {
     out.push(record('actor', s(ac.id), s(ac.canonical_name), s(ac.description), f(ac.location.file)));
   }
   // An entitlement is hashed on its authored fields only. `inert` and `imprecise`
@@ -164,13 +170,13 @@ export function canonicalAnnotationRecords(model: ThreatModel): string[] {
   }
   // Reach, effect and gate records exist only where those verbs are written, so
   // a model without them hashes exactly as it did before they existed.
-  for (const r of model.reaches ?? []) {
+  for (const r of annotated(model.reaches)) {
     out.push(record(r.agent ? 'agents' : 'reaches', s(r.actor), s(r.canonical_capability), s(r.asset), s(r.identity), s(r.description), f(r.location.file)));
   }
-  for (const ef of model.effects ?? []) {
+  for (const ef of annotated(model.effects)) {
     out.push(record('effects', s(ef.effect), s(ef.asset), s(ef.identity), s(ef.description), f(ef.location.file)));
   }
-  for (const g of model.gates ?? []) {
+  for (const g of annotated(model.gates)) {
     out.push(record('gates', s(g.asset), s(g.approver), s(g.canonical_capability), s(g.description), f(g.location.file)));
   }
   for (const a of model.assumptions ?? []) {

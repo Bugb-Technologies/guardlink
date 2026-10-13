@@ -15,7 +15,7 @@ export { canEntitlementDemote, entitlementDemotionBlockers } from './parse-proje
 export { parseLine, crossRepoTag, CROSS_REPO_TAG_PATTERN } from './parse-line.js';
 export { normalizeName, resolveSeverity, unescapeDescription } from './normalize.js';
 export { stripCommentPrefix, commentStyleForExt } from './comment-strip.js';
-export { findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides } from './validate.js';
+export { findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findAgentConfigDiagnostics, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides } from './validate.js';
 // What an acceptance has to be before it counts as one. One implementation,
 // shared by the gate that re-checks acceptances and the writer that creates them.
 export {

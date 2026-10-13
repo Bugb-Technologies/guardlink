@@ -5,6 +5,12 @@
  * truncated lists led nowhere, it carried no freshness marker, and it never
  * mentioned the two commands that answer the questions agents actually have
  * ("what is this file?" and "did I make it worse?").
+ *
+ * It is now a short, stamped pointer (SPEC §5.6): what holds here, where
+ * annotations go, the rules a person must never have taken from them, and
+ * where to ask. The live model is not copied into it — `buildModelContext`
+ * still renders that view for callers who want it, and its tests stay below —
+ * and every block carries a provenance stamp `guardlink validate` checks.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -15,7 +21,10 @@ import { parseProject } from '../src/parser/parse-project.js';
 import { computeAnnotationHash } from '../src/parser/annotation-hash.js';
 import { buildModelContext, agentInstructions, agentInstructionsWithModel } from '../src/init/templates.js';
 import { detectProject } from '../src/init/detect.js';
-import { initProject, syncAgentFiles } from '../src/init/index.js';
+import { initProject, syncAgentFiles, blockStamp } from '../src/init/index.js';
+import { findAgentConfigDiagnostics } from '../src/parser/validate.js';
+import { parseStamp } from '../src/agentconfig/read.js';
+import { existsSync } from 'node:fs';
 import type { ThreatModel } from '../src/types/index.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -53,41 +62,59 @@ describe('GL-403 — weakness 1: leads with capability, not obligation', () => {
   });
 
   it('the opening names the trigger moments', () => {
-    for (const trigger of ['edit a file', 'change a shared component', 'act on a scanner finding', 'finish a change']) {
+    for (const trigger of ['before you\nedit a file', 'change a shared component', 'scanner finding', 'Before you finish']) {
       expect(text, trigger).toContain(trigger);
     }
   });
 
   it('offers the CLI path for an agent with no MCP', () => {
-    expect(text).toMatch(/Without MCP, the same answers come from/);
+    expect(text).toMatch(/Without MCP, `guardlink status \.`\s+and `guardlink parse \.` answer the same/);
   });
 });
 
-describe('GL-403 — weakness 4: workflow names diff and context', () => {
-  const text = agentInstructions(project);
+describe('GL-403 — weakness 4: the block names context, graph, the CWE bridge and diff', () => {
+  const text = agentInstructions(project, null, { model: populatedModel });
 
-  it('mentions guardlink_context and guardlink diff in the workflow', () => {
-    const workflow = text.slice(text.indexOf('### Workflow'), text.indexOf('### Tools'));
-    expect(workflow).toContain('guardlink_context');
-    expect(workflow).toContain('guardlink diff HEAD~1');
+  it('mentions guardlink_context and guardlink diff', () => {
+    expect(text).toContain('guardlink_context');
+    expect(text).toContain('guardlink diff HEAD~1');
   });
 
-  it('carries the empty-vs-never-read distinction into the workflow', () => {
-    expect(text).toMatch(/scanned_without_annotations/);
-    expect(text).toMatch(/not_scanned/);
-  });
-
-  it('names the Phase 2 surface: graph, the CWE bridge, the relation forms', () => {
+  it('names the graph and the CWE bridge', () => {
     expect(text).toContain('guardlink_graph');
     expect(text).toMatch(/cwe:CWE-89/);
-    for (const form of ['owner of X', 'handles pii', 'assumptions for X', 'validations for X']) {
-      expect(text, form).toContain(form);
-    }
+  });
+});
+
+describe('the block is a pointer, not a copy of the model', () => {
+  const text = agentInstructions(project, 'inline', { model: populatedModel });
+
+  it('stays short: about 25 lines', () => {
+    expect(text.trimEnd().split('\n').length).toBeLessThanOrEqual(26);
   });
 
-  it('warns that a substring match is not an identification', () => {
-    expect(text).toMatch(/matched_via/);
-    expect(text).toMatch(/suggestion, not an identification/);
+  it('points at the reference document and the README for everything it leaves out', () => {
+    expect(text).toContain('docs/GUARDLINK_REFERENCE.md');
+    expect(text).toContain('.guardlink/README.md');
+  });
+
+  it('keeps the two decisions an agent must never take for a person', () => {
+    expect(text).toMatch(/Never write `@accepts` or `@entitles`/);
+    expect(text).toContain('guardlink entitle --propose');
+  });
+
+  it('says the agent configuration is part of the threat model, and points at the lookup rather than restating reach', () => {
+    expect(text).toContain('guardlink lookup "agent config"');
+    expect(text).toMatch(/never write `@agents` or `@reaches` for Claude Code, Cursor, Copilot, Codex or Gemini/);
+  });
+
+  it('copies no model content that would go stale between syncs', () => {
+    const withLists = agentInstructionsWithModel(project, {
+      ...populatedModel,
+      assets: [{ path: ['App', 'Secret'], id: 'secret-asset', location: { file: 'a.ts', line: 1 } }],
+    } as ThreatModel);
+    expect(withLists).not.toContain('secret-asset');
+    expect(withLists).not.toMatch(/Open Exposures|Existing Data Flows|Model Stats/);
   });
 });
 
@@ -192,35 +219,52 @@ describe('GL-403 — end to end through sync', () => {
     await writeFile(join(root, 'src', 'auth.ts'),
       '/**\n * @asset App.Auth (#auth) -- "auth"\n * @threat SQLi (#sqli) [high] cwe:CWE-89 -- "sqli"\n'
       + ' * @exposes #auth to #sqli [high] -- "concatenated"\n */\nexport function login() {}\n');
-    initProject({ root, mode: 'inline' });
+    initProject({ root, mode: 'inline', agentIds: ['claude', 'codex', 'cline', 'windsurf'] });
   });
 
   afterAll(async () => { await rm(root, { recursive: true, force: true }); });
 
-  it('a freshly synced CLAUDE.md carries the freshness block', async () => {
+  it('a freshly synced CLAUDE.md carries the provenance stamp', async () => {
     const { model } = await parseProject({ root, project: 'demo' });
     syncAgentFiles({ root, model });
     const text = await readFile(join(root, 'CLAUDE.md'), 'utf-8');
-    expect(text).toMatch(/### Block Freshness/);
-    expect(text).toContain(computeAnnotationHash(model));
-    expect(text).not.toMatch(/synced_at/);
+    expect(parseStamp(text)).toEqual({
+      annotation_hash: computeAnnotationHash(model),
+      agent_config_hash: model.agent_config!.agent_config_hash,
+    });
+    expect(text.indexOf('<!-- guardlink:stamp')).toBe(text.indexOf('<!-- guardlink:begin -->') + '<!-- guardlink:begin -->\n'.length);
   });
 
-  it('every agent file gets the block, not only the markdown ones', async () => {
+  it('carries NO volatile fields', async () => {
+    const text = await readFile(join(root, 'CLAUDE.md'), 'utf-8');
+    expect(text).not.toMatch(/synced_at|git_sha/);
+    expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('every agent file gets the stamp, not only the markdown ones', async () => {
     const { model } = await parseProject({ root, project: 'demo' });
     syncAgentFiles({ root, model });
     for (const file of ['CLAUDE.md', 'AGENTS.md', '.clinerules', '.windsurfrules']) {
-      const path = join(root, file);
-      const text = await readFile(path, 'utf-8').catch(() => '');
-      if (!text) continue;   // not all agent files are created for every project
-      expect(text, file).toMatch(/Block Freshness/);
+      const text = await readFile(join(root, file), 'utf-8');
+      expect(parseStamp(text)?.annotation_hash, file).toBe(computeAnnotationHash(model));
     }
   });
 
+  it('validate finds every block current after a sync, and stale after an annotation changes', async () => {
+    const { model } = await parseProject({ root, project: 'demo' });
+    syncAgentFiles({ root, model });
+    const { model: synced } = await parseProject({ root, project: 'demo' });
+    expect(findAgentConfigDiagnostics(synced).filter(d => d.code?.startsWith('agent-block'))).toEqual([]);
+    await writeFile(join(root, 'src', 'auth.ts'),
+      '/**\n * @asset App.Auth (#auth) -- "auth"\n * @threat SQLi (#sqli) [high] cwe:CWE-89 -- "sqli"\n'
+      + ' * @exposes #auth to #sqli [high] -- "concatenated, still"\n */\nexport function login() {}\n');
+    const { model: moved } = await parseProject({ root, project: 'demo' });
+    const stale = findAgentConfigDiagnostics(moved).filter(d => d.code === 'agent-block-stale').map(d => d.file).sort();
+    expect(stale).toEqual(['.clinerules', '.windsurfrules', 'AGENTS.md', 'CLAUDE.md']);
+    syncAgentFiles({ root, model: moved });
+  });
+
   it('two consecutive syncs of an unchanged model are BYTE-IDENTICAL', async () => {
-    // The property F1 restores. It does not fix D16 — `guardlink validate` still
-    // rewrites these files as a side effect — but it makes that rewrite a no-op
-    // in the working tree, which is what made D16 tolerable in the first place.
     const { model } = await parseProject({ root, project: 'demo' });
     syncAgentFiles({ root, model });
     const first = await readFile(join(root, 'CLAUDE.md'), 'utf-8');
@@ -235,10 +279,8 @@ describe('GL-403 — end to end through sync', () => {
     syncAgentFiles({ root, model });
     const before = new Map<string, string>();
     for (const f of ['CLAUDE.md', 'AGENTS.md', '.clinerules', '.windsurfrules']) {
-      const text = await readFile(join(root, f), 'utf-8').catch(() => '');
-      if (text) before.set(f, text);
+      before.set(f, await readFile(join(root, f), 'utf-8'));
     }
-    expect(before.size).toBeGreaterThan(0);
     await new Promise(r => setTimeout(r, 5));
     syncAgentFiles({ root, model });
     for (const [f, text] of before) {
@@ -247,7 +289,7 @@ describe('GL-403 — end to end through sync', () => {
   });
 
   it('a changed annotation DOES change the block', async () => {
-    // Byte-stability must not come from the block being inert.
+    // Byte-stability must not come from the block being inert: the stamp moves.
     const { model } = await parseProject({ root, project: 'demo' });
     syncAgentFiles({ root, model });
     const before = await readFile(join(root, 'CLAUDE.md'), 'utf-8');
@@ -259,9 +301,7 @@ describe('GL-403 — end to end through sync', () => {
     expect(await readFile(join(root, 'CLAUDE.md'), 'utf-8')).not.toBe(before);
   });
 
-  it('the README, unlike the agent block, stays byte-stable', async () => {
-    // Different artifacts, different call: the README is regenerated on every
-    // sync and carries no clock precisely so it does not churn.
+  it('the README, like the agent block, stays byte-stable', async () => {
     const { model } = await parseProject({ root, project: 'demo' });
     syncAgentFiles({ root, model });
     const a = await readFile(join(root, '.guardlink', 'README.md'), 'utf-8');
@@ -270,12 +310,48 @@ describe('GL-403 — end to end through sync', () => {
     expect(b).toBe(a);
   });
 
-  it('a model with no annotations gets the base block without a freshness section', () => {
+  it('a model with no annotations gets the empty opening', () => {
     const text = agentInstructionsWithModel(project, null);
-    expect(text).not.toMatch(/Block Freshness/);
-    // And without the claim the freshness section would have been evidence for:
-    // no live context below means no threat model to point at above.
     expect(text).not.toMatch(/Ask it instead of inferring/);
     expect(text).toContain('**its threat model is empty**');
+  });
+});
+
+describe('the block goes only into instruction files that exist', () => {
+  let root: string;
+  beforeAll(async () => {
+    root = await mkdtemp(join(tmpdir(), 'guardlink-existing-'));
+    await writeFile(join(root, 'package.json'), '{"name":"demo","version":"1.0.0"}\n');
+    await writeFile(join(root, 'AGENTS.md'), '# Contributing notes for agents\n\nRun the tests.\n');
+  });
+  afterAll(async () => { await rm(root, { recursive: true, force: true }); });
+
+  it('init with no --agent writes into AGENTS.md, which exists, and creates nothing else', () => {
+    const r = initProject({ root });
+    expect(r.updated).toContain('AGENTS.md');
+    for (const f of ['CLAUDE.md', '.windsurfrules', '.clinerules', '.github/copilot-instructions.md', '.gemini/GEMINI.md', '.cursor/rules/guardlink.mdc']) {
+      expect(existsSync(join(root, f)), f).toBe(false);
+    }
+  });
+
+  it('keeps the file\'s own content and stamps the block, empty model included', async () => {
+    const text = await readFile(join(root, 'AGENTS.md'), 'utf-8');
+    expect(text.startsWith('# Contributing notes for agents\n\nRun the tests.\n')).toBe(true);
+    expect(parseStamp(text)).toEqual(blockStamp(root, null));
+    expect(text).toContain('**its threat model is empty**');
+  });
+
+  it('sync does not create the files that are missing either', async () => {
+    const { model } = await parseProject({ root, project: 'demo' });
+    const r = syncAgentFiles({ root, model });
+    expect(r.updated).toContain('AGENTS.md');
+    expect(r.updated).not.toContain('CLAUDE.md');
+    expect(existsSync(join(root, 'CLAUDE.md'))).toBe(false);
+    expect(r.skipped.some(s => s.startsWith('CLAUDE.md (absent'))).toBe(true);
+  });
+
+  it('an explicit --agent creates the file it names', () => {
+    initProject({ root, agentIds: ['claude'] });
+    expect(existsSync(join(root, 'CLAUDE.md'))).toBe(true);
   });
 });

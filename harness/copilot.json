@@ -1,0 +1,35 @@
+{
+  "table": "copilot",
+  "version": "2026-10",
+  "harness": "copilot",
+  "name": "GitHub Copilot and VS Code",
+  "actor": { "id": "copilot", "name": "Copilot", "description": "GitHub Copilot in VS Code, the CLI and the cloud agent: loads .vscode/{mcp,settings}.json, .github/copilot-instructions.md, .github/instructions, prompts and agents, and AGENTS.md" },
+  "about": "Read from the VS Code and GitHub Copilot documentation as of the version above. VS Code applies workspace settings and tasks only in a trusted workspace; Copilot code review reads instruction files from the pull request's head.",
+  "files": [
+    { "kind": "mcp", "pattern": "(^|/)\\.vscode/mcp\\.json$", "loaded_when": ["after-trust"], "doc": "https://code.visualstudio.com/docs/copilot/customization/mcp-servers" },
+    { "kind": "vscode-settings", "pattern": "(^|/)\\.vscode/settings\\.json$", "loaded_when": ["after-trust"], "doc": "https://code.visualstudio.com/docs/copilot/security" },
+    { "kind": "vscode-tasks", "pattern": "(^|/)\\.vscode/tasks\\.json$", "harness": "vscode", "loaded_when": ["after-trust"], "doc": "https://code.visualstudio.com/docs/debugtest/tasks" },
+    { "kind": "instructions", "pattern": "(^|/)\\.github/copilot-instructions\\.md$", "also": ["copilot-review"], "loaded_when": ["always"], "doc": "https://code.visualstudio.com/docs/copilot/customization/custom-instructions" },
+    { "kind": "instructions", "pattern": "(^|/)\\.github/instructions/.+\\.instructions\\.md$", "also": ["copilot-review"], "loaded_when": ["always"], "doc": "https://code.visualstudio.com/docs/copilot/customization/custom-instructions" },
+    { "kind": "instructions", "pattern": "(^|/)AGENTS\\.md$", "loaded_when": ["always"], "doc": "https://code.visualstudio.com/docs/copilot/customization/custom-instructions" },
+    { "kind": "instructions", "pattern": "(^|/)(CLAUDE|GEMINI)\\.md$", "harness": "copilot-review", "loaded_when": ["always"], "doc": "https://docs.github.com/en/copilot/how-tos/configure-custom-instructions" },
+    { "kind": "command", "pattern": "(^|/)\\.github/(prompts/.+\\.prompt\\.md|agents/.+\\.md|chatmodes/.+)$", "loaded_when": ["always"], "doc": "https://code.visualstudio.com/docs/copilot/customization/prompt-files" },
+    { "kind": "copilot-hooks", "pattern": "(^|/)\\.github/hooks/[^/]+\\.json$", "loaded_when": ["headless"], "doc": "https://docs.github.com/en/copilot/reference/hooks-reference" },
+    { "kind": "skill", "pattern": "(^|/)\\.github/(.+/)?SKILL\\.md$", "loaded_when": ["always"], "doc": "https://code.visualstudio.com/docs/copilot/customization/agent-skills" }
+  ],
+  "shell": {
+    "rule_syntax": "chat.tools.terminal.autoApprove maps a command prefix (or /regex/) to true; a prefix approves every argument list after it.",
+    "protected_prefixes": [],
+    "read_only": []
+  },
+  "rules": {
+    "mcp-server": { "doc": "https://code.visualstudio.com/docs/copilot/customization/mcp-servers", "gated": true, "loaded_when": ["after-trust"], "admits": ["arbitrary-execution"], "note": "A stdio server's command runs with the developer's privileges when the server starts; VS Code asks to trust each server once." },
+    "global-auto-approve": { "doc": "https://code.visualstudio.com/docs/copilot/security", "gated": false, "loaded_when": ["after-trust"], "admits": ["arbitrary-execution"], "note": "Every tool call runs without confirmation (the CVE-2025-53773 shape)." },
+    "terminal-auto-approve": { "doc": "https://code.visualstudio.com/docs/copilot/security", "gated": false, "loaded_when": ["after-trust"], "note": "Matching terminal commands run without confirmation." },
+    "mcp-autostart": { "doc": "https://code.visualstudio.com/docs/copilot/customization/mcp-servers", "gated": false, "loaded_when": ["after-trust"], "admits": ["arbitrary-execution"], "note": "Configured MCP servers start without being asked to." },
+    "workspace-trust-off": { "doc": "https://code.visualstudio.com/docs/editing/workspaces/workspace-trust", "loaded_when": ["always"], "note": "Turns off the trust prompt that holds back every setting above." },
+    "folder-open-task": { "doc": "https://code.visualstudio.com/docs/debugtest/tasks", "loaded_when": ["after-trust"], "admits": ["arbitrary-execution"], "note": "Runs when the folder opens." },
+    "hook": { "doc": "https://code.visualstudio.com/docs/copilot/customization/hooks", "loaded_when": ["headless"], "admits": ["arbitrary-execution"], "note": "Runs automatically on the event in the agent's environment." },
+    "instructions": { "doc": "https://code.visualstudio.com/docs/copilot/customization/custom-instructions", "loaded_when": ["always"], "note": "Loaded into the agent's context as instructions." }
+  }
+}

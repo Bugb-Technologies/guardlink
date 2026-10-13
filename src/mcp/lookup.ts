@@ -35,7 +35,7 @@ import { relationRecords } from '../parser/claim-key.js';
 import type {
   ThreatModel, ThreatModelAsset, ThreatModelThreat, ThreatModelControl,
   ThreatModelTransfer, ThreatModelAcceptance,
-  SourceLocation, DataClassification,
+  SourceLocation, DataClassification, AgentConfigSource,
 } from '../types/index.js';
 
 export interface LookupResult {
@@ -59,6 +59,8 @@ export interface LookupResult {
   ambiguous?: boolean;
   /** Identifiers of every record tied with the one returned. Present only when `ambiguous`. */
   candidates?: string[];
+  /** `agent config` only: the configuration inventory behind the rows (SPEC §5.6). */
+  inventory?: unknown;
   /**
    * GL-204 — present when the query was an external identifier (cwe:, owasp:).
    * Read `external_id.declared` before treating `count: 0` as "nothing exposed":
@@ -103,6 +105,9 @@ export const SUPPORTED_QUERY_FORMS = [
   'reaches [for <actor>]     (@agents and @reaches: capabilities a principal can invoke)',
   'agents [for <actor>]      (the @agents claims only: LLM agents and their capabilities)',
   'unentitled reaches [for <actor>]  (capabilities reached with no cited @entitles covering them: can minus may)',
+  'agent config              (the repository\'s coding-agent configuration: what each coding agent may do, who granted it, who approved it)',
+  'unentitled coding-agent reach [for <actor>]  (configuration-granted capabilities no cited @entitles covers)',
+  'what can <agent> run without asking  (a coding agent\'s ungated capabilities and the commands its configuration runs automatically)',
   'effects [for <asset>]     (what code does to an asset: read, write, delete, execute, spend, notify)',
   'gates [for <asset>]       (approval steps: who decides before effects on an asset land)',
   'ungated effects [for <asset>]  (write, delete, execute, spend or notify with no @gates covering it)',
@@ -199,6 +204,14 @@ export function lookup(model: ThreatModel, query: string): LookupResult {
   if (entitlementsQ) {
     return lookupEntitlements(model, query, entitlementsQ[1]?.trim());
   }
+
+  // ── Coding-agent configuration (SPEC §5.6). Before the reach forms, whose
+  //    patterns would otherwise claim "unentitled coding-agent reach". ──
+  if (/^agent[\s-]?config(?:uration)?$/.test(q)) return lookupAgentConfig(model, query);
+  const codingQ = q.match(/^unentitled\s+coding[\s-]agent\s+reach(?:es)?(?:\s+(?:for|of|by)\s+(.+))?$/);
+  if (codingQ) return lookupUnentitledReaches(model, query, codingQ[1]?.trim(), true);
+  const withoutAskingQ = q.match(/^what\s+(?:can|may|does)\s+(.+?)\s+(?:run|do)\s+without\s+asking\??$/);
+  if (withoutAskingQ) return lookupWithoutAsking(model, query, withoutAskingQ[1].trim());
 
   // ── "unentitled reaches [for <actor>]" — can minus may. Before the plain
   //    reach forms, which would otherwise never see the qualifier. ──
@@ -575,7 +588,7 @@ function lookupReaches(model: ThreatModel, query: string, agentsOnly: boolean, a
  * capability still does not count, so a reviewer can tell "nobody approved
  * this" from "an approval exists but is uncited or on another asset".
  */
-function lookupUnentitledReaches(model: ThreatModel, query: string, actorRef?: string): LookupResult {
+function lookupUnentitledReaches(model: ThreatModel, query: string, actorRef?: string, codingOnly = false): LookupResult {
   const actorKey = actorResolver(model);
   const wanted = actorRef ? actorKey(actorRef) : undefined;
   // The claim key joins a row to the model export's reach_analysis and to the
@@ -583,6 +596,7 @@ function lookupUnentitledReaches(model: ThreatModel, query: string, actorRef?: s
   const keyOf = new Map<object, string>(relationRecords(model).map(r => [r.location, r.key]));
   const results = findUnentitledReaches(model)
     .filter(u => !wanted || actorKey(u.reach.actor) === wanted)
+    .filter(u => !codingOnly || u.reach.origin)
     .map(({ reach: r, near_misses }) => ({
       actor: r.actor,
       agent: r.agent,
@@ -592,6 +606,7 @@ function lookupUnentitledReaches(model: ThreatModel, query: string, actorRef?: s
       description: r.description,
       ...loc(r.location),
       claim_key: keyOf.get(r.location),
+      ...(r.origin ? { origin: r.origin, granted_by: grantedBy(r) } : {}),
       near_misses: near_misses.map(n => ({
         blocker: n.blocker,
         asset: n.entitlement.asset,
@@ -599,7 +614,73 @@ function lookupUnentitledReaches(model: ThreatModel, query: string, actorRef?: s
         line: n.entitlement.location.line,
       })),
     }));
-  return { query, type: 'unentitled_reaches', count: results.length, results };
+  return { query, type: codingOnly ? 'unentitled_coding_agent_reaches' : 'unentitled_reaches', count: results.length, results };
+}
+
+/** Where a generated row came from: the configuration line, and the harness rule that read it. */
+function grantedBy(r: { location: SourceLocation; source?: AgentConfigSource }) {
+  const src = r.source;
+  return src ? {
+    file: r.location.file, line: r.location.line, raw: src.raw, harness: src.harness, scope: src.scope,
+    asks_first: src.gated, loaded_when: src.loaded_when, semantics: src.semantics,
+  } : undefined;
+}
+
+/**
+ * The repository's coding-agent configuration as the model holds it: one row
+ * per capability a coding agent holds through it, with who granted it and
+ * whether a person approved it (`entitled_by`), plus the inventory behind them.
+ */
+function lookupAgentConfig(model: ThreatModel, query: string): LookupResult {
+  const block = model.agent_config;
+  if (!block) {
+    return {
+      query, type: 'agent_config', count: 0, results: [{
+        hint: 'Agent configuration was not read: it is switched off by `"agent_config": {"enabled": false}` in .guardlink/config.json or by --no-agent-config.',
+      }],
+    };
+  }
+  const actorKey = actorResolver(model);
+  const unentitled = new Set(findUnentitledReaches(model).map(u => u.reach));
+  const entitlements = model.entitlements ?? [];
+  const results = (model.reaches ?? []).filter(r => r.origin).map(r => {
+    const by = unentitled.has(r) ? undefined : entitlements.find(en =>
+      actorKey(en.actor) === actorKey(r.actor) && en.canonical_capability === r.canonical_capability && !en.inert);
+    return {
+      actor: r.actor,
+      capability: r.canonical_capability,
+      asset: r.asset,
+      description: r.description,
+      granted_by: grantedBy(r),
+      entitled: !unentitled.has(r),
+      ...(by ? { entitled_by: { ...loc(by.location), description: by.description } } : {}),
+    };
+  });
+  const inventory = {
+    agent_config_hash: block.agent_config_hash,
+    semantics: block.semantics,
+    files: block.files,
+    mcp_servers: block.mcp_servers,
+    automatic: block.hooks,
+    untrusted_sources: block.untrusted_sources,
+    unreadable: block.unreadable,
+  };
+  return { query, type: 'agent_config', count: results.length, results, inventory };
+}
+
+/** What a coding agent may do here with no prompt: its ungated generated reaches, and what its configuration runs on its own. */
+function lookupWithoutAsking(model: ThreatModel, query: string, agentRef: string): LookupResult {
+  const actorKey = actorResolver(model);
+  const want = actorKey(agentRef.startsWith('#') ? agentRef : `#${agentRef}`);
+  const rows = (model.reaches ?? []).filter(r => r.origin && r.source && !r.source.gated && actorKey(r.actor) === want);
+  const harness = (model.actors ?? []).find(a => actorKey(a.id ? `#${a.id}` : a.name) === want);
+  const results = [
+    ...rows.map(r => ({ kind: 'capability', capability: r.canonical_capability, asset: r.asset, description: r.description, granted_by: grantedBy(r) })),
+    ...(model.agent_config?.hooks ?? [])
+      .filter(h => (h.scope === 'root' || h.scope === 'nested') && harness && actorKey(`#${h.harness}`) === want)
+      .map(h => ({ kind: 'automatic', event: h.event, matcher: h.matcher, command: h.command, runs: h.runs, does: h.does, file: h.file, line: h.line })),
+  ];
+  return { query, type: 'without_asking', count: results.length, results };
 }
 
 function lookupConfirmed(model: ThreatModel, query: string): LookupResult {

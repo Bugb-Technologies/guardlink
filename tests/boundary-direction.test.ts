@@ -258,7 +258,8 @@ describe('agent material teaches the directed form', () => {
     expect(prompt).toContain('@boundary from <outer> to <inner>');
     expect(getPlaybook('map').body).toContain('@boundary from <outer> to <inner>');
     const project = { name: 'p', language: 'typescript', definitionsPath: '.guardlink/definitions.ts' } as any;
-    expect(agentInstructions(project)).toContain('@boundary from #api to #db');
+    // The agent block points at the reference document for syntax; that is where the form is taught.
+    expect(agentInstructions(project)).toContain('docs/GUARDLINK_REFERENCE.md');
     expect(referenceDocContent(project)).toContain('@boundary from <Outer> to <Inner>');
   });
 });
