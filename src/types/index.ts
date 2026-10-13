@@ -535,7 +535,16 @@ export interface AgentConfigInstructionFile {
   scope: AgentConfigScope;
   bytes: number;
   /** The GuardLink block in it, when it has one. */
-  guardlink_block?: { stamp: string | null; agent_config_stamp: string | null; current: boolean };
+  guardlink_block?: {
+    /** Line of the `<!-- guardlink:begin -->` marker. */
+    line: number;
+    /** The `annotation_hash` the block was written from; null when it carries no stamp. */
+    stamp: string | null;
+    /** The `agent_config_hash` the block was written from; null when it carries no stamp. */
+    agent_config_stamp: string | null;
+    /** Both stamps match the model this block sits beside. */
+    current: boolean;
+  };
   hidden_unicode: { line: number; column: number; kind: string; count: number; severity: 'error' | 'warning'; decoded?: string }[];
 }
 
@@ -1053,6 +1062,17 @@ export type DiagnosticCode =
   | 'unrecognised-gal'
   /** A `.gal` sidecar's `@source` names a file that is not on disk. */
   | 'missing-gal-source'
+  // ── Agent configuration (src/parser/validate.ts, SPEC §5.6) ──
+  /** Invisible characters in an instruction file, skill or command; an error when they decode to text. */
+  | 'hidden-unicode'
+  /** A GuardLink block in an instruction file carries no provenance stamp. */
+  | 'agent-block-unstamped'
+  /** A GuardLink block's stamp names another annotation or configuration hash than the current model's. */
+  | 'agent-block-stale'
+  /** An agent configuration file could not be read. */
+  | 'agent-config-unreadable'
+  /** An annotation claims reach for a coding agent whose reach is generated from configuration. */
+  | 'hand-written-coding-agent-reach'
   // ── Verification ledger (src/parser/ledger.ts) ──
   /** `.guardlink/verified.json` exists but does not parse or fails shape validation. */
   | 'ledger-corrupt'

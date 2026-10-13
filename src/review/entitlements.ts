@@ -610,6 +610,54 @@ export async function proposeEntitlement(
 
 // ─── Listing ────────────────────────────────────────────────────────
 
+// ─── Bulk proposals from agent configuration (SPEC §5.6) ─────────────
+
+export interface ConfigProposalResult {
+  filed: ProposeResult[];
+  /** Reaches that already had a decided proposal, which only a person re-opens. */
+  refused: ProposeResult[];
+}
+
+/**
+ * Draft one proposal per coding-agent reach the configuration grants and no
+ * cited `@entitles` covers — the bulk path from "the agent can" to "a person
+ * decided it may". Each rationale cites the configuration line that grants the
+ * capability, so an accepted entitlement is cited, and `diff` reports it stale
+ * when that file changes. Nothing is written to source and nothing is
+ * accepted: `guardlink entitle` is still where a human decides each one.
+ *
+ * `target` is where an accepted annotation will be written; the definitions
+ * file is the natural home, since a JSON settings file cannot hold a comment.
+ */
+export async function proposeFromConfig(
+  root: string,
+  model: ThreatModel,
+  target: { file: string; line: number },
+  opts: { actor?: string; proposed_by?: string } = {},
+): Promise<ConfigProposalResult> {
+  const { findUnentitledReaches } = await import('../parser/reach.js');
+  const want = opts.actor ? bareRef(opts.actor) : null;
+  const out: ConfigProposalResult = { filed: [], refused: [] };
+  for (const { reach } of findUnentitledReaches(model)) {
+    if (!reach.origin || !reach.source) continue;
+    if (want && bareRef(reach.actor) !== want) continue;
+    const src = reach.source;
+    const rationale = `Granted by ${reach.location.file}:${reach.location.line} (${src.raw}), read as ${src.semantics.rule} under ${src.semantics.table}: `
+      + `${src.gated ? 'available, and the agent asks first' : 'runs without asking'}. Accept only if the team intends this agent to hold it.`;
+    const result = await proposeEntitlement(root, {
+      actor: reach.actor,
+      capability: reach.capability,
+      asset: reach.asset,
+      rationale,
+      file: target.file,
+      line: target.line,
+      proposed_by: opts.proposed_by ?? 'guardlink entitle --from-config',
+    }, { model });
+    (result.refused ? out.refused : out.filed).push(result);
+  }
+  return out;
+}
+
 export interface ListOptions {
   /** Statuses to include; default is every status */
   status?: ProposalStatus[];

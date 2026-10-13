@@ -13,7 +13,7 @@
  * @flows ThreatModel -> #report via summarizeReach -- "Reaches, effects, gates, entitlements and flows for the agent section"
  */
 import type { ThreatModel } from '../types/index.js';
-import { summarizeReach, hasReach, type ReachSummary, type ReachEffectChip, type ReachLoc } from '../reach/index.js';
+import { summarizeReach, hasReach, type ReachSummary, type ReachEffectChip, type ReachLoc, type GrantedBy } from '../reach/index.js';
 import { findUnmitigatedExposures } from '../parser/coverage.js';
 import { canonicaliser } from '../parser/canonical-ref.js';
 
@@ -59,13 +59,83 @@ export function emitAgentReach(model: ThreatModel, lines: string[], headingSuffi
   lines.push(`| Gates | ${s.totals.gates} |`);
   lines.push(`| Egress from a reach | ${s.totals.egress} |`);
   lines.push(`| Injection-to-tool routes | ${s.totals.injection} |`);
+  if (s.totals.coding_reaches > 0 || s.coding.automatic.length > 0) {
+    lines.push(`| Coding agents configured here | ${s.totals.coding_agents} |`);
+    lines.push(`| Coding-agent capabilities (from configuration) | ${s.totals.coding_reaches} (**${s.totals.coding_unentitled} unentitled**) |`);
+    lines.push(`| Commands the configuration runs automatically | ${s.totals.coding_automatic} |`);
+  }
   lines.push('');
 
   emitActors(s, lines, h3);
   emitReachMap(s, lines, h3);
   emitLists(s, lines, h3);
+  emitCodingAgents(s, lines, h3);
   emitOwasp(s, lines, h3);
   emitReachedExposures(model, s, lines, h3);
+}
+
+const grant = (g: GrantedBy): string => `${g.file}:${g.line} ${code(g.raw.length > 60 ? `${g.raw.slice(0, 57)}...` : g.raw)}`;
+
+/**
+ * What the repository's own agent configuration lets Claude Code, Cursor,
+ * Copilot, Codex and Gemini do here (SPEC §5.6): every capability with the line
+ * that granted it, grouped by file, then what runs automatically and which MCP
+ * servers start.
+ */
+function emitCodingAgents(s: ReachSummary, lines: string[], h3: (t: string) => string): void {
+  const c = s.coding;
+  if (c.reaches.length === 0 && c.automatic.length === 0 && c.mcp_servers.length === 0) return;
+  lines.push(h3('Coding Agents Configured in This Repository'));
+  lines.push('');
+  lines.push('Generated from the repository\'s agent configuration, not from annotations: what each coding agent may do here,');
+  lines.push('read off the line that grants it under that agent\'s documented behaviour. "Asks first" is whether the agent');
+  lines.push('prompts the developer before using it. A human closes an unentitled one with `@entitles`; `guardlink entitle');
+  lines.push('--from-config --propose` drafts them for review. These are counted apart from embedded-agent reach above.');
+  lines.push('');
+  if (c.agents.length > 0) {
+    lines.push('| Agent | Capabilities | Unentitled | Ungated mutations |');
+    lines.push('|-------|--------------|------------|-------------------|');
+    for (const a of c.agents) lines.push(`| ${a.actor} | ${a.reaches} | ${a.unentitled} | ${a.ungated} |`);
+    lines.push('');
+  }
+  for (const g of c.by_file) {
+    lines.push(`**${g.file}** — loaded by ${g.harnesses.join(', ')}`);
+    lines.push('');
+    lines.push('| Agent | Capability | On | Asks first | Entitled | What using it does | Granted by | Read as |');
+    lines.push('|-------|------------|----|------------|----------|--------------------|------------|---------|');
+    for (const r of g.reaches) {
+      const does = r.effects.length > 0 ? r.effects.map(e => `**${e}**`).join(', ') : '—';
+      lines.push(`| ${r.actor} | ${code(r.capability)} | ${r.asset ?? '—'} | ${r.gated ? 'yes' : '**no**'} | ${r.entitled ? 'yes' : '**no**'} | ${does} | ${cell(grant(r.granted_by))} | ${r.granted_by.doc ? `[${r.granted_by.rule}](${r.granted_by.doc})` : r.granted_by.rule} |`);
+    }
+    lines.push('');
+  }
+  const auto = c.automatic.filter(h => h.scope === 'root' || h.scope === 'nested');
+  if (auto.length > 0) {
+    lines.push('**Runs automatically** — outside the model\'s loop, with the developer\'s privileges');
+    lines.push('');
+    lines.push('| Agent | Event | Command | Runs | Does | Location |');
+    lines.push('|-------|-------|---------|------|------|----------|');
+    for (const h of auto) {
+      lines.push(`| ${h.harness} | ${h.event}${h.matcher ? ` [${cell(h.matcher)}]` : ''} | ${cell(code(h.command.length > 80 ? `${h.command.slice(0, 77)}...` : h.command))} | ${h.runs.join(', ') || '—'} | ${h.does.join(', ') || 'local commands only'} | ${h.file}:${h.line} |`);
+    }
+    lines.push('');
+  }
+  const servers = c.mcp_servers.filter(m => m.scope === 'root' || m.scope === 'nested');
+  if (servers.length > 0) {
+    lines.push('**MCP servers**');
+    lines.push('');
+    lines.push('| Server | Agent | Starts | Built from this repository | Package pinned | Credentials | Third-party content | Location |');
+    lines.push('|--------|-------|--------|----------------------------|----------------|-------------|---------------------|----------|');
+    for (const m of servers) {
+      const starts = m.transport === 'http' ? `http ${m.host ?? ''}` : code([m.launch?.command ?? '', ...(m.launch?.args ?? [])].join(' ').slice(0, 60));
+      lines.push(`| ${m.name}${m.disabled ? ' (disabled)' : ''} | ${m.harness} | ${cell(starts)} | ${m.resolves_to ? `${m.resolves_to.file} (${m.resolves_to.kind})` : '—'} | ${m.package ? (m.package.pinned ? 'yes' : `**no** (${cell(m.package.spec)})`) : '—'} | ${m.credential_env.join(', ') || '—'} | ${m.returns_third_party_content ? 'yes' : 'no'} | ${m.file}:${m.line} |`);
+    }
+    lines.push('');
+  }
+  if (c.untrusted_sources > 0) {
+    lines.push(`${c.untrusted_sources} instruction files, skills, commands and MCP servers put text into an agent's context; each is an untrusted source, and an injection-to-tool route when that agent can act without asking (LLM01 below). \`guardlink lookup "agent config"\` lists them.`);
+    lines.push('');
+  }
 }
 
 /** One subsection per actor that reaches something: each capability and what it leads to. */
@@ -197,7 +267,7 @@ function emitLists(s: ReachSummary, lines: string[], h3: (t: string) => string):
 
 /** The OWASP Top 10 for LLM Applications (2025) items reach evidence speaks to. */
 function emitOwasp(s: ReachSummary, lines: string[], h3: (t: string) => string): void {
-  if (s.totals.agents === 0) return;
+  if (s.totals.agents === 0 && s.injection.length === 0) return;
   lines.push(h3('OWASP Top 10 for LLM Applications'));
   lines.push('');
   lines.push('Each row is a target for review or test, not a finding the model has proved.');
@@ -251,7 +321,8 @@ export function generateAgentReachReport(model: ThreatModel): string {
   }
   lines.push('');
   lines.push('This is the agent part of the threat model: what each embedded LLM agent and other principal can reach,');
-  lines.push('what of that a human approved, and what acts with no one deciding first. `guardlink report` without');
+  lines.push('what of that a human approved, and what acts with no one deciding first — and, read from the repository\'s');
+  lines.push('agent configuration, what the coding agents its developers run may do here. `guardlink report` without');
   lines.push('`--agents` places the same section in the full threat model.');
   lines.push('');
   lines.push(`## Agents and LLM Reach${suffix}`);

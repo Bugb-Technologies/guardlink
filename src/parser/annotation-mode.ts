@@ -155,6 +155,21 @@ export function readDisabledDiagnostics(root: string): ReadonlySet<string> {
   }
 }
 
+/**
+ * Whether the coding-agent configuration reader runs for this project:
+ * `.guardlink/config.json` → `"agent_config": { "enabled": false }` turns it
+ * off. On by default, and on when the file is absent or unreadable — the off
+ * switch has to be written down to take effect.
+ */
+export function readAgentConfigEnabled(root: string): boolean {
+  try {
+    const config = JSON.parse(readFileSync(join(root, '.guardlink', 'config.json'), 'utf-8'));
+    return config?.agent_config?.enabled !== false;
+  } catch {
+    return true;
+  }
+}
+
 export function readConfiguredProject(root: string): string | null {
   try {
     const config = JSON.parse(readFileSync(join(root, '.guardlink', 'config.json'), 'utf-8'));

@@ -64,7 +64,7 @@ import { z } from 'zod';
 // MERGE: main added the entitlement validators and the proposal module; ours
 // kept `crossRepoTag` (D19). Union — main's list had dropped crossRepoTag only
 // because it branched before D19 landed.
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findAgentReachConflicts, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag, withReachAnalysis } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findAgentReachConflicts, findAgentConfigDiagnostics, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag, withReachAnalysis } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
 import { readAcceptancePolicy, acceptanceBlastRadius, formatBlastRadius, ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
 import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
@@ -384,7 +384,9 @@ export function createServer(): McpServer {
           warnings: boundaryDiags.map(d => ({ file: d.file, line: d.line, code: d.code, message: d.message })),
         };
       }
-      const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...actorDiags, ...agentReachDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...boundaryDiags];
+      // Agent configuration (SPEC §5.6): hidden Unicode, block stamps, unreadable files, hand-written coding-agent reach.
+      const agentConfigDiags = findAgentConfigDiagnostics(model);
+      const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...actorDiags, ...agentReachDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...boundaryDiags, ...agentConfigDiags];
 
       const errors = allDiags.filter(d => d.level === 'error');
       const warnings = allDiags.filter(d => d.level === 'warning');

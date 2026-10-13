@@ -200,7 +200,11 @@ describe('Diagrams › Agent reach, on the support-desk fixture', () => {
   });
 
   it('draws nothing for a model with no reach annotation', () => {
-    expect(renderReachDiagram(summarizeReach(model))).toBeNull();
+    // This repository's own model carries one generated reach — its .mcp.json
+    // starts guardlink's MCP server for Claude Code — and no reach annotation.
+    const annotated = { ...model, reaches: (model.reaches ?? []).filter(r => !r.origin), effects: [], gates: [] };
+    expect(annotated.reaches).toEqual([]);
+    expect(renderReachDiagram(summarizeReach(annotated))).toBeNull();
   });
 });
 

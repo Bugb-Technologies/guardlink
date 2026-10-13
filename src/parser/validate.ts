@@ -17,6 +17,8 @@ import {
 // MERGE: `ThreatModelExposure` left with main's findUnmitigatedExposures /
 // findAcceptedExposures — those were the old pair-keyed pair, and D36/D57 moved
 // both to parser/coverage.ts, which this file now re-exports from (below).
+import { computeAnnotationHash } from './annotation-hash.js';
+import { describeHiddenUnicode, type HiddenUnicodeHit } from '../agentconfig/hidden-unicode.js';
 import type { ThreatModel, ParseDiagnostic, SourceLocation } from '../types/index.js';
 import { normalizeName } from './normalize.js';
 import { canonicaliser } from './canonical-ref.js';
@@ -38,6 +40,9 @@ export function findDanglingRefs(model: ThreatModel): ParseDiagnostic[] {
   for (const c of model.controls) if (c.id) definedIds.add(c.id);
   for (const b of model.boundaries) if (b.id) definedIds.add(b.id);
   for (const ac of model.actors || []) if (ac.id) definedIds.add(ac.id);
+  // Assets the config reader declares for its generated rows (SPEC §5.6): an
+  // @entitles that closes a coding agent's reach names them.
+  for (const a of model.agent_config?.assets || []) definedIds.add(a.id.replace(/^#/, ''));
 
   const checkRef = (ref: string, loc: { file: string; line: number }) => {
     if (ref.startsWith('#')) {
@@ -99,15 +104,18 @@ export function findDanglingRefs(model: ThreatModel): ParseDiagnostic[] {
 
   // Reach, effect and gate. Actors (the reaching actor, the approver) are
   // checked by findUndeclaredActors, as on @entitles; assets and identities here.
-  for (const r of model.reaches || []) {
+  // Rows generated from agent configuration name the assets the config reader
+  // declares in `agent_config.assets` (SPEC §5.6), not annotations: nobody
+  // wrote them, so nobody can fix them, and they are not checked here.
+  for (const r of (model.reaches || []).filter(x => !x.origin)) {
     if (r.asset) checkRef(r.asset, r.location);
     if (r.identity) checkRef(r.identity, r.location);
   }
-  for (const ef of model.effects || []) {
+  for (const ef of (model.effects || []).filter(x => !x.origin)) {
     checkRef(ef.asset, ef.location);
     if (ef.identity) checkRef(ef.identity, ef.location);
   }
-  for (const g of model.gates || []) checkRef(g.asset, g.location);
+  for (const g of (model.gates || []).filter(x => !x.origin)) checkRef(g.asset, g.location);
 
   // Lifecycle annotations — check asset refs
   for (const v of model.validations) {
@@ -301,9 +309,14 @@ export function findInertEntitlements(model: ThreatModel): ParseDiagnostic[] {
  */
 export function findImpreciseEntitlements(model: ThreatModel): ParseDiagnostic[] {
   const diagnostics: ParseDiagnostic[] = [];
+  // An entitlement whose only job is to close a coding agent's configured reach
+  // (SPEC §5.6) has no finding to demote: a missing threat is not a defect there.
+  const configReach = new Set((model.reaches || []).filter(r => r.origin)
+    .map(r => `${normalizeRef(r.actor)}::${r.canonical_capability}`));
 
   for (const en of model.entitlements || []) {
-    const missing = entitlementDemotionBlockers(en).filter(b => b !== 'uncited');
+    const missing = entitlementDemotionBlockers(en).filter(b => b !== 'uncited')
+      .filter(b => !(b === 'no-threat' && configReach.has(`${normalizeRef(en.actor)}::${en.canonical_capability}`)));
     if (missing.length === 0) continue;
     const needs = missing
       .map(b => (b === 'no-asset' ? 'on <asset>' : 'against <threat>'))
@@ -414,3 +427,75 @@ function allLocations(model: ThreatModel): SourceLocation[] {
     ...model.shields, ...model.features, ...model.comments,
   ].map(a => a.location);
 }
+
+// ─── Agent configuration (SPEC §5.6) ────────────────────────────────
+
+/** The coding-agent harness actors whose reach is generated, never written. */
+const CODING_AGENT_ACTORS = new Set(['claude-code', 'cursor', 'copilot', 'codex', 'gemini-cli']);
+
+/**
+ * What `validate` says about the repository's agent configuration, when the
+ * reader ran (`model.agent_config`):
+ *
+ *   - `hidden-unicode` — invisible characters in an instruction file, skill or
+ *     command that a model reads and a reviewer does not see. An error when
+ *     they decode to text (conformance/hidden-unicode.json), a warning otherwise.
+ *   - `agent-block-unstamped` / `agent-block-stale` — a GuardLink block with no
+ *     provenance stamp, or one stamped from another model. Every block `sync`
+ *     writes is stamped, the empty-model block included, so an unstamped block
+ *     was written by hand or by an older GuardLink, and an agent reading a stale
+ *     one is told about a model that no longer exists.
+ *   - `agent-config-unreadable` — a configuration file the reader could not
+ *     parse. Its reach is unknown, which is not the same as none.
+ *   - `hand-written-coding-agent-reach` — an `@agents`/`@reaches` annotation for
+ *     Claude Code, Cursor, Copilot, Codex or Gemini. Their reach is generated
+ *     from configuration with the line that grants it; a hand-written row
+ *     drifts from the file it describes. To approve a capability, a human
+ *     writes `@entitles` (`guardlink entitle --from-config --propose`).
+ *
+ * Fixture configuration is test data and is not linted.
+ */
+export function findAgentConfigDiagnostics(model: ThreatModel): ParseDiagnostic[] {
+  const block = model.agent_config;
+  if (!block) return [];
+  const out: ParseDiagnostic[] = [];
+  for (const f of block.instruction_files) {
+    if (f.scope === 'fixture') continue;
+    for (const h of f.hidden_unicode) {
+      out.push({
+        level: h.severity, code: 'hidden-unicode', file: f.path, line: h.line,
+        message: `${describeHiddenUnicode(h as HiddenUnicodeHit)} (column ${h.column}). ${f.harnesses.join(', ')} load${f.harnesses.length === 1 ? 's' : ''} this file.`,
+      });
+    }
+    const b = f.guardlink_block;
+    if (!b || f.scope === 'packaged') continue;
+    if (!b.stamp) {
+      out.push({
+        level: 'warning', code: 'agent-block-unstamped', file: f.path, line: b.line,
+        message: 'The GuardLink block here carries no provenance stamp, so nothing can show it describes the current model. Run `guardlink sync` to rewrite it stamped.',
+      });
+    } else if (!b.current) {
+      out.push({
+        level: 'warning', code: 'agent-block-stale', file: f.path, line: b.line,
+        message: `The GuardLink block here was written from annotation_hash ${b.stamp}${b.agent_config_stamp ? ` and agent_config_hash ${b.agent_config_stamp}` : ''}; `
+          + `the model is now ${computeAnnotationHash(model)} and ${block.agent_config_hash}. Agents reading it are told about a model that no longer exists — run \`guardlink sync\`.`,
+      });
+    }
+  }
+  for (const u of block.unreadable) {
+    out.push({
+      level: 'warning', code: 'agent-config-unreadable', file: u.file, line: u.line,
+      message: `Agent configuration could not be read (${u.message}); what it grants is unknown, not none.`,
+    });
+  }
+  for (const r of model.reaches || []) {
+    if (r.origin || !CODING_AGENT_ACTORS.has(normalizeRef(r.actor))) continue;
+    out.push({
+      level: 'error', code: 'hand-written-coding-agent-reach', file: r.location.file, line: r.location.line,
+      message: `${r.agent ? '@agents' : '@reaches'} ${r.actor} is hand-written, but a coding agent's reach is generated from the repository's agent configuration with the line that grants it. `
+        + 'Delete the annotation; to approve a capability, propose an @entitles (`guardlink entitle --from-config --propose`).',
+    });
+  }
+  return out;
+}
+

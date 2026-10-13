@@ -37,7 +37,9 @@ import { extractCitation } from './citation.js';
 import { loadWorkspaceConfig } from '../workspace/index.js';
 import { ANNOTATIONS_DIR } from './gal-path.js';
 import { fileCoveragePercent } from './coverage.js';
-import { readDisabledDiagnostics } from './annotation-mode.js';
+import { readDisabledDiagnostics, readAgentConfigEnabled } from './annotation-mode.js';
+import { readAgentConfig, type AgentConfigResult } from '../agentconfig/index.js';
+import { computeAnnotationHash } from './annotation-hash.js';
 import { attachAnchors } from '../structure/attach.js';
 import { parseRouteChannel } from './route.js';
 
@@ -185,6 +187,12 @@ export interface ParseProjectOptions {
    * engine's historical parses, for instance — to skip grammar loading.
    */
   anchors?: boolean;
+  /**
+   * Read the repository's coding-agent configuration into the model (SPEC
+   * §5.6). Defaults to `.guardlink/config.json`'s `agent_config.enabled`,
+   * which defaults to true; `false` here wins over the file.
+   */
+  agentConfig?: boolean;
 }
 
 /**
@@ -239,6 +247,12 @@ export const DEFAULT_EXCLUDE = [
   // D17 — our own generated outputs.
   ...GENERATED_OUTPUT_FILES.map(f => `**/${f}`),
 ];
+
+/**
+ * `GUARDLINK_AGENT_CONFIG=off` leaves agent configuration out of every parse in
+ * the process; the CLI's `--no-agent-config` sets it.
+ */
+export const AGENT_CONFIG_ENV = 'GUARDLINK_AGENT_CONFIG';
 
 /**
  * Parse an entire project directory and return a ThreatModel.
@@ -393,12 +407,48 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
 
   // Warning-level diagnostics a project has switched off in config.json.
   // Errors are never suppressible — see readDisabledDiagnostics.
+  // The repository's coding-agent configuration: generated reach rows and the
+  // agent_config inventory block (SPEC §5.6).
+  if (options.agentConfig ?? (process.env[AGENT_CONFIG_ENV] !== 'off' && readAgentConfigEnabled(root))) {
+    mergeAgentConfig(model, readAgentConfig(root));
+  }
+
   const disabled = readDisabledDiagnostics(root);
   const diagnostics = disabled.size === 0
     ? allDiagnostics
     : allDiagnostics.filter(d => !(d.level === 'warning' && d.code && disabled.has(d.code)));
 
   return { model, diagnostics };
+}
+
+/**
+ * Merge what the config reader generated into an assembled model.
+ *
+ * Generated rows go into the same arrays as annotated ones, marked
+ * `origin: "agent-config"`, so every join over reaches, effects and gates reads
+ * them with no rule of its own. A generated actor is added only when no
+ * annotation declares one with the same id: a person who wrote
+ * `@actor Claude_Code (#claude-code)` keeps their own description.
+ *
+ * Each GuardLink block's stamp is judged here, once the annotation hash is
+ * known: current when it names this model's annotation hash and this
+ * configuration's hash.
+ */
+export function mergeAgentConfig(model: ThreatModel, ac: AgentConfigResult): ThreatModel {
+  const declared = new Set((model.actors ?? []).map(a => a.id).filter(Boolean));
+  model.actors = [...(model.actors ?? []), ...ac.actors.filter(a => !declared.has(a.id))];
+  model.reaches = [...(model.reaches ?? []), ...ac.reaches];
+  model.effects = [...(model.effects ?? []), ...ac.effects];
+  model.gates = [...(model.gates ?? []), ...ac.gates];
+  const annotationHash = computeAnnotationHash(model);
+  for (const f of ac.block.instruction_files) {
+    if (f.guardlink_block) {
+      f.guardlink_block.current = f.guardlink_block.stamp === annotationHash
+        && f.guardlink_block.agent_config_stamp === ac.block.agent_config_hash;
+    }
+  }
+  model.agent_config = ac.block;
+  return model;
 }
 
 function normalizeLocationPath(locationFile: string, physicalFile: string, root: string): string {

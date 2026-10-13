@@ -8,4 +8,5 @@ export { summarizeReach, hasReach } from './summary.js';
 export type {
   ReachSummary, ReachActorRow, ReachColumn, ReachCell, ReachCapabilityChip, ReachEffectChip, LooseEffects,
   UnentitledRow, NearMissRow, UngatedRow, GateRow, EgressRow, InjectionRoute, OwaspRow, OwaspItem, OwaspId, ReachLoc,
+  GrantedBy, CodingReachRow, CodingFileGroup, CodingSummary,
 } from './summary.js';

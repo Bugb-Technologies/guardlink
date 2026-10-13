@@ -4,7 +4,8 @@
 > Files scanned: 4 | Annotations: 38
 
 This is the agent part of the threat model: what each embedded LLM agent and other principal can reach,
-what of that a human approved, and what acts with no one deciding first. `guardlink report` without
+what of that a human approved, and what acts with no one deciding first — and, read from the repository's
+agent configuration, what the coding agents its developers run may do here. `guardlink report` without
 `--agents` places the same section in the full threat model.
 
 ## Agents and LLM Reach

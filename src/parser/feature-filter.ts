@@ -185,8 +185,12 @@ export function filterByFeature(model: ThreatModel, featureNames: string[]): Thr
 
   const annotatedFiles = model.annotated_files.filter(f => matchingFiles.has(f));
 
+  // The agent-config inventory belongs to the repository, not to a feature:
+  // its generated rows sit in configuration files no `@feature` tags, so they
+  // are filtered out with every other row outside the feature's files.
+  const { agent_config: _inventory, ...unfiltered } = model;
   const filtered: ThreatModel = {
-    ...model,
+    ...unfiltered,
 
     // ── Metadata describes THIS model, not the project it was cut from ──
     //

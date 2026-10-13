@@ -29,7 +29,7 @@ import { readFileSync, realpathSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import type {
   ThreatModelReach, ThreatModelEffect, ThreatModelGate, ThreatModelActor, EffectClass,
-  AgentConfigSource, AgentConfigScope, AgentConfigLoadedWhen, AgentConfigMcpServer, AgentConfigHook,
+  AgentConfigSource, AgentConfigLoadedWhen, AgentConfigMcpServer, AgentConfigHook,
   AgentConfigInstructionFile, AgentConfigBlock,
 } from '../types/index.js';
 import { normalizeName } from '../parser/normalize.js';
@@ -714,7 +714,10 @@ function markdownFile(b: Builder, ctx: Ctx) {
     path: file.path, kind: file.kind, harnesses: file.harnesses, scope: file.scope,
     bytes: Buffer.byteLength(text, 'utf-8'),
     ...(text.includes(GUARDLINK_BEGIN) ? {
-      guardlink_block: { stamp: stamp?.annotation_hash ?? null, agent_config_stamp: stamp?.agent_config_hash ?? null, current: false },
+      guardlink_block: {
+        line: text.slice(0, text.indexOf(GUARDLINK_BEGIN)).split('\n').length,
+        stamp: stamp?.annotation_hash ?? null, agent_config_stamp: stamp?.agent_config_hash ?? null, current: false,
+      },
     } : {}),
     hidden_unicode: file.scope === 'fixture' ? [] : findHiddenUnicode(text),
   });

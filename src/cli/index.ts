@@ -45,9 +45,11 @@
  */
 
 import { Command } from 'commander';
+import fg from 'fast-glob';
 import { resolve, basename, join, isAbsolute, relative } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides, checkHandoff, HANDOFF_COMMAND, findAnchorDrift, applyReanchor, migrateAnnotationMode, annotationsLeftBehind, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE, withReachAnalysis } from '../parser/index.js';
+import { AGENT_CONFIG_ENV } from '../parser/parse-project.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findAgentConfigDiagnostics, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides, checkHandoff, HANDOFF_COMMAND, findAnchorDrift, applyReanchor, migrateAnnotationMode, annotationsLeftBehind, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE, withReachAnalysis } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { runCiChecks, formatCiReport, ESTATE_ROUTE } from '../ci/index.js';
 import type { CiWorkspaceScope } from '../ci/index.js';
@@ -81,7 +83,7 @@ import {
   type ReviewResult, type ReviewAction, type ReviewableExposure, type ScriptedDecision,
 } from '../review/index.js';
 import {
-  proposeEntitlement, listProposals, findProposal, applyProposalDecision, checkEntitlementProvenance,
+  proposeEntitlement, proposeFromConfig, listProposals, findProposal, applyProposalDecision, checkEntitlementProvenance,
   explicitDecider, identitySuggestion, formatProposalForReview, formatProposalLine, summarizeDecisions, proposalsPath,
   type DecisionResult, type EntitlementProposal, type ProposalStatus,
 } from '../review/entitlements.js';
@@ -137,7 +139,13 @@ program
   .name('guardlink')
   .description('GuardLink — Security annotations for code. Threat modeling that lives in your codebase.')
   .version(getPackageVersion())
+  .option('--no-agent-config', "Leave the repository's coding-agent configuration out of the model (SPEC §5.6); .guardlink/config.json \"agent_config\": {\"enabled\": false} does the same per project")
   .addHelpText('before', gradient(['#00ff41', '#00d4ff'])(ASCII_LOGO));
+
+// One switch for every command that parses: parseProject reads it.
+program.hook('preAction', () => {
+  if (program.opts().agentConfig === false) process.env[AGENT_CONFIG_ENV] = 'off';
+});
 
 // ─── init ────────────────────────────────────────────────────────────
 
@@ -179,17 +187,19 @@ program
       } else if (process.stdin.isTTY) {
         // Interactive picker — shows detected + optional agents
         agentIds = await promptAgentSelection(info.agentFiles);
-      } else {
-        // Non-interactive (CI), default to claude
-        agentIds = ['claude'];
       }
+      // Non-interactive with no --agent: the block goes only into instruction
+      // files that already exist; none is created unasked.
     }
 
     console.log('');
 
-    // Run init
+    // Run init. The block each agent file gets is stamped from the model as it
+    // stands, which on a re-init may already carry annotations.
     const mode = resolveAnnotationMode(opts.mode);
+    const { model: existingModel } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
     const result = initProject({
+      model: existingModel,
       root,
       project: opts.project ?? readConfiguredProject(root) ?? undefined,
       mode,
@@ -226,6 +236,10 @@ program
     }
     for (const f of result.skipped) {
       console.log(`${prefix}Skipped:  ${f}`);
+    }
+    if (!opts.skipAgentFiles && opts.rootFiles !== false && !agentIds && existingAgentFiles.length === 0) {
+      console.log(`${prefix}Note:     no agent instruction file exists, so none was written. GuardLink adds its block only to files`);
+      console.log(`${prefix}          that exist; create one with --agent claude (or cursor, codex, copilot, windsurf, cline).`);
     }
 
     // D24: an overwrite was asked for and refused. Say so loudly — the whole
@@ -432,7 +446,11 @@ program
       console.error(boundaryCheckSummaryLine(worklist, boundaryDiags));
     }
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...acceptAuditDiags, ...acceptanceDiags, ...actorDiags, ...agentReachDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags, ...boundaryDiags];
+    // The repository's agent configuration (SPEC §5.6): hidden Unicode, block
+    // stamps, unreadable files and hand-written coding-agent reach.
+    const agentConfigDiags = findAgentConfigDiagnostics(model);
+
+    const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...acceptAuditDiags, ...acceptanceDiags, ...actorDiags, ...agentReachDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags, ...boundaryDiags, ...agentConfigDiags];
 
     // Check for unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);
@@ -2674,6 +2692,7 @@ program
   .option('--list', 'List proposals without prompting')
   .option('--status <states>', 'Filter by status: proposed,accepted,rejected,deferred')
   .option('--propose', 'File a proposal instead of reviewing (needs --actor, --capability, --rationale, --file, --line)')
+  .option('--from-config', 'With --propose: draft one proposal per coding-agent capability the repository\'s agent configuration grants and no @entitles covers, each citing the line that grants it (narrow with --actor; the accepted annotation goes to --file/--line, default the definitions file)')
   .option('--actor <ref>', 'Actor being entitled — #id or a declared @actor name')
   .option('--capability <id>', 'Capability — one identifier, never prose (it is the join key)')
   .option('--asset <ref>', 'Optional "on <asset>" context')
@@ -2690,7 +2709,7 @@ program
   .option('--acknowledge-inert', 'Accept a proposal that cites no authz code, acknowledging the annotation will be inert (§3.4)')
   .option('--acknowledge-ownership', 'Accept a proposal the ownership-class check warned about, having read the warning (§3.5)')
   .action(async (dir: string, opts: {
-    project?: string; list?: boolean; status?: string; propose?: boolean;
+    project?: string; list?: boolean; status?: string; propose?: boolean; fromConfig?: boolean;
     actor?: string; capability?: string; asset?: string; threat?: string;
     rationale?: string; file?: string; line?: string; proposedBy: string;
     accept?: string; reject?: string; defer?: string;
@@ -2700,6 +2719,40 @@ program
     // Same resolution as every other command: flag, then .guardlink/config.json.
     // Used to hardcode 'unknown', which then travelled into the parsed model.
     const project = opts.project ?? readConfiguredProject(root) ?? undefined;
+
+    // ── propose from agent configuration, in bulk (SPEC §5.6) ──
+    if (opts.propose && opts.fromConfig) {
+      try {
+        const { model } = await parseProject({ root, project });
+        let target: { file: string; line: number } | null = opts.file && opts.line ? { file: opts.file, line: Number(opts.line) } : null;
+        if (!target) {
+          const defs = (await fg('.guardlink/definitions.*', { cwd: root, dot: true })).sort()[0];
+          if (defs) target = { file: defs, line: 1 };
+        }
+        if (!target) {
+          console.error('✗ No .guardlink/definitions.* to write accepted entitlements into; pass --file and --line.');
+          process.exitCode = 1;
+          return;
+        }
+        const r = await proposeFromConfig(root, model, target, { actor: opts.actor, proposed_by: opts.proposedBy === 'cli' ? undefined : opts.proposedBy });
+        if (r.filed.length === 0 && r.refused.length === 0) {
+          console.error(model.agent_config
+            ? '✓ Every coding-agent capability the configuration grants is already covered by a cited @entitles.'
+            : '✗ Agent configuration was not read (switched off in .guardlink/config.json or by --no-agent-config).');
+          if (!model.agent_config) process.exitCode = 1;
+          return;
+        }
+        const created = r.filed.filter(x => x.created).length;
+        console.error(`✓ Filed ${created} and refreshed ${r.filed.length - created} proposal(s) in ${proposalsPath(root)}, one per unentitled coding-agent capability.`);
+        if (r.refused.length > 0) console.error(`  ${r.refused.length} already decided by a person and left as they are.`);
+        console.error('  Nothing was written to source. A human reviews and accepts them with:');
+        console.error(`    guardlink entitle ${dir}`);
+      } catch (err) {
+        console.error(`✗ ${(err as Error).message}`);
+        process.exitCode = 1;
+      }
+      return;
+    }
 
     // ── propose (agent-side; writes only the artifact) ──
     if (opts.propose) {
@@ -3108,7 +3161,8 @@ program
     const errors = diagnostics.filter(d => d.level === 'error');
     if (errors.length > 0) printDiagnostics(errors);
 
-    if (model.annotations_parsed === 0 && !opts.feature) {
+    // A repository with no annotations still has a page to show when its agent configuration grants something.
+    if (model.annotations_parsed === 0 && !opts.feature && (model.reaches?.length ?? 0) + (model.effects?.length ?? 0) === 0) {
       console.error('No annotations found. Add GuardLink annotations first.');
       process.exit(1);
     }
