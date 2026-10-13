@@ -13,6 +13,7 @@
     "dist",
     "src",
     "grammars",
+    "harness",
     "conformance",
     "LICENSE",
     "README.md",
@@ -59,7 +60,9 @@
       "import": "./dist/hypothesis/index.js",
       "types": "./dist/hypothesis/index.d.ts"
     },
-    "./conformance/flows.json": "./conformance/flows.json"
+    "./conformance/flows.json": "./conformance/flows.json",
+    "./conformance/hidden-unicode.json": "./conformance/hidden-unicode.json",
+    "./harness/*.json": "./harness/*.json"
   },
   "scripts": {
     "build": "tsx scripts/build-grammars.ts && tsc && node scripts/postbuild-chmod.mjs",

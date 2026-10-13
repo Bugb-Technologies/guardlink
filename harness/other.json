@@ -1,0 +1,16 @@
+{
+  "table": "other",
+  "version": "2026-10",
+  "about": "Instruction files that other coding agents load. They are read as inventory: which agent loads them, their size, the GuardLink block stamp and hidden Unicode. What these agents may run is not read yet.",
+  "files": [
+    { "kind": "instructions", "pattern": "(^|/)AGENT\\.md$", "harness": "amp" },
+    { "kind": "instructions", "pattern": "(^|/)AGENTS\\.md$", "harness": "opencode" },
+    { "kind": "instructions", "pattern": "(^|/)\\.windsurfrules$|(^|/)\\.windsurf/rules/.+", "harness": "windsurf" },
+    { "kind": "instructions", "pattern": "(^|/)\\.clinerules(/.+)?$", "harness": "cline" },
+    { "kind": "instructions", "pattern": "(^|/)\\.roo/rules[^/]*/.+|(^|/)\\.roorules$", "harness": "roo" },
+    { "kind": "instructions", "pattern": "(^|/)\\.kilocode/rules/.+", "harness": "kilo" },
+    { "kind": "instructions", "pattern": "(^|/)\\.amazonq/rules/.+", "harness": "amazon-q" },
+    { "kind": "instructions", "pattern": "(^|/)\\.kiro/steering/.+", "harness": "kiro" },
+    { "kind": "instructions", "pattern": "(^|/)\\.junie/guidelines\\.md$", "harness": "junie" }
+  ]
+}

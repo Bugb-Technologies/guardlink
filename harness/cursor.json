@@ -1,0 +1,34 @@
+{
+  "table": "cursor",
+  "version": "2026-10",
+  "harness": "cursor",
+  "name": "Cursor",
+  "actor": { "id": "cursor", "name": "Cursor", "description": "Cursor agent: loads .cursor/{mcp.json,rules,hooks.json,cli.json}, .cursorrules and AGENTS.md" },
+  "about": "Read from the Cursor documentation as of the version above. Cursor's CLI agent has shipped versions that started project MCP servers with no prompt at all (GHSA-24mc-g4xr-4395 and others), so project MCP servers are read as starting without approval unless the configuration says otherwise.",
+  "files": [
+    { "kind": "mcp", "pattern": "(^|/)\\.cursor/mcp\\.json$", "loaded_when": ["after-trust", "headless"], "doc": "https://cursor.com/docs/context/mcp" },
+    { "kind": "instructions", "pattern": "(^|/)\\.cursor/rules/.+\\.(mdc|md)$", "loaded_when": ["always"], "doc": "https://cursor.com/docs/context/rules" },
+    { "kind": "instructions", "pattern": "(^|/)\\.cursorrules$", "loaded_when": ["always"], "doc": "https://cursor.com/docs/context/rules" },
+    { "kind": "instructions", "pattern": "(^|/)AGENTS\\.md$", "loaded_when": ["always"], "doc": "https://cursor.com/docs/context/rules" },
+    { "kind": "cursor-hooks", "pattern": "(^|/)\\.cursor/hooks\\.json$", "loaded_when": ["after-trust", "headless"], "doc": "https://cursor.com/docs/hooks" },
+    { "kind": "cursor-env", "pattern": "(^|/)\\.cursor/environment\\.json$", "harness": "cursor-background", "loaded_when": ["headless"], "doc": "https://cursor.com/docs/background-agent" },
+    { "kind": "cursor-cli", "pattern": "(^|/)\\.cursor/cli\\.json$", "loaded_when": ["headless"], "doc": "https://cursor.com/docs/cli/reference/permissions" },
+    { "kind": "command", "pattern": "(^|/)\\.cursor/commands/.+\\.md$", "loaded_when": ["always"], "doc": "https://cursor.com/docs/agent/chat/commands" },
+    { "kind": "skill", "pattern": "(^|/)\\.cursor/(.+/)?SKILL\\.md$", "loaded_when": ["always"], "doc": "https://cursor.com/docs/context/skills" }
+  ],
+  "shell": {
+    "rule_syntax": "Shell(<command base>) approves every command that starts with the base.",
+    "protected_prefixes": [],
+    "read_only": []
+  },
+  "rules": {
+    "mcp-server": { "doc": "https://cursor.com/docs/context/mcp", "gated": true, "loaded_when": ["after-trust", "headless"], "admits": ["arbitrary-execution"], "note": "A stdio server's command runs with the developer's privileges when the server starts; each tool call asks unless auto-run is on." },
+    "mcp-tool-auto": { "doc": "https://cursor.com/docs/context/mcp", "gated": false, "loaded_when": ["after-trust", "headless"], "note": "The listed tools run without asking." },
+    "hook": { "doc": "https://cursor.com/docs/hooks", "loaded_when": ["after-trust", "headless"], "admits": ["arbitrary-execution"], "note": "Runs automatically on the event with the developer's privileges." },
+    "background-command": { "doc": "https://cursor.com/docs/background-agent", "loaded_when": ["headless"], "admits": ["arbitrary-execution"], "note": "Runs in the background agent's environment before the agent starts." },
+    "shell-allow": { "doc": "https://cursor.com/docs/cli/reference/permissions", "gated": false, "loaded_when": ["headless"], "note": "The CLI agent runs matching commands without asking." },
+    "file-allow": { "doc": "https://cursor.com/docs/cli/reference/permissions", "gated": false, "loaded_when": ["headless"], "note": "The CLI agent reads or writes matching paths without asking." },
+    "deny": { "doc": "https://cursor.com/docs/cli/reference/permissions", "loaded_when": ["headless"], "note": "Never runs; narrows reach." },
+    "instructions": { "doc": "https://cursor.com/docs/context/rules", "loaded_when": ["always"], "note": "Loaded into the agent's context as rules." }
+  }
+}
