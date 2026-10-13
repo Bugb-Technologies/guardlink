@@ -51,7 +51,7 @@ import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedW
 import { diagnosticIcon } from '../parser/format.js';
 import { runCiChecks, formatCiReport, ESTATE_ROUTE } from '../ci/index.js';
 import type { CiWorkspaceScope } from '../ci/index.js';
-import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
+import { initProject, detectProject, describeScope, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { ensurePromptMd } from '../init/migrate.js';
 import { generateReport, generateMermaid, generateAgentReachReport } from '../report/index.js';
 import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getChangedFiles } from '../diff/index.js';
@@ -152,8 +152,9 @@ program
   .option('--skip-agent-files', 'Only create .guardlink/, skip agent file updates')
   .option('--force', 'Re-scaffold config and agent instructions — never overwrites an authored definitions file')
   .option('--reset', 'DESTRUCTIVE: also overwrite the definitions file and a customised config.json with the empty template')
+  .option('--refresh-scope', 'Rewrite only the include list in an existing config.json from the languages present now')
   .option('--dry-run', 'Show what would be created without writing files')
-  .action(async (dir: string, opts: { project?: string; agent?: string; mode?: string; rootFiles?: boolean; skipAgentFiles?: boolean; force?: boolean; reset?: boolean; dryRun?: boolean }) => {
+  .action(async (dir: string, opts: { project?: string; agent?: string; mode?: string; rootFiles?: boolean; skipAgentFiles?: boolean; force?: boolean; reset?: boolean; refreshScope?: boolean; dryRun?: boolean }) => {
     const root = resolve(dir);
 
     // Show detection results first
@@ -165,8 +166,8 @@ program
       console.log(`Found:    ${existingAgentFiles.map(f => f.path).join(', ')}`);
     }
 
-    if (info.alreadyInitialized && !opts.force && !opts.reset) {
-      console.log(`\n.guardlink/ already exists. Use --force to reinitialize.`);
+    if (info.alreadyInitialized && !opts.force && !opts.reset && !opts.refreshScope) {
+      console.log(`\n.guardlink/ already exists. Use --force to reinitialize, or --refresh-scope to update the include list.`);
     }
 
     // Determine agent IDs — always show picker in interactive mode
@@ -197,11 +198,25 @@ program
       skipAgentFiles: opts.skipAgentFiles,
       force: opts.force,
       reset: opts.reset,
+      refreshScope: opts.refreshScope,
       dryRun: opts.dryRun,
       agentIds,
     });
 
     const prefix = opts.dryRun ? '(dry run) ' : '';
+
+    // Which languages the include covers and why — printed whenever this run
+    // wrote it, so a language left out is visible now rather than as an empty
+    // model later.
+    if (result.scopeWritten) {
+      console.log(`${prefix}Scope (${result.scope.source === 'git' ? 'tracked files' : 'files on disk'}, default excludes applied):`);
+      for (const line of describeScope(result.scope)) console.log(`${prefix}${line}`);
+      console.log('');
+    }
+    if (result.scopeMissing.length > 0) {
+      console.log(`Note: .guardlink/config.json does not include ${result.scopeMissing.join(', ')}, found in this repository.`);
+      console.log(`      Those files are not parsed. Re-run with --refresh-scope to add them.\n`);
+    }
 
     for (const f of result.created) {
       console.log(`${prefix}Created:  ${f}`);
@@ -224,7 +239,7 @@ program
       console.log(`Re-run with --reset only if you intend to discard the declarations above.`);
     }
 
-    if (!opts.dryRun && (result.created.length > 0 || result.updated.length > 0)) {
+    if (!opts.dryRun && !result.scopeRefreshOnly && (result.created.length > 0 || result.updated.length > 0)) {
       // D38: step 2 said "Add annotations to your source files" regardless of
       // mode, while the `.guardlink/README.md` written by this same command says
       // annotations do NOT go in source files under the default. One command

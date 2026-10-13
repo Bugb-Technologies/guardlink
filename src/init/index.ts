@@ -20,6 +20,7 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync, appendFileSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { detectProject, type ProjectInfo } from './detect.js';
+import { detectIncludeScope, type IncludeScope } from './scope.js';
 import {
   agentInstructions,
   agentInstructionsWithModel,
@@ -67,7 +68,24 @@ function readForGuard(path: string): string | null {
   }
 }
 
+/**
+ * Whether `existing` would match the template if the template carried its own
+ * include — i.e. the scope is the only thing setting it apart. That case has a
+ * narrower remedy than `--reset`, so the preserved line names it.
+ */
+function onlyIncludeDiffers(existing: string | null, project: ProjectInfo, mode: AnnotationMode): boolean {
+  if (existing === null) return false;
+  try {
+    const include = (JSON.parse(existing) as { include?: unknown }).include;
+    if (!Array.isArray(include) || !include.every(g => typeof g === 'string')) return false;
+    return !configIsCustomised(existing, configContent(project, mode, include));
+  } catch {
+    return false;
+  }
+}
+
 export { detectProject, type ProjectInfo, type AgentFile } from './detect.js';
+export { detectIncludeScope, describeScope, type IncludeScope } from './scope.js';
 export { promptAgentSelection, resolveAgentFiles, AGENT_CHOICES } from './picker.js';
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -125,10 +143,32 @@ export interface InitOptions {
    * imply, now asked for on its own.
    */
   rootFiles?: boolean;
+  /**
+   * Rewrite `include` in an existing `config.json` from the languages present
+   * now, leaving every other key as it is. Without it an existing config is
+   * never touched for scope: its include may be one a person chose.
+   */
+  refreshScope?: boolean;
 }
 
 export interface InitResult {
   project: ProjectInfo;
+  /** The include scope detected for this repository, and why. */
+  scope: IncludeScope;
+  /**
+   * Whether `scope.include` is what `config.json` now holds — it was created,
+   * re-scaffolded or refreshed by this run. False when an existing include was
+   * left alone.
+   */
+  scopeWritten: boolean;
+  /**
+   * Globs the detected scope has that an existing, untouched `config.json`
+   * include lacks — languages present that the config does not parse. Empty
+   * when the scope was written or nothing is missing.
+   */
+  scopeMissing: string[];
+  /** True when the only write to `config.json` was `refreshScope`'s. */
+  scopeRefreshOnly: boolean;
   created: string[];
   updated: string[];
   skipped: string[];
@@ -176,21 +216,54 @@ export function initProject(options: InitOptions): InitResult {
   // ── 2. Create config.json ──
 
   const configPath = join(tsDir, 'config.json');
-  const configTemplate = configContent(project, mode);
+  const scope = detectIncludeScope(root, project.language);
+  const configTemplate = configContent(project, mode, scope.include);
+  let scopeWritten = false;
   if (!existsSync(configPath)) {
     if (!dryRun) writeFileSync(configPath, configTemplate);
     created.push('.guardlink/config.json');
+    scopeWritten = true;
+  } else if (options.refreshScope && !reset) {
+    // Read-modify-write of `include` alone. Every other key — exclude, mode,
+    // anything a person added — is theirs, and this flag is not a re-scaffold.
+    const existing = readForGuard(configPath);
+    let parsed: unknown;
+    try { parsed = existing === null ? null : JSON.parse(existing); } catch { parsed = null; }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      preserved.push('.guardlink/config.json (unreadable — include not refreshed)');
+    } else {
+      const cfg = parsed as Record<string, unknown>;
+      if (JSON.stringify(cfg.include) === JSON.stringify(scope.include)) {
+        skipped.push('.guardlink/config.json (include already up to date)');
+      } else {
+        cfg.include = scope.include;
+        if (!dryRun) writeFileSync(configPath, JSON.stringify(cfg, null, 2) + '\n');
+        updated.push('.guardlink/config.json (include refreshed)');
+      }
+      scopeWritten = true;
+    }
   } else if (force) {
     // D24: --force must not discard settings a human put here.
     const existing = readForGuard(configPath);
     if (!reset && (existing === null || configIsCustomised(existing, configTemplate))) {
-      preserved.push('.guardlink/config.json (customised — --reset to overwrite)');
+      preserved.push(onlyIncludeDiffers(existing, project, mode)
+        ? '.guardlink/config.json (include differs from the languages detected — --refresh-scope to update it)'
+        : '.guardlink/config.json (customised — --reset to overwrite)');
     } else {
       if (!dryRun) writeFileSync(configPath, configTemplate);
       updated.push('.guardlink/config.json');
+      scopeWritten = true;
     }
   } else {
     skipped.push('.guardlink/config.json (exists)');
+  }
+
+  let scopeMissing: string[] = [];
+  if (!scopeWritten) {
+    try {
+      const include = (JSON.parse(readFileSync(configPath, 'utf-8')) as { include?: unknown }).include;
+      if (Array.isArray(include)) scopeMissing = scope.include.filter(g => !include.includes(g));
+    } catch { /* unreadable config: nothing to compare against */ }
   }
 
   // ── 3. Create definitions file ──
@@ -337,7 +410,9 @@ export function initProject(options: InitOptions): InitResult {
     }
   }
 
-  return { project, created, updated, skipped, preserved };
+  const scopeRefreshOnly = created.length === 0
+    && updated.length === 1 && updated[0] === '.guardlink/config.json (include refreshed)';
+  return { project, scope, scopeWritten, scopeMissing, scopeRefreshOnly, created, updated, skipped, preserved };
 }
 
 // ─── Agent file update logic ─────────────────────────────────────────
