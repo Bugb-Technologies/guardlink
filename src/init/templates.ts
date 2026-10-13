@@ -868,7 +868,13 @@ ${c} ─── Your Definitions ────────────────
 
 // ─── Config file ─────────────────────────────────────────────────────
 
-export function configContent(project: ProjectInfo, mode: AnnotationMode = 'inline'): string {
+export function configContent(
+  project: ProjectInfo,
+  mode: AnnotationMode = 'inline',
+  // Built from the files in the repository (init/scope.ts). Absent, it is the
+  // single-language default for the root manifest's language.
+  include: string[] = defaultIncludeForLanguage(project.language),
+): string {
   return JSON.stringify({
     version: '1.1.0',
     project: project.name,
@@ -878,7 +884,7 @@ export function configContent(project: ProjectInfo, mode: AnnotationMode = 'inli
     // observe, and guessing "inline" there would be a guess dressed as config.
     annotation_mode: mode,
     definitions: `definitions${project.definitionsExt}`,
-    include: defaultIncludeForLanguage(project.language),
+    include,
     exclude: [
       'node_modules', 'dist', 'build', '.git',
       '__pycache__', 'target', 'vendor', '.next',
