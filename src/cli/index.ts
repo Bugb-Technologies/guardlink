@@ -47,7 +47,7 @@
 import { Command } from 'commander';
 import { resolve, basename, join, isAbsolute, relative } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides, checkHandoff, HANDOFF_COMMAND, findAnchorDrift, applyReanchor, migrateAnnotationMode, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE, withReachAnalysis } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides, checkHandoff, HANDOFF_COMMAND, findAnchorDrift, applyReanchor, migrateAnnotationMode, annotationsLeftBehind, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE, withReachAnalysis } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { runCiChecks, formatCiReport, ESTATE_ROUTE } from '../ci/index.js';
 import type { CiWorkspaceScope } from '../ci/index.js';
@@ -990,7 +990,7 @@ program
       process.exit(1);
     }
 
-    const result = migrateAnnotationMode({ root, to: opts.to, model: before.model, dryRun: opts.dryRun });
+    const result = migrateAnnotationMode({ root, to: opts.to, model: before.model, diagnostics: before.diagnostics, dryRun: opts.dryRun });
 
     const verb = opts.dryRun ? 'Would move' : 'Moved';
     console.error(`${verb} ${result.annotationsMoved} annotation(s) to ${opts.to} mode.`);
@@ -1000,10 +1000,14 @@ program
       console.error(`  ${result.alreadyThere.length} file(s) already in ${opts.to} mode — left alone.`);
     }
     for (const s of result.skipped) console.error(`  skipped  ${s.file} — ${s.reason}`);
+    if (result.unmigrated.length > 0) {
+      console.error(`\n✗ ${result.unmigrated.length} annotation line(s) ${opts.dryRun ? 'would not move' : 'not moved'}; each file listed here is left as it was:`);
+      for (const u of result.unmigrated) console.error(`    ${u.file}:${u.line} — ${u.reason}`);
+    }
 
     if (opts.dryRun) {
       console.error('\nDry run — nothing was written.');
-      process.exit(0);
+      process.exit(result.unmigrated.length > 0 ? 1 : 0);
     }
 
     // The correctness check, run every time rather than offered as a flag.
@@ -1048,6 +1052,25 @@ program
       console.error('  Proceeding: --allow-anchor-loss was given.');
     } else if (anchorsAfter > 0) {
       console.error(`✓ anchor_hash unchanged: ${computeAnchorHash(after.model)} (${anchorsAfter} anchors)`);
+    }
+
+    // The hash cannot see an annotation that never moved: left where it was, it
+    // still parses, and the model is unchanged. So ask the re-parsed model
+    // directly whether anything is still written in the mode we left, and name
+    // each one. A partial migration does not flip annotation_mode; re-running
+    // after the fix moves only what is left.
+    // A file named in result.unmigrated was left whole, so everything in it is
+    // already accounted for.
+    const reported = new Set(result.unmigrated.map(u => u.file));
+    const leftBehind = annotationsLeftBehind(after.model, opts.to).filter(a => !reported.has(a.file));
+    if (leftBehind.length > 0) {
+      console.error(`\n✗ ${leftBehind.length} annotation(s) are still in ${opts.to === 'external' ? 'source comments' : 'sidecars'} after the migration, with no reason recorded:`);
+      for (const a of leftBehind) console.error(`    ${a.file}:${a.line}`);
+      console.error('  This is a migrate defect. Revert with git and report it.');
+    }
+    if (result.unmigrated.length > 0 || leftBehind.length > 0) {
+      console.error(`\n✗ Migration incomplete — annotation_mode left unchanged. Fix the lines above and re-run.`);
+      process.exit(1);
     }
 
     if (!opts.dryRun) {

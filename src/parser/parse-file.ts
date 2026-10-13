@@ -32,6 +32,37 @@ export async function parseFile(filePath: string): Promise<ParseResult> {
  * Useful for testing without file I/O.
  */
 export function parseString(content: string, filePath: string = '<input>'): ParseResult {
+  return scan(content, filePath);
+}
+
+/**
+ * What a line meant to the parser, for a caller that edits the source.
+ *
+ * - `annotation` — produced at least one model record.
+ * - `continuation` — a `-- "…"` line folded into the annotation above it.
+ * - `shield` — a `@shield` marker, which delimits source rather than describing it.
+ * - `malformed` — a known verb whose arguments did not parse (`malformed-annotation`).
+ *
+ * Lines absent from the map contributed nothing: code, prose, doc tags, unknown
+ * verbs such as `@page`, and everything inside a shielded region.
+ */
+export type LineRole = 'annotation' | 'continuation' | 'shield' | 'malformed';
+
+/**
+ * The role of every line `parseString` acted on, keyed by 1-indexed line.
+ *
+ * The same scan as `parseString`, not a second reading of the grammar: a writer
+ * that decides for itself what an annotation looks like will disagree with the
+ * parser, and every disagreement is a line that is in the model but not moved,
+ * or moved but not in the model.
+ */
+export function annotationLineRoles(content: string, filePath: string): Map<number, LineRole> {
+  const roles = new Map<number, LineRole>();
+  scan(content, filePath, (line, role) => roles.set(line, role));
+  return roles;
+}
+
+function scan(content: string, filePath: string, mark?: (line: number, role: LineRole) => void): ParseResult {
   const lines = content.split('\n');
   const annotations: Annotation[] = [];
   const diagnostics: ParseDiagnostic[] = [];
@@ -83,7 +114,7 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
     if (trimmed.startsWith('@shield:end')) {
       const location = { file: filePath, line: lineNum };
       const result = parseLine(text, location);
-      if (result.annotation) annotations.push(result.annotation);
+      if (result.annotation) { annotations.push(result.annotation); mark?.(lineNum, 'shield'); }
       inShield = false;
       lastAnnotations = [];
       continue;
@@ -91,7 +122,7 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
     if (trimmed.startsWith('@shield:begin')) {
       const location = { file: filePath, line: lineNum };
       const result = parseLine(text, location);
-      if (result.annotation) annotations.push(result.annotation);
+      if (result.annotation) { annotations.push(result.annotation); mark?.(lineNum, 'shield'); }
       inShield = true;
       lastAnnotations = [];
       continue;
@@ -108,6 +139,7 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
       for (const last of lastAnnotations) {
         last.description = last.description ? `${last.description} ${contDesc}` : contDesc;
       }
+      mark?.(lineNum, 'continuation');
       continue;
     }
 
@@ -141,9 +173,11 @@ export function parseString(content: string, filePath: string = '<input>'): Pars
       }
       annotations.push(...produced);
       lastAnnotations = produced;
+      mark?.(lineNum, produced.some(a => a.verb.startsWith('shield')) ? 'shield' : 'annotation');
     } else {
       if (result.diagnostic) {
         diagnostics.push(result.diagnostic);
+        if (result.diagnostic.code === 'malformed-annotation') mark?.(lineNum, 'malformed');
       } else if (!result.isContinuation && !result.sourceDirective) {
         // This was a comment, and behind punctuation the stripper did not
         // recognise sits a known verb. Every comment form GuardLink reads is
