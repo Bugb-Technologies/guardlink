@@ -88,7 +88,7 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 - #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:39)
 - #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:43)
 - #suggest exposed to #dos [low] (src/mcp/suggest.ts:16)
-- #parser exposed to #data-exposure [low] (src/parser/migrate-mode.ts:26)
+- #parser exposed to #data-exposure [low] (src/parser/migrate-mode.ts:36)
 - #tui exposed to #cmd-injection [high] (src/tui/commands.ts:11)
 - #tui exposed to #prompt-injection [medium] (src/tui/commands.ts:15)
 
@@ -123,11 +123,11 @@ _Full records with descriptions and locations: `guardlink_lookup("asset <id>")`,
 
 ### Model Stats
 
-895 annotations, 20 assets, 16 threats, 14 controls, 126 exposures, 0 confirmed, 137 mitigations, 3 actors, 1 entitlements, 205 flows, 2 features
+896 annotations, 20 assets, 16 threats, 14 controls, 126 exposures, 0 confirmed, 137 mitigations, 3 actors, 1 entitlements, 205 flows, 2 features
 
 ### Block Freshness
 
-- `annotation_hash`: `sha256-v3:d7078802ce79c86a2b838c784bc233f31dd8b7e53bd872cf1d09be911164c0ce`
+- `annotation_hash`: `sha256-v3:9b909ecde02e22b3c990841c6464eae5b64cffc3171f0aef595e4452102703e2`
 
 Every MCP response carries this same hash. If it differs from the one above, this
 block predates the current annotations — trust the tool, and run `guardlink sync`.
