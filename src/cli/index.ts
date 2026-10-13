@@ -3932,6 +3932,11 @@ function printStatus(model: ThreatModel, verification?: VerificationReport, hypo
     const inert = model.entitlements!.filter(e => e.inert).length;
     console.log(`Entitlements:     ${model.entitlements!.length}${inert > 0 ? ` (${inert} inert — no citation)` : ''}`);
   }
+  // @agents and @reaches both land in reaches; each row below is one counted
+  // collection, so the rows add up to the Annotations headline.
+  if ((model.reaches || []).length > 0) console.log(`Reaches:          ${model.reaches!.length}`);
+  if ((model.effects || []).length > 0) console.log(`Effects:          ${model.effects!.length}`);
+  if ((model.gates || []).length > 0) console.log(`Gates:            ${model.gates!.length}`);
   console.log(`Transfers:        ${model.transfers.length}`);
   console.log(`Flows:            ${model.flows.length}`);
   console.log(`Boundaries:       ${model.boundaries.length}`);
@@ -3942,10 +3947,22 @@ function printStatus(model: ThreatModel, verification?: VerificationReport, hypo
   console.log(`Assumptions:      ${model.assumptions.length}`);
   if (model.features.length > 0) {
     const uniqueFeatures = new Set(model.features.map(f => f.feature));
-    console.log(`Features:         ${uniqueFeatures.size} (${model.features.length} tag${model.features.length > 1 ? 's' : ''})`);
+    // Lead with the tag count: that is what the headline counts.
+    console.log(`Features:         ${model.features.length} tag${model.features.length > 1 ? 's' : ''} (${uniqueFeatures.size} feature${uniqueFeatures.size > 1 ? 's' : ''})`);
   }
   console.log(`Comments:         ${model.comments.length}`);
   console.log(`Shields:          ${model.shields.length}`);
+  // Anything the headline counted that no row above names, so the rows always
+  // reconcile with it instead of silently falling short.
+  const listed = model.assets.length + model.threats.length + model.controls.length
+    + (model.actors || []).length + model.mitigations.length + model.exposures.length
+    + (model.confirmed || []).length + model.acceptances.length + (model.entitlements || []).length
+    + (model.reaches || []).length + (model.effects || []).length + (model.gates || []).length
+    + model.transfers.length + model.flows.length + model.boundaries.length + model.validations.length
+    + model.audits.length + model.ownership.length + model.data_handling.length + model.assumptions.length
+    + model.features.length + model.comments.length + model.shields.length;
+  const other = model.annotations_parsed - listed;
+  if (other !== 0) console.log(`Other:            ${other}`);
 }
 
 /**
