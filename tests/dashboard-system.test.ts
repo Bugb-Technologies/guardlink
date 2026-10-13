@@ -104,6 +104,34 @@ describe('system model layout', () => {
     expect(renderSystemModel(g)).toBeNull();
   });
 
+  // A flow whose two ends are both outside the model has no asset row to
+  // anchor to. It used to reach the row lookup for one of its endpoints and
+  // throw, so the whole dashboard failed to render.
+  it('draws a model whose flows join two endpoints outside it', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'gl-sysext-'));
+    try {
+      await mkdir(join(root, 'src'), { recursive: true });
+      await writeFile(join(root, 'src', 'app.ts'), [
+        '/**',
+        ' * @asset App.Api (#api) -- "The service"',
+        ' * @flows User -> #api via https',
+        ' * @flows User -> User via chat',
+        ' * @flows Partner -> Vendor via webhook',
+        ' * @boundary between Vendor and #api (#vendor)',
+        ' */',
+        'export const api = 1;',
+        '',
+      ].join('\n'));
+      const { g } = await graphOf(root, 'sysext');
+      const r = renderSystemModel(g)!;
+      expect(r.elements).toBe(g.nodes.size);
+      expect(r.flows).toBe(g.flows.length);
+      noNaN(r.svg);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   // 30s, because nearly all of this is parsing the whole repository: ~0.7s
   // locally, against 4–19ms for renderSystemModel itself. On CI it took
   // 1.8–2.3s, then past 5s on all three Node versions once the order test files
