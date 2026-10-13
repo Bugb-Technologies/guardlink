@@ -20,12 +20,12 @@
  *     templates such as the reference `.mcp.json` written by `init
  *     --no-root-files`, which no agent loads from there.
  *
- * @exposes #parser to #path-traversal [medium] cwe:CWE-59 -- "Follows symlinks found in the scanned repository"
- * @mitigates #parser against #path-traversal using #path-validation -- "Every directory and file is resolved with realpath and dropped unless it stays under the repository root; each real directory is entered once, so a link cycle terminates"
- * @exposes #parser to #dos [low] cwe:CWE-400 -- "Walks the whole repository tree"
- * @mitigates #parser against #dos using #resource-limits -- "Skips dependency and build directories, enters each real directory once, and stops after MAX_FILES configuration files"
- * @flows ProjectFiles -> #parser via readdirSync -- "Directory listing of the scanned repository"
- * @boundary from ProjectFiles to #parser (#agent-config-boundary) -- "Repository content is untrusted input to the config reader"
+ * @exposes #agent-config to #path-traversal [medium] cwe:CWE-59 -- "Follows symlinks found in the scanned repository"
+ * @mitigates #agent-config against #path-traversal using #path-validation -- "Every directory and file is resolved with realpath and dropped unless it stays under the repository root; each real directory is entered once, so a link cycle terminates"
+ * @exposes #agent-config to #dos [low] cwe:CWE-400 -- "Walks the whole repository tree"
+ * @mitigates #agent-config against #dos using #resource-limits -- "Skips dependency and build directories, enters each real directory once, and stops after MAX_FILES configuration files"
+ * @flows ProjectFiles -> #agent-config via readdirSync -- "Directory listing of the scanned repository"
+ * @boundary from ProjectFiles to #agent-config (#agent-config-boundary) -- "Repository content is untrusted input to the config reader"
  */
 import { readdirSync, realpathSync, statSync, existsSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';

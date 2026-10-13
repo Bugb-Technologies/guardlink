@@ -88,8 +88,8 @@ export function computeAgentConfigHash(r: Omit<AgentConfigResult, 'block'> & { b
  * make the model differ from one machine to the next — and from CI, which
  * checks the committed model against a fresh parse.
  *
- * @exposes #parser to #cmd-injection [medium] cwe:CWE-78 -- "Spawns git in the scanned directory"
- * @mitigates #parser against #cmd-injection using #param-commands -- "execFileSync with a fixed argument vector and no shell; no repository content reaches the arguments"
+ * @exposes #agent-config to #cmd-injection [medium] cwe:CWE-78 -- "Spawns git in the scanned directory"
+ * @mitigates #agent-config against #cmd-injection using #param-commands -- "execFileSync with a fixed argument vector and no shell; no repository content reaches the arguments"
  */
 export function gitCarriedPaths(root: string): Set<string> | null {
   try {

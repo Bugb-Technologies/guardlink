@@ -25,6 +25,7 @@
 // @asset GuardLink.SARIF (#sarif) -- "Exports findings as SARIF 2.1.0 JSON for security tooling"
 // @asset GuardLink.Suggest (#suggest) -- "Analyzes code patterns to suggest appropriate security annotations"
 // @asset GuardLink.Blame (#blame) -- "Maps annotated code spans to git history: authors, commits, AI co-author trailers"
+// @asset GuardLink.AgentConfig (#agent-config) -- "Reads a repository's coding-agent configuration (settings, MCP servers, hooks, instruction files) into reach rows; follows in-repo symlinks, reads hook scripts, asks git which files it carries"
 // @asset GuardLink.CodeGraph (#codegraph) -- "Optional adapter that reads an installed code graph (codegraph-mcp or bravos) for ranked entry points and per-function reach; spawns the graph binary and parses its JSON"
 
 // ─── THREATS ──────────────────────────────────────────────────────────

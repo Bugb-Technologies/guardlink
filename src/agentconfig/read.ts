@@ -16,13 +16,16 @@
  * an MCP launch command is recorded as text, and a hook's script is read as a
  * file to say what it does.
  *
- * @exposes #parser to #path-traversal [medium] cwe:CWE-22 -- "A hook command or MCP launch names a script path that is then read"
- * @mitigates #parser against #path-traversal using #path-validation -- "repoFile rejects absolute paths and any path whose resolved real path leaves the repository root before it is read"
- * @exposes #parser to #data-exposure [medium] cwe:CWE-532 -- "MCP server env and headers can carry literal credentials"
- * @mitigates #parser against #data-exposure using #key-redaction -- "Only the NAMES of credential-like env vars and headers are kept; values are never copied into the model"
- * @exposes #parser to #dos [low] cwe:CWE-400 -- "Configuration files and the scripts they name are read whole"
- * @mitigates #parser against #dos using #resource-limits -- "Files above MAX_BYTES are reported unreadable instead of read"
- * @flows ProjectFiles -> #parser via readFileSync -- "Agent configuration, instruction files and hook scripts"
+ * @exposes #agent-config to #path-traversal [medium] cwe:CWE-22 -- "A hook command or MCP launch names a script path that is then read"
+ * @mitigates #agent-config against #path-traversal using #path-validation -- "repoFile rejects absolute paths and any path whose resolved real path leaves the repository root before it is read"
+ * @exposes #agent-config to #data-exposure [medium] cwe:CWE-532 -- "MCP server env and headers can carry literal credentials"
+ * @mitigates #agent-config against #data-exposure using #key-redaction -- "Only the NAMES of credential-like env vars and headers are kept; values are never copied into the model"
+ * @exposes #agent-config to #dos [low] cwe:CWE-400 -- "Configuration files and the scripts they name are read whole"
+ * @mitigates #agent-config against #dos using #resource-limits -- "Files above MAX_BYTES are reported unreadable instead of read"
+ * @flows ProjectFiles -> #agent-config via readFileSync -- "Agent configuration, instruction files and hook scripts"
+ * @exposes #agent-config to #prompt-injection [low] cwe:CWE-74 -- "Repository-controlled text (rules, commands, server names) is copied into row descriptions that lookup, reports and MCP responses show to agents"
+ * @audit #agent-config -- "Descriptions quote configuration verbatim, truncated; whether MCP consumers should receive it fenced as data needs a decision"
+ * @comment -- "Hidden-Unicode findings are reported by validate, but the characters themselves are not stripped from copied text"
  * @comment -- "Never executes, starts or fetches anything named in configuration: launch commands and hook commands are recorded as text"
  */
 import { readFileSync, realpathSync, statSync, existsSync } from 'node:fs';

@@ -40,8 +40,8 @@ export function findDanglingRefs(model: ThreatModel): ParseDiagnostic[] {
   for (const c of model.controls) if (c.id) definedIds.add(c.id);
   for (const b of model.boundaries) if (b.id) definedIds.add(b.id);
   for (const ac of model.actors || []) if (ac.id) definedIds.add(ac.id);
-  // Assets the config reader declares for its generated rows (SPEC §5.6): an
-  // @entitles that closes a coding agent's reach names them.
+  // Assets the config reader declares for its generated rows (SPEC §5.6). The
+  // entitlement that closes a coding agent's reach names them.
   for (const a of model.agent_config?.assets || []) definedIds.add(a.id.replace(/^#/, ''));
 
   const checkRef = (ref: string, loc: { file: string; line: number }) => {

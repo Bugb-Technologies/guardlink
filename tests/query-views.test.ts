@@ -206,7 +206,9 @@ describe('the node counter against browser-measured geometry', () => {
     // with one flow, #codegraph -> #cli. Multi-language init scope detection
     // took the filtered links from 89 to 90 and the whole model's from 180 to
     // 185 with the exposures, controls and flow of `src/init/scope.ts` and the
-    // @validates in its test.
+    // @validates in its test. The coding-agent configuration reader took
+    // 34/90/48 to 35/94/49 by declaring `GuardLink.AgentConfig (#agent-config)`
+    // with its exposures, controls, flows and boundary.
     // When they move, re-render the diagram in a browser and count the SVG
     // again; never bump them to whatever the counter says, which leaves it
     // checking itself.
@@ -223,11 +225,13 @@ describe('the node counter against browser-measured geometry', () => {
     // clusters:8}, whole model {nodes:48, links:180}, and the counter agrees.
     // Re-measured for 90 the same way: filtered {nodes:34, links:90,
     // clusters:8}, whole model {nodes:48, links:185}, and the counter agrees.
+    // Re-measured for 94 the same way: filtered {nodes:35, links:94,
+    // clusters:9}, whole model {nodes:49, links:196}, and the counter agrees.
     const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
-    expect(m.nodes).toBe(34);
-    expect(m.edges).toBe(90);
-    // And the whole model is 48 nodes, which is the number this work exists for.
-    expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(48);
+    expect(m.nodes).toBe(35);
+    expect(m.edges).toBe(94);
+    // And the whole model is 49 nodes, which is the number this work exists for.
+    expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(49);
   }, 30_000);
 });
 

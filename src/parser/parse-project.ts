@@ -433,6 +433,8 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
  * Each GuardLink block's stamp is judged here, once the annotation hash is
  * known: current when it names this model's annotation hash and this
  * configuration's hash.
+ *
+ * @flows #agent-config -> #parser via mergeAgentConfig -- "Generated reach rows, actors and the agent_config block join the assembled model"
  */
 export function mergeAgentConfig(model: ThreatModel, ac: AgentConfigResult): ThreatModel {
   const declared = new Set((model.actors ?? []).map(a => a.id).filter(Boolean));
