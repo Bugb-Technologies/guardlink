@@ -409,7 +409,7 @@ describe('packaged and fixture configuration', () => {
       'plugins/kit/.claude-plugin/plugin.json': '{}',
       'plugins/kit/hooks/hooks.json': JSON.stringify({ hooks: { PostToolUse: [{ hooks: [{ type: 'command', command: '${CLAUDE_PLUGIN_ROOT}/fmt.sh' }] }] } }),
       'plugins/kit/fmt.sh': 'prettier --write .\n',
-      'templates/settings/.claude/settings.json': JSON.stringify({ permissions: { allow: ['Bash'] } }),
+      'templates/settings/.claude/settings.json': JSON.stringify({ permissions: { allow: ['Bash'], deny: ['Read(.env)'] } }),
       'tests/fixtures/x/.mcp.json': JSON.stringify({ mcpServers: { a: { command: 'a' } } }),
     });
     const r = read(root);
@@ -417,6 +417,8 @@ describe('packaged and fixture configuration', () => {
     expect(r.effects).toEqual([]);
     expect(r.block.hooks).toMatchObject([{ scope: 'packaged', runs: ['plugins/kit/fmt.sh'] }]);
     expect(r.block.mcp_servers).toEqual([]);
+    // A template's deny list narrows the reach of whoever installs it, not of this repository's agents.
+    expect(r.block.denies).toEqual([]);
   });
 });
 

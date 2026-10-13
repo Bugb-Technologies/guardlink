@@ -537,7 +537,7 @@ function claudeSettings(b: Builder, ctx: Ctx) {
     }
   }
   asArray(perms.deny).forEach((r, i) => {
-    if (typeof r === 'string') b.denies.push({ harness: H, file: ctx.file.path, line: lineOf(ctx, ptr('permissions', 'deny', i)), raw: r });
+    if (typeof r === 'string' && producesRows(ctx)) b.denies.push({ harness: H, file: ctx.file.path, line: lineOf(ctx, ptr('permissions', 'deny', i)), raw: r });
   });
   if (producesRows(ctx)) {
     const all = d.enableAllProjectMcpServers === true;
@@ -694,7 +694,7 @@ function cursorCli(b: Builder, ctx: Ctx) {
     });
   }
   asArray(perms.deny).forEach((r, i) => {
-    if (typeof r === 'string') b.denies.push({ harness: H, file: ctx.file.path, line: lineOf(ctx, ptr('permissions', 'deny', i)), raw: r });
+    if (typeof r === 'string' && producesRows(ctx)) b.denies.push({ harness: H, file: ctx.file.path, line: lineOf(ctx, ptr('permissions', 'deny', i)), raw: r });
   });
 }
 
