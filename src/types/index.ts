@@ -560,7 +560,7 @@ export interface AgentConfigBlock {
   instruction_files: AgentConfigInstructionFile[];
   /** Assets the generated rows name, with what each is. */
   assets: { id: string; description: string }[];
-  /** Rules that narrow reach (deny lists), for review; they generate no row. */
+  /** Rules that narrow this repository's agents' reach (deny lists in root and nested configuration), for review; they generate no row. */
   denies: { harness: string; file: string; line: number; raw: string }[];
   /**
    * Places untrusted text enters an agent's context: instruction files, skills
