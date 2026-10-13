@@ -109,6 +109,10 @@ guardlink validate . --artifacts      # exits 1 on stale/missing/unheadered — 
 
 Never hand-edit a generated file. In the agent files, the region between the `guardlink:begin` /
 `guardlink:end` markers is overwritten by the next sync — change `src/init/templates.ts` instead.
+That block carries a provenance stamp naming both the `annotation_hash` and the `agent_config_hash`,
+so editing the repository's own agent configuration (`.mcp.json`, `.claude/settings.json`, …) makes
+it stale exactly as an annotation change does: `guardlink validate .` says so, and `guardlink sync .`
+fixes it.
 In the artifacts, the `annotation_hash` header **describes the annotations**, so editing one to
 silence the drift check makes the record lie rather than makes it current.
 
@@ -158,6 +162,29 @@ either of them being silent, so moving one of these means moving both, in the sa
 
 What is *not* shared is the trigger: the server is edge-triggered because it delivers messages, and
 the gate is level-triggered because it describes a repository at the moment it runs.
+
+## Agent Configuration Semantics
+
+`src/agentconfig/` reads a repository's coding-agent configuration into the model (SPEC §5.6). What a
+key *means* is data, not code: `harness/<harness>.json` holds, per harness and documented version, which
+files the harness loads and when, and which rule each key falls under, every rule with the vendor
+documentation it was read from; `harness/shell.json` holds what arbitrary arguments after a pre-approved
+command prefix make possible. Other tools read these tables too, so:
+
+- **Change a meaning in the table, with its doc URL, and bump that table's `version`.** Every generated
+  row names the table and version that read it (`claude-code@2026-10`), so a reader can tell which
+  documented behaviour a claim rests on. Read behaviour from the vendor's documentation, not from a
+  measurement of what a check found.
+- **The hidden-Unicode rules are a shared contract.** A change to `src/agentconfig/hidden-unicode.ts`
+  changes the case that pins it in `conformance/hidden-unicode.json` in the same pull request;
+  `tests/conformance-hidden-unicode.test.ts` fails otherwise.
+- **The reader never executes anything it reads.** It records launch and hook commands as text, reads a
+  hook's script as a file, and follows symlinks only inside the repository.
+- **Generated rows are not annotations.** They stay out of `annotation_hash`, out of both SARIF profiles
+  and out of the annotation half of `diff`; anything new that iterates `reaches`, `effects`, `gates` or
+  `actors` decides which kind it means (`origin` is set only on generated rows).
+- **`agent_config_hash` never covers instruction-file text.** The GuardLink block in those files carries
+  the hash, so a hash over their text could never match the block that states it.
 
 ## Annotation Spec Changes
 

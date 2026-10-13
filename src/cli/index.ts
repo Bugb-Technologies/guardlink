@@ -2337,7 +2337,7 @@ program
 
 program
   .command('sync')
-  .description('Sync agent instruction files with current threat model — keeps ALL coding agents up to date')
+  .description('Rewrite the stamped GuardLink block in the agent instruction files that exist, and .guardlink/README.md')
   .argument('[dir]', 'Project directory', '.')
   .option('--dry-run', 'Show what would be updated without modifying files')
   .action(async (dir: string, opts: { dryRun?: boolean }) => {
@@ -2348,7 +2348,7 @@ program
 
     if (model.annotations_parsed === 0) {
       console.log('No annotations found. Run: guardlink annotate  to add annotations first.');
-      console.log('Syncing agent files with base instructions (no model context)...\n');
+      console.log('Syncing agent files with the empty-model block...\n');
     }
 
     const result = syncAgentFiles({ root, model, dryRun: opts.dryRun });
@@ -2363,10 +2363,10 @@ program
       console.log(`\nSkipped: ${result.skipped.join(', ')}`);
     }
 
-    if (!opts.dryRun && model.annotations_parsed > 0) {
-      console.log(`\n✓ All agent instruction files now include live threat model context.`);
-      console.log(`  ${model.assets.length} assets, ${model.threats.length} threats, ${model.controls.length} controls, ${model.exposures.length} exposures.`);
-      console.log('  Any coding agent (Cursor, Claude, Copilot, Windsurf, etc.) will see these IDs.');
+    if (!opts.dryRun && result.updated.length > 0) {
+      console.log(`\n✓ Every block is stamped with this model (annotation_hash and agent_config_hash);`);
+      console.log('  guardlink validate warns when one goes stale. Agents read the live model through');
+      console.log('  guardlink_lookup and guardlink_context, so the block itself carries no copy of it.');
     }
   });
 

@@ -794,7 +794,7 @@ export interface SyncResult {
 }
 
 /**
- * Regenerate ALL agent instruction files with live threat model context.
+ * Rewrite the stamped GuardLink block in every agent instruction file that exists.
  * Called after parse/validate/annotate to keep instructions up to date.
  * Uses marker-based replacement so user content outside markers is preserved.
  */
