@@ -14,6 +14,7 @@
  *
  * @comment -- "Pure model-vs-model comparator; no I/O. Entitlement staleness is the one thing it cannot derive from the two models, so the changed-file list is passed in by the caller (see getChangedFiles in git.ts)"
  * @flows ThreatModel -> #diff via diffModels -- "Before/after models compared into a structured delta"
+ * @comment -- "Rows generated from agent configuration are diffed apart from annotations: new and removed grants, new bypass modes, new hooks and servers, and a same-named MCP server whose launch changed"
  * @comment -- "A reach that becomes unentitled is reported on its own, like a new unmitigated exposure: newUnentitledReaches comes from findUnentitledReaches, the join lookup answers with"
  */
 
@@ -23,6 +24,7 @@ import type {
   ThreatModelMitigation, ThreatModelExposure, ThreatModelConfirmed, ThreatModelAcceptance,
   ThreatModelEntitlement, ThreatModelReach, ThreatModelEffect, ThreatModelGate,
   ThreatModelFlow, ThreatModelBoundary, ThreatModelTransfer,
+  AgentConfigHook, AgentConfigMcpServer,
 } from '../types/index.js';
 import { findUnmitigatedExposures, normalizeRef } from '../parser/coverage.js';
 import { citationMatchesFile } from '../parser/citation.js';
@@ -81,6 +83,32 @@ export interface ThreatModelDiff {
    * supplied `changedFiles`.
    */
   staleEntitlements: StaleEntitlement[];
+
+  /**
+   * What changed in the repository's coding-agent configuration (SPEC §5.6).
+   * Its generated rows are reported here, not in `reaches`, `effects` and
+   * `gates`, which stay about annotations.
+   */
+  agentConfig: AgentConfigDelta;
+}
+
+/** A coding-agent configuration change a reviewer should see in a pull request. */
+export interface AgentConfigDelta {
+  /** Capabilities the configuration newly grants a coding agent. */
+  newReach: ThreatModelReach[];
+  /** Capabilities it no longer grants. */
+  removedReach: ThreatModelReach[];
+  /** Newly granted modes that turn an agent's prompts off: bypass, auto-approve, auto-accept, trusted servers. */
+  newBypass: ThreatModelReach[];
+  /**
+   * An MCP server that keeps its name while what it starts changes. A developer
+   * approved the old command once, and some harnesses do not ask again, so the
+   * new one runs on the strength of the old approval.
+   */
+  launchChanges: { name: string; harness: string; file: string; line: number; before: string; after: string }[];
+  newMcpServers: AgentConfigMcpServer[];
+  /** Commands the configuration newly runs automatically. */
+  newHooks: AgentConfigHook[];
 }
 
 export interface StaleEntitlement {
@@ -109,6 +137,8 @@ export interface DiffSummary {
   staleEntitlements: number;
   /** Reaches newly without a covering entitlement */
   newUnentitledReaches: number;
+  /** Coding-agent configuration changes: new and removed reach, new bypass modes, launch changes, new servers and hooks. */
+  agentConfigChanges: number;
 }
 
 // ─── Diff computation ────────────────────────────────────────────────
@@ -128,9 +158,11 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
   const transfers = diffByKey(before.transfers, after.transfers, transferKey);
   // Identity per model: each resolves actor and asset spellings against its own
   // declarations, so renaming `#db` to its dotted path is not a remove plus an add.
-  const reaches = diffByKey(before.reaches || [], after.reaches || [], reachKeyIn(before), reachChanged, reachKeyIn(after));
-  const effects = diffByKey(before.effects || [], after.effects || [], effectKey, effectChanged);
-  const gates = diffByKey(before.gates || [], after.gates || [], gateKey, gateChanged);
+  const annotated = <T extends { origin?: unknown }>(xs: T[] | undefined): T[] => (xs ?? []).filter(x => !x.origin);
+  const reaches = diffByKey(annotated(before.reaches), annotated(after.reaches), reachKeyIn(before), reachChanged, reachKeyIn(after));
+  const effects = diffByKey(annotated(before.effects), annotated(after.effects), effectKey, effectChanged);
+  const gates = diffByKey(annotated(before.gates), annotated(after.gates), gateKey, gateChanged);
+  const agentConfig = diffAgentConfig(before, after);
 
   const beforeUnentitled = new Set(findUnentitledReaches(before).map(u => reachKeyIn(before)(u.reach)));
   const afterReachKey = reachKeyIn(after);
@@ -174,13 +206,56 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
       riskDelta,
       staleEntitlements: staleEntitlements.length,
       newUnentitledReaches: newUnentitledReaches.length,
+      agentConfigChanges: agentConfig.newReach.length + agentConfig.removedReach.length + agentConfig.launchChanges.length
+        + agentConfig.newMcpServers.length + agentConfig.newHooks.length,
     },
     assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances, entitlements, reaches, effects, gates, flows, boundaries, transfers,
     newUnmitigatedExposures,
     resolvedExposures,
     newUnentitledReaches,
     staleEntitlements,
+    agentConfig,
   };
+}
+
+// ─── Coding-agent configuration (SPEC §5.6) ──────────────────────────
+
+/** Harness rules whose grant switches an agent's prompts off. */
+const BYPASS_RULES = new Set([
+  'bypass-mode', 'global-auto-approve', 'auto-accept', 'approval-sandbox', 'mcp-server-trusted', 'mcp-server-auto',
+  'subagent-permission-mode', 'mcp-autostart',
+]);
+
+/** One generated grant: who, what, and the line of configuration that grants it. */
+const configReachKey = (r: ThreatModelReach) => `${r.actor}::${r.canonical_capability}::${r.asset ?? ''}::${r.location.file}::${r.source?.raw ?? ''}`;
+const serverKey = (m: AgentConfigMcpServer) => `${m.harness}::${m.file}::${m.name}`;
+const launchOf = (m: AgentConfigMcpServer) => (m.transport === 'http' ? `http ${m.host ?? ''}` : [m.launch?.command ?? '', ...(m.launch?.args ?? [])].join(' '));
+const hookKey = (h: AgentConfigHook) => `${h.harness}::${h.file}::${h.event}::${h.matcher ?? ''}::${h.command}`;
+const own = (scope: string) => scope === 'root' || scope === 'nested';
+
+function diffAgentConfig(before: ThreatModel, after: ThreatModel): AgentConfigDelta {
+  const generated = (m: ThreatModel) => (m.reaches ?? []).filter(r => r.origin);
+  const was = new Set(generated(before).map(configReachKey));
+  const now = new Set(generated(after).map(configReachKey));
+  const newReach = generated(after).filter(r => !was.has(configReachKey(r)));
+  const removedReach = generated(before).filter(r => !now.has(configReachKey(r)));
+  const newBypass = newReach.filter(r => BYPASS_RULES.has(r.source?.semantics.rule ?? ''));
+
+  const servers = (m: ThreatModel) => (m.agent_config?.mcp_servers ?? []).filter(x => own(x.scope));
+  const oldServers = new Map(servers(before).map(m => [serverKey(m), m]));
+  const launchChanges: AgentConfigDelta['launchChanges'] = [];
+  const newMcpServers: AgentConfigMcpServer[] = [];
+  for (const m of servers(after)) {
+    const prev = oldServers.get(serverKey(m));
+    if (!prev) { newMcpServers.push(m); continue; }
+    if (launchOf(prev) !== launchOf(m)) {
+      launchChanges.push({ name: m.name, harness: m.harness, file: m.file, line: m.line, before: launchOf(prev), after: launchOf(m) });
+    }
+  }
+
+  const oldHooks = new Set((before.agent_config?.hooks ?? []).map(hookKey));
+  const newHooks = (after.agent_config?.hooks ?? []).filter(h => own(h.scope) && !oldHooks.has(hookKey(h)));
+  return { newReach, removedReach, newBypass, launchChanges, newMcpServers, newHooks };
 }
 
 // ─── Entitlement staleness (§3.7) ────────────────────────────────────

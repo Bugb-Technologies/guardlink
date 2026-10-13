@@ -1,6 +1,7 @@
 /**
  * GuardLink Diff — Human-readable output formatter.
  *
+ * @comment -- "Agent-configuration changes (new reach, bypass modes, hooks, same-name MCP launch changes) print even when no annotation changed; command and host text lands in markdown code spans with pipes escaped"
  * @comment -- "Pure string formatting; no I/O. Stale entitlements print even when the delta is otherwise empty — a claim whose cited authz code moved is exactly the thing that must not disappear quietly (actor-entitlement design §3.3)"
  */
 
@@ -13,7 +14,7 @@ export function formatDiff(diff: ThreatModelDiff): string {
   // ── Header ──
   // A stale entitlement is not a model change, so report it even when the delta
   // is otherwise empty — the code its claim rests on moved without it.
-  if (s.totalChanges === 0 && diff.staleEntitlements.length === 0) {
+  if (s.totalChanges === 0 && diff.staleEntitlements.length === 0 && s.agentConfigChanges === 0) {
     lines.push('No threat model changes detected.');
     return lines.join('\n');
   }
@@ -78,6 +79,8 @@ export function formatDiff(diff: ThreatModelDiff): string {
     lines.push('');
   }
 
+  emitAgentConfigText(diff, lines);
+
   // ── Category changes ──
   emitSection('Assets', diff.assets, lines, a => a.id || a.path.join('.'));
   emitSection('Actors', diff.actors, lines, a => a.id || a.canonical_name);
@@ -97,6 +100,81 @@ export function formatDiff(diff: ThreatModelDiff): string {
   emitSection('Transfers', diff.transfers, lines, t => `${t.source} → ${t.target} (${t.threat})`);
 
   return lines.join('\n');
+}
+
+const grant = (r: { location: { file: string; line: number }; source?: { raw: string } }) =>
+  `${r.location.file}:${r.location.line}${r.source ? ` ${r.source.raw}` : ''}`;
+
+/** Coding-agent configuration changes (SPEC §5.6), most consequential first. */
+function emitAgentConfigText(diff: ThreatModelDiff, lines: string[]): void {
+  const a = diff.agentConfig;
+  if (a.launchChanges.length > 0) {
+    lines.push('── MCP Server Launch Changed Under the Same Name ──');
+    lines.push('   A developer approved the old command; some agents do not ask again before running the new one.');
+    for (const c of a.launchChanges) lines.push(`  ~ ${c.name} (${c.harness}, ${c.file}:${c.line}): \`${c.before}\` → \`${c.after}\``);
+    lines.push('');
+  }
+  if (a.newBypass.length > 0) {
+    lines.push('── New Agent Bypass Modes ──');
+    for (const r of a.newBypass) lines.push(`  + ${r.actor} ${r.capability}: ${r.description ?? ''} (${grant(r)})`);
+    lines.push('');
+  }
+  if (a.newHooks.length > 0) {
+    lines.push('── New Commands Agent Configuration Runs Automatically ──');
+    for (const h of a.newHooks) lines.push(`  + ${h.harness} ${h.event}${h.matcher ? ` [${h.matcher}]` : ''}: ${h.command}${h.does.length ? ` (${h.does.join(', ')})` : ''} (${h.file}:${h.line})`);
+    lines.push('');
+  }
+  if (a.newMcpServers.length > 0) {
+    lines.push('── New MCP Servers ──');
+    for (const m of a.newMcpServers) lines.push(`  + ${m.name} (${m.harness}, ${m.transport}) (${m.file}:${m.line})`);
+    lines.push('');
+  }
+  if (a.newReach.length + a.removedReach.length > 0) {
+    lines.push('── Coding-Agent Reach (from configuration) ──');
+    for (const r of a.newReach) lines.push(`  + ${r.actor} to ${r.capability}${r.asset ? ` on ${r.asset}` : ''}${r.source?.gated ? '' : ' without asking'} (${grant(r)})`);
+    for (const r of a.removedReach) lines.push(`  - ${r.actor} to ${r.capability}${r.asset ? ` on ${r.asset}` : ''} (${grant(r)})`);
+    lines.push('');
+  }
+}
+
+function emitAgentConfigMarkdown(diff: ThreatModelDiff, lines: string[]): void {
+  const a = diff.agentConfig;
+  if (diff.summary.agentConfigChanges === 0) return;
+  lines.push('#### 🤖 Coding-agent configuration');
+  lines.push('');
+  lines.push('What the coding agents that work in this repository may do changed. Generated from the configuration files, so each row points at the line that grants it.');
+  lines.push('');
+  if (a.launchChanges.length > 0) {
+    lines.push('**An MCP server kept its name and changed what it starts.** A developer approved the old command; some agents do not ask again.');
+    lines.push('');
+    lines.push('| Server | Agent | Before | After | Location |');
+    lines.push('|--------|-------|--------|-------|----------|');
+    for (const c of a.launchChanges) lines.push(`| ${c.name} | ${c.harness} | \`${c.before.replace(/\|/g, '\\|')}\` | \`${c.after.replace(/\|/g, '\\|')}\` | \`${c.file}:${c.line}\` |`);
+    lines.push('');
+  }
+  if (a.newBypass.length > 0) {
+    lines.push('**New bypass modes** — prompts switched off:');
+    lines.push('');
+    for (const r of a.newBypass) lines.push(`- ${r.actor} \`${r.capability}\` — ${r.description ?? ''} (\`${grant(r)}\`)`);
+    lines.push('');
+  }
+  if (a.newHooks.length > 0) {
+    lines.push('**New commands that run automatically:**');
+    lines.push('');
+    for (const h of a.newHooks) lines.push(`- ${h.harness} ${h.event}${h.matcher ? ` [${h.matcher}]` : ''}: \`${h.command}\`${h.does.length ? ` — ${h.does.join(', ')}` : ''} (\`${h.file}:${h.line}\`)`);
+    lines.push('');
+  }
+  if (a.newMcpServers.length > 0) {
+    lines.push('**New MCP servers:** ' + a.newMcpServers.map(m => `${m.name} (${m.harness}, \`${m.file}:${m.line}\`)`).join(', '));
+    lines.push('');
+  }
+  if (a.newReach.length + a.removedReach.length > 0) {
+    lines.push('| | Agent | Capability | On | Asks first | Granted by |');
+    lines.push('|---|-------|------------|----|------------|------------|');
+    for (const r of a.newReach) lines.push(`| + | ${r.actor} | \`${r.capability}\` | ${r.asset ?? '—'} | ${r.source?.gated ? 'yes' : '**no**'} | \`${grant(r)}\` |`);
+    for (const r of a.removedReach) lines.push(`| - | ${r.actor} | \`${r.capability}\` | ${r.asset ?? '—'} | ${r.source?.gated ? 'yes' : 'no'} | \`${grant(r)}\` |`);
+    lines.push('');
+  }
 }
 
 /** A reach in its own words: `@agents #bot to run-sql on #api as #svc`. */
@@ -135,13 +213,16 @@ export function formatDiffMarkdown(diff: ThreatModelDiff): string {
   const lines: string[] = [];
   const s = diff.summary;
 
-  if (s.totalChanges === 0 && diff.staleEntitlements.length === 0) {
+  if (s.totalChanges === 0 && diff.staleEntitlements.length === 0 && s.agentConfigChanges === 0) {
     lines.push('### ✅ No threat model changes');
     return lines.join('\n');
   }
   if (s.totalChanges === 0) {
-    lines.push('### ⏳ No threat model changes, but an entitlement citation went stale');
+    lines.push(diff.staleEntitlements.length > 0
+      ? '### ⏳ No threat model changes, but an entitlement citation went stale'
+      : '### 🤖 No annotation changes, but the coding-agent configuration changed');
     lines.push('');
+    emitAgentConfigMarkdown(diff, lines);
     emitStaleEntitlementsMarkdown(diff, lines);
     return lines.join('\n');
   }
@@ -221,6 +302,7 @@ export function formatDiffMarkdown(diff: ThreatModelDiff): string {
     lines.push('');
   }
 
+  emitAgentConfigMarkdown(diff, lines);
   emitStaleEntitlementsMarkdown(diff, lines);
 
   return lines.join('\n');
