@@ -254,7 +254,11 @@ export function readArtifactHash(text: string): string | null {
     return null;
   }
 
-  // The synced agent block's freshness line (src/init/templates.ts).
+  // The agent block's provenance stamp, on the line after its begin marker (src/init/index.ts).
+  const stamp = text.match(/<!--\s*guardlink:stamp\b[^>]*?\bannotation_hash=(\S+)/);
+  if (stamp) return stamp[1];
+
+  // The freshness line an agent block written before the stamp carried.
   const markdown = text.match(/^-\s+`annotation_hash`:\s*`([^`]+)`\s*$/m);
   return markdown ? markdown[1] : null;
 }

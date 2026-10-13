@@ -59,7 +59,11 @@ describe('readArtifactHash reads all three provenance carriers', () => {
     expect(readArtifactHash(JSON.stringify({ runs: [{ properties: { annotation_hash: hash } }] }))).toBe(hash); // sarif
   });
 
-  it('the synced agent block\'s freshness line', () => {
+  it('the agent block\'s provenance stamp', () => {
+    expect(readArtifactHash(`<!-- guardlink:begin -->\n<!-- guardlink:stamp annotation_hash=${hash} agent_config_hash=sha256-v1:00 -->\n`)).toBe(hash);
+  });
+
+  it('the freshness line an older agent block carried', () => {
     expect(readArtifactHash(`### Block Freshness\n\n- \`annotation_hash\`: \`${hash}\`\n`)).toBe(hash);
   });
 
@@ -92,6 +96,9 @@ describe('every published artifact is stamped and checked', () => {
 export function login(email: string) { return email; }
 `);
 
+    // The instruction files exist already: sync writes into existing ones only.
+    await writeFile(join(root, 'CLAUDE.md'), '# Notes\n');
+    await writeFile(join(root, 'AGENTS.md'), '# Notes\n');
     // Everything a repo can publish.
     await guardlink(root, 'artifacts', '.');
     await guardlink(root, 'parse', '.', '-o', '.guardlink/report.json');

@@ -76,7 +76,8 @@ describe('init — agent-file path-type conflicts', () => {
     mkdirSync(join(tmp, '.cursor'));
     writeFileSync(join(tmp, '.cursor', 'rules'), LEGACY);
 
-    const result = initProject({ root: tmp });
+    // Other agents' files are created when asked for; the legacy rules file is merged into because it exists.
+    const result = initProject({ root: tmp, agentIds: ['claude', 'codex'] });
     expect(existsSync(join(tmp, '.guardlink', 'config.json'))).toBe(true);
     const madeAgentFile = existsSync(join(tmp, 'CLAUDE.md')) || existsSync(join(tmp, 'AGENTS.md'));
     expect(madeAgentFile).toBe(true);

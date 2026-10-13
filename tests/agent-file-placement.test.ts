@@ -14,6 +14,10 @@
  * Every assertion here is on FILE CONTENT after a real init or sync. Asserting
  * that the template function ran is what let this ship — the function ran fine,
  * it just had nothing to say.
+ *
+ * The agent files now carry a short pointer block (SPEC §5.6): one sentence
+ * that states the mode and where annotations go, and a pointer to
+ * `.guardlink/README.md`, which carries the full placement text.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, mkdir, rm, readFile, writeFile } from 'node:fs/promises';
@@ -61,14 +65,14 @@ describe('D27 — external mode names the sidecar location', () => {
     expect(JSON.parse(await read('.guardlink', 'config.json')).annotation_mode).toBe('external');
   });
 
-  it.each(MARKDOWN_AGENT_FILES)('%s names .gal, annotations/ and @source', async (file) => {
-    if (!existsSync(join(root, file))) return; // agent not selected in this build
+  it.each(MARKDOWN_AGENT_FILES)('%s names .gal and annotations/, and points at the full rules', async (file) => {
+    expect(existsSync(join(root, file)), file).toBe(true);
     const content = await read(file);
     expect(content).toMatch(/\.gal/);
     expect(content).toMatch(/\.guardlink\/annotations\//);
-    expect(content).toMatch(/@source/);
+    expect(content).toContain('.guardlink/README.md');
     // The exact regression: the only "external" in the file was "external API calls".
-    expect(content).toMatch(/annotation mode: `external`/i);
+    expect(content).toMatch(/`external` mode/);
   });
 
   it.each(FLAT_AGENT_FILES)('%s names .gal and annotations/', async (file) => {
@@ -88,7 +92,8 @@ describe('D27 — external mode names the sidecar location', () => {
 
   it('does not tell the agent to write annotations into source comments', async () => {
     const content = await read('CLAUDE.md');
-    expect(content).toMatch(/not edit source files to add annotations in this mode|Do\s*\n?not edit source files/i);
+    expect(content).toMatch(/NOT in source files/);
+    expect(content).not.toMatch(/`inline` mode/);
   });
 });
 
@@ -102,15 +107,16 @@ describe('D27 — inline mode names source comments', () => {
   });
 
   it.each(MARKDOWN_AGENT_FILES)('%s states inline and forbids sidecars', async (file) => {
-    if (!existsSync(join(root, file))) return;
+    expect(existsSync(join(root, file)), file).toBe(true);
     const content = await read(file);
-    expect(content).toMatch(/annotation mode: `inline`/i);
-    expect(content).toMatch(/source-file comments/i);
-    expect(content).toMatch(/Do not create `\.gal` sidecars/);
+    expect(content).toMatch(/`inline` mode/);
+    expect(content).toMatch(/doc-block comment of the code they describe/i);
+    expect(content).toMatch(/never in `\.gal` sidecars/);
   });
 
-  it('the doc-block example is present', async () => {
-    expect(await read('CLAUDE.md')).toMatch(/export function login/);
+  it('the doc-block example is in the README the block points at', async () => {
+    expect(await read('CLAUDE.md')).toContain('.guardlink/README.md');
+    expect(await read('.guardlink', 'README.md')).toMatch(/export function login/);
   });
 });
 
@@ -125,12 +131,12 @@ describe('D27 — the two modes actually differ in the emitted file', () => {
     const inline = await read('CLAUDE.md');
 
     expect(external).not.toBe(inline);
-    expect(external).toMatch(/annotation mode: `external`/i);
-    expect(inline).toMatch(/annotation mode: `inline`/i);
-    // Inline mode does name `.guardlink/annotations/` — to forbid it. What it
-    // must not do is hand the agent the sidecar convention as the way to write.
-    expect(external).toMatch(/@source file:/);
-    expect(inline).not.toMatch(/@source file:/);
+    expect(external).toMatch(/`external` mode/);
+    expect(inline).toMatch(/`inline` mode/);
+    // Inline mode names sidecars only to forbid them; it never hands the agent
+    // the sidecar path as the place to write.
+    expect(external).toMatch(/\.guardlink\/annotations\/<source path>\.gal/);
+    expect(inline).not.toMatch(/\.guardlink\/annotations\/<source path>\.gal/);
   });
 });
 
@@ -142,11 +148,11 @@ describe('D27 — sync keeps the statement true', () => {
     syncAgentFiles({ root, model });
 
     const content = await read('CLAUDE.md');
-    expect(content).toMatch(/annotation mode: `external`/i);
-    expect(content).toMatch(/@source/);
+    expect(content).toMatch(/`external` mode/);
+    expect(content).toMatch(/\.gal/);
   });
 
-  it('the README and the agent file carry the SAME placement text', async () => {
+  it('the agent file points at the README, which carries the placement text', async () => {
     initProject({ root, mode: 'external', agentIds: ['claude'] });
     const { model } = await parseProject({ root, project: 'demo' });
     syncAgentFiles({ root, model });
@@ -157,7 +163,7 @@ describe('D27 — sync keeps the statement true', () => {
     );
     const marker = shared.split('\n').find(l => l.includes('login.ts.gal'))!;
 
-    expect(await read('CLAUDE.md')).toContain(marker);
+    expect(await read('CLAUDE.md')).toContain('.guardlink/README.md');
     expect(await read('.guardlink', 'README.md')).toContain(marker);
   });
 });

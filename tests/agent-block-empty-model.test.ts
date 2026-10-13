@@ -73,9 +73,9 @@ describe('with no model, the block does not say there is one', () => {
     expect(text).toContain('What you owe it back');
   });
 
-  it('keeps the syntax, the placement rule and the commands — all of which are true on day one', () => {
-    expect(text).toContain('### Where annotations go');
-    expect(text).toContain('@exposes App.API to #sqli');
+  it('keeps the placement rule, the pointer to the syntax and the commands — all of which are true on day one', () => {
+    expect(text).toContain('**Where annotations go:**');
+    expect(text).toContain(REFERENCE_DOC_IN_DOCS);
     expect(text).toContain('guardlink validate .');
   });
 });
@@ -128,7 +128,8 @@ describe('a fresh repository gets a CLAUDE.md that is true about itself', () => 
     await writeFile(join(root, 'package.json'), '{"name":"fresh","version":"1.0.0"}\n');
     await mkdir(join(root, 'src'), { recursive: true });
     await writeFile(join(root, 'src', 'index.ts'), 'export const x = 1;\n');
-    initProject({ root });
+    // `--agent claude`: init creates an instruction file only when asked to.
+    initProject({ root, agentIds: ['claude'] });
     claudeMd = await readFile(join(root, 'CLAUDE.md'), 'utf-8');
   }, 60_000);
   afterAll(async () => { await rm(root, { recursive: true, force: true }); });
