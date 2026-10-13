@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:9b909ecde02e22b3c990841c6464eae5b64cffc3171f0aef595e4452102703e2
+%% annotation_hash: sha256-v3:dd87eea316249140ad2dba5cba72f188d49a6e263b299aedb154f312ca385c5c
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 77 nodes / 195 edges, past the 12 / 16 legibility budget (77 nodes against 12, 195 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 77 nodes / 196 edges, past the 12 / 16 legibility budget (77 nodes against 12, 196 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -240,6 +240,7 @@ graph LR
   init -- "🗄️ writeFileSync" --> configfile
   definitionsfile -- "📡 definitionsArePopulated" --> init
   configfile -- "📡 configIsCustomised" --> init
+  projectroot -- "📡 detectIncludeScope" --> init
   mcpclient -- "📡 guardlink_context" --> mcp
   threatmodel -- "🗄️ fileContext" --> mcp
   threatmodel -- "📡 buildEnvelope" --> mcp
