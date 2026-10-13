@@ -408,7 +408,8 @@ export function renderSystemModel(m: DiagramModel, opts: SystemOptions = {}): Sy
       if (crosses.length) gates.push(`<line${attrs({ class: 'gate', 'data-k': l.id, x1: x0 + d - 6, x2: x0 + d + 6, y1: (ya + yb) / 2, y2: (ya + yb) / 2 })}/>`);
     } else {
       const e = extOf(l), side = shs.find(s => s.item === e);
-      if (!side) { under.push(`<g${attrs({ class: 'thr', ...base })}></g>`); continue; }
+      // An endpoint ↔ endpoint flow has no asset row to anchor to: nothing to draw.
+      if (!side || !isAsset(assetOf(l))) { under.push(`<g${attrs({ class: 'thr', ...base })}></g>`); continue; }
       const y1 = rowMid(assetOf(l)), y2 = side.top + CHIPH / 2, mx = (PORTX + SHX) / 2;
       const fwd = `M${PORTX} ${r1(y1)}C${r1(mx)} ${r1(y1)} ${r1(mx)} ${r1(y2)} ${SHX} ${r1(y2)}`;
       const back = `M${SHX} ${r1(y2)}C${r1(mx)} ${r1(y2)} ${r1(mx)} ${r1(y1)} ${PORTX} ${r1(y1)}`;
