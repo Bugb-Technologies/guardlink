@@ -1,197 +1,28 @@
 # Guardlink — Project Instructions
 
 <!-- guardlink:begin -->
+<!-- guardlink:stamp annotation_hash=sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761 agent_config_hash=sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b -->
 ## GuardLink — Security Model
 
-This project carries a [GuardLink](https://guardlink.bugb.io) threat model: security facts
-recorded next to the code they describe — what each component is exposed to, what mitigates
-it, how data flows between components — parsed into something you can query.
+This project carries a [GuardLink](https://guardlink.bugb.io) threat model: security facts recorded
+next to the code they describe — what each component is exposed to, what mitigates it, how data flows.
+**Ask it instead of inferring security context from the source:** `guardlink_context(file)` before you
+edit a file, `guardlink_graph` before you change a shared component, `guardlink_lookup("cwe:CWE-89")`
+for a scanner finding, `guardlink_paths` for routes no control covers. Without MCP, `guardlink status .`
+and `guardlink parse .` answer the same.
 
-**Ask it instead of inferring security context from the source.** It already answers most of
-what you would otherwise guess at, and it records decisions that are invisible in the code,
-such as which risks a human has explicitly accepted.
+**Where annotations go:** `inline` mode — in the doc-block comment of the code they describe, in that file's comment syntax, never in `.gal` sidecars. Placement in full: `.guardlink/README.md`; syntax and rules: `docs/GUARDLINK_REFERENCE.md`.
 
-| You are about to… | Ask |
-|---|---|
-| edit a file | `guardlink_context(file)` — annotations there, the assets they name, open exposures, controls the file must uphold |
-| change a shared component | `guardlink_graph(from, depth, direction)` — blast radius across data flows and trust boundaries |
-| act on a scanner finding | `guardlink_lookup("cwe:CWE-89")` — is this weakness class declared, and is it mitigated, accepted, open or confirmed |
-| finish a change | `guardlink validate .` then `guardlink diff HEAD~1` — did I make this worse |
-| ask where data reaches without a control | `guardlink_paths(root)` — undefended entry-to-sink routes, derived from `@flows`, no LLM |
+**What you owe it back**, in the same change as the code:
 
-Without MCP, the same answers come from `guardlink status .`, `guardlink parse .`
-(the whole model as JSON on stdout) and `guardlink diff HEAD~1`.
+- Annotate security-relevant code you write or change — endpoints, authentication and authorization (ownership and tenant checks included), validation, queries, file I/O, external calls, crypto, process spawning, configuration parsing. Reuse the ids in `.guardlink/definitions.ts`; never redefine one.
+- Code that hands an LLM agent a tool: `@agents` on the registration, `@effects` on the code that acts, `@gates` on an approval step (`@reaches` for a principal that is no agent). Syntax: the reference above.
+- **Never write `@accepts` or `@entitles`** — both are a human's decision. A risk with no control is `@exposes` + `@audit`; an entitlement is proposed with `guardlink entitle --propose`, and a human's acceptance writes it.
+- `@confirmed` needs reproduction evidence in hand; reading the code is not reproduction.
+- Before you finish: `guardlink validate .`, then `guardlink diff HEAD~1` — did this change add exposure?
 
-**Full reference: `docs/GUARDLINK_REFERENCE.md`**
+**This repository's agent configuration is part of its threat model.** `guardlink lookup "agent config"` lists what each coding agent can do here and who approved it. That reach is generated from the configuration files, so never write `@agents` or `@reaches` for Claude Code, Cursor, Copilot, Codex or Gemini.
 
-### Where annotations go
-
-**Annotation mode: `inline`. Annotations live in source-file comments**, in the comment
-syntax of the file you are editing — the doc-block of the function or module they describe.
-
-```ts
-/**
- * @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
- * @mitigates #api against #sqli using #prepared-stmts -- "parameterized query"
- */
-export function login(email: string) { … }
-```
-
-Do not create `.gal` sidecars under `.guardlink/annotations/` in this mode; a repo with
-both is a mixed repo, and that is the failure this section exists to prevent.
-
-### What you owe it back
-
-**When you write or change code that touches security-relevant behavior, add the annotations in
-the same change.** This includes: new endpoints, authentication/authorization logic, data validation, database queries, file I/O, external API calls, crypto operations, process spawning, user input handling, and configuration parsing. Do NOT annotate code that never touches a security boundary — formatters, UI components, pure helpers. Business logic that makes an authorization or ownership decision **is** in scope: an IDOR or a missing tenant check lives in business logic, not in the parsing layer.
-
-### Key Rules
-
-1. **Annotate new code.** When you add a function, endpoint, or module that handles user input, accesses data, crosses a trust boundary, or could fail in a security-relevant way — add `@exposes`, `@mitigates`, `@flows`, `@handles`, or at minimum `@comment` annotations. This is not optional.
-2. **NEVER write `@accepts`.** That is a human-only governance decision. When you find a risk with no mitigation in code, write `@exposes` to document the risk + `@audit` to flag it for human review + `@comment` to suggest potential controls.
-3. **Use `@confirmed` for verified exploits.** When a pentest, CXG scan, or manual reproduction proves a threat is exploitable, mark it with `@confirmed #threat on Asset [severity] -- "evidence"`. This is distinct from `@exposes` (theoretical) — `@confirmed` means real, verified, not a false positive. Include severity based on actual observed impact. **Without that evidence in hand, `@exposes` stands and you do not promote it** — reading the code is not reproduction. To get evidence, `bugb intake "<brief>"` turns a description into a test plan and prints a PLAN_ID; an operator approves it, never you.
-4. Do not delete or mangle existing annotations. Treat them as part of the code. Edit only when intentionally changing the threat model.
-5. Definitions (`@asset`, `@threat`, `@control` with `(#id)`) live in `.guardlink/definitions.ts`. Reuse existing `#id`s — never redefine. If you need a new asset or threat, add the definition there first, then reference it in source files.
-6. Source files use relationship verbs only: `@mitigates`, `@exposes`, `@confirmed`, `@flows`, `@handles`, `@boundary`, `@comment`, `@validates`, `@audit`, `@owns`, `@assumes`, `@transfers`, `@feature`, and the reach verbs `@agents`, `@reaches`, `@effects`, `@gates` (rule 10). (`@actor` is a definition — it belongs in the definitions file with `@asset`/`@threat`/`@control`. `@entitles` is proposed, not written — see rule 9.) Four of those are permitted everywhere and written almost nowhere, because nothing tells you *when*. Their triggers:
-   - **You wrote or changed a test that pins a control** → `@validates #control for Asset -- "what the test proves"`, on the test. Control first, asset second, joined by `for`.
-   - **The code trusts a caller, library, or platform to hold a property it never checks itself** → `@assumes Asset -- "what must hold, and what breaks if it does not"`. One asset, and the whole assumption lives in the description.
-   - **Responsibility for a threat lands on a vendor, an upstream service, or another team's component** → `@transfers #threat from Source to Target`. Both ends must be assets that already exist in the definitions file — a vendor needs an `External.*` asset declared first, and a bare company name will not parse.
-   - **You know the team accountable for an asset** → `@owns team-id for Asset`. The owner is a bare token: `platform-security` parses, `"Platform Security"` and `#platform-security` do not. If you do not know the team, skip it rather than guessing.
-7. Write coupled annotation blocks that tell a complete story: risk + control (or audit) + data flow + context note — plus `@boundary` when that flow crosses a trust change (written `from <outer> to <inner>` when you know which side is less trusted), and `@handles` when the asset touches classified data. Never write a lone `@exposes` without follow-up.
-8. Avoid `@shield` unless a human explicitly asks to hide code from AI — it creates blind spots.
-9. **NEVER write `@entitles` into source — propose it.** `@entitles` says a privilege is *supposed* to have this effect, so an over-grant closes a real privilege escalation as by-design. That makes it the second claim you may not make on a human's behalf, alongside `@accepts`. File it with `guardlink entitle --propose` (or `guardlink_entitlement_propose`) and a human's acceptance is what writes the annotation, under their name; an `@entitles` in source with no accepted proposal is a validation error. The rationale must cite the authz code as `file:line` or the claim is inert — parsed and then ignored. It never suppresses a finding and never gates testing; it only changes what triage recommends. Never propose one for an ownership question (IDOR, tenant isolation) — both peers hold the capability, so it cannot say whose object it was. When unsure which role the code actually requires, write `@comment` describing what you saw instead: under-granting costs noise, over-granting hides a real bug.
-10. **Declare what an embedded LLM agent can reach.** When code hands an agent a tool, an MCP server, file, shell or database access, or an internal method: `@agents #agent to <capability> on Asset` on the registration (declare the agent with `@actor` first), `@effects <read|write|delete|execute|spend|notify> on Asset` on the code that acts, and `@gates Asset by #approver` on any approval step. `@reaches` is the same claim for a principal that is not an LLM agent (a CI runner, a service account); one actor under both verbs is a validation error. You may write all four — they say what the code *can* do. Use the capability token an `@entitles` would use: `unentitled reaches` then lists the capabilities no human approved, and for those you propose an entitlement (rule 9), never write one.
-
-### Workflow (while coding)
-
-- **Opening a file:** `guardlink_context(file)` before you read far into it. Note which kind of empty an empty answer is — `scanned_without_annotations` means clean, `not_scanned` means the parser never read it. They are not the same.
-- **Before writing:** skim `.guardlink/definitions.ts` for the existing assets, threats and controls. Reuse those ids.
-- **While writing:** annotate as you go, not as a pass afterward — in the doc-block of the code you are writing.
-- **After changing:** `guardlink diff HEAD~1` — the one command that answers "did I add exposure". Then `guardlink validate .` for syntax and dangling refs, and `guardlink status .` for coverage.
-- **After annotating:** `guardlink sync` refreshes this block and `.guardlink/README.md` from the current model.
-
-### Tools
-
-- **MCP** (Claude Code, Cursor): `guardlink_context`, `guardlink_graph`, `guardlink_paths`, `guardlink_lookup`, `guardlink_diff`, `guardlink_validate`, `guardlink_status`, `guardlink_suggest`.
-- **CLI** (always): `guardlink status .`, `guardlink parse .`, `guardlink validate .`, `guardlink diff HEAD~1`, `guardlink paths .`, `guardlink report .`.
-- `guardlink_lookup` answers a fixed set of named forms and **refuses anything else rather than
-  guessing** — send it a bad query to get the list. Beyond `asset`/`threat`/`control`, it reaches
-  every relation the model holds: `owner of X`, `handles pii`, `assumptions for X`, `audits for X`,
-  `validations for X`, `acceptances`, `transfers`, `comments for X`, `shields`, `cross-repo refs`,
-  `agents`, `unentitled reaches`, `effects for X`, `gates for X`, `ungated effects`,
-  and `cwe:CWE-89` / `owasp:A03` for scanner findings. Without MCP, `guardlink lookup "<form>"` answers the same forms.
-- Reference matches report `matched_via: exact | alias | substring`. A substring match is a
-  suggestion, not an identification; `ambiguous` with `candidates` means several records tied.
-
-### Quick Syntax (common verbs)
-
-```
-@exposes App.API to #sqli [P0] cwe:CWE-89 -- "req.body.email concatenated into SQL"
-@mitigates App.API against #sqli using #prepared-stmts -- "Parameterized queries via pg"
-@audit App.API -- "Timing attack risk — needs human review to assess bcrypt constant-time comparison"
-@flows User -> App.API via HTTPS -- "Login request path"
-@boundary from #api to #db (#data-boundary) -- "App → DB trust change; #api is the less-trusted side"
-@handles pii on App.API -- "Processes email and session token"
-@validates #prepared-stmts for App.API -- "sqlInjectionTest.ts ensures placeholders used"
-@assumes App.API -- "Caller has already authenticated; this function never re-checks the session"
-@transfers #ddos from App.API to External.Cloudflare -- "Rate limiting lives at the edge, not in app code"
-@confirmed #sqli on App.API [critical] cwe:CWE-89 -- "Pentest verified: raw SQL injection via email param"
-@feature "SSO Login" -- "Single sign-on authentication flow"
-@owns security-team for App.API -- "Team responsible for reviews"
-@agents #support-agent to run-sql on #tool-surface as #agent-session -- "run_sql tool registered in tools.ts"
-@effects write on #users-db as #db-service -- "Executes the model-written SQL via db.raw"
-@gates #payments by #support-human for issue-refund -- "requireApproval() blocks until a human approves"
-@actor Namespace_Admin (#ns-admin) -- "Administers one namespace's configuration"   (definitions file)
-@comment -- "Rate limit: 100 req/15min via express-rate-limit"
-```
-
-`@entitles` is absent from that list on purpose — you propose it, you do not write it:
-
-```bash
-guardlink entitle --propose --actor '#ns-admin' --capability configure-archival-destination \
-  --asset '#archival-fs' --threat '#path-traversal' \
-  --file common/archiver/filestore/archiver.go --line 61 \
-  --rationale "By design: the archival URI is namespace configuration. Authz: common/api/metadata.go:189"
-```
-
-## Live Threat Model Context (auto-synced by `guardlink sync`)
-
-### Current Definitions (REUSE these IDs — do NOT redefine)
-
-_Full records with descriptions and locations: `guardlink_lookup("asset <id>")`, or read `.guardlink/definitions.*`._
-
-**Assets:** #parser (GuardLink,Parser), #cli (GuardLink,CLI), #tui (GuardLink,TUI), #mcp (GuardLink,MCP), #llm-client (GuardLink,LLM_Client), #dashboard (GuardLink,Dashboard), #init (GuardLink,Init), #agent-launcher (GuardLink,Agent_Launcher), #diff (GuardLink,Diff), #report (GuardLink,Report), #sarif (GuardLink,SARIF), #suggest (GuardLink,Suggest), #blame (GuardLink,Blame), #codegraph (GuardLink,CodeGraph), #gate (GuardLink,Gate), #estate-view (Workspace,Estate), #workspace-link (Workspace,Link), #merge-engine (Workspace,Merge), #report-metadata (Workspace,Metadata), #workspace-config (Workspace,Config)
-**Threats:** #path-traversal (Path_Traversal) [high], #cmd-injection (Command_Injection) [critical], #xss (Cross_Site_Scripting) [high], #api-key-exposure (API_Key_Exposure) [high], #ssrf (Server_Side_Request_Forgery) [medium], #redos (ReDoS) [medium], #arbitrary-write (Arbitrary_File_Write) [high], #prompt-injection (Prompt_Injection) [medium], #dos (Denial_of_Service) [medium], #data-exposure (Sensitive_Data_Exposure) [medium], #insecure-deser (Insecure_Deserialization) [medium], #child-proc-injection (Child_Process_Injection) [high], #info-disclosure (Information_Disclosure) [low], #vacuous-pass (Vacuous_Pass) [high], #tag-collision (Tag_Collision) [medium], #config-tamper (Config_Tampering) [medium]
-**Controls:** #path-validation (Path_Validation), #input-sanitize (Input_Sanitization), #output-encoding (Output_Encoding), #key-redaction (Key_Redaction), #process-sandbox (Process_Sandboxing), #config-validation (Config_Validation), #resource-limits (Resource_Limits), #param-commands (Parameterized_Commands), #glob-filtering (Glob_Pattern_Filtering), #regex-anchoring (Regex_Anchoring), #prefix-ownership (Prefix_Ownership), #yaml-validation (YAML_Validation), #identity-redaction (Identity_Redaction), #fail-closed (Fail_Closed)
-**Actors:** #local-dev (Local_Developer), #mcp-agent (MCP_Agent), #ci-runner (CI_Runner)
-
-### Entitlements (capabilities held by design — never a reason to skip testing)
-
-- #mcp-agent entitled to `read_threat_model` on #mcp — cites src/mcp/index.ts:23
-
-### Open Exposures (need @mitigates or @audit)
-
-- #agent-launcher exposed to #prompt-injection [medium] (src/agents/launcher.ts:13)
-- #agent-launcher exposed to #prompt-injection [high] (src/agents/prompts.ts:6)
-- #agent-launcher exposed to #config-tamper [medium] (src/agents/prompts.ts:10)
-- #llm-client exposed to #data-exposure [low] (src/analyze/index.ts:12)
-- #llm-client exposed to #prompt-injection [medium] (src/analyze/llm.ts:17)
-- #sarif exposed to #data-exposure [low] (src/analyzer/sarif.ts:48)
-- #codegraph exposed to #config-tamper [medium] (src/codegraph/index.ts:57)
-- #codegraph exposed to #prompt-injection [medium] (src/codegraph/index.ts:61)
-- #init exposed to #data-exposure [low] (src/init/index.ts:12)
-- #mcp exposed to #cmd-injection [high] (src/mcp/index.ts:6)
-- #mcp exposed to #prompt-injection [medium] (src/mcp/server.ts:39)
-- #mcp exposed to #data-exposure [medium] (src/mcp/server.ts:43)
-- #suggest exposed to #dos [low] (src/mcp/suggest.ts:16)
-- #parser exposed to #data-exposure [low] (src/parser/migrate-mode.ts:36)
-- #tui exposed to #cmd-injection [high] (src/tui/commands.ts:11)
-- #tui exposed to #prompt-injection [medium] (src/tui/commands.ts:15)
-
-### Existing Data Flows (extend, don't duplicate)
-
-- EnvVars -> #agent-launcher via process.env
-- ConfigFile -> #agent-launcher via readFileSync
-- #agent-launcher -> ConfigFile via writeFileSync
-- UserPrompt -> #agent-launcher via launchAgent
-- #agent-launcher -> AgentProcess via spawn
-- AgentProcess -> #agent-launcher via stdout
-- UserPrompt -> #agent-launcher via buildAnnotatePrompt
-- UserPrompt -> #agent-launcher via buildTranslatePrompt
-- UserPrompt -> #agent-launcher via buildAskPrompt
-- ThreatModel -> #agent-launcher via model
-- #agent-launcher -> AgentPrompt via return
-- #codegraph -> #agent-launcher via worklist
-- SavedReport -> #llm-client via parseFindingsBlock
-- ThreatModel -> #llm-client via serializeModel
-- ProjectFiles -> #llm-client via readFileSync
-- #llm-client -> ReportFile via writeFileSync
-- PentestFindings -> #llm-client via readFileSync
-- LLMConfig -> #llm-client via chatCompletion
-- #llm-client -> LLMProvider via fetch
-- LLMProvider -> #llm-client via response
-- … and 186 more — `guardlink_lookup("flows into X")` for one asset, or `guardlink_graph(from: X)` for a neighbourhood
-
-### Features (filter with `--feature`)
-
-- "Dashboard"
-- "MCP Integration"
-
-### Model Stats
-
-902 annotations, 20 assets, 16 threats, 14 controls, 128 exposures, 0 confirmed, 139 mitigations, 3 actors, 1 entitlements, 206 flows, 2 features
-
-### Block Freshness
-
-- `annotation_hash`: `sha256-v3:dd87eea316249140ad2dba5cba72f188d49a6e263b299aedb154f312ca385c5c`
-
-Every MCP response carries this same hash. If it differs from the one above, this
-block predates the current annotations — trust the tool, and run `guardlink sync`.
-For when it was synced and at which commit, read the envelope on any MCP
-response: those move independently of the model and are not written to disk.
-
-> **Note:** This section is auto-generated. Run `guardlink sync` to update after code changes.
-> Any coding agent (Cursor, Claude, Copilot, Windsurf, etc.) should reference these IDs
-> and continue annotating new code using the same threat model vocabulary.
+_Generated by `guardlink sync`, which rewrites this block; `guardlink validate` warns when its stamp no longer matches the model._
 
 <!-- guardlink:end -->

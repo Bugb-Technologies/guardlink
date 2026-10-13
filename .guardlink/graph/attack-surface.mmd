@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        attack-surface.mmd
-%% annotation_hash: sha256-v3:dd87eea316249140ad2dba5cba72f188d49a6e263b299aedb154f312ca385c5c
+%% annotation_hash: sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. attack-surface.mmd is 76 nodes / 0 edges, past the 12 / 16 legibility budget (76 nodes against 12).
+%% DRAWS, BUT IS TOO BIG TO READ. attack-surface.mmd is 81 nodes / 0 edges, past the 12 / 16 legibility budget (81 nodes against 12).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -70,83 +70,91 @@ graph TB
     E32["⚠️ Prompt_Injection"]:::sev_med
     E33["✅ Denial_of_Service"]:::sev_low
   end
+  subgraph A_agent_config["GuardLink.AgentConfig · ⚠ 1 open"]
+    direction TB
+    E34["✅ Path_Traversal ×2"]:::sev_med
+    E35["✅ Command_Injection"]:::sev_med
+    E36["✅ Sensitive_Data_Exposure"]:::sev_med
+    E37["✅ Denial_of_Service ×2"]:::sev_low
+    E38["⚠️ Prompt_Injection"]:::sev_low
+  end
   subgraph A_init["GuardLink.Init · ⚠ 1 open"]
     direction TB
-    E34["✅ Arbitrary_File_Write ×3"]:::sev_high
-    E35["✅ Path_Traversal ×2"]:::sev_med
-    E36["⚠️ Sensitive_Data_Exposure"]:::sev_low
-    E37["✅ Denial_of_Service"]:::sev_low
-    E38["✅ Child_Process_Injection"]:::sev_low
+    E39["✅ Arbitrary_File_Write ×3"]:::sev_high
+    E40["✅ Path_Traversal ×2"]:::sev_med
+    E41["⚠️ Sensitive_Data_Exposure"]:::sev_low
+    E42["✅ Denial_of_Service"]:::sev_low
+    E43["✅ Child_Process_Injection"]:::sev_low
   end
   subgraph A_parser["GuardLink.Parser · ⚠ 1 open"]
     direction TB
-    E39["✅ Arbitrary_File_Write ×3"]:::sev_high
-    E40["✅ Path_Traversal ×6"]:::sev_high
-    E41["✅ Config_Tampering"]:::sev_med
-    E42["✅ ReDoS ×2"]:::sev_med
-    E43["✅ Denial_of_Service ×6"]:::sev_med
-    E44["✅ Insecure_Deserialization ×3"]:::sev_low
-    E45["⚠️ Sensitive_Data_Exposure"]:::sev_low
+    E44["✅ Arbitrary_File_Write ×3"]:::sev_high
+    E45["✅ Path_Traversal ×6"]:::sev_high
+    E46["✅ Config_Tampering"]:::sev_med
+    E47["✅ ReDoS ×2"]:::sev_med
+    E48["✅ Denial_of_Service ×6"]:::sev_med
+    E49["✅ Insecure_Deserialization ×3"]:::sev_low
+    E50["⚠️ Sensitive_Data_Exposure"]:::sev_low
   end
   subgraph A_sarif["GuardLink.SARIF · ⚠ 1 open"]
     direction TB
-    E46["✅ Denial_of_Service"]:::sev_low
-    E47["⚠️ Sensitive_Data_Exposure"]:::sev_low
+    E51["✅ Denial_of_Service"]:::sev_low
+    E52["⚠️ Sensitive_Data_Exposure"]:::sev_low
   end
   subgraph A_suggest["GuardLink.Suggest · ⚠ 1 open"]
     direction TB
-    E48["✅ Path_Traversal"]:::sev_high
-    E49["✅ ReDoS"]:::sev_med
-    E50["⚠️ Denial_of_Service"]:::sev_low
+    E53["✅ Path_Traversal"]:::sev_high
+    E54["✅ ReDoS"]:::sev_med
+    E55["⚠️ Denial_of_Service"]:::sev_low
   end
   subgraph A_blame["GuardLink.Blame · ✅ 100% covered"]
     direction TB
-    E51["✅ Sensitive_Data_Exposure"]:::sev_med
-    E52["✅ Path_Traversal ×3"]:::sev_low
-    E53["✅ Denial_of_Service ×3"]:::sev_low
-    E54["✅ ReDoS ×2"]:::sev_low
-    E55["✅ Command_Injection"]:::sev_low
+    E56["✅ Sensitive_Data_Exposure"]:::sev_med
+    E57["✅ Path_Traversal ×3"]:::sev_low
+    E58["✅ Denial_of_Service ×3"]:::sev_low
+    E59["✅ ReDoS ×2"]:::sev_low
+    E60["✅ Command_Injection"]:::sev_low
   end
   subgraph A_cli["GuardLink.CLI · ✅ 100% covered"]
     direction TB
-    E56["✅ Command_Injection ×2"]:::sev_crit
-    E57["✅ Path_Traversal"]:::sev_high
-    E58["✅ Arbitrary_File_Write ×11"]:::sev_high
-    E59["✅ API_Key_Exposure"]:::sev_high
-    E60["✅ Insecure_Deserialization ×2"]:::sev_med
-    E61["✅ ReDoS"]:::sev_low
+    E61["✅ Command_Injection ×2"]:::sev_crit
+    E62["✅ Path_Traversal"]:::sev_high
+    E63["✅ Arbitrary_File_Write ×11"]:::sev_high
+    E64["✅ API_Key_Exposure"]:::sev_high
+    E65["✅ Insecure_Deserialization ×2"]:::sev_med
+    E66["✅ ReDoS"]:::sev_low
   end
   subgraph A_dashboard["GuardLink.Dashboard · ✅ 100% covered"]
     direction TB
-    E62["✅ Cross_Site_Scripting ×2"]:::sev_high
-    E63["✅ Arbitrary_File_Write"]:::sev_med
-    E64["✅ Path_Traversal ×3"]:::sev_med
-    E65["✅ Sensitive_Data_Exposure"]:::sev_low
-    E66["✅ Denial_of_Service ×2"]:::sev_low
-    E67["✅ Command_Injection"]:::sev_low
+    E67["✅ Cross_Site_Scripting ×2"]:::sev_high
+    E68["✅ Arbitrary_File_Write"]:::sev_med
+    E69["✅ Path_Traversal ×3"]:::sev_med
+    E70["✅ Sensitive_Data_Exposure"]:::sev_low
+    E71["✅ Denial_of_Service ×2"]:::sev_low
+    E72["✅ Command_Injection"]:::sev_low
   end
   subgraph A_diff["GuardLink.Diff · ✅ 100% covered"]
     direction TB
-    E68["✅ Command_Injection ×3"]:::sev_high
-    E69["✅ Arbitrary_File_Write"]:::sev_med
-    E70["✅ Path_Traversal"]:::sev_med
+    E73["✅ Command_Injection ×3"]:::sev_high
+    E74["✅ Arbitrary_File_Write"]:::sev_med
+    E75["✅ Path_Traversal ×2"]:::sev_med
   end
   subgraph A_gate["GuardLink.Gate · ✅ 100% covered"]
     direction TB
-    E71["✅ Arbitrary_File_Write"]:::sev_med
+    E76["✅ Arbitrary_File_Write"]:::sev_med
   end
   subgraph A_estate_view["Workspace.Estate · ✅ 100% covered"]
     direction TB
-    E72["✅ Vacuous_Pass"]:::sev_high
-    E73["✅ Insecure_Deserialization"]:::sev_med
+    E77["✅ Vacuous_Pass"]:::sev_high
+    E78["✅ Insecure_Deserialization"]:::sev_med
   end
   subgraph A_merge_engine["Workspace.Merge · ✅ 100% covered"]
     direction TB
-    E74["✅ Vacuous_Pass"]:::sev_high
+    E79["✅ Vacuous_Pass"]:::sev_high
   end
   subgraph A_report_metadata["Workspace.Metadata · ✅ 100% covered"]
     direction TB
-    E75["✅ Sensitive_Data_Exposure"]:::sev_low
+    E80["✅ Sensitive_Data_Exposure"]:::sev_low
   end
   classDef sev_crit fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.4px
   classDef sev_high fill:#402019,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.2px

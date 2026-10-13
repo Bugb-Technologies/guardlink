@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:dd87eea316249140ad2dba5cba72f188d49a6e263b299aedb154f312ca385c5c
+%% annotation_hash: sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 77 nodes / 196 edges, past the 12 / 16 legibility budget (77 nodes against 12, 196 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 78 nodes / 200 edges, past the 12 / 16 legibility budget (78 nodes against 12, 200 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -21,52 +21,58 @@
 %% has one per trust line, and index.md says which question each answers.
 %%{init: {"flowchart": {"nodeSpacing": 47, "rankSpacing": 67, "curve": "basis", "htmlLabels": false}}}%%
 graph LR
-  subgraph Z0["🧱 GuardLink.Agent_Launcher · Trust boundary at process spawn"]
+  subgraph Z0["🧱 ProjectFiles · Repository content is untrusted input to the config reader"]
+    projectfiles["🧩 ProjectFiles"]
+  end
+  subgraph Z1["🧱 GuardLink.AgentConfig · Repository content is untrusted input to the config reader"]
+    agent_config["🧩 GuardLink.AgentConfig"]
+  end
+  subgraph Z2["🧱 GuardLink.Agent_Launcher · Trust boundary at process spawn"]
     agent_launcher["🧩 GuardLink.Agent_Launcher · secrets, internal"]
   end
-  subgraph Z1["🧱 AgentProcess · Trust boundary at process spawn"]
+  subgraph Z3["🧱 AgentProcess · Trust boundary at process spawn"]
     agentprocess["🧩 AgentProcess"]
   end
-  subgraph Z2["🧱 GuardLink.LLM_Client · Trust boundary at external API call"]
+  subgraph Z4["🧱 GuardLink.LLM_Client · Trust boundary at external API call"]
     llm_client["👤 GuardLink.LLM_Client · internal, secrets"]
   end
-  subgraph Z3["🧱 LLMProvider · Trust boundary at external API call"]
+  subgraph Z5["🧱 LLMProvider · Trust boundary at external API call"]
     llmprovider["🧩 LLMProvider"]
   end
-  subgraph Z4["🧱 NVD · Trust boundary at external API"]
+  subgraph Z6["🧱 NVD · Trust boundary at external API"]
     nvd["🧩 NVD"]
   end
-  subgraph Z5["🧱 GuardLink.CLI · Trust boundary at CLI argument parsing"]
+  subgraph Z7["🧱 GuardLink.CLI · Trust boundary at CLI argument parsing"]
     cli["🧩 GuardLink.CLI · secrets, pii, internal"]
   end
-  subgraph Z6["🧱 UserInput · Trust boundary at CLI argument parsing"]
+  subgraph Z8["🧱 UserInput · Trust boundary at CLI argument parsing"]
     userinput["👤 UserInput"]
   end
-  subgraph Z7["🧱 GuardLink.CodeGraph · Process boundary: an external binary's JSON is parsed defensively and never executed"]
+  subgraph Z9["🧱 GuardLink.CodeGraph · Process boundary: an external binary's JSON is parsed defensively and never executed"]
     codegraph["🧩 GuardLink.CodeGraph"]
   end
-  subgraph Z8["🧱 CodeGraphServer · Process boundary: an external binary's JSON is parsed defensively and never executed"]
+  subgraph Z10["🧱 CodeGraphServer · Process boundary: an external binary's JSON is parsed defensively and never executed"]
     codegraphserver["🖥️ CodeGraphServer"]
   end
-  subgraph Z9["🧱 GuardLink.Diff · Trust boundary at git command execution"]
+  subgraph Z11["🧱 GuardLink.Diff · Trust boundary at git command execution"]
     diff["🧩 GuardLink.Diff"]
   end
-  subgraph Z10["🧱 GitRepo · Trust boundary at git command execution"]
+  subgraph Z12["🧱 GitRepo · Trust boundary at git command execution"]
     gitrepo["🧩 GitRepo"]
   end
-  subgraph Z11["🧱 GuardLink.MCP · Trust boundary at MCP protocol"]
+  subgraph Z13["🧱 GuardLink.MCP · Trust boundary at MCP protocol"]
     mcp["🧩 GuardLink.MCP · internal, pii"]
   end
-  subgraph Z12["🧱 MCPClient · Trust boundary at MCP protocol"]
+  subgraph Z14["🧱 MCPClient · Trust boundary at MCP protocol"]
     mcpclient["👤 MCPClient"]
   end
-  subgraph Z13["🧱 GuardLink.Parser · Trust boundary between parser and disk I/O"]
+  subgraph Z15["🧱 GuardLink.Parser · Trust boundary between parser and disk I/O"]
     parser["🧩 GuardLink.Parser · internal"]
   end
-  subgraph Z14["🧱 FileSystem · Trust boundary between parser and disk I/O"]
+  subgraph Z16["🧱 FileSystem · Trust boundary between parser and disk I/O"]
     filesystem["🧩 FileSystem"]
   end
-  subgraph Z15["🧱 GuardLink.TUI · Trust boundary at interactive input"]
+  subgraph Z17["🧱 GuardLink.TUI · Trust boundary at interactive input"]
     tui["👤 GuardLink.TUI · secrets, pii"]
   end
   envvars["🧩 EnvVars"]
@@ -75,7 +81,6 @@ graph LR
   threatmodel["🧩 ThreatModel"]
   agentprompt["🧩 AgentPrompt"]
   savedreport["🧩 SavedReport"]
-  projectfiles["🧩 ProjectFiles"]
   reportfile["🧩 ReportFile"]
   pentestfindings["🧩 PentestFindings"]
   llmconfig["🧩 LLMConfig"]
@@ -130,6 +135,7 @@ graph LR
   mergedreport["🧩 MergedReport"]
   report_metadata["🧩 Workspace.Metadata"]
   tagregistry["🧩 TagRegistry"]
+  projectfiles -.-|🧱 Repository content is untrusted input to the config reader| agent_config
   agent_launcher -.-|🧱 Trust boundary at process spawn| agentprocess
   llm_client -.-|🧱 Trust boundary at external API call| llmprovider
   llm_client -.-|🧱 Trust boundary at external API| nvd
@@ -139,6 +145,8 @@ graph LR
   mcp -.-|🧱 Trust boundary at MCP protocol| mcpclient
   parser -.-|🧱 Trust boundary between parser and disk I/O| filesystem
   tui -.-|🧱 Trust boundary at interactive input| userinput
+  projectfiles -- "📡 readdirSync" --> agent_config
+  projectfiles -- "🗄️ readFileSync" --> agent_config
   envvars -- "📡 process.env" --> agent_launcher
   configfile -- "🗄️ readFileSync" --> agent_launcher
   agent_launcher -- "🗄️ writeFileSync" --> configfile
@@ -280,6 +288,7 @@ graph LR
   parser -- "📡 parseString" --> parsediagnostics
   parser -- "📡 assembleModel" --> threatmodel
   annotationsource -- "📡 existsSync" --> parser
+  agent_config -- "📡 mergeAgentConfig" --> parser
   threatmodel -- "📡 findAnchorDrift" --> parser
   threatmodel -- "📡 buildRouteIndex" --> parser
   threatmodel -- "📡 classifyClaims" --> parser

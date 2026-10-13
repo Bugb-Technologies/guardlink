@@ -1,0 +1,43 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-boundary/agent-config-boundary.mmd
+%% scope:           PARTIAL — the Repository content is untrusted input to the config reader between projectfiles and agent-config, and what flows across it
+%% annotation_hash: sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761
+%% generator:       guardlink@2.3.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
+graph LR
+  subgraph Z0["🧱 ProjectFiles · Repository content is untrusted input to the config reader"]
+    projectfiles["🧩 ProjectFiles"]
+  end
+  subgraph Z1["🧱 GuardLink.AgentConfig · Repository content is untrusted input to the config reader"]
+    agent_config["🧩 GuardLink.AgentConfig"]
+  end
+  llm_client["👤 GuardLink.LLM_Client"]
+  configfile["🧩 ConfigFile"]
+  mcp["🧩 GuardLink.MCP"]
+  parser["🧩 GuardLink.Parser"]
+  exportfile["🧩 ExportFile"]
+  filepath["🧩 FilePath"]
+  annotations["🧩 Annotations"]
+  annotationsource["🧩 AnnotationSource"]
+  tui["👤 GuardLink.TUI"]
+  projectfiles -.-|🧱 Repository content is untrusted input to the config reader| agent_config
+  projectfiles -- "📡 readdirSync" --> agent_config
+  projectfiles -- "🗄️ readFileSync" --> agent_config
+  projectfiles -- "🗄️ readFileSync" --> llm_client
+  configfile -- "🗄️ readFileSync" --> mcp
+  mcp -- "📡 generateThreatReport" --> llm_client
+  configfile -- "📡 readAcceptancePolicy" --> parser
+  exportfile -- "🗄️ readFileSync" --> parser
+  filepath -- "🗄️ readFile" --> parser
+  parser -- "📡 parseString" --> annotations
+  annotationsource -- "📡 existsSync" --> parser
+  agent_config -- "📡 mergeAgentConfig" --> parser
+  tui -- "📡 chatCompletion" --> llm_client
+  configfile -- "📡 loadProjectConfig" --> tui
+  tui -- "📡 saveProjectConfig" --> configfile

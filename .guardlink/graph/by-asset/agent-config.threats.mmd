@@ -1,0 +1,38 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-asset/agent-config.threats.mmd
+%% scope:           PARTIAL — #agent-config only — its own threats and controls
+%% annotation_hash: sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761
+%% generator:       guardlink@2.3.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
+graph LR
+  agent_config["🔷 GuardLink.AgentConfig"]
+  path_traversal["🟠 Path_Traversal (cwe:CWE-22, cwe:CWE-59)"]:::threat
+  dos["🟡 Denial_of_Service (cwe:CWE-400)"]:::threat
+  cmd_injection["🔴 Command_Injection (cwe:CWE-78)"]:::threat
+  data_exposure["🟡 Sensitive_Data_Exposure (cwe:CWE-200, cwe:CWE-532)"]:::threat
+  prompt_injection["🟡 Prompt_Injection (cwe:CWE-77, cwe:CWE-74)"]:::threat
+  path_validation["🛡️ Path_Validation"]:::control
+  resource_limits["🛡️ Resource_Limits"]:::control
+  param_commands["🛡️ Parameterized_Commands"]:::control
+  key_redaction["🛡️ Key_Redaction"]:::control
+  agent_config -. exposes .-> path_traversal
+  agent_config -. exposes .-> dos
+  agent_config -. exposes .-> cmd_injection
+  agent_config -. exposes .-> data_exposure
+  agent_config -. exposes .-> prompt_injection
+  path_validation -- mitigates --> path_traversal
+  path_validation -. protects .-> agent_config
+  resource_limits -- mitigates --> dos
+  resource_limits -. protects .-> agent_config
+  param_commands -- mitigates --> cmd_injection
+  param_commands -. protects .-> agent_config
+  key_redaction -- mitigates --> data_exposure
+  key_redaction -. protects .-> agent_config
+  classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
+  classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px
