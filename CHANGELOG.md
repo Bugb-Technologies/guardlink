@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## \[Unreleased\]
 
+### Fixed
+
+- **`guardlink migrate --to external` no longer skips annotations, deletes comments that are not annotations, or leaves their layout behind.** All three passed the `annotation_hash` gate, which cannot see an annotation that stayed where it was (it still parses) or a line that was never in the model.
+  - **Every annotation kind migrates.** Migrate chose its files from a hand-kept list of record kinds that `@agents`, `@reaches`, `@effects` and `@gates` were never added to, so a file whose only annotations were those was never touched, in either direction. The files now come from every record list the model holds.
+  - **Only annotations leave the source.** Which lines are annotations is now the parser's answer (`annotationLineRoles`), not a second pattern that took any comment beginning with an at-sign word. A comment beginning `@page margins…` was being deleted and parked in a sidecar where it parsed to nothing, including one inside a string literal, which changed what the program printed. A `-- "…"` continuation now moves with the annotation it extends instead of being orphaned in the source.
+  - **The layout that held the annotations goes with them.** The empty `///` or ` *` separator before them, a `/** … */` with nothing left in it, and the second of two blank lines a removed comment sat between. The source reads as if it had never been annotated. `--to inline` writes a canonical layout back, so **external → inline → external** is the byte-identical round trip; inline → external → inline holds the hash and may tidy layout once.
+  - **A sidecar's `@source line:` is now the line of the stripped source the block sits above**, as SPEC §5.4 defines it, rather than the line it occupied before extraction, which pointed every block after the first at shifted code. `--to inline` restores each block above the line it names, so hand-written sidecars restore where they say. A multi-block sidecar written by an earlier `migrate` restores its later blocks lower by the lines removed above them; the hash is unaffected.
+  - **Nothing is skipped silently.** An annotation that shares its line with a comment delimiter (`/** @audit …` opening a block that continues, `* @audit … */` closing one) would take the delimiter with it and break the build, so it is refused; so is a malformed annotation, and one whose sidecar already exists. Its whole file is left untouched, each annotation is listed as `file:line` with the reason, and the command exits 1 without flipping `annotation_mode`. After writing, the re-parsed model is asked whether anything is still in the mode being left, and anything found is listed the same way. `--dry-run` exits 1 when the real run would.
+
 ## \[2.3.0\] — 2026-10-11
 
 ### Changed

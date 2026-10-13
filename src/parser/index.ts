@@ -2,7 +2,8 @@
  * GuardLink Parser — Public API
  */
 
-export { parseFile, parseString } from './parse-file.js';
+export { parseFile, parseString, annotationLineRoles } from './parse-file.js';
+export type { LineRole } from './parse-file.js';
 export { parseProject } from './parse-project.js';
 export type { ParseProjectOptions } from './parse-project.js';
 // §9.7 — the cited-and-precise test lives in one place so a consumer cannot read
@@ -49,8 +50,8 @@ export { applyAnnotations } from './apply-annotations.js';
 export type { ApplyAnnotationsOptions, ApplyAnnotationsResult } from './apply-annotations.js';
 export { findAnchorDrift, applyReanchor } from './reanchor.js';
 export type { AnchorDrift } from './reanchor.js';
-export { migrateAnnotationMode, readGalBlocks } from './migrate-mode.js';
-export type { MigrateOptions, MigrateResult, TargetMode } from './migrate-mode.js';
+export { migrateAnnotationMode, readGalBlocks, annotationsLeftBehind } from './migrate-mode.js';
+export type { MigrateOptions, MigrateResult, TargetMode, Unmigrated } from './migrate-mode.js';
 // Stale claim detection (docs/superpowers/specs/2026-09-03-stale-claim-detection-design.md).
 export { relationRecords, claimText, DEMOTABLE_VERBS } from './claim-key.js';
 export {
