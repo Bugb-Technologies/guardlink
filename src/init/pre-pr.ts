@@ -32,11 +32,16 @@
  * @mitigates #init against #prompt-injection using #input-sanitize -- "One line per entry, length-capped; an entry carrying a backtick, an HTML comment delimiter, a control character or hidden Unicode is refused, not rendered"
  * @flows ConfigFile -> #init via readPrePrSteps -- "pre_pr entries read from .guardlink/config.json"
  * @flows #init -> AgentFiles via agentInstructions -- "Accepted entries rendered under the block's pre-PR step"
+ * @flows AgentFiles -> #init via findPrePrDrift -- "Instruction files re-read to check their contributed lines against pre_pr"
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { findHiddenUnicode } from '../agentconfig/hidden-unicode.js';
+import { classifyScope } from '../agentconfig/discover.js';
+import { GUARDLINK_BEGIN, GUARDLINK_END } from '../agentconfig/read.js';
+import { AGENT_CHOICES } from './picker.js';
+import type { ParseDiagnostic } from '../types/index.js';
 
 /** One check another tool asks an agent to run before a pull request. */
 export interface PrePrStep {
@@ -136,4 +141,57 @@ export function readPrePrSteps(root: string): PrePrSteps {
     steps.push({ command: command.trim(), why: reason === null ? null : reason.trim() });
   });
   return { steps, problems };
+}
+
+/** Every contributed line ends with this, so a reader — and {@link findPrePrDrift} — can tell it from GuardLink's own. */
+const PROVENANCE = ' (from `pre_pr` in `.guardlink/config.json`)';
+
+/** The block line for one step. The template and the drift check both call this, so they cannot disagree. */
+export function renderPrePrLine(step: PrePrStep): string {
+  return `- \`${step.command}\`${step.why ? ` — ${step.why}` : ''}${PROVENANCE}`;
+}
+
+/**
+ * Instruction files whose block does not carry the pre-PR lines `pre_pr`
+ * configures now.
+ *
+ * The block's stamp covers the annotations and the agent configuration, not
+ * `pre_pr`, so without this a tool that registers an entry and never runs
+ * `guardlink sync` gets no line in any file, and nothing says so — the entry
+ * reads as working while no agent sees it. Checked by content rather than by a
+ * third stamp field: the lines are deterministic, so comparing them is exact,
+ * and a stamp format change would mark every existing block stale.
+ *
+ * Same file set and the same exclusions as `sync`: an instruction file that
+ * exists and is this repository's own, never a packaged or fixture one.
+ */
+export function findPrePrDrift(root: string): ParseDiagnostic[] {
+  const expected = readPrePrSteps(root).steps.map(renderPrePrLine);
+  const out: ParseDiagnostic[] = [];
+  for (const choice of AGENT_CHOICES) {
+    const path = join(root, choice.file);
+    if (!existsSync(path) || !statSync(path).isFile()) continue;
+    const scope = classifyScope(choice.file, () => false);
+    if (scope === 'packaged' || scope === 'fixture') continue;
+    let text: string;
+    try { text = readFileSync(path, 'utf-8'); } catch { continue; }
+    const begin = text.indexOf(GUARDLINK_BEGIN);
+    const end = begin === -1 ? -1 : text.indexOf(GUARDLINK_END, begin);
+    if (begin === -1 || end === -1) continue;
+    const found = text.slice(begin, end).split(/\r?\n/).filter(l => l.endsWith(PROVENANCE));
+    if (found.length === expected.length && found.every((l, i) => l === expected[i])) continue;
+    const missing = expected.filter(l => !found.includes(l)).length;
+    const extra = found.filter(l => !expected.includes(l)).length;
+    const what = missing > 0 && extra > 0 ? `${missing} line(s) \`pre_pr\` configures are missing and ${extra} it no longer configures remain`
+      : missing > 0 ? `${missing} line(s) \`pre_pr\` configures are missing`
+        : extra > 0 ? `${extra} line(s) \`pre_pr\` no longer configures remain`
+          : 'its pre-PR lines are out of the order `pre_pr` gives';
+    out.push({
+      level: 'warning', code: 'agent-block-pre-pr-stale', file: choice.file,
+      line: text.slice(0, begin).split('\n').length,
+      message: `The GuardLink block here does not match \`pre_pr\` in \`.guardlink/config.json\`: ${what}. `
+        + 'Agents reading it are told a different pre-PR check than the repository configures — run `guardlink sync`.',
+    });
+  }
+  return out;
 }

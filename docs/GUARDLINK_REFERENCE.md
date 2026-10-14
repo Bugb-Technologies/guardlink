@@ -554,7 +554,8 @@ guardlink --no-agent-config parse .                      # leave it out of one r
 
 `guardlink validate` also checks it: hidden Unicode in instruction files, skills and commands
 (`hidden-unicode`, an error when it decodes to text), a GuardLink block with no provenance stamp or a stale
-one (`agent-block-unstamped`, `agent-block-stale` — run `guardlink sync`), configuration it could not read,
+one (`agent-block-unstamped`, `agent-block-stale` — run `guardlink sync`), a block whose pre-PR lines differ
+from `pre_pr` (`agent-block-pre-pr-stale` — the same fix), configuration it could not read,
 and hand-written coding-agent reach.
 
 ## Agent instruction files
@@ -602,8 +603,9 @@ An entry is refused — not rendered, and reported by `init` and `sync` as `pre_
 when it is not an object, has no string `command`, or either string is empty, too long, or contains
 a line break or other control character, a backtick, an HTML comment delimiter (`<!--`, `-->`) or
 hidden Unicode: each of those would let the configuration change the block's structure or say
-something a reviewer does not see. The block's stamp does not cover `pre_pr`, so run
-`guardlink sync` after changing it.
+something a reviewer does not see. Run `guardlink sync` after changing `pre_pr`: the block's stamp
+does not cover it, so `guardlink validate` compares the lines instead and reports a block that does
+not carry what `pre_pr` configures (`agent-block-pre-pr-stale`).
 
 ## Attribution (`guardlink blame`)
 

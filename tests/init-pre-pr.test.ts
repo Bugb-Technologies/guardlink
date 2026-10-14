@@ -15,7 +15,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentInstructions } from '../src/init/templates.js';
-import { readPrePrSteps, PRE_PR_MAX_STEPS } from '../src/init/pre-pr.js';
+import { readPrePrSteps, findPrePrDrift, PRE_PR_MAX_STEPS } from '../src/init/pre-pr.js';
 import { initProject, syncAgentFiles, replaceOrAppend } from '../src/init/index.js';
 import { parseProject } from '../src/parser/parse-project.js';
 import { findHiddenUnicode } from '../src/agentconfig/hidden-unicode.js';
@@ -215,6 +215,54 @@ describe('init and sync render pre_pr into every instruction file', () => {
     const result = await sync(root);
     expect(result.skipped).toContain('.guardlink/config.json pre_pr[0]: "command" contains a backtick, which would end its code span — not rendered');
     for (const f of AGENT_FILES) expect(read(root, f), f).not.toContain('make` x');
+  });
+});
+
+/**
+ * The block's stamp covers the annotations and the agent configuration, not
+ * `pre_pr`. A tool that registers an entry and never syncs would otherwise get
+ * no line in any file while the entry reads as working.
+ */
+describe('validate says when a block does not carry what pre_pr configures', () => {
+  const ENTRY = { command: 'other-tool check --format json', why: 'static analysis over the change' };
+
+  it('silent when there is no pre_pr and no contributed line', async () => {
+    const root = initialised();
+    await sync(root);
+    expect(findPrePrDrift(root)).toEqual([]);
+  });
+
+  it('an entry registered without a sync is reported on every file, and sync clears it', async () => {
+    const root = initialised();
+    await sync(root);
+    setPrePr(root, [ENTRY]);
+    const drift = findPrePrDrift(root);
+    expect(drift.map(d => d.file).sort()).toEqual([...AGENT_FILES].sort());
+    for (const d of drift) {
+      expect(d.code).toBe('agent-block-pre-pr-stale');
+      expect(d.level).toBe('warning');
+      expect(d.message).toContain('1 line(s) `pre_pr` configures are missing');
+      expect(d.message).toContain('run `guardlink sync`');
+      // Anchored at the begin marker, like agent-block-stale.
+      expect(read(root, d.file).split('\n')[d.line - 1]).toBe(BEGIN);
+    }
+    await sync(root);
+    expect(findPrePrDrift(root)).toEqual([]);
+  });
+
+  it('an entry removed without a sync is reported as a line that remains', async () => {
+    const root = initialised([ENTRY]);
+    await sync(root);
+    setPrePr(root, []);
+    const drift = findPrePrDrift(root);
+    expect(drift).toHaveLength(AGENT_FILES.length);
+    expect(drift[0].message).toContain('1 line(s) `pre_pr` no longer configures remain');
+  });
+
+  it('a refused entry expects no line, so it is not reported as drift', async () => {
+    const root = initialised([{ command: 'make` x' }]);
+    await sync(root);
+    expect(findPrePrDrift(root)).toEqual([]);
   });
 });
 

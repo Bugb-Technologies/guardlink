@@ -54,6 +54,7 @@ import { diagnosticIcon } from '../parser/format.js';
 import { runCiChecks, formatCiReport, ESTATE_ROUTE } from '../ci/index.js';
 import type { CiWorkspaceScope } from '../ci/index.js';
 import { initProject, detectProject, describeScope, promptAgentSelection, syncAgentFiles } from '../init/index.js';
+import { findPrePrDrift } from '../init/pre-pr.js';
 import { ensurePromptMd } from '../init/migrate.js';
 import { generateReport, generateMermaid, generateAgentReachReport } from '../report/index.js';
 import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getChangedFiles } from '../diff/index.js';
@@ -449,8 +450,10 @@ program
     // The repository's agent configuration (SPEC §5.6): hidden Unicode, block
     // stamps, unreadable files and hand-written coding-agent reach.
     const agentConfigDiags = findAgentConfigDiagnostics(model);
+    // The block's pre-PR lines against `pre_pr`, which its stamp does not cover.
+    const prePrDiags = findPrePrDrift(root);
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...acceptAuditDiags, ...acceptanceDiags, ...actorDiags, ...agentReachDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags, ...boundaryDiags, ...agentConfigDiags];
+    const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...acceptAuditDiags, ...acceptanceDiags, ...actorDiags, ...agentReachDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags, ...boundaryDiags, ...agentConfigDiags, ...prePrDiags];
 
     // Check for unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);

@@ -15,7 +15,7 @@ import { HANDOFF_COMMAND, HANDOFF_PATH } from '../parser/handoff.js';
 // D17: one list of GuardLink's own generated outputs — the parser excludes them
 // from the scan set, and .gitignore ignores them, from the same constant.
 import { GENERATED_OUTPUT_FILES } from '../parser/parse-project.js';
-import type { PrePrStep } from './pre-pr.js';
+import { renderPrePrLine, type PrePrStep } from './pre-pr.js';
 
 // ─── Where annotations go (D27) ──────────────────────────────────────
 
@@ -422,8 +422,7 @@ export interface AgentBlockContext {
  * they came from so an agent can tell them apart.
  */
 function prePrSection(prePr: PrePrStep[]): string {
-  const contributed = prePr.map(s =>
-    `- \`${s.command}\`${s.why ? ` — ${s.why}` : ''} (from \`pre_pr\` in \`.guardlink/config.json\`)`);
+  const contributed = prePr.map(renderPrePrLine);
   return [
     '**Before you open or update a pull request**, check the annotations it adds against its base branch:',
     '',
