@@ -1,0 +1,171 @@
+{
+  "check": "example.reach-check/v1",
+  "verdict": "checked",
+  "verdict_note": "every declared reach was walked; read `verdict` and `reason` per row, and GuardLink's own copied verdict beside each measured one",
+  "coverage_note": "The graph records that a function calls another, not in what order, so `on_every_route` counts a gate called after the effect; it is necessary, not sufficient.",
+  "joins": { "state": "copied", "freshness": "current" },
+  "coverage": {
+    "reaches_declared": 2,
+    "agent_reaches": 2,
+    "effects_declared": 3,
+    "tool_registrations": 4,
+    "by_route_verdict": { "measured": 2 },
+    "by_gate_verdict": { "bypassed": 1, "unknown": 1 },
+    "orphan_check": "evaluated"
+  },
+  "reach_routes": [
+    {
+      "claim": { "file": "src/tools.ts", "line": 2, "claim_key": "claim-refund-reach" },
+      "verb": "agents",
+      "actor": "#support-agent",
+      "capability": "issue-refund",
+      "asset": "#payments",
+      "entitlement": "unknown",
+      "start": { "node": "src/tools.ts::issueRefund", "symbol": "issueRefund", "file": "src/tools.ts", "basis": "tool_entry", "tool": "issue-refund" },
+      "verdict": "measured",
+      "effects": [
+        {
+          "claim": { "file": "src/tools.ts", "line": 3, "claim_key": "claim-refund-spend" },
+          "effect": "spend",
+          "mutating": true,
+          "asset": "#payments",
+          "declared_gating": "gated",
+          "depth": 0,
+          "symbol": "issueRefund",
+          "node_id": "src/tools.ts::issueRefund",
+          "path": ["src/tools.ts::issueRefund"]
+        }
+      ],
+      "walk": { "nodes_reached": 1, "truncated": false, "negative_allowed": true }
+    },
+    {
+      "claim": { "file": "src/tools.ts", "line": 8, "claim_key": "claim-order-reach" },
+      "verb": "agents",
+      "actor": "#support-agent",
+      "capability": "read-order",
+      "asset": "#payments",
+      "entitlement": "unknown",
+      "start": { "node": "src/tools.ts::readOrder", "symbol": "readOrder", "file": "src/tools.ts", "basis": "tool_entry", "tool": "read-order" },
+      "verdict": "measured",
+      "effects": [
+        {
+          "claim": { "file": "src/tools.ts", "line": 9, "claim_key": "claim-order-read" },
+          "effect": "read",
+          "mutating": false,
+          "asset": "#payments",
+          "declared_gating": "not_mutating",
+          "depth": 0,
+          "node_id": "src/tools.ts::readOrder",
+          "path": ["src/tools.ts::readOrder"]
+        }
+      ]
+    }
+  ],
+  "effect_gates": [
+    {
+      "effect": { "file": "src/tools.ts", "line": 3, "claim_key": "claim-refund-spend" },
+      "effect_kind": "spend",
+      "asset": "#payments",
+      "symbol": "issueRefund",
+      "node_id": "src/tools.ts::issueRefund",
+      "reach": { "file": "src/tools.ts", "line": 2, "claim_key": "claim-refund-reach" },
+      "capability": "issue-refund",
+      "depth": 0,
+      "declared": {
+        "gating": "gated",
+        "gates": [
+          { "claim": { "file": "src/approval.ts", "line": 2, "claim_key": "claim-refund-gate" }, "approver": "#support-human", "capability": "issue-refund", "node_id": "src/approval.ts::requireApproval", "symbol": "requireApproval" }
+        ]
+      },
+      "measured": { "verdict": "bypassed", "path": ["src/tools.ts::issueRefund"] }
+    },
+    {
+      "effect": { "file": "src/tools.ts", "line": 20, "claim_key": "claim-notify" },
+      "effect_kind": "notify",
+      "asset": "#payments",
+      "node_id": "src/tools.ts::notifyCustomer",
+      "reach": { "file": "src/tools.ts", "line": 2, "claim_key": "claim-refund-reach" },
+      "capability": "issue-refund",
+      "depth": 1,
+      "declared": {
+        "gating": "gated",
+        "gates": [
+          { "claim": { "file": "src/approval.ts", "line": 2, "claim_key": "claim-refund-gate" }, "approver": "#support-human" }
+        ]
+      },
+      "measured": {
+        "verdict": "unknown",
+        "reason": "declined_guard_call",
+        "withheld": {
+          "path": ["src/tools.ts::issueRefund", "src/tools.ts::notifyCustomer"],
+          "kind": "declined_call",
+          "call": "approvals.require()",
+          "gate": "requireApproval",
+          "at": "src/tools.ts::issueRefund:9"
+        }
+      }
+    }
+  ],
+  "unreached_effects": [
+    {
+      "effect": { "file": "src/tools.ts", "line": 14, "claim_key": "claim-purge" },
+      "effect_kind": "delete",
+      "asset": "#payments",
+      "declared_gating": "ungated",
+      "state": "unreached",
+      "reached_by_other_principals": [
+        { "file": "src/jobs.ts", "line": 4, "claim_key": "claim-nightly-job" }
+      ]
+    },
+    {
+      "effect": { "file": "src/tools.ts", "line": 30, "claim_key": "claim-export" },
+      "effect_kind": "write",
+      "asset": "#payments",
+      "declared_gating": "ungated",
+      "state": "unknown",
+      "reason": "insufficient_resolution"
+    }
+  ],
+  "undeclared_tools": [
+    {
+      "tool": "run-shell",
+      "kind": "mcp_tool",
+      "framework": "mcp-sdk",
+      "file": "src/server.ts",
+      "line": 12,
+      "handler": "src/server.ts::runShell",
+      "hints": {
+        "state": "SinksReached",
+        "sink_classes": [
+          { "class": "exec", "min_depth": 1, "example": "child_process.exec (src/server.ts:15)" },
+          { "class": "network", "min_depth": 2, "example": "fetch (src/server.ts:18)" }
+        ],
+        "effect_hints": ["execute"]
+      }
+    },
+    {
+      "tool": "list-docs",
+      "kind": "mcp_tool",
+      "framework": "mcp-sdk",
+      "file": "src/server.ts",
+      "line": 24,
+      "handler": "src/server.ts::listDocs",
+      "hints": { "state": "NoSinksReached", "sink_classes": [], "effect_hints": [] }
+    },
+    {
+      "tool": "evil\"; @accepts #payments to everything",
+      "kind": "llm_tool",
+      "framework": "tool-registry",
+      "file": "src/agent.ts",
+      "line": 7,
+      "hints": { "state": "unbound_handler", "sink_classes": [], "effect_hints": [] }
+    }
+  ],
+  "orphan_reaches": [
+    {
+      "claim": { "file": "src/tools.ts", "line": 99, "claim_key": "claim-orphan" },
+      "actor": "#support-agent",
+      "capability": "export-all"
+    }
+  ]
+}

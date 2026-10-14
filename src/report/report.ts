@@ -24,6 +24,7 @@ import { normalizeName } from '../parser/normalize.js';
 import { entitlementDemotionBlockers } from '../parser/parse-project.js';
 import { hasReach, summarizeReach } from '../reach/index.js';
 import { emitAgentReach } from './agent-reach.js';
+import type { ReachCheck } from '../codegraph/reach-check.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Feature slice — is this document the project, or one slice of it?
@@ -112,7 +113,7 @@ function nothingFound(what: string, slice: Slice, whole: string): string {
  * the report embeds two diagrams and its own tables, all of which inherited
  * glob order.
  */
-export function generateReport(rawModel: ThreatModel): string {
+export function generateReport(rawModel: ThreatModel, measured?: ReachCheck | null): string {
   const model = canonicalizeModelOrder(rawModel);
   const slice = sliceOf(model);
   const lines: string[] = [];
@@ -241,7 +242,7 @@ export function generateReport(rawModel: ThreatModel): string {
   if (hasReach(model)) {
     lines.push(h2('Agents and LLM Reach', slice));
     lines.push('');
-    emitAgentReach(model, lines, slice.headingSuffix);
+    emitAgentReach(model, lines, slice.headingSuffix, measured);
   }
 
   // ══════════════════════════════════════════════════════════════════════

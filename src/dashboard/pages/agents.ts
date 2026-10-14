@@ -19,6 +19,7 @@ import { esc, scopeLabel, pageHead, subHead, sortableHead, rowAttrs, locCellShor
 import type { ReachSummary, ReachEffectChip, ReachCapabilityChip, ReachLoc, GrantedBy } from '../../reach/index.js';
 import type { PageContext } from './context.js';
 import { actorTables } from './tables.js';
+import { MEASURED_LABEL, type MeasuredRouteRow } from '../../codegraph/reach-check.js';
 
 const where = (l: ReachLoc): string => `${l.file}:${l.line}`;
 
@@ -81,6 +82,34 @@ function reachMap(s: ReachSummary): string {
     <span><span class="reach-chip reach-eff gated">⊢ spend · gated</span> a named approver decides first</span>
     <span><span class="reach-chip reach-eff read">read</span> read</span>
   </div>`;
+}
+
+/**
+ * What a code graph measured for each declared reach, beside what the annotations
+ * say. Drawn only when the dashboard was given a graph's answer, so the page
+ * without one is exactly what it was. The label is part of the table: this is a
+ * reading of the call graph, a claim to check, never evidence.
+ */
+function measuredSection(rows: MeasuredRouteRow[], loc: (l: ReachLoc) => string): string {
+  if (rows.length === 0) return '';
+  return `
+  ${subHead('Measured route', '', `<span data-count-for="agent-measured">${rows.length}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="agents-measured">')}
+  <p class="guide"><b>${esc(MEASURED_LABEL)}</b> <code>measured</code> means the reach's handler reaches a declared effect over resolved calls; <code>unknown</code> is never read as either answer.</p>
+  <div class="table-wrap"><table id="agent-measured" class="sortable" data-paginate="25">
+    ${sortableHead([{ key: 'actor', label: 'Actor' }, { key: 'capability', label: 'Capability' }, { key: 'asset', label: 'On' }, { key: 'route', label: 'Measured route (code graph)' }, { key: 'gates', label: 'Gates on the route', plain: true }, { key: 'location', label: 'Location', cls: 'loc' }])}
+    <tbody>
+    ${rows.map(r => `
+    <tr ${rowAttrs({ file: r.file, search: ['measured', r.route, r.text, r.actor, r.capability, r.asset, ...r.gates] })}>
+      <td><code>${esc(r.actor)}</code></td>
+      <td><code>${esc(r.capability)}</code></td>
+      <td>${r.asset ? `<code>${esc(r.asset)}</code>` : '—'}</td>
+      <td>${esc(r.text)}</td>
+      <td>${r.gates.length > 0 ? r.gates.map(g => `<div>${esc(g)}</div>`).join('') : '—'}</td>
+      ${loc({ file: r.file, line: r.line })}
+    </tr>`).join('')}
+    </tbody>
+  </table></div>
+  ${pager('agent-measured')}`;
 }
 
 const grantedBy = (g: GrantedBy): string =>
@@ -272,6 +301,7 @@ export function renderAgentsPage(ctx: PageContext, s: ReachSummary): string {
     </tbody>
   </table></div>` : ''}
 
+${measuredSection(ctx.measured ?? [], loc)}
 ` : `
   <p class="empty-state">No <code>@agents</code>, <code>@reaches</code>, <code>@effects</code> or <code>@gates</code> annotations: nothing in the model says what an agent this code embeds can reach. The coding agents this repository configures are below.</p>`}
 

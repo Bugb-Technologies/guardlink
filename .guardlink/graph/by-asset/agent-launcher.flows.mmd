@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/agent-launcher.flows.mmd
-%% scope:           PARTIAL — #agent-launcher and its flow neighbourhood, grown until the drawing stopped fitting — 20 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059
+%% scope:           PARTIAL — #agent-launcher and its flow neighbourhood, grown until the drawing stopped fitting — 21 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:c469bfa1007f984711fa1bfca471817fe44e11b8c16014f8d8c5268ff6c08c0c
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -19,7 +19,6 @@ graph LR
   end
   envvars["🧩 EnvVars"]
   configfile["🧩 ConfigFile"]
-  userprompt["👤 UserPrompt"]
   threatmodel["🧩 ThreatModel"]
   agentprompt["🧩 AgentPrompt"]
   codegraph["🧩 GuardLink.CodeGraph"]
@@ -28,15 +27,12 @@ graph LR
   envvars -- "📡 process.env" --> agent_launcher
   configfile -- "🗄️ readFileSync" --> agent_launcher
   agent_launcher -- "🗄️ writeFileSync" --> configfile
-  userprompt -- "📡 launchAgent" --> agent_launcher
   agent_launcher -- "📡 spawn" --> agentprocess
   agentprocess -- "📡 stdout" --> agent_launcher
-  userprompt -- "📡 buildAnnotatePrompt" --> agent_launcher
-  userprompt -- "📡 buildTranslatePrompt" --> agent_launcher
-  userprompt -- "📡 buildAskPrompt" --> agent_launcher
   threatmodel -- "📡 model" --> agent_launcher
   agent_launcher -- "📡 return" --> agentprompt
   codegraph -- "📡 worklist" --> agent_launcher
+  codegraph -- "📡 undeclared agent tools" --> agent_launcher
   tui -- "📡 launchAgent" --> agent_launcher
   configfile -- "📡 loadProjectConfig" --> tui
   tui -- "📡 saveProjectConfig" --> configfile

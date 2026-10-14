@@ -13,6 +13,7 @@
  * @comment -- "Pure; every string here is raw and is escaped by the page that renders it"
  */
 import type { ReachSummary } from '../../reach/index.js';
+import type { MeasuredRouteRow } from '../../codegraph/reach-check.js';
 import type { ExposureHypothesis, ThreatModel } from '../../types/index.js';
 import type { ClaimState, VerificationReport } from '../../parser/verification.js';
 import { buildCoverageIndex } from '../../parser/coverage.js';
@@ -106,6 +107,8 @@ export interface PageContext {
   fileRisk: Map<string, FileRisk>;
   /** What agents and other principals can reach (src/reach). */
   reach: ReachSummary;
+  /** What a code graph measured for each declared reach; absent unless the dashboard was given an answer (`--code-graph`). */
+  measured?: MeasuredRouteRow[];
 }
 
 const aiLabel = (ref: CommitRef): string[] => ref.assisted_by.map(a => (a.model ? `${a.tool} (${a.model})` : a.tool));

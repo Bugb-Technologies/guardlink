@@ -45,6 +45,7 @@ import { ANNOTATIONS_DIR, galPathFor } from '../parser/gal-path.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
 import { selectAnnotatePlaybook, getPlaybook, type AnnotatePlaybookId } from '../playbooks/index.js';
 import { renderWorklistBlock, type Worklist } from '../codegraph/index.js';
+import { renderUndeclaredToolsBlock, type ReachCheck } from '../codegraph/reach-check.js';
 
 /** How every playbook without its own `worklistUse` reads a code-graph worklist. */
 const WORKLIST_DEFAULT_USE = 'Use this list to decide what to read first. The scope above and the method below still govern: it adds no file to the scope and lowers no bar.';
@@ -145,6 +146,7 @@ You MUST write annotations inline in the source code comments.
  *
  * @comment -- "The method sits above the generic rules on purpose: the agent reads it first, and the evidence bar it carries is what the gate later checks"
  * @flows #codegraph -> #agent-launcher via worklist -- "Optional code-graph worklist, placed between the scope and the method; absent, the prompt is unchanged"
+ * @flows #codegraph -> #agent-launcher via undeclared agent tools -- "Optional list of tool registrations no @agents covers, placed after the worklist; absent, the prompt is unchanged"
  */
 export function buildAnnotatePrompt(
   userPrompt: string,
@@ -153,11 +155,13 @@ export function buildAnnotatePrompt(
   annotationMode: AnnotationMode = 'inline',
   playbook?: AnnotatePlaybookId | string,
   worklist?: Worklist | null,
+  reachCheck?: ReachCheck | null,
 ): string {
   const selection = selectAnnotatePlaybook(userPrompt, playbook);
   const pb = getPlaybook(selection.id);
   // Empty unless a code graph answered; with none, the prompt is byte-identical to before.
-  const worklistBlock = renderWorklistBlock(worklist, pb.worklistUse ?? WORKLIST_DEFAULT_USE);
+  // The agent tools with no declared reach follow the worklist, under the same rule.
+  const worklistBlock = [renderWorklistBlock(worklist, pb.worklistUse ?? WORKLIST_DEFAULT_USE), renderUndeclaredToolsBlock(reachCheck)].filter(Boolean).join('\n\n');
   // Read the reference doc if available
   let refDoc = '';
   const refPath = resolve(root, '.guardlink', 'GUARDLINK_REFERENCE.md');

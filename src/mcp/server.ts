@@ -87,6 +87,7 @@ import { buildServerInstructions, readConfiguredMode } from './instructions.js';
 import { suggestAnnotations } from './suggest.js';
 import { loadWorklist, reachFor, worklistSummaryLine, type Worklist } from '../codegraph/index.js';
 import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary-check.js';
+import { loadReachCheck, checkReach, reachCheckSummaryLine, type ReachCheck } from '../codegraph/reach-check.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
@@ -362,7 +363,7 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_validate',
-    'Check annotations for syntax errors, duplicate IDs, and dangling references. Returns structured error list. With code_graph: true, also checks each declared @boundary against an optional code graph — a boundary whose description says its inner side needs a login (or an admin check) while a route there is classified public (boundary-access-contradicted) or could not be classified (boundary-access-unknown), a route handler reaching a sink with no boundary to the outside (boundary-missing), a boundary no flow crosses and no entry point reaches (boundary-unused). Those are warnings about claims to verify, never findings; boundary_checks says whether the graph was usable.',
+    'Check annotations for syntax errors, duplicate IDs, and dangling references. Returns structured error list. With code_graph: true, also checks each declared @boundary against an optional code graph — a boundary whose description says its inner side needs a login (or an admin check) while a route there is classified public (boundary-access-contradicted) or could not be classified (boundary-access-unknown), a route handler reaching a sink with no boundary to the outside (boundary-missing), a boundary no flow crosses and no entry point reaches (boundary-unused). It also measures the declared @agents/@reaches/@effects/@gates against the call graph: an effect the annotations call gated while the graph finds a route to it through no gate (gate-not-on-route), a declared mutating effect no agent reach leads to (effect-unreached-by-agent), a tool registration no @agents covers (agent-tool-undeclared). Those are warnings about claims to verify, never findings; boundary_checks says whether the graph was usable, and reach_checks (present only when the graph answered the reach query) says what it measured.',
     {
       root: z.string().describe('Project root directory').default('.'),
       code_graph: z.boolean().default(false).describe('Also check declared boundaries against a code graph, when one is installed and built for this repository'),
@@ -388,6 +389,8 @@ export function createServer(): McpServer {
       // Only when asked: without code_graph the answer is exactly what it was.
       let boundaryChecks: { code_graph: string; warnings: { file: string; line: number; code?: string; message: string }[] } | undefined;
       let boundaryDiags: typeof diagnostics = [];
+      let reachChecks: { code_graph: string; warnings: { file: string; line: number; code?: string; message: string }[] } | undefined;
+      let reachDiags: typeof diagnostics = [];
       if (code_graph) {
         const worklist = await loadWorklist(resolve(root), model);
         boundaryDiags = checkBoundaries(model, worklist);
@@ -395,10 +398,21 @@ export function createServer(): McpServer {
           code_graph: boundaryCheckSummaryLine(worklist, boundaryDiags),
           warnings: boundaryDiags.map(d => ({ file: d.file, line: d.line, code: d.code, message: d.message })),
         };
+        // The declared agent reach against the same graph. Reported only when the graph answered,
+        // so a run without one returns exactly what it returned before.
+        const reachCheck = await loadReachCheck(resolve(root));
+        reachDiags = checkReach(reachCheck);
+        const reachLine = reachCheckSummaryLine(reachCheck, reachDiags);
+        if (reachLine) {
+          reachChecks = {
+            code_graph: reachLine,
+            warnings: reachDiags.map(d => ({ file: d.file, line: d.line, code: d.code, message: d.message })),
+          };
+        }
       }
       // Agent configuration (SPEC §5.6): hidden Unicode, block stamps, unreadable files, hand-written coding-agent reach.
       const agentConfigDiags = findAgentConfigDiagnostics(model);
-      const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...actorDiags, ...agentReachDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...boundaryDiags, ...agentConfigDiags, ...findPrePrDrift(root)];
+      const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...actorDiags, ...agentReachDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...boundaryDiags, ...reachDiags, ...agentConfigDiags, ...findPrePrDrift(root)];
 
       const errors = allDiags.filter(d => d.level === 'error');
       const warnings = allDiags.filter(d => d.level === 'warning');
@@ -409,6 +423,7 @@ export function createServer(): McpServer {
         warnings: warnings.map(d => ({ file: d.file, line: d.line, message: d.message })),
         summary: `${errors.length} error(s), ${warnings.length} warning(s)`,
         ...(boundaryChecks ? { boundary_checks: boundaryChecks } : {}),
+        ...(reachChecks ? { reach_checks: reachChecks } : {}),
       };
 
       return {
@@ -459,6 +474,8 @@ export function createServer(): McpServer {
       let model: ThreatModel | null = null;
       try { model = (await getModel(root)).model; } catch { /* no model — every handler reads as unannotated */ }
       const w = await loadWorklist(absRoot, model);
+      // Agent tools no @agents covers, from the same graph; absent unless it answered the reach query.
+      const reachCheck = w.status === 'available' ? await loadReachCheck(absRoot) : null;
       const matching = file ? w.entries.filter(e => e.file.includes(file)) : w.entries;
       const result = {
         code_graph: {
@@ -476,6 +493,12 @@ export function createServer(): McpServer {
         coverage_note: w.status === 'available'
           ? 'Only entry points in frameworks the graph recognises are ranked; one it does not recognise (a CLI command, a message consumer, another framework) is absent, not safe.'
           : '',
+        ...(reachCheck && reachCheck.status === 'available' ? {
+          undeclared_agent_tools: {
+            note: 'Tool registrations the graph finds that no @agents or @reaches covers, with the sink classes each handler reaches. A place to look, not a finding; effect_hints are candidates for a person, never declarations.',
+            tools: reachCheck.undeclared,
+          },
+        } : {}),
       };
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     },
@@ -803,7 +826,8 @@ export function createServer(): McpServer {
       } catch { /* no model yet — fine */ }
 
       const worklist: Worklist = await loadWorklist(resolve(root), parsed, { enabled: code_graph !== false });
-      const annotatePrompt = buildAnnotatePrompt(prompt, root, model, mode, playbook, worklist);
+      const reachCheck: ReachCheck | null = worklist.status === 'available' ? await loadReachCheck(resolve(root)) : null;
+      const annotatePrompt = buildAnnotatePrompt(prompt, root, model, mode, playbook, worklist, reachCheck);
 
       return {
         content: [{ type: 'text', text: JSON.stringify({

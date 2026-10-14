@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        attack-surface.mmd
-%% annotation_hash: sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059
+%% annotation_hash: sha256-v3:c469bfa1007f984711fa1bfca471817fe44e11b8c16014f8d8c5268ff6c08c0c
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -43,40 +43,40 @@ graph TB
     E14["⚠️ Config_Tampering"]:::sev_med
     E15["✅ Denial_of_Service ×2"]:::sev_low
   end
-  subgraph A_codegraph["GuardLink.CodeGraph · ⚠ 2 open"]
-    direction TB
-    E16["✅ Child_Process_Injection"]:::sev_high
-    E17["⚠️ Config_Tampering"]:::sev_med
-    E18["⚠️ Prompt_Injection"]:::sev_med
-    E19["✅ Denial_of_Service"]:::sev_low
-  end
   subgraph A_llm_client["GuardLink.LLM_Client · ⚠ 2 open"]
     direction TB
-    E20["✅ API_Key_Exposure"]:::sev_high
-    E21["✅ Path_Traversal ×2"]:::sev_med
-    E22["✅ Arbitrary_File_Write"]:::sev_med
-    E23["✅ Server_Side_Request_Forgery ×2"]:::sev_med
-    E24["⚠️ Prompt_Injection"]:::sev_med
-    E25["✅ Insecure_Deserialization"]:::sev_low
-    E26["⚠️ Sensitive_Data_Exposure"]:::sev_low
-    E27["✅ Denial_of_Service"]:::sev_low
+    E16["✅ API_Key_Exposure"]:::sev_high
+    E17["✅ Path_Traversal ×2"]:::sev_med
+    E18["✅ Arbitrary_File_Write"]:::sev_med
+    E19["✅ Server_Side_Request_Forgery ×2"]:::sev_med
+    E20["⚠️ Prompt_Injection"]:::sev_med
+    E21["✅ Insecure_Deserialization"]:::sev_low
+    E22["⚠️ Sensitive_Data_Exposure"]:::sev_low
+    E23["✅ Denial_of_Service"]:::sev_low
   end
   subgraph A_tui["GuardLink.TUI · ⚠ 2 open"]
     direction TB
-    E28["✅ Path_Traversal ×2"]:::sev_high
-    E29["✅ Arbitrary_File_Write"]:::sev_high
-    E30["⚠️ Command_Injection"]:::sev_high
-    E31["✅ API_Key_Exposure ×3"]:::sev_high
-    E32["⚠️ Prompt_Injection"]:::sev_med
-    E33["✅ Denial_of_Service"]:::sev_low
+    E24["✅ Path_Traversal ×2"]:::sev_high
+    E25["✅ Arbitrary_File_Write"]:::sev_high
+    E26["⚠️ Command_Injection"]:::sev_high
+    E27["✅ API_Key_Exposure ×3"]:::sev_high
+    E28["⚠️ Prompt_Injection"]:::sev_med
+    E29["✅ Denial_of_Service"]:::sev_low
   end
   subgraph A_agent_config["GuardLink.AgentConfig · ⚠ 1 open"]
     direction TB
-    E34["✅ Path_Traversal ×2"]:::sev_med
-    E35["✅ Command_Injection"]:::sev_med
-    E36["✅ Sensitive_Data_Exposure"]:::sev_med
-    E37["✅ Denial_of_Service ×2"]:::sev_low
-    E38["⚠️ Prompt_Injection"]:::sev_low
+    E30["✅ Path_Traversal ×2"]:::sev_med
+    E31["✅ Command_Injection"]:::sev_med
+    E32["✅ Sensitive_Data_Exposure"]:::sev_med
+    E33["✅ Denial_of_Service ×2"]:::sev_low
+    E34["⚠️ Prompt_Injection"]:::sev_low
+  end
+  subgraph A_codegraph["GuardLink.CodeGraph · ⚠ 1 open"]
+    direction TB
+    E35["✅ Child_Process_Injection"]:::sev_high
+    E36["⚠️ Config_Tampering"]:::sev_med
+    E37["✅ Prompt_Injection ×2"]:::sev_med
+    E38["✅ Denial_of_Service"]:::sev_low
   end
   subgraph A_init["GuardLink.Init · ⚠ 1 open"]
     direction TB

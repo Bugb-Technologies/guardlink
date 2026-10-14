@@ -202,6 +202,18 @@ in front of a route the graph classifies `public`, a route handler reaching a si
 with no boundary to the outside, and a boundary nothing crosses. These are warnings
 about claims to verify, never findings.
 
+A graph that also answers `codegraph_reach_check` lets GuardLink measure the declared
+agent reach (`@agents`, `@effects`, `@gates`) against the call graph. `validate
+--code-graph` then adds three more warnings — `gate-not-on-route` (the annotations say
+an effect is gated, and the graph finds a route to it through no gate),
+`effect-unreached-by-agent` and `agent-tool-undeclared` (a tool registration nothing
+declares) — each worded as a claim to check: the call graph is order-blind and can miss
+a call, so none is a finding. The annotate prompt lists the undeclared tools,
+`guardlink reach --drafts` prints draft `@agents` and `@effects` lines for them
+(printed, never written, never `@accepts` or `@entitles`), and `report --code-graph`
+and `dashboard --code-graph` add a measured-route column labelled as a code-graph
+measurement. Without a graph, or with one that does not answer the query, nothing changes.
+
 ---
 
 ## Real-world results

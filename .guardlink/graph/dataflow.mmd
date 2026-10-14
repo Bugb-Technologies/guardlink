@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059
+%% annotation_hash: sha256-v3:c469bfa1007f984711fa1bfca471817fe44e11b8c16014f8d8c5268ff6c08c0c
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 78 nodes / 203 edges, past the 12 / 16 legibility budget (78 nodes against 12, 203 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 78 nodes / 206 edges, past the 12 / 16 legibility budget (78 nodes against 12, 206 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -159,6 +159,7 @@ graph LR
   threatmodel -- "📡 model" --> agent_launcher
   agent_launcher -- "📡 return" --> agentprompt
   codegraph -- "📡 worklist" --> agent_launcher
+  codegraph -- "📡 undeclared agent tools" --> agent_launcher
   savedreport -- "📡 parseFindingsBlock" --> llm_client
   threatmodel -- "📡 serializeModel" --> llm_client
   projectfiles -- "🗄️ readFileSync" --> llm_client
@@ -198,6 +199,7 @@ graph LR
   ledgerfile -- "📡 readHypotheses" --> cli
   gitrepo -- "📡 computeBlame" --> cli
   cli -- "📡 loadWorklist" --> codegraph
+  cli -- "📡 loadReachCheck" --> codegraph
   userinput -- "📡 verify" --> cli
   cli -- "📡 runGate" --> gate
   threatmodel -- "📡 findUnmitigatedPaths" --> cli
@@ -208,6 +210,7 @@ graph LR
   codegraphserver -- "📡 stdout" --> codegraph
   codegraphserver -- "📡 codegraph_auth_boundary" --> codegraph
   codegraph -- "📡 spawn" --> codegraphserver
+  codegraph -- "📡 loadReachCheck" --> cli
   sourcefiles -- "🗄️ readFileSync" --> dashboard
   ledgerfile -- "📡 readLedger" --> dashboard
   threatmodel -- "📡 generateThreatGraph" --> dashboard
