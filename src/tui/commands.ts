@@ -2001,6 +2001,9 @@ export async function cmdReport(ctx: TuiContext): Promise<void> {
 
 // ─── /dashboard ──────────────────────────────────────────────────────
 
+/**
+ * @comment -- "/dashboard opens the written file with spawn and an argument array; the project path never passes through a shell"
+ */
 export async function cmdDashboard(ctx: TuiContext): Promise<void> {
   if (!ctx.model) {
     console.log(C.warn('  No threat model. Run /parse first.'));
@@ -2015,10 +2018,14 @@ export async function cmdDashboard(ctx: TuiContext): Promise<void> {
   console.log(`  ${C.success('✓')} Dashboard generated: threat-dashboard.html`);
 
   // Open in browser
+  // An argument array, never a command line: outFile carries the project
+  // path, and a directory name may hold quotes or `$`.
   try {
-    const { exec } = await import('node:child_process');
-    const openCmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-    exec(`${openCmd} "${outFile}"`);
+    const { spawn } = await import('node:child_process');
+    const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer.exe' : 'xdg-open';
+    const child = spawn(opener, [outFile], { stdio: 'ignore', detached: true });
+    child.on('error', () => { /* no opener on this system; the path is printed above */ });
+    child.unref();
     console.log(C.dim('    Opened in browser.'));
   } catch {
     console.log(C.dim('    Open the file in your browser.'));

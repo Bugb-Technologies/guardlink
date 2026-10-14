@@ -4,19 +4,16 @@
  * page turns it into the "what changed" strip and the "new" marks on rows.
  *
  * @exposes #dashboard to #cmd-injection [low] cwe:CWE-78 -- "loadSince() passes the --since ref the user typed to parseAtRef() and into the git log and git rev-list argv"
- * @mitigates #dashboard against #cmd-injection using #param-commands -- "Checked against a strict ref shape first, then only ever passed as one argv element to execFileSync; parseAtRef rev-parses it before reading anything"
+ * @mitigates #dashboard against #cmd-injection using #param-commands -- "Checked against the shared REF_SHAPE first and resolved to a commit sha (resolveCommit); git log and rev-list are given that sha as one argv element to execFileSync"
  * @flows GitRepo -> #dashboard via parseAtRef -- "The threat model as it was at the ref"
  * @comment -- "Deterministic per ref: the ref's commit date and the commit count are facts of history, so two runs at the same HEAD produce the same page"
  */
 import { execFileSync } from 'node:child_process';
 import type { ThreatModel } from '../types/index.js';
-import { parseAtRef, getChangedFiles, diffModels } from '../diff/index.js';
+import { parseAtRef, getChangedFiles, diffModels, resolveCommit, REF_SHAPE } from '../diff/index.js';
 import type { SinceInput } from './analytics.js';
 
 export type { SinceInput } from './analytics.js';
-
-/** A git ref as a user types one: tag, branch, sha, HEAD~3, main@{1}. Nothing that could read as an option. */
-const REF_SHAPE = /^[A-Za-z0-9][A-Za-z0-9._/~^@{}-]*$/;
 
 function git(root: string, args: string[]): string | null {
   try {
@@ -35,8 +32,9 @@ export async function loadSince(root: string, ref: string, project: string, curr
   const before = await parseAtRef(root, ref, project);
   const changedFiles = getChangedFiles(root, ref);
   const diff = diffModels(before, current, { changedFiles });
-  const refDate = git(root, ['log', '-1', '--format=%cI', ref]);
-  const commits = git(root, ['rev-list', '--count', `${ref}..HEAD`]);
+  const commit = resolveCommit(root, ref);
+  const refDate = git(root, ['log', '-1', '--format=%cI', commit]);
+  const commits = git(root, ['rev-list', '--count', `${commit}..HEAD`]);
   return {
     ref,
     refDate: refDate && refDate.length > 0 ? refDate : null,

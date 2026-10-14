@@ -5,14 +5,14 @@
  * workspace info) for the report JSON contract.
  *
  * @asset Workspace.Metadata (#report-metadata) -- "Report provenance data"
- * @flows GitRepo -> #report-metadata via execSync -- "Git info extraction"
+ * @flows GitRepo -> #report-metadata via execFileSync -- "Git info extraction"
  * @flows #report-metadata -> ThreatModel via populateMetadata -- "Metadata injection"
  * @flows GitConfig -> #report-metadata via readVersionControl -- "remote.origin.url, HEAD and branch for SARIF versionControlProvenance"
  * @exposes #report-metadata to #data-exposure [low] cwe:CWE-200 -- "remote.origin.url may embed user:token@host credentials, and the SARIF it lands in is uploaded to code scanning"
  * @mitigates #report-metadata against #data-exposure using #key-redaction -- "readVersionControl keeps only linksFromRemote().web, rebuilt from hostname and path; userinfo is dropped, and a remote that is not http(s)/ssh yields no provenance at all"
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { computeAnnotationHash } from '../parser/annotation-hash.js';
@@ -78,7 +78,7 @@ export function readGitSha(root: string): string | null {
  */
 function getCommitSha(root: string): string | null {
   try {
-    return execSync('git rev-parse HEAD', { cwd: root, encoding: 'utf-8', stdio: 'pipe' }).trim();
+    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf-8', stdio: 'pipe' }).trim();
   } catch {
     return null;
   }
@@ -90,7 +90,7 @@ function getCommitSha(root: string): string | null {
  */
 function getBranch(root: string): string | null {
   try {
-    const branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: root, encoding: 'utf-8', stdio: 'pipe' }).trim();
+    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: root, encoding: 'utf-8', stdio: 'pipe' }).trim();
     return branch === 'HEAD' ? null : branch; // detached HEAD
   } catch {
     return null;
@@ -109,7 +109,7 @@ function getBranch(root: string): string | null {
 export function readVersionControl(root: string): { repositoryUri: string; revisionId: string | null; branch: string | null } | null {
   let remote: string;
   try {
-    remote = execSync('git config --get remote.origin.url', { cwd: root, encoding: 'utf-8', stdio: 'pipe' }).trim();
+    remote = execFileSync('git', ['config', '--get', 'remote.origin.url'], { cwd: root, encoding: 'utf-8', stdio: 'pipe' }).trim();
   } catch {
     return null;
   }

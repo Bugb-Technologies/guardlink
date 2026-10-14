@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:7ab08c4be04c2a53b489f178a999b6de34a30a99c4065e001f88862ed7e696c2",
+    "annotation_hash": "sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059",
     "generator": "guardlink@2.3.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 186,
-  "annotations_parsed": 1002,
+  "annotations_parsed": 1004,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agentconfig/discover.ts",
@@ -2130,7 +2130,7 @@
       "asset": "#dashboard",
       "threat": "#cmd-injection",
       "control": "#param-commands",
-      "description": "Checked against a strict ref shape first, then only ever passed as one argv element to execFileSync; parseAtRef rev-parses it before reading anything",
+      "description": "Checked against the shared REF_SHAPE first and resolved to a commit sha (resolveCommit); git log and rev-list are given that sha as one argv element to execFileSync",
       "location": {
         "file": "src/dashboard/since.ts",
         "line": 7
@@ -2139,11 +2139,21 @@
     {
       "asset": "#diff",
       "threat": "#cmd-injection",
-      "control": "#input-sanitize",
-      "description": "rev-parse validates ref exists before use in other commands",
+      "control": "#param-commands",
+      "description": "Every git call is execFileSync with an argument array; no command line is ever handed to a shell",
       "location": {
         "file": "src/diff/git.ts",
         "line": 7
+      }
+    },
+    {
+      "asset": "#diff",
+      "threat": "#cmd-injection",
+      "control": "#input-sanitize",
+      "description": "resolveCommit refuses a ref outside REF_SHAPE (a leading '-', whitespace, quoting or shell syntax), passes it after --end-of-options, and resolves it to a commit sha; every later git call takes that sha, never the ref",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 8
       }
     },
     {
@@ -2153,7 +2163,7 @@
       "description": "mkdtempSync creates isolated temp dir; rmSync cleans up",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 9
+        "line": 10
       }
     },
     {
@@ -2163,7 +2173,7 @@
       "description": "Files constrained to relevantFiles from git ls-tree",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 11
+        "line": 12
       }
     },
     {
@@ -2173,16 +2183,6 @@
       "description": "Only the agent-config reader follows the links, and it drops any whose real path leaves the temp tree; nothing is written through a link",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 13
-      }
-    },
-    {
-      "asset": "#diff",
-      "threat": "#cmd-injection",
-      "control": "#param-commands",
-      "description": "ls-tree and show run through execFileSync with an argument vector, so a file name from the repository never reaches a shell",
-      "location": {
-        "file": "src/diff/git.ts",
         "line": 14
       }
     },
@@ -2190,10 +2190,30 @@
       "asset": "#diff",
       "threat": "#cmd-injection",
       "control": "#input-sanitize",
-      "description": "rev-parse --verify must resolve ref to a single revision before it reaches the diff command; a shell metacharacter makes rev-parse fail, so the function returns [] instead of running the second command",
+      "description": "resolveCommit checks the ref's shape and resolves it to a sha first; a ref it refuses returns [] and runs nothing further",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 108
+        "line": 132
+      }
+    },
+    {
+      "asset": "#diff",
+      "threat": "#cmd-injection",
+      "control": "#param-commands",
+      "description": "git diff runs through execFileSync with the sha as one argument",
+      "location": {
+        "file": "src/diff/git.ts",
+        "line": 133
+      }
+    },
+    {
+      "asset": "#diff",
+      "threat": "#cmd-injection",
+      "control": "#param-commands",
+      "description": "git.ts runs every git call through execFileSync with an argument array and resolves the ref to a sha first (resolveCommit)",
+      "location": {
+        "file": "src/diff/index.ts",
+        "line": 5
       }
     },
     {
@@ -3654,7 +3674,7 @@
       "external_refs": [
         "cwe:CWE-78"
       ],
-      "description": "execSync runs git commands with ref argument",
+      "description": "The ref is caller-supplied (a CLI or TUI argument, or the ref argument of the guardlink_diff MCP tool) and reaches git",
       "location": {
         "file": "src/diff/git.ts",
         "line": 6
@@ -3670,7 +3690,7 @@
       "description": "writeFileSync creates files in temp directory",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 8
+        "line": 9
       }
     },
     {
@@ -3683,7 +3703,7 @@
       "description": "git show extracts files based on ls-tree output",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 10
+        "line": 11
       }
     },
     {
@@ -3696,7 +3716,7 @@
       "description": "Symlinks at the ref are recreated in the temp tree, and a link target is repository content",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 12
+        "line": 13
       }
     },
     {
@@ -3706,10 +3726,10 @@
       "external_refs": [
         "cwe:CWE-78"
       ],
-      "description": "ref is interpolated into an execSync git command",
+      "description": "getChangedFiles passes the caller's ref (a CLI, TUI or dashboard --since argument) to git diff --name-only",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 107
+        "line": 131
       }
     },
     {
@@ -3719,7 +3739,7 @@
       "external_refs": [
         "cwe:CWE-78"
       ],
-      "description": "git.ts uses execSync with ref argument",
+      "description": "git.ts runs git with a caller-supplied ref",
       "location": {
         "file": "src/diff/index.ts",
         "line": 4
@@ -5694,7 +5714,7 @@
     {
       "source": "GitRef",
       "target": "#diff",
-      "mechanism": "execSync",
+      "mechanism": "execFileSync",
       "route": null,
       "description": "Git command execution",
       "location": {
@@ -5727,12 +5747,12 @@
     {
       "source": "GitRef",
       "target": "#diff",
-      "mechanism": "execSync",
+      "mechanism": "execFileSync",
       "route": null,
       "description": "Ref input to git diff --name-only",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 109
+        "line": 134
       }
     },
     {
@@ -5743,7 +5763,7 @@
       "description": "Repo-relative paths used for entitlement staleness",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 110
+        "line": 135
       }
     },
     {
@@ -6981,7 +7001,7 @@
     {
       "source": "GitRepo",
       "target": "#report-metadata",
-      "mechanism": "execSync",
+      "mechanism": "execFileSync",
       "route": null,
       "description": "Git info extraction",
       "location": {
@@ -7297,14 +7317,6 @@
       "location": {
         "file": "src/codegraph/index.ts",
         "line": 62
-      }
-    },
-    {
-      "asset": "#diff",
-      "description": "Git commands use execSync; ref is validated with rev-parse before use",
-      "location": {
-        "file": "src/diff/index.ts",
-        "line": 5
       }
     },
     {
@@ -9967,6 +9979,13 @@
       }
     },
     {
+      "description": "/dashboard opens the written file with spawn and an argument array; the project path never passes through a shell",
+      "location": {
+        "file": "src/tui/commands.ts",
+        "line": 2005
+      }
+    },
+    {
       "description": "Raw mode enables full keystroke control for command palette",
       "location": {
         "file": "src/tui/input.ts",
@@ -10017,7 +10036,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 1002,
+    "annotation_count": 1004,
     "coverage_percent": 87
   },
   "external_refs": [],
@@ -10157,9 +10176,9 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:8065f7d4bc0b90d3fea7b807a850242149f9550dfcbeccbe72138bd0a92b50e6",
+          "stamp": "sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
-          "current": false
+          "current": true
         },
         "hidden_unicode": []
       },
@@ -10173,9 +10192,9 @@
         "bytes": 3285,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:8065f7d4bc0b90d3fea7b807a850242149f9550dfcbeccbe72138bd0a92b50e6",
+          "stamp": "sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
-          "current": false
+          "current": true
         },
         "hidden_unicode": []
       },
@@ -10190,9 +10209,9 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:8065f7d4bc0b90d3fea7b807a850242149f9550dfcbeccbe72138bd0a92b50e6",
+          "stamp": "sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
-          "current": false
+          "current": true
         },
         "hidden_unicode": []
       },
@@ -10207,9 +10226,9 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:8065f7d4bc0b90d3fea7b807a850242149f9550dfcbeccbe72138bd0a92b50e6",
+          "stamp": "sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
-          "current": false
+          "current": true
         },
         "hidden_unicode": []
       },
@@ -10223,9 +10242,9 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:8065f7d4bc0b90d3fea7b807a850242149f9550dfcbeccbe72138bd0a92b50e6",
+          "stamp": "sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
-          "current": false
+          "current": true
         },
         "hidden_unicode": []
       },
@@ -10242,9 +10261,9 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:8065f7d4bc0b90d3fea7b807a850242149f9550dfcbeccbe72138bd0a92b50e6",
+          "stamp": "sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
-          "current": false
+          "current": true
         },
         "hidden_unicode": []
       },
@@ -10259,9 +10278,9 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:8065f7d4bc0b90d3fea7b807a850242149f9550dfcbeccbe72138bd0a92b50e6",
+          "stamp": "sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
-          "current": false
+          "current": true
         },
         "hidden_unicode": []
       },

@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:7ab08c4be04c2a53b489f178a999b6de34a30a99c4065e001f88862ed7e696c2
+%% annotation_hash: sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -214,11 +214,11 @@ graph LR
   regex_anchoring -- mitigates --> dos
   regex_anchoring -. protects .-> dashboard
   param_commands -. protects .-> dashboard
+  param_commands -. protects .-> diff
   input_sanitize -- mitigates --> cmd_injection
   input_sanitize -. protects .-> diff
   path_validation -. protects .-> diff
   glob_filtering -. protects .-> diff
-  param_commands -. protects .-> diff
   path_validation -. protects .-> gate
   config_validation -. protects .-> cli
   input_sanitize -- mitigates --> arbitrary_write
