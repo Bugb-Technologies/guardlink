@@ -528,12 +528,44 @@ export interface AgentConfigHook {
   does: string[];
 }
 
+/** What a skill's own front matter says about how it is invoked (SPEC §5.6). Present on `kind: "skill"` instruction files only. */
+export interface AgentConfigSkill {
+  /** False only when the front matter sets `disable-model-invocation: true`; a skill the model may start on its own is the default. */
+  model_invocable: boolean;
+  /** Line of the `disable-model-invocation` key, when the front matter has one. */
+  disable_model_invocation_line?: number;
+  /** Line of the `allowed-tools` key, when the front matter has one. */
+  allowed_tools_line?: number;
+}
+
+/** A file in a skill's own directory, beside `SKILL.md`: what the skill can run or hand to what it runs. */
+export interface AgentConfigBundledFile {
+  /** Repository-relative POSIX path, under the skill's directory as `path` names it. */
+  path: string;
+  /** `script` (shell), `code` (a language runtime runs it) or `asset` (anything else). By file name; the content is not read for it. */
+  kind: 'script' | 'code' | 'asset';
+  bytes: number;
+  /**
+   * `sha256-v1:<hex>` of the content, so an edit that keeps the length still moves the hash and shows in `diff`.
+   * Absent for a file above the reader's size cap: it is listed, and its length alone is compared.
+   */
+  sha256?: string;
+}
+
 export interface AgentConfigInstructionFile {
   path: string;
   kind: string;
   harnesses: string[];
   scope: AgentConfigScope;
   bytes: number;
+  /** Present when `kind` is `skill`. */
+  skill?: AgentConfigSkill;
+  /**
+   * Present when `kind` is `skill` and the reader looked beside it (never for a fixture skill, or one whose
+   * directory is the repository root): the files in the skill's own directory, sorted by path. Empty is a
+   * skill with nothing beside `SKILL.md`; absent is a skill nobody looked beside.
+   */
+  bundled?: AgentConfigBundledFile[];
   /** The GuardLink block in it, when it has one. */
   guardlink_block?: {
     /** Line of the `<!-- guardlink:begin -->` marker. */

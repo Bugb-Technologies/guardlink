@@ -124,6 +124,12 @@ function emitAgentConfigText(diff: ThreatModelDiff, lines: string[]): void {
     for (const h of a.newHooks) lines.push(`  + ${h.harness} ${h.event}${h.matcher ? ` [${h.matcher}]` : ''}: ${h.command}${h.does.length ? ` (${h.does.join(', ')})` : ''} (${h.file}:${h.line})`);
     lines.push('');
   }
+  if (a.bundledChanges.length > 0) {
+    lines.push('── Scripts and Code Bundled With a Skill ──');
+    lines.push('   A skill runs what is bundled beside it; the files below are new or changed.');
+    for (const c of a.bundledChanges) lines.push(`  ${c.change === 'new' ? '+' : '~'} ${c.path} (${c.kind}, ${c.bytes} bytes, skill ${c.skill})`);
+    lines.push('');
+  }
   if (a.newMcpServers.length > 0) {
     lines.push('── New MCP Servers ──');
     for (const m of a.newMcpServers) lines.push(`  + ${m.name} (${m.harness}, ${m.transport}) (${m.file}:${m.line})`);
@@ -162,6 +168,12 @@ function emitAgentConfigMarkdown(diff: ThreatModelDiff, lines: string[]): void {
     lines.push('**New commands that run automatically:**');
     lines.push('');
     for (const h of a.newHooks) lines.push(`- ${h.harness} ${h.event}${h.matcher ? ` [${h.matcher}]` : ''}: \`${h.command}\`${h.does.length ? ` — ${h.does.join(', ')}` : ''} (\`${h.file}:${h.line}\`)`);
+    lines.push('');
+  }
+  if (a.bundledChanges.length > 0) {
+    lines.push('**Scripts and code bundled with a skill** — a skill runs what is bundled beside it:');
+    lines.push('');
+    for (const c of a.bundledChanges) lines.push(`- ${c.change === 'new' ? 'new' : 'changed'} \`${c.path}\` (${c.kind}, ${c.bytes} bytes) in skill \`${c.skill}\``);
     lines.push('');
   }
   if (a.newMcpServers.length > 0) {

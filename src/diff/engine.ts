@@ -24,7 +24,7 @@ import type {
   ThreatModelMitigation, ThreatModelExposure, ThreatModelConfirmed, ThreatModelAcceptance,
   ThreatModelEntitlement, ThreatModelReach, ThreatModelEffect, ThreatModelGate,
   ThreatModelFlow, ThreatModelBoundary, ThreatModelTransfer,
-  AgentConfigHook, AgentConfigMcpServer,
+  AgentConfigHook, AgentConfigMcpServer, AgentConfigBundledFile,
 } from '../types/index.js';
 import { findUnmitigatedExposures, normalizeRef } from '../parser/coverage.js';
 import { citationMatchesFile } from '../parser/citation.js';
@@ -109,6 +109,12 @@ export interface AgentConfigDelta {
   newMcpServers: AgentConfigMcpServer[];
   /** Commands the configuration newly runs automatically. */
   newHooks: AgentConfigHook[];
+  /**
+   * Scripts and code that arrived beside a skill this repository's agents load,
+   * or whose content changed. A skill runs what is bundled with it, so a new
+   * script needs review even when no configuration key moved.
+   */
+  bundledChanges: { skill: string; path: string; kind: 'script' | 'code'; change: 'new' | 'changed'; bytes: number }[];
 }
 
 export interface StaleEntitlement {
@@ -207,7 +213,7 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
       staleEntitlements: staleEntitlements.length,
       newUnentitledReaches: newUnentitledReaches.length,
       agentConfigChanges: agentConfig.newReach.length + agentConfig.removedReach.length + agentConfig.launchChanges.length
-        + agentConfig.newMcpServers.length + agentConfig.newHooks.length,
+        + agentConfig.newMcpServers.length + agentConfig.newHooks.length + agentConfig.bundledChanges.length,
     },
     assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances, entitlements, reaches, effects, gates, flows, boundaries, transfers,
     newUnmitigatedExposures,
@@ -255,7 +261,23 @@ function diffAgentConfig(before: ThreatModel, after: ThreatModel): AgentConfigDe
 
   const oldHooks = new Set((before.agent_config?.hooks ?? []).map(hookKey));
   const newHooks = (after.agent_config?.hooks ?? []).filter(h => own(h.scope) && !oldHooks.has(hookKey(h)));
-  return { newReach, removedReach, newBypass, launchChanges, newMcpServers, newHooks };
+
+  // Scripts and code bundled with a skill: new, or the same path with different content.
+  const skillFiles = (m: ThreatModel) => (m.agent_config?.instruction_files ?? []).filter(f => f.kind === 'skill' && own(f.scope));
+  const oldBundled = new Map<string, AgentConfigBundledFile>();
+  for (const f of skillFiles(before)) for (const x of f.bundled ?? []) oldBundled.set(`${f.path}::${x.path}`, x);
+  const bundledChanges: AgentConfigDelta['bundledChanges'] = [];
+  for (const f of skillFiles(after)) {
+    for (const x of f.bundled ?? []) {
+      if (x.kind === 'asset') continue;
+      const prev = oldBundled.get(`${f.path}::${x.path}`);
+      // The digest when both sides have one; otherwise the length is all there is to compare.
+      const changed = prev && (prev.sha256 && x.sha256 ? prev.sha256 !== x.sha256 : prev.bytes !== x.bytes);
+      if (!prev) bundledChanges.push({ skill: f.path, path: x.path, kind: x.kind, change: 'new', bytes: x.bytes });
+      else if (changed) bundledChanges.push({ skill: f.path, path: x.path, kind: x.kind, change: 'changed', bytes: x.bytes });
+    }
+  }
+  return { newReach, removedReach, newBypass, launchChanges, newMcpServers, newHooks, bundledChanges };
 }
 
 // ─── Entitlement staleness (§3.7) ────────────────────────────────────

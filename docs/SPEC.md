@@ -1302,6 +1302,13 @@ A repository's coding-agent configuration decides what an agent working in it ma
   "instruction_files": [
     { "path": "CLAUDE.md", "kind": "instructions", "harnesses": ["claude-code", "copilot-review"], "scope": "root", "bytes": 2930,
       "guardlink_block": { "line": 1, "stamp": "sha256-v3:dd87…", "agent_config_stamp": "sha256-v1:9c1e…", "current": true },
+      "hidden_unicode": [] },
+    { "path": ".agents/skills/setup-dev/SKILL.md", "kind": "skill", "harnesses": ["claude-code", "codex"], "scope": "root", "bytes": 812,
+      "skill": { "model_invocable": false, "disable_model_invocation_line": 3, "allowed_tools_line": 4 },
+      "bundled": [
+        { "path": ".agents/skills/setup-dev/run.sh", "kind": "script", "bytes": 214, "sha256": "sha256-v1:4be0…" },
+        { "path": ".agents/skills/setup-dev/templates/env.tmpl", "kind": "asset", "bytes": 96, "sha256": "sha256-v1:77a1…" }
+      ],
       "hidden_unicode": [] }
   ],
   "assets": [{ "id": "#dev-workstation", "description": "Developer machine: …" }],
@@ -1311,7 +1318,12 @@ A repository's coding-agent configuration decides what an agent working in it ma
 }
 ```
 
-- **`agent_config_hash`** covers the file list, every generated row by its words and its key (never its line), the MCP servers, hooks, deny rules and semantics versions. It moves independently of `annotation_hash`, which does not cover generated rows. It does not cover instruction-file text: the GuardLink block written into those files carries this hash, and a hash over their text could never match the block that states it.
+- **`agent_config_hash`** covers the file list, every generated row by its words and its key (never its line), the MCP servers, hooks, deny rules, the files bundled beside each skill and semantics versions. It moves independently of `annotation_hash`, which does not cover generated rows. It does not cover instruction-file text: the GuardLink block written into those files carries this hash, and a hash over their text could never match the block that states it.
+- **Skills** (`kind: "skill"` instruction files) carry two further keys, both additive to the v1 block:
+  - `skill` — `model_invocable` is `false` only when the front matter sets `disable-model-invocation: true` (a skill the model may start on its own is the default), with `disable_model_invocation_line` and `allowed_tools_line` giving the line of each key when the front matter has it. Only the keys' text is read.
+  - `bundled` — the files in the skill's own directory beside `SKILL.md`, as `{ path, kind, bytes }` plus `sha256` (`sha256-v1:<hex>` of the content), sorted by path. `kind` is `script` (a shell or batch file by extension), `code` (a language source file by extension) or `asset` (anything else); it comes from the file name alone and no file is executed or interpreted. `path` is under the skill's directory as the skill's own `path` names it. `[]` is a skill with nothing beside `SKILL.md`; the key is absent when nobody looked beside it — a fixture skill, a `SKILL.md` at the repository root (whose directory is the repository, not the skill), or an exporter that does not read bundles. A file above 2 MiB is listed with `bytes` and no `sha256`.
+  - **Boundaries.** The walk stays inside the skill's real directory. A symbolic link there, to a file or a directory, inside the repository or out, is not followed and not listed: it is reported in `unreadable` (`agent-config-unreadable`). A subdirectory with its own `SKILL.md` belongs to that skill, dependency and build directories are skipped, files git does not carry are left out, and at most 500 files are listed per skill (the rest are reported in `unreadable`).
+  - Bundled files enter `agent_config_hash` (path, kind, length and digest). A skill with no bundled files adds nothing to it, so the hash of a repository without any is what it was before bundles were read.
 - **MCP servers** record what starts (never env values), whether it is this repository's own code (a bin of its `package.json`, reported against its source, or a source file), whether a package launch is pinned, and the *names* of credential-like env vars and headers. `returns_third_party_content` marks a server whose name, host or launch names a service an outsider can write to (an issue tracker, a browser, a search engine).
 - **`untrusted_sources`** are the places text enters an agent's context: each instruction file, rule, skill, command or subagent a coding agent loads, and each third-party-content MCP server, with the agents it reaches.
 - **Assets** the generated rows name are declared here, not as `@asset`, so they do not enter the asset inventory; an `@entitles` may name them.
@@ -1824,6 +1836,7 @@ When comparing threat models between two git refs (e.g., a feature branch vs. `m
 | `NEW_BYPASS_MODE` | The agent configuration newly switches an agent's prompts off: a bypass or auto-approve mode, a trusted server, `approval_policy = "never"` | **Warn** |
 | `MCP_LAUNCH_CHANGED` | An MCP server keeps its name while what it starts (command and arguments, or URL host) changes. A developer approved the old command once, and some harnesses do not ask again | **Warn** |
 | `NEW_AUTOMATIC_COMMAND` | The agent configuration newly runs a command on its own: a hook, a folder-open task, a background-agent install step | **Warn** |
+| `SKILL_BUNDLE_CHANGED` | A script or code file is new beside a skill the repository's agents load, or its content changed (§5.6); an asset, a removal and a packaged skill are not reported | **Warn** |
 
 An entitlement whose cited file changed is reported as **stale**, not as removed: the claim still stands, but the basis a reviewer accepted it on has moved, so it needs a fresh look. Because the entitlement itself did not change, this is reported even when the delta is otherwise empty. An uncited (inert) entitlement has no basis and cannot go stale.
 

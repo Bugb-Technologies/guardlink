@@ -28,6 +28,7 @@ import { discover } from './discover.js';
 import { readFiles } from './read.js';
 import { loadSemantics } from './semantics.js';
 
+export { collectBundle, bundledKind, MAX_BUNDLED } from './bundle.js';
 export { discover, matchPath, classifyScope, isAgentConfigPath, type DiscoveredFile } from './discover.js';
 export { findHiddenUnicode, describeHiddenUnicode, type HiddenUnicodeHit, type HiddenUnicodeKind } from './hidden-unicode.js';
 export { loadSemantics, classifyShell, commandTags, REACH_HARNESSES, HARNESS_DIR, type Semantics } from './semantics.js';
@@ -50,8 +51,9 @@ export interface AgentConfigResult {
  * What the configuration grants, as a hash that moves only when that does.
  *
  * Covers the file list, every generated row by its words and its key (never its
- * line, so reformatting a file is not a change), MCP servers, hooks, deny rules
- * and the semantics versions that read them. It does NOT cover instruction-file
+ * line, so reformatting a file is not a change), MCP servers, hooks, deny rules,
+ * the files bundled beside each skill (a new or edited script changes what the
+ * skill runs) and the semantics versions that read them. It does NOT cover instruction-file
  * text: the GuardLink block written into those files carries this hash, so a
  * hash over their text could never match the block that states it.
  */
@@ -65,6 +67,9 @@ export function computeAgentConfigHash(r: Omit<AgentConfigResult, 'block'> & { b
     const loc = [...r.reaches, ...r.effects, ...r.gates][i].location;
     return JSON.stringify([...fields, loc.file, src.pointer, src.raw, src.gated, src.semantics.rule]);
   });
+  const bundles = r.block.instruction_files
+    .filter(f => f.bundled && f.bundled.length > 0)
+    .map(f => [f.path, f.bundled!.map(x => [x.path, x.kind, x.bytes, x.sha256 ?? ''])]);
   const strip = <T extends { line?: number }>(x: T) => { const { line: _l, ...rest } = x; return rest; };
   const canonical = JSON.stringify({
     v: AGENT_CONFIG_HASH_VERSION,
@@ -74,6 +79,8 @@ export function computeAgentConfigHash(r: Omit<AgentConfigResult, 'block'> & { b
     mcp: r.block.mcp_servers.map(strip),
     hooks: r.block.hooks.map(strip),
     denies: r.block.denies.map(strip),
+    // Only when a skill has files beside it, so a repository without any keeps the hash it had.
+    ...(bundles.length > 0 ? { bundles } : {}),
   });
   return `sha256-v${AGENT_CONFIG_HASH_VERSION}:${createHash('sha256').update(canonical).digest('hex')}`;
 }
@@ -117,7 +124,7 @@ export function readAgentConfig(root: string, opts: ReadAgentConfigOptions = {})
     const realRoot = realpathSync(root);
     d.files = d.files.filter(f => carried.has(f.path) || carried.has(relative(realRoot, f.real).split(sep).join('/')));
   }
-  const read = readFiles(root, d.files, sem);
+  const read = readFiles(root, d.files, sem, carried);
   if (d.truncated) {
     read.block.unreadable.push({ file: '.', line: 1, message: 'more agent configuration files than GuardLink reads in one pass; the rest were not read' });
   }

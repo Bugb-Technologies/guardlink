@@ -23,7 +23,7 @@ import { mkdtempSync, writeFileSync, rmSync, mkdirSync, symlinkSync } from 'node
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseProject } from '../parser/index.js';
-import { isAgentConfigPath } from '../agentconfig/discover.js';
+import { isAgentConfigPath, SKIP_DIRS } from '../agentconfig/discover.js';
 import type { ThreatModel } from '../types/index.js';
 
 /**
@@ -35,6 +35,11 @@ export const REF_SHAPE = /^[A-Za-z0-9][A-Za-z0-9._/~^@{}-]*$/;
 
 function git(root: string, args: string[], maxBuffer?: number): string {
   return execFileSync('git', args, { cwd: root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], ...(maxBuffer ? { maxBuffer } : {}) });
+}
+
+/** File content as bytes: a bundled script's digest must match the one taken from the working tree. */
+function gitBytes(root: string, args: string[], maxBuffer: number): Buffer {
+  return execFileSync('git', args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer });
 }
 
 /**
@@ -86,9 +91,12 @@ export async function parseAtRef(root: string, ref: string, project: string): Pr
     '.yaml', '.yml', '.toml', '.json', '.gal',
     '.sh', '.bash', '.zsh', '.ps1', '.mjs', '.cjs',
   ]);
+  // Everything beside a skill's SKILL.md too: the bundle list is part of what the diff compares.
+  const skillDirs = entries.map(e => e.path).filter(f => f.endsWith('/SKILL.md')).map(f => f.slice(0, -'SKILL.md'.length));
+  const inSkillDir = (f: string) => skillDirs.some(d => f.startsWith(d) && !f.slice(d.length).split('/').slice(0, -1).some(p => SKIP_DIRS.has(p)));
   const relevant = entries.filter(({ path: f }) => {
     const ext = f.substring(f.lastIndexOf('.')).toLowerCase();
-    return extensions.has(ext) || f.includes('.guardlink/') || isAgentConfigPath(f);
+    return extensions.has(ext) || f.includes('.guardlink/') || isAgentConfigPath(f) || inSkillDir(f);
   });
   // A symlinked directory is one entry in git; the files beneath it are reached through it.
   const links = entries.filter(e => e.mode === '120000' && !relevant.includes(e));
@@ -99,11 +107,11 @@ export async function parseAtRef(root: string, ref: string, project: string): Pr
   try {
     for (const { mode, path: file } of [...relevant, ...links]) {
       try {
-        const content = git(root, ['show', `${commit}:${file}`], 64 * 1024 * 1024);
+        const content = gitBytes(root, ['show', `${commit}:${file}`], 64 * 1024 * 1024);
         const outPath = join(tmpDir, file);
         mkdirSync(join(outPath, '..'), { recursive: true });
         // The reader follows a link only when it resolves inside the extracted tree.
-        if (mode === '120000') symlinkSync(content, outPath);
+        if (mode === '120000') symlinkSync(content.toString('utf-8'), outPath);
         else writeFileSync(outPath, content);
       } catch {
         // File might not exist at this ref (deleted), skip
