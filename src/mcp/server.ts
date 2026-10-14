@@ -260,6 +260,9 @@ export function createServer(): McpServer {
   const { getModel, invalidateCache } = cache;
 
   // ── Tool: guardlink_parse ──
+  /**
+   * @agents #mcp-agent to guardlink_parse on #parser -- "Parses the project under the client-supplied root and returns the whole model"
+   */
   registerTool(
     server, cache,
     'guardlink_parse',
@@ -303,6 +306,9 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_status ──
+  /**
+   * @agents #mcp-agent to guardlink_status on #parser -- "Coverage counts and the unmitigated list for the client-supplied root"
+   */
   registerTool(
     server, cache,
     'guardlink_status',
@@ -348,6 +354,11 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_validate ──
+  /**
+   * @agents #mcp-agent to guardlink_validate on #parser -- "Diagnostics for the client-supplied root"
+   * @effects execute on #codegraph -- "With code_graph: true, loadWorklist spawns the installed graph binary through runChild (argv, no shell)"
+   * @audit #codegraph -- "No confirmation step: the agent's own code_graph argument decides whether the graph binary runs"
+   */
   registerTool(
     server, cache,
     'guardlink_validate',
@@ -407,6 +418,9 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_suggest ──
+  /**
+   * @agents #mcp-agent to guardlink_suggest on #suggest -- "Reads a client-named file, or client-supplied diff text, and returns suggested annotations"
+   */
   registerTool(
     server, cache,
     'guardlink_suggest',
@@ -426,6 +440,11 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_worklist ──
+  /**
+   * @agents #mcp-agent to guardlink_worklist on #codegraph -- "Ranked entry points from the installed code graph"
+   * @effects execute on #codegraph -- "loadWorklist spawns the graph binary through runChild (argv, no shell) with the project root as one argument"
+   * @audit #codegraph -- "No confirmation step before the graph binary runs; every call spawns it when one is installed"
+   */
   registerTool(
     server, cache,
     'guardlink_worklist',
@@ -463,6 +482,11 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_reach ──
+  /**
+   * @agents #mcp-agent to guardlink_reach on #codegraph -- "What one client-named function reaches, from the installed code graph"
+   * @effects execute on #codegraph -- "reachFor spawns the graph binary through runChild (argv, no shell); the client's symbol is one argv element"
+   * @audit #codegraph -- "No confirmation step before the graph binary runs; every call spawns it when one is installed"
+   */
   registerTool(
     server, cache,
     'guardlink_reach',
@@ -478,6 +502,9 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_lookup ──
+  /**
+   * @agents #mcp-agent to guardlink_lookup on #mcp -- "Answers one supported query form against the parsed model"
+   */
   registerTool(
     server, cache,
     'guardlink_lookup',
@@ -496,6 +523,9 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_context ──
+  /**
+   * @agents #mcp-agent to guardlink_context on #mcp -- "Annotations and neighbourhood for one file inside root; a path outside root is refused"
+   */
   registerTool(
     server, cache,
     'guardlink_context',
@@ -527,6 +557,9 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_graph ──
+  /**
+   * @agents #mcp-agent to guardlink_graph on #mcp -- "Subgraph or path over the parsed model"
+   */
   registerTool(
     server, cache,
     'guardlink_graph',
@@ -580,6 +613,11 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_annotate_apply ──
+  /**
+   * @agents #mcp-agent to guardlink_annotate_apply on #mcp -- "Writes a validated @source block into the annotation sidecar for a file"
+   * @effects write on #mcp -- "applyAnnotations appends to .guardlink/annotations/<file>.gal unless dry_run; a line that does not parse, an undeclared reference, @accepts and @entitles are refused before anything is written"
+   * @audit #mcp -- "No confirmation step: the write lands on the agent's call. The refusals are validation of the lines, not a human decision"
+   */
   registerTool(
     server, cache,
     'guardlink_annotate_apply',
@@ -614,6 +652,11 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_reanchor ──
+  /**
+   * @agents #mcp-agent to guardlink_reanchor on #mcp -- "Finds drifted @source anchors, and with apply: true moves them"
+   * @effects write on #mcp -- "With apply: true, applyReanchor rewrites @source lines in annotation sidecars"
+   * @audit #mcp -- "No confirmation step on this route: apply: true is the agent's own argument, so the confirmation applyReanchor expects of its caller is the agent's"
+   */
   registerTool(
     server, cache,
     'guardlink_reanchor',
@@ -647,6 +690,12 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_threat_report ──
+  /**
+   * @agents #mcp-agent to guardlink_threat_report on #llm-client -- "Runs an AI threat report when a provider key is in the environment, otherwise returns the prompt"
+   * @effects spend on #llm-client -- "With a provider key set, generateThreatReport calls the provider API through chatCompletion, billed to that key; provider and model are client arguments"
+   * @effects write on #llm-client -- "generateThreatReport saves the report under .guardlink/threat-reports/"
+   * @audit #llm-client -- "No confirmation step and no budget: each call with a key set is a billed request the agent alone decides to make"
+   */
   registerTool(
     server, cache,
     'guardlink_threat_report',
@@ -726,6 +775,11 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_annotate ──
+  /**
+   * @agents #mcp-agent to guardlink_annotate on #mcp -- "Builds the annotation prompt for the calling agent; writes nothing itself"
+   * @effects execute on #codegraph -- "code_graph defaults to true, so loadWorklist spawns the graph binary through runChild when one is installed"
+   * @audit #codegraph -- "No confirmation step before the graph binary runs; code_graph: false is the only way to skip it"
+   */
   registerTool(
     server, cache,
     'guardlink_annotate',
@@ -772,6 +826,11 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_report ──
+  /**
+   * @agents #mcp-agent to guardlink_report on #report -- "Generates the markdown report and its JSON"
+   * @effects write on #report -- "writeFile at resolve(root, output), plus the .json beside it; root and output are both client arguments"
+   * @audit #report -- "No confirmation step: the agent chooses the output path and the write lands on its call"
+   */
   registerTool(
     server, cache,
     'guardlink_report',
@@ -816,6 +875,11 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_dashboard ──
+  /**
+   * @agents #mcp-agent to guardlink_dashboard on #dashboard -- "Generates the HTML dashboard"
+   * @effects write on #dashboard -- "writeFile at resolve(root, output); root and output are both client arguments"
+   * @audit #dashboard -- "No confirmation step: the agent chooses the output path and the write lands on its call"
+   */
   registerTool(
     server, cache,
     'guardlink_dashboard',
@@ -850,6 +914,11 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_sarif ──
+  /**
+   * @agents #mcp-agent to guardlink_sarif on #sarif -- "Exports SARIF 2.1.0"
+   * @effects write on #sarif -- "writeFile at resolve(root, output); root and output are both client arguments"
+   * @audit #sarif -- "No confirmation step: the agent chooses the output path and the write lands on its call"
+   */
   registerTool(
     server, cache,
     'guardlink_sarif',
@@ -885,6 +954,11 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_diff ──
+  /**
+   * @agents #mcp-agent to guardlink_diff on #diff -- "Compares the current model with the model at a client-supplied git ref"
+   * @effects execute on #diff -- "parseAtRef runs git at the client-supplied ref and extracts that revision into a temp directory"
+   * @audit #diff -- "No confirmation step before git runs; the ref is the agent's argument"
+   */
   registerTool(
     server, cache,
     'guardlink_diff',
@@ -910,6 +984,9 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_paths ──
+  /**
+   * @agents #mcp-agent to guardlink_paths on #mcp -- "Unmitigated routes through the parsed flow graph"
+   */
   registerTool(
     server, cache,
     'guardlink_paths',
@@ -937,6 +1014,9 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_threat_reports ──
+  /**
+   * @agents #mcp-agent to guardlink_threat_reports on #mcp -- "Lists saved threat reports under .guardlink/"
+   */
   registerTool(
     server, cache,
     'guardlink_threat_reports',
@@ -953,6 +1033,11 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_sync ──
+  /**
+   * @agents #mcp-agent to guardlink_sync on #init -- "Rewrites the GuardLink block in the agent instruction files under root"
+   * @effects write on #init -- "syncAgentFiles rewrites the stamped block in every agent instruction file that exists; text outside the markers is kept"
+   * @audit #init -- "No confirmation step: the agent instruction files other agents read are rewritten on this agent's call"
+   */
   registerTool(
     server, cache,
     'guardlink_sync',
@@ -975,6 +1060,12 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_clear ──
+  /**
+   * @agents #mcp-agent to guardlink_clear on #parser -- "Removes GuardLink annotations from source files"
+   * @effects delete on #parser -- "With dry_run: false, clearAnnotations strips annotation lines from every scanned source file, and from definitions with include_definitions"
+   * @audit #parser -- "No gate: dry_run defaults to true and the description asks the agent to get the user's confirmation, but the handler checks none, so dry_run: false from the agent is the whole of it"
+   * @comment -- "A request written in a tool description is not a confirmation step, so no @gates is claimed here. The y/N prompt in guardlink clear guards the CLI route only; this handler never reaches it"
+   */
   registerTool(
     server, cache,
     'guardlink_clear',
@@ -1013,6 +1104,9 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_unannotated ──
+  /**
+   * @agents #mcp-agent to guardlink_unannotated on #parser -- "Lists scanned files with no annotations"
+   */
   registerTool(
     server, cache,
     'guardlink_unannotated',
@@ -1038,6 +1132,9 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_review_list ──
+  /**
+   * @agents #mcp-agent to guardlink_review_list on #mcp -- "Lists unmitigated exposures eligible for review"
+   */
   registerTool(
     server, cache,
     'guardlink_review_list',
@@ -1077,6 +1174,13 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_review_accept ──
+  /**
+   * @agents #mcp-agent to guardlink_review_accept on #mcp -- "Records a review decision as @accepts or @audit lines in source"
+   * @effects write on #mcp -- "applyReviewAction inserts @accepts + @audit, or @audit, into the source file of the exposure"
+   * @effects write on #init -- "Then syncAgentFiles rewrites the agent instruction files"
+   * @audit #mcp -- "No gate: an acceptance is refused without a human name in by and a date in until, but the agent supplies both, so that is a check on the arguments rather than a confirmation by the named human"
+   * @comment -- "The description asks for explicit human confirmation first; nothing in the handler can observe whether it happened, so no @gates is claimed"
+   */
   registerTool(
     server, cache,
     'guardlink_review_accept',
@@ -1152,6 +1256,11 @@ export function createServer(): McpServer {
   // like every other tool: this tool decides what an agent believes about the
   // authorization model, so "which parse is this answer from" matters more here,
   // not less.
+  /**
+   * @agents #mcp-agent to guardlink_entitlement_propose on #mcp -- "Files an @entitles proposal for a human to accept"
+   * @effects write on #mcp -- "proposeEntitlement writes .guardlink/entitlement-proposals.json and never a source file; a decided proposal is not overwritten"
+   * @comment -- "The human step is downstream of this effect: an @entitles reaches source only through guardlink entitle, which this server does not expose. It gates the grant, not the proposal file, so no @gates is claimed for this write"
+   */
   registerTool(
     server, cache,
     'guardlink_entitlement_propose',
@@ -1195,6 +1304,9 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_entitlement_list ──
+  /**
+   * @agents #mcp-agent to guardlink_entitlement_list on #mcp -- "Lists entitlement proposals and their decisions"
+   */
   registerTool(
     server, cache,
     'guardlink_entitlement_list',
@@ -1224,6 +1336,8 @@ export function createServer(): McpServer {
    * @flows GitRepo -> #mcp via computeBlame -- "Attribution read from blame, log -L and commit trailers for the connected agent"
    * @handles pii on #mcp -- "Author identities, in the configured identity mode (blame.identity in config.json), reach the MCP client"
    * @comment -- "Non-mutating: computeBlame leaves the cached model untouched, so a later guardlink_parse in the same session never carries blame unasked. Nothing is written to the repository"
+   * @agents #mcp-agent to guardlink_blame on #blame -- "Attribution for each claim, read from git"
+   * @effects execute on #blame -- "computeBlame runs git blame and git log through execFileSync with an argv array"
    */
   registerTool(
     server, cache,
@@ -1256,6 +1370,9 @@ export function createServer(): McpServer {
   );
 
   // ── Tool: guardlink_workspace_info ──
+  /**
+   * @agents #mcp-agent to guardlink_workspace_info on #workspace-config -- "Reads the workspace configuration and sibling tag prefixes"
+   */
   registerTool(
     server, cache,
     'guardlink_workspace_info',

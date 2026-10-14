@@ -113,7 +113,9 @@ describe('selectSubgraph — the ThreatModel contract', () => {
       + sub.acceptances.length + sub.transfers.length + sub.flows.length
       + sub.boundaries.length + sub.validations.length + sub.audits.length
       + sub.ownership.length + sub.data_handling.length + sub.assumptions.length
-      + sub.shields.length + sub.features.length + sub.comments.length;
+      + sub.shields.length + sub.features.length + sub.comments.length
+      + (sub.actors ?? []).length + (sub.entitlements ?? []).length
+      + (sub.reaches ?? []).length + (sub.effects ?? []).length + (sub.gates ?? []).length;
     expect(sub.annotations_parsed).toBe(counted);
   });
 

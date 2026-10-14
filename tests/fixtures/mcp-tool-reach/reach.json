@@ -1,0 +1,247 @@
+{
+  "summary": {
+    "reaches": 29,
+    "agent_reaches": 29,
+    "unentitled_reaches": 29,
+    "effects": 18,
+    "mutating_effects": 18,
+    "ungated_effects": 18,
+    "gates": 0,
+    "coding_agent_reaches": 1,
+    "unentitled_coding_agent_reaches": 1
+  },
+  "reaches": [
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_annotate",
+      "asset": "#mcp"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_annotate_apply",
+      "asset": "#mcp"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_blame",
+      "asset": "#blame"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_clear",
+      "asset": "#parser"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_context",
+      "asset": "#mcp"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_dashboard",
+      "asset": "#dashboard"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_diff",
+      "asset": "#diff"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_entitlement_list",
+      "asset": "#mcp"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_entitlement_propose",
+      "asset": "#mcp"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_graph",
+      "asset": "#mcp"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_lookup",
+      "asset": "#mcp"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_parse",
+      "asset": "#parser"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_paths",
+      "asset": "#mcp"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_reach",
+      "asset": "#codegraph"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_reanchor",
+      "asset": "#mcp"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_report",
+      "asset": "#report"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_review_accept",
+      "asset": "#mcp"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_review_list",
+      "asset": "#mcp"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_sarif",
+      "asset": "#sarif"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_status",
+      "asset": "#parser"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_suggest",
+      "asset": "#suggest"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_sync",
+      "asset": "#init"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_threat_report",
+      "asset": "#llm-client"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_threat_reports",
+      "asset": "#mcp"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_unannotated",
+      "asset": "#parser"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_validate",
+      "asset": "#parser"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_worklist",
+      "asset": "#codegraph"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_workspace_info",
+      "asset": "#workspace-config"
+    }
+  ],
+  "effects": [
+    {
+      "tool": "guardlink_annotate",
+      "effect": "execute",
+      "asset": "#codegraph"
+    },
+    {
+      "tool": "guardlink_annotate_apply",
+      "effect": "write",
+      "asset": "#mcp"
+    },
+    {
+      "tool": "guardlink_blame",
+      "effect": "execute",
+      "asset": "#blame"
+    },
+    {
+      "tool": "guardlink_clear",
+      "effect": "delete",
+      "asset": "#parser"
+    },
+    {
+      "tool": "guardlink_dashboard",
+      "effect": "write",
+      "asset": "#dashboard"
+    },
+    {
+      "tool": "guardlink_diff",
+      "effect": "execute",
+      "asset": "#diff"
+    },
+    {
+      "tool": "guardlink_entitlement_propose",
+      "effect": "write",
+      "asset": "#mcp"
+    },
+    {
+      "tool": "guardlink_reach",
+      "effect": "execute",
+      "asset": "#codegraph"
+    },
+    {
+      "tool": "guardlink_reanchor",
+      "effect": "write",
+      "asset": "#mcp"
+    },
+    {
+      "tool": "guardlink_report",
+      "effect": "write",
+      "asset": "#report"
+    },
+    {
+      "tool": "guardlink_review_accept",
+      "effect": "write",
+      "asset": "#init"
+    },
+    {
+      "tool": "guardlink_review_accept",
+      "effect": "write",
+      "asset": "#mcp"
+    },
+    {
+      "tool": "guardlink_sarif",
+      "effect": "write",
+      "asset": "#sarif"
+    },
+    {
+      "tool": "guardlink_sync",
+      "effect": "write",
+      "asset": "#init"
+    },
+    {
+      "tool": "guardlink_threat_report",
+      "effect": "spend",
+      "asset": "#llm-client"
+    },
+    {
+      "tool": "guardlink_threat_report",
+      "effect": "write",
+      "asset": "#llm-client"
+    },
+    {
+      "tool": "guardlink_validate",
+      "effect": "execute",
+      "asset": "#codegraph"
+    },
+    {
+      "tool": "guardlink_worklist",
+      "effect": "execute",
+      "asset": "#codegraph"
+    }
+  ]
+}
