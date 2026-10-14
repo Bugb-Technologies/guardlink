@@ -109,6 +109,9 @@ guardlink validate . --artifacts      # exits 1 on stale/missing/unheadered — 
 
 Never hand-edit a generated file. In the agent files, the region between the `guardlink:begin` /
 `guardlink:end` markers is overwritten by the next sync — change `src/init/templates.ts` instead.
+Text outside the markers is never touched, in any of those files (`.cursor/rules/guardlink.mdc`
+included), and `tests/init-pre-pr.test.ts` pins that; the block's contributed pre-PR lines come
+from `pre_pr` in `.guardlink/config.json` (`src/init/pre-pr.ts`).
 That block carries a provenance stamp naming both the `annotation_hash` and the `agent_config_hash`,
 so editing the repository's own agent configuration (`.mcp.json`, `.claude/settings.json`, …) makes
 it stale exactly as an annotation change does: `guardlink validate .` says so, and `guardlink sync .`

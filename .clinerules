@@ -1,5 +1,5 @@
 <!-- guardlink:begin -->
-<!-- guardlink:stamp annotation_hash=sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761 agent_config_hash=sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b -->
+<!-- guardlink:stamp annotation_hash=sha256-v3:d8e5baf6726d7aa5fdc87c052b65e2927731a7ba8aaeec7b220804bce2e24d26 agent_config_hash=sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b -->
 # GuardLink Security Annotations
 
 This project carries a [GuardLink](https://guardlink.bugb.io) threat model: security facts recorded
@@ -18,6 +18,14 @@ and `guardlink parse .` answer the same.
 - **Never write `@accepts` or `@entitles`** — both are a human's decision. A risk with no control is `@exposes` + `@audit`; an entitlement is proposed with `guardlink entitle --propose`, and a human's acceptance writes it.
 - `@confirmed` needs reproduction evidence in hand; reading the code is not reproduction.
 - Before you finish: `guardlink validate .`, then `guardlink diff HEAD~1` — did this change add exposure?
+
+**Before you open or update a pull request**, check the annotations it adds against its base branch:
+
+- `guardlink validate .` — they parse and their references resolve. It also says when a published `.guardlink/report.json` is behind them; `guardlink parse . -o .guardlink/report.json` refreshes it.
+- `guardlink lint . --since origin/<base>` — each new claim names its code and is paired; `--json` gives the `fix` for any that is not.
+- `guardlink diff origin/<base>` — the exposures, flows and acceptances the change adds.
+
+If you are asked to raise a pull request and this check has not come up, suggest it. Never write `@accepts` to clear what it reports.
 
 **This repository's agent configuration is part of its threat model.** `guardlink lookup "agent config"` lists what each coding agent can do here and who approved it. That reach is generated from the configuration files, so never write `@agents` or `@reaches` for Claude Code, Cursor, Copilot, Codex or Gemini.
 

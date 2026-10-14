@@ -15,6 +15,7 @@ import { HANDOFF_COMMAND, HANDOFF_PATH } from '../parser/handoff.js';
 // D17: one list of GuardLink's own generated outputs — the parser excludes them
 // from the scan set, and .gitignore ignores them, from the same constant.
 import { GENERATED_OUTPUT_FILES } from '../parser/parse-project.js';
+import type { PrePrStep } from './pre-pr.js';
 
 // ─── Where annotations go (D27) ──────────────────────────────────────
 
@@ -400,11 +401,44 @@ export interface AgentBlockContext {
    * default, `.guardlink/` under `init --no-root-files`.
    */
   referencePath?: string;
+  /**
+   * Checks other tools contribute to the pre-PR step, from `pre_pr` in
+   * `.guardlink/config.json` (init/pre-pr.ts), already validated there.
+   */
+  prePr?: PrePrStep[];
+}
+
+/**
+ * What to run before opening or updating a pull request.
+ *
+ * Only GuardLink's deterministic verbs, so the step holds in a repository that
+ * has nothing but GuardLink: `validate` for whether the annotations parse and
+ * resolve (and whether a published export is behind them — parser/handoff.ts),
+ * `lint --since` for whether each claim the branch added names its code and is
+ * paired, `diff` for what the branch did to the model. `<base>` is left for the
+ * agent to fill: the block cannot know which branch a pull request targets.
+ *
+ * Steps other tools registered follow GuardLink's own, labelled with where
+ * they came from so an agent can tell them apart.
+ */
+function prePrSection(prePr: PrePrStep[]): string {
+  const contributed = prePr.map(s =>
+    `- \`${s.command}\`${s.why ? ` — ${s.why}` : ''} (from \`pre_pr\` in \`.guardlink/config.json\`)`);
+  return [
+    '**Before you open or update a pull request**, check the annotations it adds against its base branch:',
+    '',
+    `- \`guardlink validate .\` — they parse and their references resolve. It also says when a published \`${HANDOFF_PATH}\` is behind them; \`${HANDOFF_COMMAND}\` refreshes it.`,
+    '- `guardlink lint . --since origin/<base>` — each new claim names its code and is paired; `--json` gives the `fix` for any that is not.',
+    '- `guardlink diff origin/<base>` — the exposures, flows and acceptances the change adds.',
+    ...contributed,
+    '',
+    'If you are asked to raise a pull request and this check has not come up, suggest it. Never write `@accepts` to clear what it reports.',
+  ].join('\n');
 }
 
 /**
  * The GuardLink block written into an agent instruction file: a short pointer,
- * about 25 lines, never the model itself.
+ * about 30 lines, never the model itself.
  *
  * It used to carry the whole rulebook and a live dump of the model — assets,
  * open exposures, flows — re-synced on every annotation change. Two things
@@ -413,7 +447,8 @@ export interface AgentBlockContext {
  * agent loads every turn is a large surface of text the agent treats as
  * instructions. So the block now says only what stays true: that a model
  * exists (or is empty, and what that means), where annotations go, the few
- * rules a person must never have taken from them, and where to ask — the MCP
+ * rules a person must never have taken from them, what to check before a pull
+ * request, and where to ask — the MCP
  * tools and `guardlink lookup` answer from the live model, and the reference
  * document carries the syntax.
  *
@@ -449,6 +484,8 @@ ${placementLine(project, mode)} Placement in full: \`.guardlink/README.md\`; syn
 - **Never write \`@accepts\` or \`@entitles\`** — both are a human's decision. A risk with no control is \`@exposes\` + \`@audit\`; an entitlement is proposed with \`guardlink entitle --propose\`, and a human's acceptance writes it.
 - \`@confirmed\` needs reproduction evidence in hand; reading the code is not reproduction.
 - Before you finish: \`guardlink validate .\`, then \`guardlink diff HEAD~1\` — did this change add exposure?
+
+${prePrSection(ctx.prePr ?? [])}
 
 **This repository's agent configuration is part of its threat model.** \`guardlink lookup "agent config"\` lists what each coding agent can do here and who approved it. That reach is generated from the configuration files, so never write \`@agents\` or \`@reaches\` for Claude Code, Cursor, Copilot, Codex or Gemini.
 
@@ -626,8 +663,8 @@ export function agentInstructionsWithModel(
 }
 
 /** The pointer for the flat rules formats (`.cursorrules`, `.windsurfrules`, `.clinerules`), with a model. */
-export function cursorRulesContentWithModel(project: ProjectInfo, model: ThreatModel | null, _freshness?: ModelContextFreshness, mode: AnnotationMode | null = null): string {
-  return agentInstructions(project, mode, { model }, '# GuardLink Security Annotations');
+export function cursorRulesContentWithModel(project: ProjectInfo, model: ThreatModel | null, _freshness?: ModelContextFreshness, mode: AnnotationMode | null = null, ctx: AgentBlockContext = {}): string {
+  return agentInstructions(project, mode, { ...ctx, model }, '# GuardLink Security Annotations');
 }
 
 /** Frontmatter for `.cursor/rules/guardlink.mdc`; the body is the stamped block. */
@@ -640,8 +677,8 @@ alwaysApply: true
 
 // ─── Cursor-specific format ──────────────────────────────────────────
 
-export function cursorRulesContent(project: ProjectInfo, mode: AnnotationMode | null = null): string {
-  return agentInstructions(project, mode, {}, '# GuardLink Security Annotations');
+export function cursorRulesContent(project: ProjectInfo, mode: AnnotationMode | null = null, ctx: AgentBlockContext = {}): string {
+  return agentInstructions(project, mode, ctx, '# GuardLink Security Annotations');
 }
 
 // ─── Shared definitions file ─────────────────────────────────────────

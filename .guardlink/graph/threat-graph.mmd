@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761
+%% annotation_hash: sha256-v3:d8e5baf6726d7aa5fdc87c052b65e2927731a7ba8aaeec7b220804bce2e24d26
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 49 nodes / 196 edges, past the 12 / 16 legibility budget (49 nodes against 12, 196 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 49 nodes / 199 edges, past the 12 / 16 legibility budget (49 nodes against 12, 199 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -137,6 +137,7 @@ graph LR
   init -. exposes .-> path_traversal
   init -. exposes .-> arbitrary_write
   init -. exposes .-> data_exposure
+  init -. exposes .-> prompt_injection
   init -. exposes .-> dos
   init -. exposes .-> child_proc_injection
   mcp -. exposes .-> path_traversal
@@ -223,6 +224,8 @@ graph LR
   input_sanitize -- mitigates --> arbitrary_write
   input_sanitize -. protects .-> cli
   path_validation -. protects .-> init
+  input_sanitize -- mitigates --> prompt_injection
+  input_sanitize -. protects .-> init
   config_validation -- mitigates --> arbitrary_write
   config_validation -. protects .-> init
   glob_filtering -- mitigates --> dos

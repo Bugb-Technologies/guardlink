@@ -36,6 +36,16 @@
  * property that kept them out of the committed artifacts in `artifacts/emit.ts`.
  * This module says what is true and names the one command that fixes it.
  *
+ * ── A published export binds inline repositories too ────────────────
+ *
+ * The same consumers read an export *in preference to* the source: the
+ * fallback runs only when there is none. So a repository that annotates inline
+ * and also publishes `.guardlink/report.json` has the external problem in
+ * another form — an annotation an agent writes inline is invisible downstream
+ * until the export is cut again, and nothing about writing it says so. Once the
+ * export exists it is checked whatever the mode; an inline repository with no
+ * export stays `not-needed`, since its fallback reads the comments directly.
+ *
  * ── Why `annotation_hash` is the staleness test ─────────────────────
  *
  * `guardlink parse -o` stamps `metadata.annotation_hash` (R10). An export
@@ -48,7 +58,7 @@
  * @flows ExportFile -> #parser via readFileSync -- "The JSON export consumers read, re-read here only for its provenance stamp"
  * @assumes #parser -- "`metadata.annotation_hash` on an export was written by `guardlink parse -o` over the same hash function this module calls. Nothing verifies that: a hand-edited stamp reads as current, and the answer this module gives is only as good as the file's provenance"
  * @comment -- "No @exposes here on purpose. This module reads one constant path under the project root and emits the path plus two content hashes — no annotation text, no signer, no file contents — so there is no risk to declare, and declaring one would attach a mitigation to the #parser/#data-exposure pair that silences the open exposure at migrate-mode.ts:26"
- * @comment -- "`not-needed` is a real verdict, not a skip: with nothing in a sidecar there is nothing an export would rescue, and inline annotations survive a consumer's fallback on their own"
+ * @comment -- "`not-needed` is a real verdict, not a skip: with nothing in a sidecar and no export published there is nothing an export would rescue, and inline annotations survive a consumer's fallback on their own"
  * @comment -- "Every failure to read the stamp returns `unverifiable`, never `current` — the one answer that would silence this check is the one an error cannot produce"
  */
 
@@ -72,9 +82,9 @@ export const HANDOFF_PATH = '.guardlink/report.json';
 export const HANDOFF_COMMAND = `guardlink parse . -o ${HANDOFF_PATH}`;
 
 export type HandoffVerdict =
-  /** No annotation lives only in a sidecar, so no export is needed to carry one. */
+  /** No annotation lives only in a sidecar and no export is published, so there is nothing to keep current. */
   | 'not-needed'
-  /** Sidecars hold annotations and the export exists and matches the model. */
+  /** The export exists and matches the model. */
   | 'current'
   /** Sidecars hold annotations and no export exists. Consumers read zero. */
   | 'missing'
@@ -133,7 +143,11 @@ export function checkHandoff(root: string, model: ThreatModel): HandoffReport {
   // `computeAnnotationHash` canonicalises and digests the whole model. Every
   // inline repository takes this branch, so the common case now pays the cheap
   // question only, and the expensive one is asked where its answer is used.
-  if (external === 0) {
+  // An inline repository needs an export only once it publishes one; the
+  // existence check is as cheap as the walk above, so the common case still
+  // never hashes.
+  const absolute = join(root, HANDOFF_PATH);
+  if (external === 0 && !existsSync(absolute)) {
     return {
       external, inline, path: HANDOFF_PATH, command: HANDOFF_COMMAND,
       verdict: 'not-needed', exportedHash: null, currentHash: null, message: null,
@@ -141,7 +155,6 @@ export function checkHandoff(root: string, model: ThreatModel): HandoffReport {
   }
 
   const currentHash = computeAnnotationHash(model);
-  const absolute = join(root, HANDOFF_PATH);
 
   const base = {
     external,
@@ -154,6 +167,8 @@ export function checkHandoff(root: string, model: ThreatModel): HandoffReport {
   const where = external === 1
     ? '1 annotation is written in a `.gal` sidecar'
     : `${external} annotations are written in \`.gal\` sidecars`;
+  // With no sidecar, the export matters only because it is published.
+  const why = external === 0 ? 'It is published, and consumers read it in place of the source comments' : where;
 
   if (!existsSync(absolute)) {
     return {
@@ -177,8 +192,8 @@ export function checkHandoff(root: string, model: ThreatModel): HandoffReport {
       exportedHash: null,
       message: `\`${HANDOFF_PATH}\` exists but carries no \`metadata.annotation_hash\`, so `
         + `whether it still matches these annotations is unknown — it may be current and it `
-        + `may be arbitrarily far behind. ${where}, so this file is the only thing consumers `
-        + `read. Re-export to make the answer knowable: ${HANDOFF_COMMAND}`,
+        + `may be arbitrarily far behind. ${external === 0 ? why : `${where}, so this file is the only thing consumers read`}. `
+        + `Re-export to make the answer knowable: ${HANDOFF_COMMAND}`,
     };
   }
 
@@ -188,7 +203,7 @@ export function checkHandoff(root: string, model: ThreatModel): HandoffReport {
       verdict: 'stale',
       exportedHash,
       message: `\`${HANDOFF_PATH}\` was cut from different annotations than the ones in this `
-        + `working tree (export ${exportedHash}, model ${currentHash}). ${where}, so consumers `
+        + `working tree (export ${exportedHash}, model ${currentHash}). ${why}, so they `
         + `are reading the older model and nothing tells them so. Fix: ${HANDOFF_COMMAND}`,
     };
   }

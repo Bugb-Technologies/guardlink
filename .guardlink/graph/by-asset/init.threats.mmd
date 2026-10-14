@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/init.threats.mmd
-%% scope:           PARTIAL — #init only — its own threats and controls
-%% annotation_hash: sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761
+%% scope:           PARTIAL — #init only — its own threats and controls, narrowed to high and critical (8 lower-severity claim(s) omitted to keep it readable)
+%% annotation_hash: sha256-v3:d8e5baf6726d7aa5fdc87c052b65e2927731a7ba8aaeec7b220804bce2e24d26
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -12,27 +12,18 @@
 %%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 150, "curve": "monotoneX", "htmlLabels": false, "padding": 24}}}%%
 graph LR
   init["🔷 GuardLink.Init"]
-  path_traversal["🟠 Path_Traversal (cwe:CWE-22)"]:::threat
   arbitrary_write["🟠 Arbitrary_File_Write (cwe:CWE-73)"]:::threat
-  data_exposure["🟡 Sensitive_Data_Exposure (cwe:CWE-200)"]:::threat
-  dos["🟡 Denial_of_Service (cwe:CWE-400)"]:::threat
+  path_traversal["🟠 Path_Traversal (cwe:CWE-22)"]:::threat
   child_proc_injection["🟠 Child_Process_Injection (cwe:CWE-78)"]:::threat
   path_validation["🛡️ Path_Validation"]:::control
   config_validation["🛡️ Config_Validation"]:::control
-  glob_filtering["🛡️ Glob_Pattern_Filtering"]:::control
   param_commands["🛡️ Parameterized_Commands"]:::control
-  init -. exposes .-> path_traversal
   init -. exposes .-> arbitrary_write
-  init -. exposes .-> data_exposure
-  init -. exposes .-> dos
-  init -. exposes .-> child_proc_injection
   path_validation -- mitigates --> path_traversal
   path_validation -. protects .-> init
   path_validation -- mitigates --> arbitrary_write
   config_validation -- mitigates --> arbitrary_write
   config_validation -. protects .-> init
-  glob_filtering -- mitigates --> dos
-  glob_filtering -. protects .-> init
   param_commands -- mitigates --> child_proc_injection
   param_commands -. protects .-> init
   classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px

@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761",
+    "annotation_hash": "sha256-v3:d8e5baf6726d7aa5fdc87c052b65e2927731a7ba8aaeec7b220804bce2e24d26",
     "generator": "guardlink@2.3.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 185,
-  "annotations_parsed": 934,
+  "source_files": 186,
+  "annotations_parsed": 938,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agentconfig/discover.ts",
@@ -94,6 +94,7 @@
     "src/init/detect.ts",
     "src/init/index.ts",
     "src/init/migrate.ts",
+    "src/init/pre-pr.ts",
     "src/init/preserve.ts",
     "src/init/scope.ts",
     "src/init/templates.ts",
@@ -1793,7 +1794,17 @@
       "description": "callers pass join(root, ...) constrained paths",
       "location": {
         "file": "src/init/index.ts",
-        "line": 641
+        "line": 677
+      }
+    },
+    {
+      "asset": "#init",
+      "threat": "#prompt-injection",
+      "control": "#input-sanitize",
+      "description": "One line per entry, length-capped; an entry carrying a backtick, an HTML comment delimiter, a control character or hidden Unicode is refused, not rendered",
+      "location": {
+        "file": "src/init/pre-pr.ts",
+        "line": 32
       }
     },
     {
@@ -3355,7 +3366,20 @@
       "description": "Creates directories for agent-file writes",
       "location": {
         "file": "src/init/index.ts",
-        "line": 640
+        "line": 676
+      }
+    },
+    {
+      "asset": "#init",
+      "threat": "#prompt-injection",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-77"
+      ],
+      "description": "pre_pr entries from .guardlink/config.json are rendered into agent instruction files, which agents read as instructions",
+      "location": {
+        "file": "src/init/pre-pr.ts",
+        "line": 31
       }
     },
     {
@@ -5422,6 +5446,28 @@
       }
     },
     {
+      "source": "ConfigFile",
+      "target": "#init",
+      "mechanism": "readPrePrSteps",
+      "route": null,
+      "description": "pre_pr entries read from .guardlink/config.json",
+      "location": {
+        "file": "src/init/pre-pr.ts",
+        "line": 33
+      }
+    },
+    {
+      "source": "#init",
+      "target": "AgentFiles",
+      "mechanism": "agentInstructions",
+      "route": null,
+      "description": "Accepted entries rendered under the block's pre-PR step",
+      "location": {
+        "file": "src/init/pre-pr.ts",
+        "line": 34
+      }
+    },
+    {
       "source": "DefinitionsFile",
       "target": "#init",
       "mechanism": "definitionsArePopulated",
@@ -5792,7 +5838,7 @@
       "description": "Live model hashed and compared against the exported one",
       "location": {
         "file": "src/parser/handoff.ts",
-        "line": 47
+        "line": 57
       }
     },
     {
@@ -5803,7 +5849,7 @@
       "description": "The JSON export consumers read, re-read here only for its provenance stamp",
       "location": {
         "file": "src/parser/handoff.ts",
-        "line": 48
+        "line": 58
       }
     },
     {
@@ -7239,7 +7285,7 @@
       "description": "`metadata.annotation_hash` on an export was written by `guardlink parse -o` over the same hash function this module calls. Nothing verifies that: a hand-edited stamp reads as current, and the answer this module gives is only as good as the file's provenance",
       "location": {
         "file": "src/parser/handoff.ts",
-        "line": 49
+        "line": 59
       }
     }
   ],
@@ -7417,52 +7463,52 @@
       "reason": "Placement examples for both modes; they would otherwise parse as real annotations",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 40
+        "line": 41
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 123
+        "line": 124
       }
     },
     {
       "reason": "Placement examples per language; every verb line below is a template, not a claim",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 127
+        "line": 128
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 194
+        "line": 195
       }
     },
     {
       "reason": "The annotation reference's own syntax block: verb lines at column 0 with no comment marker, which is what an annotation lost inside a docstring looks like",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 225
+        "line": 226
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 332
+        "line": 333
       }
     },
     {
       "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 865
+        "line": 902
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1181
+        "line": 1218
       }
     }
   ],
@@ -8854,21 +8900,21 @@
       "description": "No @exposes here on purpose. This module reads one constant path under the project root and emits the path plus two content hashes — no annotation text, no signer, no file contents — so there is no risk to declare, and declaring one would attach a mitigation to the #parser/#data-exposure pair that silences the open exposure at migrate-mode.ts:26",
       "location": {
         "file": "src/parser/handoff.ts",
-        "line": 50
+        "line": 60
       }
     },
     {
-      "description": "`not-needed` is a real verdict, not a skip: with nothing in a sidecar there is nothing an export would rescue, and inline annotations survive a consumer's fallback on their own",
+      "description": "`not-needed` is a real verdict, not a skip: with nothing in a sidecar and no export published there is nothing an export would rescue, and inline annotations survive a consumer's fallback on their own",
       "location": {
         "file": "src/parser/handoff.ts",
-        "line": 51
+        "line": 61
       }
     },
     {
       "description": "Every failure to read the stamp returns `unverifiable`, never `current` — the one answer that would silence this check is the one an error cannot produce",
       "location": {
         "file": "src/parser/handoff.ts",
-        "line": 52
+        "line": 62
       }
     },
     {
@@ -9328,7 +9374,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 934,
+    "annotation_count": 938,
     "coverage_percent": 87
   },
   "external_refs": [],
@@ -9465,10 +9511,10 @@
           "cline"
         ],
         "scope": "root",
-        "bytes": 2534,
+        "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761",
+          "stamp": "sha256-v3:d8e5baf6726d7aa5fdc87c052b65e2927731a7ba8aaeec7b220804bce2e24d26",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
           "current": true
         },
@@ -9481,10 +9527,10 @@
           "cursor"
         ],
         "scope": "root",
-        "bytes": 2617,
+        "bytes": 3285,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761",
+          "stamp": "sha256-v3:d8e5baf6726d7aa5fdc87c052b65e2927731a7ba8aaeec7b220804bce2e24d26",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
           "current": true
         },
@@ -9498,10 +9544,10 @@
           "gemini-cli"
         ],
         "scope": "root",
-        "bytes": 2571,
+        "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761",
+          "stamp": "sha256-v3:d8e5baf6726d7aa5fdc87c052b65e2927731a7ba8aaeec7b220804bce2e24d26",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
           "current": true
         },
@@ -9515,10 +9561,10 @@
           "copilot-review"
         ],
         "scope": "root",
-        "bytes": 2571,
+        "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761",
+          "stamp": "sha256-v3:d8e5baf6726d7aa5fdc87c052b65e2927731a7ba8aaeec7b220804bce2e24d26",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
           "current": true
         },
@@ -9531,10 +9577,10 @@
           "windsurf"
         ],
         "scope": "root",
-        "bytes": 2534,
+        "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761",
+          "stamp": "sha256-v3:d8e5baf6726d7aa5fdc87c052b65e2927731a7ba8aaeec7b220804bce2e24d26",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
           "current": true
         },
@@ -9550,10 +9596,10 @@
           "opencode"
         ],
         "scope": "root",
-        "bytes": 2571,
+        "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761",
+          "stamp": "sha256-v3:d8e5baf6726d7aa5fdc87c052b65e2927731a7ba8aaeec7b220804bce2e24d26",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
           "current": true
         },
@@ -9567,10 +9613,10 @@
           "copilot-review"
         ],
         "scope": "root",
-        "bytes": 2571,
+        "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761",
+          "stamp": "sha256-v3:d8e5baf6726d7aa5fdc87c052b65e2927731a7ba8aaeec7b220804bce2e24d26",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
           "current": true
         },

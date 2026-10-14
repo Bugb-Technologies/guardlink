@@ -54,6 +54,7 @@ import type { AnnotationMode } from '../agents/index.js';
 import { AGENT_CHOICES } from './picker.js';
 import { ANNOTATE_PLAYBOOKS, REPORT_SHAPES, skillFileFor, SKILL_GENERATED_MARKER } from '../playbooks/index.js';
 import { definitionsArePopulated, configIsCustomised } from './preserve.js';
+import { readPrePrSteps, type PrePrStep } from './pre-pr.js';
 
 /**
  * Read a file we are about to consider overwriting.
@@ -477,6 +478,10 @@ function updateAgentFiles(
   }
 
   const stamp = stampNow();
+  // Steps other tools contribute to the block's pre-PR step. A refused entry
+  // is reported, not dropped silently: someone wrote it expecting it to render.
+  const prePr = readPrePrSteps(root);
+  for (const p of prePr.problems) skipped.push(`.guardlink/config.json ${p}`);
   for (const id of ids) {
     const choice = AGENT_CHOICES.find(c => c.id === id);
     if (!choice) continue;
@@ -491,7 +496,7 @@ function updateAgentFiles(
         skipped.push(`${choice.file} (already has GuardLink)`);
         continue;
       }
-      const result = injectIntoAgentFile(root, choice.file, project, force, dryRun, mode, referencePath, model, stamp);
+      const result = injectIntoAgentFile(root, choice.file, project, force, dryRun, mode, referencePath, model, stamp, prePr.steps);
       if (result === 'updated') updated.push(choice.file);
       else if (result === 'skipped') skipped.push(choice.file);
       else skipped.push(result.skippedReason);
@@ -501,14 +506,14 @@ function updateAgentFiles(
       // directory) skips just this agent file with a warning instead of crashing init.
       let content: string;
       if (choice.file.endsWith('.mdc')) {
-        content = `${CURSOR_MDC_FRONTMATTER}\n${wrapMarkers(cursorRulesContentWithModel(project, model, stamp, mode), stamp)}`;
+        content = `${CURSOR_MDC_FRONTMATTER}\n${wrapMarkers(cursorRulesContentWithModel(project, model, stamp, mode, { prePr: prePr.steps }), stamp)}`;
       } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
-        content = wrapMarkers(cursorRulesContentWithModel(project, model, stamp, mode), stamp);
+        content = wrapMarkers(cursorRulesContentWithModel(project, model, stamp, mode, { prePr: prePr.steps }), stamp);
       } else {
         // Markdown-based (CLAUDE.md, AGENTS.md, copilot-instructions.md, .gemini/GEMINI.md)
-        content = buildMdFromScratch(project, model, stamp, mode, referencePath);
+        content = buildMdFromScratch(project, model, stamp, mode, referencePath, prePr.steps);
       }
-      const res = safeWriteAgentFile(filePath, content, dryRun, project, mode, stamp);
+      const res = safeWriteAgentFile(filePath, content, dryRun, project, mode, stamp, prePr.steps);
       if (!res.ok) skipped.push(res.skipReason);
       else if (res.action === 'merged') updated.push(`${choice.file} → merged into existing .cursor/rules`);
       else created.push(choice.file);
@@ -528,6 +533,7 @@ function injectIntoAgentFile(
   referencePath: string,
   model: ThreatModel | null,
   stamp: ModelContextFreshness,
+  prePr: PrePrStep[],
 ): 'updated' | 'skipped' | { skippedReason: string } {
   const fullPath = join(root, relPath);
 
@@ -537,10 +543,10 @@ function injectIntoAgentFile(
     return { skippedReason: `${relPath} (exists as a directory; expected a file — skipped)` };
   }
 
-  // Special handling for Cursor .mdc files: the whole file is GuardLink's.
+  // Cursor .mdc: the block is replaced between its markers like every other
+  // file's, so frontmatter and rules another tool or a person added stay.
   if (relPath.endsWith('.mdc')) {
-    const res = safeWriteAgentFile(fullPath, `${CURSOR_MDC_FRONTMATTER}\n${wrapMarkers(cursorRulesContentWithModel(project, model, stamp, mode), stamp)}`, dryRun, project, mode, stamp);
-    if (!res.ok) return { skippedReason: res.skipReason };
+    if (!dryRun) writeFileSync(fullPath, mdcWithBlock(readFileSync(fullPath, 'utf-8'), wrapMarkers(cursorRulesContentWithModel(project, model, stamp, mode, { prePr }), stamp)));
     return 'updated';
   }
 
@@ -550,7 +556,7 @@ function injectIntoAgentFile(
     if (existing.includes('GuardLink') && !force) return 'skipped';
 
     if (!dryRun) {
-      const block = wrapMarkers(cursorRulesContentWithModel(project, model, stamp, mode), stamp);
+      const block = wrapMarkers(cursorRulesContentWithModel(project, model, stamp, mode, { prePr }), stamp);
       const newContent = replaceOrAppend(existing, block);
       writeFileSync(fullPath, newContent);
     }
@@ -567,7 +573,7 @@ function injectIntoAgentFile(
   if (existing.includes('GuardLink') && !force) return 'skipped';
 
   if (!dryRun) {
-    const block = wrapMarkers(agentInstructions(project, mode, { referencePath, model }), stamp);
+    const block = wrapMarkers(agentInstructions(project, mode, { referencePath, model, prePr }), stamp);
     const newContent = replaceOrAppend(existing, block);
     writeFileSync(fullPath, newContent);
   }
@@ -600,6 +606,29 @@ export function blockStamp(root: string, model: ThreatModel | null): ModelContex
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 /**
+ * A Cursor rule file with the block in it.
+ *
+ * `.cursor/rules/guardlink.mdc` used to be rewritten whole on every write, on
+ * the reasoning that the file is GuardLink's. Rules another tool or a person
+ * added to it were deleted with no trace. It now follows the same rule as
+ * every other instruction file (see `replaceOrAppend`). A file that is empty
+ * gets the frontmatter Cursor needs to load it; one with content keeps the
+ * frontmatter it has, which is not GuardLink's to rewrite.
+ *
+ * One exception, taken once: GuardLink 2.3.0 and earlier wrote this file with
+ * no markers, so a file carrying GuardLink's own frontmatter and no begin
+ * marker has no boundary to preserve around. Appending would leave the old
+ * unmarked copy above the new block, so that file is replaced whole, as it
+ * always was; from then on it has markers and the rule holds.
+ */
+function mdcWithBlock(existing: string, block: string): string {
+  const fresh = `${CURSOR_MDC_FRONTMATTER}\n${block}`;
+  if (existing.trim() === '') return fresh;
+  if (!existing.includes(GUARDLINK_MARKER) && existing.startsWith(CURSOR_MDC_FRONTMATTER)) return fresh;
+  return replaceOrAppend(existing, block);
+}
+
+/**
  * The block between its markers, with its provenance stamp on the line after
  * the begin marker. `guardlink validate` reads the stamp back and warns when
  * either hash no longer matches the model (SPEC §5.6).
@@ -612,20 +641,27 @@ function wrapMarkers(content: string, stamp: ModelContextFreshness): string {
 /**
  * If markers exist, replace the content between them.
  * Otherwise append to end of file.
+ *
+ * The rule, in every file `init` and `sync` write into: **text outside the
+ * markers is preserved byte for byte.** Only the block between
+ * `<!-- guardlink:begin -->` and `<!-- guardlink:end -->`, and the one line
+ * break that ends it, are GuardLink's.
  */
-function replaceOrAppend(existing: string, block: string): string {
+export function replaceOrAppend(existing: string, block: string): string {
   const beginIdx = existing.indexOf(GUARDLINK_MARKER);
-  const endIdx = existing.indexOf(GUARDLINK_MARKER_END);
+  const endIdx = beginIdx === -1 ? -1 : existing.indexOf(GUARDLINK_MARKER_END, beginIdx);
 
   if (beginIdx !== -1 && endIdx !== -1) {
     // Replace existing block.
     //
-    // The preserved tail must have its leading newlines stripped: `wrapMarkers`
-    // already ends the block with exactly one, and the tail begins with the one
-    // the *previous* sync wrote. Keeping both added a blank line on every run —
-    // this repo's own CLAUDE.md had accumulated 55 of them. Stripping makes the
-    // replacement idempotent, so syncing an unchanged model is a no-op.
-    const tail = existing.slice(endIdx + GUARDLINK_MARKER_END.length).replace(/^\n+/, '');
+    // `wrapMarkers` ends the block with exactly one line break, and the tail
+    // begins with the one the previous write put there, so exactly that one is
+    // dropped. Keeping it added a blank line on every run — this repo's own
+    // CLAUDE.md once accumulated 55 of them. Dropping every leading line break
+    // instead, as this used to, deleted the blank lines a person or another
+    // tool had put after the block. One is the replacement that is idempotent
+    // and touches nothing it did not write.
+    const tail = existing.slice(endIdx + GUARDLINK_MARKER_END.length).replace(/^\r?\n/, '');
     return existing.slice(0, beginIdx) + block + tail;
   }
 
@@ -705,6 +741,7 @@ function safeWriteAgentFile(
   // regenerates the block itself instead of writing `content`.
   mode: ObservedAnnotationMode | null = null,
   stamp: ModelContextFreshness = { annotation_hash: computeAnnotationHash({} as ThreatModel) },
+  prePr: PrePrStep[] = [],
 ): { ok: true; action: 'created' | 'merged' } | { ok: false; skipReason: string } {
   // CASE B: target path is itself a directory — cannot write a file there.
   if (existsSync(filePath) && statSync(filePath).isDirectory()) {
@@ -721,7 +758,7 @@ function safeWriteAgentFile(
     if (isCursorLegacy) {
       if (!dryRun) {
         const existing = readFileSync(parent, 'utf-8');
-        const block = wrapMarkers(cursorRulesContent(project, mode), stamp);
+        const block = wrapMarkers(cursorRulesContent(project, mode, { prePr }), stamp);
         writeFileSync(parent, replaceOrAppend(existing, block));
       }
       return { ok: true, action: 'merged' };
@@ -760,10 +797,11 @@ function buildMdFromScratch(
   freshness: ModelContextFreshness,
   mode: ObservedAnnotationMode | null = null,
   referencePath?: string,
+  prePr: PrePrStep[] = [],
 ): string {
   return `# ${toPascalCase(project.name)} — Project Instructions
 
-${wrapMarkers(agentInstructionsWithModel(project, model, freshness, mode, { referencePath }), freshness)}`;
+${wrapMarkers(agentInstructionsWithModel(project, model, freshness, mode, { referencePath, prePr }), freshness)}`;
 }
 
 /**
@@ -796,7 +834,8 @@ export interface SyncResult {
 /**
  * Rewrite the stamped GuardLink block in every agent instruction file that exists.
  * Called after parse/validate/annotate to keep instructions up to date.
- * Uses marker-based replacement so user content outside markers is preserved.
+ * Uses marker-based replacement so text outside the markers is preserved byte
+ * for byte, in every file — `.cursor/rules/guardlink.mdc` included.
  */
 export function syncAgentFiles(options: SyncOptions): SyncResult {
   const { root, model, dryRun = false } = options;
@@ -853,6 +892,9 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
     updated.push('.guardlink/prompt.md');
   }
 
+  const prePr = readPrePrSteps(root);
+  for (const p of prePr.problems) skipped.push(`.guardlink/config.json ${p}`);
+
   // GuardLink writes its block only into instruction files that already
   // exist, and never into one that ships to others (a packaged or fixture
   // path): adding an agent's file is the repository owner's call, made with
@@ -865,7 +907,7 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
     }
     if (!existsSync(filePath)) {
       // The legacy single-file .cursor/rules: merge into it.
-      const res = safeWriteAgentFile(filePath, '', dryRun, project, mode, freshness);
+      const res = safeWriteAgentFile(filePath, '', dryRun, project, mode, freshness, prePr.steps);
       if (!res.ok) skipped.push(res.skipReason);
       else updated.push(`${choice.file} → merged into existing .cursor/rules`);
       continue;
@@ -887,14 +929,15 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
     }
     // File exists — update the GuardLink block (marker-based replacement)
     if (choice.file.endsWith('.mdc')) {
+      const existing = readFileSync(filePath, 'utf-8');
       if (!dryRun) {
-        writeFileSync(filePath, `${CURSOR_MDC_FRONTMATTER}\n${wrapMarkers(cursorRulesContentWithModel(project, model, freshness, mode), freshness)}`);
+        writeFileSync(filePath, mdcWithBlock(existing, wrapMarkers(cursorRulesContentWithModel(project, model, freshness, mode, { prePr: prePr.steps }), freshness)));
       }
       updated.push(choice.file);
     } else if (choice.file === '.cursorrules' || choice.file === '.windsurfrules' || choice.file === '.clinerules') {
       const existing = readFileSync(filePath, 'utf-8');
       if (!dryRun) {
-        const block = wrapMarkers(cursorRulesContentWithModel(project, model, freshness, mode), freshness);
+        const block = wrapMarkers(cursorRulesContentWithModel(project, model, freshness, mode, { prePr: prePr.steps }), freshness);
         writeFileSync(filePath, replaceOrAppend(existing, block));
       }
       updated.push(choice.file);
@@ -902,7 +945,7 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
       const existing = readFileSync(filePath, 'utf-8');
       if (!dryRun) {
         const block = wrapMarkers(agentInstructionsWithModel(project, model, freshness, mode,
-          { referencePath: observedReferencePath(root) }), freshness);
+          { referencePath: observedReferencePath(root), prePr: prePr.steps }), freshness);
         writeFileSync(filePath, replaceOrAppend(existing, block));
       }
       updated.push(choice.file);

@@ -1865,13 +1865,17 @@ A conforming instruction file should contain:
 3. The constraint that agents only add annotations and do not modify functional code, execute commands, change CI configuration, or modify secrets
 4. Examples in the project's primary language
 
-**The block GuardLink writes** is a short pointer (about 25 lines) between `<!-- guardlink:begin -->` and `<!-- guardlink:end -->`: whether a model exists (or is empty, and what that means), where annotations go, the decisions an agent must leave to a person, and where the syntax and the live model are. It does not copy the model, which would go stale between syncs and be read as current. The line after the begin marker is its provenance stamp:
+**The block GuardLink writes** is a short pointer (about 30 lines) between `<!-- guardlink:begin -->` and `<!-- guardlink:end -->`: whether a model exists (or is empty, and what that means), where annotations go, the decisions an agent must leave to a person, what to check before opening or updating a pull request, and where the syntax and the live model are. It does not copy the model, which would go stale between syncs and be read as current. The line after the begin marker is its provenance stamp:
 
 ```
 <!-- guardlink:stamp annotation_hash=sha256-v3:… agent_config_hash=sha256-v1:… -->
 ```
 
 Every block is stamped, the empty-model block included, and `guardlink validate` reports one whose stamp no longer matches the model (§5.6). `guardlink sync` writes the block only into instruction files that already exist, never into a packaged or fixture one; `guardlink init` creates an agent's file only when it is named with `--agent`.
+
+**Text outside the markers is preserved, in every file.** A write replaces the block and the one line break that ends it; text before and after it, and the blank lines between, are left byte for byte, so another tool may keep its own section in the same file. `.cursor/rules/guardlink.mdc` follows the same rule. A `guardlink.mdc` with GuardLink's own frontmatter and no begin marker was written before the block had markers, and is replaced whole once.
+
+**The pre-PR step** uses only GuardLink's deterministic verbs, so it holds in a repository with nothing else installed: `guardlink validate .` (the annotations parse and resolve, and a published `.guardlink/report.json` is not behind them), `guardlink lint . --since origin/<base>` (each claim the change adds names its code and is paired) and `guardlink diff origin/<base>` (what the change adds to the model). It tells the agent to suggest the check when asked to raise a pull request without it, and not to write `@accepts` to clear what it reports. Other tools add lines under it with `pre_pr` in `.guardlink/config.json`, an array of `{ "command": string, "why"?: string }`; each accepted entry is one line, at most five are rendered, and an entry that could change the block's structure or carry text a reviewer does not see — a line break or other control character, a backtick, an HTML comment delimiter, hidden Unicode — is refused and reported rather than escaped. The stamp does not cover `pre_pr`; `guardlink sync` re-renders it.
 
 ### 5.4. Attribution (optional `blame` field)
 
