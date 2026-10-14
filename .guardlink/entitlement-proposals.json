@@ -82,6 +82,581 @@
           "written_to": "src/mcp/server.ts:40"
         }
       ]
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_parse",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_parse",
+      "canonical_capability": "guardlink_parse",
+      "asset": "#parser",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_parse. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 264
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_status",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_status",
+      "canonical_capability": "guardlink_status",
+      "asset": "#parser",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_status. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 310
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_validate",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_validate",
+      "canonical_capability": "guardlink_validate",
+      "asset": "#parser",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_validate; its execute effect is what the tool is for. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 358
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_suggest",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_suggest",
+      "canonical_capability": "guardlink_suggest",
+      "asset": "#suggest",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_suggest. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 422
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_worklist",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_worklist",
+      "canonical_capability": "guardlink_worklist",
+      "asset": "#codegraph",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_worklist; its execute effect is what the tool is for. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 444
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_reach",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_reach",
+      "canonical_capability": "guardlink_reach",
+      "asset": "#codegraph",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_reach; its execute effect is what the tool is for. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 486
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_lookup",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_lookup",
+      "canonical_capability": "guardlink_lookup",
+      "asset": "#mcp",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_lookup. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 506
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_context",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_context",
+      "canonical_capability": "guardlink_context",
+      "asset": "#mcp",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_context. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 527
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_graph",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_graph",
+      "canonical_capability": "guardlink_graph",
+      "asset": "#mcp",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_graph. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 561
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_annotate_apply",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_annotate_apply",
+      "canonical_capability": "guardlink_annotate_apply",
+      "asset": "#mcp",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_annotate_apply; its write effect is what the tool is for. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 617
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_reanchor",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_reanchor",
+      "canonical_capability": "guardlink_reanchor",
+      "asset": "#mcp",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_reanchor; its write effect is what the tool is for. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 656
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_annotate",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_annotate",
+      "canonical_capability": "guardlink_annotate",
+      "asset": "#mcp",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_annotate; its execute effect is what the tool is for. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 779
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_report",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_report",
+      "canonical_capability": "guardlink_report",
+      "asset": "#report",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_report; its write effect is what the tool is for. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 830
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_dashboard",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_dashboard",
+      "canonical_capability": "guardlink_dashboard",
+      "asset": "#dashboard",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_dashboard; its write effect is what the tool is for. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 879
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_sarif",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_sarif",
+      "canonical_capability": "guardlink_sarif",
+      "asset": "#sarif",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_sarif; its write effect is what the tool is for. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 918
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_diff",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_diff",
+      "canonical_capability": "guardlink_diff",
+      "asset": "#diff",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_diff; its execute effect is what the tool is for. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 958
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_paths",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_paths",
+      "canonical_capability": "guardlink_paths",
+      "asset": "#mcp",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_paths. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 988
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_threat_reports",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_threat_reports",
+      "canonical_capability": "guardlink_threat_reports",
+      "asset": "#mcp",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_threat_reports. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 1018
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_sync",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_sync",
+      "canonical_capability": "guardlink_sync",
+      "asset": "#init",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_sync; its write effect is what the tool is for. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 1037
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_unannotated",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_unannotated",
+      "canonical_capability": "guardlink_unannotated",
+      "asset": "#parser",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_unannotated. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 1108
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_review_list",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_review_list",
+      "canonical_capability": "guardlink_review_list",
+      "asset": "#mcp",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_review_list. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 1136
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_entitlement_propose",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_entitlement_propose",
+      "canonical_capability": "guardlink_entitlement_propose",
+      "asset": "#mcp",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_entitlement_propose; its write effect is what the tool is for. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 1260
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_entitlement_list",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_entitlement_list",
+      "canonical_capability": "guardlink_entitlement_list",
+      "asset": "#mcp",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_entitlement_list. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 1308
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_blame",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_blame",
+      "canonical_capability": "guardlink_blame",
+      "asset": "#blame",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_blame; its execute effect is what the tool is for. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 1339
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_workspace_info",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_workspace_info",
+      "canonical_capability": "guardlink_workspace_info",
+      "asset": "#workspace-config",
+      "rationale": "By design: guardlink mcp exists to hand the connected agent guardlink_workspace_info. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:29",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 29,
+        "raw": "src/mcp/index.ts:29"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 1374
+      },
+      "proposed_by": "claude-code (agent)",
+      "proposed_at": "2026-10-14",
+      "status": "proposed",
+      "warnings": [],
+      "history": []
     }
   ]
 }
