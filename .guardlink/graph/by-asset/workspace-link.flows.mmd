@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/workspace-link.flows.mmd
 %% scope:           PARTIAL — #workspace-link and its flow neighbourhood, grown until the drawing stopped fitting — 37 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761
+%% annotation_hash: sha256-v3:d772e5aace1a979e67f2f3e9e8b651b1193509d12f44bd91e6eaffc264af4469
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -31,6 +31,8 @@ graph LR
   cli -- "📡 runGate" --> gate
   codegraph -- "📡 checkBoundaries" --> cli
   init -- "🗄️ writeFileSync" --> agentfiles
+  init -- "📡 agentInstructions" --> agentfiles
+  agentfiles -- "📡 findPrePrDrift" --> init
   userargs -- "📡 args" --> tui
   tui -- "📡 launchAgent" --> agent_launcher
   tui -- "📡 chatCompletion" --> llm_client

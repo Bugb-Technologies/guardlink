@@ -99,6 +99,12 @@ report the export as missing, stale, or carrying no provenance stamp; the three 
 answers and are reported as three, because an export with no `metadata.annotation_hash` is not
 known to be current and is not known to be stale.
 
+**An inline repository that publishes the export has the same step.** Consumers read an export in
+preference to the source comments, so once `.guardlink/report.json` exists, an annotation written
+inline after it reaches nobody until the export is cut again. `validate` and `status` check a
+published export whatever the mode, and the agent block's pre-PR step (below, under
+*Agent instruction files*) names the command. Neither writes it: a check that writes is not a check.
+
 **A `.gal` that yields nothing now says which kind of nothing it is.** An empty sidecar
 (`empty-gal`), one holding text that names no GuardLink verb (`unrecognised-gal`), and one whose
 `@source` points at a file that is not on disk (`missing-gal-source`) are three different mistakes
@@ -548,8 +554,58 @@ guardlink --no-agent-config parse .                      # leave it out of one r
 
 `guardlink validate` also checks it: hidden Unicode in instruction files, skills and commands
 (`hidden-unicode`, an error when it decodes to text), a GuardLink block with no provenance stamp or a stale
-one (`agent-block-unstamped`, `agent-block-stale` — run `guardlink sync`), configuration it could not read,
+one (`agent-block-unstamped`, `agent-block-stale` — run `guardlink sync`), a block whose pre-PR lines differ
+from `pre_pr` (`agent-block-pre-pr-stale` — the same fix), configuration it could not read,
 and hand-written coding-agent reach.
+
+## Agent instruction files
+
+`guardlink init` and `guardlink sync` write one block, between `<!-- guardlink:begin -->` and
+`<!-- guardlink:end -->`, into each agent instruction file (`CLAUDE.md`, `AGENTS.md`,
+`.cursor/rules/guardlink.mdc`, `.cursorrules`, `.windsurfrules`, `.clinerules`,
+`.github/copilot-instructions.md`, `.gemini/GEMINI.md`).
+
+**Text outside the markers is preserved, in every file.** `sync` replaces what is between the
+markers and the one line break that ends the block, and nothing else: text before the block, text
+after it and the blank lines between them stay byte for byte, so another tool may keep its own
+section in the same file. That includes `.cursor/rules/guardlink.mdc`, whose frontmatter is kept
+as it is. One exception, taken once: a `guardlink.mdc` written by GuardLink 2.3.0 or earlier has
+GuardLink's frontmatter and no markers, so there is no boundary to preserve around, and it is
+replaced whole the first time.
+
+**Before you open or update a pull request**, the block tells the agent to check the annotations
+the change adds against its base branch, with GuardLink's deterministic verbs only:
+
+```bash
+guardlink validate .                          # they parse and resolve; a published report.json is not behind them
+guardlink lint . --since origin/<base>        # each new claim names its code and is paired (--json: a fix per violation)
+guardlink diff origin/<base>                  # the exposures, flows and acceptances the change adds
+```
+
+and to suggest the check when asked to raise a pull request without it.
+
+**Other tools add a line to that step** with `pre_pr` in `.guardlink/config.json`, instead of writing
+a block of their own into the same files:
+
+```json
+"pre_pr": [
+  { "command": "other-tool check --format json", "why": "what it checks" }
+]
+```
+
+| Key | Type | Rendered as |
+|---|---|---|
+| `command` | string, required, at most 200 characters | a code span, after GuardLink's own three |
+| `why` | string, optional, at most 200 characters | text after the command; empty is the same as absent |
+
+Each entry becomes one line, in order, labelled with where it came from. At most five are rendered.
+An entry is refused — not rendered, and reported by `init` and `sync` as `pre_pr[<i>]: <reason>` —
+when it is not an object, has no string `command`, or either string is empty, too long, or contains
+a line break or other control character, a backtick, an HTML comment delimiter (`<!--`, `-->`) or
+hidden Unicode: each of those would let the configuration change the block's structure or say
+something a reviewer does not see. Run `guardlink sync` after changing `pre_pr`: the block's stamp
+does not cover it, so `guardlink validate` compares the lines instead and reports a block that does
+not carry what `pre_pr` configures (`agent-block-pre-pr-stale`).
 
 ## Attribution (`guardlink blame`)
 

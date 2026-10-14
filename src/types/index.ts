@@ -1069,6 +1069,8 @@ export type DiagnosticCode =
   | 'agent-block-unstamped'
   /** A GuardLink block's stamp names another annotation or configuration hash than the current model's. */
   | 'agent-block-stale'
+  /** A GuardLink block's contributed pre-PR lines differ from `pre_pr` in `.guardlink/config.json` (src/init/pre-pr.ts). */
+  | 'agent-block-pre-pr-stale'
   /** An agent configuration file could not be read. */
   | 'agent-config-unreadable'
   /** An annotation claims reach for a coding agent whose reach is generated from configuration. */

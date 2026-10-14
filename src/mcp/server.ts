@@ -90,6 +90,7 @@ import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildAnnotatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
+import { findPrePrDrift } from '../init/pre-pr.js';
 import { loadWorkspaceConfig, readVersionControl } from '../workspace/index.js';
 import { computeBlame, buildBlamePayload } from '../blame/index.js';
 import { getPackageVersion } from '../version.js';
@@ -386,7 +387,7 @@ export function createServer(): McpServer {
       }
       // Agent configuration (SPEC §5.6): hidden Unicode, block stamps, unreadable files, hand-written coding-agent reach.
       const agentConfigDiags = findAgentConfigDiagnostics(model);
-      const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...actorDiags, ...agentReachDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...boundaryDiags, ...agentConfigDiags];
+      const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...actorDiags, ...agentReachDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...boundaryDiags, ...agentConfigDiags, ...findPrePrDrift(root)];
 
       const errors = allDiags.filter(d => d.level === 'error');
       const warnings = allDiags.filter(d => d.level === 'warning');

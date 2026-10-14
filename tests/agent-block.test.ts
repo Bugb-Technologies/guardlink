@@ -89,8 +89,10 @@ describe('GL-403 — weakness 4: the block names context, graph, the CWE bridge 
 describe('the block is a pointer, not a copy of the model', () => {
   const text = agentInstructions(project, 'inline', { model: populatedModel });
 
-  it('stays short: about 25 lines', () => {
-    expect(text.trimEnd().split('\n').length).toBeLessThanOrEqual(26);
+  it('stays short: about 30 lines', () => {
+    // 25 before the pre-PR step (SPEC §8.1); each `pre_pr` entry adds one more,
+    // and init/pre-pr.ts renders at most five.
+    expect(text.trimEnd().split('\n').length).toBeLessThanOrEqual(31);
   });
 
   it('points at the reference document and the README for everything it leaves out', () => {

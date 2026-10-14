@@ -156,7 +156,13 @@ under their own name.
 **Behavioral directive.** A rule injected into your agent's instruction file
 (CLAUDE.md, .cursorrules, and the rest) that says: *when writing code that
 handles routes, auth, database access, file I/O, or external services, add
-GuardLink annotations.*
+GuardLink annotations.* Before a pull request, it has the agent check what the
+change added against the base branch — `guardlink validate .`,
+`guardlink lint . --since origin/<base>` and `guardlink diff origin/<base>` — and
+other tools can add their own pre-PR line to that step with `pre_pr` in
+`.guardlink/config.json` rather than writing a second block. `guardlink sync`
+rewrites only what is between GuardLink's markers; text around them is kept, in
+every file. Details: [Agent instruction files](docs/GUARDLINK_REFERENCE.md#agent-instruction-files).
 
 | Agent | Config file | MCP support |
 |-------|------------|-------------|

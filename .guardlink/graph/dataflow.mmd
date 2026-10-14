@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:cef73c72096eec5805bb1487042a289e249445d03f382648594ce1e11cbd5761
+%% annotation_hash: sha256-v3:d772e5aace1a979e67f2f3e9e8b651b1193509d12f44bd91e6eaffc264af4469
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 78 nodes / 200 edges, past the 12 / 16 legibility budget (78 nodes against 12, 200 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 78 nodes / 203 edges, past the 12 / 16 legibility budget (78 nodes against 12, 203 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -246,6 +246,9 @@ graph LR
   projectroot -- "📡 options.root" --> init
   init -- "🗄️ writeFileSync" --> agentfiles
   init -- "🗄️ writeFileSync" --> configfile
+  configfile -- "📡 readPrePrSteps" --> init
+  init -- "📡 agentInstructions" --> agentfiles
+  agentfiles -- "📡 findPrePrDrift" --> init
   definitionsfile -- "📡 definitionsArePopulated" --> init
   configfile -- "📡 configIsCustomised" --> init
   projectroot -- "📡 detectIncludeScope" --> init

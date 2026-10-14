@@ -220,7 +220,7 @@ describe('the inline path is unchanged', () => {
       .toEqual(inline.model.exposures.map(e => `${e.asset}/${e.threat}`));
   });
 
-  it('needs no export, and is told so by saying nothing', async () => {
+  it('needs no export while it publishes none, and is told so by saying nothing', async () => {
     const root = repo('inline');
     const { model } = await parseProject({ root, project: 'repro' });
 
@@ -239,6 +239,54 @@ describe('the inline path is unchanged', () => {
     expect(codes(diagnostics)).not.toContain('empty-gal');
     expect(codes(diagnostics)).not.toContain('unrecognised-gal');
     expect(codes(diagnostics)).not.toContain('missing-gal-source');
+  });
+});
+
+/**
+ * An inline repository that publishes the export anyway.
+ *
+ * Consumers read an export in preference to the source, so once one is
+ * published, an annotation written inline after it reaches nobody until the
+ * export is cut again. `validate` is what the agent block's pre-PR step runs,
+ * so this is where an agent that annotated by hand learns the export is behind.
+ */
+describe('a published export binds an inline repository too', () => {
+  it('is current while it matches, and says nothing', async () => {
+    const root = repo('inline');
+    await exportModel(root);
+    const { model } = await parseProject({ root, project: 'repro' });
+
+    const handoff = checkHandoff(root, model);
+    expect(handoff.verdict).toBe('current');
+    expect(handoff.message).toBeNull();
+    expect(handoff.external).toBe(0);
+  });
+
+  it('is stale once an inline annotation is added after it, and names the refresh', async () => {
+    const root = repo('inline');
+    await exportModel(root);
+    // The hand-written annotation an agent adds while it works.
+    const src = join(root, 'src', 'allocations.js');
+    writeFileSync(src, readFileSync(src, 'utf-8').replace(
+      ' */\n',
+      ' * @audit App.API -- "allocation limits are not enforced per tenant"\n */\n',
+    ));
+    const { model } = await parseProject({ root, project: 'repro' });
+
+    const handoff = checkHandoff(root, model);
+    expect(handoff.verdict).toBe('stale');
+    expect(handoff.message).toContain('in place of the source comments');
+    expect(handoff.message).toContain(HANDOFF_COMMAND);
+  });
+
+  it('is unverifiable when the published export carries no stamp', async () => {
+    const root = repo('inline');
+    writeFileSync(join(root, HANDOFF_PATH), JSON.stringify({ exposures: [] }));
+    const { model } = await parseProject({ root, project: 'repro' });
+
+    const handoff = checkHandoff(root, model);
+    expect(handoff.verdict).toBe('unverifiable');
+    expect(handoff.message).toContain('in place of the source comments');
   });
 });
 
