@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/diff.threats.mmd
 %% scope:           PARTIAL — #diff only — its own threats and controls
-%% annotation_hash: sha256-v3:7ab08c4be04c2a53b489f178a999b6de34a30a99c4065e001f88862ed7e696c2
+%% annotation_hash: sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -15,13 +15,15 @@ graph LR
   cmd_injection["🔴 Command_Injection (cwe:CWE-78)"]:::threat
   arbitrary_write["🟠 Arbitrary_File_Write (cwe:CWE-73)"]:::threat
   path_traversal["🟠 Path_Traversal (cwe:CWE-22, cwe:CWE-59)"]:::threat
+  param_commands["🛡️ Parameterized_Commands"]:::control
   input_sanitize["🛡️ Input_Sanitization"]:::control
   path_validation["🛡️ Path_Validation"]:::control
   glob_filtering["🛡️ Glob_Pattern_Filtering"]:::control
-  param_commands["🛡️ Parameterized_Commands"]:::control
   diff -. exposes .-> cmd_injection
   diff -. exposes .-> arbitrary_write
   diff -. exposes .-> path_traversal
+  param_commands -- mitigates --> cmd_injection
+  param_commands -. protects .-> diff
   input_sanitize -- mitigates --> cmd_injection
   input_sanitize -. protects .-> diff
   path_validation -- mitigates --> arbitrary_write
@@ -29,7 +31,5 @@ graph LR
   glob_filtering -- mitigates --> path_traversal
   glob_filtering -. protects .-> diff
   path_validation -- mitigates --> path_traversal
-  param_commands -- mitigates --> cmd_injection
-  param_commands -. protects .-> diff
   classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px
   classDef control fill:#102a24,stroke:#33d49d,color:#f0f0f0,stroke-width:1.3px

@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/diff.flows.mmd
 %% scope:           PARTIAL — #diff and its flow neighbourhood, grown until the drawing stopped fitting — 12 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:7ab08c4be04c2a53b489f178a999b6de34a30a99c4065e001f88862ed7e696c2
+%% annotation_hash: sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -23,7 +23,7 @@ graph LR
   changedfilelist["🧩 ChangedFileList"]
   diff -.-|🧱 Trust boundary at git command execution| gitrepo
   threatmodel -- "📡 diffModels" --> diff
-  gitref -- "📡 execSync" --> diff
+  gitref -- "🗄️ execFileSync" --> diff
   diff -- "🗄️ writeFileSync" --> tempdir
   diff -- "📡 parseProject" --> threatmodel
   diff -- "📡 return" --> changedfilelist
