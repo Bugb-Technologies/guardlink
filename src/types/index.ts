@@ -1089,7 +1089,14 @@ export type DiagnosticCode =
   /** A route handler reaches a classified sink, and no asset its file names has a boundary to the outside. */
   | 'boundary-missing'
   /** No declared flow crosses a boundary, and no recognised entry point reaches either side. */
-  | 'boundary-unused';
+  | 'boundary-unused'
+  // ── Reach checks against a code graph (src/codegraph/reach-check.ts) ──
+  /** An effect the annotations call gated, and the graph measured a route to it that passes through no gate. */
+  | 'gate-not-on-route'
+  /** A declared mutating effect that no declared agent reach leads to. */
+  | 'effect-unreached-by-agent'
+  /** A tool registration the graph finds that no `@agents` or `@reaches` covers. */
+  | 'agent-tool-undeclared';
 
 export interface ParseDiagnostic {
   level: 'error' | 'warning' | 'fatal';

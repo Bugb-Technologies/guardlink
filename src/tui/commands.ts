@@ -40,6 +40,7 @@ import { C, severityBadge, severityText, severityTextPad, severityOrder, compute
 import { resolveLLMConfig, saveTuiConfig, loadTuiConfig } from './config.js';
 import { AGENTS, parseAgentFlag, parseAnnotationModeFlag, launchAgent, launchAgentInline, copyToClipboard, buildAnnotatePrompt, type AgentEntry } from '../agents/index.js';
 import { loadWorklist, worklistSummaryLine } from '../codegraph/index.js';
+import { loadReachCheck } from '../codegraph/reach-check.js';
 import { describeConfigSource } from '../agents/config.js';
 import { getReviewableExposures, applyReviewAction, summarizeReview, horizonFrom, ReviewRejected, type ReviewResult } from '../review/index.js';
 import { readAcceptancePolicy, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
@@ -1618,7 +1619,8 @@ export async function cmdAnnotate(args: string, ctx: TuiContext): Promise<void> 
   if (graphLine) console.log(C.dim(`  ${graphLine}`));
 
   // Build context prompt using shared builder
-  const prompt = buildAnnotatePrompt(cleanArgs.trim(), ctx.root, ctx.model, annotationMode, undefined, worklist);
+  const reachCheck = worklist.status === 'available' ? await loadReachCheck(ctx.root) : null;
+  const prompt = buildAnnotatePrompt(cleanArgs.trim(), ctx.root, ctx.model, annotationMode, undefined, worklist, reachCheck);
 
   // For terminal agents: foreground spawn (agent takes over terminal)
   if (agent.cmd) {

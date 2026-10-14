@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/cli.flows.mmd
 %% scope:           PARTIAL — #cli and its flow neighbourhood, grown until the drawing stopped fitting — 25 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059
+%% annotation_hash: sha256-v3:c469bfa1007f984711fa1bfca471817fe44e11b8c16014f8d8c5268ff6c08c0c
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -13,7 +13,6 @@
 graph LR
   blame["🧩 GuardLink.Blame"]
   cli["🧩 GuardLink.CLI"]
-  gitrepo["🧩 GitRepo"]
   filesystem["🧩 FileSystem"]
   codegraph["🧩 GuardLink.CodeGraph"]
   gate["🧩 GuardLink.Gate"]
@@ -22,16 +21,13 @@ graph LR
   estate_view["🧩 Workspace.Estate"]
   merge_engine["🧩 Workspace.Merge"]
   blame -- "📡 formatBlameText" --> cli
-  gitrepo -- "🗄️ execFileSync" --> blame
-  gitrepo -- "📡 listCommits" --> blame
   blame -- "🗄️ buildBlamePayload" --> cli
   cli -- "🗄️ writeFile" --> filesystem
-  gitrepo -- "📡 attachBlame" --> cli
-  gitrepo -- "📡 computeBlame" --> cli
   cli -- "📡 loadWorklist" --> codegraph
+  cli -- "📡 loadReachCheck" --> codegraph
   cli -- "📡 runGate" --> gate
-  gitrepo -- "📡 loadSince" --> cli
   codegraph -- "📡 checkBoundaries" --> cli
+  codegraph -- "📡 loadReachCheck" --> cli
   agentproposal -- "📡 proposeEntitlement" --> cli
   gitconfig -- "🗄️ execFileSync" --> cli
   estate_view -- "📡 estateReport" --> cli

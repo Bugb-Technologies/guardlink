@@ -340,13 +340,13 @@ export function discoverTransport(env: NodeJS.ProcessEnv = process.env, timeoutM
   return null;
 }
 
-interface StatusFields { status: CodeGraphStatus; via: string; note: string }
+export interface StatusFields { status: CodeGraphStatus; via: string; note: string }
 
 /**
  * Run the calls, turning every way it can fail into a status. `answers` is set
  * only when status is `available`.
  */
-async function ask(root: string, calls: ToolCall[], opts: CodeGraphOptions): Promise<StatusFields & { answers?: ToolAnswer[] }> {
+export async function ask(root: string, calls: ToolCall[], opts: CodeGraphOptions): Promise<StatusFields & { answers?: ToolAnswer[] }> {
   const env = opts.env ?? process.env;
   if (opts.enabled === false) return { status: 'off', via: '', note: 'disabled with --no-code-graph' };
   if (graphSwitchedOff(env)) return { status: 'off', via: '', note: `disabled with ${ENV_SWITCH}=${env[ENV_SWITCH]}` };

@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059
+%% annotation_hash: sha256-v3:c469bfa1007f984711fa1bfca471817fe44e11b8c16014f8d8c5268ff6c08c0c
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 49 nodes / 199 edges, past the 12 / 16 legibility budget (49 nodes against 12, 199 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 49 nodes / 203 edges, past the 12 / 16 legibility budget (49 nodes against 12, 203 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -208,6 +208,8 @@ graph LR
   key_redaction -. protects .-> cli
   param_commands -. protects .-> codegraph
   resource_limits -. protects .-> codegraph
+  input_sanitize -- mitigates --> prompt_injection
+  input_sanitize -. protects .-> codegraph
   output_encoding -- mitigates --> xss
   output_encoding -. protects .-> dashboard
   output_encoding -- mitigates --> data_exposure
@@ -224,7 +226,6 @@ graph LR
   input_sanitize -- mitigates --> arbitrary_write
   input_sanitize -. protects .-> cli
   path_validation -. protects .-> init
-  input_sanitize -- mitigates --> prompt_injection
   input_sanitize -. protects .-> init
   config_validation -- mitigates --> arbitrary_write
   config_validation -. protects .-> init
@@ -273,12 +274,15 @@ graph LR
   glob_filtering -. validates .-> parser
   input_sanitize -. validates .-> parser
   codegraph -- "📡 worklist" --> agent_launcher
+  codegraph -- "📡 undeclared agent tools" --> agent_launcher
   blame -- "📡 formatBlameText" --> cli
   blame -- "🗄️ buildBlamePayload" --> cli
   blame -- "📡 summarise" --> dashboard
   cli -- "📡 loadWorklist" --> codegraph
+  cli -- "📡 loadReachCheck" --> codegraph
   cli -- "📡 runGate" --> gate
   codegraph -- "📡 checkBoundaries" --> cli
+  codegraph -- "📡 loadReachCheck" --> cli
   mcp -- "📡 generateThreatReport" --> llm_client
   mcp -- "📡 guardlink_worklist" --> codegraph
   mcp -- "📡 guardlink_reach" --> codegraph

@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/codegraph.threats.mmd
 %% scope:           PARTIAL — #codegraph only — its own threats and controls
-%% annotation_hash: sha256-v3:a1cf0a80e85428155e1ab13b0f7ce83862a4e21e7d7a8488464e9038461f5059
+%% annotation_hash: sha256-v3:c469bfa1007f984711fa1bfca471817fe44e11b8c16014f8d8c5268ff6c08c0c
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -18,6 +18,7 @@ graph LR
   prompt_injection["🟡 Prompt_Injection (cwe:CWE-77)"]:::threat
   param_commands["🛡️ Parameterized_Commands"]:::control
   resource_limits["🛡️ Resource_Limits"]:::control
+  input_sanitize["🛡️ Input_Sanitization"]:::control
   codegraph -. exposes .-> child_proc_injection
   codegraph -. exposes .-> config_tamper
   codegraph -. exposes .-> dos
@@ -26,6 +27,8 @@ graph LR
   param_commands -. protects .-> codegraph
   resource_limits -- mitigates --> dos
   resource_limits -. protects .-> codegraph
+  input_sanitize -- mitigates --> prompt_injection
+  input_sanitize -. protects .-> codegraph
   resource_limits -. validates .-> codegraph
   param_commands -. validates .-> codegraph
   classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px

@@ -65,6 +65,7 @@ import { renderAgentsPage } from './pages/agents.js';
 import { renderReportsPage } from './pages/reports.js';
 import { renderAttributionPage } from './pages/attribution.js';
 import { summarizeReach } from '../reach/index.js';
+import { measuredRoutes, type ReachCheck } from '../codegraph/reach-check.js';
 import { findUnmitigatedPaths, classifyEndpoints } from '../paths/index.js';
 import { buildDiagramModel } from './layout/graph.js';
 import { buildHoodPayload, renderHoodSvg, renderNodeDetail } from './layout/hood.js';
@@ -100,6 +101,8 @@ export interface DashboardOptions {
   since?: SinceInput;
   /** Pin a theme instead of following the OS preference (the CLI's --light). */
   theme?: 'dark' | 'light';
+  /** A code graph's reach-check answer (`--code-graph`); adds the measured-route table to the Agents page. */
+  measured?: ReachCheck | null;
 }
 
 export function generateDashboardHTML(rawModel: ThreatModel, root?: string, analyses?: ThreatReportWithContent[], opts: DashboardOptions = {}): string {
@@ -163,6 +166,7 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
     model, scope, scopeFiles, links, hostLabel: hostLabel(links),
     stats, severity, exposures, confirmed, unmitigated, mitigatedCount, mitigationCoveragePercent, risk,
     claims, ledger, attribution, actions, heatmap, fileAnnotations, reach,
+    ...(opts.measured ? { measured: measuredRoutes(model, opts.measured) } : {}),
     analyses: analyses || [],
     changes,
     fileRisk,

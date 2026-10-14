@@ -16,6 +16,7 @@ import type { ThreatModel } from '../types/index.js';
 import { summarizeReach, hasReach, type ReachSummary, type ReachEffectChip, type ReachLoc, type GrantedBy } from '../reach/index.js';
 import { findUnmitigatedExposures } from '../parser/coverage.js';
 import { canonicaliser } from '../parser/canonical-ref.js';
+import { measuredRoutes, MEASURED_LABEL, type ReachCheck } from '../codegraph/reach-check.js';
 
 const cell = (s: string): string => s.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 const at = (l: ReachLoc): string => `${l.file}:${l.line}`;
@@ -31,7 +32,7 @@ function effectText(e: ReachEffectChip): string {
  * The section body, under a `##` heading the caller writes. `headingSuffix` is
  * appended to every `###` so a feature slice says so wherever it is read.
  */
-export function emitAgentReach(model: ThreatModel, lines: string[], headingSuffix = ''): void {
+export function emitAgentReach(model: ThreatModel, lines: string[], headingSuffix = '', measured?: ReachCheck | null): void {
   const s = summarizeReach(model);
   const h3 = (t: string) => `### ${t}${headingSuffix}`;
 
@@ -69,9 +70,30 @@ export function emitAgentReach(model: ThreatModel, lines: string[], headingSuffi
   emitActors(s, lines, h3);
   emitReachMap(s, lines, h3);
   emitLists(s, lines, h3);
+  emitMeasuredRoutes(model, measured, lines, h3);
   emitCodingAgents(s, lines, h3);
   emitOwasp(s, lines, h3);
   emitReachedExposures(model, s, lines, h3);
+}
+
+/**
+ * What a code graph measured for each declared reach, beside what the annotations
+ * say. Written only when a graph answered (`guardlink report --code-graph`), so
+ * the document without one is exactly what it was.
+ */
+function emitMeasuredRoutes(model: ThreatModel, measured: ReachCheck | null | undefined, lines: string[], h3: (t: string) => string): void {
+  const rows = measuredRoutes(model, measured);
+  if (rows.length === 0) return;
+  lines.push(h3('Measured Route (Code Graph)'));
+  lines.push('');
+  lines.push(`${MEASURED_LABEL} \`measured\` means the reach's handler reaches a declared effect over resolved calls; \`unknown\` is never read as either answer.`);
+  lines.push('');
+  lines.push('| Actor | Capability | On | Measured route | Gates on the route | Location |');
+  lines.push('|-------|------------|----|----------------|--------------------|----------|');
+  for (const r of rows) {
+    lines.push(`| ${r.actor} | ${code(r.capability)} | ${r.asset || '—'} | ${cell(r.text)} | ${cell(r.gates.join('; ') || '—')} | ${r.file}:${r.line} |`);
+  }
+  lines.push('');
 }
 
 const grant = (g: GrantedBy): string => `${g.file}:${g.line} ${code(g.raw.length > 60 ? `${g.raw.slice(0, 57)}...` : g.raw)}`;
@@ -304,7 +326,7 @@ function emitReachedExposures(model: ThreatModel, s: ReachSummary, lines: string
  * The agent threat model on its own: the same section as the main report,
  * with a header that says what it covers. `guardlink report --agents`.
  */
-export function generateAgentReachReport(model: ThreatModel): string {
+export function generateAgentReachReport(model: ThreatModel, measured?: ReachCheck | null): string {
   const features = (model as ThreatModel & { filtered_by_features?: string[] }).filtered_by_features ?? [];
   const suffix = features.length > 0 ? ` — feature${features.length > 1 ? 's' : ''} ${features.map(f => `"${f}"`).join(', ')}` : '';
   const lines: string[] = [];
@@ -327,6 +349,6 @@ export function generateAgentReachReport(model: ThreatModel): string {
   lines.push('');
   lines.push(`## Agents and LLM Reach${suffix}`);
   lines.push('');
-  emitAgentReach(model, lines, suffix);
+  emitAgentReach(model, lines, suffix, measured);
   return lines.join('\n');
 }

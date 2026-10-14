@@ -211,6 +211,9 @@ describe('the node counter against browser-measured geometry', () => {
     // with its exposures, controls, flows and boundary. The `pre_pr` reader
     // took the filtered links from 94 to 96, and the whole model's from 196
     // to 199, with the flows of `src/init/pre-pr.ts` into and out of #init.
+    // Reading a code graph's reach check took the filtered links from 96 to
+    // 100, and the whole model's from 199 to 203, with the flows of
+    // `src/codegraph/reach-check.ts` and its callers.
     // When they move, re-render the diagram in a browser and count the SVG
     // again; never bump them to whatever the counter says, which leaves it
     // checking itself.
@@ -231,9 +234,11 @@ describe('the node counter against browser-measured geometry', () => {
     // clusters:9}, whole model {nodes:49, links:196}, and the counter agrees.
     // Re-measured for 96 the same way: filtered {nodes:35, links:96,
     // clusters:9}, whole model {nodes:49, links:199}, and the counter agrees.
+    // Re-measured for 100 the same way: filtered {nodes:35, links:100,
+    // clusters:9}, whole model {nodes:49, links:203}, and the counter agrees.
     const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
     expect(m.nodes).toBe(35);
-    expect(m.edges).toBe(96);
+    expect(m.edges).toBe(100);
     // And the whole model is 49 nodes, which is the number this work exists for.
     expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(49);
   }, 30_000);

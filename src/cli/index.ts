@@ -70,6 +70,7 @@ import type { SinceInput } from '../dashboard/analytics.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt, buildTranslatePrompt, buildAskPrompt, resolveAnnotationMode } from '../agents/index.js';
 import { loadWorklist, worklistSummaryLine } from '../codegraph/index.js';
 import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary-check.js';
+import { loadReachCheck, checkReach, reachCheckSummaryLine, reachDrafts, renderDrafts, type ReachCheck } from '../codegraph/reach-check.js';
 import { selectAnnotatePlaybook, selectReportShape, ANNOTATE_PLAYBOOKS, REPORT_SHAPES } from '../playbooks/index.js';
 import { lintAnnotations, runGate, formatGateReport, buildGateFollowUp, stripViolations, RULE_FIX } from '../gate/index.js';
 import { relationRecords, CLAIM_KEY_NAMES, CLAIM_KEY_SURFACES } from '../parser/claim-key.js';
@@ -385,7 +386,7 @@ program
   .option('--strict', 'Also fail on unmitigated exposures (for CI gates)')
   .option('--artifacts', 'Also check .guardlink/graph/ artifacts against the current model; exits non-zero on drift')
   .option('--sync', 'Also refresh agent instruction files (this used to happen unasked — see D16)')
-  .option('--code-graph', 'Also check declared @boundary claims against a code graph, when one is installed and built: a stated access level a route contradicts, a route handler with no boundary to the outside, a boundary nothing crosses. Warnings only')
+  .option('--code-graph', 'Also check declared claims against a code graph, when one is installed and built: a @boundary access level a route contradicts, a route handler with no boundary to the outside, a boundary nothing crosses, a gate the graph finds no route through, an effect no agent reaches, a tool registration with no @agents. Warnings only, each a claim to check')
   .action(async (dir: string, opts: { project: string; strict?: boolean; artifacts?: boolean; sync?: boolean; codeGraph?: boolean }) => {
     const root = resolve(dir);
     const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
@@ -445,6 +446,13 @@ program
       const worklist = await loadWorklist(root, model);
       boundaryDiags = checkBoundaries(model, worklist);
       console.error(boundaryCheckSummaryLine(worklist, boundaryDiags));
+      // The declared agent reach against the same graph: the call graph beside the annotations, never over them.
+      // @flows #cli -> #codegraph via loadReachCheck -- "validate --code-graph: project root; the declared reach measured against the call graph, or a status"
+      const reachCheck = await loadReachCheck(root);
+      const reachDiags = checkReach(reachCheck);
+      boundaryDiags = [...boundaryDiags, ...reachDiags];
+      const reachLine = reachCheckSummaryLine(reachCheck, reachDiags);
+      if (reachLine) console.error(reachLine);
     }
 
     // The repository's agent configuration (SPEC §5.6): hidden Unicode, block
@@ -880,7 +888,8 @@ program
   .option('--feature <names>', 'Filter report to specific feature(s) (comma-separated)')
   .option('--blame', 'Add an Attribution section: who introduced and fixed each claim, per person and per AI tool (read from git)')
   .option('--agents', 'Write only the agent threat model: what each agent and principal can reach, unentitled reaches, ungated mutations and the OWASP LLM mapping (default file threat-model-agents.md)')
-  .action(async (dir: string, opts: { project: string; output?: string; format: string; diagramOnly?: boolean; json?: boolean; feature?: string; blame?: boolean; agents?: boolean }) => {
+  .option('--code-graph', 'Add a measured-route column for each declared agent reach, read from a code graph when one is installed and built (a claim to check, never evidence)')
+  .action(async (dir: string, opts: { project: string; output?: string; format: string; diagramOnly?: boolean; json?: boolean; feature?: string; blame?: boolean; agents?: boolean; codeGraph?: boolean }) => {
     const root = resolve(dir);
 
     // Validate --format before doing any work. An unrecognised value used to
@@ -947,11 +956,13 @@ program
 
     const { writeFile } = await import('node:fs/promises');
 
+    const measured = await loadMeasured(root, opts.codeGraph);
+
     // The agent threat model alone: the same section the full report carries,
     // with no JSON beside it, because the export is the whole model's.
     if (opts.agents) {
       const mdFile = opts.output || 'threat-model-agents.md';
-      await writeFile(resolve(root, mdFile), generateAgentReachReport(enrichedModel) + '\n');
+      await writeFile(resolve(root, mdFile), generateAgentReachReport(enrichedModel, measured) + '\n');
       console.error(`✓ Wrote agent threat model to ${mdFile}`);
       return;
     }
@@ -960,7 +971,7 @@ program
     const wantMd = opts.format === 'md' || opts.format === 'both' || opts.json;
 
     if (wantMd) {
-      const report = generateReport(enrichedModel);
+      const report = generateReport(enrichedModel, measured);
       const mdFile = opts.output || 'threat-model.md';
       await writeFile(resolve(root, mdFile), report + '\n');
       console.error(`✓ Wrote threat model report to ${mdFile}`);
@@ -1297,6 +1308,63 @@ program
     }
 
     if (opts.failOnFound && findings.length > 0) process.exit(1);
+  });
+
+/**
+ * The graph's reach-check answer for `report --code-graph` and `dashboard --code-graph`,
+ * or null without the flag, so a document built without it never consults a graph.
+ * Says on stderr what the graph added, or why nothing.
+ *
+ * @flows #cli -> #codegraph via loadReachCheck -- "report and dashboard --code-graph: project root; the declared reach measured against the call graph, or a status"
+ */
+async function loadMeasured(root: string, enabled: boolean | undefined): Promise<ReachCheck | null> {
+  if (!enabled) return null;
+  const rc = await loadReachCheck(root);
+  console.error(rc.status === 'available'
+    ? `Measured route (code graph via ${rc.via}): ${rc.routes.length} declared reach(es) measured`
+    : `Measured route: not added — ${rc.note || `code graph ${rc.status}`}`);
+  return rc;
+}
+
+// ─── reach ───────────────────────────────────────────────────────────
+
+// @comment -- "guardlink reach asks an installed code graph to check the declared agent reach and prints what it measured; --drafts prints annotation text for tool registrations nothing declares. It writes no file: a draft is stdout, and a person or the annotate agent decides what goes into source"
+// @flows #cli -> #codegraph via loadReachCheck -- "reach: project root; the declared reach measured against the call graph, or a status"
+program
+  .command('reach')
+  .description('Check the declared @agents/@reaches/@effects/@gates against an optional code graph. With --drafts, print draft @agents/@effects for tool registrations that declare no reach. Prints text and writes nothing')
+  .argument('[dir]', 'Project directory', '.')
+  .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('--drafts', 'Print draft @agents and @effects lines for each agent tool registration with no declared reach, for review. Never writes source or the model')
+  .option('--json', 'Output as JSON')
+  .action(async (dir: string, opts: { project?: string; drafts?: boolean; json?: boolean }) => {
+    const root = resolve(dir);
+    const { model } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    const reachCheck = await loadReachCheck(root);
+    const where = { status: reachCheck.status, via: reachCheck.via, note: reachCheck.note };
+
+    // A graph that could not be read is not an empty answer: say which, and fail.
+    if (reachCheck.status !== 'available') {
+      if (opts.json) console.log(JSON.stringify({ ...where, ...(opts.drafts ? { drafts: [] } : { warnings: [] }) }, null, 2));
+      else console.error(`No code-graph answer: ${reachCheck.note || `status ${reachCheck.status}`}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    if (opts.drafts) {
+      const drafts = reachDrafts(reachCheck, model);
+      if (opts.json) console.log(JSON.stringify({ ...where, drafts }, null, 2));
+      else console.log(renderDrafts(drafts));
+      return;
+    }
+
+    const warnings = checkReach(reachCheck);
+    if (opts.json) {
+      console.log(JSON.stringify({ ...where, verdict: reachCheck.verdict, joins: reachCheck.joins, warnings: warnings.map(d => ({ code: d.code, file: d.file, line: d.line, message: d.message })) }, null, 2));
+      return;
+    }
+    printDiagnostics(warnings);
+    console.error(reachCheckSummaryLine(reachCheck, warnings));
   });
 
 // ─── lookup ──────────────────────────────────────────────────────────
@@ -1722,8 +1790,13 @@ program
     const graphLine = worklistSummaryLine(worklist);
     if (graphLine) console.error(graphLine);
 
+    // The same graph's list of agent tools no @agents covers. Asked only when the
+    // worklist reached a graph, so a machine without one runs nothing extra.
+    // @flows #cli -> #codegraph via loadReachCheck -- "annotate: project root; tool registrations with no declared reach, or a status"
+    const reachCheck: ReachCheck | null = worklist.status === 'available' ? await loadReachCheck(root) : null;
+
     // Build prompt
-    const fullPrompt = buildAnnotatePrompt(scopedPrompt, root, model, annotationMode, selection.id, worklist);
+    const fullPrompt = buildAnnotatePrompt(scopedPrompt, root, model, annotationMode, selection.id, worklist, reachCheck);
 
     // Launch agent
     if (agent.id !== 'stdout') {
@@ -3149,7 +3222,8 @@ program
   .option('--feature <names>', 'Filter dashboard to specific feature(s) (comma-separated)')
   .option('--blame', 'Add an Attribution page: exposures introduced and fixed per person and per AI tool (read from git)')
   .option('--since <ref>', 'Add a "what changed" strip: exposures added and resolved, and claims gone stale, since a git ref (tag, branch, commit)')
-  .action(async (dir: string, opts: { project: string; output?: string; light?: boolean; feature?: string; blame?: boolean; since?: string }) => {
+  .option('--code-graph', 'Add a measured-route table to the Agents page, read from a code graph when one is installed and built (a claim to check, never evidence)')
+  .action(async (dir: string, opts: { project: string; output?: string; light?: boolean; feature?: string; blame?: boolean; since?: string; codeGraph?: boolean }) => {
     const root = resolve(dir);
     const project = detectProjectName(root, opts.project);
     let { model, diagnostics } = await parseProject({ root, project });
@@ -3187,8 +3261,9 @@ program
     }
 
     const analyses = loadThreatReportsForDashboard(root);
+    const measured = await loadMeasured(root, opts.codeGraph);
     // The page follows the OS light/dark preference; --light pins light.
-    const html = generateDashboardHTML(model, root, analyses, { since, theme: opts.light ? 'light' : undefined });
+    const html = generateDashboardHTML(model, root, analyses, { since, theme: opts.light ? 'light' : undefined, measured });
 
     const outFile = opts.output || 'threat-dashboard.html';
     const { writeFile } = await import('node:fs/promises');

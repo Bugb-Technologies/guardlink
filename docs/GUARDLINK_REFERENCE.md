@@ -139,7 +139,11 @@ guardlink init [dir]                    # Initialize .guardlink/ and agent instr
 guardlink parse [dir]                   # Parse annotations → ThreatModel JSON (with reach_analysis when the model declares reach; SPEC §5.5)
 guardlink status [dir]                  # Risk grade + coverage summary
 guardlink validate [dir] [--strict]     # Syntax errors, dangling refs, unmitigated exposures
-guardlink validate [dir] --code-graph   # Also check each @boundary against an optional code graph (warnings only)
+guardlink validate [dir] --code-graph   # Also check each @boundary, and the declared agent reach (gate-not-on-route,
+                                        #   effect-unreached-by-agent, agent-tool-undeclared), against an optional code graph
+                                        #   (warnings only, each a claim to check)
+guardlink reach [dir] [--drafts]        # The same reach check on its own; --drafts prints draft @agents/@effects for agent tools
+                                        #   with no declared reach. Prints text, writes nothing, never drafts @accepts/@entitles
 guardlink lookup <query...> [-d dir]    # The guardlink_lookup forms as JSON, e.g. lookup unentitled reaches
                                         #   (--fail-on-found exits 1 when the query returns anything)
 guardlink verify [dir] [targets...]     # Lock claims to the code beneath them → .guardlink/verified.json
@@ -153,7 +157,8 @@ guardlink ci . --expiring-within 30                # Days of notice before an @a
 # Reports & Export
 guardlink report [dir]                  # Generate threat-model.md + optional JSON
 guardlink report . --agents             # Agent threat model alone: reach map, unentitled reaches, ungated mutations, OWASP LLM mapping
-guardlink dashboard [dir]               # Interactive, self-contained HTML dashboard (no network at render time)
+guardlink report . --code-graph         # Also add a measured-route column per declared reach, from an optional code graph (a claim to check)
+guardlink dashboard [dir]               # Interactive, self-contained HTML dashboard (no network at render time); --code-graph adds the measured route
 guardlink sarif [dir] [-o file]         # SARIF 2.1.0 for GitHub Advanced Security / VS Code; @exposes and @confirmed results carry guardlink/threatId, and @exposes results also carry guardlink/claimKey; each also carries its declared context — CWE/OWASP taxa, boundaries and assumptions on its asset, the @flows chain into it — and the run carries the flow/boundary graph (SPEC §6.6)
 guardlink sarif [dir] --profile pentest [--baseline old.sarif]   # the same results, then covered exposures (guardlink/mitigated-exposure, with suppressions), one guardlink/boundary-claim per @boundary and one guardlink/agent-reach per reach and per mutating effect appended after them; every claim carries its hypothesis-ledger state; --baseline sets baselineState (SPEC §6.8)
 guardlink diff [ref]                    # Compare threat model against a git ref (default: HEAD~1)
