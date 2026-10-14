@@ -1,14 +1,15 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:c469bfa1007f984711fa1bfca471817fe44e11b8c16014f8d8c5268ff6c08c0c",
+    "annotation_hash": "sha256-v3:cf08fb08cc0008d60be3d52bdcc845cc7d748c603c0b33dbc62d4373fa6dcd4f",
     "generator": "guardlink@2.3.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 187,
-  "annotations_parsed": 1015,
+  "source_files": 188,
+  "annotations_parsed": 1021,
   "annotated_files": [
     ".guardlink/definitions.ts",
+    "src/agentconfig/bundle.ts",
     "src/agentconfig/discover.ts",
     "src/agentconfig/hidden-unicode.ts",
     "src/agentconfig/index.ts",
@@ -1421,6 +1422,26 @@
       "asset": "#agent-config",
       "threat": "#path-traversal",
       "control": "#path-validation",
+      "description": "Links are never followed: a link entry is reported unreadable, the skill directory must stay inside the repository root, and every listed file's real path must equal its path under that directory",
+      "location": {
+        "file": "src/agentconfig/bundle.ts",
+        "line": 23
+      }
+    },
+    {
+      "asset": "#agent-config",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "At most MAX_BUNDLED files are listed per skill, and a file above MAX_BUNDLED_READ is listed by length without being read",
+      "location": {
+        "file": "src/agentconfig/bundle.ts",
+        "line": 25
+      }
+    },
+    {
+      "asset": "#agent-config",
+      "threat": "#path-traversal",
+      "control": "#path-validation",
       "description": "Every directory and file is resolved with realpath and dropped unless it stays under the repository root; each real directory is entered once, so a link cycle terminates",
       "location": {
         "file": "src/agentconfig/discover.ts",
@@ -1444,7 +1465,7 @@
       "description": "execFileSync with a fixed argument vector and no shell; no repository content reaches the arguments",
       "location": {
         "file": "src/agentconfig/index.ts",
-        "line": 92
+        "line": 99
       }
     },
     {
@@ -2204,7 +2225,7 @@
       "description": "resolveCommit checks the ref's shape and resolves it to a sha first; a ref it refuses returns [] and runs nothing further",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 132
+        "line": 140
       }
     },
     {
@@ -2214,7 +2235,7 @@
       "description": "git diff runs through execFileSync with the sha as one argument",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 133
+        "line": 141
       }
     },
     {
@@ -2946,6 +2967,32 @@
       "external_refs": [
         "cwe:CWE-59"
       ],
+      "description": "collectBundle walks repository-controlled entries with readdirSync and hashes files with readFileSync; symbolic links could redirect that read outside the skill or repository",
+      "location": {
+        "file": "src/agentconfig/bundle.ts",
+        "line": 22
+      }
+    },
+    {
+      "asset": "#agent-config",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "collectBundle processes repository-controlled directory entries through readdirSync and file bytes through readFileSync; unbounded inventory or reads could exhaust memory",
+      "location": {
+        "file": "src/agentconfig/bundle.ts",
+        "line": 24
+      }
+    },
+    {
+      "asset": "#agent-config",
+      "threat": "#path-traversal",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-59"
+      ],
       "description": "Follows symlinks found in the scanned repository",
       "location": {
         "file": "src/agentconfig/discover.ts",
@@ -2975,7 +3022,7 @@
       "description": "Spawns git in the scanned directory",
       "location": {
         "file": "src/agentconfig/index.ts",
-        "line": 91
+        "line": 98
       }
     },
     {
@@ -3753,7 +3800,7 @@
       "description": "getChangedFiles passes the caller's ref (a CLI, TUI or dashboard --since argument) to git diff --name-only",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 131
+        "line": 139
       }
     },
     {
@@ -4734,6 +4781,17 @@
   "acceptances": [],
   "transfers": [],
   "flows": [
+    {
+      "source": "ProjectFiles",
+      "target": "#agent-config",
+      "mechanism": "readdirSync",
+      "route": null,
+      "description": "Directory listing of a skill's own directory",
+      "location": {
+        "file": "src/agentconfig/bundle.ts",
+        "line": 26
+      }
+    },
     {
       "source": "ProjectFiles",
       "target": "#agent-config",
@@ -5853,7 +5911,7 @@
       "description": "Ref input to git diff --name-only",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 134
+        "line": 142
       }
     },
     {
@@ -5864,7 +5922,7 @@
       "description": "Repo-relative paths used for entitlement staleness",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 135
+        "line": 143
       }
     },
     {
@@ -8267,6 +8325,13 @@
   ],
   "comments": [
     {
+      "description": "Never executes, imports or interprets a bundled file: kind comes from the file name, the digest from its bytes",
+      "location": {
+        "file": "src/agentconfig/bundle.ts",
+        "line": 27
+      }
+    },
+    {
       "description": "Pure function over a string; no I/O. Reports what a file contains, never what it means: decoded text is evidence for a reviewer, and nothing here executes or follows it",
       "location": {
         "file": "src/agentconfig/hidden-unicode.ts",
@@ -10151,7 +10216,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 1015,
+    "annotation_count": 1021,
     "coverage_percent": 87
   },
   "external_refs": [],
@@ -10291,7 +10356,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:c469bfa1007f984711fa1bfca471817fe44e11b8c16014f8d8c5268ff6c08c0c",
+          "stamp": "sha256-v3:cf08fb08cc0008d60be3d52bdcc845cc7d748c603c0b33dbc62d4373fa6dcd4f",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
           "current": true
         },
@@ -10307,7 +10372,7 @@
         "bytes": 3285,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:c469bfa1007f984711fa1bfca471817fe44e11b8c16014f8d8c5268ff6c08c0c",
+          "stamp": "sha256-v3:cf08fb08cc0008d60be3d52bdcc845cc7d748c603c0b33dbc62d4373fa6dcd4f",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
           "current": true
         },
@@ -10324,7 +10389,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:c469bfa1007f984711fa1bfca471817fe44e11b8c16014f8d8c5268ff6c08c0c",
+          "stamp": "sha256-v3:cf08fb08cc0008d60be3d52bdcc845cc7d748c603c0b33dbc62d4373fa6dcd4f",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
           "current": true
         },
@@ -10341,7 +10406,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:c469bfa1007f984711fa1bfca471817fe44e11b8c16014f8d8c5268ff6c08c0c",
+          "stamp": "sha256-v3:cf08fb08cc0008d60be3d52bdcc845cc7d748c603c0b33dbc62d4373fa6dcd4f",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
           "current": true
         },
@@ -10357,7 +10422,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:c469bfa1007f984711fa1bfca471817fe44e11b8c16014f8d8c5268ff6c08c0c",
+          "stamp": "sha256-v3:cf08fb08cc0008d60be3d52bdcc845cc7d748c603c0b33dbc62d4373fa6dcd4f",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
           "current": true
         },
@@ -10373,10 +10438,10 @@
           "opencode"
         ],
         "scope": "root",
-        "bytes": 3239,
+        "bytes": 3609,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:c469bfa1007f984711fa1bfca471817fe44e11b8c16014f8d8c5268ff6c08c0c",
+          "stamp": "sha256-v3:cf08fb08cc0008d60be3d52bdcc845cc7d748c603c0b33dbc62d4373fa6dcd4f",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
           "current": true
         },
@@ -10393,7 +10458,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:c469bfa1007f984711fa1bfca471817fe44e11b8c16014f8d8c5268ff6c08c0c",
+          "stamp": "sha256-v3:cf08fb08cc0008d60be3d52bdcc845cc7d748c603c0b33dbc62d4373fa6dcd4f",
           "agent_config_stamp": "sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b",
           "current": true
         },

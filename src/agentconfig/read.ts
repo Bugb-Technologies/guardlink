@@ -33,7 +33,7 @@ import { join, resolve, sep } from 'node:path';
 import type {
   ThreatModelReach, ThreatModelEffect, ThreatModelGate, ThreatModelActor, EffectClass,
   AgentConfigSource, AgentConfigLoadedWhen, AgentConfigMcpServer, AgentConfigHook,
-  AgentConfigInstructionFile, AgentConfigBlock,
+  AgentConfigInstructionFile, AgentConfigBlock, AgentConfigSkill,
 } from '../types/index.js';
 import { normalizeName } from '../parser/normalize.js';
 import { parseJsonc, asObject, asArray, asString, pointerToken, type JsonValue, type JsoncDocument } from './jsonc.js';
@@ -44,6 +44,7 @@ import {
   type Semantics, type DangerClass,
 } from './semantics.js';
 import type { DiscoveredFile } from './discover.js';
+import { collectBundle } from './bundle.js';
 
 /** Configuration files and scripts larger than this are reported, not read. */
 export const MAX_BYTES = 2 * 1024 * 1024;
@@ -88,6 +89,8 @@ interface Ctx {
   file: DiscoveredFile;
   text: string;
   doc: JsoncDocument | null;
+  /** Paths git carries, for the files beside a skill; null counts every file. */
+  carried: Set<string> | null;
 }
 
 interface RowOpts {
@@ -254,6 +257,20 @@ function frontmatter(text: string): { fields: Map<string, { value: string; line:
     if (mm) fields.set(mm[1], { value: mm[2].trim(), line: i + 2 });
   });
   return { fields };
+}
+
+/** What a skill's front matter says about invoking it. Only the key's own text is read: nothing it names is resolved. */
+function skillMeta(text: string): AgentConfigSkill {
+  const fm = frontmatter(text).fields;
+  const dmi = fm.get('disable-model-invocation');
+  const at = fm.get('allowed-tools');
+  // YAML booleans: `true`, `True`, `TRUE`, optionally quoted, optionally followed by a comment.
+  const disabled = dmi ? /^["']?true["']?\s*(#.*)?$/i.test(dmi.value) : false;
+  return {
+    model_invocable: !disabled,
+    ...(dmi ? { disable_model_invocation_line: dmi.line } : {}),
+    ...(at ? { allowed_tools_line: at.line } : {}),
+  };
 }
 
 /** `Bash(git log:*)` → (`Bash`, `git log:*`); `Bash` → (`Bash`, null). */
@@ -713,9 +730,15 @@ function cursorEnv(b: Builder, ctx: Ctx) {
 function markdownFile(b: Builder, ctx: Ctx) {
   const { file, text } = ctx;
   const stamp = text.includes(GUARDLINK_BEGIN) ? parseStamp(text) : null;
+  const skill = file.kind === 'skill' ? skillMeta(text) : null;
+  // A fixture skill is test data: listed, not looked beside.
+  const bundle = skill && file.scope !== 'fixture' ? collectBundle(file, ctx.realRoot, ctx.carried) : null;
+  if (bundle) b.unreadable.push(...bundle.unreadable);
   b.instructions.push({
     path: file.path, kind: file.kind, harnesses: file.harnesses, scope: file.scope,
     bytes: Buffer.byteLength(text, 'utf-8'),
+    ...(skill ? { skill } : {}),
+    ...(bundle ? { bundled: bundle.bundled } : {}),
     ...(text.includes(GUARDLINK_BEGIN) ? {
       guardlink_block: {
         line: text.slice(0, text.indexOf(GUARDLINK_BEGIN)).split('\n').length,
@@ -771,7 +794,9 @@ function jsonHooksFile(b: Builder, ctx: Ctx, harness: string, base = '') {
 const JSON_KINDS = new Set(['claude-settings', 'mcp', 'vscode-settings', 'vscode-tasks', 'gemini-settings', 'cursor-hooks', 'cursor-env', 'cursor-cli', 'copilot-hooks', 'plugin-hooks', 'plugin-manifest']);
 
 /** Read every discovered file into rows and inventory. */
-export function readFiles(root: string, files: DiscoveredFile[], sem: Semantics = loadSemantics()): ReadResult {
+export function readFiles(
+  root: string, files: DiscoveredFile[], sem: Semantics = loadSemantics(), carried: Set<string> | null = null,
+): ReadResult {
   const b = new Builder(sem);
   const realRoot = realpathSync(root);
   for (const file of files) {
@@ -788,7 +813,7 @@ export function readFiles(root: string, files: DiscoveredFile[], sem: Semantics 
     }
     // Fixture configuration is listed, and its instruction files counted, but not read for reach or inventory.
     if (file.scope === 'fixture' && !MARKDOWN_KINDS.has(file.kind)) continue;
-    const ctx: Ctx = { root, realRoot, sem, file, text, doc: null };
+    const ctx: Ctx = { root, realRoot, sem, file, text, doc: null, carried };
     try {
       if (MARKDOWN_KINDS.has(file.kind)) {
         markdownFile(b, ctx);
