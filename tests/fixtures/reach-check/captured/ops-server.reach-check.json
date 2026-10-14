@@ -1,0 +1,206 @@
+{
+ "check": "bravos.reach-check/v1",
+ "coverage": {
+  "agent_reaches": 1,
+  "by_gate_verdict": {
+   "no_gate_declared": 1
+  },
+  "by_route_verdict": {
+   "measured": 1
+  },
+  "effects_declared": 1,
+  "orphan_check": "evaluated",
+  "reaches_declared": 1,
+  "tool_registrations": 3
+ },
+ "coverage_note": "A route runs from the handler a declared reach is anchored to (or, for a reach written above a tool registration, the handler that registration binds) over resolved `calls` and `frameworkcalls` edges. The graph records that a function calls another, not in what order, so `on_every_route` counts a gate called after the effect; it is necessary, not sufficient. A call the resolver declined, a callback handed to a library, a dynamic dispatch and a tool registered through a framework no entry model recognises are invisible to it, which is why `bypassed` is withheld when a path that avoids the gate declines a call named like the gate. Covering gates are GuardLink's (reach_analysis), copied only from an export shown to describe the graph's annotations. A tool whose handler is not bound to a node is measured from the node the annotation is anchored to, and says so (`start.basis`).",
+ "effect_gates": [
+  {
+   "asset": "#host-shell",
+   "capability": "run-shell",
+   "declared": {
+    "gates": [],
+    "gating": "ungated"
+   },
+   "depth": 0,
+   "effect": {
+    "claim_key": "ad5f16dd4cf7613d9a31020255a16b03837dd0435eced60445d6d0d271af904d:0",
+    "file": "src/server.js",
+    "line": 25
+   },
+   "effect_kind": "execute",
+   "measured": {
+    "verdict": "no_gate_declared"
+   },
+   "node_id": "src/server.js::<module>/<anon:tool#0>",
+   "reach": {
+    "claim_key": "94111838c005b2ca66cb276dc4105555d5847db06e966a3f1caf35c7e6f9c339:0",
+    "file": "src/server.js",
+    "line": 24
+   },
+   "symbol": "<module>/<anon:tool#0>"
+  }
+ ],
+ "graph_currency": {
+  "state": "current"
+ },
+ "joins": {
+  "freshness": "claims_match_graph",
+  "state": "copied"
+ },
+ "orphan_reaches": [],
+ "reach_routes": [
+  {
+   "actor": "#ops-agent",
+   "asset": "#host-shell",
+   "capability": "run-shell",
+   "claim": {
+    "claim_key": "94111838c005b2ca66cb276dc4105555d5847db06e966a3f1caf35c7e6f9c339:0",
+    "file": "src/server.js",
+    "line": 24
+   },
+   "effects": [
+    {
+     "asset": "#host-shell",
+     "claim": {
+      "claim_key": "ad5f16dd4cf7613d9a31020255a16b03837dd0435eced60445d6d0d271af904d:0",
+      "file": "src/server.js",
+      "line": 25
+     },
+     "declared_gating": "ungated",
+     "depth": 0,
+     "effect": "execute",
+     "mutating": true,
+     "node_id": "src/server.js::<module>/<anon:tool#0>",
+     "path": [
+      "src/server.js::<module>/<anon:tool#0>"
+     ],
+     "symbol": "<module>/<anon:tool#0>"
+    }
+   ],
+   "entitlement": "unentitled",
+   "start": {
+    "basis": "tool_entry",
+    "file": "src/server.js",
+    "node": "src/server.js::<module>/<anon:tool#0>",
+    "symbol": "<module>/<anon:tool#0>",
+    "tool": "run_shell"
+   },
+   "verb": "agents",
+   "verdict": "measured",
+   "walk": {
+    "negative_allowed": true,
+    "nodes_reached": 2,
+    "truncated": false
+   }
+  }
+ ],
+ "resolver_density": {
+  "anonymous_callables": 3,
+  "by_language": [
+   {
+    "anonymous_callables": 3,
+    "call_sources": 3,
+    "callables": 3,
+    "edges_per_callable": 1.0,
+    "language": "javascript",
+    "orphan_call_sources": 0,
+    "orphan_share": 0.0,
+    "placeable_unresolved_sites": 0,
+    "resolution_ratio": 1.0,
+    "resolution_warning": null,
+    "resolved_call_edges": 3,
+    "resolved_call_sites": 3,
+    "shortfalls": [],
+    "sufficient": true
+   }
+  ],
+  "call_sources": 3,
+  "callables": 3,
+  "calls": {
+   "declined": {
+    "by_reason": {
+     "no_candidate": 10
+    },
+    "examples": [
+     "file:src/server.js -> tool (no_candidate)",
+     "file:src/server.js -> string (no_candidate)",
+     "file:src/server.js -> tool (no_candidate)",
+     "file:src/server.js -> string (no_candidate)",
+     "file:src/server.js -> string (no_candidate)",
+     "file:src/server.js -> tool (no_candidate)",
+     "file:src/server.js -> connect (no_candidate)",
+     "src/server.js::runShell -> toString (no_candidate)",
+     "src/server.js::runShell -> execSync (no_candidate)",
+     "src/server.js::saveNote -> writeFileSync (no_candidate)"
+    ],
+    "note": "10 call sites were seen and not drawn (10 no_candidate). They are not edges this graph failed to resolve into the table \u2014 they are edges it declined to invent. Read the `calls` resolution rate against this number, never on its own.",
+    "recorded": true,
+    "total": 10
+   },
+   "edge_types": [
+    "calls"
+   ],
+   "resolved": 3,
+   "total": 3,
+   "unresolved": 0,
+   "unresolved_share": 0.0
+  },
+  "edges_per_callable": 1.0,
+  "max_orphan_share": 0.1,
+  "min_edges_per_callable": 0.5,
+  "orphan_call_sources": 0,
+  "orphan_share": 0.0,
+  "resolved_call_edges": 3,
+  "shortfalls": [],
+  "sufficient": true,
+  "vendored_callables": 0
+ },
+ "undeclared_tools": [
+  {
+   "file": "src/server.js",
+   "framework": "mcp",
+   "handler": "src/server.js::<module>/<anon:tool#1>",
+   "hints": {
+    "effect_hints": [
+     "write"
+    ],
+    "sink_classes": [
+     {
+      "class": "filesystem",
+      "example": "writeFileSync (src/server.js:15)",
+      "min_depth": 1
+     }
+    ],
+    "state": "SinksReached"
+   },
+   "kind": "mcp_tool",
+   "line": 31,
+   "tool": "save_note"
+  },
+  {
+   "file": "src/server.js",
+   "framework": "mcp",
+   "handler": "src/server.js::<module>/<anon:tool#2>",
+   "hints": {
+    "effect_hints": [],
+    "sink_classes": [],
+    "state": "NoSinksReached"
+   },
+   "kind": "mcp_tool",
+   "line": 35,
+   "tool": "ping"
+  }
+ ],
+ "unreached_effects": [],
+ "verdict": "checked",
+ "verdict_definitions": {
+  "bypassed": "a path from the handler to the effect avoids every covering gate's node and every caller of it; GuardLink says gated, the graph finds no call to the gate \u2014 a claim to check, never evidence",
+  "measured": "the reach's handler reaches at least one declared effect over resolved calls",
+  "no_gate_declared": "GuardLink reports no gate covering the effect, so there is nothing to measure",
+  "no_route": "the walk was complete, above the resolver-density gate, and reached no declared effect",
+  "on_every_route": "every measured path from the handler to the effect passes through, or calls, a covering gate's node \u2014 order-blind, so necessary and not sufficient",
+  "unknown": "the graph cannot say; `reason` names why, and unknown is never read as the other verdicts"
+ },
+ "verdict_note": "every declared reach was walked; read `verdict` and `reason` per row, and GuardLink's own copied verdict beside each measured one"
+}
