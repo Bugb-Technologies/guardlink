@@ -65,7 +65,9 @@ function localPath(root: string, name: string): string {
     const real = realpathSync(parent);
     if (real !== base && !real.startsWith(base + sep)) throw new Error('Attestation directory leaves repository');
   }
-  if (existsSync(file) && lstatSync(file).isSymbolicLink()) throw new Error('Attestation metadata must not be a symlink');
+  try {
+    if (lstatSync(file).isSymbolicLink()) throw new Error('Attestation metadata must not be a symlink');
+  } catch (err) { if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err; }
   return file;
 }
 export function readObservedState(root: string): { observed?: ObservedReach; pins?: ToolPins } {

@@ -2569,3 +2569,17 @@ Endpoint rules admit `model-endpoint-override`; credential rules admit
 Values, endpoint hosts and credential hashes are never exported by these rules.
 Root and nested entries produce reach; packaged and fixture entries do not.
 The synthetic export `conformance/agent-config-env.json` pins the consumer slots.
+
+## 5.8 CycloneDX agent inventory
+
+`guardlink ai-bom [dir] [-o file]` emits a deterministic CycloneDX 1.6 JSON BOM
+using the [official schema](https://github.com/CycloneDX/specification/blob/1.6/schema/bom-1.6.schema.json).
+Actors and configured MCP servers are application components; instruction files
+and skill bundle members are file components. Bundle dependencies reference the
+file components. Stable `bom-ref` values hash kind and identity, and
+`guardlink:*` properties preserve harness, scope, source location, declared
+capabilities and claim keys. Known bundle digests become SHA-256 hashes.
+Configuration commands, environment values, endpoint values and raw instruction
+text are omitted. Unknown versions, model weights and model cards are not
+invented. This is an inventory conversion, not vulnerability analysis, runtime
+attestation or proof of enforcement.

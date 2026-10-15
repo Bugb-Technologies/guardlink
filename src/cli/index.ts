@@ -285,6 +285,20 @@ program
   });
 
 program
+  .command('ai-bom')
+  .description('Export agent configuration and declared reach as a CycloneDX 1.6 inventory')
+  .argument('[dir]', 'Project directory', '.')
+  .option('-o, --output <file>', 'Write JSON to a file')
+  .action(async (dir: string, opts: { output?: string }) => {
+    const { generateAiBom } = await import('../bom/index.js');
+    const { model, diagnostics } = await parseProject({ root: resolve(dir) });
+    printDiagnostics(diagnostics);
+    if (diagnostics.some(d => d.level === 'error')) { process.exitCode = 1; return; }
+    const json = JSON.stringify(generateAiBom(model), null, 2) + '\n';
+    if (opts.output) writeFileSync(opts.output, json); else process.stdout.write(json);
+  });
+
+program
   .command('attest')
   .description('Import a local observed-reach document; compare declarations and human description pins')
   .argument('<doc>', 'Observed-reach JSON file')

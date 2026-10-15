@@ -26,3 +26,7 @@ export { computeBlame, attachBlame, buildBlamePayload, formatBlameText, readBlam
 export type { BlamePayload, BlameEntry, BlameConfig, ToolRule, ExposureBlame, MitigationBlame, RecordBlame, CommitRef, AiAttribution, BlameSummary } from './blame/index.js';
 export { populateMetadata, loadWorkspaceConfig, REPORT_SCHEMA_VERSION, mergeReports, formatMergeSummary, diffMergedReports, formatDiffSummary, estateReport, formatEstateReport, readMergedReport, ESTATE_SCHEMA } from './workspace/index.js';
 export type { WorkspaceConfig, WorkspaceRepo, MergedReport, MergeTotals, MergeDiffSummary, MergeOptions, EstateReport, EstateFinding, EstateOptions, EstateSummary } from './workspace/index.js';
+
+export { generateAiBom } from './bom/index.js';
+export { buildReachAttestation, parseObservedReach, parseToolPins } from './attest/index.js';
+export type * from './attest/types.js';
