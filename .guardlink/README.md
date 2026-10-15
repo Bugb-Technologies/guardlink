@@ -11,8 +11,8 @@ accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 1036 annotations · 21 assets · 16 threats · 14 controls · 143 exposures · 222 flows
-Content hash: `sha256-v3:db797e010345c15e3b6f489320306ede5b804788a7e90ff8bcbe4dcb4ce809b7` — identical hash means identical model.
+Current model: 1033 annotations · 21 assets · 16 threats · 14 controls · 143 exposures · 222 flows
+Content hash: `sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9` — identical hash means identical model.
 
 ---
 
