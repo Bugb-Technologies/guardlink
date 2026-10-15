@@ -16,7 +16,7 @@
       },
       {
         "name": "guardlink:agent_config_hash",
-        "value": "sha256-v1:d67b16700feb6335de618899ab9f868f4640853faa839d2514b7941242ddcfde"
+        "value": "sha256-v1:3b61287a3eb4a98d6b32b48eb976c06c892312003a848baf38790e403c33f65b"
       }
     ]
   },
@@ -132,6 +132,104 @@
         {
           "name": "guardlink:reaches",
           "value": "[{\"capability\":\"mcp.sample\",\"asset\":\"#mcp-sample\",\"file\":\".amazonq/cli-agents/sample.json\",\"line\":1,\"claim_key\":\"c66ed88b2068b83709a927263430663e765f204b7ebd710f40a0e6f02e772398:0\",\"harness\":\"amazon-q\",\"scope\":\"root\",\"gated\":true},{\"capability\":\"mcp.sample.read\",\"asset\":\"#dev-workstation\",\"file\":\".amazonq/cli-agents/sample.json\",\"line\":1,\"claim_key\":\"04594f4326b3c8df8a7b4fe2e5d81d9e913a24721606cb24bb40443b727d56c0:0\",\"harness\":\"amazon-q\",\"scope\":\"root\",\"gated\":false}]"
+        }
+      ]
+    },
+    {
+      "type": "file",
+      "bom-ref": "guardlink:file:08f478fe219ef1e2dec207e669d45ac6871f6762d0fa1196f5583655db68667f",
+      "name": ".cline/rules/project.md",
+      "properties": [
+        {
+          "name": "guardlink:kind",
+          "value": "instructions"
+        },
+        {
+          "name": "guardlink:scope",
+          "value": "root"
+        },
+        {
+          "name": "guardlink:harnesses",
+          "value": "[\"cline\"]"
+        },
+        {
+          "name": "guardlink:bytes",
+          "value": "34"
+        }
+      ]
+    },
+    {
+      "type": "file",
+      "bom-ref": "guardlink:file:9fe496ae3de2081ec4a953a5f4127e789ff8063c3e0d7f60d09a210bd15a624c",
+      "name": ".opencode/skills/helper/SKILL.md",
+      "properties": [
+        {
+          "name": "guardlink:kind",
+          "value": "skill"
+        },
+        {
+          "name": "guardlink:scope",
+          "value": "root"
+        },
+        {
+          "name": "guardlink:harnesses",
+          "value": "[\"opencode\"]"
+        },
+        {
+          "name": "guardlink:bytes",
+          "value": "101"
+        },
+        {
+          "name": "guardlink:model_invocable",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "file",
+      "bom-ref": "guardlink:file:b1e183c93e6cb91d696ace3cee6acd7f6754a32a13a086aafc32b527b13b2dcf",
+      "name": ".opencode/skills/helper/helper.py",
+      "properties": [
+        {
+          "name": "guardlink:kind",
+          "value": "code"
+        },
+        {
+          "name": "guardlink:bundled_from",
+          "value": ".opencode/skills/helper/SKILL.md"
+        },
+        {
+          "name": "guardlink:bytes",
+          "value": "26"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "219a555edb21327d94b70b6392061df991eb4a1043ad49efa56933900013ce33"
+        }
+      ]
+    },
+    {
+      "type": "file",
+      "bom-ref": "guardlink:file:c9b0beef4f51a6ace3ec5dbbe463ad00bc4d292108d00447e7687fd1323565f0",
+      "name": ".windsurf/rules/project.md",
+      "properties": [
+        {
+          "name": "guardlink:kind",
+          "value": "instructions"
+        },
+        {
+          "name": "guardlink:scope",
+          "value": "root"
+        },
+        {
+          "name": "guardlink:harnesses",
+          "value": "[\"windsurf\"]"
+        },
+        {
+          "name": "guardlink:bytes",
+          "value": "34"
         }
       ]
     },
@@ -331,5 +429,20 @@
       ]
     }
   ],
-  "dependencies": []
+  "dependencies": [
+    {
+      "ref": "guardlink:file:08f478fe219ef1e2dec207e669d45ac6871f6762d0fa1196f5583655db68667f",
+      "dependsOn": []
+    },
+    {
+      "ref": "guardlink:file:9fe496ae3de2081ec4a953a5f4127e789ff8063c3e0d7f60d09a210bd15a624c",
+      "dependsOn": [
+        "guardlink:file:b1e183c93e6cb91d696ace3cee6acd7f6754a32a13a086aafc32b527b13b2dcf"
+      ]
+    },
+    {
+      "ref": "guardlink:file:c9b0beef4f51a6ace3ec5dbbe463ad00bc4d292108d00447e7687fd1323565f0",
+      "dependsOn": []
+    }
+  ]
 }

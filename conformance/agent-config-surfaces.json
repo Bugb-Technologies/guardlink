@@ -2,11 +2,12 @@
   "version": "1.2.0",
   "project": "synthetic-configurations",
   "generated_at": "2026-01-01T00:00:00Z",
-  "source_files": 1,
+  "source_files": 2,
   "annotations_parsed": 0,
   "annotated_files": [],
   "unannotated_files": [
-    ".github/workflows/assistant.yml"
+    ".github/workflows/assistant.yml",
+    ".opencode/skills/helper/helper.py"
   ],
   "assets": [],
   "threats": [],
@@ -406,10 +407,12 @@
   "external_refs": [],
   "agent_config": {
     "version": 1,
-    "agent_config_hash": "sha256-v1:d67b16700feb6335de618899ab9f868f4640853faa839d2514b7941242ddcfde",
+    "agent_config_hash": "sha256-v1:3b61287a3eb4a98d6b32b48eb976c06c892312003a848baf38790e403c33f65b",
     "semantics": {
       "claude-code": "2026-10",
       "roo": "2026-10",
+      "cline": "2026-10",
+      "windsurf": "2026-10",
       "kiro": "2026-10",
       "amazon-q": "2026-10",
       "zed": "2026-10",
@@ -433,6 +436,14 @@
         "scope": "root"
       },
       {
+        "path": ".cline/rules/project.md",
+        "kind": "instructions",
+        "harnesses": [
+          "cline"
+        ],
+        "scope": "root"
+      },
+      {
         "path": ".github/workflows/assistant.yml",
         "kind": "ci-workflow",
         "harnesses": [
@@ -449,10 +460,26 @@
         "scope": "root"
       },
       {
+        "path": ".opencode/skills/helper/SKILL.md",
+        "kind": "skill",
+        "harnesses": [
+          "opencode"
+        ],
+        "scope": "root"
+      },
+      {
         "path": ".roo/mcp.json",
         "kind": "mcp",
         "harnesses": [
           "roo"
+        ],
+        "scope": "root"
+      },
+      {
+        "path": ".windsurf/rules/project.md",
+        "kind": "instructions",
+        "harnesses": [
+          "windsurf"
         ],
         "scope": "root"
       },
@@ -577,7 +604,49 @@
       }
     ],
     "hooks": [],
-    "instruction_files": [],
+    "instruction_files": [
+      {
+        "path": ".cline/rules/project.md",
+        "kind": "instructions",
+        "harnesses": [
+          "cline"
+        ],
+        "scope": "root",
+        "bytes": 34,
+        "hidden_unicode": []
+      },
+      {
+        "path": ".opencode/skills/helper/SKILL.md",
+        "kind": "skill",
+        "harnesses": [
+          "opencode"
+        ],
+        "scope": "root",
+        "bytes": 101,
+        "skill": {
+          "model_invocable": true
+        },
+        "bundled": [
+          {
+            "path": ".opencode/skills/helper/helper.py",
+            "kind": "code",
+            "bytes": 26,
+            "sha256": "sha256-v1:219a555edb21327d94b70b6392061df991eb4a1043ad49efa56933900013ce33"
+          }
+        ],
+        "hidden_unicode": []
+      },
+      {
+        "path": ".windsurf/rules/project.md",
+        "kind": "instructions",
+        "harnesses": [
+          "windsurf"
+        ],
+        "scope": "root",
+        "bytes": 34,
+        "hidden_unicode": []
+      }
+    ],
     "assets": [
       {
         "id": "#ci-agent-runner",
@@ -593,7 +662,35 @@
       }
     ],
     "denies": [],
-    "untrusted_sources": [],
+    "untrusted_sources": [
+      {
+        "source": ".cline/rules/project.md",
+        "kind": "instruction-file",
+        "file": ".cline/rules/project.md",
+        "line": 1,
+        "agents": [
+          "#cline"
+        ]
+      },
+      {
+        "source": ".opencode/skills/helper/SKILL.md",
+        "kind": "instruction-file",
+        "file": ".opencode/skills/helper/SKILL.md",
+        "line": 1,
+        "agents": [
+          "#opencode"
+        ]
+      },
+      {
+        "source": ".windsurf/rules/project.md",
+        "kind": "instruction-file",
+        "file": ".windsurf/rules/project.md",
+        "line": 1,
+        "agents": [
+          "#windsurf"
+        ]
+      }
+    ],
     "unreadable": [],
     "surfaces": [
       {

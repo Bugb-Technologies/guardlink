@@ -21,3 +21,10 @@ it('keeps every bundled and MCP component reference closed in the published synt
   expect(bom.dependencies.every(d => refs.has(d.ref) && d.dependsOn.every(r => refs.has(r)))).toBe(true);
   expect(bom).toEqual(JSON.parse(readFileSync('conformance/agent-inventory.cdx.json', 'utf8')));
 });
+
+it('retains declared reach when an actor is referenced by its declared name', () => {
+  const m = JSON.parse(readFileSync('conformance/agent-config-env.json', 'utf8')) as ThreatModel;
+  for (const r of m.reaches ?? []) r.actor = 'Claude_Code';
+  const reaches = generateAiBom(m).components[0].properties.find(p => p.name === 'guardlink:reaches')!.value;
+  expect(JSON.parse(reaches)).toHaveLength(2);
+});

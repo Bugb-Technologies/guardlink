@@ -1,14 +1,15 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+    "annotation_hash": "sha256-v3:db797e010345c15e3b6f489320306ede5b804788a7e90ff8bcbe4dcb4ce809b7",
     "generator": "guardlink@2.3.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 195,
-  "annotations_parsed": 1033,
+  "source_files": 198,
+  "annotations_parsed": 1036,
   "annotated_files": [
     ".guardlink/definitions.ts",
+    ".tmp-verification/smoke/app.ts",
     "src/agentconfig/bundle.ts",
     "src/agentconfig/discover.ts",
     "src/agentconfig/hidden-unicode.ts",
@@ -184,7 +185,9 @@
     ".github/workflows/release.yml",
     ".tmp-verification/export-contract.mjs",
     ".tmp-verification/fixture/.github/workflows/assistant.yml",
+    ".tmp-verification/fixture/.opencode/skills/helper/helper.py",
     ".tmp-verification/graphs.html",
+    ".tmp-verification/smoke.html",
     "docs/examples/guardlink-pentest.html",
     "eslint.config.js",
     "examples/ci/per-repo-report.yml",
@@ -867,6 +870,15 @@
         "line": 1
       },
       "origin": "agent-config"
+    },
+    {
+      "name": "Sample",
+      "canonical_name": "sample",
+      "id": "sample-agent",
+      "location": {
+        "file": ".tmp-verification/smoke/app.ts",
+        "line": 2
+      }
     }
   ],
   "entitlements": [
@@ -920,6 +932,26 @@
           "rule": "mcp-server",
           "doc": "https://code.claude.com/docs/en/mcp"
         }
+      }
+    },
+    {
+      "actor": "#sample-agent",
+      "agent": true,
+      "capability": "mcp.sample.read-record",
+      "canonical_capability": "mcp.sample.read_record",
+      "location": {
+        "file": ".tmp-verification/smoke/app.ts",
+        "line": 3
+      }
+    },
+    {
+      "actor": "#sample-agent",
+      "agent": true,
+      "capability": "mcp.sample.write-record",
+      "canonical_capability": "mcp.sample.write_record",
+      "location": {
+        "file": ".tmp-verification/smoke/app.ts",
+        "line": 4
       }
     },
     {
@@ -10347,8 +10379,8 @@
     }
   ],
   "coverage": {
-    "annotation_count": 1033,
-    "coverage_percent": 86
+    "annotation_count": 1036,
+    "coverage_percent": 85
   },
   "external_refs": [],
   "agent_config": {
@@ -10594,7 +10626,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+          "stamp": "sha256-v3:db797e010345c15e3b6f489320306ede5b804788a7e90ff8bcbe4dcb4ce809b7",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10610,7 +10642,7 @@
         "bytes": 3285,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+          "stamp": "sha256-v3:db797e010345c15e3b6f489320306ede5b804788a7e90ff8bcbe4dcb4ce809b7",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10627,7 +10659,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+          "stamp": "sha256-v3:db797e010345c15e3b6f489320306ede5b804788a7e90ff8bcbe4dcb4ce809b7",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10644,7 +10676,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+          "stamp": "sha256-v3:db797e010345c15e3b6f489320306ede5b804788a7e90ff8bcbe4dcb4ce809b7",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10660,7 +10692,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+          "stamp": "sha256-v3:db797e010345c15e3b6f489320306ede5b804788a7e90ff8bcbe4dcb4ce809b7",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10679,7 +10711,7 @@
         "bytes": 3609,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+          "stamp": "sha256-v3:db797e010345c15e3b6f489320306ede5b804788a7e90ff8bcbe4dcb4ce809b7",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10696,7 +10728,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+          "stamp": "sha256-v3:db797e010345c15e3b6f489320306ede5b804788a7e90ff8bcbe4dcb4ce809b7",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10800,9 +10832,9 @@
   "reach_analysis": {
     "version": 1,
     "summary": {
-      "reaches": 29,
-      "agent_reaches": 29,
-      "unentitled_reaches": 29,
+      "reaches": 31,
+      "agent_reaches": 31,
+      "unentitled_reaches": 31,
       "effects": 18,
       "mutating_effects": 18,
       "ungated_effects": 18,
@@ -10847,6 +10879,38 @@
       },
       {
         "index": 1,
+        "claim_key": "741f4fe2c69e7f1e33628ada11f5e2febb494524008de6379a49c6098ca9158e:0",
+        "file": ".tmp-verification/smoke/app.ts",
+        "line": 3,
+        "verb": "agents",
+        "actor": "#sample-agent",
+        "agent": true,
+        "capability": "mcp.sample.read-record",
+        "canonical_capability": "mcp.sample.read_record",
+        "asset": null,
+        "identity": null,
+        "description": null,
+        "near_misses": [],
+        "colocated_effects": []
+      },
+      {
+        "index": 2,
+        "claim_key": "a74bd449c156f68245a611296ab3a3e9e90813b8220ebcf403dd220b185a4cf8:0",
+        "file": ".tmp-verification/smoke/app.ts",
+        "line": 4,
+        "verb": "agents",
+        "actor": "#sample-agent",
+        "agent": true,
+        "capability": "mcp.sample.write-record",
+        "canonical_capability": "mcp.sample.write_record",
+        "asset": null,
+        "identity": null,
+        "description": null,
+        "near_misses": [],
+        "colocated_effects": []
+      },
+      {
+        "index": 3,
         "claim_key": "80b48e5071b2bdf072d7972784dd318664c1eda890ab3327a5b811140d874d61:0",
         "file": "src/mcp/server.ts",
         "line": 265,
@@ -10862,7 +10926,7 @@
         "colocated_effects": []
       },
       {
-        "index": 2,
+        "index": 4,
         "claim_key": "40ac58c93d224c6bc8543ebbfc2ebc99897c6843c20891e60490aecac8419feb:0",
         "file": "src/mcp/server.ts",
         "line": 311,
@@ -10878,7 +10942,7 @@
         "colocated_effects": []
       },
       {
-        "index": 3,
+        "index": 5,
         "claim_key": "b8dd2f480ef8fdb82fcdaf40e5a325ec8084d816afc883dfd14f2480de63b4d2:0",
         "file": "src/mcp/server.ts",
         "line": 359,
@@ -10905,7 +10969,7 @@
         ]
       },
       {
-        "index": 4,
+        "index": 6,
         "claim_key": "588e636271b38fabf4c562ba5d3e2f3ad9cab9342724b446eed1e318cad29ed9:0",
         "file": "src/mcp/server.ts",
         "line": 437,
@@ -10921,7 +10985,7 @@
         "colocated_effects": []
       },
       {
-        "index": 5,
+        "index": 7,
         "claim_key": "5e1f46eb97804c2c47ab6701b1c3cf5c2da623f510f1a1a412a0aeaa471fb75b:0",
         "file": "src/mcp/server.ts",
         "line": 459,
@@ -10948,7 +11012,7 @@
         ]
       },
       {
-        "index": 6,
+        "index": 8,
         "claim_key": "855b841ea511bb398a2c242e43ef6d5a59414868a24320de50065b9680a27063:0",
         "file": "src/mcp/server.ts",
         "line": 509,
@@ -10975,7 +11039,7 @@
         ]
       },
       {
-        "index": 7,
+        "index": 9,
         "claim_key": "88f3c69fc5a976233087165f4be41477e9c16ef8e9c0475d5317b7f64bda0067:0",
         "file": "src/mcp/server.ts",
         "line": 529,
@@ -10991,7 +11055,7 @@
         "colocated_effects": []
       },
       {
-        "index": 8,
+        "index": 10,
         "claim_key": "bd7ead7129117b500aace0c891337448439cbe16fe46718fb121b1eff0b8f128:0",
         "file": "src/mcp/server.ts",
         "line": 550,
@@ -11007,7 +11071,7 @@
         "colocated_effects": []
       },
       {
-        "index": 9,
+        "index": 11,
         "claim_key": "799753851b400f5aba525e4227266218ed66a430ee73f05dd1d5028c82dc6d95:0",
         "file": "src/mcp/server.ts",
         "line": 584,
@@ -11023,7 +11087,7 @@
         "colocated_effects": []
       },
       {
-        "index": 10,
+        "index": 12,
         "claim_key": "3630e23bc2de9ca01c8139f2d10a448155ad7a83efc09e3ef1d7d61a323ef1fe:0",
         "file": "src/mcp/server.ts",
         "line": 640,
@@ -11050,7 +11114,7 @@
         ]
       },
       {
-        "index": 11,
+        "index": 13,
         "claim_key": "49f0a864edd0577d16c1b52c58eb52058a2fca03ca61c2ca4dc2a5deab45edff:0",
         "file": "src/mcp/server.ts",
         "line": 679,
@@ -11077,7 +11141,7 @@
         ]
       },
       {
-        "index": 12,
+        "index": 14,
         "claim_key": "305f4ed1c623c60d4741191f220ae4ce66e9d7c30b53b527dec5046290d07f57:0",
         "file": "src/mcp/server.ts",
         "line": 717,
@@ -11114,7 +11178,7 @@
         ]
       },
       {
-        "index": 13,
+        "index": 15,
         "claim_key": "dcd70d4e172f6e7bbcc0447b8b7a38c5417bc639732952f7df4e5b82f18ce8ec:0",
         "file": "src/mcp/server.ts",
         "line": 802,
@@ -11141,7 +11205,7 @@
         ]
       },
       {
-        "index": 14,
+        "index": 16,
         "claim_key": "ff64ab33ac67ba1c8a662a4c057cd790c30bf299bc05e384ed7a3f769c553078:0",
         "file": "src/mcp/server.ts",
         "line": 854,
@@ -11168,7 +11232,7 @@
         ]
       },
       {
-        "index": 15,
+        "index": 17,
         "claim_key": "7a126dc76d770d0c9007aa862d76b669a24c58c1e4a6323d52371b105875748f:0",
         "file": "src/mcp/server.ts",
         "line": 903,
@@ -11195,7 +11259,7 @@
         ]
       },
       {
-        "index": 16,
+        "index": 18,
         "claim_key": "d22134e49197f9c4e3f0a7bd7583230fd2f87d03625151352d05e6146e24eb0c:0",
         "file": "src/mcp/server.ts",
         "line": 942,
@@ -11222,7 +11286,7 @@
         ]
       },
       {
-        "index": 17,
+        "index": 19,
         "claim_key": "ea08536f7324089f0430241011ccbf790c8536c51373d82ffdabc42f121320fd:0",
         "file": "src/mcp/server.ts",
         "line": 982,
@@ -11249,7 +11313,7 @@
         ]
       },
       {
-        "index": 18,
+        "index": 20,
         "claim_key": "45acb0afc17d426307ce719ead3e47dcf9af626fa0c4df9b2784b806480907e0:0",
         "file": "src/mcp/server.ts",
         "line": 1012,
@@ -11265,7 +11329,7 @@
         "colocated_effects": []
       },
       {
-        "index": 19,
+        "index": 21,
         "claim_key": "f735601acc8a431d40f8e21c3c42c179fcb1a7e6d90a44538639bee0f3b9a7a2:0",
         "file": "src/mcp/server.ts",
         "line": 1042,
@@ -11281,7 +11345,7 @@
         "colocated_effects": []
       },
       {
-        "index": 20,
+        "index": 22,
         "claim_key": "efc01508dccc52fe7697d70af483bddbbcfb1211cc3b37879d2347081b0cb731:0",
         "file": "src/mcp/server.ts",
         "line": 1061,
@@ -11308,7 +11372,7 @@
         ]
       },
       {
-        "index": 21,
+        "index": 23,
         "claim_key": "5ecd449f94e52152aa1bc3bda07bea797b463ade0fa58d73492652aefc973d46:0",
         "file": "src/mcp/server.ts",
         "line": 1088,
@@ -11335,7 +11399,7 @@
         ]
       },
       {
-        "index": 22,
+        "index": 24,
         "claim_key": "e4ade699d1309ab3b0407767b1513010c4983e92389c203fcc5f0564f5cca895:0",
         "file": "src/mcp/server.ts",
         "line": 1132,
@@ -11351,7 +11415,7 @@
         "colocated_effects": []
       },
       {
-        "index": 23,
+        "index": 25,
         "claim_key": "c974c8a9dab69272bb9c212b4b13d60f37bc92a6924158381379839840a3e89b:0",
         "file": "src/mcp/server.ts",
         "line": 1160,
@@ -11367,7 +11431,7 @@
         "colocated_effects": []
       },
       {
-        "index": 24,
+        "index": 26,
         "claim_key": "4e5c04b869c79bea2ed74f84da3bfa3bc6b62cedbb219f09d87d4228e7c15046:0",
         "file": "src/mcp/server.ts",
         "line": 1202,
@@ -11404,7 +11468,7 @@
         ]
       },
       {
-        "index": 25,
+        "index": 27,
         "claim_key": "fc9ef3e98701b0173488673f294da1661b89aecad0cb4e1ebf439ae27e9be0d6:0",
         "file": "src/mcp/server.ts",
         "line": 1284,
@@ -11431,7 +11495,7 @@
         ]
       },
       {
-        "index": 26,
+        "index": 28,
         "claim_key": "91bdd93245bb6b8c8293c4c330158c3502a6345021d41bb4c464ff19abdc9c31:0",
         "file": "src/mcp/server.ts",
         "line": 1332,
@@ -11447,7 +11511,7 @@
         "colocated_effects": []
       },
       {
-        "index": 27,
+        "index": 29,
         "claim_key": "a4b86df38204e3e92bc1f5c699ddcd23dfea1309ccb30841e49d79ea911b7343:0",
         "file": "src/mcp/server.ts",
         "line": 1363,
@@ -11474,7 +11538,7 @@
         ]
       },
       {
-        "index": 28,
+        "index": 30,
         "claim_key": "501df3d434925f849d1913fd5b161be682766a115f8d8770e48d61e923f668cd:0",
         "file": "src/mcp/server.ts",
         "line": 1398,
@@ -11505,7 +11569,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 3,
+            "index": 5,
             "claim_key": "b8dd2f480ef8fdb82fcdaf40e5a325ec8084d816afc883dfd14f2480de63b4d2:0",
             "file": "src/mcp/server.ts",
             "line": 359,
@@ -11534,7 +11598,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 5,
+            "index": 7,
             "claim_key": "5e1f46eb97804c2c47ab6701b1c3cf5c2da623f510f1a1a412a0aeaa471fb75b:0",
             "file": "src/mcp/server.ts",
             "line": 459,
@@ -11563,7 +11627,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 6,
+            "index": 8,
             "claim_key": "855b841ea511bb398a2c242e43ef6d5a59414868a24320de50065b9680a27063:0",
             "file": "src/mcp/server.ts",
             "line": 509,
@@ -11592,7 +11656,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 10,
+            "index": 12,
             "claim_key": "3630e23bc2de9ca01c8139f2d10a448155ad7a83efc09e3ef1d7d61a323ef1fe:0",
             "file": "src/mcp/server.ts",
             "line": 640,
@@ -11621,7 +11685,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 11,
+            "index": 13,
             "claim_key": "49f0a864edd0577d16c1b52c58eb52058a2fca03ca61c2ca4dc2a5deab45edff:0",
             "file": "src/mcp/server.ts",
             "line": 679,
@@ -11650,7 +11714,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 12,
+            "index": 14,
             "claim_key": "305f4ed1c623c60d4741191f220ae4ce66e9d7c30b53b527dec5046290d07f57:0",
             "file": "src/mcp/server.ts",
             "line": 717,
@@ -11679,7 +11743,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 12,
+            "index": 14,
             "claim_key": "305f4ed1c623c60d4741191f220ae4ce66e9d7c30b53b527dec5046290d07f57:0",
             "file": "src/mcp/server.ts",
             "line": 717,
@@ -11708,7 +11772,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 13,
+            "index": 15,
             "claim_key": "dcd70d4e172f6e7bbcc0447b8b7a38c5417bc639732952f7df4e5b82f18ce8ec:0",
             "file": "src/mcp/server.ts",
             "line": 802,
@@ -11737,7 +11801,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 14,
+            "index": 16,
             "claim_key": "ff64ab33ac67ba1c8a662a4c057cd790c30bf299bc05e384ed7a3f769c553078:0",
             "file": "src/mcp/server.ts",
             "line": 854,
@@ -11766,7 +11830,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 15,
+            "index": 17,
             "claim_key": "7a126dc76d770d0c9007aa862d76b669a24c58c1e4a6323d52371b105875748f:0",
             "file": "src/mcp/server.ts",
             "line": 903,
@@ -11795,7 +11859,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 16,
+            "index": 18,
             "claim_key": "d22134e49197f9c4e3f0a7bd7583230fd2f87d03625151352d05e6146e24eb0c:0",
             "file": "src/mcp/server.ts",
             "line": 942,
@@ -11824,7 +11888,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 17,
+            "index": 19,
             "claim_key": "ea08536f7324089f0430241011ccbf790c8536c51373d82ffdabc42f121320fd:0",
             "file": "src/mcp/server.ts",
             "line": 982,
@@ -11853,7 +11917,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 20,
+            "index": 22,
             "claim_key": "efc01508dccc52fe7697d70af483bddbbcfb1211cc3b37879d2347081b0cb731:0",
             "file": "src/mcp/server.ts",
             "line": 1061,
@@ -11882,7 +11946,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 21,
+            "index": 23,
             "claim_key": "5ecd449f94e52152aa1bc3bda07bea797b463ade0fa58d73492652aefc973d46:0",
             "file": "src/mcp/server.ts",
             "line": 1088,
@@ -11911,7 +11975,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 24,
+            "index": 26,
             "claim_key": "4e5c04b869c79bea2ed74f84da3bfa3bc6b62cedbb219f09d87d4228e7c15046:0",
             "file": "src/mcp/server.ts",
             "line": 1202,
@@ -11940,7 +12004,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 24,
+            "index": 26,
             "claim_key": "4e5c04b869c79bea2ed74f84da3bfa3bc6b62cedbb219f09d87d4228e7c15046:0",
             "file": "src/mcp/server.ts",
             "line": 1202,
@@ -11969,7 +12033,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 25,
+            "index": 27,
             "claim_key": "fc9ef3e98701b0173488673f294da1661b89aecad0cb4e1ebf439ae27e9be0d6:0",
             "file": "src/mcp/server.ts",
             "line": 1284,
@@ -11998,7 +12062,7 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 27,
+            "index": 29,
             "claim_key": "a4b86df38204e3e92bc1f5c699ddcd23dfea1309ccb30841e49d79ea911b7343:0",
             "file": "src/mcp/server.ts",
             "line": 1363,

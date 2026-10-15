@@ -5,6 +5,7 @@
  */
 import { createHash } from 'node:crypto';
 import type { ThreatModel } from '../types/index.js';
+import { actorResolver } from '../parser/reach.js';
 import { relationRecords } from '../parser/claim-key.js';
 interface Property { name: string; value: string }
 interface Component { type: 'application' | 'file'; 'bom-ref': string; name: string; properties: Property[]; hashes?: { alg: 'SHA-256'; content: string }[] }
@@ -13,11 +14,12 @@ const props = (v: Record<string, unknown>): Property[] => Object.entries(v).filt
 export function generateAiBom(model: ThreatModel) {
   const components: Component[] = [];
   const dependencies: { ref: string; dependsOn: string[] }[] = [];
+  const actorKey = actorResolver(model);
   const claims = new Map(relationRecords(model).map(r => [r.location, r.key]));
   for (const a of model.actors ?? []) {
     const id = a.id ?? a.canonical_name;
-    const reaches = (model.reaches ?? []).filter(r => r.actor.replace(/^#/, '') === id);
-    components.push({ type: 'application', 'bom-ref': ref('actor', id), name: a.name, properties: props({ kind: 'agent', origin: a.origin ?? 'annotation', reaches: reaches.map(r => ({ capability: r.capability, asset: r.asset, identity: r.identity, file: r.location.file, line: r.location.line, claim_key: claims.get(r.location), harness: r.source?.harness, scope: r.source?.scope, gated: r.source?.gated })) }) });
+    const reaches = (model.reaches ?? []).filter(r => actorKey(r.actor) === actorKey(id));
+    components.push({ type: 'application', 'bom-ref': ref('actor', id), name: a.name, properties: props({ kind: reaches.some(r => r.agent) ? 'agent' : 'principal', origin: a.origin ?? 'annotation', reaches: reaches.map(r => ({ capability: r.capability, asset: r.asset, identity: r.identity, file: r.location.file, line: r.location.line, claim_key: claims.get(r.location), harness: r.source?.harness, scope: r.source?.scope, gated: r.source?.gated })) }) });
   }
   for (const s of model.agent_config?.mcp_servers ?? []) components.push({ type: 'application', 'bom-ref': ref('mcp', JSON.stringify([s.harness,s.file,s.name])), name: s.name, properties: props({ kind: 'mcp-server', harness: s.harness, file: s.file, line: s.line, scope: s.scope, transport: s.transport, disabled: s.disabled, credential_names: s.credential_env, package: s.package?.spec, resolves_to: s.resolves_to?.file }) });
   const files = new Map<string, Component>();

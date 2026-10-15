@@ -1,7 +1,7 @@
 # Guardlink — Project Instructions
 
 <!-- guardlink:begin -->
-<!-- guardlink:stamp annotation_hash=sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9 agent_config_hash=sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c -->
+<!-- guardlink:stamp annotation_hash=sha256-v3:db797e010345c15e3b6f489320306ede5b804788a7e90ff8bcbe4dcb4ce809b7 agent_config_hash=sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c -->
 ## GuardLink — Security Model
 
 This project carries a [GuardLink](https://guardlink.bugb.io) threat model: security facts recorded
