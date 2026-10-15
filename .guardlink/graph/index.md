@@ -19,7 +19,7 @@ a small neighbourhood into a hairball.
 
 | File | What it shows |
 |---|---|
-| [`agent-config.threats.mmd`](by-asset/agent-config.threats.mmd) | #agent-config only — its own threats and controls |
+| [`agent-config.threats.mmd`](by-asset/agent-config.threats.mmd) | #agent-config only — its own threats and controls, narrowed to high and critical (15 lower-severity claim(s) omitted to keep it readable) |
 | [`agent-config.flows.mmd`](by-asset/agent-config.flows.mmd) | #agent-config and its flow neighbourhood, grown until the drawing stopped fitting — 23 neighbour(s) one hop out are not shown |
 | [`agent-launcher.threats.mmd`](by-asset/agent-launcher.threats.mmd) | #agent-launcher only — its own threats and controls, narrowed to high and critical (8 lower-severity claim(s) omitted to keep it readable) |
 | [`agent-launcher.flows.mmd`](by-asset/agent-launcher.flows.mmd) | #agent-launcher and its flow neighbourhood, grown until the drawing stopped fitting — 21 neighbour(s) one hop out are not shown |
@@ -38,19 +38,19 @@ a small neighbourhood into a hairball.
 | [`gate.threats.mmd`](by-asset/gate.threats.mmd) | #gate only — its own threats and controls |
 | [`gate.flows.mmd`](by-asset/gate.flows.mmd) | #gate and its flow neighbourhood, grown until the drawing stopped fitting — 24 neighbour(s) one hop out are not shown |
 | [`init.threats.mmd`](by-asset/init.threats.mmd) | #init only — its own threats and controls, narrowed to high and critical (8 lower-severity claim(s) omitted to keep it readable) |
-| [`init.flows.mmd`](by-asset/init.flows.mmd) | #init and its flow neighbourhood, grown until the drawing stopped fitting — 26 neighbour(s) one hop out are not shown |
+| [`init.flows.mmd`](by-asset/init.flows.mmd) | #init and its flow neighbourhood, grown until the drawing stopped fitting — 27 neighbour(s) one hop out are not shown |
 | [`llm-client.threats.mmd`](by-asset/llm-client.threats.mmd) | #llm-client only — its own threats and controls, narrowed to high and critical (13 lower-severity claim(s) omitted to keep it readable) |
-| [`llm-client.flows.mmd`](by-asset/llm-client.flows.mmd) | #llm-client and its flow neighbourhood, grown until the drawing stopped fitting — 15 neighbour(s) one hop out are not shown |
+| [`llm-client.flows.mmd`](by-asset/llm-client.flows.mmd) | #llm-client and its flow neighbourhood, grown until the drawing stopped fitting — 16 neighbour(s) one hop out are not shown |
 | [`mcp.threats.mmd`](by-asset/mcp.threats.mmd) | #mcp only — its own threats and controls, narrowed to high and critical (12 lower-severity claim(s) omitted to keep it readable) |
 | [`mcp.flows.mmd`](by-asset/mcp.flows.mmd) | #mcp and its flow neighbourhood, grown until the drawing stopped fitting — 20 neighbour(s) one hop out are not shown |
 | [`merge-engine.threats.mmd`](by-asset/merge-engine.threats.mmd) | #merge-engine only — its own threats and controls |
-| [`merge-engine.flows.mmd`](by-asset/merge-engine.flows.mmd) | #merge-engine and its flow neighbourhood, grown until the drawing stopped fitting — 36 neighbour(s) one hop out are not shown |
-| [`parser.threats.mmd`](by-asset/parser.threats.mmd) | #parser only — its own threats and controls, narrowed to high and critical (31 lower-severity claim(s) omitted to keep it readable) |
+| [`merge-engine.flows.mmd`](by-asset/merge-engine.flows.mmd) | #merge-engine and its flow neighbourhood, grown until the drawing stopped fitting — 37 neighbour(s) one hop out are not shown |
+| [`parser.threats.mmd`](by-asset/parser.threats.mmd) | #parser only — its own threats and controls, narrowed to high and critical (34 lower-severity claim(s) omitted to keep it readable) |
 | [`parser.flows.mmd`](by-asset/parser.flows.mmd) | #parser and its flow neighbourhood, grown until the drawing stopped fitting — 15 neighbour(s) one hop out are not shown |
 | [`report.threats.mmd`](by-asset/report.threats.mmd) | #report only — its own threats and controls |
 | [`report.flows.mmd`](by-asset/report.flows.mmd) | #report and its flow neighbourhood, grown until the drawing stopped fitting — 11 neighbour(s) one hop out are not shown |
 | [`report-metadata.threats.mmd`](by-asset/report-metadata.threats.mmd) | #report-metadata only — its own threats and controls |
-| [`report-metadata.flows.mmd`](by-asset/report-metadata.flows.mmd) | #report-metadata and its flow neighbourhood, grown until the drawing stopped fitting — 25 neighbour(s) one hop out are not shown |
+| [`report-metadata.flows.mmd`](by-asset/report-metadata.flows.mmd) | #report-metadata and its flow neighbourhood, grown until the drawing stopped fitting — 26 neighbour(s) one hop out are not shown |
 | [`sarif.threats.mmd`](by-asset/sarif.threats.mmd) | #sarif only — its own threats and controls |
 | [`sarif.flows.mmd`](by-asset/sarif.flows.mmd) | #sarif and its flow neighbourhood, grown until the drawing stopped fitting — 11 neighbour(s) one hop out are not shown |
 | [`suggest.threats.mmd`](by-asset/suggest.threats.mmd) | #suggest only — its own threats and controls |
@@ -84,8 +84,8 @@ size so you know which you are about to open.
 
 | File | What it shows | Size |
 |---|---|---|
-| [`threat-graph.mmd`](threat-graph.mmd) | Every component, the threats declared on it, and the controls that answer them. | 203 edges — **past the readable size** |
-| [`dataflow.mmd`](dataflow.mmd) | Every `@flows` between components, with trust boundaries drawn as zones. | 206 edges — **past the readable size** |
+| [`threat-graph.mmd`](threat-graph.mmd) | Every component, the threats declared on it, and the controls that answer them. | 206 edges — **past the readable size** |
+| [`dataflow.mmd`](dataflow.mmd) | Every `@flows` between components, with trust boundaries drawn as zones. | 208 edges — **past the readable size** |
 | [`attack-surface.mmd`](attack-surface.mmd) | Exposures per component, worst first. | 0 edges |
 
 ## One feature at a time
@@ -109,6 +109,6 @@ size so you know which you are about to open.
 
 ---
 
-Generated by guardlink@2.3.0 from annotation hash `sha256-v3:cf08fb08cc0008d60be3d52bdcc845cc7d748c603c0b33dbc62d4373fa6dcd4f`. If that
+Generated by guardlink@2.3.0 from annotation hash `sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9`. If that
 differs from what `guardlink status .` reports, everything here is stale —
 regenerate rather than trusting it.

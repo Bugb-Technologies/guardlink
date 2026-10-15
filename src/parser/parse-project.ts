@@ -13,6 +13,9 @@
  * @comment -- "Same reasoning for imprecise:true when the claim omits `on <asset>` or `against <threat>`, plus canEntitlementDemote/entitlementDemotionBlockers so the cited-and-precise test is written once here rather than re-derived by every consumer — a consumer that checks only !inert would demote on an entitlement that joins nothing (actor-entitlement design §9.7)"
  * @boundary #parser and FileSystem (#fs-boundary) -- "Trust boundary between parser and disk I/O"
  */
+import { relationRecords } from './claim-key.js';
+import { readObservedState, buildReachAttestation } from '../attest/index.js';
+
 
 import fg from 'fast-glob';
 import { GAL_GLOB, sourceGlobs } from './languages.js';
@@ -413,6 +416,13 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     mergeAgentConfig(model, readAgentConfig(root));
   }
 
+  const observedState = readObservedState(root);
+  if (observedState.observed) {
+    model.observed_reach = observedState.observed;
+    if (observedState.pins) model.tool_pins = observedState.pins;
+    model.reach_attestation = buildReachAttestation(model, observedState.observed, observedState.pins);
+  }
+
   const disabled = readDisabledDiagnostics(root);
   const diagnostics = disabled.size === 0
     ? allDiagnostics
@@ -442,6 +452,10 @@ export function mergeAgentConfig(model: ThreatModel, ac: AgentConfigResult): Thr
   model.reaches = [...(model.reaches ?? []), ...ac.reaches];
   model.effects = [...(model.effects ?? []), ...ac.effects];
   model.gates = [...(model.gates ?? []), ...ac.gates];
+  const claimRows = relationRecords(model);
+  for (const surface of ac.block.surfaces ?? []) surface.claim_keys = claimRows
+    .filter(r => r.location.file === surface.file && r.location.binding === surface.pointer)
+    .map(r => r.key);
   const annotationHash = computeAnnotationHash(model);
   for (const f of ac.block.instruction_files) {
     if (f.guardlink_block) {

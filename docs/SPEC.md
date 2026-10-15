@@ -1334,6 +1334,125 @@ A repository's coding-agent configuration decides what an agent working in it ma
 
 ---
 
+#### 5.6.1 Environment endpoint and credential facts
+
+Settings `env` in Claude Code and MCP server `env`/`environment` maps in supported
+harnesses produce additive `env-endpoint` and `env-credential` reach rules.
+Capabilities are `env.endpoint.<NAME>` and `env.credential.<NAME>`, with the normal
+capability token encoding. Endpoint names are an explicit allowlist in
+`environmentFacts`; credential names use the reader's credential-name matcher.
+Only nonempty string entries produce facts. `source.raw` is the variable name,
+`source.pointer` points to the entry, and harness, scope, file and line retain the
+normal provenance. The corresponding `reach_analysis` row carries `claim_key`.
+Endpoint rules admit `model-endpoint-override`; credential rules admit
+`credential-injection`. Neither emits an effect or a claim of malicious behavior.
+Values, endpoint hosts and credential hashes are never exported by these rules.
+Root and nested entries produce reach; packaged and fixture entries do not.
+The synthetic export `conformance/agent-config-env.json` pins the consumer slots.
+
+#### 5.6.2 Additional harnesses and static surface families
+
+The versioned tables in `harness/{roo,cline,windsurf,kiro,amazon-q,zed,opencode}.json`
+record documented project file patterns and cite their sources. The reader handles
+Roo project MCP servers and conditional per-tool selections; Cline CLI project
+instruction/skill inventory (its current MCP config is user scoped); Kiro workspace MCP and V3 JSON profile
+permission rules; Amazon Q CLI profile MCP and explicit allowed tools; Zed
+project context servers (user-only tool permission keys are reported, with no
+grant inferred); and OpenCode JSON/JSONC MCP maps
+and permission entries. These are declared configuration facts. User state,
+merged effective permission policies, wildcard expansion and runtime overrides
+are not simulated. Deny and ask entries remain visible alongside allow entries.
+Roo tool selections remain gated because its global user switch is required.
+Kiro profiles requiring V3 migration are reported in `unreadable`, with no grant
+inferred. Permission exclusions that cannot be represented as a single grant are
+also reported. Windsurf instruction rules are inventoried; its documented MCP
+configuration is user scoped, so no repository MCP file is invented.
+
+`agent_config.surfaces[]` is additive static inventory with `family`, `harness`,
+`file`, `line`, RFC 6901 `pointer`, `scope`, `names`, `details` and `claim_keys`.
+It carries no severity, acceptance or proof that a payload executes:
+
+- `ci-agent-workflow`: recognized Claude Code, Codex and Gemini CLI GitHub action
+  `uses` entries, events, whether the action is SHA pinned, write permission
+  names, privileged triggers and untrusted-context interpolation presence. The
+  corresponding generated `ci-agent-workflow` reach row has a claim key. YAML
+  aliases are bounded; malformed YAML is reported as unreadable. Reusable
+  workflows and arbitrary shell wrappers are not resolved.
+- `trust-spoofing`: tracked repository copies of trust-state keys in
+  `.claude.json`. No user state is read and no copied key grants trust. Paths and
+  state values are withheld.
+- `pre-trust-toolchain`: named npm install/prepare lifecycle scripts in
+  `package.json`, which are invoked by the package manager independently of an
+  editor trust dialog. Script bodies are withheld; presence does not mean a
+  script has run.
+- `deeplink`: documented Cursor install, prompt and command schemes in readme or
+  instruction files. Query payloads are withheld, never decoded or opened.
+
+Fixtures in `tests/agent-config-extended.test.ts` pin the supported formats and
+unknown cases. Vendor references include
+[Roo MCP](https://roocodeinc.github.io/Roo-Code/features/mcp/using-mcp-in-roo/),
+[Cline CLI](https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx),
+[Kiro configuration](https://kiro.dev/docs/custom-agents/configuration-reference/),
+[Amazon Q format](https://github.com/aws/amazon-q-developer-cli/blob/main/docs/agent-format.md),
+[Zed permissions](https://zed.dev/docs/ai/tool-permissions),
+[OpenCode permissions](https://opencode.ai/docs/permissions/),
+[npm lifecycle](https://docs.npmjs.com/cli/v11/using-npm/scripts/) and
+[Cursor links](https://cursor.com/docs/reference/deeplinks).
+
+### 5.7 Observed reach and local description pins
+
+`conformance/observed-reach/schema.json` freezes the public JSON input
+`guardlink.observed-reach/v1`. Synthetic static, introspection, remote and OTel
+fixtures sit beside it. Producers emit `observations[]`, each with `identity`,
+`source`, `coverage`, `tools_available[]`, `tools_called[]` and optional `window`.
+Identity requires an explicit model actor reference; optional server, harness,
+repository-relative config file and scope narrow attribution. Names never infer
+an actor. Tools may supply `claim_keys` as linkage hints; GuardLink verifies them
+against identity and capability before joining. MCP capabilities join as
+`mcp.<server>.<tool>`; explicit annotation capabilities join by normalized name.
+An `all-tools` server grant covers its tools without inventing individual claims.
+
+Descriptions are SHA-256 hashes (`sha256:<64 lowercase hex>`) or null with a
+`description_unknown` reason. No description bodies, spans, prompts, arguments,
+results, endpoint values or credential values belong in this format. Hints are
+untrusted producer facts, never enforcement or evidence of safety. OTel and probe
+observations require a window; a complete call window still says nothing about
+uncalled capabilities outside that window. Partial, truncated, unknown and
+not-collected coverage never supports a negative availability conclusion.
+
+`guardlink attest <doc> [dir]` validates and stores the document locally at
+`.guardlink/observed-reach.json`; it does not start servers or contact endpoints.
+The derived export `reach_attestation` v1 belongs to GuardLink. Its drift rows
+carry observation identity, source, coverage, window and matched claim keys.
+`observed_not_declared` means no matching declaration was found.
+`declared_not_observed` states its basis (complete available list within a window or complete call window),
+never that a capability is unused. Negative rows require a window even for a
+complete available list. Unmatched identities and invalid claim hints
+remain explicit unknowns.
+
+A human maintains and commits `.guardlink/tool-pins.json` with shape
+`{ "schema": "guardlink.tool-pins/v1", "pins": [{ "identity": { "actor": "#sample-agent" },
+"name": "read-record", "description_sha256": "sha256:…" }] }`.
+Pins match the exact supplied identity tuple and tool name; they are local
+baselines, never vendor signatures. Missing pins are unpinned; missing description
+hashes are unknown, never unchanged. `pin_changed` compares known hashes only.
+Attestation never writes pins or changes declarations, entitlements or gates.
+
+### 5.8 CycloneDX agent inventory
+
+`guardlink ai-bom [dir] [-o file]` emits a deterministic CycloneDX 1.6 JSON BOM
+using the [official schema](https://github.com/CycloneDX/specification/blob/1.6/schema/bom-1.6.schema.json).
+Actors and configured MCP servers are application components; instruction files
+and skill bundle members are file components. Bundle dependencies reference the
+file components. Stable `bom-ref` values hash kind and identity, and
+`guardlink:*` properties preserve harness, scope, source location, declared
+capabilities and claim keys. Known bundle digests become SHA-256 hashes.
+Configuration commands, environment values, endpoint values and raw instruction
+text are omitted. Unknown versions, model weights and model cards are not
+invented. This is an inventory conversion, not vulnerability analysis, runtime
+attestation or proof of enforcement.
+
+
 ## 6. SARIF Output Mapping
 
 `guardlink sarif` (and the MCP `guardlink_sarif` tool and the TUI `/sarif` command, which produce the same document) exports the threat model as one SARIF 2.1.0 run for GitHub code scanning, VS Code, Azure DevOps and other SARIF consumers. This section describes what that export contains, and what it deliberately leaves out.

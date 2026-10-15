@@ -1,0 +1,31 @@
+{
+  "schema": "guardlink.observed-reach/v1",
+  "observations": [
+    {
+      "identity": {
+        "actor": "#sample-agent",
+        "server": "sample",
+        "harness": "other",
+        "file": ".mcp.json",
+        "scope": "root"
+      },
+      "source": "otel",
+      "coverage": {
+        "available": "not_collected",
+        "called": "complete",
+        "truncated": false
+      },
+      "tools_available": [],
+      "tools_called": [
+        {
+          "name": "read-record",
+          "count": 2
+        }
+      ],
+      "window": {
+        "from": "2026-01-01T00:00:00Z",
+        "to": "2026-01-02T00:00:00Z"
+      }
+    }
+  ]
+}

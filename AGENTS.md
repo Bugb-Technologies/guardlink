@@ -1,7 +1,7 @@
 # Guardlink — Project Instructions
 
 <!-- guardlink:begin -->
-<!-- guardlink:stamp annotation_hash=sha256-v3:cf08fb08cc0008d60be3d52bdcc845cc7d748c603c0b33dbc62d4373fa6dcd4f agent_config_hash=sha256-v1:61dacd22da1df43a76a08413438f9c8aeb9285f74819ecb7c31c95f02da9fc6b -->
+<!-- guardlink:stamp annotation_hash=sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9 agent_config_hash=sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c -->
 ## GuardLink — Security Model
 
 This project carries a [GuardLink](https://guardlink.bugb.io) threat model: security facts recorded
@@ -41,3 +41,7 @@ Keep this file for knowledge useful to almost every future agent session in this
 Do not repeat what the codebase already shows; point to the authoritative file or command instead.
 Prefer rewriting or pruning existing entries over appending new ones.
 When updating this file, preserve this bar for all agents and keep entries concise.
+
+Source discovery uses `DEFAULT_EXCLUDE` in `src/parser/parse-project.ts`, not `.gitignore`.
+Keep temporary annotated fixtures under `tests/` or `node_modules/` before parsing this
+repository or refreshing its generated model, so probes do not become repository claims.

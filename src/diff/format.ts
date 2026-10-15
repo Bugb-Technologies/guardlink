@@ -14,7 +14,7 @@ export function formatDiff(diff: ThreatModelDiff): string {
   // ── Header ──
   // A stale entitlement is not a model change, so report it even when the delta
   // is otherwise empty — the code its claim rests on moved without it.
-  if (s.totalChanges === 0 && diff.staleEntitlements.length === 0 && s.agentConfigChanges === 0) {
+  if (s.totalChanges === 0 && diff.staleEntitlements.length === 0 && s.agentConfigChanges === 0 && !diff.reachAttestation?.length) {
     lines.push('No threat model changes detected.');
     return lines.join('\n');
   }
@@ -99,6 +99,10 @@ export function formatDiff(diff: ThreatModelDiff): string {
   emitSection('Boundaries', diff.boundaries, lines, b => (b.directed ? `${b.asset_a} → ${b.asset_b} (outer → inner)` : `${b.asset_a} ↔ ${b.asset_b}`));
   emitSection('Transfers', diff.transfers, lines, t => `${t.source} → ${t.target} (${t.threat})`);
 
+  if (diff.reachAttestation?.length) {
+    lines.push('', 'Observed reach changes (coverage and window qualified):');
+    for (const r of diff.reachAttestation) lines.push(`  ${r.change} ${r.kind}: ${r.row.identity.actor} ${r.row.name} (${r.row.source}; ${r.row.basis ?? r.row.reason ?? 'snapshot'}; ${r.row.window ? r.row.window.from + ' to ' + r.row.window.to : 'snapshot'}; coverage ${JSON.stringify(r.row.coverage)})`);
+  }
   return lines.join('\n');
 }
 
@@ -128,6 +132,11 @@ function emitAgentConfigText(diff: ThreatModelDiff, lines: string[]): void {
     lines.push('── Scripts and Code Bundled With a Skill ──');
     lines.push('   A skill runs what is bundled beside it; the files below are new or changed.');
     for (const c of a.bundledChanges) lines.push(`  ${c.change === 'new' ? '+' : '~'} ${c.path} (${c.kind}, ${c.bytes} bytes, skill ${c.skill})`);
+    lines.push('');
+  }
+  if (a.surfaceChanges?.length) {
+    lines.push('Static configuration surfaces (review items):');
+    for (const { change, surface: s } of a.surfaceChanges) lines.push(`- ${change} ${s.family}: ${s.names.join(', ')} (${s.harness}, ${s.file}:${s.line})`);
     lines.push('');
   }
   if (a.newMcpServers.length > 0) {
@@ -174,6 +183,11 @@ function emitAgentConfigMarkdown(diff: ThreatModelDiff, lines: string[]): void {
     lines.push('**Scripts and code bundled with a skill** — a skill runs what is bundled beside it:');
     lines.push('');
     for (const c of a.bundledChanges) lines.push(`- ${c.change === 'new' ? 'new' : 'changed'} \`${c.path}\` (${c.kind}, ${c.bytes} bytes) in skill \`${c.skill}\``);
+    lines.push('');
+  }
+  if (a.surfaceChanges?.length) {
+    lines.push('Static configuration surfaces (review items):');
+    for (const { change, surface: s } of a.surfaceChanges) lines.push(`- ${change} ${s.family}: ${s.names.join(', ')} (${s.harness}, ${s.file}:${s.line})`);
     lines.push('');
   }
   if (a.newMcpServers.length > 0) {
@@ -225,17 +239,21 @@ export function formatDiffMarkdown(diff: ThreatModelDiff): string {
   const lines: string[] = [];
   const s = diff.summary;
 
-  if (s.totalChanges === 0 && diff.staleEntitlements.length === 0 && s.agentConfigChanges === 0) {
+  if (s.totalChanges === 0 && diff.staleEntitlements.length === 0 && s.agentConfigChanges === 0 && !diff.reachAttestation?.length) {
     lines.push('### ✅ No threat model changes');
     return lines.join('\n');
   }
   if (s.totalChanges === 0) {
     lines.push(diff.staleEntitlements.length > 0
       ? '### ⏳ No threat model changes, but an entitlement citation went stale'
-      : '### 🤖 No annotation changes, but the coding-agent configuration changed');
+      : diff.reachAttestation?.length ? '### Observed reach changed' : '### 🤖 No annotation changes, but the coding-agent configuration changed');
     lines.push('');
     emitAgentConfigMarkdown(diff, lines);
     emitStaleEntitlementsMarkdown(diff, lines);
+    if (diff.reachAttestation?.length) {
+      lines.push('', 'Observed reach changes (coverage and window qualified):');
+      for (const r of diff.reachAttestation) lines.push(`  ${r.change} ${r.kind}: ${r.row.identity.actor} ${r.row.name} (${r.row.source}; ${r.row.basis ?? r.row.reason ?? 'snapshot'}; ${r.row.window ? r.row.window.from + ' to ' + r.row.window.to : 'snapshot'}; coverage ${JSON.stringify(r.row.coverage)})`);
+    }
     return lines.join('\n');
   }
 
@@ -317,6 +335,10 @@ export function formatDiffMarkdown(diff: ThreatModelDiff): string {
   emitAgentConfigMarkdown(diff, lines);
   emitStaleEntitlementsMarkdown(diff, lines);
 
+  if (diff.reachAttestation?.length) {
+    lines.push('', 'Observed reach changes (coverage and window qualified):');
+    for (const r of diff.reachAttestation) lines.push(`  ${r.change} ${r.kind}: ${r.row.identity.actor} ${r.row.name} (${r.row.source}; ${r.row.basis ?? r.row.reason ?? 'snapshot'}; ${r.row.window ? r.row.window.from + ' to ' + r.row.window.to : 'snapshot'}; coverage ${JSON.stringify(r.row.coverage)})`);
+  }
   return lines.join('\n');
 }
 

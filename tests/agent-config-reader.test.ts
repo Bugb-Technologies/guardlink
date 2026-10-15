@@ -115,7 +115,7 @@ describe('discovery: which files, which agents, which scope', () => {
     expect(Object.keys(by).sort()).toEqual([
       '.claude/settings.json', '.codex/config.toml', '.cursor/mcp.json', '.cursor/rules/x.mdc', '.gemini/settings.json',
       '.github/copilot-instructions.md', '.mcp.json', '.vscode/mcp.json', '.vscode/settings.json', '.windsurfrules',
-      'AGENTS.md', 'CLAUDE.md', 'GEMINI.md',
+      'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'README.md',
     ]);
     expect(by['AGENTS.md'].harnesses).toEqual(['codex', 'copilot', 'cursor', 'opencode']);
     expect(by['CLAUDE.md'].harnesses).toEqual(['claude-code', 'copilot-review']);
@@ -398,7 +398,7 @@ describe('skills, commands and subagents', () => {
     const root = repo({ 'CLAUDE.md': '# c', 'AGENTS.md': '# a', 'packages/x/AGENTS.md': '# n', 'templates/AGENTS.md': '# shipped' });
     const r = read(root);
     expect(r.block.untrusted_sources.map(u => `${u.source} ${u.agents.join(',')}`)).toEqual([
-      'AGENTS.md #codex,#copilot,#cursor', 'CLAUDE.md #claude-code', 'packages/x/AGENTS.md #codex,#copilot,#cursor',
+      'AGENTS.md #codex,#copilot,#cursor,#opencode', 'CLAUDE.md #claude-code', 'packages/x/AGENTS.md #codex,#copilot,#cursor,#opencode',
     ]);
   });
 });

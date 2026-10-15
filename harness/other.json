@@ -3,14 +3,47 @@
   "version": "2026-10",
   "about": "Instruction files that other coding agents load. They are read as inventory: which agent loads them, their size, the GuardLink block stamp and hidden Unicode. What these agents may run is not read yet.",
   "files": [
-    { "kind": "instructions", "pattern": "(^|/)AGENT\\.md$", "harness": "amp" },
-    { "kind": "instructions", "pattern": "(^|/)AGENTS\\.md$", "harness": "opencode" },
-    { "kind": "instructions", "pattern": "(^|/)\\.windsurfrules$|(^|/)\\.windsurf/rules/.+", "harness": "windsurf" },
-    { "kind": "instructions", "pattern": "(^|/)\\.clinerules(/.+)?$", "harness": "cline" },
-    { "kind": "instructions", "pattern": "(^|/)\\.roo/rules[^/]*/.+|(^|/)\\.roorules$", "harness": "roo" },
-    { "kind": "instructions", "pattern": "(^|/)\\.kilocode/rules/.+", "harness": "kilo" },
-    { "kind": "instructions", "pattern": "(^|/)\\.amazonq/rules/.+", "harness": "amazon-q" },
-    { "kind": "instructions", "pattern": "(^|/)\\.kiro/steering/.+", "harness": "kiro" },
-    { "kind": "instructions", "pattern": "(^|/)\\.junie/guidelines\\.md$", "harness": "junie" }
+    {
+      "kind": "instructions",
+      "pattern": "(^|/)AGENT\\.md$",
+      "harness": "amp"
+    },
+    {
+      "kind": "instructions",
+      "pattern": "(^|/)\\.kilocode/rules/.+",
+      "harness": "kilo"
+    },
+    {
+      "kind": "instructions",
+      "pattern": "(^|/)\\.junie/guidelines\\.md$",
+      "harness": "junie"
+    },
+    {
+      "kind": "ci-workflow",
+      "pattern": "(^|/)\\.github/workflows/[^/]+\\.ya?ml$",
+      "harness": "github-actions",
+      "loaded_when": [
+        "headless"
+      ],
+      "doc": "https://docs.github.com/en/actions/reference/security/secure-use"
+    },
+    {
+      "kind": "toolchain",
+      "pattern": "(^|/)package\\.json$",
+      "harness": "npm",
+      "doc": "https://docs.npmjs.com/cli/v11/using-npm/scripts/"
+    },
+    {
+      "kind": "trust-state",
+      "pattern": "(^|/)\\.claude\\.json$",
+      "harness": "claude-code",
+      "doc": "https://code.claude.com/docs/en/settings#global-config-in-claudejson"
+    },
+    {
+      "kind": "links",
+      "pattern": "(^|/)README\\.md$",
+      "harness": "documentation",
+      "doc": "https://cursor.com/docs/reference/deeplinks"
+    }
   ]
 }

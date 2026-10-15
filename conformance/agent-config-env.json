@@ -1,0 +1,238 @@
+{
+  "version": "1.2.0",
+  "project": "synthetic-environment",
+  "generated_at": "2026-01-01T00:00:00Z",
+  "source_files": 0,
+  "annotations_parsed": 0,
+  "annotated_files": [],
+  "unannotated_files": [],
+  "assets": [],
+  "threats": [],
+  "controls": [],
+  "actors": [
+    {
+      "name": "Claude_Code",
+      "canonical_name": "claude_code",
+      "id": "claude-code",
+      "description": "Claude Code: loads .claude/settings.json, .mcp.json, CLAUDE.md and .claude/{rules,skills,commands,agents}",
+      "location": {
+        "file": ".claude/settings.json",
+        "line": 1
+      },
+      "origin": "agent-config"
+    }
+  ],
+  "entitlements": [],
+  "reaches": [
+    {
+      "actor": "#claude-code",
+      "agent": true,
+      "capability": "env.credential.ANTHROPIC_AUTH_TOKEN",
+      "canonical_capability": "env.credential.anthropic_auth_token",
+      "asset": "#cred-anthropic-auth-token",
+      "description": "env-credential: ANTHROPIC_AUTH_TOKEN; value withheld",
+      "location": {
+        "file": ".claude/settings.json",
+        "line": 1,
+        "binding": "/env/ANTHROPIC_AUTH_TOKEN"
+      },
+      "origin": "agent-config",
+      "source": {
+        "harness": "claude-code",
+        "file_kind": "claude-settings",
+        "pointer": "/env/ANTHROPIC_AUTH_TOKEN",
+        "raw": "ANTHROPIC_AUTH_TOKEN",
+        "scope": "root",
+        "gated": false,
+        "loaded_when": [
+          "after-trust"
+        ],
+        "semantics": {
+          "table": "claude-code@2026-10",
+          "rule": "env-credential",
+          "admits": [
+            "credential-injection"
+          ],
+          "doc": "https://code.claude.com/docs/en/env-vars"
+        }
+      }
+    },
+    {
+      "actor": "#claude-code",
+      "agent": true,
+      "capability": "env.endpoint.ANTHROPIC_BASE_URL",
+      "canonical_capability": "env.endpoint.anthropic_base_url",
+      "asset": "#model-endpoint",
+      "description": "env-endpoint: ANTHROPIC_BASE_URL; value withheld",
+      "location": {
+        "file": ".claude/settings.json",
+        "line": 1,
+        "binding": "/env/ANTHROPIC_BASE_URL"
+      },
+      "origin": "agent-config",
+      "source": {
+        "harness": "claude-code",
+        "file_kind": "claude-settings",
+        "pointer": "/env/ANTHROPIC_BASE_URL",
+        "raw": "ANTHROPIC_BASE_URL",
+        "scope": "root",
+        "gated": false,
+        "loaded_when": [
+          "after-trust"
+        ],
+        "semantics": {
+          "table": "claude-code@2026-10",
+          "rule": "env-endpoint",
+          "admits": [
+            "model-endpoint-override"
+          ],
+          "doc": "https://code.claude.com/docs/en/env-vars"
+        }
+      }
+    }
+  ],
+  "effects": [],
+  "gates": [],
+  "mitigations": [],
+  "exposures": [],
+  "confirmed": [],
+  "acceptances": [],
+  "transfers": [],
+  "flows": [],
+  "boundaries": [],
+  "validations": [],
+  "audits": [],
+  "ownership": [],
+  "data_handling": [],
+  "assumptions": [],
+  "shields": [],
+  "features": [],
+  "comments": [],
+  "coverage": {
+    "annotation_count": 0,
+    "coverage_percent": 0
+  },
+  "external_refs": [],
+  "agent_config": {
+    "version": 1,
+    "agent_config_hash": "sha256-v1:d0a2e7c65e19e249376eb05c8c65d135c9526e7f57644ac0f227060bb301a81f",
+    "semantics": {
+      "claude-code": "2026-10"
+    },
+    "files": [
+      {
+        "path": ".claude/settings.json",
+        "kind": "claude-settings",
+        "harnesses": [
+          "claude-code"
+        ],
+        "scope": "root"
+      }
+    ],
+    "mcp_servers": [],
+    "hooks": [],
+    "instruction_files": [],
+    "assets": [
+      {
+        "id": "#cred-anthropic-auth-token",
+        "description": "Credential variable ANTHROPIC_AUTH_TOKEN (value withheld)"
+      },
+      {
+        "id": "#model-endpoint",
+        "description": "Configured model endpoint (value withheld)"
+      }
+    ],
+    "denies": [],
+    "untrusted_sources": [],
+    "unreadable": []
+  },
+  "reach_analysis": {
+    "version": 1,
+    "summary": {
+      "reaches": 2,
+      "agent_reaches": 2,
+      "unentitled_reaches": 2,
+      "effects": 0,
+      "mutating_effects": 0,
+      "ungated_effects": 0,
+      "gates": 0,
+      "coding_agent_reaches": 2,
+      "unentitled_coding_agent_reaches": 2
+    },
+    "unentitled_reaches": [
+      {
+        "index": 0,
+        "claim_key": "9a81f97eefdeb815c441853f00594382b4226d8e5cfbe8cb64bdb6a0e815beed:0",
+        "file": ".claude/settings.json",
+        "line": 1,
+        "verb": "agents",
+        "actor": "#claude-code",
+        "agent": true,
+        "capability": "env.credential.ANTHROPIC_AUTH_TOKEN",
+        "canonical_capability": "env.credential.anthropic_auth_token",
+        "asset": "#cred-anthropic-auth-token",
+        "identity": null,
+        "description": "env-credential: ANTHROPIC_AUTH_TOKEN; value withheld",
+        "origin": "agent-config",
+        "source": {
+          "harness": "claude-code",
+          "file_kind": "claude-settings",
+          "pointer": "/env/ANTHROPIC_AUTH_TOKEN",
+          "raw": "ANTHROPIC_AUTH_TOKEN",
+          "scope": "root",
+          "gated": false,
+          "loaded_when": [
+            "after-trust"
+          ],
+          "semantics": {
+            "table": "claude-code@2026-10",
+            "rule": "env-credential",
+            "admits": [
+              "credential-injection"
+            ],
+            "doc": "https://code.claude.com/docs/en/env-vars"
+          }
+        },
+        "near_misses": [],
+        "colocated_effects": []
+      },
+      {
+        "index": 1,
+        "claim_key": "e031173053fa2038be1aa7b1806e4c41092993e57f5d299b81c0734897d1be24:0",
+        "file": ".claude/settings.json",
+        "line": 1,
+        "verb": "agents",
+        "actor": "#claude-code",
+        "agent": true,
+        "capability": "env.endpoint.ANTHROPIC_BASE_URL",
+        "canonical_capability": "env.endpoint.anthropic_base_url",
+        "asset": "#model-endpoint",
+        "identity": null,
+        "description": "env-endpoint: ANTHROPIC_BASE_URL; value withheld",
+        "origin": "agent-config",
+        "source": {
+          "harness": "claude-code",
+          "file_kind": "claude-settings",
+          "pointer": "/env/ANTHROPIC_BASE_URL",
+          "raw": "ANTHROPIC_BASE_URL",
+          "scope": "root",
+          "gated": false,
+          "loaded_when": [
+            "after-trust"
+          ],
+          "semantics": {
+            "table": "claude-code@2026-10",
+            "rule": "env-endpoint",
+            "admits": [
+              "model-endpoint-override"
+            ],
+            "doc": "https://code.claude.com/docs/en/env-vars"
+          }
+        },
+        "near_misses": [],
+        "colocated_effects": []
+      }
+    ],
+    "mutating_effects": []
+  }
+}

@@ -236,9 +236,11 @@ describe('the node counter against browser-measured geometry', () => {
     // clusters:9}, whole model {nodes:49, links:199}, and the counter agrees.
     // Re-measured for 100 the same way: filtered {nodes:35, links:100,
     // clusters:9}, whole model {nodes:49, links:203}, and the counter agrees.
+    // Re-measured with mermaid@11 and the same options at 1440x900:
+    // filtered {nodes:35, links:102, clusters:9}; whole {nodes:49, links:206, clusters:9}.
     const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
     expect(m.nodes).toBe(35);
-    expect(m.edges).toBe(100);
+    expect(m.edges).toBe(102);
     // And the whole model is 49 nodes, which is the number this work exists for.
     expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(49);
   }, 30_000);

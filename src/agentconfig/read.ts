@@ -28,6 +28,8 @@
  * @comment -- "Hidden-Unicode findings are reported by validate, but the characters themselves are not stripped from copied text"
  * @comment -- "Never executes, starts or fetches anything named in configuration: launch commands and hook commands are recorded as text"
  */
+import { configSurfaces } from './surfaces.js';
+
 import { readFileSync, realpathSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import type {
@@ -118,6 +120,7 @@ class Builder {
   readonly denies: AgentConfigBlock['denies'] = [];
   readonly untrusted: AgentConfigBlock['untrusted_sources'] = [];
   readonly unreadable: AgentConfigBlock['unreadable'] = [];
+  readonly surfaces: NonNullable<AgentConfigBlock['surfaces']> = [];
 
   constructor(readonly sem: Semantics) {}
 
@@ -405,6 +408,28 @@ function ownBin(ctx: Ctx, command: string): { package: string; bin: string; file
   return null;
 }
 
+/**
+ * @handles secrets on #agent-config -- "Environment values are read only to establish nonempty configuration; exports retain names and pointers"
+ * @mitigates #agent-config against #api-key-exposure using #key-redaction -- "No environment value reaches raw, descriptions, assets or generated capabilities"
+ */
+function environmentFacts(b: Builder, ctx: Ctx, value: JsonValue | undefined, at: string, harnesses: string[]) {
+  const env = asObject(value);
+  if (!env || !producesRows(ctx)) return;
+  const endpoints = new Set(['ANTHROPIC_BASE_URL', 'ANTHROPIC_VERTEX_BASE_URL', 'OPENAI_BASE_URL', 'OPENAI_API_BASE', 'AZURE_OPENAI_ENDPOINT', 'GOOGLE_GEMINI_BASE_URL', 'GOOGLE_VERTEX_BASE_URL']);
+  for (const name of Object.keys(env).sort()) {
+    if (typeof env[name] !== 'string' || !env[name]) continue;
+    const rule = endpoints.has(name) ? 'env-endpoint' : SECRET_KEY.test(name) ? 'env-credential' : null;
+    if (!rule) continue;
+    for (const harness of harnesses) {
+      const asset = b.asset(rule === 'env-endpoint' ? '#model-endpoint' : `#cred-${slug(name)}`, rule === 'env-endpoint' ? 'Configured model endpoint (value withheld)' : `Credential variable ${name} (value withheld)`);
+      b.reach(ctx, `env.${rule === 'env-endpoint' ? 'endpoint' : 'credential'}.${capToken(name)}`, asset, {
+        harness, pointer: `${at}${ptr(name)}`, raw: name, rule,
+        description: `${rule}: ${name}; value withheld`,
+      });
+    }
+  }
+}
+
 function mcpServers(b: Builder, ctx: Ctx, servers: JsonValue | undefined, at: string, harnesses: string[]) {
   const so = asObject(servers);
   if (!so) return;
@@ -426,10 +451,11 @@ function mcpServers(b: Builder, ctx: Ctx, servers: JsonValue | undefined, at: st
     const transport: 'stdio' | 'http' = url ? 'http' : 'stdio';
     const env = { ...(asObject(srv.env) ?? asObject(srv.environment) ?? {}) };
     const headers = asObject(srv.headers) ?? {};
+    environmentFacts(b, ctx, srv.env ?? srv.environment, `${p}${ptr(srv.env ? 'env' : 'environment')}`, harnesses);
     const credential_env = [...Object.keys(env), ...Object.keys(headers)].filter(k => SECRET_KEY.test(k)).sort();
-    const disabled = srv.disabled === true;
+    const disabled = srv.disabled === true || srv.enabled === false;
     const auto = [...asArray(srv.alwaysAllow), ...asArray(srv.autoApprove)].map(String);
-    const trusted = srv.trust === true;
+    const trustRequested = srv.trust === true;
     let host: string | undefined;
     if (url) { try { host = new URL(url).host; } catch { host = undefined; } }
 
@@ -443,6 +469,7 @@ function mcpServers(b: Builder, ctx: Ctx, servers: JsonValue | undefined, at: st
     const thirdParty = CONTENT_SOURCES.test([name, host ?? '', command, ...args].join(' '));
 
     for (const harness of harnesses) {
+      const trusted = trustRequested && harness === 'gemini-cli';
       b.mcp.push({
         name, harness, file: ctx.file.path, line, scope: ctx.file.scope, transport,
         ...(transport === 'stdio' ? { launch: { command, args } } : {}),
@@ -458,13 +485,24 @@ function mcpServers(b: Builder, ctx: Ctx, servers: JsonValue | undefined, at: st
         : undefined;
       const launch = transport === 'http' ? (host ?? 'remote') : [command, ...args].join(' ');
       const rule = trusted ? 'mcp-server-trusted' : auto.length > 0 && b.sem.harnesses.get(harness)?.rules?.['mcp-tool-auto'] ? 'mcp-tool-auto' : 'mcp-server';
-      const gated = !(trusted || auto.length > 0) && (b.sem.harnesses.get(harness)?.rules?.['mcp-server']?.gated ?? true);
+      const newHarness = ['roo','cline','kiro','amazon-q','zed','opencode'].includes(harness);
+      const gated = !(trusted || !newHarness && auto.length > 0) && (b.sem.harnesses.get(harness)?.rules?.['mcp-server']?.gated ?? true);
       b.reach(ctx, `mcp.${capToken(slug(name))}`, assetId, {
         harness, pointer: p, raw: name, rule, gated, identity,
         description: `MCP server '${name}' (${transport}: ${launch.slice(0, 120)})`
           + (trusted ? '; trust: true, every tool call runs without asking'
             : auto.length > 0 ? `; ${auto.slice(0, 8).join(', ')} run without asking` : gated ? '; each tool call asks' : ''),
       });
+      if (newHarness && ['roo', 'kiro'].includes(harness)) {
+        for (const [i, tool] of auto.entries()) {
+          const all = tool === '*';
+          b.reach(ctx, `mcp.${capToken(name)}.${all ? 'all-tools' : capToken(tool)}`, assetId, {
+            harness, pointer: `${p}${ptr(harness === 'kiro' ? 'autoApprove' : 'alwaysAllow', i)}`, raw: tool,
+            rule: 'mcp-tool-auto', gated: harness === 'roo',
+            description: `Named MCP tool ${tool}${harness === 'roo' ? '; requires user-level global auto-approval as well' : '; pre-approved by configuration'}`,
+          });
+        }
+      }
       if (thirdParty && !b.untrusted.some(u => u.kind === 'mcp-server' && u.source === assetId)) {
         b.untrusted.push({ source: assetId, kind: 'mcp-server', file: ctx.file.path, line, agents: [] });
       }
@@ -486,6 +524,7 @@ function reachHarnesses(f: DiscoveredFile): string[] {
 function claudeSettings(b: Builder, ctx: Ctx) {
   const d = asObject(ctx.doc!.value) ?? {};
   const H = 'claude-code';
+  environmentFacts(b, ctx, d.env, ptr('env'), [H]);
   const perms = asObject(d.permissions) ?? {};
   if (producesRows(ctx)) {
     asArray(perms.allow).forEach((r, i) => {
@@ -765,7 +804,7 @@ function markdownFile(b: Builder, ctx: Ctx) {
   }
   // A subagent's `tools:` restricts availability and pre-approves nothing; a skill's or
   // command's `allowed-tools` pre-approves for the turn that invokes it.
-  if (file.kind === 'skill' || file.kind === 'command') {
+  if (harness === 'claude-code' && (file.kind === 'skill' || file.kind === 'command')) {
     const at = fm.get('allowed-tools');
     if (!at) return;
     const rules = at.value.match(/[A-Za-z_]\w*(?:\([^)]*\))?/g) ?? [];
@@ -784,6 +823,65 @@ function markdownFile(b: Builder, ctx: Ctx) {
   }
 }
 
+/** Explicit permissions are inventory claims, not effective policy simulation. */
+function permissionRow(b: Builder, ctx: Ctx, harness: string, tool: string, pattern: string, action: string, pointer: string) {
+  if (!producesRows(ctx) || !['allow', 'ask', 'deny'].includes(action)) return;
+  const raw = `${tool}: ${pattern}`;
+  const ws = b.asset(WORKSTATION, workstationDesc());
+  const mcp = /^@([^/*?]+)(?:\/([^*?]+))?$/.exec(tool);
+  const capability = mcp ? `mcp.${capToken(mcp[1])}.${mcp[2] ? capToken(mcp[2]) : 'all-tools'}` : `${capToken(tool)}.${pattern === '*' ? 'any' : capToken(pattern)}`;
+  const o = { harness, pointer, raw, rule: 'tool-allow', description: `Explicit ${action} permission for ${tool}; scope ${pattern}; effective policy may narrow it` };
+  if (action === 'deny') { b.denies.push({ harness, file: ctx.file.path, line: lineOf(ctx, pointer), raw }); return; }
+  if (action === 'ask') { b.gate(ctx, ws, capability, o); return; }
+  b.reach(ctx, capability, ws, o);
+}
+function opencodeConfig(b: Builder, ctx: Ctx) {
+  const d = asObject(ctx.doc!.value) ?? {};
+  mcpServers(b, ctx, d.mcp, ptr('mcp'), ['opencode']);
+  const readPermissions = (value: JsonValue | undefined, at: string) => {
+    if (typeof value === 'string') permissionRow(b, ctx, 'opencode', 'all', '*', value, at);
+    else for (const [tool, rule] of Object.entries(asObject(value) ?? {})) {
+      if (typeof rule === 'string') permissionRow(b, ctx, 'opencode', tool, '*', rule, `${at}${ptr(tool)}`);
+      else for (const [pattern, action] of Object.entries(asObject(rule) ?? {})) if (typeof action === 'string') permissionRow(b, ctx, 'opencode', tool, pattern, action, `${at}${ptr(tool,pattern)}`);
+    }
+  };
+  readPermissions(d.permission, ptr('permission'));
+  for (const [name, agent] of Object.entries(asObject(d.agent) ?? {})) readPermissions(asObject(agent)?.permission, ptr('agent',name,'permission'));
+}
+function profileConfig(b: Builder, ctx: Ctx, harness: string) {
+  const d = asObject(ctx.doc!.value) ?? {};
+  if (harness === 'kiro' && !d.permissions && (d.allowedTools || d.toolsSettings)) {
+    b.unreadable.push({ file: ctx.file.path, line: 1, message: 'Legacy CLI profile requires conversion for Kiro V3; no reach inferred' });
+    return;
+  }
+  mcpServers(b, ctx, d.mcpServers, ptr('mcpServers'), [harness]);
+  if (harness === 'kiro') {
+    asArray(asObject(d.permissions)?.rules).forEach((rule, i) => {
+      const r = asObject(rule); if (!r) return;
+      const tool = asString(r.capability), action = asString(r.effect);
+      if (!tool || !action) return;
+      // Exclusions cannot be represented as a single grant without overstatement.
+      if (asArray(r.exclude).length) { b.unreadable.push({ file: ctx.file.path, line: lineOf(ctx, ptr('permissions','rules',i)), message: 'Permission exclusions retained in source; effective reach not inferred' }); return; }
+      const patterns = asArray(r.match);
+      patterns.forEach((pattern, j) => { if (typeof pattern === 'string') permissionRow(b, ctx, harness, tool, pattern, action, ptr('permissions','rules',i,'match',j)); });
+    });
+  } else {
+    asArray(d.allowedTools).forEach((tool, i) => {
+      if (typeof tool !== 'string' || tool === '*') return;
+      permissionRow(b, ctx, harness, tool, '*', 'allow', ptr('allowedTools',i));
+    });
+  }
+  hooksBlock(b, ctx, harness, d.hooks, ptr('hooks'));
+}
+function zedConfig(b: Builder, ctx: Ctx) {
+  const d = asObject(ctx.doc!.value) ?? {};
+  mcpServers(b, ctx, d.context_servers, ptr('context_servers'), ['zed']);
+  if (asObject(d.agent)?.tool_permissions) b.unreadable.push({
+    file: ctx.file.path, line: lineOf(ctx, ptr('agent','tool_permissions')),
+    message: 'Zed agent.tool_permissions is a user setting, not part of ProjectSettingsContent; no project permission grant inferred',
+  });
+}
+
 function jsonHooksFile(b: Builder, ctx: Ctx, harness: string, base = '') {
   const d = asObject(ctx.doc!.value) ?? {};
   hooksBlock(b, ctx, harness, d.hooks, ptr('hooks'), base);
@@ -791,7 +889,7 @@ function jsonHooksFile(b: Builder, ctx: Ctx, harness: string, base = '') {
 
 // ─── Entry point ────────────────────────────────────────────────────
 
-const JSON_KINDS = new Set(['claude-settings', 'mcp', 'vscode-settings', 'vscode-tasks', 'gemini-settings', 'cursor-hooks', 'cursor-env', 'cursor-cli', 'copilot-hooks', 'plugin-hooks', 'plugin-manifest']);
+const JSON_KINDS = new Set(['claude-settings', 'mcp', 'vscode-settings', 'vscode-tasks', 'gemini-settings', 'cursor-hooks', 'cursor-env', 'cursor-cli', 'copilot-hooks', 'plugin-hooks', 'plugin-manifest', 'opencode-config', 'kiro-agent', 'q-agent', 'zed-settings']);
 
 /** Read every discovered file into rows and inventory. */
 export function readFiles(
@@ -815,6 +913,15 @@ export function readFiles(
     if (file.scope === 'fixture' && !MARKDOWN_KINDS.has(file.kind)) continue;
     const ctx: Ctx = { root, realRoot, sem, file, text, doc: null, carried };
     try {
+      const surfaces = configSurfaces(file, text);
+      b.surfaces.push(...surfaces);
+      if (producesRows(ctx)) for (const surface of surfaces.filter(s => s.family === 'ci-agent-workflow')) {
+        const asset = b.asset('#ci-agent-runner', 'CI job hosting a configured coding agent');
+        b.reach(ctx, `ci.agent.${capToken(surface.names[0])}`, asset, {
+          harness: surface.harness, pointer: surface.pointer, raw: surface.names[0], rule: 'ci-agent-workflow',
+          line: surface.line, description: 'Configured coding-agent action; runs under job permissions and conditions',
+        });
+      }
       if (MARKDOWN_KINDS.has(file.kind)) {
         markdownFile(b, ctx);
         continue;
@@ -822,6 +929,11 @@ export function readFiles(
       if (file.kind === 'codex-config') ctx.doc = parseToml(text);
       else if (JSON_KINDS.has(file.kind)) ctx.doc = parseJsonc(text);
       switch (file.kind) {
+        case 'unsupported': b.unreadable.push({ file: file.path, line: 1, message: 'No current project-local format documented for this configuration; no reach inferred' }); break;
+        case 'opencode-config': opencodeConfig(b, ctx); break;
+        case 'kiro-agent': profileConfig(b, ctx, 'kiro'); break;
+        case 'q-agent': profileConfig(b, ctx, 'amazon-q'); break;
+        case 'zed-settings': zedConfig(b, ctx); break;
         case 'claude-settings': claudeSettings(b, ctx); break;
         case 'mcp': {
           const d = asObject(ctx.doc!.value) ?? {};
@@ -885,6 +997,7 @@ export function readFiles(
       denies: b.denies,
       untrusted_sources: b.untrusted,
       unreadable: b.unreadable,
+      ...(b.surfaces.length ? { surfaces: b.surfaces } : {}),
     },
   };
 }

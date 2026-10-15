@@ -49,6 +49,8 @@
  *
  * @comment -- "Pure functions over an assembled ThreatModel; no I/O. Uncited entitlements never cover a reach, and a gate scoped to a capability never covers an effect whose route is unknown, so both joins err toward showing a capability or an effect rather than hiding one"
  */
+import { buildReachAttestation } from '../attest/index.js';
+
 import type {
   ThreatModel, ThreatModelReach, ThreatModelEntitlement, ThreatModelEffect, ThreatModelGate,
   EffectClass, SourceLocation, RowOrigin, AgentConfigSource,
@@ -438,6 +440,7 @@ export function buildReachAnalysis(model: ThreatModel): ReachAnalysis {
  * block existed, and a stale block from an earlier export is never carried.
  */
 export function withReachAnalysis<T extends ThreatModel>(model: T): T {
-  const { reach_analysis: _stale, ...rest } = model;
+  const { reach_analysis: _stale, reach_attestation: _attestation, ...rest } = model;
+  if (model.observed_reach) Object.assign(rest, { reach_attestation: buildReachAttestation(model, model.observed_reach, model.tool_pins) });
   return (hasReachClaims(model) ? { ...rest, reach_analysis: buildReachAnalysis(model) } : rest) as T;
 }

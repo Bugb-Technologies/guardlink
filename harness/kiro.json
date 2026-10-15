@@ -1,0 +1,102 @@
+{
+  "table": "kiro",
+  "version": "2026-10",
+  "harness": "kiro",
+  "name": "Kiro",
+  "actor": {
+    "id": "kiro",
+    "name": "Kiro",
+    "description": "Kiro repository configuration"
+  },
+  "about": "Static repository-local configuration inventory. User-level state, runtime overrides and effective permission resolution are outside this reader.",
+  "files": [
+    {
+      "kind": "mcp",
+      "pattern": "(^|/)\\.kiro/settings/mcp\\.json$",
+      "doc": "https://kiro.dev/docs/mcp/configuration/",
+      "loaded_when": [
+        "after-trust"
+      ]
+    },
+    {
+      "kind": "kiro-agent",
+      "pattern": "(^|/)\\.kiro/agents/[^/]+\\.json$",
+      "doc": "https://kiro.dev/docs/mcp/configuration/",
+      "loaded_when": [
+        "after-trust"
+      ]
+    },
+    {
+      "kind": "instructions",
+      "pattern": "(^|/)\\.kiro/steering/.+",
+      "doc": "https://kiro.dev/docs/mcp/configuration/",
+      "loaded_when": [
+        "after-trust"
+      ]
+    },
+    {
+      "kind": "skill",
+      "pattern": "(^|/)\\.kiro/skills/.+/SKILL\\.md$",
+      "doc": "https://kiro.dev/docs/mcp/configuration/",
+      "loaded_when": [
+        "after-trust"
+      ]
+    }
+  ],
+  "rules": {
+    "mcp-server": {
+      "doc": "https://kiro.dev/docs/mcp/configuration/",
+      "gated": true,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Configured MCP server; tool-level permission is separate."
+    },
+    "mcp-tool-auto": {
+      "doc": "https://kiro.dev/docs/mcp/configuration/",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Named tool approval; Roo additionally requires the user-level global auto-approval switch, which this repository reader cannot establish."
+    },
+    "tool-allow": {
+      "doc": "https://kiro.dev/docs/mcp/configuration/",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Explicit permission entry; patterns and denying rules retain their original provenance."
+    },
+    "env-endpoint": {
+      "doc": "https://kiro.dev/docs/mcp/configuration/",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Named endpoint environment override; value withheld.",
+      "admits": [
+        "model-endpoint-override"
+      ]
+    },
+    "env-credential": {
+      "doc": "https://kiro.dev/docs/mcp/configuration/",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Named credential environment entry; value withheld.",
+      "admits": [
+        "credential-injection"
+      ]
+    },
+    "hook": {
+      "doc": "https://kiro.dev/docs/mcp/configuration/",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Configured lifecycle command; never executed by this reader."
+    }
+  }
+}

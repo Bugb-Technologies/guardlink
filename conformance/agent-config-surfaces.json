@@ -1,0 +1,1116 @@
+{
+  "version": "1.2.0",
+  "project": "synthetic-configurations",
+  "generated_at": "2026-01-01T00:00:00Z",
+  "source_files": 2,
+  "annotations_parsed": 0,
+  "annotated_files": [],
+  "unannotated_files": [
+    ".github/workflows/assistant.yml",
+    ".opencode/skills/helper/helper.py"
+  ],
+  "assets": [],
+  "threats": [],
+  "controls": [],
+  "actors": [
+    {
+      "name": "Amazon_Q",
+      "canonical_name": "amazon_q",
+      "id": "amazon-q",
+      "description": "Amazon Q repository configuration",
+      "location": {
+        "file": ".amazonq/cli-agents/sample.json",
+        "line": 1
+      },
+      "origin": "agent-config"
+    },
+    {
+      "name": "Claude_Code",
+      "canonical_name": "claude_code",
+      "id": "claude-code",
+      "description": "Claude Code: loads .claude/settings.json, .mcp.json, CLAUDE.md and .claude/{rules,skills,commands,agents}",
+      "location": {
+        "file": ".github/workflows/assistant.yml",
+        "line": 1
+      },
+      "origin": "agent-config"
+    },
+    {
+      "name": "Kiro",
+      "canonical_name": "kiro",
+      "id": "kiro",
+      "description": "Kiro repository configuration",
+      "location": {
+        "file": ".kiro/settings/mcp.json",
+        "line": 1
+      },
+      "origin": "agent-config"
+    },
+    {
+      "name": "Roo_Code",
+      "canonical_name": "roo_code",
+      "id": "roo",
+      "description": "Roo Code repository configuration",
+      "location": {
+        "file": ".roo/mcp.json",
+        "line": 1
+      },
+      "origin": "agent-config"
+    },
+    {
+      "name": "Zed",
+      "canonical_name": "zed",
+      "id": "zed",
+      "description": "Zed repository configuration",
+      "location": {
+        "file": ".zed/settings.json",
+        "line": 1
+      },
+      "origin": "agent-config"
+    },
+    {
+      "name": "OpenCode",
+      "canonical_name": "opencode",
+      "id": "opencode",
+      "description": "OpenCode repository configuration",
+      "location": {
+        "file": "opencode.jsonc",
+        "line": 1
+      },
+      "origin": "agent-config"
+    }
+  ],
+  "entitlements": [],
+  "reaches": [
+    {
+      "actor": "#amazon-q",
+      "agent": true,
+      "capability": "mcp.sample",
+      "canonical_capability": "mcp.sample",
+      "asset": "#mcp-sample",
+      "description": "MCP server 'sample' (stdio: node server.js); each tool call asks",
+      "location": {
+        "file": ".amazonq/cli-agents/sample.json",
+        "line": 1,
+        "binding": "/mcpServers/sample"
+      },
+      "origin": "agent-config",
+      "source": {
+        "harness": "amazon-q",
+        "file_kind": "q-agent",
+        "pointer": "/mcpServers/sample",
+        "raw": "sample",
+        "scope": "root",
+        "gated": true,
+        "loaded_when": [
+          "after-trust"
+        ],
+        "semantics": {
+          "table": "amazon-q@2026-10",
+          "rule": "mcp-server",
+          "doc": "https://github.com/aws/amazon-q-developer-cli/blob/main/docs/agent-format.md"
+        }
+      }
+    },
+    {
+      "actor": "#amazon-q",
+      "agent": true,
+      "capability": "mcp.sample.read",
+      "canonical_capability": "mcp.sample.read",
+      "asset": "#dev-workstation",
+      "description": "Explicit allow permission for @sample/read; scope *; effective policy may narrow it",
+      "location": {
+        "file": ".amazonq/cli-agents/sample.json",
+        "line": 1,
+        "binding": "/allowedTools/0"
+      },
+      "origin": "agent-config",
+      "source": {
+        "harness": "amazon-q",
+        "file_kind": "q-agent",
+        "pointer": "/allowedTools/0",
+        "raw": "@sample/read: *",
+        "scope": "root",
+        "gated": false,
+        "loaded_when": [
+          "after-trust"
+        ],
+        "semantics": {
+          "table": "amazon-q@2026-10",
+          "rule": "tool-allow",
+          "doc": "https://github.com/aws/amazon-q-developer-cli/blob/main/docs/agent-format.md"
+        }
+      }
+    },
+    {
+      "actor": "#claude-code",
+      "agent": true,
+      "capability": "ci.agent.anthropics-claude-code-action",
+      "canonical_capability": "ci.agent.anthropics_claude_code_action",
+      "asset": "#ci-agent-runner",
+      "description": "Configured coding-agent action; runs under job permissions and conditions",
+      "location": {
+        "file": ".github/workflows/assistant.yml",
+        "line": 7,
+        "binding": "/jobs/review/steps/0/uses"
+      },
+      "origin": "agent-config",
+      "source": {
+        "harness": "claude-code",
+        "file_kind": "ci-workflow",
+        "pointer": "/jobs/review/steps/0/uses",
+        "raw": "anthropics/claude-code-action",
+        "scope": "root",
+        "gated": false,
+        "loaded_when": [
+          "headless"
+        ],
+        "semantics": {
+          "table": "claude-code@2026-10",
+          "rule": "ci-agent-workflow",
+          "doc": "https://code.claude.com/docs/en/github-actions"
+        }
+      }
+    },
+    {
+      "actor": "#kiro",
+      "agent": true,
+      "capability": "mcp.sample",
+      "canonical_capability": "mcp.sample",
+      "asset": "#mcp-sample",
+      "description": "MCP server 'sample' (stdio: node server.js); read run without asking",
+      "location": {
+        "file": ".kiro/settings/mcp.json",
+        "line": 1,
+        "binding": "/mcpServers/sample"
+      },
+      "origin": "agent-config",
+      "source": {
+        "harness": "kiro",
+        "file_kind": "mcp",
+        "pointer": "/mcpServers/sample",
+        "raw": "sample",
+        "scope": "root",
+        "gated": true,
+        "loaded_when": [
+          "after-trust"
+        ],
+        "semantics": {
+          "table": "kiro@2026-10",
+          "rule": "mcp-tool-auto",
+          "doc": "https://kiro.dev/docs/mcp/configuration/"
+        }
+      }
+    },
+    {
+      "actor": "#kiro",
+      "agent": true,
+      "capability": "mcp.sample.read",
+      "canonical_capability": "mcp.sample.read",
+      "asset": "#mcp-sample",
+      "description": "Named MCP tool read; pre-approved by configuration",
+      "location": {
+        "file": ".kiro/settings/mcp.json",
+        "line": 1,
+        "binding": "/mcpServers/sample/autoApprove/0"
+      },
+      "origin": "agent-config",
+      "source": {
+        "harness": "kiro",
+        "file_kind": "mcp",
+        "pointer": "/mcpServers/sample/autoApprove/0",
+        "raw": "read",
+        "scope": "root",
+        "gated": false,
+        "loaded_when": [
+          "after-trust"
+        ],
+        "semantics": {
+          "table": "kiro@2026-10",
+          "rule": "mcp-tool-auto",
+          "doc": "https://kiro.dev/docs/mcp/configuration/"
+        }
+      }
+    },
+    {
+      "actor": "#roo",
+      "agent": true,
+      "capability": "mcp.sample",
+      "canonical_capability": "mcp.sample",
+      "asset": "#mcp-sample",
+      "description": "MCP server 'sample' (stdio: node server.js); read run without asking",
+      "location": {
+        "file": ".roo/mcp.json",
+        "line": 1,
+        "binding": "/mcpServers/sample"
+      },
+      "origin": "agent-config",
+      "source": {
+        "harness": "roo",
+        "file_kind": "mcp",
+        "pointer": "/mcpServers/sample",
+        "raw": "sample",
+        "scope": "root",
+        "gated": true,
+        "loaded_when": [
+          "after-trust"
+        ],
+        "semantics": {
+          "table": "roo@2026-10",
+          "rule": "mcp-tool-auto",
+          "doc": "https://roocodeinc.github.io/Roo-Code/features/mcp/using-mcp-in-roo/"
+        }
+      }
+    },
+    {
+      "actor": "#roo",
+      "agent": true,
+      "capability": "mcp.sample.read",
+      "canonical_capability": "mcp.sample.read",
+      "asset": "#mcp-sample",
+      "description": "Named MCP tool read; requires user-level global auto-approval as well",
+      "location": {
+        "file": ".roo/mcp.json",
+        "line": 1,
+        "binding": "/mcpServers/sample/alwaysAllow/0"
+      },
+      "origin": "agent-config",
+      "source": {
+        "harness": "roo",
+        "file_kind": "mcp",
+        "pointer": "/mcpServers/sample/alwaysAllow/0",
+        "raw": "read",
+        "scope": "root",
+        "gated": true,
+        "loaded_when": [
+          "after-trust"
+        ],
+        "semantics": {
+          "table": "roo@2026-10",
+          "rule": "mcp-tool-auto",
+          "doc": "https://roocodeinc.github.io/Roo-Code/features/mcp/using-mcp-in-roo/"
+        }
+      }
+    },
+    {
+      "actor": "#zed",
+      "agent": true,
+      "capability": "mcp.sample",
+      "canonical_capability": "mcp.sample",
+      "asset": "#mcp-sample",
+      "description": "MCP server 'sample' (stdio: node server.js); each tool call asks",
+      "location": {
+        "file": ".zed/settings.json",
+        "line": 1,
+        "binding": "/context_servers/sample"
+      },
+      "origin": "agent-config",
+      "source": {
+        "harness": "zed",
+        "file_kind": "zed-settings",
+        "pointer": "/context_servers/sample",
+        "raw": "sample",
+        "scope": "root",
+        "gated": true,
+        "loaded_when": [
+          "after-trust"
+        ],
+        "semantics": {
+          "table": "zed@2026-10",
+          "rule": "mcp-server",
+          "doc": "https://zed.dev/docs/ai/mcp"
+        }
+      }
+    },
+    {
+      "actor": "#opencode",
+      "agent": true,
+      "capability": "mcp.sample",
+      "canonical_capability": "mcp.sample",
+      "asset": "#mcp-sample",
+      "description": "MCP server 'sample' (stdio: node server.js)",
+      "location": {
+        "file": "opencode.jsonc",
+        "line": 1,
+        "binding": "/mcp/sample"
+      },
+      "origin": "agent-config",
+      "source": {
+        "harness": "opencode",
+        "file_kind": "opencode-config",
+        "pointer": "/mcp/sample",
+        "raw": "sample",
+        "scope": "root",
+        "gated": false,
+        "loaded_when": [
+          "after-trust"
+        ],
+        "semantics": {
+          "table": "opencode@2026-10",
+          "rule": "mcp-server",
+          "doc": "https://opencode.ai/docs/config/"
+        }
+      }
+    },
+    {
+      "actor": "#opencode",
+      "agent": true,
+      "capability": "bash.git",
+      "canonical_capability": "bash.git",
+      "asset": "#dev-workstation",
+      "description": "Explicit allow permission for bash; scope git *; effective policy may narrow it",
+      "location": {
+        "file": "opencode.jsonc",
+        "line": 1,
+        "binding": "/permission/bash/git *"
+      },
+      "origin": "agent-config",
+      "source": {
+        "harness": "opencode",
+        "file_kind": "opencode-config",
+        "pointer": "/permission/bash/git *",
+        "raw": "bash: git *",
+        "scope": "root",
+        "gated": false,
+        "loaded_when": [
+          "after-trust"
+        ],
+        "semantics": {
+          "table": "opencode@2026-10",
+          "rule": "tool-allow",
+          "doc": "https://opencode.ai/docs/config/"
+        }
+      }
+    }
+  ],
+  "effects": [],
+  "gates": [],
+  "mitigations": [],
+  "exposures": [],
+  "confirmed": [],
+  "acceptances": [],
+  "transfers": [],
+  "flows": [],
+  "boundaries": [],
+  "validations": [],
+  "audits": [],
+  "ownership": [],
+  "data_handling": [],
+  "assumptions": [],
+  "shields": [],
+  "features": [],
+  "comments": [],
+  "coverage": {
+    "annotation_count": 0,
+    "coverage_percent": 0
+  },
+  "external_refs": [],
+  "agent_config": {
+    "version": 1,
+    "agent_config_hash": "sha256-v1:3b61287a3eb4a98d6b32b48eb976c06c892312003a848baf38790e403c33f65b",
+    "semantics": {
+      "claude-code": "2026-10",
+      "roo": "2026-10",
+      "cline": "2026-10",
+      "windsurf": "2026-10",
+      "kiro": "2026-10",
+      "amazon-q": "2026-10",
+      "zed": "2026-10",
+      "opencode": "2026-10"
+    },
+    "files": [
+      {
+        "path": ".amazonq/cli-agents/sample.json",
+        "kind": "q-agent",
+        "harnesses": [
+          "amazon-q"
+        ],
+        "scope": "root"
+      },
+      {
+        "path": ".claude.json",
+        "kind": "trust-state",
+        "harnesses": [
+          "claude-code"
+        ],
+        "scope": "root"
+      },
+      {
+        "path": ".cline/rules/project.md",
+        "kind": "instructions",
+        "harnesses": [
+          "cline"
+        ],
+        "scope": "root"
+      },
+      {
+        "path": ".github/workflows/assistant.yml",
+        "kind": "ci-workflow",
+        "harnesses": [
+          "github-actions"
+        ],
+        "scope": "root"
+      },
+      {
+        "path": ".kiro/settings/mcp.json",
+        "kind": "mcp",
+        "harnesses": [
+          "kiro"
+        ],
+        "scope": "root"
+      },
+      {
+        "path": ".opencode/skills/helper/SKILL.md",
+        "kind": "skill",
+        "harnesses": [
+          "opencode"
+        ],
+        "scope": "root"
+      },
+      {
+        "path": ".roo/mcp.json",
+        "kind": "mcp",
+        "harnesses": [
+          "roo"
+        ],
+        "scope": "root"
+      },
+      {
+        "path": ".windsurf/rules/project.md",
+        "kind": "instructions",
+        "harnesses": [
+          "windsurf"
+        ],
+        "scope": "root"
+      },
+      {
+        "path": ".zed/settings.json",
+        "kind": "zed-settings",
+        "harnesses": [
+          "zed"
+        ],
+        "scope": "root"
+      },
+      {
+        "path": "README.md",
+        "kind": "links",
+        "harnesses": [
+          "documentation"
+        ],
+        "scope": "root"
+      },
+      {
+        "path": "opencode.jsonc",
+        "kind": "opencode-config",
+        "harnesses": [
+          "opencode"
+        ],
+        "scope": "root"
+      },
+      {
+        "path": "package.json",
+        "kind": "toolchain",
+        "harnesses": [
+          "npm"
+        ],
+        "scope": "root"
+      }
+    ],
+    "mcp_servers": [
+      {
+        "name": "sample",
+        "harness": "amazon-q",
+        "file": ".amazonq/cli-agents/sample.json",
+        "line": 1,
+        "scope": "root",
+        "transport": "stdio",
+        "launch": {
+          "command": "node",
+          "args": [
+            "server.js"
+          ]
+        },
+        "credential_env": [],
+        "returns_third_party_content": false,
+        "disabled": false
+      },
+      {
+        "name": "sample",
+        "harness": "kiro",
+        "file": ".kiro/settings/mcp.json",
+        "line": 1,
+        "scope": "root",
+        "transport": "stdio",
+        "launch": {
+          "command": "node",
+          "args": [
+            "server.js"
+          ]
+        },
+        "credential_env": [],
+        "returns_third_party_content": false,
+        "disabled": false
+      },
+      {
+        "name": "sample",
+        "harness": "roo",
+        "file": ".roo/mcp.json",
+        "line": 1,
+        "scope": "root",
+        "transport": "stdio",
+        "launch": {
+          "command": "node",
+          "args": [
+            "server.js"
+          ]
+        },
+        "credential_env": [],
+        "returns_third_party_content": false,
+        "disabled": false
+      },
+      {
+        "name": "sample",
+        "harness": "zed",
+        "file": ".zed/settings.json",
+        "line": 1,
+        "scope": "root",
+        "transport": "stdio",
+        "launch": {
+          "command": "node",
+          "args": [
+            "server.js"
+          ]
+        },
+        "credential_env": [],
+        "returns_third_party_content": false,
+        "disabled": false
+      },
+      {
+        "name": "sample",
+        "harness": "opencode",
+        "file": "opencode.jsonc",
+        "line": 1,
+        "scope": "root",
+        "transport": "stdio",
+        "launch": {
+          "command": "node",
+          "args": [
+            "server.js"
+          ]
+        },
+        "credential_env": [],
+        "returns_third_party_content": false,
+        "disabled": false
+      }
+    ],
+    "hooks": [],
+    "instruction_files": [
+      {
+        "path": ".cline/rules/project.md",
+        "kind": "instructions",
+        "harnesses": [
+          "cline"
+        ],
+        "scope": "root",
+        "bytes": 34,
+        "hidden_unicode": []
+      },
+      {
+        "path": ".opencode/skills/helper/SKILL.md",
+        "kind": "skill",
+        "harnesses": [
+          "opencode"
+        ],
+        "scope": "root",
+        "bytes": 101,
+        "skill": {
+          "model_invocable": true
+        },
+        "bundled": [
+          {
+            "path": ".opencode/skills/helper/helper.py",
+            "kind": "code",
+            "bytes": 26,
+            "sha256": "sha256-v1:219a555edb21327d94b70b6392061df991eb4a1043ad49efa56933900013ce33"
+          }
+        ],
+        "hidden_unicode": []
+      },
+      {
+        "path": ".windsurf/rules/project.md",
+        "kind": "instructions",
+        "harnesses": [
+          "windsurf"
+        ],
+        "scope": "root",
+        "bytes": 34,
+        "hidden_unicode": []
+      }
+    ],
+    "assets": [
+      {
+        "id": "#ci-agent-runner",
+        "description": "CI job hosting a configured coding agent"
+      },
+      {
+        "id": "#dev-workstation",
+        "description": "Developer machine: the shell, files, network and credentials of the person running the agent"
+      },
+      {
+        "id": "#mcp-sample",
+        "description": "MCP server 'sample' (stdio)"
+      }
+    ],
+    "denies": [],
+    "untrusted_sources": [
+      {
+        "source": ".cline/rules/project.md",
+        "kind": "instruction-file",
+        "file": ".cline/rules/project.md",
+        "line": 1,
+        "agents": [
+          "#cline"
+        ]
+      },
+      {
+        "source": ".opencode/skills/helper/SKILL.md",
+        "kind": "instruction-file",
+        "file": ".opencode/skills/helper/SKILL.md",
+        "line": 1,
+        "agents": [
+          "#opencode"
+        ]
+      },
+      {
+        "source": ".windsurf/rules/project.md",
+        "kind": "instruction-file",
+        "file": ".windsurf/rules/project.md",
+        "line": 1,
+        "agents": [
+          "#windsurf"
+        ]
+      }
+    ],
+    "unreadable": [],
+    "surfaces": [
+      {
+        "family": "trust-spoofing",
+        "harness": "claude-code",
+        "file": ".claude.json",
+        "line": 1,
+        "pointer": "/state/hasTrustDialogAccepted",
+        "scope": "root",
+        "names": [
+          "hasTrustDialogAccepted"
+        ],
+        "details": {
+          "repository_state_only": true
+        },
+        "claim_keys": []
+      },
+      {
+        "family": "ci-agent-workflow",
+        "harness": "claude-code",
+        "file": ".github/workflows/assistant.yml",
+        "line": 7,
+        "pointer": "/jobs/review/steps/0/uses",
+        "scope": "root",
+        "names": [
+          "anthropics/claude-code-action"
+        ],
+        "details": {
+          "events": [
+            "pull_request_target"
+          ],
+          "pinned": false,
+          "write_permissions": [
+            "contents"
+          ],
+          "untrusted_context": true,
+          "privileged_trigger": true
+        },
+        "claim_keys": [
+          "ef96eebd737c3b753e5b331a612e8870363a7326028097cf415d470bfd4a5489:0"
+        ]
+      },
+      {
+        "family": "deeplink",
+        "harness": "cursor",
+        "file": "README.md",
+        "line": 1,
+        "pointer": "/links",
+        "scope": "root",
+        "names": [
+          "mcp/install"
+        ],
+        "details": {
+          "payload_withheld": true
+        },
+        "claim_keys": []
+      },
+      {
+        "family": "pre-trust-toolchain",
+        "harness": "npm",
+        "file": "package.json",
+        "line": 1,
+        "pointer": "/scripts/preinstall",
+        "scope": "root",
+        "names": [
+          "preinstall"
+        ],
+        "details": {
+          "invocation": "package-manager",
+          "workspace_trust_required": false
+        },
+        "claim_keys": []
+      }
+    ]
+  },
+  "reach_analysis": {
+    "version": 1,
+    "summary": {
+      "reaches": 10,
+      "agent_reaches": 10,
+      "unentitled_reaches": 10,
+      "effects": 0,
+      "mutating_effects": 0,
+      "ungated_effects": 0,
+      "gates": 0,
+      "coding_agent_reaches": 10,
+      "unentitled_coding_agent_reaches": 10
+    },
+    "unentitled_reaches": [
+      {
+        "index": 0,
+        "claim_key": "c66ed88b2068b83709a927263430663e765f204b7ebd710f40a0e6f02e772398:0",
+        "file": ".amazonq/cli-agents/sample.json",
+        "line": 1,
+        "verb": "agents",
+        "actor": "#amazon-q",
+        "agent": true,
+        "capability": "mcp.sample",
+        "canonical_capability": "mcp.sample",
+        "asset": "#mcp-sample",
+        "identity": null,
+        "description": "MCP server 'sample' (stdio: node server.js); each tool call asks",
+        "origin": "agent-config",
+        "source": {
+          "harness": "amazon-q",
+          "file_kind": "q-agent",
+          "pointer": "/mcpServers/sample",
+          "raw": "sample",
+          "scope": "root",
+          "gated": true,
+          "loaded_when": [
+            "after-trust"
+          ],
+          "semantics": {
+            "table": "amazon-q@2026-10",
+            "rule": "mcp-server",
+            "doc": "https://github.com/aws/amazon-q-developer-cli/blob/main/docs/agent-format.md"
+          }
+        },
+        "near_misses": [],
+        "colocated_effects": []
+      },
+      {
+        "index": 1,
+        "claim_key": "04594f4326b3c8df8a7b4fe2e5d81d9e913a24721606cb24bb40443b727d56c0:0",
+        "file": ".amazonq/cli-agents/sample.json",
+        "line": 1,
+        "verb": "agents",
+        "actor": "#amazon-q",
+        "agent": true,
+        "capability": "mcp.sample.read",
+        "canonical_capability": "mcp.sample.read",
+        "asset": "#dev-workstation",
+        "identity": null,
+        "description": "Explicit allow permission for @sample/read; scope *; effective policy may narrow it",
+        "origin": "agent-config",
+        "source": {
+          "harness": "amazon-q",
+          "file_kind": "q-agent",
+          "pointer": "/allowedTools/0",
+          "raw": "@sample/read: *",
+          "scope": "root",
+          "gated": false,
+          "loaded_when": [
+            "after-trust"
+          ],
+          "semantics": {
+            "table": "amazon-q@2026-10",
+            "rule": "tool-allow",
+            "doc": "https://github.com/aws/amazon-q-developer-cli/blob/main/docs/agent-format.md"
+          }
+        },
+        "near_misses": [],
+        "colocated_effects": []
+      },
+      {
+        "index": 2,
+        "claim_key": "ef96eebd737c3b753e5b331a612e8870363a7326028097cf415d470bfd4a5489:0",
+        "file": ".github/workflows/assistant.yml",
+        "line": 7,
+        "verb": "agents",
+        "actor": "#claude-code",
+        "agent": true,
+        "capability": "ci.agent.anthropics-claude-code-action",
+        "canonical_capability": "ci.agent.anthropics_claude_code_action",
+        "asset": "#ci-agent-runner",
+        "identity": null,
+        "description": "Configured coding-agent action; runs under job permissions and conditions",
+        "origin": "agent-config",
+        "source": {
+          "harness": "claude-code",
+          "file_kind": "ci-workflow",
+          "pointer": "/jobs/review/steps/0/uses",
+          "raw": "anthropics/claude-code-action",
+          "scope": "root",
+          "gated": false,
+          "loaded_when": [
+            "headless"
+          ],
+          "semantics": {
+            "table": "claude-code@2026-10",
+            "rule": "ci-agent-workflow",
+            "doc": "https://code.claude.com/docs/en/github-actions"
+          }
+        },
+        "near_misses": [],
+        "colocated_effects": []
+      },
+      {
+        "index": 3,
+        "claim_key": "b01d6089f93f7fd7803a5606d95bec6d7c1eb10d9d482fe9d3f6e15156e0bba0:0",
+        "file": ".kiro/settings/mcp.json",
+        "line": 1,
+        "verb": "agents",
+        "actor": "#kiro",
+        "agent": true,
+        "capability": "mcp.sample",
+        "canonical_capability": "mcp.sample",
+        "asset": "#mcp-sample",
+        "identity": null,
+        "description": "MCP server 'sample' (stdio: node server.js); read run without asking",
+        "origin": "agent-config",
+        "source": {
+          "harness": "kiro",
+          "file_kind": "mcp",
+          "pointer": "/mcpServers/sample",
+          "raw": "sample",
+          "scope": "root",
+          "gated": true,
+          "loaded_when": [
+            "after-trust"
+          ],
+          "semantics": {
+            "table": "kiro@2026-10",
+            "rule": "mcp-tool-auto",
+            "doc": "https://kiro.dev/docs/mcp/configuration/"
+          }
+        },
+        "near_misses": [],
+        "colocated_effects": []
+      },
+      {
+        "index": 4,
+        "claim_key": "f360b1ad91c9051cf6b65686c08da459a3cf2516ebd719f72a7196c31253e259:0",
+        "file": ".kiro/settings/mcp.json",
+        "line": 1,
+        "verb": "agents",
+        "actor": "#kiro",
+        "agent": true,
+        "capability": "mcp.sample.read",
+        "canonical_capability": "mcp.sample.read",
+        "asset": "#mcp-sample",
+        "identity": null,
+        "description": "Named MCP tool read; pre-approved by configuration",
+        "origin": "agent-config",
+        "source": {
+          "harness": "kiro",
+          "file_kind": "mcp",
+          "pointer": "/mcpServers/sample/autoApprove/0",
+          "raw": "read",
+          "scope": "root",
+          "gated": false,
+          "loaded_when": [
+            "after-trust"
+          ],
+          "semantics": {
+            "table": "kiro@2026-10",
+            "rule": "mcp-tool-auto",
+            "doc": "https://kiro.dev/docs/mcp/configuration/"
+          }
+        },
+        "near_misses": [],
+        "colocated_effects": []
+      },
+      {
+        "index": 5,
+        "claim_key": "52e68c18887fc335c4ffb0ad0058bd548db509a784ef261eac65a1b32c249c0a:0",
+        "file": ".roo/mcp.json",
+        "line": 1,
+        "verb": "agents",
+        "actor": "#roo",
+        "agent": true,
+        "capability": "mcp.sample",
+        "canonical_capability": "mcp.sample",
+        "asset": "#mcp-sample",
+        "identity": null,
+        "description": "MCP server 'sample' (stdio: node server.js); read run without asking",
+        "origin": "agent-config",
+        "source": {
+          "harness": "roo",
+          "file_kind": "mcp",
+          "pointer": "/mcpServers/sample",
+          "raw": "sample",
+          "scope": "root",
+          "gated": true,
+          "loaded_when": [
+            "after-trust"
+          ],
+          "semantics": {
+            "table": "roo@2026-10",
+            "rule": "mcp-tool-auto",
+            "doc": "https://roocodeinc.github.io/Roo-Code/features/mcp/using-mcp-in-roo/"
+          }
+        },
+        "near_misses": [],
+        "colocated_effects": []
+      },
+      {
+        "index": 6,
+        "claim_key": "d5dc8d039094eb14bb4deaeee099f8cb23ac82659a333750e9351bb5c215b147:0",
+        "file": ".roo/mcp.json",
+        "line": 1,
+        "verb": "agents",
+        "actor": "#roo",
+        "agent": true,
+        "capability": "mcp.sample.read",
+        "canonical_capability": "mcp.sample.read",
+        "asset": "#mcp-sample",
+        "identity": null,
+        "description": "Named MCP tool read; requires user-level global auto-approval as well",
+        "origin": "agent-config",
+        "source": {
+          "harness": "roo",
+          "file_kind": "mcp",
+          "pointer": "/mcpServers/sample/alwaysAllow/0",
+          "raw": "read",
+          "scope": "root",
+          "gated": true,
+          "loaded_when": [
+            "after-trust"
+          ],
+          "semantics": {
+            "table": "roo@2026-10",
+            "rule": "mcp-tool-auto",
+            "doc": "https://roocodeinc.github.io/Roo-Code/features/mcp/using-mcp-in-roo/"
+          }
+        },
+        "near_misses": [],
+        "colocated_effects": []
+      },
+      {
+        "index": 7,
+        "claim_key": "f099d926a47365403289c6e15cae215e9642f7e18e881f72f178590e6c01fdc9:0",
+        "file": ".zed/settings.json",
+        "line": 1,
+        "verb": "agents",
+        "actor": "#zed",
+        "agent": true,
+        "capability": "mcp.sample",
+        "canonical_capability": "mcp.sample",
+        "asset": "#mcp-sample",
+        "identity": null,
+        "description": "MCP server 'sample' (stdio: node server.js); each tool call asks",
+        "origin": "agent-config",
+        "source": {
+          "harness": "zed",
+          "file_kind": "zed-settings",
+          "pointer": "/context_servers/sample",
+          "raw": "sample",
+          "scope": "root",
+          "gated": true,
+          "loaded_when": [
+            "after-trust"
+          ],
+          "semantics": {
+            "table": "zed@2026-10",
+            "rule": "mcp-server",
+            "doc": "https://zed.dev/docs/ai/mcp"
+          }
+        },
+        "near_misses": [],
+        "colocated_effects": []
+      },
+      {
+        "index": 8,
+        "claim_key": "e19856e16ba09451e0840464d2361e49aa699e134af631ddd62c9016040d40a6:0",
+        "file": "opencode.jsonc",
+        "line": 1,
+        "verb": "agents",
+        "actor": "#opencode",
+        "agent": true,
+        "capability": "mcp.sample",
+        "canonical_capability": "mcp.sample",
+        "asset": "#mcp-sample",
+        "identity": null,
+        "description": "MCP server 'sample' (stdio: node server.js)",
+        "origin": "agent-config",
+        "source": {
+          "harness": "opencode",
+          "file_kind": "opencode-config",
+          "pointer": "/mcp/sample",
+          "raw": "sample",
+          "scope": "root",
+          "gated": false,
+          "loaded_when": [
+            "after-trust"
+          ],
+          "semantics": {
+            "table": "opencode@2026-10",
+            "rule": "mcp-server",
+            "doc": "https://opencode.ai/docs/config/"
+          }
+        },
+        "near_misses": [],
+        "colocated_effects": []
+      },
+      {
+        "index": 9,
+        "claim_key": "7f2d008900c8e3f8ac03bfbb791792ec7af29dc45143998ce98d2be299c7f4c0:0",
+        "file": "opencode.jsonc",
+        "line": 1,
+        "verb": "agents",
+        "actor": "#opencode",
+        "agent": true,
+        "capability": "bash.git",
+        "canonical_capability": "bash.git",
+        "asset": "#dev-workstation",
+        "identity": null,
+        "description": "Explicit allow permission for bash; scope git *; effective policy may narrow it",
+        "origin": "agent-config",
+        "source": {
+          "harness": "opencode",
+          "file_kind": "opencode-config",
+          "pointer": "/permission/bash/git *",
+          "raw": "bash: git *",
+          "scope": "root",
+          "gated": false,
+          "loaded_when": [
+            "after-trust"
+          ],
+          "semantics": {
+            "table": "opencode@2026-10",
+            "rule": "tool-allow",
+            "doc": "https://opencode.ai/docs/config/"
+          }
+        },
+        "near_misses": [],
+        "colocated_effects": []
+      }
+    ],
+    "mutating_effects": []
+  }
+}

@@ -17,6 +17,8 @@
  * @comment -- "Rows generated from agent configuration are diffed apart from annotations: new and removed grants, new bypass modes, new hooks and servers, and a same-named MCP server whose launch changed"
  * @comment -- "A reach that becomes unentitled is reported on its own, like a new unmitigated exposure: newUnentitledReaches comes from findUnentitledReaches, the join lookup answers with"
  */
+import { buildReachAttestation, type AttestationRow } from '../attest/index.js';
+
 
 import type {
   ThreatModel,
@@ -90,10 +92,12 @@ export interface ThreatModelDiff {
    * `gates`, which stay about annotations.
    */
   agentConfig: AgentConfigDelta;
+  reachAttestation?: { kind: string; change: 'added' | 'removed'; row: AttestationRow }[];
 }
 
 /** A coding-agent configuration change a reviewer should see in a pull request. */
 export interface AgentConfigDelta {
+  surfaceChanges?: { change: 'added' | 'removed'; surface: import('../types/index.js').AgentConfigSurface }[];
   /** Capabilities the configuration newly grants a coding agent. */
   newReach: ThreatModelReach[];
   /** Capabilities it no longer grants. */
@@ -169,6 +173,14 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
   const effects = diffByKey(annotated(before.effects), annotated(after.effects), effectKey, effectChanged);
   const gates = diffByKey(annotated(before.gates), annotated(after.gates), gateKey, gateChanged);
   const agentConfig = diffAgentConfig(before, after);
+  const driftRows = (m: ThreatModel) => {
+    const block = m.observed_reach ? buildReachAttestation(m, m.observed_reach, m.tool_pins) : m.reach_attestation;
+    return block ? (['observed_not_declared', 'declared_not_observed', 'pin_changed', 'unknown'] as const).flatMap(kind => block[kind].map(row => ({ kind, row }))) : [];
+  };
+  const oldDrift = driftRows(before), newDrift = driftRows(after);
+  const driftKey = (r: { kind: string; row: AttestationRow }) => JSON.stringify(r);
+  const oldKeys = new Set(oldDrift.map(driftKey)), newKeys = new Set(newDrift.map(driftKey));
+  const reachAttestation = [...newDrift.filter(r => !oldKeys.has(driftKey(r))).map(r => ({ ...r, change: 'added' as const })), ...oldDrift.filter(r => !newKeys.has(driftKey(r))).map(r => ({ ...r, change: 'removed' as const }))];
 
   const beforeUnentitled = new Set(findUnentitledReaches(before).map(u => reachKeyIn(before)(u.reach)));
   const afterReachKey = reachKeyIn(after);
@@ -213,7 +225,7 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
       staleEntitlements: staleEntitlements.length,
       newUnentitledReaches: newUnentitledReaches.length,
       agentConfigChanges: agentConfig.newReach.length + agentConfig.removedReach.length + agentConfig.launchChanges.length
-        + agentConfig.newMcpServers.length + agentConfig.newHooks.length + agentConfig.bundledChanges.length,
+        + agentConfig.newMcpServers.length + agentConfig.newHooks.length + agentConfig.bundledChanges.length + (agentConfig.surfaceChanges?.length ?? 0),
     },
     assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances, entitlements, reaches, effects, gates, flows, boundaries, transfers,
     newUnmitigatedExposures,
@@ -221,6 +233,7 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
     newUnentitledReaches,
     staleEntitlements,
     agentConfig,
+    ...(before.observed_reach || after.observed_reach ? { reachAttestation } : {}),
   };
 }
 
@@ -277,7 +290,12 @@ function diffAgentConfig(before: ThreatModel, after: ThreatModel): AgentConfigDe
       else if (changed) bundledChanges.push({ skill: f.path, path: x.path, kind: x.kind, change: 'changed', bytes: x.bytes });
     }
   }
-  return { newReach, removedReach, newBypass, launchChanges, newMcpServers, newHooks, bundledChanges };
+  const surfaces = (m: ThreatModel) => (m.agent_config?.surfaces ?? []).filter(s => own(s.scope));
+  const surfaceKey = (s: import('../types/index.js').AgentConfigSurface) => JSON.stringify([s.family,s.harness,s.file,s.pointer,s.names,s.details]);
+  const oldSurfaces = surfaces(before), newSurfaces = surfaces(after);
+  const oldSurfaceKeys = new Set(oldSurfaces.map(surfaceKey)), newSurfaceKeys = new Set(newSurfaces.map(surfaceKey));
+  const surfaceChanges = [...newSurfaces.filter(s => !oldSurfaceKeys.has(surfaceKey(s))).map(surface => ({ change: 'added' as const, surface })), ...oldSurfaces.filter(s => !newSurfaceKeys.has(surfaceKey(s))).map(surface => ({ change: 'removed' as const, surface }))];
+  return { newReach, removedReach, newBypass, launchChanges, newMcpServers, newHooks, bundledChanges, ...(surfaceChanges.length ? { surfaceChanges } : {}) };
 }
 
 // ─── Entitlement staleness (§3.7) ────────────────────────────────────

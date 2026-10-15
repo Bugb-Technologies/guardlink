@@ -1,0 +1,110 @@
+{
+  "table": "opencode",
+  "version": "2026-10",
+  "harness": "opencode",
+  "name": "OpenCode",
+  "actor": {
+    "id": "opencode",
+    "name": "OpenCode",
+    "description": "OpenCode repository configuration"
+  },
+  "about": "Static repository-local configuration inventory. User-level state, runtime overrides and effective permission resolution are outside this reader.",
+  "files": [
+    {
+      "kind": "opencode-config",
+      "pattern": "(^|/)(\\.opencode/)?opencode\\.jsonc?$",
+      "doc": "https://opencode.ai/docs/config/",
+      "loaded_when": [
+        "after-trust"
+      ]
+    },
+    {
+      "kind": "instructions",
+      "pattern": "(^|/)AGENTS\\.md$",
+      "doc": "https://opencode.ai/docs/config/",
+      "loaded_when": [
+        "after-trust"
+      ]
+    },
+    {
+      "kind": "subagent",
+      "pattern": "(^|/)\\.opencode/agents?/.+\\.md$",
+      "doc": "https://opencode.ai/docs/config/",
+      "loaded_when": [
+        "after-trust"
+      ]
+    },
+    {
+      "kind": "command",
+      "pattern": "(^|/)\\.opencode/commands?/.+\\.md$",
+      "doc": "https://opencode.ai/docs/config/",
+      "loaded_when": [
+        "after-trust"
+      ]
+    },
+    {
+      "kind": "skill",
+      "pattern": "(^|/)\\.opencode/skills?/.+/SKILL\\.md$",
+      "doc": "https://opencode.ai/docs/config/",
+      "loaded_when": [
+        "after-trust"
+      ]
+    }
+  ],
+  "rules": {
+    "mcp-server": {
+      "doc": "https://opencode.ai/docs/config/",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Configured MCP server; tool-level permission is separate."
+    },
+    "mcp-tool-auto": {
+      "doc": "https://opencode.ai/docs/config/",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Named tool approval; Roo additionally requires the user-level global auto-approval switch, which this repository reader cannot establish."
+    },
+    "tool-allow": {
+      "doc": "https://opencode.ai/docs/config/",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Explicit permission entry; patterns and denying rules retain their original provenance."
+    },
+    "env-endpoint": {
+      "doc": "https://opencode.ai/docs/config/",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Named endpoint environment override; value withheld.",
+      "admits": [
+        "model-endpoint-override"
+      ]
+    },
+    "env-credential": {
+      "doc": "https://opencode.ai/docs/config/",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Named credential environment entry; value withheld.",
+      "admits": [
+        "credential-injection"
+      ]
+    },
+    "hook": {
+      "doc": "https://opencode.ai/docs/config/",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Configured lifecycle command; never executed by this reader."
+    }
+  }
+}
