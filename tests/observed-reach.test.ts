@@ -25,6 +25,7 @@ describe('observed reach', () => {
   it('joins only explicit identity and capability, verifies claim hints, and compares exact local pins', async () => {
     const m = await model(), doc = fixture(), o = doc.observations[0];
     o.identity = { actor: '#sample-agent', server: 'sample' };
+    o.window = { from: '2026-01-01T00:00:00Z', to: '2026-01-02T00:00:00Z' };
     o.tools_available[0].claim_keys = ['not-a-claim'];
     const pins = parseToolPins({ schema: 'guardlink.tool-pins/v1', pins: [{ identity: o.identity, name: 'read-record', description_sha256: 'sha256:' + 'b'.repeat(64) }] });
     const a = buildReachAttestation(m, doc, pins);

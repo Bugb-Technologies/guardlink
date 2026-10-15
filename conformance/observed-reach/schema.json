@@ -169,6 +169,22 @@
               "required": [
                 "name",
                 "description_sha256"
+              ],
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "description_sha256": {
+                        "type": "null"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "description_unknown"
+                    ]
+                  }
+                }
               ]
             }
           },
@@ -211,6 +227,25 @@
           "coverage",
           "tools_available",
           "tools_called"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "source": {
+                  "enum": [
+                    "otel",
+                    "probe"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "window"
+              ]
+            }
+          }
         ]
       }
     }

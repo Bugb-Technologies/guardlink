@@ -1,4 +1,3 @@
-import { buildReachAttestation, type AttestationRow } from '../attest/index.js';
 /**
  * GuardLink Diff Engine — Compare two threat models and produce a structured delta.
  *
@@ -18,6 +17,8 @@ import { buildReachAttestation, type AttestationRow } from '../attest/index.js';
  * @comment -- "Rows generated from agent configuration are diffed apart from annotations: new and removed grants, new bypass modes, new hooks and servers, and a same-named MCP server whose launch changed"
  * @comment -- "A reach that becomes unentitled is reported on its own, like a new unmitigated exposure: newUnentitledReaches comes from findUnentitledReaches, the join lookup answers with"
  */
+import { buildReachAttestation, type AttestationRow } from '../attest/index.js';
+
 
 import type {
   ThreatModel,
@@ -96,6 +97,7 @@ export interface ThreatModelDiff {
 
 /** A coding-agent configuration change a reviewer should see in a pull request. */
 export interface AgentConfigDelta {
+  surfaceChanges?: { change: 'added' | 'removed'; surface: import('../types/index.js').AgentConfigSurface }[];
   /** Capabilities the configuration newly grants a coding agent. */
   newReach: ThreatModelReach[];
   /** Capabilities it no longer grants. */
@@ -223,7 +225,7 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
       staleEntitlements: staleEntitlements.length,
       newUnentitledReaches: newUnentitledReaches.length,
       agentConfigChanges: agentConfig.newReach.length + agentConfig.removedReach.length + agentConfig.launchChanges.length
-        + agentConfig.newMcpServers.length + agentConfig.newHooks.length + agentConfig.bundledChanges.length,
+        + agentConfig.newMcpServers.length + agentConfig.newHooks.length + agentConfig.bundledChanges.length + (agentConfig.surfaceChanges?.length ?? 0),
     },
     assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances, entitlements, reaches, effects, gates, flows, boundaries, transfers,
     newUnmitigatedExposures,
@@ -288,7 +290,12 @@ function diffAgentConfig(before: ThreatModel, after: ThreatModel): AgentConfigDe
       else if (changed) bundledChanges.push({ skill: f.path, path: x.path, kind: x.kind, change: 'changed', bytes: x.bytes });
     }
   }
-  return { newReach, removedReach, newBypass, launchChanges, newMcpServers, newHooks, bundledChanges };
+  const surfaces = (m: ThreatModel) => (m.agent_config?.surfaces ?? []).filter(s => own(s.scope));
+  const surfaceKey = (s: import('../types/index.js').AgentConfigSurface) => JSON.stringify([s.family,s.harness,s.file,s.pointer,s.names,s.details]);
+  const oldSurfaces = surfaces(before), newSurfaces = surfaces(after);
+  const oldSurfaceKeys = new Set(oldSurfaces.map(surfaceKey)), newSurfaceKeys = new Set(newSurfaces.map(surfaceKey));
+  const surfaceChanges = [...newSurfaces.filter(s => !oldSurfaceKeys.has(surfaceKey(s))).map(surface => ({ change: 'added' as const, surface })), ...oldSurfaces.filter(s => !newSurfaceKeys.has(surfaceKey(s))).map(surface => ({ change: 'removed' as const, surface }))];
+  return { newReach, removedReach, newBypass, launchChanges, newMcpServers, newHooks, bundledChanges, ...(surfaceChanges.length ? { surfaceChanges } : {}) };
 }
 
 // ─── Entitlement staleness (§3.7) ────────────────────────────────────

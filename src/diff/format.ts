@@ -134,6 +134,11 @@ function emitAgentConfigText(diff: ThreatModelDiff, lines: string[]): void {
     for (const c of a.bundledChanges) lines.push(`  ${c.change === 'new' ? '+' : '~'} ${c.path} (${c.kind}, ${c.bytes} bytes, skill ${c.skill})`);
     lines.push('');
   }
+  if (a.surfaceChanges?.length) {
+    lines.push('Static configuration surfaces (review items):');
+    for (const { change, surface: s } of a.surfaceChanges) lines.push(`- ${change} ${s.family}: ${s.names.join(', ')} (${s.harness}, ${s.file}:${s.line})`);
+    lines.push('');
+  }
   if (a.newMcpServers.length > 0) {
     lines.push('── New MCP Servers ──');
     for (const m of a.newMcpServers) lines.push(`  + ${m.name} (${m.harness}, ${m.transport}) (${m.file}:${m.line})`);
@@ -149,7 +154,7 @@ function emitAgentConfigText(diff: ThreatModelDiff, lines: string[]): void {
 
 function emitAgentConfigMarkdown(diff: ThreatModelDiff, lines: string[]): void {
   const a = diff.agentConfig;
-  if (diff.summary.agentConfigChanges === 0 && !diff.reachAttestation?.length) return;
+  if (diff.summary.agentConfigChanges === 0) return;
   lines.push('#### 🤖 Coding-agent configuration');
   lines.push('');
   lines.push('What the coding agents that work in this repository may do changed. Generated from the configuration files, so each row points at the line that grants it.');
@@ -178,6 +183,11 @@ function emitAgentConfigMarkdown(diff: ThreatModelDiff, lines: string[]): void {
     lines.push('**Scripts and code bundled with a skill** — a skill runs what is bundled beside it:');
     lines.push('');
     for (const c of a.bundledChanges) lines.push(`- ${c.change === 'new' ? 'new' : 'changed'} \`${c.path}\` (${c.kind}, ${c.bytes} bytes) in skill \`${c.skill}\``);
+    lines.push('');
+  }
+  if (a.surfaceChanges?.length) {
+    lines.push('Static configuration surfaces (review items):');
+    for (const { change, surface: s } of a.surfaceChanges) lines.push(`- ${change} ${s.family}: ${s.names.join(', ')} (${s.harness}, ${s.file}:${s.line})`);
     lines.push('');
   }
   if (a.newMcpServers.length > 0) {
@@ -236,15 +246,15 @@ export function formatDiffMarkdown(diff: ThreatModelDiff): string {
   if (s.totalChanges === 0) {
     lines.push(diff.staleEntitlements.length > 0
       ? '### ⏳ No threat model changes, but an entitlement citation went stale'
-      : '### 🤖 No annotation changes, but the coding-agent configuration changed');
+      : diff.reachAttestation?.length ? '### Observed reach changed' : '### 🤖 No annotation changes, but the coding-agent configuration changed');
     lines.push('');
     emitAgentConfigMarkdown(diff, lines);
     emitStaleEntitlementsMarkdown(diff, lines);
     if (diff.reachAttestation?.length) {
-    lines.push('', 'Observed reach changes (coverage and window qualified):');
-    for (const r of diff.reachAttestation) lines.push(`  ${r.change} ${r.kind}: ${r.row.identity.actor} ${r.row.name} (${r.row.source}; ${r.row.basis ?? r.row.reason ?? 'snapshot'}; ${r.row.window ? r.row.window.from + ' to ' + r.row.window.to : 'snapshot'}; coverage ${JSON.stringify(r.row.coverage)})`);
-  }
-  return lines.join('\n');
+      lines.push('', 'Observed reach changes (coverage and window qualified):');
+      for (const r of diff.reachAttestation) lines.push(`  ${r.change} ${r.kind}: ${r.row.identity.actor} ${r.row.name} (${r.row.source}; ${r.row.basis ?? r.row.reason ?? 'snapshot'}; ${r.row.window ? r.row.window.from + ' to ' + r.row.window.to : 'snapshot'}; coverage ${JSON.stringify(r.row.coverage)})`);
+    }
+    return lines.join('\n');
   }
 
   // Header with risk badge

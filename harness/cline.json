@@ -25,6 +25,11 @@
       "loaded_when": [
         "after-trust"
       ]
+    },
+    {
+      "kind": "unsupported",
+      "pattern": "(^|/)\\.cline/mcp\\.json$",
+      "doc": "https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx"
     }
   ],
   "rules": {

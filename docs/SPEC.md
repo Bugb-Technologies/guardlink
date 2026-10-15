@@ -2542,8 +2542,9 @@ not-collected coverage never supports a negative availability conclusion.
 The derived export `reach_attestation` v1 belongs to GuardLink. Its drift rows
 carry observation identity, source, coverage, window and matched claim keys.
 `observed_not_declared` means no matching declaration was found.
-`declared_not_observed` states its basis (complete available list or call window),
-never that a capability is unused. Unmatched identities and invalid claim hints
+`declared_not_observed` states its basis (complete available list within a window or complete call window),
+never that a capability is unused. Negative rows require a window even for a
+complete available list. Unmatched identities and invalid claim hints
 remain explicit unknowns.
 
 A human maintains and commits `.guardlink/tool-pins.json` with shape
@@ -2591,7 +2592,8 @@ record documented project file patterns and cite their sources. The reader handl
 Roo project MCP servers and conditional per-tool selections; Cline CLI project
 instruction/skill inventory (its current MCP config is user scoped); Kiro workspace MCP and V3 JSON profile
 permission rules; Amazon Q CLI profile MCP and explicit allowed tools; Zed
-context servers and tool permission entries; and OpenCode JSON/JSONC MCP maps
+project context servers (user-only tool permission keys are reported, with no
+grant inferred); and OpenCode JSON/JSONC MCP maps
 and permission entries. These are declared configuration facts. User state,
 merged effective permission policies, wildcard expansion and runtime overrides
 are not simulated. Deny and ask entries remain visible alongside allow entries.

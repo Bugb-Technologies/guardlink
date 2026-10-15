@@ -1,8 +1,8 @@
 /**
  * Offline observations and the single observed-minus-declared join.
- * @exposes #parser to #insecure-deser [medium] -- "Observation and pin files are untrusted JSON"
+ * @exposes #parser to #insecure-deser [medium] -- "readObservedState passes repository observed-reach.json and tool-pins.json to JSON.parse"
  * @mitigates #parser against #insecure-deser using #config-validation -- "Closed schema and bounded input; identity and supplied claim keys are checked against model rows"
- * @exposes #parser to #path-traversal [medium] -- "Reads and stores local attestation files"
+ * @exposes #parser to #path-traversal [medium] -- "storeObservedReach writes .guardlink/observed-reach.json with writeFileSync under the caller-selected root"
  * @mitigates #parser against #path-traversal using #path-validation -- "Local metadata realpaths must remain under the selected repository; writes reject symlink destinations"
  * @flows ProjectFiles -> #parser via readObservedState -- "Local names, hashes and observation coverage, never server execution"
  */
@@ -77,6 +77,7 @@ export function readObservedState(root: string): { observed?: ObservedReach; pin
 }
 export function storeObservedReach(root: string, input: string): ObservedReach {
   const doc = parseObservedReach(readJson(resolve(input)));
+  readObservedState(root);
   const file = localPath(root, 'observed-reach.json');
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify(doc, null, 2) + '\n', { flag: 'w' });
@@ -124,7 +125,7 @@ export function buildReachAttestation(model: ThreatModel, doc: ObservedReach, pi
       if (hints.some(k => !rr.claim_keys.includes(k))) out.unknown.push({ ...rr, reason: 'claim_key_mismatch' });
       if (rs.length) out.summary.matched_tools++; else out.observed_not_declared.push(rr);
     }
-    const basis = o.coverage.available === 'complete' && !o.coverage.truncated ? 'available'
+    const basis = o.window && o.coverage.available === 'complete' && !o.coverage.truncated ? 'available'
       : o.window && o.coverage.called === 'complete' && !o.coverage.truncated ? 'called' : null;
     if (basis) {
       const names = new Set((basis === 'available' ? o.tools_available : o.tools_called).map(t => cap(t.name)));

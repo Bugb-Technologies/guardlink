@@ -669,6 +669,7 @@ function lookupAgentConfig(model: ThreatModel, query: string): LookupResult {
     files: block.files,
     mcp_servers: block.mcp_servers,
     automatic: block.hooks,
+    ...(block.surfaces ? { surfaces: block.surfaces } : {}),
     untrusted_sources: block.untrusted_sources,
     unreadable: block.unreadable,
   };

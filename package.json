@@ -1,7 +1,7 @@
 {
   "name": "guardlink",
   "version": "2.3.0",
-  "description": "GuardLink — Security annotations for code. Threat modeling that lives in your codebase.",
+  "description": "GuardLink \u2014 Security annotations for code. Threat modeling that lives in your codebase.",
   "type": "module",
   "bin": {
     "guardlink": "./dist/cli/index.js",
@@ -62,7 +62,19 @@
     },
     "./conformance/flows.json": "./conformance/flows.json",
     "./conformance/hidden-unicode.json": "./conformance/hidden-unicode.json",
-    "./harness/*.json": "./harness/*.json"
+    "./harness/*.json": "./harness/*.json",
+    "./attest": {
+      "import": "./dist/attest/index.js",
+      "types": "./dist/attest/index.d.ts"
+    },
+    "./bom": {
+      "import": "./dist/bom/index.js",
+      "types": "./dist/bom/index.d.ts"
+    },
+    "./conformance/observed-reach/*.json": "./conformance/observed-reach/*.json",
+    "./conformance/agent-config-env.json": "./conformance/agent-config-env.json",
+    "./conformance/agent-config-surfaces.json": "./conformance/agent-config-surfaces.json",
+    "./conformance/agent-inventory.cdx.json": "./conformance/agent-inventory.cdx.json"
   },
   "scripts": {
     "build": "tsx scripts/build-grammars.ts && tsc && node scripts/postbuild-chmod.mjs",

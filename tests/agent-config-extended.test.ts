@@ -26,7 +26,8 @@ describe('documented additional harness formats', () => {
     expect(reaches.find(r=>r.source?.harness==='kiro' && r.capability==='mcp.sample')?.source?.gated).toBe(true);
     expect(reaches.find(r=>r.source?.harness==='roo' && r.capability==='mcp.sample.read')?.source?.gated).toBe(true);
     expect(reaches.some(r=>r.source?.harness==='opencode' && r.capability==='mcp.sample')).toBe(false);
-    expect(m.agent_config?.denies.some(d=>d.harness==='zed')).toBe(true);
+    expect(m.agent_config?.unreadable.some(d=>d.message.includes('ProjectSettingsContent'))).toBe(true);
+    expect(reaches.some(r=>r.source?.harness==='zed' && r.capability.startsWith('terminal'))).toBe(false);
   });
   it('reads current Kiro profiles, marks unsupported legacy profiles, and reads Q explicit approvals', async () => {
     const m=await read({

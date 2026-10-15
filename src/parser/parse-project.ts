@@ -1,5 +1,3 @@
-import { relationRecords } from './claim-key.js';
-import { readObservedState, buildReachAttestation } from '../attest/index.js';
 /**
  * GuardLink — Project-level parser.
  * Walks a directory, parses all source files, and assembles a ThreatModel.
@@ -15,6 +13,9 @@ import { readObservedState, buildReachAttestation } from '../attest/index.js';
  * @comment -- "Same reasoning for imprecise:true when the claim omits `on <asset>` or `against <threat>`, plus canEntitlementDemote/entitlementDemotionBlockers so the cited-and-precise test is written once here rather than re-derived by every consumer — a consumer that checks only !inert would demote on an entitlement that joins nothing (actor-entitlement design §9.7)"
  * @boundary #parser and FileSystem (#fs-boundary) -- "Trust boundary between parser and disk I/O"
  */
+import { relationRecords } from './claim-key.js';
+import { readObservedState, buildReachAttestation } from '../attest/index.js';
+
 
 import fg from 'fast-glob';
 import { GAL_GLOB, sourceGlobs } from './languages.js';

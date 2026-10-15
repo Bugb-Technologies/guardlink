@@ -1,4 +1,3 @@
-import { buildReachAttestation } from '../attest/index.js';
 /**
  * GuardLink — what a principal can reach, against what it may.
  *
@@ -50,6 +49,8 @@ import { buildReachAttestation } from '../attest/index.js';
  *
  * @comment -- "Pure functions over an assembled ThreatModel; no I/O. Uncited entitlements never cover a reach, and a gate scoped to a capability never covers an effect whose route is unknown, so both joins err toward showing a capability or an effect rather than hiding one"
  */
+import { buildReachAttestation } from '../attest/index.js';
+
 import type {
   ThreatModel, ThreatModelReach, ThreatModelEntitlement, ThreatModelEffect, ThreatModelGate,
   EffectClass, SourceLocation, RowOrigin, AgentConfigSource,

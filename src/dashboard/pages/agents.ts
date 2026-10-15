@@ -189,7 +189,8 @@ export function renderAgentsPage(ctx: PageContext, s: ReachSummary): string {
   const loc = (l: ReachLoc): string => locCellShort(l.file, l.line, links);
   const t = s.totals;
   const empty = t.reaches === 0 && t.effects === 0 && t.gates === 0
-    && t.coding_reaches === 0 && s.coding.automatic.length === 0 && s.coding.mcp_servers.length === 0;
+    && t.coding_reaches === 0 && s.coding.automatic.length === 0 && s.coding.mcp_servers.length === 0
+    && !ctx.model.reach_attestation && !ctx.model.agent_config?.surfaces?.length;
 
   if (empty) {
     return `
@@ -302,11 +303,15 @@ export function renderAgentsPage(ctx: PageContext, s: ReachSummary): string {
   </table></div>` : ''}
 
 ${measuredSection(ctx.measured ?? [], loc)}
-${ctx.model.reach_attestation ? `<section><h3>Observed reach</h3><p class="guide">Local observations beside declarations. Absence is qualified by coverage and window; these are review items.</p><div class="table-wrap"><table><thead><tr><th>State</th><th>Actor / tool</th><th>Source / window</th><th>Coverage / claim keys</th></tr></thead><tbody>${(['observed_not_declared', 'declared_not_observed', 'pin_changed', 'unknown'] as const).flatMap(kind => ctx.model.reach_attestation![kind].map(r => `<tr><td>${esc(kind)}</td><td>${esc(r.identity.actor)} / ${esc(r.name)}</td><td>${esc(r.source)} ${esc(r.window ? r.window.from + ' – ' + r.window.to : 'snapshot')} ${esc(r.basis ?? '')}</td><td>${esc(JSON.stringify(r.coverage))} ${esc(r.claim_keys.join(', '))} ${esc(r.reason ?? '')}</td></tr>`)).join('')}</tbody></table></div></section>` : ''}
+
 ` : `
   <p class="empty-state">No <code>@agents</code>, <code>@reaches</code>, <code>@effects</code> or <code>@gates</code> annotations: nothing in the model says what an agent this code embeds can reach. The coding agents this repository configures are below.</p>`}
 
   ${codingSection(s, loc)}
+
+  ${ctx.model.reach_attestation ? `<section><h3>Observed reach</h3><p class="guide">Local observations beside declarations. Absence is qualified by coverage and window; these are review items.</p><div class="table-wrap"><table><thead><tr><th>State</th><th>Actor / tool</th><th>Source / window</th><th>Coverage / claim keys</th></tr></thead><tbody>${(['observed_not_declared', 'declared_not_observed', 'pin_changed', 'unknown'] as const).flatMap(kind => ctx.model.reach_attestation![kind].map(r => `<tr><td>${esc(kind)}</td><td>${esc(r.identity.actor)} / ${esc(r.name)}</td><td>${esc(r.source)} ${esc(r.window ? r.window.from + ' – ' + r.window.to : 'snapshot')} ${esc(r.basis ?? '')}</td><td>${esc(JSON.stringify(r.coverage))} ${esc(r.claim_keys.join(', '))} ${esc(r.reason ?? '')}</td></tr>`)).join('')}</tbody></table></div></section>` : ''}
+  ${ctx.model.agent_config?.surfaces?.length ? `<section><h3>Static configuration surfaces</h3><p class="guide">Names and locations for review; presence does not establish execution.</p><div class="table-wrap"><table><thead><tr><th>Family</th><th>Harness / names</th><th>Location</th><th>Details</th></tr></thead><tbody>${ctx.model.agent_config.surfaces.map(r => `<tr><td>${esc(r.family)}</td><td>${esc(r.harness)} / ${esc(r.names.join(', '))}</td><td>${esc(r.file)}:${r.line}</td><td>${esc(JSON.stringify(r.details))}</td></tr>`).join('')}</tbody></table></div></section>` : ''}
+
 
   ${t.agents > 0 || s.injection.length > 0 ? `
   ${subHead('OWASP Top 10 for LLM Applications', '', `<span>${llm}</span>`).replace('<div class="sub-h">', '<div class="sub-h" id="agents-owasp">')}

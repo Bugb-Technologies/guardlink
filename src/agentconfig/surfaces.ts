@@ -1,6 +1,6 @@
 /**
  * Repository attack-surface facts; names and locations without payloads.
- * @exposes #agent-config to #insecure-deser [medium] -- "Workflow YAML and repository metadata are untrusted"
+ * @exposes #agent-config to #insecure-deser [medium] -- "configSurfaces passes repository workflow text to parseDocument and metadata to parseJsonc"
  * @mitigates #agent-config against #insecure-deser using #config-validation -- "YAML is parsed as data with alias limits; mappings and recognized fields are checked, never evaluated"
  * @mitigates #agent-config against #api-key-exposure using #key-redaction -- "Exports event, key and action names only; no workflow prompts, endpoint queries, state paths or script bodies"
  */
@@ -34,10 +34,11 @@ export function configSurfaces(file: DiscoveredFile, text: string): AgentConfigS
         if (!harness) return;
         const node = doc.getIn(['jobs',job,'steps',i,'uses'], true) as { range?: number[] } | undefined;
         const line = counter.linePos(node?.range?.[0] ?? 0).line;
-        const permissions = asObject(j.permissions ?? d.permissions);
+        const permissionValue = j.permissions ?? d.permissions;
+        const permissions = asObject(permissionValue);
         add('ci-agent-workflow', harness, `/jobs/${job.replace(/~/g,'~0').replace(/\//g,'~1')}/steps/${i}/uses`, line, [action], {
           events, pinned: /^[a-f0-9]{40}$/i.test(uses.split('@')[1] ?? ''),
-          write_permissions: Object.entries(permissions ?? {}).filter(([,v]) => v === 'write').map(([k]) => k),
+          write_permissions: permissionValue === 'write-all' ? ['*'] : Object.entries(permissions ?? {}).filter(([,v]) => v === 'write').map(([k]) => k),
           untrusted_context: /github\.event\.(?:issue|comment|pull_request|review)/.test(JSON.stringify(step.with ?? {})),
           privileged_trigger: events.includes('pull_request_target') || events.includes('workflow_run'),
         });

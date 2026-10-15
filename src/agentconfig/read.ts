@@ -1,4 +1,3 @@
-import { configSurfaces } from './surfaces.js';
 /**
  * GuardLink agent config — read each configuration file into rows.
  *
@@ -29,6 +28,8 @@ import { configSurfaces } from './surfaces.js';
  * @comment -- "Hidden-Unicode findings are reported by validate, but the characters themselves are not stripped from copied text"
  * @comment -- "Never executes, starts or fetches anything named in configuration: launch commands and hook commands are recorded as text"
  */
+import { configSurfaces } from './surfaces.js';
+
 import { readFileSync, realpathSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import type {
@@ -454,7 +455,7 @@ function mcpServers(b: Builder, ctx: Ctx, servers: JsonValue | undefined, at: st
     const credential_env = [...Object.keys(env), ...Object.keys(headers)].filter(k => SECRET_KEY.test(k)).sort();
     const disabled = srv.disabled === true || srv.enabled === false;
     const auto = [...asArray(srv.alwaysAllow), ...asArray(srv.autoApprove)].map(String);
-    const trusted = srv.trust === true && harnesses.includes('gemini-cli');
+    const trustRequested = srv.trust === true;
     let host: string | undefined;
     if (url) { try { host = new URL(url).host; } catch { host = undefined; } }
 
@@ -468,6 +469,7 @@ function mcpServers(b: Builder, ctx: Ctx, servers: JsonValue | undefined, at: st
     const thirdParty = CONTENT_SOURCES.test([name, host ?? '', command, ...args].join(' '));
 
     for (const harness of harnesses) {
+      const trusted = trustRequested && harness === 'gemini-cli';
       b.mcp.push({
         name, harness, file: ctx.file.path, line, scope: ctx.file.scope, transport,
         ...(transport === 'stdio' ? { launch: { command, args } } : {}),
@@ -874,18 +876,10 @@ function profileConfig(b: Builder, ctx: Ctx, harness: string) {
 function zedConfig(b: Builder, ctx: Ctx) {
   const d = asObject(ctx.doc!.value) ?? {};
   mcpServers(b, ctx, d.context_servers, ptr('context_servers'), ['zed']);
-  const permissions = asObject(asObject(d.agent)?.tool_permissions);
-  if (!permissions) return;
-  const action = (v: JsonValue | undefined) => v === 'confirm' ? 'ask' : typeof v === 'string' ? v : '';
-  if (permissions.default) permissionRow(b, ctx, 'zed', 'all', '*', action(permissions.default), ptr('agent','tool_permissions','default'));
-  for (const [tool, value] of Object.entries(asObject(permissions.tools) ?? {})) {
-    const r = asObject(value); if (!r) continue;
-    if (r.default) permissionRow(b, ctx, 'zed', tool, '*', action(r.default), ptr('agent','tool_permissions','tools',tool,'default'));
-    for (const [key, effect] of [['always_allow','allow'],['always_deny','deny'],['always_confirm','ask']]) asArray(r[key]).forEach((v,i) => {
-      const pattern = asString(asObject(v)?.pattern);
-      if (pattern) permissionRow(b, ctx, 'zed', tool, pattern, effect, ptr('agent','tool_permissions','tools',tool,key,i,'pattern'));
-    });
-  }
+  if (asObject(d.agent)?.tool_permissions) b.unreadable.push({
+    file: ctx.file.path, line: lineOf(ctx, ptr('agent','tool_permissions')),
+    message: 'Zed agent.tool_permissions is a user setting, not part of ProjectSettingsContent; no project permission grant inferred',
+  });
 }
 
 function jsonHooksFile(b: Builder, ctx: Ctx, harness: string, base = '') {
@@ -935,6 +929,7 @@ export function readFiles(
       if (file.kind === 'codex-config') ctx.doc = parseToml(text);
       else if (JSON_KINDS.has(file.kind)) ctx.doc = parseJsonc(text);
       switch (file.kind) {
+        case 'unsupported': b.unreadable.push({ file: file.path, line: 1, message: 'No current project-local format documented for this configuration; no reach inferred' }); break;
         case 'opencode-config': opencodeConfig(b, ctx); break;
         case 'kiro-agent': profileConfig(b, ctx, 'kiro'); break;
         case 'q-agent': profileConfig(b, ctx, 'amazon-q'); break;
