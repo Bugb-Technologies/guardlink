@@ -41,3 +41,7 @@ Keep this file for knowledge useful to almost every future agent session in this
 Do not repeat what the codebase already shows; point to the authoritative file or command instead.
 Prefer rewriting or pruning existing entries over appending new ones.
 When updating this file, preserve this bar for all agents and keep entries concise.
+
+Source discovery uses `DEFAULT_EXCLUDE` in `src/parser/parse-project.ts`, not `.gitignore`.
+Keep temporary annotated fixtures under `tests/` or `node_modules/` before parsing this
+repository or refreshing its generated model, so probes do not become repository claims.
