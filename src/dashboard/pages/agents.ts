@@ -302,6 +302,7 @@ export function renderAgentsPage(ctx: PageContext, s: ReachSummary): string {
   </table></div>` : ''}
 
 ${measuredSection(ctx.measured ?? [], loc)}
+${ctx.model.reach_attestation ? `<section><h3>Observed reach</h3><p class="guide">Local observations beside declarations. Absence is qualified by coverage and window; these are review items.</p><div class="table-wrap"><table><thead><tr><th>State</th><th>Actor / tool</th><th>Source / window</th><th>Coverage / claim keys</th></tr></thead><tbody>${(['observed_not_declared', 'declared_not_observed', 'pin_changed', 'unknown'] as const).flatMap(kind => ctx.model.reach_attestation![kind].map(r => `<tr><td>${esc(kind)}</td><td>${esc(r.identity.actor)} / ${esc(r.name)}</td><td>${esc(r.source)} ${esc(r.window ? r.window.from + ' – ' + r.window.to : 'snapshot')} ${esc(r.basis ?? '')}</td><td>${esc(JSON.stringify(r.coverage))} ${esc(r.claim_keys.join(', '))} ${esc(r.reason ?? '')}</td></tr>`)).join('')}</tbody></table></div></section>` : ''}
 ` : `
   <p class="empty-state">No <code>@agents</code>, <code>@reaches</code>, <code>@effects</code> or <code>@gates</code> annotations: nothing in the model says what an agent this code embeds can reach. The coding agents this repository configures are below.</p>`}
 

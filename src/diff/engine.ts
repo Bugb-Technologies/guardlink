@@ -1,3 +1,4 @@
+import { buildReachAttestation, type AttestationRow } from '../attest/index.js';
 /**
  * GuardLink Diff Engine — Compare two threat models and produce a structured delta.
  *
@@ -90,6 +91,7 @@ export interface ThreatModelDiff {
    * `gates`, which stay about annotations.
    */
   agentConfig: AgentConfigDelta;
+  reachAttestation?: { kind: string; change: 'added' | 'removed'; row: AttestationRow }[];
 }
 
 /** A coding-agent configuration change a reviewer should see in a pull request. */
@@ -169,6 +171,14 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
   const effects = diffByKey(annotated(before.effects), annotated(after.effects), effectKey, effectChanged);
   const gates = diffByKey(annotated(before.gates), annotated(after.gates), gateKey, gateChanged);
   const agentConfig = diffAgentConfig(before, after);
+  const driftRows = (m: ThreatModel) => {
+    const block = m.observed_reach ? buildReachAttestation(m, m.observed_reach, m.tool_pins) : m.reach_attestation;
+    return block ? (['observed_not_declared', 'declared_not_observed', 'pin_changed', 'unknown'] as const).flatMap(kind => block[kind].map(row => ({ kind, row }))) : [];
+  };
+  const oldDrift = driftRows(before), newDrift = driftRows(after);
+  const driftKey = (r: { kind: string; row: AttestationRow }) => JSON.stringify(r);
+  const oldKeys = new Set(oldDrift.map(driftKey)), newKeys = new Set(newDrift.map(driftKey));
+  const reachAttestation = [...newDrift.filter(r => !oldKeys.has(driftKey(r))).map(r => ({ ...r, change: 'added' as const })), ...oldDrift.filter(r => !newKeys.has(driftKey(r))).map(r => ({ ...r, change: 'removed' as const }))];
 
   const beforeUnentitled = new Set(findUnentitledReaches(before).map(u => reachKeyIn(before)(u.reach)));
   const afterReachKey = reachKeyIn(after);
@@ -221,6 +231,7 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
     newUnentitledReaches,
     staleEntitlements,
     agentConfig,
+    ...(before.observed_reach || after.observed_reach ? { reachAttestation } : {}),
   };
 }
 

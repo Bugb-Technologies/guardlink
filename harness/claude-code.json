@@ -3,52 +3,371 @@
   "version": "2026-10",
   "harness": "claude-code",
   "name": "Claude Code",
-  "actor": { "id": "claude-code", "name": "Claude_Code", "description": "Claude Code: loads .claude/settings.json, .mcp.json, CLAUDE.md and .claude/{rules,skills,commands,agents}" },
+  "actor": {
+    "id": "claude-code",
+    "name": "Claude_Code",
+    "description": "Claude Code: loads .claude/settings.json, .mcp.json, CLAUDE.md and .claude/{rules,skills,commands,agents}"
+  },
   "about": "Read from the Claude Code documentation as of the version above. Project settings, hooks and project MCP servers load after the developer accepts the workspace trust dialog, and in a `claude -p` or SDK session, which never shows it.",
   "files": [
-    { "kind": "claude-settings", "pattern": "(^|/)\\.claude/settings(\\.local)?\\.json$", "loaded_when": ["after-trust", "headless"], "doc": "https://code.claude.com/docs/en/settings-reference" },
-    { "kind": "mcp", "pattern": "(^|/)\\.mcp\\.json$", "loaded_when": ["after-trust", "headless"], "doc": "https://code.claude.com/docs/en/mcp" },
-    { "kind": "instructions", "pattern": "(^|/)CLAUDE(\\.local)?\\.md$", "loaded_when": ["always"], "doc": "https://code.claude.com/docs/en/memory" },
-    { "kind": "instructions", "pattern": "(^|/)\\.claude/rules/.+\\.md$", "loaded_when": ["always"], "doc": "https://code.claude.com/docs/en/memory" },
-    { "kind": "skill", "pattern": "(^|/)\\.claude/(.+/)?SKILL\\.md$", "loaded_when": ["always"], "doc": "https://code.claude.com/docs/en/skills" },
-    { "kind": "command", "pattern": "(^|/)\\.claude/commands/.+\\.md$", "loaded_when": ["always"], "doc": "https://code.claude.com/docs/en/skills" },
-    { "kind": "subagent", "pattern": "(^|/)\\.claude/agents/.+\\.md$", "loaded_when": ["always"], "doc": "https://code.claude.com/docs/en/sub-agents" },
-    { "kind": "plugin-manifest", "pattern": "(^|/)\\.claude-plugin/(plugin|marketplace)\\.json$", "loaded_when": ["after-trust"], "doc": "https://code.claude.com/docs/en/settings-reference#enabledplugins" },
-    { "kind": "plugin-hooks", "pattern": "(^|/)hooks/hooks\\.json$", "loaded_when": ["after-trust"], "doc": "https://code.claude.com/docs/en/hooks" },
-    { "kind": "skill", "pattern": "(^|/)SKILL\\.md$", "fallback": true, "loaded_when": ["always"], "doc": "https://code.claude.com/docs/en/skills" },
-    { "kind": "mcp", "pattern": "(^|/)mcp\\.json$", "fallback": true, "packaged": true, "loaded_when": ["after-trust"], "doc": "https://code.claude.com/docs/en/mcp" }
+    {
+      "kind": "claude-settings",
+      "pattern": "(^|/)\\.claude/settings(\\.local)?\\.json$",
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "doc": "https://code.claude.com/docs/en/settings-reference"
+    },
+    {
+      "kind": "mcp",
+      "pattern": "(^|/)\\.mcp\\.json$",
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "doc": "https://code.claude.com/docs/en/mcp"
+    },
+    {
+      "kind": "instructions",
+      "pattern": "(^|/)CLAUDE(\\.local)?\\.md$",
+      "loaded_when": [
+        "always"
+      ],
+      "doc": "https://code.claude.com/docs/en/memory"
+    },
+    {
+      "kind": "instructions",
+      "pattern": "(^|/)\\.claude/rules/.+\\.md$",
+      "loaded_when": [
+        "always"
+      ],
+      "doc": "https://code.claude.com/docs/en/memory"
+    },
+    {
+      "kind": "skill",
+      "pattern": "(^|/)\\.claude/(.+/)?SKILL\\.md$",
+      "loaded_when": [
+        "always"
+      ],
+      "doc": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "kind": "command",
+      "pattern": "(^|/)\\.claude/commands/.+\\.md$",
+      "loaded_when": [
+        "always"
+      ],
+      "doc": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "kind": "subagent",
+      "pattern": "(^|/)\\.claude/agents/.+\\.md$",
+      "loaded_when": [
+        "always"
+      ],
+      "doc": "https://code.claude.com/docs/en/sub-agents"
+    },
+    {
+      "kind": "plugin-manifest",
+      "pattern": "(^|/)\\.claude-plugin/(plugin|marketplace)\\.json$",
+      "loaded_when": [
+        "after-trust"
+      ],
+      "doc": "https://code.claude.com/docs/en/settings-reference#enabledplugins"
+    },
+    {
+      "kind": "plugin-hooks",
+      "pattern": "(^|/)hooks/hooks\\.json$",
+      "loaded_when": [
+        "after-trust"
+      ],
+      "doc": "https://code.claude.com/docs/en/hooks"
+    },
+    {
+      "kind": "skill",
+      "pattern": "(^|/)SKILL\\.md$",
+      "fallback": true,
+      "loaded_when": [
+        "always"
+      ],
+      "doc": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "kind": "mcp",
+      "pattern": "(^|/)mcp\\.json$",
+      "fallback": true,
+      "packaged": true,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "doc": "https://code.claude.com/docs/en/mcp"
+    }
   ],
   "shell": {
     "rule_syntax": "Bash(<command>) is exact; Bash(<prefix>:*) and Bash(<prefix> *) approve every argument list after the prefix; Bash and Bash(*) approve any command.",
-    "protected_prefixes": ["find", "watch", "setsid", "ionice", "flock"],
+    "protected_prefixes": [
+      "find",
+      "watch",
+      "setsid",
+      "ionice",
+      "flock"
+    ],
     "protected_doc": "https://code.claude.com/docs/en/permissions#exec-wrappers-and-find-actions",
-    "stripped_wrappers": ["timeout", "time", "nice", "nohup", "stdbuf"],
-    "read_only": ["ls", "cat", "echo", "pwd", "head", "tail", "grep", "find", "wc", "which", "diff", "stat", "du", "cd"],
+    "stripped_wrappers": [
+      "timeout",
+      "time",
+      "nice",
+      "nohup",
+      "stdbuf"
+    ],
+    "read_only": [
+      "ls",
+      "cat",
+      "echo",
+      "pwd",
+      "head",
+      "tail",
+      "grep",
+      "find",
+      "wc",
+      "which",
+      "diff",
+      "stat",
+      "du",
+      "cd"
+    ],
     "read_only_doc": "https://code.claude.com/docs/en/permissions#read-only-commands"
   },
   "rules": {
-    "bash-any": { "doc": "https://code.claude.com/docs/en/permissions", "gated": false, "loaded_when": ["after-trust", "headless"], "note": "Any shell command runs without asking." },
-    "bash-prefix": { "doc": "https://code.claude.com/docs/en/permissions#wildcard-patterns", "gated": false, "loaded_when": ["after-trust", "headless"], "note": "Every argument list after the prefix runs without asking." },
-    "bash-exact": { "doc": "https://code.claude.com/docs/en/permissions", "gated": false, "loaded_when": ["after-trust", "headless"], "note": "This exact command runs without asking." },
-    "bash-protected": { "doc": "https://code.claude.com/docs/en/permissions#exec-wrappers-and-find-actions", "gated": false, "loaded_when": ["after-trust", "headless"], "note": "Claude Code never auto-approves this wrapper's command-running forms." },
-    "web-fetch": { "doc": "https://code.claude.com/docs/en/permissions", "gated": false, "loaded_when": ["after-trust", "headless"], "note": "Fetches without asking." },
-    "file-tool": { "doc": "https://code.claude.com/docs/en/permissions", "gated": false, "loaded_when": ["after-trust", "headless"], "note": "Reads or edits matching paths without asking." },
-    "mcp-tool-allow": { "doc": "https://code.claude.com/docs/en/permissions", "gated": false, "loaded_when": ["after-trust", "headless"], "note": "Calls the MCP tool (or every tool of the server) without asking." },
-    "tool-allow": { "doc": "https://code.claude.com/docs/en/permissions", "gated": false, "loaded_when": ["after-trust", "headless"], "note": "Uses the tool without asking." },
-    "additional-directories": { "doc": "https://code.claude.com/docs/en/permissions", "gated": false, "loaded_when": ["after-trust", "headless"], "admits": ["file-read-outside-repository"], "note": "Adds a directory outside the repository to what the agent may read and edit." },
-    "bypass-mode": { "doc": "https://code.claude.com/docs/en/permissions", "gated": false, "loaded_when": ["after-trust", "headless"], "admits": ["arbitrary-execution"], "note": "defaultMode bypassPermissions: every tool runs without asking." },
-    "auto-mode": { "doc": "https://code.claude.com/docs/en/permissions", "gated": false, "loaded_when": ["after-trust", "headless"], "note": "A permission mode that skips some prompts." },
-    "ask": { "doc": "https://code.claude.com/docs/en/permissions", "loaded_when": ["after-trust", "headless"], "note": "Asks the developer before running." },
-    "deny": { "doc": "https://code.claude.com/docs/en/permissions", "loaded_when": ["after-trust", "headless"], "note": "Never runs; narrows reach." },
-    "mcp-server": { "doc": "https://code.claude.com/docs/en/mcp", "gated": true, "loaded_when": ["after-trust", "headless"], "note": "Each project server is approved once per developer; under -p it starts without asking." },
-    "mcp-server-auto": { "doc": "https://code.claude.com/docs/en/settings-reference#enableallprojectmcpservers", "gated": false, "loaded_when": ["after-trust", "headless"], "admits": ["arbitrary-execution"], "note": "Project servers in .mcp.json start, and stdio servers execute, without the per-server approval. Ignored in the shared project file until the folder is trusted; honoured under -p." },
-    "hook": { "doc": "https://code.claude.com/docs/en/hooks#workspace-trust", "loaded_when": ["after-trust", "headless"], "admits": ["arbitrary-execution"], "note": "Runs automatically on the event, outside the model's loop, with the developer's privileges. Held back until the folder is trusted; a -p session runs it." },
-    "status-line": { "doc": "https://code.claude.com/docs/en/settings-reference", "loaded_when": ["after-trust", "headless"], "admits": ["arbitrary-execution"], "note": "Runs on every status-line render." },
-    "credential-helper": { "doc": "https://code.claude.com/docs/en/settings-reference", "loaded_when": ["after-trust", "headless"], "admits": ["arbitrary-execution", "credential-redirection"], "note": "A repository-chosen command runs and its output becomes the agent's credential (CVE-2026-21852 shape)." },
-    "env-endpoint": { "doc": "https://code.claude.com/docs/en/settings-reference", "loaded_when": ["after-trust", "headless"], "admits": ["credential-redirection"], "note": "Project env applies after trust, or at startup in -p mode: the developer's model traffic and key go where the repository says." },
-    "plugin": { "doc": "https://code.claude.com/docs/en/settings-reference#enabledplugins", "gated": false, "loaded_when": ["after-trust"], "note": "The plugin's hooks, MCP servers, skills and commands load for everyone who trusts the repository; enabling it here does not install it for others." },
-    "skill-allowed-tools": { "doc": "https://code.claude.com/docs/en/skills#pre-approve-tools-for-a-skill", "gated": false, "loaded_when": ["always"], "note": "Pre-approved during the turn that invokes the skill or command; does not restrict which tools are available." },
-    "subagent-permission-mode": { "doc": "https://code.claude.com/docs/en/sub-agents#permission-modes", "gated": false, "loaded_when": ["always"], "note": "The subagent runs with permission prompts relaxed." },
-    "instructions": { "doc": "https://code.claude.com/docs/en/memory", "loaded_when": ["always"], "note": "Loaded into the agent's context as instructions." }
+    "bash-any": {
+      "doc": "https://code.claude.com/docs/en/permissions",
+      "gated": false,
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "note": "Any shell command runs without asking."
+    },
+    "bash-prefix": {
+      "doc": "https://code.claude.com/docs/en/permissions#wildcard-patterns",
+      "gated": false,
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "note": "Every argument list after the prefix runs without asking."
+    },
+    "bash-exact": {
+      "doc": "https://code.claude.com/docs/en/permissions",
+      "gated": false,
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "note": "This exact command runs without asking."
+    },
+    "bash-protected": {
+      "doc": "https://code.claude.com/docs/en/permissions#exec-wrappers-and-find-actions",
+      "gated": false,
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "note": "Claude Code never auto-approves this wrapper's command-running forms."
+    },
+    "web-fetch": {
+      "doc": "https://code.claude.com/docs/en/permissions",
+      "gated": false,
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "note": "Fetches without asking."
+    },
+    "file-tool": {
+      "doc": "https://code.claude.com/docs/en/permissions",
+      "gated": false,
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "note": "Reads or edits matching paths without asking."
+    },
+    "mcp-tool-allow": {
+      "doc": "https://code.claude.com/docs/en/permissions",
+      "gated": false,
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "note": "Calls the MCP tool (or every tool of the server) without asking."
+    },
+    "tool-allow": {
+      "doc": "https://code.claude.com/docs/en/permissions",
+      "gated": false,
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "note": "Uses the tool without asking."
+    },
+    "additional-directories": {
+      "doc": "https://code.claude.com/docs/en/permissions",
+      "gated": false,
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "admits": [
+        "file-read-outside-repository"
+      ],
+      "note": "Adds a directory outside the repository to what the agent may read and edit."
+    },
+    "bypass-mode": {
+      "doc": "https://code.claude.com/docs/en/permissions",
+      "gated": false,
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "admits": [
+        "arbitrary-execution"
+      ],
+      "note": "defaultMode bypassPermissions: every tool runs without asking."
+    },
+    "auto-mode": {
+      "doc": "https://code.claude.com/docs/en/permissions",
+      "gated": false,
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "note": "A permission mode that skips some prompts."
+    },
+    "ask": {
+      "doc": "https://code.claude.com/docs/en/permissions",
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "note": "Asks the developer before running."
+    },
+    "deny": {
+      "doc": "https://code.claude.com/docs/en/permissions",
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "note": "Never runs; narrows reach."
+    },
+    "mcp-server": {
+      "doc": "https://code.claude.com/docs/en/mcp",
+      "gated": true,
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "note": "Each project server is approved once per developer; under -p it starts without asking."
+    },
+    "mcp-server-auto": {
+      "doc": "https://code.claude.com/docs/en/settings-reference#enableallprojectmcpservers",
+      "gated": false,
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "admits": [
+        "arbitrary-execution"
+      ],
+      "note": "Project servers in .mcp.json start, and stdio servers execute, without the per-server approval. Ignored in the shared project file until the folder is trusted; honoured under -p."
+    },
+    "hook": {
+      "doc": "https://code.claude.com/docs/en/hooks#workspace-trust",
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "admits": [
+        "arbitrary-execution"
+      ],
+      "note": "Runs automatically on the event, outside the model's loop, with the developer's privileges. Held back until the folder is trusted; a -p session runs it."
+    },
+    "status-line": {
+      "doc": "https://code.claude.com/docs/en/settings-reference",
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "admits": [
+        "arbitrary-execution"
+      ],
+      "note": "Runs on every status-line render."
+    },
+    "credential-helper": {
+      "doc": "https://code.claude.com/docs/en/settings-reference",
+      "loaded_when": [
+        "after-trust",
+        "headless"
+      ],
+      "admits": [
+        "arbitrary-execution",
+        "credential-redirection"
+      ],
+      "note": "A repository-chosen command runs and its output becomes the agent's credential (CVE-2026-21852 shape)."
+    },
+    "env-endpoint": {
+      "doc": "https://code.claude.com/docs/en/env-vars",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "admits": [
+        "model-endpoint-override"
+      ],
+      "note": "Sets a named model endpoint variable; only the name is exported, never the endpoint value."
+    },
+    "plugin": {
+      "doc": "https://code.claude.com/docs/en/settings-reference#enabledplugins",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "The plugin's hooks, MCP servers, skills and commands load for everyone who trusts the repository; enabling it here does not install it for others."
+    },
+    "skill-allowed-tools": {
+      "doc": "https://code.claude.com/docs/en/skills#pre-approve-tools-for-a-skill",
+      "gated": false,
+      "loaded_when": [
+        "always"
+      ],
+      "note": "Pre-approved during the turn that invokes the skill or command; does not restrict which tools are available."
+    },
+    "subagent-permission-mode": {
+      "doc": "https://code.claude.com/docs/en/sub-agents#permission-modes",
+      "gated": false,
+      "loaded_when": [
+        "always"
+      ],
+      "note": "The subagent runs with permission prompts relaxed."
+    },
+    "instructions": {
+      "doc": "https://code.claude.com/docs/en/memory",
+      "loaded_when": [
+        "always"
+      ],
+      "note": "Loaded into the agent's context as instructions."
+    },
+    "env-credential": {
+      "doc": "https://code.claude.com/docs/en/env-vars",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "admits": [
+        "credential-injection"
+      ],
+      "note": "Injects a named credential variable; only the name is exported, never the credential value."
+    }
   }
 }

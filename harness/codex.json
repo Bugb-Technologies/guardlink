@@ -3,21 +3,131 @@
   "version": "2026-10",
   "harness": "codex",
   "name": "OpenAI Codex",
-  "actor": { "id": "codex", "name": "Codex", "description": "OpenAI Codex: loads .codex/config.toml in trusted projects, AGENTS.md and .agents/skills" },
+  "actor": {
+    "id": "codex",
+    "name": "Codex",
+    "description": "OpenAI Codex: loads .codex/config.toml in trusted projects, AGENTS.md and .agents/skills"
+  },
   "about": "Read from the Codex documentation as of the version above. A project's .codex/config.toml is loaded after the developer trusts the directory; its MCP servers then start without a further prompt.",
   "files": [
-    { "kind": "codex-config", "pattern": "(^|/)\\.codex/config\\.toml$", "loaded_when": ["after-trust"], "doc": "https://developers.openai.com/codex/config-reference" },
-    { "kind": "instructions", "pattern": "(^|/)AGENTS(\\.override)?\\.md$", "loaded_when": ["always"], "doc": "https://developers.openai.com/codex/guides/agents-md" },
-    { "kind": "skill", "pattern": "(^|/)\\.(agents|codex)/(.+/)?SKILL\\.md$", "loaded_when": ["always"], "doc": "https://developers.openai.com/codex/skills" }
+    {
+      "kind": "codex-config",
+      "pattern": "(^|/)\\.codex/config\\.toml$",
+      "loaded_when": [
+        "after-trust"
+      ],
+      "doc": "https://developers.openai.com/codex/config-reference"
+    },
+    {
+      "kind": "instructions",
+      "pattern": "(^|/)AGENTS(\\.override)?\\.md$",
+      "loaded_when": [
+        "always"
+      ],
+      "doc": "https://developers.openai.com/codex/guides/agents-md"
+    },
+    {
+      "kind": "skill",
+      "pattern": "(^|/)\\.(agents|codex)/(.+/)?SKILL\\.md$",
+      "loaded_when": [
+        "always"
+      ],
+      "doc": "https://developers.openai.com/codex/skills"
+    }
   ],
-  "shell": { "protected_prefixes": [], "read_only": [] },
+  "shell": {
+    "protected_prefixes": [],
+    "read_only": []
+  },
   "rules": {
-    "approval-sandbox": { "doc": "https://developers.openai.com/codex/agent-approvals-security", "gated": false, "loaded_when": ["after-trust"], "admits": ["arbitrary-execution"], "note": "approval_policy = \"never\" runs every command without asking; sandbox_mode = \"danger-full-access\" removes the sandbox." },
-    "network-access": { "doc": "https://developers.openai.com/codex/agent-approvals-security", "gated": false, "loaded_when": ["after-trust"], "admits": ["network-write"], "note": "Commands in the workspace-write sandbox may reach the network." },
-    "mcp-server": { "doc": "https://developers.openai.com/codex/mcp", "gated": false, "loaded_when": ["after-trust"], "admits": ["arbitrary-execution"], "note": "Starts without a further prompt once the project is trusted (the CVE-2025-61260 lesson)." },
-    "notify": { "doc": "https://developers.openai.com/codex/config-reference", "loaded_when": ["after-trust"], "admits": ["arbitrary-execution"], "note": "Runs the program on agent events." },
-    "model-provider": { "doc": "https://developers.openai.com/codex/config-reference", "loaded_when": ["after-trust"], "admits": ["credential-redirection"], "note": "Sends the developer's model traffic, and key, to the configured base URL." },
-    "profile": { "doc": "https://developers.openai.com/codex/config-reference", "loaded_when": ["after-trust"], "note": "Applies only when the profile is selected." },
-    "instructions": { "doc": "https://developers.openai.com/codex/guides/agents-md", "loaded_when": ["always"], "note": "Loaded into the agent's context as instructions." }
+    "approval-sandbox": {
+      "doc": "https://developers.openai.com/codex/agent-approvals-security",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "admits": [
+        "arbitrary-execution"
+      ],
+      "note": "approval_policy = \"never\" runs every command without asking; sandbox_mode = \"danger-full-access\" removes the sandbox."
+    },
+    "network-access": {
+      "doc": "https://developers.openai.com/codex/agent-approvals-security",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "admits": [
+        "network-write"
+      ],
+      "note": "Commands in the workspace-write sandbox may reach the network."
+    },
+    "mcp-server": {
+      "doc": "https://developers.openai.com/codex/mcp",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "admits": [
+        "arbitrary-execution"
+      ],
+      "note": "Starts without a further prompt once the project is trusted (the CVE-2025-61260 lesson)."
+    },
+    "notify": {
+      "doc": "https://developers.openai.com/codex/config-reference",
+      "loaded_when": [
+        "after-trust"
+      ],
+      "admits": [
+        "arbitrary-execution"
+      ],
+      "note": "Runs the program on agent events."
+    },
+    "model-provider": {
+      "doc": "https://developers.openai.com/codex/config-reference",
+      "loaded_when": [
+        "after-trust"
+      ],
+      "admits": [
+        "credential-redirection"
+      ],
+      "note": "Sends the developer's model traffic, and key, to the configured base URL."
+    },
+    "profile": {
+      "doc": "https://developers.openai.com/codex/config-reference",
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Applies only when the profile is selected."
+    },
+    "instructions": {
+      "doc": "https://developers.openai.com/codex/guides/agents-md",
+      "loaded_when": [
+        "always"
+      ],
+      "note": "Loaded into the agent's context as instructions."
+    },
+    "env-endpoint": {
+      "doc": "https://developers.openai.com/codex/agent-approvals-security",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "admits": [
+        "model-endpoint-override"
+      ],
+      "note": "Sets a named model endpoint variable; only the name is exported, never the endpoint value."
+    },
+    "env-credential": {
+      "doc": "https://developers.openai.com/codex/agent-approvals-security",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "admits": [
+        "credential-injection"
+      ],
+      "note": "Injects a named credential variable; only the name is exported, never the credential value."
+    }
   }
 }

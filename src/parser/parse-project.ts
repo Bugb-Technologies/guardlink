@@ -1,3 +1,4 @@
+import { readObservedState, buildReachAttestation } from '../attest/index.js';
 /**
  * GuardLink — Project-level parser.
  * Walks a directory, parses all source files, and assembles a ThreatModel.
@@ -411,6 +412,13 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   // agent_config inventory block (SPEC §5.6).
   if (options.agentConfig ?? (process.env[AGENT_CONFIG_ENV] !== 'off' && readAgentConfigEnabled(root))) {
     mergeAgentConfig(model, readAgentConfig(root));
+  }
+
+  const observedState = readObservedState(root);
+  if (observedState.observed) {
+    model.observed_reach = observedState.observed;
+    if (observedState.pins) model.tool_pins = observedState.pins;
+    model.reach_attestation = buildReachAttestation(model, observedState.observed, observedState.pins);
   }
 
   const disabled = readDisabledDiagnostics(root);

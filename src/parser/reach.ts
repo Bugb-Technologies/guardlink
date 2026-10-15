@@ -1,3 +1,4 @@
+import { buildReachAttestation } from '../attest/index.js';
 /**
  * GuardLink — what a principal can reach, against what it may.
  *
@@ -438,6 +439,7 @@ export function buildReachAnalysis(model: ThreatModel): ReachAnalysis {
  * block existed, and a stale block from an earlier export is never carried.
  */
 export function withReachAnalysis<T extends ThreatModel>(model: T): T {
-  const { reach_analysis: _stale, ...rest } = model;
+  const { reach_analysis: _stale, reach_attestation: _attestation, ...rest } = model;
+  if (model.observed_reach) Object.assign(rest, { reach_attestation: buildReachAttestation(model, model.observed_reach, model.tool_pins) });
   return (hasReachClaims(model) ? { ...rest, reach_analysis: buildReachAnalysis(model) } : rest) as T;
 }

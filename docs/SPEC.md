@@ -2553,3 +2553,19 @@ Pins match the exact supplied identity tuple and tool name; they are local
 baselines, never vendor signatures. Missing pins are unpinned; missing description
 hashes are unknown, never unchanged. `pin_changed` compares known hashes only.
 Attestation never writes pins or changes declarations, entitlements or gates.
+
+### 5.6.1 Environment endpoint and credential facts
+
+Settings `env` in Claude Code and MCP server `env`/`environment` maps in supported
+harnesses produce additive `env-endpoint` and `env-credential` reach rules.
+Capabilities are `env.endpoint.<NAME>` and `env.credential.<NAME>`, with the normal
+capability token encoding. Endpoint names are an explicit allowlist in
+`environmentFacts`; credential names use the reader's credential-name matcher.
+Only nonempty string entries produce facts. `source.raw` is the variable name,
+`source.pointer` points to the entry, and harness, scope, file and line retain the
+normal provenance. The corresponding `reach_analysis` row carries `claim_key`.
+Endpoint rules admit `model-endpoint-override`; credential rules admit
+`credential-injection`. Neither emits an effect or a claim of malicious behavior.
+Values, endpoint hosts and credential hashes are never exported by these rules.
+Root and nested entries produce reach; packaged and fixture entries do not.
+The synthetic export `conformance/agent-config-env.json` pins the consumer slots.

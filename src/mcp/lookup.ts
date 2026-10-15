@@ -79,6 +79,7 @@ export interface LookupQuery {
  * acting on a fuzzy hit for a question that was never parsed.
  */
 export const SUPPORTED_QUERY_FORMS = [
+  'reach drift',
   'unmitigated',
   'confirmed',
   'features',
@@ -171,6 +172,12 @@ export function resolveAssetRef(model: ThreatModel, ref: string): AssetResolutio
 }
 
 export function lookup(model: ThreatModel, query: string): LookupResult {
+  if (query.trim().toLowerCase() === 'reach drift') {
+    const block = model.reach_attestation;
+    const results = block ? [...block.observed_not_declared.map(r => ({ kind: 'observed_not_declared', ...r })), ...block.declared_not_observed.map(r => ({ kind: 'declared_not_observed', ...r })), ...block.pin_changed.map(r => ({ kind: 'pin_changed', ...r })), ...block.unknown.map(r => ({ kind: 'unknown', ...r }))] : [];
+    return { query, type: 'reach_drift', count: results.length, results };
+  }
+
   // A trailing question mark is punctuation, not part of the identifier. Left in
   // place it degrades an otherwise exact ref to a substring match.
   const q = query.trim().toLowerCase().replace(/\?+$/, '').trim();

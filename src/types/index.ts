@@ -665,6 +665,9 @@ export interface ThreatModel {
    * mutating effect. Written by `withReachAnalysis` only when the model declares
    * a reach, effect or gate; never read back as input.
    */
+  observed_reach?: import('../attest/types.js').ObservedReach;
+  tool_pins?: import('../attest/types.js').ToolPins;
+  reach_attestation?: import('../attest/index.js').ReachAttestation;
   reach_analysis?: import('../parser/reach.js').ReachAnalysis;
 
   /**

@@ -3,12 +3,38 @@
   "version": "2026-10",
   "harness": "gemini-cli",
   "name": "Gemini CLI",
-  "actor": { "id": "gemini-cli", "name": "Gemini_Cli", "description": "Gemini CLI: loads .gemini/settings.json, .gemini/commands and GEMINI.md" },
+  "actor": {
+    "id": "gemini-cli",
+    "name": "Gemini_Cli",
+    "description": "Gemini CLI: loads .gemini/settings.json, .gemini/commands and GEMINI.md"
+  },
   "about": "Read from the Gemini CLI documentation as of the version above. Folder trust is off by default, so a project's .gemini/settings.json (MCP servers, tool auto-accept, hooks) loads without a trust prompt unless security.folderTrust.enabled is set.",
   "files": [
-    { "kind": "gemini-settings", "pattern": "(^|/)\\.gemini/settings\\.json$", "loaded_when": ["always", "headless"], "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md" },
-    { "kind": "instructions", "pattern": "(^|/)GEMINI\\.md$", "loaded_when": ["always"], "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md" },
-    { "kind": "command", "pattern": "(^|/)\\.gemini/commands/.+\\.toml$", "loaded_when": ["always"], "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/custom-commands.md" }
+    {
+      "kind": "gemini-settings",
+      "pattern": "(^|/)\\.gemini/settings\\.json$",
+      "loaded_when": [
+        "always",
+        "headless"
+      ],
+      "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md"
+    },
+    {
+      "kind": "instructions",
+      "pattern": "(^|/)GEMINI\\.md$",
+      "loaded_when": [
+        "always"
+      ],
+      "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md"
+    },
+    {
+      "kind": "command",
+      "pattern": "(^|/)\\.gemini/commands/.+\\.toml$",
+      "loaded_when": [
+        "always"
+      ],
+      "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/custom-commands.md"
+    }
   ],
   "shell": {
     "rule_syntax": "run_shell_command(<prefix>) in tools.allowed or coreTools approves every command starting with the prefix; run_shell_command alone approves any command.",
@@ -16,11 +42,90 @@
     "read_only": []
   },
   "rules": {
-    "mcp-server": { "doc": "https://geminicli.com/docs/cli/trusted-folders/", "gated": true, "loaded_when": ["always", "headless"], "admits": ["arbitrary-execution"], "note": "A stdio server's command runs when the CLI starts; tool calls ask unless the server is trusted." },
-    "mcp-server-trusted": { "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md", "gated": false, "loaded_when": ["always", "headless"], "admits": ["arbitrary-execution"], "note": "trust: true bypasses every tool-call confirmation for the server." },
-    "auto-accept": { "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md", "gated": false, "loaded_when": ["always", "headless"], "admits": ["arbitrary-execution"], "note": "Tool calls run without confirmation." },
-    "shell-allow": { "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md", "gated": false, "loaded_when": ["always", "headless"], "note": "Matching shell commands run without confirmation." },
-    "hook": { "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md", "loaded_when": ["always", "headless"], "admits": ["arbitrary-execution"], "note": "Runs automatically on the event with the developer's privileges." },
-    "instructions": { "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md", "loaded_when": ["always"], "note": "Loaded into the agent's context as instructions." }
+    "mcp-server": {
+      "doc": "https://geminicli.com/docs/cli/trusted-folders/",
+      "gated": true,
+      "loaded_when": [
+        "always",
+        "headless"
+      ],
+      "admits": [
+        "arbitrary-execution"
+      ],
+      "note": "A stdio server's command runs when the CLI starts; tool calls ask unless the server is trusted."
+    },
+    "mcp-server-trusted": {
+      "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md",
+      "gated": false,
+      "loaded_when": [
+        "always",
+        "headless"
+      ],
+      "admits": [
+        "arbitrary-execution"
+      ],
+      "note": "trust: true bypasses every tool-call confirmation for the server."
+    },
+    "auto-accept": {
+      "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md",
+      "gated": false,
+      "loaded_when": [
+        "always",
+        "headless"
+      ],
+      "admits": [
+        "arbitrary-execution"
+      ],
+      "note": "Tool calls run without confirmation."
+    },
+    "shell-allow": {
+      "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md",
+      "gated": false,
+      "loaded_when": [
+        "always",
+        "headless"
+      ],
+      "note": "Matching shell commands run without confirmation."
+    },
+    "hook": {
+      "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md",
+      "loaded_when": [
+        "always",
+        "headless"
+      ],
+      "admits": [
+        "arbitrary-execution"
+      ],
+      "note": "Runs automatically on the event with the developer's privileges."
+    },
+    "instructions": {
+      "doc": "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md",
+      "loaded_when": [
+        "always"
+      ],
+      "note": "Loaded into the agent's context as instructions."
+    },
+    "env-endpoint": {
+      "doc": "https://geminicli.com/docs/cli/trusted-folders/",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "admits": [
+        "model-endpoint-override"
+      ],
+      "note": "Sets a named model endpoint variable; only the name is exported, never the endpoint value."
+    },
+    "env-credential": {
+      "doc": "https://geminicli.com/docs/cli/trusted-folders/",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "admits": [
+        "credential-injection"
+      ],
+      "note": "Injects a named credential variable; only the name is exported, never the credential value."
+    }
   }
 }

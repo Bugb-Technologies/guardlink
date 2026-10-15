@@ -284,6 +284,18 @@ program
     }
   });
 
+program
+  .command('attest')
+  .description('Import a local observed-reach document; compare declarations and human description pins')
+  .argument('<doc>', 'Observed-reach JSON file')
+  .argument('[dir]', 'Project directory', '.')
+  .action(async (doc: string, dir: string) => {
+    const { storeObservedReach } = await import('../attest/index.js');
+    storeObservedReach(resolve(dir), doc);
+    const { model } = await parseProject({ root: resolve(dir) });
+    console.log(JSON.stringify(model.reach_attestation, null, 2));
+  });
+
 // ─── parse ───────────────────────────────────────────────────────────
 
 program

@@ -405,6 +405,28 @@ function ownBin(ctx: Ctx, command: string): { package: string; bin: string; file
   return null;
 }
 
+/**
+ * @handles secrets on #agent-config -- "Environment values are read only to establish nonempty configuration; exports retain names and pointers"
+ * @mitigates #agent-config against #api-key-exposure using #key-redaction -- "No environment value reaches raw, descriptions, assets or generated capabilities"
+ */
+function environmentFacts(b: Builder, ctx: Ctx, value: JsonValue | undefined, at: string, harnesses: string[]) {
+  const env = asObject(value);
+  if (!env || !producesRows(ctx)) return;
+  const endpoints = new Set(['ANTHROPIC_BASE_URL', 'ANTHROPIC_VERTEX_BASE_URL', 'OPENAI_BASE_URL', 'OPENAI_API_BASE', 'AZURE_OPENAI_ENDPOINT', 'GOOGLE_GEMINI_BASE_URL', 'GOOGLE_VERTEX_BASE_URL']);
+  for (const name of Object.keys(env).sort()) {
+    if (typeof env[name] !== 'string' || !env[name]) continue;
+    const rule = endpoints.has(name) ? 'env-endpoint' : SECRET_KEY.test(name) ? 'env-credential' : null;
+    if (!rule) continue;
+    for (const harness of harnesses) {
+      const asset = b.asset(rule === 'env-endpoint' ? '#model-endpoint' : `#cred-${slug(name)}`, rule === 'env-endpoint' ? 'Configured model endpoint (value withheld)' : `Credential variable ${name} (value withheld)`);
+      b.reach(ctx, `env.${rule === 'env-endpoint' ? 'endpoint' : 'credential'}.${capToken(name)}`, asset, {
+        harness, pointer: `${at}${ptr(name)}`, raw: name, rule,
+        description: `${rule}: ${name}; value withheld`,
+      });
+    }
+  }
+}
+
 function mcpServers(b: Builder, ctx: Ctx, servers: JsonValue | undefined, at: string, harnesses: string[]) {
   const so = asObject(servers);
   if (!so) return;
@@ -426,6 +448,7 @@ function mcpServers(b: Builder, ctx: Ctx, servers: JsonValue | undefined, at: st
     const transport: 'stdio' | 'http' = url ? 'http' : 'stdio';
     const env = { ...(asObject(srv.env) ?? asObject(srv.environment) ?? {}) };
     const headers = asObject(srv.headers) ?? {};
+    environmentFacts(b, ctx, srv.env ?? srv.environment, `${p}${ptr(srv.env ? 'env' : 'environment')}`, harnesses);
     const credential_env = [...Object.keys(env), ...Object.keys(headers)].filter(k => SECRET_KEY.test(k)).sort();
     const disabled = srv.disabled === true;
     const auto = [...asArray(srv.alwaysAllow), ...asArray(srv.autoApprove)].map(String);
@@ -486,6 +509,7 @@ function reachHarnesses(f: DiscoveredFile): string[] {
 function claudeSettings(b: Builder, ctx: Ctx) {
   const d = asObject(ctx.doc!.value) ?? {};
   const H = 'claude-code';
+  environmentFacts(b, ctx, d.env, ptr('env'), [H]);
   const perms = asObject(d.permissions) ?? {};
   if (producesRows(ctx)) {
     asArray(perms.allow).forEach((r, i) => {
