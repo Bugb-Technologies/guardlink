@@ -182,7 +182,10 @@
                   "then": {
                     "required": [
                       "description_unknown"
-                    ]
+                    ],
+                    "properties": {
+                      "description_unknown": {}
+                    }
                   }
                 }
               ]
@@ -243,7 +246,10 @@
             "then": {
               "required": [
                 "window"
-              ]
+              ],
+              "properties": {
+                "window": {}
+              }
             }
           }
         ]

@@ -17,10 +17,11 @@ async function model() {
 }
 describe('observed reach', () => {
   it('accepts the four public producer fixtures and rejects extra content', () => {
-    for (const src of ['static','introspection','remote','otel']) expect(parseObservedReach(JSON.parse(readFileSync(`conformance/observed-reach/${src}.json`, 'utf8'))).schema).toBe('guardlink.observed-reach/v1');
+    for (const src of ['static','introspection','remote','otel','partial']) expect(parseObservedReach(JSON.parse(readFileSync(`conformance/observed-reach/${src}.json`, 'utf8'))).schema).toBe('guardlink.observed-reach/v1');
     expect(() => parseObservedReach({ ...fixture(), prompts: ['secret'] })).toThrow();
+    expect(parseToolPins(JSON.parse(readFileSync('conformance/tool-pins.json', 'utf8'))).pins).toHaveLength(1);
     const doc = fixture(); doc.observations[0].tools_available[0].description_sha256 = null;
-    expect(() => parseObservedReach(doc)).toThrow(/reason/);
+    expect(() => parseObservedReach(doc)).toThrow(/description_unknown|reason/);
   });
   it('joins only explicit identity and capability, verifies claim hints, and compares exact local pins', async () => {
     const m = await model(), doc = fixture(), o = doc.observations[0];

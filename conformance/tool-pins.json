@@ -1,0 +1,16 @@
+{
+  "schema": "guardlink.tool-pins/v1",
+  "pins": [
+    {
+      "identity": {
+        "actor": "#sample-agent",
+        "server": "sample",
+        "harness": "other",
+        "file": ".mcp.json",
+        "scope": "root"
+      },
+      "name": "read-record",
+      "description_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ]
+}

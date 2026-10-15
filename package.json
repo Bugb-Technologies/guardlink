@@ -74,7 +74,8 @@
     "./conformance/observed-reach/*.json": "./conformance/observed-reach/*.json",
     "./conformance/agent-config-env.json": "./conformance/agent-config-env.json",
     "./conformance/agent-config-surfaces.json": "./conformance/agent-config-surfaces.json",
-    "./conformance/agent-inventory.cdx.json": "./conformance/agent-inventory.cdx.json"
+    "./conformance/agent-inventory.cdx.json": "./conformance/agent-inventory.cdx.json",
+    "./conformance/tool-pins.json": "./conformance/tool-pins.json"
   },
   "scripts": {
     "build": "tsx scripts/build-grammars.ts && tsc && node scripts/postbuild-chmod.mjs",

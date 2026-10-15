@@ -16,6 +16,22 @@ The reference parser runs each corpus in its own test, `tests/conformance-flows.
 `tests/conformance-boundaries.test.ts` and `tests/conformance-hidden-unicode.test.ts`, so a change to the parser or the exporter
 that moves a record cannot ship with a corpus that no longer describes it.
 
+## Agent configuration and observed reach
+
+`observed-reach/schema.json` is the closed `guardlink.observed-reach/v1` schema.
+`static.json`, `introspection.json`, `remote.json` and `otel.json` beside it are
+synthetic producer examples; `partial.json` shows truncated coverage.
+`tool-pins.json` is a human-maintained baseline example. Unknown descriptions
+carry a null hash and a reason; call observations require a window. GuardLink
+alone computes drift, and negative rows require a complete applicable view
+within a stated window. No fixture contains real descriptions or credentials.
+
+`agent-config-env.json` and `agent-config-surfaces.json` are synthetic model
+exports pinning generated rule, harness, scope, location, pointer and claim-key
+slots. `agent-inventory.cdx.json` shows the CycloneDX mapping. Tests in
+`observed-reach.test.ts`, `agent-config-env.test.ts`, `agent-config-extended.test.ts`
+and `ai-bom.test.ts` exercise these contracts. SPEC §§5.6–5.8 define semantics.
+
 ## Getting it
 
 Pin a released version. Do not track `main`, because a case can change between releases.

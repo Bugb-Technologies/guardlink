@@ -1,0 +1,36 @@
+{
+  "schema": "guardlink.observed-reach/v1",
+  "observations": [
+    {
+      "identity": {
+        "actor": "#sample-agent",
+        "server": "sample",
+        "harness": "other",
+        "file": ".mcp.json",
+        "scope": "root"
+      },
+      "source": "static",
+      "coverage": {
+        "available": "partial",
+        "called": "not_collected",
+        "truncated": true,
+        "reason": "page_limit"
+      },
+      "tools_available": [
+        {
+          "name": "read-record",
+          "description_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "hints": {
+            "readOnlyHint": true
+          }
+        },
+        {
+          "name": "computed-tool",
+          "description_sha256": null,
+          "description_unknown": "computed"
+        }
+      ],
+      "tools_called": []
+    }
+  ]
+}
