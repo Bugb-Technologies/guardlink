@@ -2,12 +2,12 @@
  * Offline observations and the single observed-minus-declared join.
  * @exposes #parser to #insecure-deser [medium] -- "readObservedState passes repository observed-reach.json and tool-pins.json to JSON.parse"
  * @mitigates #parser against #insecure-deser using #config-validation -- "Closed schema and bounded input; identity and supplied claim keys are checked against model rows"
- * @exposes #parser to #path-traversal [medium] -- "storeObservedReach writes .guardlink/observed-reach.json with writeFileSync under the caller-selected root"
- * @mitigates #parser against #path-traversal using #path-validation -- "Local metadata realpaths must remain under the selected repository; writes reject symlink destinations"
+ * @exposes #parser to #path-traversal [medium] -- "storeObservedReach writes .guardlink/observed-reach.json through writeFileSync and renameSync under the caller-selected root"
+ * @mitigates #parser against #path-traversal using #path-validation -- "Local metadata realpaths must remain under the selected repository; writes reject symlink destinations and atomically replace the metadata file"
  * @flows ProjectFiles -> #parser via readObservedState -- "Local names, hashes and observation coverage, never server execution"
  */
-import { readFileSync, existsSync, realpathSync, lstatSync, mkdirSync, writeFileSync, statSync } from 'node:fs';
-import { resolve, sep, dirname } from 'node:path';
+import { readFileSync, existsSync, realpathSync, lstatSync, mkdirSync, writeFileSync, statSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
+import { resolve, sep, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Ajv } from 'ajv';
 import addFormats from 'ajv-formats';
@@ -80,7 +80,12 @@ export function storeObservedReach(root: string, input: string): ObservedReach {
   readObservedState(root);
   const file = localPath(root, 'observed-reach.json');
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(doc, null, 2) + '\n', { flag: 'w' });
+  const staging = mkdtempSync(join(dirname(file), '.observed-'));
+  try {
+    const staged = join(staging, 'document.json');
+    writeFileSync(staged, JSON.stringify(doc, null, 2) + '\n', { flag: 'wx' });
+    renameSync(staged, file);
+  } finally { rmSync(staging, { recursive: true, force: true }); }
   return doc;
 }
 export interface AttestationRow {

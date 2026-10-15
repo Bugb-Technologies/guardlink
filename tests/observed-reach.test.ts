@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { parseProject, withReachAnalysis } from '../src/parser/index.js';
 import { buildReachAttestation, parseObservedReach, parseToolPins, storeObservedReach, readObservedState } from '../src/attest/index.js';
 import { lookup } from '../src/mcp/lookup.js';
+import { generateDashboardHTML } from '../src/dashboard/generate.js';
 import { diffModels } from '../src/diff/index.js';
 const hash = 'sha256:' + 'a'.repeat(64);
 const fixture = () => parseObservedReach(JSON.parse(readFileSync('conformance/observed-reach/static.json', 'utf8')));
@@ -51,6 +52,19 @@ describe('observed reach', () => {
     o.coverage.truncated = false; o.coverage.available = 'not_collected'; o.coverage.called = 'complete';
     o.window = { from: '2026-01-01T00:00:00Z', to: '2026-01-02T00:00:00Z' };
     expect(buildReachAttestation(m, doc).declared_not_observed[0]).toMatchObject({ basis: 'called', window: o.window });
+  });
+  it('shows unresolved observations in an otherwise empty dashboard and escapes tool names', async () => {
+    const m = await model();
+    m.reaches = []; m.effects = []; m.gates = [];
+    const doc = fixture();
+    doc.observations[0].identity = { actor: '#sample-agent' };
+    doc.observations[0].tools_available[0].name = '<img src=x onerror=alert(1)>';
+    m.observed_reach = doc;
+    const exported = withReachAnalysis(m);
+    const html = generateDashboardHTML(exported);
+    expect(html).toContain('<h3>Observed reach</h3>');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).not.toContain('<img src=x onerror=alert(1)>');
   });
   it('stores validated local documents and rejects metadata symlinks', () => {
     const root = mkdtempSync(join(tmpdir(), 'observed-store-'));

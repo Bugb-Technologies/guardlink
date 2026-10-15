@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:cf08fb08cc0008d60be3d52bdcc845cc7d748c603c0b33dbc62d4373fa6dcd4f
+%% annotation_hash: sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9
 %% generator:       guardlink@2.3.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 78 nodes / 206 edges, past the 12 / 16 legibility budget (78 nodes against 12, 206 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 78 nodes / 208 edges, past the 12 / 16 legibility budget (78 nodes against 12, 208 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -25,7 +25,7 @@ graph LR
     projectfiles["🧩 ProjectFiles"]
   end
   subgraph Z1["🧱 GuardLink.AgentConfig · Repository content is untrusted input to the config reader"]
-    agent_config["🧩 GuardLink.AgentConfig"]
+    agent_config["🧩 GuardLink.AgentConfig · secrets"]
   end
   subgraph Z2["🧱 GuardLink.Agent_Launcher · Trust boundary at process spawn"]
     agent_launcher["🧩 GuardLink.Agent_Launcher · secrets, internal"]
@@ -92,6 +92,7 @@ graph LR
   dashboard["🧩 GuardLink.Dashboard · pii, internal"]
   blame["🧩 GuardLink.Blame · pii"]
   committrailers["🧩 CommitTrailers"]
+  report["🧩 GuardLink.Report · pii"]
   parsediagnostics["🧩 ParseDiagnostics"]
   sourcefiles["🧩 SourceFiles"]
   userargs["👤 UserArgs"]
@@ -116,7 +117,6 @@ graph LR
   exportfile["🧩 ExportFile"]
   annotations["🧩 Annotations"]
   annotationsource["🧩 AnnotationSource"]
-  report["🧩 GuardLink.Report · pii"]
   featurename["🧩 FeatureName"]
   markdown["🧩 Markdown"]
   agentproposal["🧩 AgentProposal"]
@@ -179,6 +179,7 @@ graph LR
   sarif -- "📡 return" --> sariflog
   threatmodel -- "📡 emitArtifacts" --> dashboard
   dashboard -- "🗄️ writeFileSync" --> filesystem
+  projectfiles -- "📡 readObservedState" --> parser
   blame -- "📡 attachBlame" --> threatmodel
   threatmodel -- "📡 computeBlame" --> blame
   configfile -- "🗄️ readBlameConfig" --> blame
@@ -188,6 +189,7 @@ graph LR
   blame -- "🗄️ buildBlamePayload" --> cli
   blame -- "📡 summarise" --> dashboard
   committrailers -- "📡 parseTrailerBlock" --> blame
+  threatmodel -- "📡 generateAiBom" --> report
   threatmodel -- "📡 runCiChecks" --> cli
   parsediagnostics -- "📡 runCiChecks" --> cli
   sourcefiles -- "📡 findAnchorDrift" --> cli
