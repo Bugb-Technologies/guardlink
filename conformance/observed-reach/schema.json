@@ -1,0 +1,222 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://guardlink.bugb.io/schemas/observed-reach-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "guardlink.observed-reach/v1"
+    },
+    "observations": {
+      "type": "array",
+      "maxItems": 20000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "identity": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "server": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "harness": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "file": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "scope": {
+                "enum": [
+                  "root",
+                  "nested",
+                  "packaged",
+                  "fixture"
+                ]
+              }
+            },
+            "required": [
+              "actor"
+            ]
+          },
+          "source": {
+            "enum": [
+              "static",
+              "introspection",
+              "remote",
+              "otel",
+              "probe"
+            ]
+          },
+          "window": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ]
+          },
+          "coverage": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "available": {
+                "enum": [
+                  "complete",
+                  "partial",
+                  "unknown",
+                  "not_collected"
+                ]
+              },
+              "called": {
+                "enum": [
+                  "complete",
+                  "partial",
+                  "unknown",
+                  "not_collected"
+                ]
+              },
+              "truncated": {
+                "type": "boolean"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              }
+            },
+            "required": [
+              "available",
+              "called",
+              "truncated"
+            ]
+          },
+          "tools_available": {
+            "type": "array",
+            "maxItems": 20000,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                },
+                "description_sha256": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "description_unknown": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                },
+                "claim_keys": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "uniqueItems": true
+                },
+                "hints": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "readOnlyHint": {
+                      "type": "boolean"
+                    },
+                    "destructiveHint": {
+                      "type": "boolean"
+                    },
+                    "openWorldHint": {
+                      "type": "boolean"
+                    },
+                    "idempotentHint": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": []
+                }
+              },
+              "required": [
+                "name",
+                "description_sha256"
+              ]
+            }
+          },
+          "tools_called": {
+            "type": "array",
+            "maxItems": 20000,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "claim_keys": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "uniqueItems": true
+                }
+              },
+              "required": [
+                "name",
+                "count"
+              ]
+            }
+          }
+        },
+        "required": [
+          "identity",
+          "source",
+          "coverage",
+          "tools_available",
+          "tools_called"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "observations"
+  ]
+}

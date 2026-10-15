@@ -2515,3 +2515,41 @@ This grammar is informative. In cases of ambiguity between this grammar and the 
 ---
 
 *This specification is published under CC-BY-4.0. You are free to share and adapt this material for any purpose, including commercial, provided you give appropriate credit. Reference implementations and conformance tests are published under the MIT license.*
+
+## 5.7 Observed reach and local description pins
+
+`conformance/observed-reach/schema.json` freezes the public JSON input
+`guardlink.observed-reach/v1`. Synthetic static, introspection, remote and OTel
+fixtures sit beside it. Producers emit `observations[]`, each with `identity`,
+`source`, `coverage`, `tools_available[]`, `tools_called[]` and optional `window`.
+Identity requires an explicit model actor reference; optional server, harness,
+repository-relative config file and scope narrow attribution. Names never infer
+an actor. Tools may supply `claim_keys` as linkage hints; GuardLink verifies them
+against identity and capability before joining. MCP capabilities join as
+`mcp.<server>.<tool>`; explicit annotation capabilities join by normalized name.
+An `all-tools` server grant covers its tools without inventing individual claims.
+
+Descriptions are SHA-256 hashes (`sha256:<64 lowercase hex>`) or null with a
+`description_unknown` reason. No description bodies, spans, prompts, arguments,
+results, endpoint values or credential values belong in this format. Hints are
+untrusted producer facts, never enforcement or evidence of safety. OTel and probe
+observations require a window; a complete call window still says nothing about
+uncalled capabilities outside that window. Partial, truncated, unknown and
+not-collected coverage never supports a negative availability conclusion.
+
+`guardlink attest <doc> [dir]` validates and stores the document locally at
+`.guardlink/observed-reach.json`; it does not start servers or contact endpoints.
+The derived export `reach_attestation` v1 belongs to GuardLink. Its drift rows
+carry observation identity, source, coverage, window and matched claim keys.
+`observed_not_declared` means no matching declaration was found.
+`declared_not_observed` states its basis (complete available list or call window),
+never that a capability is unused. Unmatched identities and invalid claim hints
+remain explicit unknowns.
+
+A human maintains and commits `.guardlink/tool-pins.json` with shape
+`{ "schema": "guardlink.tool-pins/v1", "pins": [{ "identity": { "actor": "#sample-agent" },
+"name": "read-record", "description_sha256": "sha256:…" }] }`.
+Pins match the exact supplied identity tuple and tool name; they are local
+baselines, never vendor signatures. Missing pins are unpinned; missing description
+hashes are unknown, never unchanged. `pin_changed` compares known hashes only.
+Attestation never writes pins or changes declarations, entitlements or gates.
