@@ -44,7 +44,7 @@ export function parseToolPins(value: unknown): ToolPins {
   if (p.schema !== 'guardlink.tool-pins/v1' || !Array.isArray(p.pins) || p.pins.length > 20000 || Object.keys(p).some(k => !['schema','pins'].includes(k))) throw new Error('Invalid tool pins');
   const seen = new Set<string>();
   for (const pin of p.pins) {
-    if (!pin || typeof pin.name !== 'string' || !pin.name || !HASH.test(pin.description_sha256) || Object.keys(pin).some(k => !['identity','name','description_sha256'].includes(k))) throw new Error('Invalid description pin');
+    if (!pin || typeof pin.name !== 'string' || !pin.name || pin.name.length > 4096 || !HASH.test(pin.description_sha256) || Object.keys(pin).some(k => !['identity','name','description_sha256'].includes(k))) throw new Error('Invalid description pin');
     parseObservedReach({ schema: 'guardlink.observed-reach/v1', observations: [{ identity: pin.identity, source: 'static', coverage: { available: 'complete', called: 'not_collected', truncated: false }, tools_available: [], tools_called: [] }] });
     const key = identityKey(pin.identity) + pin.name;
     if (seen.has(key)) throw new Error('Duplicate description pin');

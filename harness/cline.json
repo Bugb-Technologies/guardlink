@@ -57,14 +57,6 @@
       ],
       "note": "Explicit permission entry; patterns and denying rules retain their original provenance."
     },
-    "hook-command": {
-      "doc": "https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx",
-      "gated": false,
-      "loaded_when": [
-        "after-trust"
-      ],
-      "note": "Configured lifecycle command; never executed by this reader."
-    },
     "env-endpoint": {
       "doc": "https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx",
       "gated": false,
@@ -86,6 +78,14 @@
       "admits": [
         "credential-injection"
       ]
+    },
+    "hook": {
+      "doc": "https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Configured lifecycle command; never executed by this reader."
     }
   }
 }

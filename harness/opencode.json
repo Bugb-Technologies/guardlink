@@ -76,14 +76,6 @@
       ],
       "note": "Explicit permission entry; patterns and denying rules retain their original provenance."
     },
-    "hook-command": {
-      "doc": "https://opencode.ai/docs/config/",
-      "gated": false,
-      "loaded_when": [
-        "after-trust"
-      ],
-      "note": "Configured lifecycle command; never executed by this reader."
-    },
     "env-endpoint": {
       "doc": "https://opencode.ai/docs/config/",
       "gated": false,
@@ -105,6 +97,14 @@
       "admits": [
         "credential-injection"
       ]
+    },
+    "hook": {
+      "doc": "https://opencode.ai/docs/config/",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Configured lifecycle command; never executed by this reader."
     }
   }
 }

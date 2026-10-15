@@ -44,14 +44,6 @@
       ],
       "note": "Explicit permission entry; patterns and denying rules retain their original provenance."
     },
-    "hook-command": {
-      "doc": "https://docs.windsurf.com/windsurf/cascade/memories",
-      "gated": false,
-      "loaded_when": [
-        "after-trust"
-      ],
-      "note": "Configured lifecycle command; never executed by this reader."
-    },
     "env-endpoint": {
       "doc": "https://docs.windsurf.com/windsurf/cascade/memories",
       "gated": false,
@@ -73,6 +65,14 @@
       "admits": [
         "credential-injection"
       ]
+    },
+    "hook": {
+      "doc": "https://docs.windsurf.com/windsurf/cascade/memories",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Configured lifecycle command; never executed by this reader."
     }
   }
 }

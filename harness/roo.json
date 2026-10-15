@@ -52,14 +52,6 @@
       ],
       "note": "Explicit permission entry; patterns and denying rules retain their original provenance."
     },
-    "hook-command": {
-      "doc": "https://roocodeinc.github.io/Roo-Code/features/mcp/using-mcp-in-roo/",
-      "gated": false,
-      "loaded_when": [
-        "after-trust"
-      ],
-      "note": "Configured lifecycle command; never executed by this reader."
-    },
     "env-endpoint": {
       "doc": "https://roocodeinc.github.io/Roo-Code/features/mcp/using-mcp-in-roo/",
       "gated": false,
@@ -81,6 +73,14 @@
       "admits": [
         "credential-injection"
       ]
+    },
+    "hook": {
+      "doc": "https://roocodeinc.github.io/Roo-Code/features/mcp/using-mcp-in-roo/",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Configured lifecycle command; never executed by this reader."
     }
   }
 }
