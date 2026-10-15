@@ -580,7 +580,21 @@ export interface AgentConfigInstructionFile {
   hidden_unicode: { line: number; column: number; kind: string; count: number; severity: 'error' | 'warning'; decoded?: string }[];
 }
 
+/** Static family inventory; a review item, never a proof that a payload runs. */
+export interface AgentConfigSurface {
+  family: 'ci-agent-workflow' | 'trust-spoofing' | 'pre-trust-toolchain' | 'deeplink';
+  harness: string;
+  file: string;
+  line: number;
+  pointer: string;
+  scope: AgentConfigScope;
+  names: string[];
+  details: Record<string, string | boolean | string[]>;
+  claim_keys?: string[];
+}
+
 export interface AgentConfigBlock {
+  surfaces?: AgentConfigSurface[];
   version: 1;
   /** `sha256:<hex>` over the configuration's reach, servers, hooks and file list. Moves independently of `annotation_hash`. */
   agent_config_hash: string;

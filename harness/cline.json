@@ -1,0 +1,86 @@
+{
+  "table": "cline",
+  "version": "2026-10",
+  "harness": "cline",
+  "name": "Cline",
+  "actor": {
+    "id": "cline",
+    "name": "Cline",
+    "description": "Cline repository configuration"
+  },
+  "about": "Static repository-local configuration inventory. User-level state, runtime overrides and effective permission resolution are outside this reader. Current CLI reference places MCP configuration at user scope; no project MCP config is inferred.",
+  "files": [
+    {
+      "kind": "instructions",
+      "pattern": "(^|/)\\.cline/rules/.+|(^|/)\\.clinerules(/.+)?$",
+      "doc": "https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx",
+      "loaded_when": [
+        "after-trust"
+      ]
+    },
+    {
+      "kind": "skill",
+      "pattern": "(^|/)\\.cline/skills/.+/SKILL\\.md$",
+      "doc": "https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx",
+      "loaded_when": [
+        "after-trust"
+      ]
+    }
+  ],
+  "rules": {
+    "mcp-server": {
+      "doc": "https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx",
+      "gated": true,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Configured MCP server; tool-level permission is separate."
+    },
+    "mcp-tool-auto": {
+      "doc": "https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Named tool approval; Roo additionally requires the user-level global auto-approval switch, which this repository reader cannot establish."
+    },
+    "tool-allow": {
+      "doc": "https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Explicit permission entry; patterns and denying rules retain their original provenance."
+    },
+    "hook-command": {
+      "doc": "https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Configured lifecycle command; never executed by this reader."
+    },
+    "env-endpoint": {
+      "doc": "https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Named endpoint environment override; value withheld.",
+      "admits": [
+        "model-endpoint-override"
+      ]
+    },
+    "env-credential": {
+      "doc": "https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx",
+      "gated": false,
+      "loaded_when": [
+        "after-trust"
+      ],
+      "note": "Named credential environment entry; value withheld.",
+      "admits": [
+        "credential-injection"
+      ]
+    }
+  }
+}

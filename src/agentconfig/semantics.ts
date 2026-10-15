@@ -81,7 +81,7 @@ export interface Semantics {
 }
 
 /** The harnesses whose reach is read, in the order their tables are consulted. */
-export const REACH_HARNESSES = ['claude-code', 'cursor', 'copilot', 'codex', 'gemini-cli'] as const;
+export const REACH_HARNESSES = ['claude-code', 'cursor', 'copilot', 'codex', 'gemini-cli', 'roo', 'cline', 'windsurf', 'kiro', 'amazon-q', 'zed', 'opencode'] as const;
 
 let cached: Semantics | null = null;
 

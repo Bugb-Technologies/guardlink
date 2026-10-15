@@ -40,7 +40,7 @@ const PACKAGED_SEGMENTS = new Set(['components', 'templates', 'plugins', 'market
 const FIXTURE_SEGMENTS = new Set(['fixtures', 'fixture', 'testdata', '__fixtures__', '__tests__', 'test-workspace']);
 const AGENT_DIRS = new Set([
   '.claude', '.cursor', '.vscode', '.gemini', '.codex', '.github', '.roo', '.kiro', '.amazonq', '.kilocode',
-  '.windsurf', '.zed', '.agents', '.clinerules',
+  '.windsurf', '.zed', '.agents', '.clinerules', '.cline', '.opencode',
 ]);
 /** A repository with more configuration files than this is reported as truncated rather than read forever. */
 export const MAX_FILES = 20_000;
@@ -107,7 +107,7 @@ export function classifyScope(rel: string, isPluginDir: (dir: string) => boolean
   return parts.length === 1 ? 'root' : 'nested';
 }
 
-const CANDIDATE_EXT = /\.(md|mdc|json|toml)$/i;
+const CANDIDATE_EXT = /\.(md|mdc|json|jsonc|toml|yaml|yml)$/i;
 
 /**
  * Walk `root` for agent configuration. Deterministic: entries are visited in

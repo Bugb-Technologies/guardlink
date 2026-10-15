@@ -126,6 +126,14 @@
         "credential-injection"
       ],
       "note": "Injects a named credential variable; only the name is exported, never the credential value."
+    },
+    "ci-agent-workflow": {
+      "doc": "https://github.com/google-github-actions/run-gemini-cli",
+      "gated": false,
+      "loaded_when": [
+        "headless"
+      ],
+      "note": "Configured agent action, subject to job conditions and runner permissions."
     }
   }
 }

@@ -78,6 +78,7 @@ export function computeAgentConfigHash(r: Omit<AgentConfigResult, 'block'> & { b
     rows: rows.sort(),
     mcp: r.block.mcp_servers.map(strip),
     hooks: r.block.hooks.map(strip),
+    ...(r.block.surfaces?.length ? { surfaces: r.block.surfaces.map(strip) } : {}),
     denies: r.block.denies.map(strip),
     // Only when a skill has files beside it, so a repository without any keeps the hash it had.
     ...(bundles.length > 0 ? { bundles } : {}),

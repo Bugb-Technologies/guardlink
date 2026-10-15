@@ -2583,3 +2583,51 @@ Configuration commands, environment values, endpoint values and raw instruction
 text are omitted. Unknown versions, model weights and model cards are not
 invented. This is an inventory conversion, not vulnerability analysis, runtime
 attestation or proof of enforcement.
+
+### 5.6.2 Additional harnesses and static surface families
+
+The versioned tables in `harness/{roo,cline,windsurf,kiro,amazon-q,zed,opencode}.json`
+record documented project file patterns and cite their sources. The reader handles
+Roo project MCP servers and conditional per-tool selections; Cline CLI project
+instruction/skill inventory (its current MCP config is user scoped); Kiro workspace MCP and V3 JSON profile
+permission rules; Amazon Q CLI profile MCP and explicit allowed tools; Zed
+context servers and tool permission entries; and OpenCode JSON/JSONC MCP maps
+and permission entries. These are declared configuration facts. User state,
+merged effective permission policies, wildcard expansion and runtime overrides
+are not simulated. Deny and ask entries remain visible alongside allow entries.
+Roo tool selections remain gated because its global user switch is required.
+Kiro profiles requiring V3 migration are reported in `unreadable`, with no grant
+inferred. Permission exclusions that cannot be represented as a single grant are
+also reported. Windsurf instruction rules are inventoried; its documented MCP
+configuration is user scoped, so no repository MCP file is invented.
+
+`agent_config.surfaces[]` is additive static inventory with `family`, `harness`,
+`file`, `line`, RFC 6901 `pointer`, `scope`, `names`, `details` and `claim_keys`.
+It carries no severity, acceptance or proof that a payload executes:
+
+- `ci-agent-workflow`: recognized Claude Code, Codex and Gemini CLI GitHub action
+  `uses` entries, events, whether the action is SHA pinned, write permission
+  names, privileged triggers and untrusted-context interpolation presence. The
+  corresponding generated `ci-agent-workflow` reach row has a claim key. YAML
+  aliases are bounded; malformed YAML is reported as unreadable. Reusable
+  workflows and arbitrary shell wrappers are not resolved.
+- `trust-spoofing`: tracked repository copies of trust-state keys in
+  `.claude.json`. No user state is read and no copied key grants trust. Paths and
+  state values are withheld.
+- `pre-trust-toolchain`: named npm install/prepare lifecycle scripts in
+  `package.json`, which are invoked by the package manager independently of an
+  editor trust dialog. Script bodies are withheld; presence does not mean a
+  script has run.
+- `deeplink`: documented Cursor install, prompt and command schemes in readme or
+  instruction files. Query payloads are withheld, never decoded or opened.
+
+Fixtures in `tests/agent-config-extended.test.ts` pin the supported formats and
+unknown cases. Vendor references include
+[Roo MCP](https://roocodeinc.github.io/Roo-Code/features/mcp/using-mcp-in-roo/),
+[Cline CLI](https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx),
+[Kiro configuration](https://kiro.dev/docs/custom-agents/configuration-reference/),
+[Amazon Q format](https://github.com/aws/amazon-q-developer-cli/blob/main/docs/agent-format.md),
+[Zed permissions](https://zed.dev/docs/ai/tool-permissions),
+[OpenCode permissions](https://opencode.ai/docs/permissions/),
+[npm lifecycle](https://docs.npmjs.com/cli/v11/using-npm/scripts/) and
+[Cursor links](https://cursor.com/docs/reference/deeplinks).

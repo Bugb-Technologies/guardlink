@@ -1,3 +1,4 @@
+import { relationRecords } from './claim-key.js';
 import { readObservedState, buildReachAttestation } from '../attest/index.js';
 /**
  * GuardLink — Project-level parser.
@@ -450,6 +451,10 @@ export function mergeAgentConfig(model: ThreatModel, ac: AgentConfigResult): Thr
   model.reaches = [...(model.reaches ?? []), ...ac.reaches];
   model.effects = [...(model.effects ?? []), ...ac.effects];
   model.gates = [...(model.gates ?? []), ...ac.gates];
+  const claimRows = relationRecords(model);
+  for (const surface of ac.block.surfaces ?? []) surface.claim_keys = claimRows
+    .filter(r => r.location.file === surface.file && r.location.binding === surface.pointer)
+    .map(r => r.key);
   const annotationHash = computeAnnotationHash(model);
   for (const f of ac.block.instruction_files) {
     if (f.guardlink_block) {
