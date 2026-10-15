@@ -1,0 +1,335 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "bom-ref": "guardlink:project:c95a08a6ed8fe110aee4123a985ea70c1bae0f62f73d9c7f56bcc6df4b36c8d0",
+      "name": "synthetic-configurations"
+    },
+    "properties": [
+      {
+        "name": "guardlink:inventory",
+        "value": "agent-configuration-and-declared-reach"
+      },
+      {
+        "name": "guardlink:agent_config_hash",
+        "value": "sha256-v1:d67b16700feb6335de618899ab9f868f4640853faa839d2514b7941242ddcfde"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "application",
+      "bom-ref": "guardlink:actor:28e174396028f226b3bead259d19749205378d9204ce12fd9b1918ab6032a15d",
+      "name": "Claude_Code",
+      "properties": [
+        {
+          "name": "guardlink:kind",
+          "value": "agent"
+        },
+        {
+          "name": "guardlink:origin",
+          "value": "agent-config"
+        },
+        {
+          "name": "guardlink:reaches",
+          "value": "[{\"capability\":\"ci.agent.anthropics-claude-code-action\",\"asset\":\"#ci-agent-runner\",\"file\":\".github/workflows/assistant.yml\",\"line\":7,\"claim_key\":\"ef96eebd737c3b753e5b331a612e8870363a7326028097cf415d470bfd4a5489:0\",\"harness\":\"claude-code\",\"scope\":\"root\",\"gated\":false}]"
+        }
+      ]
+    },
+    {
+      "type": "application",
+      "bom-ref": "guardlink:actor:3e7085367457fdba220d870c6532bcc04ff45e8a0a3866af37e1467a0a1498d1",
+      "name": "Roo_Code",
+      "properties": [
+        {
+          "name": "guardlink:kind",
+          "value": "agent"
+        },
+        {
+          "name": "guardlink:origin",
+          "value": "agent-config"
+        },
+        {
+          "name": "guardlink:reaches",
+          "value": "[{\"capability\":\"mcp.sample\",\"asset\":\"#mcp-sample\",\"file\":\".roo/mcp.json\",\"line\":1,\"claim_key\":\"52e68c18887fc335c4ffb0ad0058bd548db509a784ef261eac65a1b32c249c0a:0\",\"harness\":\"roo\",\"scope\":\"root\",\"gated\":true},{\"capability\":\"mcp.sample.read\",\"asset\":\"#mcp-sample\",\"file\":\".roo/mcp.json\",\"line\":1,\"claim_key\":\"d5dc8d039094eb14bb4deaeee099f8cb23ac82659a333750e9351bb5c215b147:0\",\"harness\":\"roo\",\"scope\":\"root\",\"gated\":true}]"
+        }
+      ]
+    },
+    {
+      "type": "application",
+      "bom-ref": "guardlink:actor:62f8e1ec095e1857446d403d1431007de8813aea9553a56ccd4552a131b1f297",
+      "name": "OpenCode",
+      "properties": [
+        {
+          "name": "guardlink:kind",
+          "value": "agent"
+        },
+        {
+          "name": "guardlink:origin",
+          "value": "agent-config"
+        },
+        {
+          "name": "guardlink:reaches",
+          "value": "[{\"capability\":\"mcp.sample\",\"asset\":\"#mcp-sample\",\"file\":\"opencode.jsonc\",\"line\":1,\"claim_key\":\"e19856e16ba09451e0840464d2361e49aa699e134af631ddd62c9016040d40a6:0\",\"harness\":\"opencode\",\"scope\":\"root\",\"gated\":false},{\"capability\":\"bash.git\",\"asset\":\"#dev-workstation\",\"file\":\"opencode.jsonc\",\"line\":1,\"claim_key\":\"7f2d008900c8e3f8ac03bfbb791792ec7af29dc45143998ce98d2be299c7f4c0:0\",\"harness\":\"opencode\",\"scope\":\"root\",\"gated\":false}]"
+        }
+      ]
+    },
+    {
+      "type": "application",
+      "bom-ref": "guardlink:actor:6e885b857804f868c79c20c78f03696636427565a4fbac95d7352d8530bfadf1",
+      "name": "Kiro",
+      "properties": [
+        {
+          "name": "guardlink:kind",
+          "value": "agent"
+        },
+        {
+          "name": "guardlink:origin",
+          "value": "agent-config"
+        },
+        {
+          "name": "guardlink:reaches",
+          "value": "[{\"capability\":\"mcp.sample\",\"asset\":\"#mcp-sample\",\"file\":\".kiro/settings/mcp.json\",\"line\":1,\"claim_key\":\"b01d6089f93f7fd7803a5606d95bec6d7c1eb10d9d482fe9d3f6e15156e0bba0:0\",\"harness\":\"kiro\",\"scope\":\"root\",\"gated\":true},{\"capability\":\"mcp.sample.read\",\"asset\":\"#mcp-sample\",\"file\":\".kiro/settings/mcp.json\",\"line\":1,\"claim_key\":\"f360b1ad91c9051cf6b65686c08da459a3cf2516ebd719f72a7196c31253e259:0\",\"harness\":\"kiro\",\"scope\":\"root\",\"gated\":false}]"
+        }
+      ]
+    },
+    {
+      "type": "application",
+      "bom-ref": "guardlink:actor:ae8f5080a348fbfeb2c776957979728034cdf3eee0160c8667ee66daa8440a48",
+      "name": "Zed",
+      "properties": [
+        {
+          "name": "guardlink:kind",
+          "value": "agent"
+        },
+        {
+          "name": "guardlink:origin",
+          "value": "agent-config"
+        },
+        {
+          "name": "guardlink:reaches",
+          "value": "[{\"capability\":\"mcp.sample\",\"asset\":\"#mcp-sample\",\"file\":\".zed/settings.json\",\"line\":1,\"claim_key\":\"f099d926a47365403289c6e15cae215e9642f7e18e881f72f178590e6c01fdc9:0\",\"harness\":\"zed\",\"scope\":\"root\",\"gated\":true}]"
+        }
+      ]
+    },
+    {
+      "type": "application",
+      "bom-ref": "guardlink:actor:f764a1f8405b119861f51055d348e4517890d656f31f1a938f97587b27e50403",
+      "name": "Amazon_Q",
+      "properties": [
+        {
+          "name": "guardlink:kind",
+          "value": "agent"
+        },
+        {
+          "name": "guardlink:origin",
+          "value": "agent-config"
+        },
+        {
+          "name": "guardlink:reaches",
+          "value": "[{\"capability\":\"mcp.sample\",\"asset\":\"#mcp-sample\",\"file\":\".amazonq/cli-agents/sample.json\",\"line\":1,\"claim_key\":\"c66ed88b2068b83709a927263430663e765f204b7ebd710f40a0e6f02e772398:0\",\"harness\":\"amazon-q\",\"scope\":\"root\",\"gated\":true},{\"capability\":\"mcp.sample.read\",\"asset\":\"#dev-workstation\",\"file\":\".amazonq/cli-agents/sample.json\",\"line\":1,\"claim_key\":\"04594f4326b3c8df8a7b4fe2e5d81d9e913a24721606cb24bb40443b727d56c0:0\",\"harness\":\"amazon-q\",\"scope\":\"root\",\"gated\":false}]"
+        }
+      ]
+    },
+    {
+      "type": "application",
+      "bom-ref": "guardlink:mcp:028862424e6c0df58497c8d33c5689b55be47116b4aefc5aa2fb940599feeb64",
+      "name": "sample",
+      "properties": [
+        {
+          "name": "guardlink:kind",
+          "value": "mcp-server"
+        },
+        {
+          "name": "guardlink:harness",
+          "value": "amazon-q"
+        },
+        {
+          "name": "guardlink:file",
+          "value": ".amazonq/cli-agents/sample.json"
+        },
+        {
+          "name": "guardlink:line",
+          "value": "1"
+        },
+        {
+          "name": "guardlink:scope",
+          "value": "root"
+        },
+        {
+          "name": "guardlink:transport",
+          "value": "stdio"
+        },
+        {
+          "name": "guardlink:disabled",
+          "value": "false"
+        },
+        {
+          "name": "guardlink:credential_names",
+          "value": "[]"
+        }
+      ]
+    },
+    {
+      "type": "application",
+      "bom-ref": "guardlink:mcp:1bb348c2e3967d0321019d71ee0d5d18ec8b2984f67c1f6500271569aaac4754",
+      "name": "sample",
+      "properties": [
+        {
+          "name": "guardlink:kind",
+          "value": "mcp-server"
+        },
+        {
+          "name": "guardlink:harness",
+          "value": "zed"
+        },
+        {
+          "name": "guardlink:file",
+          "value": ".zed/settings.json"
+        },
+        {
+          "name": "guardlink:line",
+          "value": "1"
+        },
+        {
+          "name": "guardlink:scope",
+          "value": "root"
+        },
+        {
+          "name": "guardlink:transport",
+          "value": "stdio"
+        },
+        {
+          "name": "guardlink:disabled",
+          "value": "false"
+        },
+        {
+          "name": "guardlink:credential_names",
+          "value": "[]"
+        }
+      ]
+    },
+    {
+      "type": "application",
+      "bom-ref": "guardlink:mcp:43a89c8a13902e430f048d84655b0c018b0282a557af8439524f5174f89dc01a",
+      "name": "sample",
+      "properties": [
+        {
+          "name": "guardlink:kind",
+          "value": "mcp-server"
+        },
+        {
+          "name": "guardlink:harness",
+          "value": "opencode"
+        },
+        {
+          "name": "guardlink:file",
+          "value": "opencode.jsonc"
+        },
+        {
+          "name": "guardlink:line",
+          "value": "1"
+        },
+        {
+          "name": "guardlink:scope",
+          "value": "root"
+        },
+        {
+          "name": "guardlink:transport",
+          "value": "stdio"
+        },
+        {
+          "name": "guardlink:disabled",
+          "value": "false"
+        },
+        {
+          "name": "guardlink:credential_names",
+          "value": "[]"
+        }
+      ]
+    },
+    {
+      "type": "application",
+      "bom-ref": "guardlink:mcp:8f62b235f9d360e249ef3543c9cc2ea93f9a236fcaba9155dbf0b347017288e9",
+      "name": "sample",
+      "properties": [
+        {
+          "name": "guardlink:kind",
+          "value": "mcp-server"
+        },
+        {
+          "name": "guardlink:harness",
+          "value": "roo"
+        },
+        {
+          "name": "guardlink:file",
+          "value": ".roo/mcp.json"
+        },
+        {
+          "name": "guardlink:line",
+          "value": "1"
+        },
+        {
+          "name": "guardlink:scope",
+          "value": "root"
+        },
+        {
+          "name": "guardlink:transport",
+          "value": "stdio"
+        },
+        {
+          "name": "guardlink:disabled",
+          "value": "false"
+        },
+        {
+          "name": "guardlink:credential_names",
+          "value": "[]"
+        }
+      ]
+    },
+    {
+      "type": "application",
+      "bom-ref": "guardlink:mcp:b0bead1adcb20e05de833155cfba308088abca28337757d107454e0f1d50394b",
+      "name": "sample",
+      "properties": [
+        {
+          "name": "guardlink:kind",
+          "value": "mcp-server"
+        },
+        {
+          "name": "guardlink:harness",
+          "value": "kiro"
+        },
+        {
+          "name": "guardlink:file",
+          "value": ".kiro/settings/mcp.json"
+        },
+        {
+          "name": "guardlink:line",
+          "value": "1"
+        },
+        {
+          "name": "guardlink:scope",
+          "value": "root"
+        },
+        {
+          "name": "guardlink:transport",
+          "value": "stdio"
+        },
+        {
+          "name": "guardlink:disabled",
+          "value": "false"
+        },
+        {
+          "name": "guardlink:credential_names",
+          "value": "[]"
+        }
+      ]
+    }
+  ],
+  "dependencies": []
+}
