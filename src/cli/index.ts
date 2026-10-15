@@ -306,8 +306,10 @@ program
   .action(async (doc: string, dir: string) => {
     const { storeObservedReach } = await import('../attest/index.js');
     storeObservedReach(resolve(dir), doc);
-    const { model } = await parseProject({ root: resolve(dir) });
+    const { model, diagnostics } = await parseProject({ root: resolve(dir) });
+    printDiagnostics(diagnostics);
     console.log(JSON.stringify(model.reach_attestation, null, 2));
+    process.exitCode = diagnostics.some(d => d.level === 'error') ? 1 : 0;
   });
 
 // ─── parse ───────────────────────────────────────────────────────────
