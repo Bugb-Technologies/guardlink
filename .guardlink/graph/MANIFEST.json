@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "annotation_hash": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
-  "generator": "guardlink@2.3.0",
+  "generator": "guardlink@2.4.0",
   "artifacts": [
     {
       "path": ".guardlink/graph/threat-graph.mmd",
