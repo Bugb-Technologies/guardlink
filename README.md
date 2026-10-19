@@ -286,6 +286,10 @@ We extend the specification with severity levels, external references (CWE/CAPEC
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Community
+
+Questions, ideas, or want to talk threat modeling? Join the [BugB Discord](https://discord.gg/wyKqPtRveG). You can also open a discussion or issue on GitHub.
+
 ## License
 
 MIT, see [LICENSE](LICENSE). The GuardLink specification is published under CC-BY-4.0.

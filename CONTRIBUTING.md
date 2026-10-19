@@ -65,6 +65,10 @@ npm run cli       # Run CLI without building (via tsx)
 4. Write a clear PR description explaining what changed and why
 5. Link any related issues
 
+## Community
+
+Questions or ideas before you start? Join the [BugB Discord](https://discord.gg/wyKqPtRveG), or open a discussion or issue on GitHub.
+
 ## Code Style
 
 - TypeScript strict mode
