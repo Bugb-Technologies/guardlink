@@ -142,4 +142,122 @@ describe('diff against a base ref in an inline-mode repository', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it('does not report an unchanged exposure as new or resolved when lines are inserted above it', async () => {
+    const root = await inlineRepo();
+    try {
+      await writeFile(
+        join(root, 'db.py'),
+        [
+          '"""Expense queries."""',
+          '',
+          '',
+          'def list_expenses():',
+          '    return q("SELECT * FROM e")',
+          '',
+          '',
+          '# @exposes #db to #sqli [critical] cwe:CWE-89 -- "category is formatted into the SELECT"',
+          'def find_expenses(category):',
+          '    return q("SELECT * FROM e WHERE c = \'%s\'" % category)',
+          '',
+          '',
+          '# @mitigates #db against #sqli using #prepared -- "the INSERT binds its parameters"',
+          'def insert_expense(amount):',
+          '    return q("INSERT INTO e VALUES (?)", (amount,))',
+          '',
+        ].join('\n'),
+      );
+      run(root, 'git commit -am head');
+
+      const { model: head } = await parseProject({ root, project: 'tmp' });
+      const base = await parseAtRef(root, 'HEAD~1', 'tmp');
+      const diff = diffModels(base, head);
+
+      expect(head.exposures[0].location.line).toBe(8);
+      expect(base.exposures[0].location.line).toBe(4);
+      expect(diff.newUnmitigatedExposures).toEqual([]);
+      expect(diff.resolvedExposures).toEqual([]);
+      expect(diff.summary.riskDelta).toBe('unchanged');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('reports an exposure that moves into a different function as new and resolved', async () => {
+    const root = await inlineRepo();
+    try {
+      await writeFile(
+        join(root, 'db.py'),
+        [
+          '"""Expense queries."""',
+          '',
+          '',
+          'def find_expenses(category):',
+          '    return q("SELECT * FROM e WHERE c = ?", (category,))',
+          '',
+          '',
+          '# @exposes #db to #sqli [critical] cwe:CWE-89 -- "category is formatted into the SELECT"',
+          'def search_expenses(category):',
+          '    return q("SELECT * FROM e WHERE c = \'%s\'" % category)',
+          '',
+          '',
+          '# @mitigates #db against #sqli using #prepared -- "the INSERT binds its parameters"',
+          'def insert_expense(amount):',
+          '    return q("INSERT INTO e VALUES (?)", (amount,))',
+          '',
+        ].join('\n'),
+      );
+      run(root, 'git commit -am head');
+
+      const { model: head } = await parseProject({ root, project: 'tmp' });
+      const base = await parseAtRef(root, 'HEAD~1', 'tmp');
+      const diff = diffModels(base, head);
+
+      expect(diff.newUnmitigatedExposures).toHaveLength(1);
+      expect(diff.newUnmitigatedExposures[0].location.line).toBe(8);
+      expect(diff.resolvedExposures).toHaveLength(1);
+      expect(diff.resolvedExposures[0].location.line).toBe(4);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('reports a new exposure in the same file once the unchanged one has shifted', async () => {
+    const root = await inlineRepo();
+    try {
+      await writeFile(
+        join(root, 'db.py'),
+        [
+          '"""Expense queries."""',
+          '',
+          '',
+          '# @exposes #db to #sqli [critical] cwe:CWE-89 -- "the name is formatted into the DELETE"',
+          'def delete_expense(name):',
+          '    return q("DELETE FROM e WHERE n = \'%s\'" % name)',
+          '',
+          '',
+          '# @exposes #db to #sqli [critical] cwe:CWE-89 -- "category is formatted into the SELECT"',
+          'def find_expenses(category):',
+          '    return q("SELECT * FROM e WHERE c = \'%s\'" % category)',
+          '',
+          '',
+          '# @mitigates #db against #sqli using #prepared -- "the INSERT binds its parameters"',
+          'def insert_expense(amount):',
+          '    return q("INSERT INTO e VALUES (?)", (amount,))',
+          '',
+        ].join('\n'),
+      );
+      run(root, 'git commit -am head');
+
+      const { model: head } = await parseProject({ root, project: 'tmp' });
+      const base = await parseAtRef(root, 'HEAD~1', 'tmp');
+      const diff = diffModels(base, head);
+
+      expect(diff.newUnmitigatedExposures).toHaveLength(1);
+      expect(diff.newUnmitigatedExposures[0].location.line).toBe(4);
+      expect(diff.resolvedExposures).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -425,13 +425,15 @@ function exposureKey(e: ThreatModelExposure): string {
 }
 
 /**
- * Site identity for the unmitigated delta (D36). Uses the symbol anchor when
- * there is one and the file:line when there is not, so the key is stable under
- * inline authoring — where no symbol exists — and under external authoring
- * alike.
+ * Site identity for the unmitigated delta (D36). Uses the enclosing symbol when
+ * there is one — `parent_symbol` for an external block, the anchor's symbol for
+ * an inline annotation — and the file:line when there is not, so lines inserted
+ * above an unchanged exposure do not turn it into a new one plus a resolved one.
+ * Both sides are parsed with anchors, so the two keys are built the same way.
  */
 function unmitigatedKey(e: ThreatModelExposure): string {
-  const site = e.location.parent_symbol ?? `${e.location.file}:${e.location.line}`;
+  const symbol = e.location.parent_symbol ?? e.location.anchor?.symbol;
+  const site = symbol ?? `${e.location.file}:${e.location.line}`;
   return `${normalizeRef(e.asset)}::${normalizeRef(e.threat)}::${e.location.file}::${site}`;
 }
 
