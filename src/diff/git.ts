@@ -119,8 +119,11 @@ export async function parseAtRef(root: string, ref: string, project: string): Pr
     }
 
     // Parse the temp directory
-    // Historical parse: anchors are never read from this model, so skip the structure pass.
-    const { model } = await parseProject({ root: tmpDir, project, anchors: false });
+    // Anchored like the working-tree parse: coverage sites an inline annotation by
+    // its handler scope, which is read from the anchor. Without it every
+    // mitigation covers every exposure of its (asset, threat) at the base but only
+    // those in its own handler at the head, and an unchanged pair reads as new.
+    const { model } = await parseProject({ root: tmpDir, project });
     return model;
   } finally {
     // Cleanup

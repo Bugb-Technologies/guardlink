@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## \[Unreleased\]
 
+### Fixed
+
+- **`guardlink diff` no longer reports an unchanged exposure as new when its same-pair `@mitigates` sits in another function of the same file.** The base ref was parsed without anchors, but coverage sites an inline annotation by the handler scope it reads from the anchor. At the base, one `@mitigates` therefore covered every exposure of its (asset, threat); at the head it covered only those in its own function, so an exposure nothing had touched read as a new unmitigated one. That printed `NEW unmitigated exposure(s)` and failed `--fail-on-new` on a change that never touched the file. The base is now parsed with anchors, like the working tree. `guardlink dashboard --since` and the `guardlink_diff` MCP tool take the same path and are corrected with it.
+- **The `guardlink diff` text summary counts coding-agent configuration changes and new unentitled reaches.** A change that moved only configuration printed `No threat model changes detected.` above the new reaches it listed. It now opens with `No annotation changes, but 4 coding-agent configuration change(s), 3 new unentitled reach(es).`, and names stale entitlements and observed reach changes the same way. Output when nothing changed at all is unchanged.
+
 ## \[2.4.0\] — 2026-10-19
 
 ### Added

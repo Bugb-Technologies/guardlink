@@ -19,7 +19,15 @@ export function formatDiff(diff: ThreatModelDiff): string {
     return lines.join('\n');
   }
   if (s.totalChanges === 0) {
-    lines.push('No threat model changes detected.');
+    // Nothing changed in the annotations, but the reaches a configuration grants
+    // and the claims that went stale are changes a reviewer must still see counted.
+    const others = [
+      s.agentConfigChanges > 0 && `${s.agentConfigChanges} coding-agent configuration change(s)`,
+      s.newUnentitledReaches > 0 && `${s.newUnentitledReaches} new unentitled reach(es)`,
+      s.staleEntitlements > 0 && `${s.staleEntitlements} stale entitlement(s)`,
+      diff.reachAttestation?.length && `${diff.reachAttestation.length} observed reach change(s)`,
+    ].filter(Boolean);
+    lines.push(`No annotation changes, but ${others.join(', ')}.`);
     lines.push('');
   } else {
     lines.push(`Threat Model Diff: ${s.totalChanges} change(s)`);

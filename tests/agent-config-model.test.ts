@@ -230,6 +230,12 @@ describe('diff: what changed in the configuration', () => {
     expect(d.reaches).toEqual([]);
     expect(d.summary.agentConfigChanges).toBe(4);
     expect(formatDiff(d)).toContain('── MCP Server Launch Changed Under the Same Name ──');
+    // Nothing in the annotations moved, so the summary says what did instead of claiming no change.
+    const text = formatDiff(d);
+    expect(text).not.toContain('No threat model changes detected.');
+    expect(text.split('\n')[0]).toBe(
+      `No annotation changes, but 4 coding-agent configuration change(s), ${d.summary.newUnentitledReaches} new unentitled reach(es).`,
+    );
     expect(formatDiffMarkdown(d)).toContain('#### 🤖 Coding-agent configuration');
   });
 });
