@@ -55,6 +55,7 @@ function evidenceLocations(model: ThreatModel): SourceLocation[] {
     ...model.boundaries, ...model.validations, ...model.audits,
     ...model.ownership, ...model.data_handling, ...model.assumptions,
     ...(model.actors || []), ...(model.entitlements || []),
+    ...(model.reaches || []), ...(model.effects || []), ...(model.gates || []), ...(model.tickets || []),
     ...model.shields, ...model.features, ...model.comments,
   ].map(a => a.location);
 }

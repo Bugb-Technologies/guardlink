@@ -27,6 +27,9 @@ REACH    @agents <#agent-actor> to <capability> on <Asset> as <identity> -- "on 
          @gates <Asset> by <#approver-actor> for <capability> -- "on the approval step"
                    ^ all four are agent-writable; `on`, `as` and `for` are optional
 
+TRACK    @ticket <#threat> on <Asset> <id-or-url> sla "<label>" by <assignee> until <YYYY-MM-DD> -- "what it covers"
+                   ^ an open ticket in your tracker; `sla`, `by` and `until` are optional. Remove it when the ticket closes
+
 FLOW     @flows <Source> -> <Target> [-> <Next> …] [via <mechanism>] -- "details"
          @flows <Client> -> <Asset> via GET./orders/<id> -- "an HTTP route, on its handler"
          @boundary from <Outer> to <Inner> (#id) -- "trust boundary, direction known"
@@ -65,6 +68,7 @@ Append after severity: `cwe:CWE-89`, `owasp:A03:2021`, `capec:CAPEC-66`, `attack
 5. **Use the full verb set.** `@flows` for data movement, `@handles` for data classification, `@boundary` for trust boundaries.
 6. **`@entitles` is proposed, never written by hand.** An over-grant closes a real privilege escalation as by-design, so the claim goes through a review artifact: propose it (`guardlink entitle --propose`, or the `guardlink_entitlement_propose` MCP tool), and a human accepts it with `guardlink entitle` — acceptance is what writes the annotation, with their name next to it. An `@entitles` in source with no accepted proposal behind it is a validation error. The rationale must cite the authz code (`Authz: common/api/metadata.go:189`); without a `file:line` pointer the claim is **inert** — parsed but ignored — and accepting it takes an explicit acknowledgement of that. It never hides a finding and never gates testing; it only changes what triage recommends. Never propose one for an ownership question (IDOR, tenant isolation): both peers hold the capability, so entitlement cannot answer *whose object it was*.
 7. **Declare what an embedded agent can reach.** When code hands an LLM agent a tool, an MCP server, file, shell or database access, write `@agents` on the registration, `@effects` on the code that acts and `@gates` on any approval step. `@reaches` is the same claim for a principal that is not an agent; naming one actor under both verbs is a validation error, because writing `@agents` about an actor is what marks it as an agent. The capability is the token an `@entitles` would use, so `guardlink lookup unentitled reaches` lists the capabilities no human approved (SPEC §3.2.1). `guardlink report` adds an **Agents and LLM Reach** section mapped to the OWASP Top 10 for LLM Applications (`--agents` writes it alone), and the dashboard's **Agents & Reach** page draws the reach map.
+8. **Record tickets your tracker already holds.** `@ticket #threat on Asset SEC-42 sla "High" by owner until 2026-11-30` says a risk already has an open ticket in Jira, Linear, GitHub Issues or similar. GuardLink ships no connector: the line is the record, and removing it is how the ticket leaves the model. `sla` is the tracker's own priority word, kept verbatim. A ticket is not a control — the exposure stays open until a `@mitigates` covers it; once one does, `guardlink lint` notes it (`info`) and you choose whether to keep or remove the line. The dashboard's **Tickets** page, shown only when a `@ticket` exists, lists them with search and each pair's state; `guardlink lookup tickets` answers the same. Never invent an id, SLA, assignee or date (SPEC §3.2).
 
 ### Standalone `.gal` Files
 
@@ -121,6 +125,7 @@ with three different fixes, and each is a warning rather than a silent zero. A s
 | New role / permission tier | `@actor` in definitions, then `guardlink entitle --propose` for each capability it holds by design |
 | Code hands an LLM agent a tool / MCP server / file, shell or DB access | `@agents #agent to <capability> on Asset` on the registration + `@effects <effect> on Asset` where the code acts + `@gates Asset by #approver` on any approval step |
 | A CI runner or service account holds a capability | `@reaches #actor to <capability> on Asset` |
+| A risk already has an open ticket in your tracker | `@ticket #threat on Asset <id-or-url> sla "<label>" by <assignee> until <YYYY-MM-DD>` |
 | Finding needs privilege X, and X is allowed to do that | Propose an entitlement (`guardlink entitle --propose … --rationale "by design + authz file:line"`) — do not write `@entitles` yourself |
 | Security gap exists | `@exposes Asset to #threat` + `@audit Asset` |
 | Threat verified exploitable | `@confirmed #threat on Asset [severity] -- "pentest/scan evidence"` |
@@ -502,12 +507,13 @@ Run `guardlink tui` for the interactive terminal interface:
 10. **One annotation per comment line.** Do NOT put two @verbs on the same line.
 11. **@entitles capability is ONE identifier, not prose**: `configure-archival-destination`, not `"can configure archival"`. It is the join key, and prose would not join.
 12. **@agents / @reaches use the same capability token as @entitles**, and **@effects takes one of six effects**: `read`, `write`, `delete`, `execute`, `spend`, `notify`. Egress is `@flows … -> External.X`, not an effect. `@gates` needs `by <actor>`.
+13. **@ticket's ref is one token or a quoted string.** `SEC-42`, `jira:SEC-42` and a bare `https://…` URL all work; quote a ref with spaces. `sla` takes a quoted label. Only the description wraps onto a continuation line.
 
 ## MCP Tools
 
 When connected via `.mcp.json`, use:
 - `guardlink_parse` — parse annotations, return threat model
-- `guardlink_lookup` — query threats, controls, exposures by ID (try `unmitigated`, `confirmed`, `actors`, `entitlements`, `agents`, `unentitled reaches`, `effects for #db`, `gates`, `ungated effects`)
+- `guardlink_lookup` — query threats, controls, exposures by ID (try `unmitigated`, `confirmed`, `actors`, `entitlements`, `agents`, `unentitled reaches`, `effects for #db`, `gates`, `ungated effects`, `tickets for #api`)
 - `guardlink_suggest` — get annotation suggestions for a file
 - `guardlink_validate` — check for syntax errors
 - `guardlink_status` — coverage stats

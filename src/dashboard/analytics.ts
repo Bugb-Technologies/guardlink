@@ -424,6 +424,8 @@ export interface AssetDetail {
   audits: number;
   assumptions: number;
   validations: number;
+  /** Tracker tickets (@ticket) on this asset; absent when it has none. */
+  tickets?: { ref: string; threat: string }[];
   files: { file: string; claims: number }[];
   states: { verified: number; stale: number; unverified: number } | null;
   attribution: { introducers: { identity: string; count: number }[]; ai: number; aiTools: string[]; oldestOpenDays: number | null } | null;
@@ -518,6 +520,7 @@ export function computeAssetDetails(model: ThreatModel, claims: ClaimLike[], hea
       audits: model.audits.filter(a => is(a.asset)).length,
       assumptions: model.assumptions.filter(a => is(a.asset)).length,
       validations: model.validations.filter(v => is(v.asset)).length,
+      ...((model.tickets || []).some(t => is(t.asset)) ? { tickets: (model.tickets || []).filter(t => is(t.asset)).map(t => ({ ref: t.ref, threat: t.threat })) } : {}),
       files: [...fileMap].map(([file, n]) => ({ file, claims: n })).sort((a, b) => b.claims - a.claims || byName(a.file, b.file)),
       states: anyState ? states : null,
       attribution: blamed > 0 ? {

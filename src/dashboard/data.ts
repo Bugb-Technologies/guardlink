@@ -5,7 +5,7 @@
 
 import type { ReachSummary } from '../reach/index.js';
 import type { ExposureHypothesis, ThreatModel } from '../types/index.js';
-import { buildCoverageIndex, annotationCount } from '../parser/coverage.js';
+import { buildCoverageIndex, annotationCount, ticketStatusResolver, type TicketState } from '../parser/coverage.js';
 import { entriesFromModel, summarise } from '../blame/summary.js';
 import { readLedger } from '../parser/ledger.js';
 import { classifyClaims, type ClaimState, type VerificationReport } from '../parser/verification.js';
@@ -232,6 +232,48 @@ export function computeConfirmed(model: ThreatModel): ConfirmedRow[] {
     line: c.location.line,
     external_refs: c.external_refs || [],
   }));
+}
+
+// ─── Tickets (@ticket) ───────────────────────────────────────────────
+
+export interface TicketRow {
+  ref: string;
+  threat: string;
+  asset: string;
+  sla: string;
+  assignee: string;
+  /** `YYYY-MM-DD`, or '' when no `until` was written. Overdue is decided in the browser, at view time. */
+  due: string;
+  description: string;
+  /** Where the risk behind the ticket stands now, from the coverage module. */
+  state: TicketState;
+  /** The pair carries a `@confirmed`. */
+  confirmed: boolean;
+  file: string;
+  line: number;
+}
+
+/**
+ * One row per `@ticket`, in a fixed order (ref, then asset, then threat, then
+ * location) so the page is identical however the model was assembled. No
+ * clock is read here: whether a due date has passed is a fact about the moment
+ * the page is viewed, so the client decides it.
+ *
+ * @flows ThreatModel -> #dashboard via computeTickets -- "@ticket rows and each pair's coverage state for the Tickets page"
+ */
+export function computeTickets(model: ThreatModel): TicketRow[] {
+  const status = ticketStatusResolver(model);
+  const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+  return (model.tickets || []).map(t => {
+    const st = status(t);
+    return {
+      ref: t.ref, threat: t.threat, asset: t.asset,
+      sla: t.sla ?? '', assignee: t.assignee ?? '', due: t.due ?? '',
+      description: t.description ?? '',
+      state: st.state, confirmed: st.confirmed,
+      file: t.location.file, line: t.location.line,
+    };
+  }).sort((a, b) => cmp(a.ref, b.ref) || cmp(a.asset, b.asset) || cmp(a.threat, b.threat) || cmp(a.file, b.file) || a.line - b.line);
 }
 
 // ─── Attribution (guardlink dashboard --blame) ───────────────────────

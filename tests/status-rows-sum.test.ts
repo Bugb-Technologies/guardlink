@@ -56,6 +56,7 @@ const SOURCE = `/**
  * @reaches #nightly to export-orders on #orders -- "batch export"
  * @effects write on #orders -- "updates the order row"
  * @gates #orders by #clerk for issue-refund -- "refund waits for a clerk"
+ * @ticket #tamper on #orders SEC-42 sla "Highest" by alice@shop.test until 2026-11-30 -- "tracked in Jira"
  * @comment -- "every verb appears in this block"
  */
 export function placeOrder(id: string) { return id; }
@@ -88,7 +89,7 @@ describe('status rows add up to the Annotations headline', () => {
   });
 
   it('every verb in the fixture is named by its own row, with no residue', () => {
-    for (const row of ['Actors', 'Confirmed', 'Reaches', 'Effects', 'Gates', 'Shields']) {
+    for (const row of ['Actors', 'Confirmed', 'Tickets', 'Reaches', 'Effects', 'Gates', 'Shields']) {
       expect(out).toMatch(new RegExp(`^${row}:\\s+[1-9]`, 'm'));
     }
     expect(out).toMatch(/^Features:\s+3 tags \(2 features\)/m);

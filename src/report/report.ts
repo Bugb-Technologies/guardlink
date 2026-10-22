@@ -18,7 +18,7 @@ import { generateSequenceDiagram } from './sequence.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 import { entriesFromModel, summarise } from '../blame/summary.js';
 import type { CommitRef } from '../blame/types.js';
-import { findUnmitigatedExposures, normalizeRef } from '../parser/coverage.js';
+import { findUnmitigatedExposures, normalizeRef, ticketStatusResolver } from '../parser/coverage.js';
 import { ACCEPTANCE_REGISTER_SHORT, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
 import { normalizeName } from '../parser/normalize.js';
 import { entitlementDemotionBlockers } from '../parser/parse-project.js';
@@ -269,6 +269,7 @@ export function generateReport(rawModel: ThreatModel, measured?: ReachCheck | nu
   lines.push(`| Accepted risks <sub>${ACCEPTANCE_REGISTER_SHORT}</sub> | ${model.acceptances.length} |`);
   lines.push(`| **Unmitigated exposures** | **${unmitigated.length}** |`);
   if ((model.confirmed || []).length > 0) lines.push(`| **🔴 Confirmed exploitable** | **${model.confirmed.length}** |`);
+  if ((model.tickets || []).length > 0) lines.push(`| Tracked tickets | ${model.tickets!.length} |`);
   if (severityCounts.critical > 0) lines.push(`| ↳ Critical (P0) | ${severityCounts.critical} |`);
   if (severityCounts.high > 0) lines.push(`| ↳ High (P1) | ${severityCounts.high} |`);
   if (severityCounts.medium > 0) lines.push(`| ↳ Medium (P2) | ${severityCounts.medium} |`);
@@ -328,6 +329,26 @@ export function generateReport(rawModel: ThreatModel, measured?: ReachCheck | nu
       const sev = severityBadge(c.severity);
       const desc = c.description ? truncate(c.description, 60) : '—';
       lines.push(`| ${sev} | ${c.asset} | ${c.threat} | ${desc} | ${c.location.file}:${c.location.line} |`);
+    }
+    lines.push('');
+  }
+
+  // ── Tracked Tickets ──
+  // Only when @ticket is written. The state column is the pair's coverage now,
+  // so a ticket whose risk has since been mitigated reads as one to close.
+  if ((model.tickets || []).length > 0) {
+    const status = ticketStatusResolver(model);
+    const cell = (v: string | undefined) => (v ? v.replace(/\|/g, '\\|') : '—');
+    lines.push(h2('Tracked Tickets', slice));
+    lines.push('');
+    lines.push('Open tickets in an external tracker, as recorded with `@ticket`. GuardLink does not read the tracker; the annotation is the record.');
+    lines.push('');
+    lines.push('| Ticket | Threat | Asset | SLA | Assignee | Due | State | Location |');
+    lines.push('|--------|--------|-------|-----|----------|-----|-------|----------|');
+    for (const t of model.tickets!) {
+      const st = status(t);
+      const state = `${st.state}${st.confirmed ? ' (confirmed)' : ''}`;
+      lines.push(`| ${cell(t.ref)} | ${cell(t.threat)} | ${cell(t.asset)} | ${cell(t.sla)} | ${cell(t.assignee)} | ${cell(t.due)} | ${state} | ${t.location.file}:${t.location.line} |`);
     }
     lines.push('');
   }

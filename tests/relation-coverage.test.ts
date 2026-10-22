@@ -51,6 +51,7 @@ const QUERY_FOR: Record<string, string> = {
   reaches: 'reaches',
   effects: 'effects for #db',
   gates: 'gates for #db',
+  tickets: 'tickets for #api',
   external_refs: 'external refs',
 };
 
@@ -90,6 +91,7 @@ const SOURCE = `/**
  * @agents #support-agent to query-users on #api as #agent-session -- "Registered as a tool"
  * @effects write on #db as #agent-session -- "UPDATE under the caller's own token"
  * @gates #db by #oncall for query-users -- "Blocking approval before the write lands"
+ * @ticket #sqli on #api SEC-42 sla "Highest" by alice -- "Tracked in Jira"
  * @flows "#sibling-lib.tokens" -> #api via header -- "Cross-repo token handoff (quoted: the unquoted form does not parse — see report)"
  */
 export function handler(): void {}

@@ -13,9 +13,10 @@
  * @mitigates #dashboard against #xss using #output-encoding -- "Actor, asset and capability names, descriptions and citations are model text; every one goes through esc(), including chip titles"
  * @flows ThreatModel -> #dashboard via summarizeReach -- "Reaches, effects, gates, entitlements and flows for the Agents page"
  * @mitigates #dashboard against #xss using #output-encoding -- "Configuration values (rules, commands, hosts, file paths, doc URLs) are repository text and go through esc() like model text; doc links open with rel=noopener noreferrer"
+ * @mitigates #dashboard against #xss using #output-encoding -- "A configuration doc URL is linked only when externalHref() reads it as absolute http(s), so a javascript: value in repository config is never an href"
  * @comment -- "Chips carry state the design way: a capability is an outlined chip with ✓ (entitled) or ✕ (unentitled), a gated effect carries ⊢, an ungated mutation is a filled warm chip, a read is a plain tag"
  */
-import { esc, scopeLabel, pageHead, subHead, sortableHead, rowAttrs, locCellShort, descCell, pager, plural, statTile } from '../html.js';
+import { esc, externalHref, scopeLabel, pageHead, subHead, sortableHead, rowAttrs, locCellShort, descCell, pager, plural, statTile } from '../html.js';
 import type { ReachSummary, ReachEffectChip, ReachCapabilityChip, ReachLoc, GrantedBy } from '../../reach/index.js';
 import type { PageContext } from './context.js';
 import { actorTables } from './tables.js';
@@ -143,7 +144,7 @@ function codingSection(s: ReachSummary, loc: (l: ReachLoc) => string): string {
       <td>${r.gated ? 'yes' : '<strong>no</strong>'}</td>
       <td>${r.entitled ? '<span class="reach-chip reach-cap ok"><span class="g">✓</span>entitled</span>' : '<span class="reach-chip reach-cap bad"><span class="g">✕</span>no</span>'}</td>
       <td>${r.effects.length > 0 ? r.effects.map(e => `<span class="reach-chip reach-eff ungated"><i class="sw"></i>${esc(e)} · no gate</span>`).join('') : '<span class="muted">—</span>'}</td>
-      <td>${grantedBy(r.granted_by)}${r.granted_by.doc ? ` <a class="muted" href="${esc(r.granted_by.doc)}" rel="noopener noreferrer" target="_blank">${esc(r.granted_by.rule)}</a>` : ''}</td>
+      <td>${grantedBy(r.granted_by)}${externalHref(r.granted_by.doc) ? ` <a class="muted" href="${esc(externalHref(r.granted_by.doc))}" rel="noopener noreferrer" target="_blank">${esc(r.granted_by.rule)}</a>` : ''}</td>
       ${loc({ file: r.granted_by.file, line: r.granted_by.line })}
     </tr>`).join('')}
     </tbody>

@@ -135,6 +135,7 @@ export function filterByFeature(model: ThreatModel, featureNames: string[]): Thr
   const reaches = inFeature(model.reaches || []);
   const effects = inFeature(model.effects || []);
   const gates = inFeature(model.gates || []);
+  const tickets = inFeature(model.tickets || []);
 
   // ── Definitions: resolved from what the kept relations reference ──
   //
@@ -151,7 +152,7 @@ export function filterByFeature(model: ThreatModel, featureNames: string[]): Thr
   const bare = (ref: string): string => (ref ?? '').replace(/^#/, '').toLowerCase();
 
   const assetRefs = new Set<string>();
-  for (const r of [...exposures, ...mitigations, ...confirmed, ...acceptances,
+  for (const r of [...exposures, ...mitigations, ...confirmed, ...tickets, ...acceptances,
     ...audits, ...ownership, ...dataHandling, ...assumptions, ...validations]) assetRefs.add(bare(r.asset));
   for (const f of flows) { assetRefs.add(bare(f.source)); assetRefs.add(bare(f.target)); }
   for (const t of transfers) { assetRefs.add(bare(t.source)); assetRefs.add(bare(t.target)); }
@@ -162,7 +163,7 @@ export function filterByFeature(model: ThreatModel, featureNames: string[]): Thr
   for (const g of gates) assetRefs.add(bare(g.asset));
 
   const threatRefs = new Set<string>();
-  for (const r of [...exposures, ...mitigations, ...confirmed, ...acceptances, ...transfers]) threatRefs.add(bare(r.threat));
+  for (const r of [...exposures, ...mitigations, ...confirmed, ...tickets, ...acceptances, ...transfers]) threatRefs.add(bare(r.threat));
   for (const en of entitlements) if (en.threat) threatRefs.add(bare(en.threat));
 
   const controlRefs = new Set<string>();
@@ -250,6 +251,7 @@ export function filterByFeature(model: ThreatModel, featureNames: string[]): Thr
     mitigations,
     exposures,
     confirmed,
+    tickets,
     acceptances,
     transfers,
     flows,

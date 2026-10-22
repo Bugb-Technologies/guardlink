@@ -81,6 +81,7 @@ export function canonicalizeModelOrder(model: ThreatModel): ThreatModel {
     ...(model.reaches ? { reaches: sorted(model.reaches) } : {}),
     ...(model.effects ? { effects: sorted(model.effects) } : {}),
     ...(model.gates ? { gates: sorted(model.gates) } : {}),
+    ...(model.tickets ? { tickets: sorted(model.tickets) } : {}),
     annotated_files: [...model.annotated_files].sort(),
     unannotated_files: [...model.unannotated_files].sort(),
     ...(model.external_refs ? { external_refs: sorted(model.external_refs) } : {}),

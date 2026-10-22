@@ -89,6 +89,11 @@ const ALLOWED: { file: string; snippet: string; why: string }[] = [
   },
   {
     file: 'src/diff/engine.ts',
+    snippet: '`${normalizeRef(t.asset)}::${normalizeRef(t.threat)}::${t.ref}`',
+    why: 'ticketKey — record identity for the @ticket diff (pair plus ref), so a changed sla, assignee or due date reads as a modification; whether the pair is covered comes from ticketStatusResolver in coverage.ts',
+  },
+  {
+    file: 'src/diff/engine.ts',
     snippet: '`${normalizeRef(e.asset)}::${normalizeRef(e.threat)}::${e.location.file}::${site}`',
     why: 'unmitignatedKey — the D36 site-keyed identity for the risk delta; already site-aware',
   },

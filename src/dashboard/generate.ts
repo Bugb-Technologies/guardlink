@@ -39,6 +39,7 @@
  * @feature "Dashboard" -- "Interactive HTML threat model dashboard"
  * @mitigates #dashboard against #xss using #output-encoding -- "Feature scope names come from @feature annotations and the --feature flag; every one is rendered through esc()"
  * @comment -- "A model narrowed with --feature carries filtered_by_features. The page then declares itself a slice in the title, the top bar and a banner, and suppresses the project-wide measures (file coverage, unannotated files) that a slice cannot answer"
+ * @comment -- "The Tickets page and its rail link exist only when the model holds a @ticket, like Attribution: a model without one gets no Tickets page and no rail link"
  * @comment -- "No remote reference of any kind is emitted: the page renders offline and under a host policy that blocks every network origin"
  */
 import type { ThreatModel } from '../types/index.js';
@@ -46,7 +47,7 @@ import { listFeatures, filterByFeature } from '../parser/feature-filter.js';
 import { canonicaliser } from '../mcp/subgraph.js';
 import { canonicalizeModelOrder } from '../parser/canonical-order.js';
 import type { ThreatReportWithContent } from '../analyze/index.js';
-import { computeStats, computeSeverity, computeSeverityOf, computeExposures, computeConfirmed, computeAssetHeatmap, computeAttribution, computeActions, computeLedgerStates, computeAssetDetails, computeOwnership, computeFileRisk, fileRiskRank, computeChanges, newClaimKeys } from './data.js';
+import { computeStats, computeSeverity, computeSeverityOf, computeExposures, computeConfirmed, computeAssetHeatmap, computeAttribution, computeActions, computeLedgerStates, computeAssetDetails, computeOwnership, computeFileRisk, fileRiskRank, computeChanges, newClaimKeys, computeTickets } from './data.js';
 import type { SinceInput } from './analytics.js';
 import { computeRiskGrade } from './grade.js';
 import { detectRepoLinks } from './links.js';
@@ -64,6 +65,7 @@ import { renderCodePage } from './pages/code.js';
 import { renderAgentsPage } from './pages/agents.js';
 import { renderReportsPage } from './pages/reports.js';
 import { renderAttributionPage } from './pages/attribution.js';
+import { renderTicketsPage } from './pages/tickets.js';
 import { summarizeReach } from '../reach/index.js';
 import { measuredRoutes, type ReachCheck } from '../codegraph/reach-check.js';
 import { findUnmitigatedPaths, classifyEndpoints } from '../paths/index.js';
@@ -148,6 +150,8 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
     || (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
   // What agents and other principals can reach: the Agents page, the asset drawer, the actor table and the actions read it.
   const reach = summarizeReach(model);
+  // @ticket rows with their pair's state; no Tickets page without one.
+  const tickets = computeTickets(model);
   const actions = computeActions({ model, exposures, confirmed, verification: ledgerRead?.report ?? null, attribution, scope, unownedExposed: ownership.unowned.map(u => u.asset), reach });
   // One record per asset, in heatmap order: the asset drawer indexes it.
   const assetsData = computeAssetDetails(model, claims, heatmap, attribution?.as_of ?? null, reach);
@@ -165,7 +169,7 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   const ctx: PageContext = {
     model, scope, scopeFiles, links, hostLabel: hostLabel(links),
     stats, severity, exposures, confirmed, unmitigated, mitigatedCount, mitigationCoveragePercent, risk,
-    claims, ledger, attribution, actions, heatmap, fileAnnotations, reach,
+    claims, ledger, attribution, actions, heatmap, fileAnnotations, reach, tickets,
     ...(opts.measured ? { measured: measuredRoutes(model, opts.measured) } : {}),
     analyses: analyses || [],
     changes,
@@ -258,6 +262,7 @@ ${scope ? `<div id="scope-banner" class="scope-banner" role="note">
       r.page === 'exposures' && openCount > 0 ? String(openCount)
       : r.page === 'agents' && reach.totals.unentitled + reach.totals.ungated > 0 ? String(reach.totals.unentitled + reach.totals.ungated)
       : r.page === 'reports' && ctx.analyses.length > 0 ? String(ctx.analyses.length) : undefined)).join('\n    ')}
+    ${tickets.length > 0 ? railLink('tickets', 'Tickets', 'ticket', false, String(tickets.length)) : ''}
     ${attribution ? `<div class="sep"></div>${railLink('attribution', 'Attribution', 'users')}` : ''}
   </div>
   <div class="rail-foot">
@@ -276,6 +281,7 @@ ${renderAssetsPage(ctx, graph)}
 ${renderCodePage(ctx)}
 ${renderAgentsPage(ctx, reach)}
 ${renderReportsPage(ctx)}
+${tickets.length > 0 ? renderTicketsPage(ctx) : ''}
 ${attribution ? renderAttributionPage(attribution, ctx) : ''}
 
 </main>

@@ -9,6 +9,7 @@
  * @comment -- "@entitles takes optional `on <asset>` and `against <threat>` clauses because the join is the (actor, asset, threat) triple, not the capability — a capability-keyed join would demote every threat on the asset including one discovered later (actor-entitlement design §9.3)"
  * @mitigates #parser against #redos using #regex-anchoring -- "@agents, @reaches, @effects and @gates reuse the anchored ASSET_REF, THREAT_REF, CAPABILITY and DESC fragments and add only a closed alternation for the effect class"
  * @comment -- "@effects takes a closed effect set, like @handles takes a closed classification set: an open string cannot be compared across repositories or drive a query"
+ * @mitigates #parser against #redos using #regex-anchoring -- "@ticket adds one TICKET_REF fragment: a quoted string or a single run of non-space, non-quote characters, so it cannot overlap the whitespace that separates it from the next clause"
  */
 
 import type {
@@ -100,6 +101,14 @@ const EFFECT = String.raw`(read|write|delete|execute|spend|notify)`;
 const AUTHOR    = String.raw`(?:${QUOTED_REF}|[A-Za-z][\w.@+\-]*)`;
 /** `until <YYYY-MM-DD>`. Calendar validity is checked at assembly, not here. */
 const ISO_DATE  = String.raw`\d{4}-\d{2}-\d{2}`;
+/**
+ * The ticket in `@ticket … on <asset> <ref>`: a quoted string, or one bare
+ * token — `SEC-42`, `jira:SEC-42`, `https://acme.atlassian.net/browse/SEC-42`.
+ * The ext-ref token has no `/`, so a URL needs its own fragment. A bare ref may
+ * not start with `-` or be a clause keyword, so a missing ref fails to parse
+ * instead of silently recording `sla` or `--` as the ticket.
+ */
+const TICKET_REF = String.raw`(?:${QUOTED_REF}|(?!(?:sla|by|until)(?:\s|$))[^\s"\-][^\s"]*)`;
 const SEVERITY  = String.raw`\[(P[0-3]|critical|high|medium|low)\]`;
 const DESC      = String.raw`--\s*"((?:[^"\\]|\\.)*)"`;
 const SOURCE_FILE = String.raw`\S+`;
@@ -123,6 +132,9 @@ const PATTERNS: Record<string, RegExp> = {
   mitigates_v1: new RegExp(String.raw`^@mitigates\s+(${ASSET_REF})\s+against\s+(${THREAT_REF})(?:\s+with\s+(${THREAT_REF}))?(?:\s+${DESC})?$`),
   exposes: new RegExp(String.raw`^@exposes\s+(${ASSET_REF})\s+to\s+(${THREAT_REF})(?:\s+${SEVERITY})?${EXT_REFS_OPT}(?:\s+${DESC})?$`),
   confirmed: new RegExp(String.raw`^@confirmed\s+(${THREAT_REF})\s+on\s+(${ASSET_REF})(?:\s+${SEVERITY})?${EXT_REFS_OPT}(?:\s+${DESC})?$`),
+  // `sla`, `by` and `until` reuse the @accepts clause shapes: the tracker's own
+  // priority label (quoted, kept verbatim), the assignee, and the due date.
+  ticket: new RegExp(String.raw`^@ticket\s+(${THREAT_REF})\s+on\s+(${ASSET_REF})\s+(${TICKET_REF})(?:\s+sla\s+(${QUOTED_REF}))?(?:\s+by\s+(${AUTHOR}))?(?:\s+until\s+(${ISO_DATE}))?(?:\s+${DESC})?$`),
   // `by <who>` and `until <date>` are what turn an acceptance from a deletion
   // into a decision: who signed, and when the signature stops covering. Both
   // stay optional so every acceptance written before they existed still parses —
@@ -326,6 +338,18 @@ export function parseLine(
       ...base, verb: 'confirmed', threat: resolveRef(m[1]), asset: resolveRef(m[2]),
       severity: m[3] ? resolveSeverity(m[3]) : undefined,
       external_refs: extractExternalRefs(m[4]), description: desc(m[5]),
+    });
+  }
+
+  // ── @ticket ──
+  if ((m = trimmed.match(PATTERNS.ticket))) {
+    return ok({
+      ...base, verb: 'ticket', threat: resolveRef(m[1]), asset: resolveRef(m[2]),
+      ref: resolveRef(m[3]),
+      sla: m[4] ? resolveRef(m[4]) : undefined,
+      assignee: m[5] ? resolveRef(m[5]) : undefined,
+      due: m[6] || undefined,
+      description: desc(m[7]),
     });
   }
 
@@ -607,7 +631,7 @@ function ok(annotation: Annotation): ParseLineResult {
 // ─── D29: prose that starts with a verb vs a broken annotation ───────
 
 const KNOWN_VERBS: ReadonlySet<string> = new Set([
-  'asset', 'threat', 'control', 'actor', 'mitigates', 'exposes', 'confirmed', 'accepts', 'entitles',
+  'asset', 'threat', 'control', 'actor', 'mitigates', 'exposes', 'confirmed', 'ticket', 'accepts', 'entitles',
   'transfers', 'flows', 'boundary', 'validates', 'audit', 'owns',
   'agents', 'reaches', 'effects', 'gates',
   'handles', 'assumes', 'feature', 'source', 'comment', 'shield', 'shield:begin', 'shield:end',
@@ -772,6 +796,9 @@ const VERB_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
   exposes: ['to'],
   mitigates: ['against', 'using', 'with'],
   confirmed: ['on'],
+  // `sla` is GuardLink's own word, so it counts; `by` and `until` do not, for
+  // the reason they are absent from @accepts below.
+  ticket: ['on', 'sla'],
   // `by` and `until` are in the @accepts GRAMMAR but deliberately NOT here.
   //
   // This list answers "did someone try to write an annotation and miss?", and

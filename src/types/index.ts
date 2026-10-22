@@ -20,6 +20,8 @@ export type AnnotationVerb =
   | 'agents' | 'reaches' | 'effects' | 'gates'
   // Evidence
   | 'confirmed'
+  // Tracking — an open ticket in an external tracker
+  | 'ticket'
   // Lifecycle
   | 'validates' | 'audit' | 'owns' | 'handles' | 'assumes'
   // Metadata
@@ -135,6 +137,28 @@ export interface ConfirmedAnnotation extends BaseAnnotation {
   asset: string;
   severity?: Severity;
   external_refs: string[];
+}
+
+/**
+ * "This threat on this asset has an open ticket in our tracker."
+ *
+ * GuardLink never talks to the tracker: the line is the whole record. Presence
+ * means open; closing the ticket is removing the line. `sla` is the company's
+ * own priority label, kept verbatim — it is not mapped onto GuardLink severity,
+ * which stays on the threat and the exposure.
+ */
+export interface TicketAnnotation extends BaseAnnotation {
+  verb: 'ticket';
+  threat: string;
+  asset: string;
+  /** The ticket id or URL, as written: `SEC-42`, `jira:SEC-42`, `https://…`. */
+  ref: string;
+  /** `sla "<label>"` — the tracker's own priority wording. */
+  sla?: string;
+  /** `by <assignee>` — who the ticket is assigned to. */
+  assignee?: string;
+  /** `until <YYYY-MM-DD>` — the SLA due date. */
+  due?: string;
 }
 
 /**
@@ -326,6 +350,7 @@ export type Annotation =
   | MitigatesAnnotation
   | ExposesAnnotation
   | ConfirmedAnnotation
+  | TicketAnnotation
   | AcceptsAnnotation
   | EntitlesAnnotation
   | ReachesAnnotation
@@ -659,6 +684,8 @@ export interface ThreatModel {
   mitigations: ThreatModelMitigation[];
   exposures: ThreatModelExposure[];
   confirmed: ThreatModelConfirmed[];
+  /** Open tracker tickets (@ticket). Optional so report JSON written before it still satisfies the schema. */
+  tickets?: ThreatModelTicket[];
   acceptances: ThreatModelAcceptance[];
   transfers: ThreatModelTransfer[];
   flows: ThreatModelFlow[];
@@ -881,6 +908,18 @@ export interface ThreatModelConfirmed {
   blame?: import('../blame/types.js').ExposureBlame;
 }
 
+/** One `@ticket` claim: an open tracker ticket for <threat> on <asset>. */
+export interface ThreatModelTicket {
+  threat: string;
+  asset: string;
+  ref: string;
+  sla?: string;
+  assignee?: string;
+  due?: string;
+  description?: string;
+  location: SourceLocation;
+}
+
 export interface ThreatModelAcceptance {
   threat: string;
   asset: string;
@@ -1101,6 +1140,10 @@ export type DiagnosticCode =
    * acceptance that fails this does not count as an acceptance there.
    */
   | 'acceptance-unqualified'
+  /** `@ticket … until <date>` names a day that does not exist (2026-02-30), so no SLA can be read from it. */
+  | 'ticket-malformed-due'
+  /** `@ticket` names a threat/asset pair no `@exposes` or `@confirmed` declares: the ticket tracks a risk the model does not hold. */
+  | 'ticket-without-exposure'
   /** A `.gal` sidecar sits somewhere other than its conventional path. */
   | 'off-convention-gal'
   /** An on-convention `.gal` sidecar carries `@source` blocks for other files. */

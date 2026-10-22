@@ -24,7 +24,7 @@ import type {
   ThreatModel,
   ThreatModelAsset, ThreatModelThreat, ThreatModelControl, ThreatModelActor,
   ThreatModelMitigation, ThreatModelExposure, ThreatModelConfirmed, ThreatModelAcceptance,
-  ThreatModelEntitlement, ThreatModelReach, ThreatModelEffect, ThreatModelGate,
+  ThreatModelEntitlement, ThreatModelReach, ThreatModelEffect, ThreatModelGate, ThreatModelTicket,
   ThreatModelFlow, ThreatModelBoundary, ThreatModelTransfer,
   AgentConfigHook, AgentConfigMcpServer, AgentConfigBundledFile,
 } from '../types/index.js';
@@ -61,6 +61,8 @@ export interface ThreatModelDiff {
   reaches: Change<ThreatModelReach>[];
   effects: Change<ThreatModelEffect>[];
   gates: Change<ThreatModelGate>[];
+  /** Tracker tickets (@ticket). A changed sla, assignee or due date is a modification. */
+  tickets: Change<ThreatModelTicket>[];
   flows: Change<ThreatModelFlow>[];
   boundaries: Change<ThreatModelBoundary>[];
   transfers: Change<ThreatModelTransfer>[];
@@ -172,6 +174,7 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
   const reaches = diffByKey(annotated(before.reaches), annotated(after.reaches), reachKeyIn(before), reachChanged, reachKeyIn(after));
   const effects = diffByKey(annotated(before.effects), annotated(after.effects), effectKey, effectChanged);
   const gates = diffByKey(annotated(before.gates), annotated(after.gates), gateKey, gateChanged);
+  const tickets = diffByKey(before.tickets || [], after.tickets || [], ticketKey, ticketChanged);
   const agentConfig = diffAgentConfig(before, after);
   const driftRows = (m: ThreatModel) => {
     const block = m.observed_reach ? buildReachAttestation(m, m.observed_reach, m.tool_pins) : m.reach_attestation;
@@ -206,7 +209,7 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
 
   const staleEntitlements = findStaleEntitlements(after, options.changedFiles);
 
-  const allChanges = [assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances, entitlements, reaches, effects, gates, flows, boundaries, transfers];
+  const allChanges = [assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances, entitlements, reaches, effects, gates, tickets, flows, boundaries, transfers];
   const totalChanges = allChanges.reduce((sum, c) => sum + c.length, 0);
   const added = allChanges.reduce((sum, c) => sum + c.filter(x => x.kind === 'added').length, 0);
   const removed = allChanges.reduce((sum, c) => sum + c.filter(x => x.kind === 'removed').length, 0);
@@ -227,7 +230,7 @@ export function diffModels(before: ThreatModel, after: ThreatModel, options: Dif
       agentConfigChanges: agentConfig.newReach.length + agentConfig.removedReach.length + agentConfig.launchChanges.length
         + agentConfig.newMcpServers.length + agentConfig.newHooks.length + agentConfig.bundledChanges.length + (agentConfig.surfaceChanges?.length ?? 0),
     },
-    assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances, entitlements, reaches, effects, gates, flows, boundaries, transfers,
+    assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances, entitlements, reaches, effects, gates, tickets, flows, boundaries, transfers,
     newUnmitigatedExposures,
     resolvedExposures,
     newUnentitledReaches,
@@ -414,6 +417,24 @@ function effectKey(e: ThreatModelEffect): string {
 /** A gate is identified by what it guards, who decides, and for which capability. */
 function gateKey(g: ThreatModelGate): string {
   return `${normalizeRef(g.asset)}::${normalizeRef(g.approver)}::${g.canonical_capability ?? ''}`;
+}
+
+/**
+ * A ticket is identified by the pair it tracks and its ref. Retargeting it onto
+ * another pair is a removal plus an addition; everything a tracker changes over
+ * a ticket's life — priority, assignee, due date — is a modification.
+ */
+function ticketKey(t: ThreatModelTicket): string {
+  return `${normalizeRef(t.asset)}::${normalizeRef(t.threat)}::${t.ref}`;
+}
+
+function ticketChanged(a: ThreatModelTicket, b: ThreatModelTicket): string | null {
+  const changes: string[] = [];
+  if (a.sla !== b.sla) changes.push(`sla: ${a.sla || 'none'} → ${b.sla || 'none'}`);
+  if (a.assignee !== b.assignee) changes.push(`assignee: ${a.assignee || 'none'} → ${b.assignee || 'none'}`);
+  if (a.due !== b.due) changes.push(`due: ${a.due || 'none'} → ${b.due || 'none'}`);
+  if (a.description !== b.description) changes.push('description changed');
+  return changes.length > 0 ? changes.join('; ') : null;
 }
 
 function mitigationKey(m: ThreatModelMitigation): string {

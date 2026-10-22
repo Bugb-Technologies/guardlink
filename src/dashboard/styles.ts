@@ -697,6 +697,21 @@ table.heat { width: auto; min-width: 100%; }
 .reach-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 11.5px; color: var(--fg-muted); margin-bottom: 14px; }
 .reach-miss { font-size: 12px; margin: 2px 0; }
 .reach-example { margin-bottom: 14px; }
+
+/* tickets */
+.ticket-cell { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.ticket-ref { font-family: var(--font-mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn.btn-xs { height: 20px; padding: 0 4px; font-size: 11px; color: var(--fg-muted); }
+.btn.btn-xs .ico { width: 13px; height: 13px; }
+.ticket-due { white-space: nowrap; }
+.ticket-due .ticket-overdue { margin: 4px 0 0; }
+#tickets-table .tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.ticket-overdue { display: flex; width: max-content; align-items: center; gap: 5px; height: 18px; padding: 0 7px; border-radius: 5px; font-size: 10.5px; font-weight: 600; color: var(--fg); background: var(--sev-high-subtle); }
+.ticket-overdue .sw { display: block; width: 8px; height: 8px; border-radius: 2px; background: var(--sev-high); }
+.ticket-tag { gap: 4px; color: var(--fg); text-decoration: none; }
+.ticket-tag .ico { width: 12px; height: 12px; }
+.ticket-tag:hover { background: var(--hover); text-decoration: none; }
+.ann-ticket { border-color: var(--review); color: var(--fg); }
 .reach-owasp { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
 .reach-owasp-item { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--panel); }
 .reach-owasp-item.has { border-color: var(--border-strong); }

@@ -22,7 +22,7 @@ import type { ThreatReportWithContent } from '../../analyze/index.js';
 import type { RepoLinks } from '../links.js';
 import { buildAssetIndex } from '../analytics.js';
 import type { ChangeSummary, FileRisk } from '../analytics.js';
-import type { DashboardStats, SeverityBreakdown, ExposureRow, ConfirmedRow, AssetHeatmapEntry, AttributionData, DashboardAction } from '../data.js';
+import type { DashboardStats, SeverityBreakdown, ExposureRow, ConfirmedRow, AssetHeatmapEntry, AttributionData, DashboardAction, TicketRow } from '../data.js';
 import type { FileAnnotationGroup } from '../annotations.js';
 
 export type ClaimStatus = 'open' | 'mitigated' | 'accepted' | 'confirmed' | 'control' | 'refuted';
@@ -107,6 +107,8 @@ export interface PageContext {
   fileRisk: Map<string, FileRisk>;
   /** What agents and other principals can reach (src/reach). */
   reach: ReachSummary;
+  /** Open tracker tickets (@ticket); empty when none are written, and then no Tickets page is rendered. */
+  tickets: TicketRow[];
   /** What a code graph measured for each declared reach; absent unless the dashboard was given an answer (`--code-graph`). */
   measured?: MeasuredRouteRow[];
 }

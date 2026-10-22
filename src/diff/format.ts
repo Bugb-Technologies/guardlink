@@ -103,6 +103,7 @@ export function formatDiff(diff: ThreatModelDiff): string {
   emitSection('Reaches', diff.reaches, lines, describeReach);
   emitSection('Effects', diff.effects, lines, e => `${e.effect} on ${e.asset}${e.identity ? ` as ${e.identity}` : ''}`);
   emitSection('Gates', diff.gates, lines, g => `${g.asset} by ${g.approver}${g.capability ? ` for ${g.capability}` : ''}`);
+  emitSection('Tickets', diff.tickets ?? [], lines, describeTicket);
   emitSection('Flows', diff.flows, lines, f => `${f.source} → ${f.target}${f.mechanism ? ` via ${f.mechanism}` : ''}`);
   emitSection('Boundaries', diff.boundaries, lines, b => (b.directed ? `${b.asset_a} → ${b.asset_b} (outer → inner)` : `${b.asset_a} ↔ ${b.asset_b}`));
   emitSection('Transfers', diff.transfers, lines, t => `${t.source} → ${t.target} (${t.threat})`);
@@ -209,6 +210,11 @@ function emitAgentConfigMarkdown(diff: ThreatModelDiff, lines: string[]): void {
     for (const r of a.removedReach) lines.push(`| - | ${r.actor} | \`${r.capability}\` | ${r.asset ?? '—'} | ${r.source?.gated ? 'yes' : 'no'} | \`${grant(r)}\` |`);
     lines.push('');
   }
+}
+
+/** A ticket in its own words: `#sqli on #api SEC-42 sla "Highest" by alice until 2026-11-30`. */
+function describeTicket(t: { threat: string; asset: string; ref: string; sla?: string; assignee?: string; due?: string }): string {
+  return `${t.threat} on ${t.asset} ${t.ref}${t.sla ? ` sla "${t.sla}"` : ''}${t.assignee ? ` by ${t.assignee}` : ''}${t.due ? ` until ${t.due}` : ''}`;
 }
 
 /** A reach in its own words: `@agents #bot to run-sql on #api as #svc`. */
@@ -337,6 +343,14 @@ export function formatDiffMarkdown(diff: ThreatModelDiff): string {
     for (const c of diff.reaches) lines.push(`- ${mark(c.kind)} ${describeReach(c.item)}${c.details ? ` (${c.details})` : ''}`);
     for (const c of diff.effects) lines.push(`- ${mark(c.kind)} @effects ${c.item.effect} on ${c.item.asset}${c.item.identity ? ` as ${c.item.identity}` : ''}`);
     for (const c of diff.gates) lines.push(`- ${mark(c.kind)} @gates ${c.item.asset} by ${c.item.approver}${c.item.capability ? ` for ${c.item.capability}` : ''}`);
+    lines.push('');
+  }
+
+  if ((diff.tickets ?? []).length > 0) {
+    lines.push('#### Tickets');
+    lines.push('');
+    const mark = (k: string) => (k === 'added' ? '+' : k === 'removed' ? '-' : '~');
+    for (const c of diff.tickets) lines.push(`- ${mark(c.kind)} @ticket ${describeTicket(c.item)}${c.details ? ` (${c.details})` : ''}`);
     lines.push('');
   }
 

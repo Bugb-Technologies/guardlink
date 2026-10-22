@@ -8,6 +8,7 @@
  * @comment -- "@confirmed refs validated same as @exposes for asset and threat"
  * @comment -- "findUnresolvedBoundarySides errors on a directed @boundary whose outer or inner side names no declared asset and no @flows endpoint, so a declared direction cannot point consumers at nothing"
  * @comment -- "findUndeclaredActors / findInertEntitlements implement the two mechanical @entitles checks from docs/prd/actor-entitlement-design.md §3.7 — both typo-class; entitlement intent is not machine-checkable"
+ * @comment -- "findTicketDiagnostics errors on a @ticket due date that is no calendar day and warns on a ticket whose pair the model never declares exposed — a typo in the threat or asset would otherwise track nothing"
  * @comment -- "findUndeclaredActors also covers the actor on @agents/@reaches and the approver on @gates; findAgentReachConflicts errors when one actor is written under both @agents and @reaches, because which verb names an actor is what says whether it is an agent"
  */
 
@@ -24,6 +25,8 @@ import { normalizeName } from './normalize.js';
 import { canonicaliser } from './canonical-ref.js';
 import { entitlementDemotionBlockers } from './parse-project.js';
 import { actorResolver } from './reach.js';
+import { parseExpiry } from './acceptance.js';
+import { ticketStatusResolver } from './coverage.js';
 
 /**
  * Find all dangling #id references in the threat model.
@@ -72,6 +75,10 @@ export function findDanglingRefs(model: ThreatModel): ParseDiagnostic[] {
   for (const c of model.confirmed || []) {
     checkRef(c.asset, c.location);
     checkRef(c.threat, c.location);
+  }
+  for (const t of model.tickets || []) {
+    checkRef(t.asset, t.location);
+    checkRef(t.threat, t.location);
   }
   for (const a of model.acceptances) {
     checkRef(a.asset, a.location);
@@ -366,6 +373,43 @@ export function findAcceptedWithoutAudit(model: ThreatModel): ParseDiagnostic[] 
 }
 
 /**
+ * The two mechanical `@ticket` checks.
+ *
+ * `until 2026-02-30` is an error: the grammar accepts the shape, and an SLA date
+ * that is no day can never say whether a ticket is overdue. A ticket on a pair
+ * no `@exposes` or `@confirmed` declares is a warning: the ticket is real, but
+ * the model does not hold the risk it tracks, which is usually a typo in the
+ * threat or asset. Dangling refs are `findDanglingRefs`' job.
+ */
+export function findTicketDiagnostics(model: ThreatModel): ParseDiagnostic[] {
+  const tickets = model.tickets || [];
+  if (tickets.length === 0) return [];
+  const diagnostics: ParseDiagnostic[] = [];
+  const status = ticketStatusResolver(model);
+  for (const t of tickets) {
+    if (t.due && !parseExpiry(t.due)) {
+      diagnostics.push({
+        level: 'error',
+        code: 'ticket-malformed-due',
+        message: `@ticket ${t.ref}: until ${t.due} is not a calendar date — write a real YYYY-MM-DD so the SLA can be read`,
+        file: t.location.file,
+        line: t.location.line,
+      });
+    }
+    if (status(t).state === 'unexposed') {
+      diagnostics.push({
+        level: 'warning',
+        code: 'ticket-without-exposure',
+        message: `@ticket ${t.ref} tracks ${t.threat} on ${t.asset}, but no @exposes or @confirmed declares that pair — check the threat and asset, or add the exposure`,
+        file: t.location.file,
+        line: t.location.line,
+      });
+    }
+  }
+  return diagnostics;
+}
+
+/**
  * Warn about `.gal` sidecars that are not where the convention says they should be.
  *
  * Enforced by warning, never by refusing to parse. An off-convention file still
@@ -424,6 +468,7 @@ function allLocations(model: ThreatModel): SourceLocation[] {
     ...model.acceptances, ...model.transfers, ...model.flows,
     ...model.boundaries, ...model.validations, ...model.audits,
     ...model.ownership, ...model.data_handling, ...model.assumptions,
+    ...(model.reaches || []), ...(model.effects || []), ...(model.gates || []), ...(model.tickets || []),
     ...model.shields, ...model.features, ...model.comments,
   ].map(a => a.location);
 }

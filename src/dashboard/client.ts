@@ -55,7 +55,7 @@ function _sevOf(list) {
 }
 
 /* ===== ROUTER: #page?q=&sev=&status=&state=&who=&file=&tab=&view=&focus=&pin=&cell= ===== */
-var PAGES = ['overview', 'exposures', 'diagrams', 'assets', 'code', 'agents', 'reports', 'attribution'];
+var PAGES = ['overview', 'exposures', 'diagrams', 'assets', 'code', 'agents', 'reports', 'tickets', 'attribution'];
 /* The page names before the seven-page rail. Links in reports and older pages keep working. */
 var OLD = { summary: 'overview', analytics: 'exposures', threats: 'exposures', explore: 'diagrams', data: 'diagrams', 'ai-analysis': 'reports' };
 var _route = { page: 'overview', params: new URLSearchParams() };
@@ -535,6 +535,7 @@ function renderAssetDrawer(idx) {
   if (a.assumptions) life.push(_plural(a.assumptions, 'assumption'));
   if (a.validations) life.push(_plural(a.validations, 'validation'));
   if (life.length) facts.push(sec('Lifecycle', life.join(' · ')));
+  if (a.tickets && a.tickets.length) facts.push(sec('Tickets', a.tickets.map(function (t) { return '<a class="pill" href="#tickets?q=' + encodeURIComponent(t.ref) + '" title="' + esc(t.threat) + '"><code>' + esc(t.ref.length > 32 ? t.ref.slice(0, 31) + '…' : t.ref) + '</code></a>'; }).join(' ')));
   if (a.states) facts.push(sec('Claims', ['verified', 'stale', 'unverified'].map(function (k) { return '<span class="claim-state ' + k + '"><span class="g">' + GLYPH[k] + '</span>' + a.states[k] + ' ' + k + '</span>'; }).join(' ')));
   if (facts.length) h += '<div class="d-grid">' + facts.join('') + '</div>';
   if (a.attribution) {
@@ -561,8 +562,10 @@ function renderAssetDrawer(idx) {
 }
 
 /* ===== ANNOTATION DRAWER ===== */
-var FIELD_ORDER = ['asset', 'threat', 'control', 'severity', 'source', 'target', 'mechanism', 'classification', 'owner', 'actor', 'capability', 'asset_a', 'asset_b', 'reason', 'justification', 'path', 'id', 'name'];
-var FIELD_LABEL = { asset_a: 'Side A', asset_b: 'Side B', id: 'Id', path: 'Path' };
+var FIELD_ORDER = ['asset', 'threat', 'control', 'severity', 'source', 'target', 'mechanism', 'classification', 'owner', 'actor', 'capability', 'asset_a', 'asset_b', 'reason', 'justification', 'path', 'id', 'name', 'ref', 'sla', 'assignee', 'due'];
+var FIELD_LABEL = { asset_a: 'Side A', asset_b: 'Side B', id: 'Id', path: 'Path', ref: 'Ticket', sla: 'SLA', due: 'Due' };
+/* A ticket ref is a link only when it is an absolute http(s) URL; anything else, javascript: included, stays text. */
+function ticketHref(v) { return /^https?:[/][/][^ "'<>]+$/i.test(v || '') ? v : null; }
 /* Everything one annotation carries: its fields, the claim it makes (status, ledger state, attribution), the asset it is about, its raw text and the code around it. */
 function openAnnotationDrawer(fileIdx, annIdx) {
   var f = typeof fileAnnotations !== 'undefined' ? fileAnnotations[fileIdx] : null; if (!f) return;
@@ -579,7 +582,9 @@ function openAnnotationDrawer(fileIdx, annIdx) {
   if (keys.length || (a.refs && a.refs.length)) {
     h += '<div class="d-fields">' + keys.map(function (k) {
       var label = FIELD_LABEL[k] || (k.charAt(0).toUpperCase() + k.slice(1));
+      var href = k === 'ref' ? ticketHref(fields[k]) : null;
       var v = k === 'severity' ? sevChip(fields[k])
+        : href ? '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(fields[k]) + '</a>'
         : k === 'asset' || k === 'threat' || k === 'control' || k === 'source' || k === 'target' || k === 'asset_a' || k === 'asset_b' || k === 'id' || k === 'path'
           ? '<a class="pill" href="#exposures?q=' + encodeURIComponent(fields[k]) + '" title="Show rows naming this"><code>' + esc(fields[k]) + '</code></a>'
           : esc(fields[k]);
@@ -602,6 +607,7 @@ function openAnnotationDrawer(fileIdx, annIdx) {
   h += '<div class="d-actions">'
      + (c ? '<a class="btn primary" href="#exposures?q=' + encodeURIComponent(q) + '">Open in Exposures</a>' : q ? '<a class="btn primary" href="#exposures?q=' + encodeURIComponent(q) + '">Related exposures</a>' : '')
      + (tile ? '<button class="btn" data-asset-drawer="' + a.assetIdx + '">Asset details</button>' : '')
+     + (a.kind === 'ticket' && fields.ref && document.getElementById('sec-tickets') ? '<a class="btn" href="#tickets?q=' + encodeURIComponent(fields.ref) + '">Show in Tickets</a>' : '')
      + (a.url ? '<a class="btn" href="' + esc(a.url) + '" target="_blank" rel="noopener">' + esc(openOnHost) + '</a>' : '')
      + (c ? '<button class="btn ghost" data-copy="guardlink verify ' + esc(loc) + '">Copy verify command</button>' : '')
      + '</div>';
@@ -1123,7 +1129,26 @@ document.addEventListener('focusout', function (e) {
   if (plot && _kf && _kf.plot === plot) { _kf.el.classList.remove('kfocus'); _kf = null; tipHide(); restore(plot); }
 });
 
+/* Overdue is a fact about the day the page is viewed, so it is decided here, not baked into the page:
+   a ticket row whose until date is before the viewer's today gets a chip, and "overdue" joins its search text. */
+function markOverdue() {
+  var d = new Date();
+  var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+  var today = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  var n = 0;
+  $$('#sec-tickets tr[data-due]').forEach(function (row) {
+    if (row.getAttribute('data-due') >= today) return;
+    n++;
+    row.setAttribute('data-search', row.getAttribute('data-search') + ' overdue');
+    var cell = $('.ticket-due', row);
+    if (cell && !$('.ticket-overdue', cell)) cell.insertAdjacentHTML('beforeend', '<span class="ticket-overdue" title="Past its until date"><i class="sw"></i>overdue</span>');
+  });
+  var out = $('[data-ticket-overdue]');
+  if (out) out.textContent = String(n);
+}
+
 function boot() {
+  markOverdue();
   try {
     if (localStorage.getItem('guardlink-rail') === '1') document.getElementById('sidebar').classList.add('collapsed');
     var theme = localStorage.getItem('guardlink-theme');

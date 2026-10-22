@@ -97,12 +97,13 @@
  * @flows ThreatModel -> #parser via isCovered -- "Every unmitigated-exposure answer in the product routes through this predicate"
  * @comment -- "Inline annotations never carry parent_symbol (parse-file.ts populates it only from @source); they are sited by handler scope instead, read from the structure-layer anchor, so the rule now applies in inline repos too"
  * @comment -- "A location with no anchor (anchors: false, an unreadable file, a model from before anchors) is file-level and never narrowed — unknown can only fail to narrow, never invent a site"
+ * @comment -- "ticketStatusResolver joins a @ticket to its pair's sites here, beside the coverage predicate, so the ticket state every surface shows comes from the one coverage answer"
  * @comment -- "Narrowing is one-directional by construction: coversExposure starts from the (asset, threat) match the old key computed and only ever subtracts. A refactor that made it additive would be a silent-wrong-answer path in the opposite direction"
  */
 
 import type {
   ThreatModel, ThreatModelExposure, ThreatModelMitigation, ThreatModelAcceptance,
-  SourceLocation, CoverageStats,
+  ThreatModelTicket, SourceLocation, CoverageStats,
 } from '../types/index.js';
 import { canonicaliser } from './canonical-ref.js';
 import { acceptanceCovers, isQualified, type AcceptancePolicy } from './acceptance.js';
@@ -299,6 +300,74 @@ export function buildCoverageIndex(model: ThreatModel, opts: CoverageOptions = {
 export function findUnmitigatedExposures(model: ThreatModel, opts: CoverageOptions = {}): ThreatModelExposure[] {
   const index = buildCoverageIndex(model, opts);
   return model.exposures.filter(e => !index.isCovered(e));
+}
+
+/**
+ * Where the risk behind a `@ticket` stands now.
+ *
+ * `open` while any `@exposes` or `@confirmed` site of the pair is uncovered;
+ * `mitigated` once every site is covered and at least one by a control;
+ * `accepted` when every site is covered by acceptances alone; `unexposed` when
+ * the model declares no site for the pair at all. `confirmed` is reported
+ * beside the state rather than folded into it: a ticket's question is "is the
+ * work done?", and a reproduced finding that has since gained a control is
+ * exactly the ticket a developer should be asked about closing.
+ */
+export type TicketState = 'open' | 'mitigated' | 'accepted' | 'unexposed';
+
+export interface TicketStatus {
+  state: TicketState;
+  /** The pair carries a `@confirmed`: someone reproduced it. */
+  confirmed: boolean;
+  /** How many `@exposes`/`@confirmed` sites the pair has. */
+  sites: number;
+}
+
+/**
+ * One resolver for every ticket in the model. A ticket names a PAIR, not a
+ * site, so it is matched to every site of the pair whatever file it sits in —
+ * tickets are often collected in one place, away from the code they track.
+ */
+export function ticketStatusResolver(
+  model: ThreatModel, opts: CoverageOptions = {},
+): (ticket: Pick<ThreatModelTicket, 'asset' | 'threat'>) => TicketStatus {
+  const assetKey = canonicaliser(model);
+  const index = buildCoverageIndex(model, opts);
+  const key = (r: { asset: string; threat: string }) => `${assetKey(r.asset)}::${normalizeRef(r.threat)}`;
+  const sites = new Map<string, { site: SitedRelation; confirmed: boolean }[]>();
+  const add = (site: SitedRelation, confirmed: boolean) => {
+    const k = key(site);
+    const bucket = sites.get(k);
+    if (bucket) bucket.push({ site, confirmed }); else sites.set(k, [{ site, confirmed }]);
+  };
+  for (const e of model.exposures ?? []) add(e, false);
+  for (const c of model.confirmed ?? []) add(c, true);
+
+  return (ticket) => {
+    const bucket = sites.get(key(ticket)) ?? [];
+    const confirmed = bucket.some(b => b.confirmed);
+    if (bucket.length === 0) return { state: 'unexposed', confirmed, sites: 0 };
+    if (bucket.some(b => !index.isCovered(b.site))) return { state: 'open', confirmed, sites: bucket.length };
+    const state = bucket.some(b => index.isMitigated(b.site)) ? 'mitigated' : 'accepted';
+    return { state, confirmed, sites: bucket.length };
+  };
+}
+
+/**
+ * The tickets recorded against a site's pair — the other direction of the same
+ * join, for surfaces that start from a finding (SARIF, the exposures page).
+ */
+export function ticketsForResolver(
+  model: ThreatModel,
+): (site: Pick<SitedRelation, 'asset' | 'threat'>) => ThreatModelTicket[] {
+  const assetKey = canonicaliser(model);
+  const key = (r: { asset: string; threat: string }) => `${assetKey(r.asset)}::${normalizeRef(r.threat)}`;
+  const byPair = new Map<string, ThreatModelTicket[]>();
+  for (const t of model.tickets ?? []) {
+    const bucket = byPair.get(key(t));
+    if (bucket) bucket.push(t); else byPair.set(key(t), [t]);
+  }
+  return (site) => byPair.get(key(site)) ?? [];
 }
 
 /**

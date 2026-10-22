@@ -82,7 +82,7 @@ function everyLocation(model: ThreatModel): SourceLocation[] {
     // as well. Without them a `@source … symbol:x` block holding only
     // entitlement rows contributed no anchor, and `migrate --to inline` would
     // have discarded it without counting it in what it refuses over.
-    ...(model.actors ?? []), ...(model.entitlements ?? []),
+    ...(model.actors ?? []), ...(model.entitlements ?? []), ...(model.tickets ?? []),
     ...(model.shields ?? []), ...(model.features ?? []), ...(model.comments ?? []),
   ].filter(r => !(r as { origin?: unknown }).origin).map(r => r?.location).filter(Boolean);
 }
@@ -120,6 +120,12 @@ export function canonicalAnnotationRecords(model: ThreatModel): string[] {
   }
   for (const c of model.confirmed ?? []) {
     out.push(record('confirmed', s(c.asset), s(c.threat), s(c.severity), refs(c.external_refs), s(c.description), f(c.location.file)));
+  }
+  // Ticket records exist only where @ticket is written, so a model without one
+  // hashes exactly as it did before the verb existed. Moving a due date or
+  // reassigning a ticket is an annotation change and moves the hash.
+  for (const t of model.tickets ?? []) {
+    out.push(record('ticket', s(t.asset), s(t.threat), s(t.ref), s(t.sla), s(t.assignee), s(t.due), s(t.description), f(t.location.file)));
   }
   // v3: `accepted_by` and `expires`. Without them, editing an acceptance's
   // signatory or pushing its expiry out by a year moved nothing the staleness

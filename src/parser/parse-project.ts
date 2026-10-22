@@ -24,7 +24,7 @@ import { isAbsolute, join, relative } from 'node:path';
 import type {
   Annotation, ThreatModel, ParseDiagnostic,
   AssetAnnotation, ThreatAnnotation, ControlAnnotation, ActorAnnotation,
-  MitigatesAnnotation, ExposesAnnotation, ConfirmedAnnotation, AcceptsAnnotation,
+  MitigatesAnnotation, ExposesAnnotation, ConfirmedAnnotation, TicketAnnotation, AcceptsAnnotation,
   EntitlesAnnotation, ReachesAnnotation, EffectsAnnotation, GatesAnnotation,
   TransfersAnnotation, FlowsAnnotation, BoundaryAnnotation,
   ValidatesAnnotation, AuditAnnotation, OwnsAnnotation,
@@ -498,6 +498,7 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
     mitigations: [],
     exposures: [],
     confirmed: [],
+    tickets: [],
     acceptances: [],
     transfers: [],
     flows: [],
@@ -642,6 +643,15 @@ function assembleModel(annotations: Annotation[], fileCount: number, project: st
           threat: cf.threat, asset: cf.asset, severity: cf.severity,
           external_refs: cf.external_refs,
           description: cf.description, location: cf.location,
+        });
+        break;
+      }
+      case 'ticket': {
+        const t = ann as TicketAnnotation;
+        model.tickets!.push({
+          threat: t.threat, asset: t.asset, ref: t.ref,
+          sla: t.sla, assignee: t.assignee, due: t.due,
+          description: t.description, location: t.location,
         });
         break;
       }
@@ -936,6 +946,10 @@ function detectExternalRefs(model: ThreatModel, root: string): ExternalRef[] {
   for (const g of model.gates || []) {
     checkTag(g.asset, 'gates', g.location);
     checkTag(g.approver, 'gates', g.location);
+  }
+  for (const t of model.tickets || []) {
+    checkTag(t.threat, 'ticket', t.location);
+    checkTag(t.asset, 'ticket', t.location);
   }
 
   return refs;

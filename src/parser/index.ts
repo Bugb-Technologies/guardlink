@@ -15,7 +15,7 @@ export { canEntitlementDemote, entitlementDemotionBlockers } from './parse-proje
 export { parseLine, crossRepoTag, CROSS_REPO_TAG_PATTERN } from './parse-line.js';
 export { normalizeName, resolveSeverity, unescapeDescription } from './normalize.js';
 export { stripCommentPrefix, commentStyleForExt } from './comment-strip.js';
-export { findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findAgentConfigDiagnostics, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides } from './validate.js';
+export { findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findAgentConfigDiagnostics, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides, findTicketDiagnostics } from './validate.js';
 // What an acceptance has to be before it counts as one. One implementation,
 // shared by the gate that re-checks acceptances and the writer that creates them.
 export {
@@ -26,8 +26,8 @@ export {
   ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_SHORT, ACCEPTANCE_REGISTER_NOTE,
 } from './acceptance.js';
 export type { AcceptancePolicy, AcceptanceDefect, AcceptanceFinding, BlastRadius, ExpiringAcceptance } from './acceptance.js';
-export { buildCoverageIndex, normalizeRef, coversExposure } from './coverage.js';
-export type { CoverageIndex, CoverageOptions, SitedRelation } from './coverage.js';
+export { buildCoverageIndex, normalizeRef, coversExposure, ticketStatusResolver, ticketsForResolver } from './coverage.js';
+export type { CoverageIndex, CoverageOptions, SitedRelation, TicketState, TicketStatus } from './coverage.js';
 // SPEC §3.2 `@flows` route channels and §3.6 handler scope — the readers the
 // conformance corpus (conformance/flows.json) pins.
 export { parseRouteChannel, buildRouteIndex } from './route.js';
