@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+    "annotation_hash": "sha256-v3:5d3b189e1c85cc17b0288df470b377a469e9d70db8d925501adb777986413395",
     "generator": "guardlink@2.4.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 192,
-  "annotations_parsed": 1033,
+  "source_files": 193,
+  "annotations_parsed": 1036,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agentconfig/bundle.ts",
@@ -136,6 +136,7 @@
     "src/parser/reach.ts",
     "src/parser/reanchor.ts",
     "src/parser/route.ts",
+    "src/parser/scan-files.ts",
     "src/parser/validate.ts",
     "src/parser/verification.ts",
     "src/parser/verify.ts",
@@ -2289,7 +2290,7 @@
       "description": "resolveCommit checks the ref's shape and resolves it to a sha first; a ref it refuses returns [] and runs nothing further",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 140
+        "line": 143
       }
     },
     {
@@ -2299,7 +2300,7 @@
       "description": "git diff runs through execFileSync with the sha as one argument",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 141
+        "line": 144
       }
     },
     {
@@ -2729,7 +2730,7 @@
       "description": "Existence only: no read, no write, and the result reaches the model as a warning string that echoes the path the author already wrote",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 149
+        "line": 150
       }
     },
     {
@@ -3897,7 +3898,7 @@
       "description": "getChangedFiles passes the caller's ref (a CLI, TUI or dashboard --since argument) to git diff --name-only",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 139
+        "line": 142
       }
     },
     {
@@ -4545,7 +4546,7 @@
       "description": "`@source file:` is author-controlled text and is joined onto the project root to test existence",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 148
+        "line": 149
       }
     },
     {
@@ -4559,6 +4560,19 @@
       "location": {
         "file": "src/parser/reanchor.ts",
         "line": 19
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#path-traversal",
+      "severity": "medium",
+      "external_refs": [
+        "cwe:CWE-59"
+      ],
+      "description": "fast-glob follows symlinks and onePathPerFile keeps the path realpathSync resolves, including a link whose target lies outside the project root",
+      "location": {
+        "file": "src/parser/scan-files.ts",
+        "line": 17
       }
     },
     {
@@ -6030,7 +6044,7 @@
       "description": "Ref input to git diff --name-only",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 142
+        "line": 145
       }
     },
     {
@@ -6041,7 +6055,7 @@
       "description": "Repo-relative paths used for entitlement staleness",
       "location": {
         "file": "src/diff/git.ts",
-        "line": 143
+        "line": 146
       }
     },
     {
@@ -6767,7 +6781,7 @@
       "description": "Declared @source paths probed for existence",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 150
+        "line": 151
       }
     },
     {
@@ -6778,7 +6792,7 @@
       "description": "Generated reach rows, actors and the agent_config block join the assembled model",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 447
+        "line": 450
       }
     },
     {
@@ -6800,6 +6814,17 @@
       "description": "Route @flows indexed by handler scope",
       "location": {
         "file": "src/parser/route.ts",
+        "line": 19
+      }
+    },
+    {
+      "source": "ProjectFiles",
+      "target": "#parser",
+      "mechanism": "realpathSync",
+      "route": null,
+      "description": "Each scanned path resolved to its physical file",
+      "location": {
+        "file": "src/parser/scan-files.ts",
         "line": 19
       }
     },
@@ -7795,6 +7820,14 @@
       "location": {
         "file": "src/parser/parse-file.ts",
         "line": 8
+      }
+    },
+    {
+      "asset": "#parser",
+      "description": "A link resolving outside the root is read like any other scanned file; whether to refuse such links is a separate decision from deduplicating them",
+      "location": {
+        "file": "src/parser/scan-files.ts",
+        "line": 18
       }
     },
     {
@@ -9961,7 +9994,7 @@
       "description": "A traversing path is already a broken annotation and this is the diagnostic that says so; refusing to stat it would return the silence this function exists to remove",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 151
+        "line": 152
       }
     },
     {
@@ -10344,7 +10377,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 1033,
+    "annotation_count": 1036,
     "coverage_percent": 87
   },
   "external_refs": [],
@@ -10591,7 +10624,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+          "stamp": "sha256-v3:5d3b189e1c85cc17b0288df470b377a469e9d70db8d925501adb777986413395",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10607,7 +10640,7 @@
         "bytes": 3285,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+          "stamp": "sha256-v3:5d3b189e1c85cc17b0288df470b377a469e9d70db8d925501adb777986413395",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10624,7 +10657,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+          "stamp": "sha256-v3:5d3b189e1c85cc17b0288df470b377a469e9d70db8d925501adb777986413395",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10641,7 +10674,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+          "stamp": "sha256-v3:5d3b189e1c85cc17b0288df470b377a469e9d70db8d925501adb777986413395",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10657,7 +10690,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+          "stamp": "sha256-v3:5d3b189e1c85cc17b0288df470b377a469e9d70db8d925501adb777986413395",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10676,7 +10709,7 @@
         "bytes": 3879,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+          "stamp": "sha256-v3:5d3b189e1c85cc17b0288df470b377a469e9d70db8d925501adb777986413395",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10693,7 +10726,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9",
+          "stamp": "sha256-v3:5d3b189e1c85cc17b0288df470b377a469e9d70db8d925501adb777986413395",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
