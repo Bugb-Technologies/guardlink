@@ -449,11 +449,16 @@ describe('MCP server — guardlink_parse payload (GL-205)', () => {
     expect(model.unannotated_files_omitted).toBeUndefined();
   });
 
-  it('everything except unannotated_files is untouched by the default', async () => {
+  it('everything except the file inventories is untouched by the default', async () => {
     const withList = await parse({ include_unannotated: true });
     const without = await parse();
     delete withList.unannotated_files;
     delete without.unannotated_files_omitted;
+    // annotation_scope lists scanned files left out of annotation work: the
+    // same kind of inventory, omitted with it and marked the same way.
+    expect(without.annotation_scope_omitted.count).toBe(withList.annotation_scope.excluded.length);
+    delete withList.annotation_scope;
+    delete without.annotation_scope_omitted;
     // generated_at moves between parses; the rest must be identical.
     withList.generated_at = without.generated_at = '';
     expect(without).toEqual(withList);

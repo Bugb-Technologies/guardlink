@@ -86,6 +86,29 @@ function renderRows(rows: string[], budget = PROMPT_CONTEXT_BUDGET_CHARS): { tex
   return { text: kept.join('\n'), omitted: rows.length - kept.length };
 }
 
+/**
+ * The annotation worklist from the parsed model: in-scope files with no
+ * annotation, and a count of the scanned files left out of annotation work.
+ * The left-out files are named by reason, not listed, so the agent does not
+ * spend its turn on a bundle or a logo, and knows why one is missing.
+ *
+ * @flows #parser -> #agent-launcher via annotation worklist -- "unannotated_files and the annotation_scope exclusion counts, for the coverage method"
+ */
+function renderAnnotationWorklist(model: ThreatModel | null): string {
+  if (!model) return '';
+  const excluded = model.annotation_scope?.excluded ?? [];
+  const counts = new Map<string, number>();
+  for (const x of excluded) counts.set(x.reason, (counts.get(x.reason) ?? 0) + 1);
+  const left = excluded.length === 0 ? ''
+    : `\n\nLeft out of annotation work: ${excluded.length} scanned file(s) — ${[...counts].sort((a, b) => b[1] - a[1]).map(([r, n]) => `${n} ${r}`).join(', ')}. `
+      + 'Do not annotate them. Annotations already in them stay in the model. `guardlink unannotated --excluded` lists each with its reason.';
+  const files = model.unannotated_files;
+  if (files.length === 0) return `## Annotation worklist\nEvery file in the annotation scope carries annotations.${left}`;
+  const { text, omitted } = renderRows(files.map(f => `  ${f}`));
+  const more = omitted > 0 ? `\n  ... ${omitted} more omitted for size — call guardlink_unannotated for the full list.` : '';
+  return `## Annotation worklist\nThe unannotated list for Phase 1: ${files.length} file(s) in the annotation scope with no annotations.\n${text}${more}${left}`;
+}
+
 export type AnnotationMode = 'inline' | 'external';
 
 function annotationModeLabel(mode: AnnotationMode): string {
@@ -161,7 +184,12 @@ export function buildAnnotatePrompt(
   const pb = getPlaybook(selection.id);
   // Empty unless a code graph answered; with none, the prompt is byte-identical to before.
   // The agent tools with no declared reach follow the worklist, under the same rule.
-  const worklistBlock = [renderWorklistBlock(worklist, pb.worklistUse ?? WORKLIST_DEFAULT_USE), renderUndeclaredToolsBlock(reachCheck)].filter(Boolean).join('\n\n');
+  const worklistBlock = [
+    renderWorklistBlock(worklist, pb.worklistUse ?? WORKLIST_DEFAULT_USE),
+    renderUndeclaredToolsBlock(reachCheck),
+    // The file list the coverage method ranks. Other methods take their scope from the prompt.
+    pb.id === 'coverage' ? renderAnnotationWorklist(model) : '',
+  ].filter(Boolean).join('\n\n');
   // Read the reference doc if available
   let refDoc = '';
   const refPath = resolve(root, '.guardlink', 'GUARDLINK_REFERENCE.md');

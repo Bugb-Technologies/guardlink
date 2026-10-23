@@ -213,7 +213,10 @@ describe('the node counter against browser-measured geometry', () => {
     // to 199, with the flows of `src/init/pre-pr.ts` into and out of #init.
     // Reading a code graph's reach check took the filtered links from 96 to
     // 100, and the whole model's from 199 to 203, with the flows of
-    // `src/codegraph/reach-check.ts` and its callers.
+    // `src/codegraph/reach-check.ts` and its callers. The annotation worklist
+    // took the filtered links from 102 to 104, and the whole model's from 206
+    // to 209, with the flows of `src/parser/annotation-scope.ts`,
+    // `src/parser/annotation-worklist.ts` and the coverage prompt.
     // When they move, re-render the diagram in a browser and count the SVG
     // again; never bump them to whatever the counter says, which leaves it
     // checking itself.
@@ -238,9 +241,11 @@ describe('the node counter against browser-measured geometry', () => {
     // clusters:9}, whole model {nodes:49, links:203}, and the counter agrees.
     // Re-measured with mermaid@11 and the same options at 1440x900:
     // filtered {nodes:35, links:102, clusters:9}; whole {nodes:49, links:206, clusters:9}.
+    // Re-measured for 104 the same way: filtered {nodes:35, links:104,
+    // clusters:9}, whole model {nodes:49, links:209, clusters:9}, and the counter agrees.
     const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
     expect(m.nodes).toBe(35);
-    expect(m.edges).toBe(102);
+    expect(m.edges).toBe(104);
     // And the whole model is 49 nodes, which is the number this work exists for.
     expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(49);
   }, 30_000);

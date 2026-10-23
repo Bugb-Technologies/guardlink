@@ -51,6 +51,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'no
 import { AGENT_CONFIG_ENV } from '../parser/parse-project.js';
 import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findAgentConfigDiagnostics, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides, checkHandoff, HANDOFF_COMMAND, findAnchorDrift, applyReanchor, migrateAnnotationMode, annotationsLeftBehind, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE, withReachAnalysis } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
+import { buildAnnotationWorklist, WORKLIST_SCHEMA, type AnnotationWorklist } from '../parser/annotation-worklist.js';
 import { runCiChecks, formatCiReport, ESTATE_ROUTE } from '../ci/index.js';
 import type { CiWorkspaceScope } from '../ci/index.js';
 import { initProject, detectProject, describeScope, promptAgentSelection, syncAgentFiles } from '../init/index.js';
@@ -2478,13 +2479,21 @@ program
 
 program
   .command('unannotated')
-  .description('List source files with no GuardLink annotations')
+  .description('List the annotation worklist: files in scope with no GuardLink annotations, and why every other file is left out')
   .argument('[dir]', 'Project directory to scan', '.')
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
-  .action(async (dir: string, opts: { project: string }) => {
+  .option('--json', `Print the whole worklist as JSON (${WORKLIST_SCHEMA}): worklist, annotated and excluded files, each with a reason`)
+  .option('--excluded', 'Also list each excluded file with its reason')
+  .action(async (dir: string, opts: { project: string; json?: boolean; excluded?: boolean }) => {
     const root = resolve(dir);
     const { model } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    const worklist = buildAnnotationWorklist(root, model);
+    if (opts.json) {
+      console.log(JSON.stringify(worklist, null, 2));
+      return;
+    }
     printUnannotatedFiles(model);
+    printWorklistExclusions(worklist, opts.excluded === true);
   });
 
 // ─── review ──────────────────────────────────────────────────────────
@@ -4062,7 +4071,7 @@ function printDiagnostics(diagnostics: ParseDiagnostic[]) {
 function printStatus(model: ThreatModel, verification?: VerificationReport, hypotheses?: HypothesisClassification, handoff?: HandoffReport) {
   console.log(`GuardLink Status: ${model.project}`);
   console.log(`${'─'.repeat(40)}`);
-  console.log(`Files scanned:    ${model.source_files}`);
+  console.log(`Files in scope:   ${model.source_files}`);
   console.log(`  Files annotated:    ${model.annotated_files.length}`);
   console.log(`  Files unannotated:  ${model.unannotated_files.length}`);
   console.log(`Annotations:      ${model.annotations_parsed}`);
@@ -4189,6 +4198,20 @@ function printBlameSummary(payload: BlamePayload): void {
     console.log(`  ${`${r.tool}${r.model ? ` (${r.model})` : ''}`.padEnd(34)} introduced ${r.introduced}, fixed ${r.fixed}, open ${r.open}`);
   }
   console.log('Run `guardlink blame .` for the full picture.');
+}
+
+function printWorklistExclusions(worklist: AnnotationWorklist, listEach: boolean) {
+  const reasons = Object.entries(worklist.summary.excluded_by_reason).sort((a, b) => b[1]! - a[1]!);
+  if (reasons.length === 0) return;
+  console.log(`\n${worklist.summary.excluded} file(s) left out of annotation work (${worklist.view === 'git' ? '.gitignore and .gitattributes read' : 'not a git work tree: .gitignore and .gitattributes not read'}):`);
+  for (const [reason, n] of reasons) console.log(`   ${String(n).padStart(6)}  ${reason}`);
+  const declared = worklist.excluded.filter(x => x.annotated).length;
+  if (declared > 0) console.log(`   ${declared} of them declare annotations, which stay in the model.`);
+  if (listEach) {
+    for (const x of worklist.excluded) console.log(`   ${x.path}  [${x.reason}] ${x.detail}${x.annotated ? ' (annotated)' : ''}`);
+  } else {
+    console.log('   --excluded lists each file and why; --json prints the whole worklist.');
+  }
 }
 
 function printUnannotatedFiles(model: ThreatModel) {

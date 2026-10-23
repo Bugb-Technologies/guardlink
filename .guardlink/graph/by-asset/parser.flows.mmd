@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/parser.flows.mmd
-%% scope:           PARTIAL — #parser and its flow neighbourhood, grown until the drawing stopped fitting — 15 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:5d3b189e1c85cc17b0288df470b377a469e9d70db8d925501adb777986413395
+%% scope:           PARTIAL — #parser and its flow neighbourhood, grown until the drawing stopped fitting — 20 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:0ed75b716b292740184b8b0ea0c3b0adf2d12b1af2e7ace1459629428ae51e9b
 %% generator:       guardlink@2.4.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -18,16 +18,19 @@ graph LR
     filesystem["🧩 FileSystem"]
   end
   configfile["🧩 ConfigFile"]
+  agent_launcher["🧩 GuardLink.Agent_Launcher"]
   mcpclient["👤 MCPClient"]
   exportfile["🧩 ExportFile"]
   ledgerfile["🧩 LedgerFile"]
   filepath["🧩 FilePath"]
   annotations["🧩 Annotations"]
-  parsediagnostics["🧩 ParseDiagnostics"]
   annotationsource["🧩 AnnotationSource"]
   agent_config["🧩 GuardLink.AgentConfig"]
   grammarfile["🧩 GrammarFile"]
   parser -.-|🧱 Trust boundary between parser and disk I/O| filesystem
+  configfile -- "🗄️ readFileSync" --> agent_launcher
+  agent_launcher -- "🗄️ writeFileSync" --> configfile
+  parser -- "📡 annotation worklist" --> agent_launcher
   configfile -- "📡 readAcceptancePolicy" --> parser
   mcpclient -- "📡 applyAnnotations" --> parser
   parser -- "🗄️ writeFileSync" --> filesystem
@@ -35,7 +38,6 @@ graph LR
   ledgerfile -- "📡 readLedger" --> parser
   filepath -- "🗄️ readFile" --> parser
   parser -- "📡 parseString" --> annotations
-  parser -- "📡 parseString" --> parsediagnostics
   annotationsource -- "📡 existsSync" --> parser
   agent_config -- "📡 mergeAgentConfig" --> parser
   ledgerfile -- "📡 classifyClaims" --> parser

@@ -64,7 +64,7 @@ import { z } from 'zod';
 // MERGE: main added the entitlement validators and the proposal module; ours
 // kept `crossRepoTag` (D19). Union — main's list had dropped crossRepoTag only
 // because it branched before D19 landed.
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findAgentReachConflicts, findAgentConfigDiagnostics, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag, withReachAnalysis } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findAgentReachConflicts, findAgentConfigDiagnostics, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag, withReachAnalysis, buildAnnotationWorklist } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
 import { readAcceptancePolicy, acceptanceBlastRadius, formatBlastRadius, ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
 import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
@@ -291,16 +291,24 @@ export function createServer(): McpServer {
       if (include_unannotated) {
         return { content: [{ type: 'text', text: JSON.stringify(model, null, 2) }] };
       }
-      const { unannotated_files, ...rest } = model;
+      const { unannotated_files, annotation_scope, ...rest } = model;
       // Say the key was dropped. Absent-because-omitted and absent-because-empty
       // are different facts, and a consumer that cannot tell them apart will
-      // read a large repo as fully annotated.
+      // read a large repo as fully annotated. `annotation_scope` is the same
+      // kind of inventory — the scanned files left out of annotation work — and
+      // goes with it.
       const payload = {
         ...rest,
         unannotated_files_omitted: {
           count: unannotated_files.length,
           reason: 'Omitted by default — call guardlink_unannotated, or pass include_unannotated: true.',
         },
+        ...(annotation_scope ? {
+          annotation_scope_omitted: {
+            count: annotation_scope.excluded.length,
+            reason: 'Omitted with unannotated_files — guardlink_unannotated with format: "json" lists each excluded file and why.',
+          },
+        } : {}),
       };
       return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] };
     },
@@ -1134,23 +1142,32 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_unannotated',
-    'List source files that have no GuardLink annotations. Useful for identifying coverage gaps. Not all files need annotations — only those touching security boundaries (endpoints, auth, data access, I/O, crypto).',
+    'The annotation worklist: source files in the annotation scope that have no GuardLink annotations. Useful for identifying coverage gaps. Files left out of annotation work — gitignored, .gitattributes linguist-generated or linguist-vendored, excluded or not included by .guardlink/config.json, minified bundles and Next.js build output, images and asset SVGs — are not listed; they are still parsed, so annotations already in them stay in the model. format "json" returns the whole worklist (guardlink.annotation-worklist/v1, as `guardlink unannotated --json` prints it): worklist, annotated and excluded files, each excluded file with its reason. Not all files need annotations — only those touching security boundaries (endpoints, auth, data access, I/O, crypto).',
     {
       root: z.string().describe('Project root directory').default('.'),
+      format: z.enum(['text', 'json']).describe('text (default): the unannotated files and a count of exclusions by reason. json: the whole worklist with a reason for every file.').default('text'),
     },
-    async ({ root }) => {
+    async ({ root, format }) => {
       const { model } = await getModel(root);
+      if (format === 'json') {
+        return { content: [{ type: 'text', text: JSON.stringify(buildAnnotationWorklist(resolve(root), model), null, 2) }] };
+      }
       const unannotated = model.unannotated_files || [];
       const annotated = model.annotated_files || [];
-      const total = annotated.length + unannotated.length;
+      const total = model.source_files;
+      const excluded = model.annotation_scope?.excluded ?? [];
+      const counts = new Map<string, number>();
+      for (const x of excluded) counts.set(x.reason, (counts.get(x.reason) ?? 0) + 1);
+      const left = excluded.length === 0 ? ''
+        : `\n\n${excluded.length} scanned file(s) left out of annotation work: ${[...counts].sort((a, b) => b[1] - a[1]).map(([r, n]) => `${n} ${r}`).join(', ')}. format: "json" lists each with its reason.`;
 
       if (unannotated.length === 0) {
-        return { content: [{ type: 'text', text: `All ${total} source files have GuardLink annotations.` }] };
+        return { content: [{ type: 'text', text: `All ${total} source files in the annotation scope have GuardLink annotations.${left}` }] };
       }
 
       const fileList = unannotated.map(f => `  ${f}`).join('\n');
       return {
-        content: [{ type: 'text', text: `${annotated.length} of ${total} files annotated. ${unannotated.length} file(s) with no annotations:\n${fileList}\n\nNot all files need annotations — only those touching security boundaries.` }],
+        content: [{ type: 'text', text: `${annotated.length} of ${total} files annotated. ${unannotated.length} file(s) with no annotations:\n${fileList}${left}\n\nNot all files need annotations — only those touching security boundaries.` }],
       };
     },
   );
