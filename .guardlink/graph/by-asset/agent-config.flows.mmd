@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/agent-config.flows.mmd
 %% scope:           PARTIAL — #agent-config and its flow neighbourhood, grown until the drawing stopped fitting — 23 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9
+%% annotation_hash: sha256-v3:5d3b189e1c85cc17b0288df470b377a469e9d70db8d925501adb777986413395
 %% generator:       guardlink@2.4.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -26,7 +26,6 @@ graph LR
   llm_client["👤 GuardLink.LLM_Client"]
   configfile["🧩 ConfigFile"]
   exportfile["🧩 ExportFile"]
-  ledgerfile["🧩 LedgerFile"]
   filepath["🧩 FilePath"]
   annotations["🧩 Annotations"]
   annotationsource["🧩 AnnotationSource"]
@@ -40,10 +39,9 @@ graph LR
   configfile -- "📡 readAcceptancePolicy" --> parser
   parser -- "🗄️ writeFileSync" --> filesystem
   exportfile -- "🗄️ readFileSync" --> parser
-  ledgerfile -- "📡 readLedger" --> parser
   filepath -- "🗄️ readFile" --> parser
   parser -- "📡 parseString" --> annotations
   annotationsource -- "📡 existsSync" --> parser
   agent_config -- "📡 mergeAgentConfig" --> parser
-  ledgerfile -- "📡 classifyClaims" --> parser
+  projectfiles -- "📡 realpathSync" --> parser
   grammarfile -- "📡 Language.load" --> parser

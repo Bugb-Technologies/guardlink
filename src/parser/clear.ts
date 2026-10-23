@@ -21,6 +21,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { relative } from 'node:path';
 import { isStandaloneAnnotationFile, stripCommentPrefix } from './comment-strip.js';
 import { GAL_GLOB, sourceGlobs } from './languages.js';
+import { onePathPerFile } from './scan-files.js';
 
 // ─── Known GuardLink verbs ──────────────────────────────────────────
 
@@ -150,7 +151,8 @@ export async function clearAnnotations(options: ClearAnnotationsOptions): Promis
     absolute: true,
     dot: true,
   });
-  const files = candidateFiles.filter(filePath =>
+  // Same file set as parseProject: a file linked into the tree is cleared once.
+  const files = onePathPerFile(root, candidateFiles.sort()).filter(filePath =>
     includeDefinitions || !isDefinitionsFile(relative(root, filePath)),
   );
 

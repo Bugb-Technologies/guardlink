@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-boundary/agent-config-boundary.mmd
 %% scope:           PARTIAL — the Repository content is untrusted input to the config reader between projectfiles and agent-config, and what flows across it
-%% annotation_hash: sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9
+%% annotation_hash: sha256-v3:5d3b189e1c85cc17b0288df470b377a469e9d70db8d925501adb777986413395
 %% generator:       guardlink@2.4.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -22,7 +22,6 @@ graph LR
   configfile["🧩 ConfigFile"]
   mcp["🧩 GuardLink.MCP"]
   exportfile["🧩 ExportFile"]
-  filepath["🧩 FilePath"]
   annotations["🧩 Annotations"]
   annotationsource["🧩 AnnotationSource"]
   tui["👤 GuardLink.TUI"]
@@ -35,10 +34,10 @@ graph LR
   mcp -- "📡 generateThreatReport" --> llm_client
   configfile -- "📡 readAcceptancePolicy" --> parser
   exportfile -- "🗄️ readFileSync" --> parser
-  filepath -- "🗄️ readFile" --> parser
   parser -- "📡 parseString" --> annotations
   annotationsource -- "📡 existsSync" --> parser
   agent_config -- "📡 mergeAgentConfig" --> parser
+  projectfiles -- "📡 realpathSync" --> parser
   tui -- "📡 chatCompletion" --> llm_client
   configfile -- "📡 loadProjectConfig" --> tui
   tui -- "📡 saveProjectConfig" --> configfile

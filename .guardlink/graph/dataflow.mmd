@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9
+%% annotation_hash: sha256-v3:5d3b189e1c85cc17b0288df470b377a469e9d70db8d925501adb777986413395
 %% generator:       guardlink@2.4.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 78 nodes / 208 edges, past the 12 / 16 legibility budget (78 nodes against 12, 208 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 78 nodes / 209 edges, past the 12 / 16 legibility budget (78 nodes against 12, 209 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -299,6 +299,7 @@ graph LR
   agent_config -- "📡 mergeAgentConfig" --> parser
   threatmodel -- "📡 findAnchorDrift" --> parser
   threatmodel -- "📡 buildRouteIndex" --> parser
+  projectfiles -- "📡 realpathSync" --> parser
   threatmodel -- "📡 classifyClaims" --> parser
   ledgerfile -- "📡 classifyClaims" --> parser
   cli -- "📡 applyVerification" --> ledgerfile

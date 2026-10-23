@@ -44,6 +44,7 @@ import { readDisabledDiagnostics, readAgentConfigEnabled } from './annotation-mo
 import { readAgentConfig, type AgentConfigResult } from '../agentconfig/index.js';
 import { computeAnnotationHash } from './annotation-hash.js';
 import { attachAnchors } from '../structure/attach.js';
+import { onePathPerFile } from './scan-files.js';
 import { parseRouteChannel } from './route.js';
 
 /** A standalone annotation sidecar, not a source file. */
@@ -304,7 +305,9 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   // from run to run on an identical tree. Every model array inherits file
   // order, so sort here — by code unit, not locale — or the same project
   // parses to differently ordered models. Sidecars stay after source files.
-  const files = [...new Set([...scanned.sort(), ...sidecars.sort()])];
+  // A file reached through a symlink as well as at its own path is parsed
+  // once, or every #id it defines is reported as a duplicate of itself.
+  const files = onePathPerFile(root, [...scanned.sort(), ...sidecars.sort()]);
 
   // Parse all files
   const allAnnotations: Annotation[] = [];
