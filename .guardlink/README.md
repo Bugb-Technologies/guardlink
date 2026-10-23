@@ -122,9 +122,9 @@ Assets are referenced as `#id` or as a `Dotted.Path`; both resolve to the same n
 | `@owns` | `@owns <team> for <asset> -- "who reviews changes here"` |
 | `@handles` | `@handles <pii\|phi\|financial\|secrets\|internal\|public> on <asset> -- "what data"` |
 | `@assumes` | `@assumes <asset> -- "what must hold for this to be safe"` |
-| `@agents` | `@agents <agent actor> to <capability> on <asset> as <identity> -- "the tool registration"` — an LLM agent can invoke this |
-| `@reaches` | `@reaches <actor> to <capability> on <asset> as <identity> -- "where it is granted"` — the same, for a principal that is not an agent |
-| `@effects` | `@effects <read\|write\|delete\|execute\|spend\|notify> on <asset> as <identity> -- "what this code does"` |
+| `@agents` | `@agents <agent actor> to <capability> on <asset> as <#identity> -- "the tool registration"` — an LLM agent can invoke this |
+| `@reaches` | `@reaches <actor> to <capability> on <asset> as <#identity> -- "where it is granted"` — the same, for a principal that is not an agent |
+| `@effects` | `@effects <read\|write\|delete\|execute\|spend\|notify> on <asset> as <#identity> -- "what this code does"` — `<capability>` is a kebab token; `<asset>` and `<#identity>` are asset references (`#id`, `Dotted.Path` or `"quoted"`), so `as master-key` does not parse |
 | `@gates` | `@gates <asset> by <approver actor> for <capability> -- "the approval step"` |
 | `@feature` | `@feature "Name" -- "what it groups"` |
 | `@comment` | `@comment -- "context that fits no other verb"` |

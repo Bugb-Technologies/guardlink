@@ -458,10 +458,12 @@ Report what you proposed at the end of your run, and tell the user to review it 
 ### \`@agents\`, \`@reaches\`, \`@effects\`, \`@gates\` — What an Embedded Agent Can Reach
 When the code embeds an LLM agent, its harness hands the agent capabilities: tool definitions, MCP servers, file and shell access, database clients, internal methods. Declare them, so a reviewer can see the agent's blast radius:
 
-- \`@agents <#agent> to <capability> on <Asset> [as <identity>]\` — on the tool registration or server mount. Writing it is what marks the actor as an LLM agent; declare the actor with \`@actor\` in the definitions file first.
+- \`@agents <#agent> to <capability> on <Asset> [as <#identity>]\` — on the tool registration or server mount. Writing it is what marks the actor as an LLM agent; declare the actor with \`@actor\` in the definitions file first.
 - \`@reaches\` — the same shape for a principal that is not an LLM agent (a CI runner, a service account). Never name one actor under both verbs: that is a validation error.
-- \`@effects <read|write|delete|execute|spend|notify> on <Asset> [as <identity>]\` — on the code that acts. \`as\` is whose credentials it runs under. Egress needs no new verb: write \`@flows\` to an \`External.*\` asset.
+- \`@effects <read|write|delete|execute|spend|notify> on <Asset> [as <#identity>]\` — on the code that acts, with exactly one of the six effects. \`as\` is whose credentials it runs under. Egress needs no new verb: write \`@flows\` to an \`External.*\` asset.
 - \`@gates <Asset> by <#approver> [for <capability>]\` — on an approval step that blocks until the named principal decides. A gate suppresses nothing; only write one where the code really waits.
+
+The three slots do not share a spelling. \`<capability>\` is one kebab token (\`run-sql\`). \`<Asset>\` and \`<#identity>\` are asset references: a \`#id\` declared with \`@asset\` in the definitions file, a \`Dotted.Path\` (no hyphens), or a \`"quoted name"\`. Declare the credential or session the code runs under as an asset and write \`as #master-key\`; a bare \`as master-key-holder\` does not parse, and fails the whole line.
 
 You may write all four: they record what the code *can* do. Use the capability token an \`@entitles\` would use (\`run-sql\`, \`issue-refund\`), because "can minus may" — \`guardlink_lookup("unentitled reaches")\` — joins on it. For a capability with no entitlement, propose one only if the code shows it is meant to be there; a debug tool left registered is an \`@exposes\` + \`@audit\`, not an entitlement.
 
@@ -469,7 +471,7 @@ These verbs are for agents the CODE embeds. Never write \`@agents\` or \`@reache
 
 \`\`\`
 // @shield:begin -- "Agent reach example, excluded from parsing"
-// @agents #support-agent to run-sql on #tool-surface -- "run_sql registered in tools.ts, still on in production"
+// @agents #support-agent to run-sql on #tool-surface as #support-session -- "run_sql registered in tools.ts, still on in production"
 // @effects write on #users-db as #db-service -- "db.raw(sql) runs the model-written SQL verbatim"
 // @gates #payments by #support-human for issue-refund -- "requireApproval() parks the refund until a human approves"
 // @shield:end
@@ -592,7 +594,10 @@ Definitions go in .guardlink/definitions.{ts,js,py,rs}. Relationship annotations
    Reference:  \`@exposes #app to #sqli\`
 
 7. **Asset references**: Use \`#id\` or \`Dotted.Path\` (e.g., \`Server.Auth\`, \`req.body.input\`).
-   Names with spaces or special chars will NOT parse.
+   Names with spaces or special chars will NOT parse. A hyphen is a special char outside a \`#id\`.
+   This covers the \`on\` and \`as\` of \`@agents\`, \`@reaches\` and \`@effects\` too:
+   WRONG: \`@effects execute on #ext-mcp as gateway-process\`
+   RIGHT: \`@effects execute on #ext-mcp as #gateway-process\` (with \`@asset\` \`(#gateway-process)\` in the definitions file)
 
 8. **External refs are space-separated after severity**: \`cwe:CWE-89 owasp:A03:2021 capec:CAPEC-66\`
 

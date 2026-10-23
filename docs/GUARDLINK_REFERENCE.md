@@ -21,9 +21,9 @@ RELATE   @mitigates <Asset> against <#threat> using <#control> -- "how"
          @entitles <#actor> to <capability> on <Asset> against <#threat> -- "by design + authz file:line"
                    ^ PROPOSED via `guardlink entitle --propose`, written only when a human accepts
 
-REACH    @agents <#agent-actor> to <capability> on <Asset> as <identity> -- "on the tool registration"
-         @reaches <#actor> to <capability> on <Asset> as <identity> -- "same, for a principal that is not an LLM agent"
-         @effects <read|write|delete|execute|spend|notify> on <Asset> as <identity> -- "on the code that acts"
+REACH    @agents <#agent-actor> to <capability> on <Asset> as <#identity> -- "on the tool registration"
+         @reaches <#actor> to <capability> on <Asset> as <#identity> -- "same, for a principal that is not an LLM agent"
+         @effects <read|write|delete|execute|spend|notify> on <Asset> as <#identity> -- "on the code that acts"
          @gates <Asset> by <#approver-actor> for <capability> -- "on the approval step"
                    ^ all four are agent-writable; `on`, `as` and `for` are optional
 
@@ -501,7 +501,7 @@ Run `guardlink tui` for the interactive terminal interface:
 9. **@comment always needs -- and quotes**: `@comment -- "your note here"`.
 10. **One annotation per comment line.** Do NOT put two @verbs on the same line.
 11. **@entitles capability is ONE identifier, not prose**: `configure-archival-destination`, not `"can configure archival"`. It is the join key, and prose would not join.
-12. **@agents / @reaches use the same capability token as @entitles**, and **@effects takes one of six effects**: `read`, `write`, `delete`, `execute`, `spend`, `notify`. Egress is `@flows … -> External.X`, not an effect. `@gates` needs `by <actor>`.
+12. **@agents / @reaches use the same capability token as @entitles**, and **@effects takes one of six effects**: `read`, `write`, `delete`, `execute`, `spend`, `notify`. Egress is `@flows … -> External.X`, not an effect. `@gates` needs `by <actor>`. The `on <asset>` and `as <identity>` of all three are **asset references** like any other (`#id`, `Dotted.Path`, or `"quoted"`), not tokens like the capability: write `@effects execute on #ext-mcp as #gateway-process`, never `as gateway-process`, which fails the whole line.
 
 ## MCP Tools
 
