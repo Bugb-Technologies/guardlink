@@ -60,7 +60,7 @@ guardlink status .        # what the model now holds
 ```text
 GuardLink Status: guardlink
 ────────────────────────────────────────
-Files scanned:    169
+Files in scope:   169
   Files annotated:    146
   Files unannotated:  23
 Annotations:      891
