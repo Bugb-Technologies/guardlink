@@ -28,6 +28,7 @@ import { diffModels } from '../src/diff/engine.js';
 import { formatDiff, formatDiffMarkdown } from '../src/diff/format.js';
 import { lookup, SUPPORTED_QUERY_FORMS } from '../src/mcp/lookup.js';
 import { agentInstructions, referenceDocContent } from '../src/init/templates.js';
+import { buildAnnotatePrompt } from '../src/agents/prompts.js';
 import type { ThreatModel } from '../src/types/index.js';
 
 const at = { file: 'src/agent/tools.ts', line: 3 };
@@ -139,6 +140,76 @@ describe('@gates', () => {
 
   it('carries no advisory or blocking qualifier', () => {
     expect(line('@gates #payments by #support-human [blocking]').annotation).toBeNull();
+  });
+});
+
+describe('a malformed reach line names the shape it should have', () => {
+  // The capability is a kebab token, but `on` and `as` take asset references,
+  // whose bare form is a Dotted.Path with no hyphen. Writing the identity like
+  // the capability beside it is the commonest way to break one of these lines.
+  it('names the bare hyphenated identity or asset, and the two spellings that parse', () => {
+    const cases: Array<[string, string]> = [
+      ['@agents #llm-agent to call-mcp-tool on #ext-mcp as master-key-holder -- "d"', 'as master-key-holder'],
+      ['@reaches #ci to deploy on #prod as github-actions -- "d"', 'as github-actions'],
+      ['@effects execute on #ext-mcp as gateway-process -- "d"', 'as gateway-process'],
+      ['@effects read on ext-mcp as #proxy-key', 'on ext-mcp'],
+    ];
+    for (const [text, token] of cases) {
+      const r = line(text);
+      expect(r.annotation, text).toBeNull();
+      expect(r.diagnostic?.code, text).toBe('malformed-annotation');
+      const message = r.diagnostic!.message;
+      expect(message, text).toContain(`Expected: @${text.slice(1).split(' ')[0]} `);
+      expect(message, text).toContain(`\`${token}\` is not an asset reference`);
+      const [keyword, value] = token.split(' ');
+      expect(message, text).toContain(`\`${keyword} #${value}\``);
+      expect(message, text).toContain(`\`${keyword} "${value}"\``);
+    }
+  });
+
+  it('accepts each spelling the message suggests', () => {
+    for (const identity of ['#gateway-process', '"gateway-process"', 'Gateway.Process', 'gateway_process']) {
+      expect(line(`@effects execute on #ext-mcp as ${identity} -- "d"`).annotation, identity)
+        .toMatchObject({ verb: 'effects', identity: identity.replace(/^"|"$/g, '') });
+    }
+  });
+
+  it('names an effect outside the closed set and a quoted capability', () => {
+    const effect = line('@effects send on #mail -- "d"').diagnostic!.message;
+    expect(effect).toContain('Expected: @effects <read|write|delete|execute|spend|notify> on <asset> [as <identity>]');
+    expect(effect).toContain('`send` is not an effect');
+
+    const capability = line('@agents #bot to "run any sql" on #db').diagnostic!.message;
+    expect(capability).toContain('Expected: @agents <#agent> to <capability>');
+    expect(capability).toContain('<capability> is one unquoted token');
+  });
+
+  it('reads a hyphen in the description as prose, not as a broken slot', () => {
+    const message = line('@agents #bot run-sql on #db -- "runs as service-account on db-host"').diagnostic!.message;
+    expect(message).toContain('Expected: @agents');
+    expect(message).not.toContain('is not an asset reference');
+  });
+
+  it('leaves the message of every other verb as it was', () => {
+    expect(line('@exposes #api to -- "d"').diagnostic!.message)
+      .toBe('Malformed @exposes annotation: could not parse arguments (looks structural — found a #reference)');
+  });
+
+  it('is taught by the annotate prompt and the reference with an identity that parses', () => {
+    const project = { name: 'app', language: 'typescript', definitionsExt: '.ts' } as Parameters<typeof referenceDocContent>[0];
+    expect(referenceDocContent(project)).toContain('on <Asset> as <#identity>');
+    const prompt = buildAnnotatePrompt('annotate the agent tools', '/nonexistent', null, 'inline');
+    expect(prompt).toContain('[as <#identity>]');
+    expect(prompt).toContain('a bare `as master-key-holder` does not parse');
+    // Every reach example the prompt shows parses, including one with an `as`.
+    const examples = prompt.split('\n').map(l => l.replace(/^\/\/ /, ''))
+      .filter(l => /^@(agents|reaches|effects|gates) /.test(l));
+    expect(examples.some(e => / as #/.test(e))).toBe(true);
+    for (const example of examples) expect(line(example).annotation, example).not.toBeNull();
+    for (const wrongRight of prompt.split('\n').filter(l => /^\s+(WRONG|RIGHT): `@effects/.test(l))) {
+      const text = wrongRight.match(/`([^`]+)`/)![1];
+      expect(line(text).annotation === null, wrongRight).toBe(wrongRight.trim().startsWith('WRONG'));
+    }
   });
 });
 
