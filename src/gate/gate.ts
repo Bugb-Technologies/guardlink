@@ -40,14 +40,14 @@ export function runGate(before: ThreatModel | null, after: ThreatModel, opts: Om
   const removed = [...beforeKeys].filter(k => !afterKeys.has(k)).length;
   const violations = lintAnnotations(after, { ...opts, only: new Set(added.map(r => r.key)) });
   const errors = violations.filter(v => v.level === 'error').length;
-  const warnings = violations.length - errors;
+  const warnings = violations.filter(v => v.level === 'warn').length;
   return { added, removed, violations, errors, warnings, ok: errors === 0 };
 }
 
 export function formatGateReport(r: GateReport): string {
   const lines: string[] = [];
   lines.push(`Gate: ${r.added.length} claim${r.added.length === 1 ? '' : 's'} added, ${r.removed} removed — ${r.errors} error${r.errors === 1 ? '' : 's'}, ${r.warnings} warning${r.warnings === 1 ? '' : 's'}`);
-  for (const v of r.violations) lines.push(`  ${v.level === 'error' ? '✗' : '!'} ${v.file}:${v.line}  ${v.rule}  ${v.message}`);
+  for (const v of r.violations) lines.push(`  ${v.level === 'error' ? '✗' : v.level === 'warn' ? '!' : 'i'} ${v.file}:${v.line}  ${v.rule}  ${v.message}`);
   if (r.ok && r.violations.length === 0) lines.push('  every added claim meets the evidence bar');
   return lines.join('\n');
 }
@@ -72,7 +72,7 @@ ${warns.length > 0 ? `\n## Should fix\n${warns.map(item).join('\n')}\n` : ''}
 - When you are done, run \`guardlink validate .\` and stop.`;
 }
 
-const VERB_TAG: Record<string, string> = { exposes: '@exposes', confirmed: '@confirmed', accepts: '@accepts', entitles: '@entitles', mitigates: '@mitigates', audit: '@audit', comment: '@comment', transfers: '@transfers', assumes: '@assumes' };
+const VERB_TAG: Record<string, string> = { exposes: '@exposes', confirmed: '@confirmed', ticket: '@ticket', accepts: '@accepts', entitles: '@entitles', mitigates: '@mitigates', audit: '@audit', comment: '@comment', transfers: '@transfers', assumes: '@assumes' };
 
 export interface Stripped { file: string; line: number; text: string }
 

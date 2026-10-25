@@ -55,6 +55,7 @@
  * @comment -- "EXPOSURE results carry the claim key as partialFingerprints['guardlink/claimKey'], mirrored to properties.claimKey — the same identity the hypothesis ledger keys an entry on (src/parser/claim-key.ts). The threat id is derived from (asset, threat, file) and so is shared by siblings in one file; the claim key digests the claim's own words, so it separates those siblings and is unchanged by any edit that is not the claim — including a line move and an edit to the code beneath it"
  * @comment -- "CONFIRMED results carry threatId and no claim key, on purpose: the verb is part of the key digest, so an @exposes and the @confirmed proving it hold different keys, and the ledger keys entries by exposure only. A key stamped from a confirmed result could join to nothing, so guardlink does not emit one rather than emitting an identifier that cannot be used"
  * @comment -- "Declared context (taxa, relatedLocations, codeFlows, run.graphs, rule help and security-severity, automationDetails, versionControlProvenance) is appended after every existing member; results, their order, rule ids and message.text do not change, and the strip test pins that against an export cut before the context existed"
+ * @comment -- "Exposure and confirmed results whose pair has a @ticket carry properties.tickets [{ref, sla, assignee, due}], appended last and only when a ticket exists, so a model without @ticket exports byte-identically and a triager sees the work already filed"
  * @comment -- "--min-severity filters unmitigated exposures only: a @confirmed result is a reproduced exploit and is always exported"
  * @flows ThreatModel -> #sarif via generateSarif -- "Model input"
  * @flows #sarif -> SarifLog via return -- "SARIF output"
@@ -63,7 +64,7 @@
 import { createHash } from 'node:crypto';
 
 import type { ThreatModel, ThreatModelExposure, ParseDiagnostic, Severity, SourceLocation } from '../types/index.js';
-import { buildCoverageIndex } from '../parser/coverage.js';
+import { buildCoverageIndex, ticketsForResolver } from '../parser/coverage.js';
 import { canonicaliser } from '../parser/canonical-ref.js';
 import { buildRouteIndex } from '../parser/route.js';
 import { ACCEPTANCE_REGISTER_ID } from '../parser/acceptance.js';
@@ -422,6 +423,15 @@ export function generateSarif(
     if (src.verb === 'exposes') claimKeys.set(src.location, src.key);
   }
 
+  // Tracker tickets on a finding's pair, appended last and only when present.
+  const ticketsFor = ticketsForResolver(model);
+  const ticketProps = (site: { asset: string; threat: string }) => {
+    const tickets = ticketsFor(site);
+    return tickets.length > 0
+      ? { tickets: tickets.map(t => ({ ref: t.ref, ...(t.sla ? { sla: t.sla } : {}), ...(t.assignee ? { assignee: t.assignee } : {}), ...(t.due ? { due: t.due } : {}) })) }
+      : {};
+  };
+
   // One builder for every exposure result, so a covered exposure in the
   // pentest profile says exactly what it would say uncovered, under its own rule.
   const exposureResult = (e: ThreatModelExposure, rule?: { ruleId: string; level: SarifResult['level'] }): SarifResult | null => {
@@ -453,6 +463,7 @@ export function generateSarif(
         threat: e.threat,
         ...(e.external_refs.length > 0 ? { externalRefs: e.external_refs } : {}),
         ...reachabilityFor(e.asset, e.location),
+        ...ticketProps(e),
       },
     };
     context.enrich(result, e, 'exposes');
@@ -491,6 +502,7 @@ export function generateSarif(
         threat: c.threat,
         ...(c.external_refs.length > 0 ? { externalRefs: c.external_refs } : {}),
         ...reachabilityFor(c.asset, c.location),
+        ...ticketProps(c),
       },
     });
     context.enrich(results[results.length - 1], c, 'confirmed');

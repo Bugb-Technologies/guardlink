@@ -127,6 +127,7 @@ function allRecords(model: ThreatModel): { verb: string; location: SourceLocatio
   add('mitigates', model.mitigations);
   add('exposes', model.exposures);
   add('confirmed', model.confirmed);
+  add('ticket', model.tickets);
   add('accepts', model.acceptances);
   add('actor', model.actors);
   add('entitles', model.entitlements);
@@ -174,6 +175,7 @@ function assetRefsOf(verb: string, row: any): string[] {
     case 'exposes':
     case 'mitigates':
     case 'confirmed':
+    case 'ticket':
     case 'accepts':
     case 'audit':
     case 'owns':

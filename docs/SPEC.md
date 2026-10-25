@@ -345,6 +345,7 @@ Verb keyword sets:
 | `@exposes`, `@connects` | `to` |
 | `@mitigates` | `against`, `using`, `with` |
 | `@confirmed`, `@handles` | `on` |
+| `@ticket` | `on`, `sla` |
 | `@accepts` | `on`, `to`, `by`, `until` |
 | `@transfers` | `from`, `to` |
 | `@flows` | `->` |
@@ -496,6 +497,26 @@ The optional `[severity]` reflects **observed** impact from verification; it may
 
 ```typescript
 // @confirmed #secret-exposure on App.Config [critical] cwe:CWE-798 -- "TruffleHog + manual: live API key in committed .env.example, verified against provider"
+```
+
+#### `@ticket` — Tracked Ticket
+
+```
+@ticket <threat> on <asset> <ref> [sla "<label>"] [by <assignee>] [until <YYYY-MM-DD>] [-- "<description>"]
+```
+
+Records that a threat against an asset has an **open ticket** in an external tracker — Jira, Linear, GitHub Issues, ServiceNow, anything. GuardLink ships no connector and never calls the tracker: the annotation is the whole record. A line that is present means the ticket is open; closing the ticket is removing the line.
+
+- **`<ref>`** is the ticket as the team writes it: a quoted string, or one bare token with no whitespace or quotes — `SEC-42`, `jira:SEC-42`, `https://acme.atlassian.net/browse/SEC-42`. A bare ref may not begin with `-` or be one of the clause keywords `sla`, `by`, `until`, so a line missing its ref fails to parse rather than recording a keyword as the ticket. An `http(s)` ref is rendered as a link; any other ref is text.
+- **`sla "<label>"`** is the tracker's own priority wording — `"Highest"`, `"P1"`, `"Sev-2"` — kept verbatim. It is never mapped onto GuardLink severity, which stays on the `@threat` and the `@exposes`.
+- **`by <assignee>`** follows the `@accepts … by` grammar: an unquoted name or email, or a quoted name with spaces.
+- **`until <YYYY-MM-DD>`** is the SLA due date. A date that is no calendar day (`2026-02-30`) is a validation error (`ticket-malformed-due`). Whether a ticket is overdue is decided when it is read, never stored.
+
+A pair may carry several tickets; a ticket's identity is `(threat, asset, ref)`, so a changed `sla`, `by` or `until` is a modification (§7). A `@ticket` is **not a control**: it covers nothing, and an exposure it tracks stays open until a `@mitigates` or `@accepts` covers it. Readers report each ticket beside the state of its pair — `open` while any `@exposes`/`@confirmed` site of the pair is uncovered, `mitigated` once every site is covered and at least one by a control, `accepted` when acceptances alone cover it, `unexposed` when no site declares the pair (a validation warning, `ticket-without-exposure`, since it is usually a typo). A ticket whose pair is `mitigated` or `accepted` is reported by `guardlink lint` at level `info` (`ticket-on-mitigated`): the developer decides whether to remove it or keep it as the record. An agent may write `@ticket`, but only from a ticket in front of it — never an invented id, SLA, assignee or date.
+
+```typescript
+// @ticket #sqli on App.API "https://acme.atlassian.net/browse/SEC-42" sla "Highest" by alice@acme.com until 2026-11-30 -- "Q3 pentest finding"
+// @ticket #idor on #orders SEC-77 -- "Owner check for getOrder"
 ```
 
 #### `@feature` — Feature Tag
@@ -1114,6 +1135,19 @@ Parsing all annotations in a codebase produces a **ThreatModel** — a typed dat
     }
   ],
 
+  "tickets": [
+    {
+      "threat": "#sqli",
+      "asset": "App.API",
+      "ref": "https://acme.atlassian.net/browse/SEC-42",
+      "sla": "Highest",
+      "assignee": "alice@acme.com",
+      "due": "2026-11-30",
+      "description": "Q3 pentest finding",
+      "location": { "file": "src/api/search.ts", "line": 7, "parent_symbol": null }
+    }
+  ],
+
   "acceptances": [],
   "transfers": [],
   "flows": [],
@@ -1483,6 +1517,7 @@ Every other annotation is **not** a result:
 | `@boundary`, `@flows` | `run.graphs`, `relatedLocations` (boundaries), `codeFlows` (§6.6). The `pentest` profile appends each `@boundary` as a `guardlink/boundary-claim` result (§6.8). | Context, not findings. |
 | `@assumes`, `@handles`, `@audit` | `relatedLocations` on results for the same asset (§6.6) | Context, not findings. |
 | `@transfers` | `relatedLocations` on results for the same asset and threat (§6.6). A transfer does not cover an exposure. | Context, not findings. |
+| `@ticket` | `properties.tickets` — `[{ref, sla?, assignee?, due?}]` — on each `@exposes` and `@confirmed` result whose pair carries one, appended last and only when present | Work already filed, not a finding. A model without `@ticket` exports byte-identically. |
 | `@validates`, `@owns`, `@feature`, `@comment`, `@shield` | Not exported | — |
 | `@actor` / `@entitles` | **Not exported.** No result, no suppression, no property on any result, and nothing in the declared context | See below. |
 | `@agents`, `@reaches`, `@effects`, `@gates` | Not in the `github` profile. The `pentest` profile appends a `guardlink/agent-reach` result per reach and per mutating effect (§6.8). | Targets to test, not findings. A reach result would change the result index every consumer keys on, which is why it is only appended, and only in `pentest`. |
@@ -1948,7 +1983,7 @@ When comparing threat models between two git refs (e.g., a feature branch vs. `m
 | `NEW_RISK` | New `@exposes` that is mitigated or accepted | **Warn** |
 | `IMPROVED` | New `@mitigates` or `@control` reducing exposure | **Pass** |
 | `ACCEPTED` | New `@accepts` acknowledging a known risk | **Pass** (with note) |
-| `INFO` | Changes to `@flows`, `@boundary`, `@owns`, `@handles`, `@assumes`, `@actor` | **Pass** |
+| `INFO` | Changes to `@flows`, `@boundary`, `@owns`, `@handles`, `@assumes`, `@actor`, `@ticket` (added, removed, or its `sla`, `by` or `until` changed) | **Pass** |
 | `STALE_ENTITLEMENT` | An `@entitles` is unchanged, but the authorization code its description cites changed | **Warn** |
 | `NEW_UNENTITLED_REACH` | An `@agents`/`@reaches` claim no cited `@entitles` covers (§3.2.1) that was covered, or absent, before | **Warn** |
 | `NEW_CODING_AGENT_REACH` | The agent configuration grants a coding agent a capability it did not before (§5.6) | **Warn** |

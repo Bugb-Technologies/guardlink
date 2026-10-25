@@ -49,7 +49,7 @@ import fg from 'fast-glob';
 import { resolve, basename, join, isAbsolute, relative } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { AGENT_CONFIG_ENV } from '../parser/parse-project.js';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findAgentConfigDiagnostics, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides, checkHandoff, HANDOFF_COMMAND, findAnchorDrift, applyReanchor, migrateAnnotationMode, annotationsLeftBehind, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE, withReachAnalysis } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findAgentConfigDiagnostics, findInertEntitlements, findImpreciseEntitlements, findOffConventionGalFiles, findUnresolvedBoundarySides, findTicketDiagnostics, ticketStatusResolver, checkHandoff, HANDOFF_COMMAND, findAnchorDrift, applyReanchor, migrateAnnotationMode, annotationsLeftBehind, computeAnnotationHash, computeAnchorHash, canonicalAnchorRecords, countAnchors, lostAnchors, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries, readAcceptancePolicy, findAcceptanceDefects, acceptanceBlastRadius, formatBlastRadius, DEFAULT_ACCEPTANCE_POLICY, MAX_ACCEPTANCE_WARN_DAYS, ACCEPTANCE_REGISTER_NOTE, ACCEPTANCE_REGISTER_SHORT, readLedger, writeLedger, classifyClaims, planVerification, applyVerification, defaultVerifier, headCommit, nowIso, LEDGER_FILE, withReachAnalysis } from '../parser/index.js';
 import { diagnosticIcon } from '../parser/format.js';
 import { buildAnnotationWorklist, WORKLIST_SCHEMA, type AnnotationWorklist } from '../parser/annotation-worklist.js';
 import { runCiChecks, formatCiReport, ESTATE_ROUTE } from '../ci/index.js';
@@ -450,6 +450,8 @@ program
     const impreciseDiags = findImpreciseEntitlements(model);
     // One actor under both @agents and @reaches (error)
     const agentReachDiags = findAgentReachConflicts(model);
+    // @ticket: an impossible due date (error), a ticket on a pair nothing exposes (warning)
+    const ticketDiags = findTicketDiagnostics(model);
 
     // §3.6: an entitlement in source with no accepted proposal behind it. Skipped
     // in projects with no proposal ledger, so this only bites where the flow is used.
@@ -490,7 +492,7 @@ program
     // The block's pre-PR lines against `pre_pr`, which its stamp does not cover.
     const prePrDiags = findPrePrDrift(root);
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...acceptAuditDiags, ...acceptanceDiags, ...actorDiags, ...agentReachDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags, ...boundaryDiags, ...agentConfigDiags, ...prePrDiags];
+    const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...acceptAuditDiags, ...acceptanceDiags, ...actorDiags, ...agentReachDiags, ...ticketDiags, ...inertDiags, ...impreciseDiags, ...provenanceDiags, ...galConventionDiags, ...ledgerDiags, ...boundaryDiags, ...agentConfigDiags, ...prePrDiags];
 
     // Check for unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);
@@ -1936,19 +1938,20 @@ program
     // Without --since a person may have written the @accepts in the tree; only a session's additions are held to the no-governance rule.
     const violations = lintAnnotations(model, { only, governance: opts.since ? 'error' : 'ignore' });
     const errors = violations.filter(v => v.level === 'error').length;
-    const warnings = violations.length - errors;
+    const warnings = violations.filter(v => v.level === 'warn').length;
+    const infos = violations.length - errors - warnings;
     if (opts.json) {
       console.log(JSON.stringify({
         schema: 'guardlink.lint/v1',
         root,
         scope: { since: opts.since ?? null, claims: scopeClaims },
-        summary: { errors, warnings, violations: violations.length },
+        summary: { errors, warnings, infos, violations: violations.length },
         violations: violations.map(v => ({ rule: v.rule, level: v.level, verb: v.verb, file: v.file, line: v.line, claim: v.claim, message: v.message, fix: RULE_FIX[v.rule] })),
       }, null, 2));
     } else {
-      for (const v of violations) console.log(`${v.file}:${v.line}  ${v.level === 'error' ? 'error' : 'warn '}  ${v.rule}  ${v.message}`);
+      for (const v of violations) console.log(`${v.file}:${v.line}  ${v.level === 'error' ? 'error' : v.level === 'warn' ? 'warn ' : 'info '}  ${v.rule}  ${v.message}`);
       if (violations.length > 0) console.log('');
-      console.log(`${scopeClaims} ${scopeClaims === 1 ? 'claim' : 'claims'}${opts.since ? ` added since ${opts.since}` : ''}: ${errors} ${errors === 1 ? 'error' : 'errors'}, ${warnings} ${warnings === 1 ? 'warning' : 'warnings'}`);
+      console.log(`${scopeClaims} ${scopeClaims === 1 ? 'claim' : 'claims'}${opts.since ? ` added since ${opts.since}` : ''}: ${errors} ${errors === 1 ? 'error' : 'errors'}, ${warnings} ${warnings === 1 ? 'warning' : 'warnings'}${infos > 0 ? `, ${infos} info` : ''}`);
       if (!opts.since) console.log('(governance verbs are not checked without --since: a person may have written them)');
     }
     if (errors > 0) process.exitCode = 1;
@@ -3865,6 +3868,14 @@ program
       console.log(EX('    // @confirmed  #secret-exposure  on  App.Config  [critical]  -- "Live key in repo; verified with provider"'));
       console.log('');
 
+      console.log(`  ${V('@ticket')}  ${K('<threat>')}  ${D('on')}  ${K('<asset>')}  ${K('<id-or-url>')}  ${D('[sla "<label>"]')}  ${D('[by')}  ${K('<assignee>')}${D(']')}  ${D('[until YYYY-MM-DD]')}  ${D('[-- "description"]')}`);
+      console.log(D('    Record that a threat on an asset has an open ticket in your tracker (Jira, Linear, GitHub...).'));
+      console.log(D('    The line is the whole record: GuardLink never calls the tracker. Remove it when the ticket closes.'));
+      console.log(D('    sla keeps your tracker\'s own priority label verbatim; until is the SLA due date.'));
+      console.log(EX('    // @ticket  #sqli  on  App.API  "https://acme.atlassian.net/browse/SEC-42"  sla "Highest"  by  alice@acme.com  until 2026-11-30'));
+      console.log(EX('    // @ticket  #xss  on  #web  SEC-77  -- "Found in the Q3 pentest"'));
+      console.log('');
+
       console.log(`  ${V('@accepts')}  ${K('<threat>')}  ${D('on')}  ${K('<asset>')}  ${D('[-- "reason"]')}`);
       console.log(D('    Explicitly accept a risk. Removes it from open findings.'));
       console.log(D('    Use when the risk is known and intentionally not mitigated.'));
@@ -4102,6 +4113,12 @@ function printStatus(model: ThreatModel, verification?: VerificationReport, hypo
   const refuted = hypotheses ? hypotheses.summary.refuted : 0;
   console.log(`Exposures:        ${model.exposures.length}${refuted > 0 ? ` (${refuted} refuted with evidence)` : ''}`);
   if ((model.confirmed || []).length > 0) console.log(`Confirmed:        ${model.confirmed.length} 🔴`);
+  // Tickets on a pair that is now mitigated or accepted are the ones to ask about closing.
+  if ((model.tickets || []).length > 0) {
+    const status = ticketStatusResolver(model);
+    const covered = model.tickets!.filter(t => { const st = status(t).state; return st === 'mitigated' || st === 'accepted'; }).length;
+    console.log(`Tickets:          ${model.tickets!.length}${covered > 0 ? ` (${covered} on mitigated or accepted pairs)` : ''}`);
+  }
   // Two neighbouring lines, two different registers. Each says which one it is:
   // the tested outcomes come from the hypothesis ledger, the acceptances from
   // @accepts comments in this repository, and neither is the server decision log.
@@ -4140,7 +4157,7 @@ function printStatus(model: ThreatModel, verification?: VerificationReport, hypo
   // reconcile with it instead of silently falling short.
   const listed = model.assets.length + model.threats.length + model.controls.length
     + (model.actors || []).length + model.mitigations.length + model.exposures.length
-    + (model.confirmed || []).length + model.acceptances.length + (model.entitlements || []).length
+    + (model.confirmed || []).length + (model.tickets || []).length + model.acceptances.length + (model.entitlements || []).length
     + (model.reaches || []).length + (model.effects || []).length + (model.gates || []).length
     + model.transfers.length + model.flows.length + model.boundaries.length + model.validations.length
     + model.audits.length + model.ownership.length + model.data_handling.length + model.assumptions.length

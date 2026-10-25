@@ -61,7 +61,7 @@ export type Direction = 'in' | 'out' | 'both';
 export const SELECTABLE_KINDS = [
   'exposures', 'mitigations', 'confirmed', 'acceptances', 'transfers',
   'flows', 'boundaries', 'validations', 'audits', 'ownership',
-  'data_handling', 'assumptions', 'entitlements', 'reaches', 'effects', 'gates',
+  'data_handling', 'assumptions', 'entitlements', 'reaches', 'effects', 'gates', 'tickets',
   'comments', 'shields', 'features',
 ] as const;
 export type SelectableKind = typeof SELECTABLE_KINDS[number];
@@ -384,6 +384,7 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
       data_handling: inFile(base.data_handling), assumptions: inFile(base.assumptions),
       actors: inFile(base.actors || []), entitlements: inFile(base.entitlements || []),
       reaches: inFile(base.reaches || []), effects: inFile(base.effects || []), gates: inFile(base.gates || []),
+      tickets: inFile(base.tickets || []),
       shields: inFile(base.shields), features: inFile(base.features), comments: inFile(base.comments),
     };
   }
@@ -424,13 +425,14 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
     .filter(r => (r.asset ? inSet(r.asset) : selected === null)));
   const effects = pick('effects', (base.effects || []).filter(e => inSet(e.asset)));
   const gates   = pick('gates',   (base.gates || []).filter(g => inSet(g.asset)));
+  const tickets = pick('tickets', (base.tickets || []).filter(t => inSet(t.asset)));
 
   // Node definitions are always kept: an edge whose endpoint has no declaration
   // renders as a bare id and reads as missing data rather than as a filter.
   const assets = base.assets.filter(a => inSet(a.id || a.path.join('.')));
 
   const threatRefs = new Set<string>();
-  for (const r of [...exposures, ...mitigations, ...confirmed, ...acceptances]) threatRefs.add(bare(r.threat));
+  for (const r of [...exposures, ...mitigations, ...confirmed, ...acceptances, ...tickets]) threatRefs.add(bare(r.threat));
   for (const t of transfers) threatRefs.add(bare(t.threat));
   const threats = base.threats.filter(t => threatRefs.has(bare(t.id || '')) || threatRefs.has(bare(t.canonical_name)));
 
@@ -445,7 +447,7 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
   for (const row of [...assets, ...threats, ...controls, ...exposures, ...mitigations,
     ...confirmed, ...acceptances, ...transfers, ...flows, ...boundaries, ...validations,
     ...audits, ...ownership, ...dataHandling, ...assumptions, ...entitlements,
-    ...reaches, ...effects, ...gates]) files.add(row.location.file);
+    ...reaches, ...effects, ...gates, ...tickets]) files.add(row.location.file);
   const byFile = <T extends { location: { file: string } }>(rows: T[]) => rows.filter(r => files.has(r.location.file));
 
   const comments = pick('comments', byFile(base.comments));
@@ -464,7 +466,7 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
 
   const arrays = [assets, threats, controls, actors, mitigations, exposures, confirmed,
     acceptances, transfers, flows, boundaries, validations, audits, ownership,
-    dataHandling, assumptions, entitlements, reaches, effects, gates, shields, features, comments];
+    dataHandling, assumptions, entitlements, reaches, effects, gates, tickets, shields, features, comments];
 
   return {
     ...base,
@@ -487,7 +489,7 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
     annotation_scope: undefined,
     assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances,
     transfers, flows, boundaries, validations, audits, ownership,
-    data_handling: dataHandling, assumptions, entitlements, reaches, effects, gates,
+    data_handling: dataHandling, assumptions, entitlements, reaches, effects, gates, tickets,
     shields, features, comments,
   };
 }

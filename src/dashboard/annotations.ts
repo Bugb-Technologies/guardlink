@@ -42,7 +42,7 @@ export interface AnnotationJoin {
   links?: RepoLinks | null;
 }
 
-const FIELD_KEYS = ['asset', 'threat', 'control', 'severity', 'source', 'target', 'mechanism', 'classification', 'owner', 'actor', 'capability', 'asset_a', 'asset_b', 'reason', 'justification', 'name', 'id'] as const;
+const FIELD_KEYS = ['asset', 'threat', 'control', 'severity', 'source', 'target', 'mechanism', 'classification', 'owner', 'actor', 'capability', 'asset_a', 'asset_b', 'reason', 'justification', 'name', 'id', 'ref', 'sla', 'assignee', 'due'] as const;
 const VERB_OF_KIND: Record<string, string> = { exposes: 'exposes', confirmed: 'confirmed', mitigates: 'mitigates' };
 
 export interface FileAnnotationGroup {
@@ -114,6 +114,7 @@ export function buildFileAnnotations(model: ThreatModel, root?: string, join: An
   for (const c of model.controls) addEntry('control', as(c), c.name);
   for (const e of model.exposures) addEntry('exposes', as(e), `${e.asset} → ${e.threat}`);
   for (const cf of model.confirmed || []) addEntry('confirmed', as(cf), `${cf.asset} confirmed ${cf.threat}`);
+  for (const t of model.tickets || []) addEntry('ticket', as(t), `${t.ref} tracks ${t.threat} on ${t.asset}`);
   for (const m of model.mitigations) addEntry('mitigates', as(m), `${m.control} mitigates ${m.threat}`);
   for (const a of model.acceptances) addEntry('accepts', as(a), `${a.asset} accepts ${a.threat}`);
   for (const t of model.transfers) addEntry('transfers', as(t), `${t.source} → ${t.target}`);

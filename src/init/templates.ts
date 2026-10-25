@@ -252,6 +252,9 @@ REACH    @agents <#agent-actor> to <capability> on <Asset> as <#identity> -- "on
          @effects <read|write|delete|execute|spend|notify> on <Asset> as <#identity> -- "on the code that acts"
          @gates <Asset> by <#approver-actor> for <capability> -- "on the approval step"
 
+TRACK    @ticket <#threat> on <Asset> <id-or-url> sla "<label>" by <assignee> until <YYYY-MM-DD> -- "what the ticket covers"
+                   ^ an open ticket in your tracker; sla, by and until are optional. Remove the line when it closes
+
 FLOW     @flows <Source> -> <Target> via <mechanism> -- "details"
          @boundary from <Outer> to <Inner> (#id) -- "trust boundary, direction known"
          @boundary <AssetA> | <AssetB> (#id) -- "trust boundary"
@@ -302,6 +305,7 @@ Append after severity: \`cwe:CWE-89\`, \`owasp:A03:2021\`, \`capec:CAPEC-66\`, \
 | Security gap exists | \`@exposes Asset to #threat\` + \`@audit Asset\` |
 | Risk with no fix yet | \`@audit Asset\` + \`@comment\` explaining potential controls. NEVER \`@accepts\`. |
 | Implementing a fix | \`@mitigates Asset against #threat using #control\` |
+| A risk has an open ticket in your tracker | \`@ticket #threat on Asset SEC-42 sla "High" by owner until <YYYY-MM-DD>\` — the id or URL as the tracker shows it |
 | Processing sensitive data | \`@handles pii on Asset\` |
 | Proprietary algorithm | \`@shield:begin\` ... \`@shield:end\` |
 | Tagging code to a feature | \`@feature "SSO Login" -- "Single sign-on flow"\` |
@@ -593,6 +597,17 @@ export function buildModelContext(model: ThreatModel, freshness?: ModelContextFr
     }
   }
 
+  // Tracker tickets: work already filed, so an agent does not file it twice.
+  if ((ordered.tickets || []).length > 0) {
+    sections.push('\n### Tracked Tickets (work already filed)\n');
+    sections.push(ordered.tickets!.slice(0, 25).map(t =>
+      `- ${t.ref} — ${t.threat} on ${t.asset}${t.sla ? ` (${t.sla})` : ''}${t.assignee ? `, ${t.assignee}` : ''} (${t.location.file}:${t.location.line})`
+    ).join('\n'));
+    if (ordered.tickets!.length > 25) {
+      sections.push(`- … and ${ordered.tickets!.length - 25} more — \`guardlink_lookup("tickets")\` returns all of them`);
+    }
+  }
+
   // Existing flows (top 20)
   if (ordered.flows.length > 0) {
     sections.push('\n### Existing Data Flows (extend, don\'t duplicate)\n');
@@ -623,6 +638,7 @@ export function buildModelContext(model: ThreatModel, freshness?: ModelContextFr
     `${ordered.mitigations.length} mitigations`,
     ...((ordered.actors || []).length > 0 ? [`${ordered.actors!.length} actors`] : []),
     ...((ordered.entitlements || []).length > 0 ? [`${ordered.entitlements!.length} entitlements`] : []),
+    ...((ordered.tickets || []).length > 0 ? [`${ordered.tickets!.length} tickets`] : []),
     `${ordered.flows.length} flows`,
     ...(uniqueFeatures.size > 0 ? [`${uniqueFeatures.size} features`] : []),
   ].join(', ');
@@ -1029,6 +1045,7 @@ Assets are referenced as \`#id\` or as a \`Dotted.Path\`; both resolve to the sa
 | \`@exposes\` | \`@exposes <asset> to <threat> [severity] cwe:CWE-89 -- "why"\` |
 | \`@mitigates\` | \`@mitigates <asset> against <threat> using <control> -- "how"\` |
 | \`@confirmed\` | \`@confirmed <threat> on <asset> [severity] cwe:CWE-89 -- "evidence"\` |
+| \`@ticket\` | \`@ticket <threat> on <asset> <id-or-url> sla "<label>" by <assignee> until <YYYY-MM-DD> -- "what it covers"\` — an open tracker ticket; remove it when the ticket closes |
 | \`@flows\` | \`@flows <A> -> <B> via <mechanism> -- "what moves"\` — chains allowed: \`A -> B -> C\` |
 | \`@boundary\` | \`@boundary from <outer> to <inner> (#id) -- "what changes across it"\` when you know which side is less trusted; \`@boundary between <A> and <B>\` when you do not |
 | \`@transfers\` | \`@transfers <threat> from <A> to <B> -- "who owns it now"\` |

@@ -19,14 +19,32 @@
  *
  * @mitigates #dashboard against #xss using #output-encoding -- "Every cell, attribute and identity is escaped; the search text is escaped as an attribute value; the matrix SVG escapes its own labels"
  * @handles pii on #dashboard -- "Introducer identities in the people × time grid"
+ * @comment -- "An exposure or confirmed row whose pair has a @ticket carries a ticket chip linking to the Tickets page filtered to that pair; the join is ticketsForResolver in the coverage module"
  * @comment -- "Scope wording lives in a note, not in headings: the client feature filter rewrites headings by textContent"
  */
-import { esc, chip, sortableHead, rowAttrs, sevBadge, sevRank, locCellShort, claimStateBadge, whoLink, badge, scopeLabel, subHead, normSev, descCell, colgroup, pager, pageHead, stateChip, heatTable, barList, plural, routeWithQuery, numCell, shortPath } from '../html.js';
+import { esc, chip, sortableHead, rowAttrs, sevBadge, sevRank, locCellShort, claimStateBadge, whoLink, badge, scopeLabel, subHead, normSev, descCell, colgroup, pager, pageHead, stateChip, heatTable, barList, plural, routeWithQuery, numCell, shortPath, icon } from '../html.js';
 import type { PageContext, ClaimView } from './context.js';
 import { computeControlCoverage, computeSeverityStatus, computeIntroductionHeat, computeToolSeverity, computeOwnership, computeSensitiveData, computeAssetThreatMatrix, SEV_ORDER } from '../analytics.js';
 import type { SevKey } from '../analytics.js';
 import { renderMatrix, type MatrixData } from '../layout/matrix.js';
 import { ACCEPTANCE_REGISTER_NOTE } from '../../parser/acceptance.js';
+import { ticketsForResolver } from '../../parser/coverage.js';
+import type { ThreatModel } from '../../types/index.js';
+
+/** One tickets-by-pair resolver per model rendered (the whole model and each feature variant). */
+const ticketResolvers = new WeakMap<ThreatModel, ReturnType<typeof ticketsForResolver>>();
+
+/** A chip naming the tracker tickets on this row's pair, linking to them on the Tickets page. */
+function ticketChip(c: ClaimView, model: ThreatModel): string {
+  if (c.verb !== 'exposes' && c.verb !== 'confirmed') return '';
+  let resolve = ticketResolvers.get(model);
+  if (!resolve) { resolve = ticketsForResolver(model); ticketResolvers.set(model, resolve); }
+  const tickets = resolve(c);
+  if (tickets.length === 0) return '';
+  const refs = tickets.map(t => t.ref).join(', ');
+  // Filter by the ticket's own spelling of the pair: the Tickets page searches its text, and the exposure may name the asset by another alias.
+  return `<a class="tag ticket-tag" href="${esc(routeWithQuery('tickets', `${tickets[0].asset} ${tickets[0].threat}`))}" title="${esc(`Tracked: ${refs}`)}">${icon('ticket')}${tickets.length === 1 ? 'ticket' : `${tickets.length} tickets`}</a>`;
+}
 
 const STATUS_LABEL: Record<string, string> = { open: 'Open', mitigated: 'Mitigated', accepted: 'Accepted', confirmed: 'Confirmed', control: 'Control', refuted: 'Refuted' };
 
@@ -51,7 +69,7 @@ function introducedCell(c: ClaimView): string {
 function claimRow(c: ClaimView, ctx: PageContext, showState: boolean, showWho: boolean): string {
   return `
     <tr class="clickable${c.status === 'open' || c.status === 'confirmed' ? ' row-open' : ''}" data-claim="${c.idx}" ${rowAttrs({ file: c.file, sev: c.severity, status: c.status, who: c.who, state: c.state, owners: c.owners, handles: c.handles, change: c.change, search: [c.search] })}>
-      <td data-v="${esc(c.status)}"><div class="status-cell">${statusBadge(c)}${showState ? claimStateBadge(c.state ?? undefined) : ''}${c.change === 'new' ? badge('new', 'blue', 'Added since the --since ref') : ''}</div></td>
+      <td data-v="${esc(c.status)}"><div class="status-cell">${statusBadge(c)}${showState ? claimStateBadge(c.state ?? undefined) : ''}${c.change === 'new' ? badge('new', 'blue', 'Added since the --since ref') : ''}${ticketChip(c, ctx.model)}</div></td>
       ${numCell(sevRank(c.severity), sevBadge(c.severity))}
       <td data-v="${esc(`${c.asset} ${c.threat}`)}"><div class="claim-cell" title="${esc(`${c.asset} → ${c.threat}`)}"><code class="cc-asset">${esc(c.asset)}</code><code class="cc-threat">${esc(c.threat)}</code></div></td>
       ${descCell(c.description)}

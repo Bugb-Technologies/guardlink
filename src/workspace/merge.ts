@@ -533,6 +533,10 @@ function collectTagReferences(m: ThreatModel, _repo: string): TagRef[] {
     addRef(acc.asset, 'accepts', acc.location);
     addRef(acc.threat, 'accepts', acc.location);
   }
+  for (const t of m.tickets || []) {
+    addRef(t.asset, 'ticket', t.location);
+    addRef(t.threat, 'ticket', t.location);
+  }
   for (const tr of m.transfers) {
     addRef(tr.source, 'transfers', tr.location);
     addRef(tr.target, 'transfers', tr.location);
@@ -604,6 +608,7 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     mitigations: [],
     exposures: [],
     confirmed: [],
+    tickets: [],
     acceptances: [],
     transfers: [],
     flows: [],
@@ -652,6 +657,7 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     combined.mitigations.push(...prefixAll(m.mitigations, repo));
     combined.exposures.push(...prefixAll(m.exposures, repo));
     combined.confirmed.push(...prefixAll(m.confirmed || [], repo));
+    combined.tickets!.push(...prefixAll(m.tickets || [], repo));
     combined.acceptances.push(...prefixAll(m.acceptances, repo));
     combined.entitlements!.push(...prefixAll(m.entitlements || [], repo));
     // Like every relation, the location is prefixed and the refs are not: one
@@ -1102,7 +1108,7 @@ function emptyMergedReport(workspace: string, statuses: RepoStatus[]): MergedRep
       generated_at: new Date().toISOString(), source_files: 0,
       annotations_parsed: 0, annotated_files: [], unannotated_files: [],
       assets: [], threats: [], controls: [], actors: [], entitlements: [],
-      reaches: [], effects: [], gates: [],
+      reaches: [], effects: [], gates: [], tickets: [],
       mitigations: [], exposures: [],
       confirmed: [], acceptances: [], transfers: [], flows: [], boundaries: [],
       validations: [], audits: [], ownership: [], data_handling: [],

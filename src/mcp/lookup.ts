@@ -18,6 +18,7 @@
  *   - "effects [for #asset]" → @effects claims: what code does to an asset, as whom
  *   - "gates [for #asset]" → @gates claims: who approves before effects on an asset land
  *   - "ungated effects [for #asset]" → mutating @effects no @gates covers
+ *   - "tickets [for <threat|asset|ref|assignee>]" / "ticket SEC-42" → @ticket claims, each with its pair's current state
  *   - "boundary #config" → boundaries involving asset
  *   - Free text → fuzzy match across assets, threats, controls
  *
@@ -25,16 +26,17 @@
  * @mitigates #mcp against #redos using #regex-anchoring -- "Patterns are simple and bounded"
  * @flows QueryString -> #mcp via lookup -- "Query input path"
  * @comment -- "Pure function; no I/O; operates on in-memory ThreatModel"
+ * @comment -- "`tickets` reports each ticket's state from ticketStatusResolver, the coverage module's own join, so lookup, lint and the dashboard agree on which tickets sit on a mitigated pair"
  * @comment -- "The reach forms project the parsed model and add no input surface. `unentitled reaches` answers from findUnentitledReaches, the same join diff uses, so the two cannot disagree about can minus may; `ungated effects` answers from buildReachAnalysis, the block the model export carries"
  */
 
-import { buildCoverageIndex, findUnmitigatedExposures } from '../parser/coverage.js';
+import { buildCoverageIndex, findUnmitigatedExposures, ticketStatusResolver } from '../parser/coverage.js';
 import { ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
 import { actorResolver, findUnentitledReaches, buildReachAnalysis } from '../parser/reach.js';
 import { relationRecords } from '../parser/claim-key.js';
 import type {
   ThreatModel, ThreatModelAsset, ThreatModelThreat, ThreatModelControl,
-  ThreatModelTransfer, ThreatModelAcceptance,
+  ThreatModelTransfer, ThreatModelAcceptance, ThreatModelTicket,
   SourceLocation, DataClassification, AgentConfigSource,
 } from '../types/index.js';
 
@@ -101,6 +103,7 @@ export const SUPPORTED_QUERY_FORMS = [
   'validations for <asset-or-control>',
   'acceptances [for <asset>]',
   'transfers [for <threat-or-asset>]',
+  'tickets [for <threat|asset|ref|assignee>]  (@ticket: open tracker tickets, each with its pair\'s state; also `ticket SEC-42`)',
   'comments [for <file-or-asset>]',
   'shields [for <file-or-asset>]',
   'reaches [for <actor>]     (@agents and @reaches: capabilities a principal can invoke)',
@@ -437,6 +440,28 @@ export function lookup(model: ThreatModel, query: string): LookupResult {
       .filter(t => keep(t.threat) || keep(t.source) || keep(t.target))
       .map(project);
     return { query, type: 'transfers', count: results.length, results, ...provenance(match), ...ambiguity(matched, v => v) };
+  }
+
+  // "tickets" / "tickets for X" / "ticket X" — X may be the threat, the asset,
+  // the ticket ref or the assignee, matched at one tier like `transfers`.
+  const ticketsQ = q.match(/^tickets?(?:\s+(?:(?:for|of|on|by)\s+)?(.+))?$/);
+  if (ticketsQ) {
+    const tickets = model.tickets || [];
+    const status = ticketStatusResolver(model);
+    const project = (t: ThreatModelTicket) => {
+      const st = status(t);
+      return {
+        ref: t.ref, threat: t.threat, asset: t.asset, sla: t.sla, assignee: t.assignee, due: t.due,
+        state: st.state, confirmed: st.confirmed, description: t.description, ...loc(t.location),
+      };
+    };
+    if (!ticketsQ[1]) return { query, type: 'tickets', count: tickets.length, results: tickets.map(project) };
+    const target = ticketsQ[1].trim();
+    const aliases = resolve(target);
+    const fields = (t: ThreatModelTicket) => [t.threat, t.asset, t.ref, ...(t.assignee ? [t.assignee] : [])];
+    const { keep, match, matched } = selectStrongest(tickets.flatMap(fields), target, aliases);
+    const results = tickets.filter(t => fields(t).some(keep)).map(project);
+    return { query, type: 'tickets', count: results.length, results, ...provenance(match), ...ambiguity(matched, v => v) };
   }
 
   // "comments" / "comments for <file-or-asset>"
@@ -822,6 +847,7 @@ function assetRelationRefs(model: ThreatModel): string[] {
     ...model.transfers.flatMap(t => [t.source, t.target]),
     ...(model.effects || []).map(e => e.asset),
     ...(model.gates || []).map(g => g.asset),
+    ...(model.tickets || []).map(t => t.asset),
   ];
 }
 
@@ -1218,6 +1244,7 @@ function lookupThreat(model: ThreatModel, query: string, ref: string, resolve: R
     ...(model.confirmed || []).map(c => c.threat),
     ...model.acceptances.map(a => a.threat),
     ...model.transfers.map(t => t.threat),
+    ...(model.tickets || []).map(t => t.threat),
   ];
   // Only relationships naming this threat at the same tier the threat itself
   // resolved at. `threat dos` resolves #dos exactly, so #redos exposures — a

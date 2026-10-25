@@ -23,7 +23,7 @@
 
 import { resolve, basename } from 'node:path';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findAcceptedWithoutAudit, findAcceptedExposures, findUndeclaredActors, findAgentReachConflicts, findTicketDiagnostics, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, listFeatures, filterByFeature, getFeatureSummaries } from '../parser/index.js';
 import { initProject, detectProject, promptAgentSelection, syncAgentFiles } from '../init/index.js';
 import { generateReport } from '../report/index.js';
 import { generateDashboardHTML } from '../dashboard/index.js';
@@ -226,6 +226,14 @@ export function cmdGal(): void {
   console.log(D('    "using" is the primary keyword; "with" also accepted.'));
   console.log(EX('    // @mitigates  api.auth  against  SQL Injection  using  Input Validation'));
   console.log(EX('    // @mitigates  db.users  against  Token Theft  -- "Rotation implemented in v2"'));
+  console.log('');
+
+  console.log(`  ${V('@ticket')}  ${K('<threat>')}  ${D('on')}  ${K('<asset>')}  ${K('<id-or-url>')}  ${D('[sla "<label>"]')}  ${D('[by')}  ${K('<assignee>')}${D(']')}  ${D('[until YYYY-MM-DD]')}  ${D('[-- "description"]')}`);
+  console.log(D('    Record that a threat on an asset has an open ticket in your tracker (Jira, Linear, GitHub...).'));
+  console.log(D('    The line is the whole record: GuardLink never calls the tracker. Remove it when the ticket closes.'));
+  console.log(D('    sla keeps your tracker\'s own priority label verbatim; until is the SLA due date.'));
+  console.log(EX('    // @ticket  #sqli  on  App.API  "https://acme.atlassian.net/browse/SEC-42"  sla "Highest"  by  alice@acme.com  until 2026-11-30'));
+  console.log(EX('    // @ticket  #xss  on  #web  SEC-77  -- "Found in the Q3 pentest"'));
   console.log('');
 
   console.log(`  ${V('@accepts')}  ${K('<threat>')}  ${D('on')}  ${K('<asset>')}  ${D('[-- "reason"]')}`);
@@ -904,10 +912,11 @@ export async function cmdValidate(ctx: TuiContext): Promise<void> {
     // Entitlement checks: undeclared actor (error) and uncited/inert claim (warning)
     const actorDiags = findUndeclaredActors(model);
     const agentReachDiags = findAgentReachConflicts(model);
+    const ticketDiags = findTicketDiagnostics(model);
     const inertDiags = findInertEntitlements(model);
     const impreciseDiags = findImpreciseEntitlements(model);
 
-    const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...acceptAuditDiags, ...actorDiags, ...agentReachDiags, ...inertDiags, ...impreciseDiags];
+    const allDiags = [...diagnostics, ...danglingDiags, ...boundarySideDiags, ...acceptAuditDiags, ...actorDiags, ...agentReachDiags, ...ticketDiags, ...inertDiags, ...impreciseDiags];
 
     // Unmitigated exposures
     const unmitigated = findUnmitigatedExposures(model);

@@ -26,13 +26,13 @@ import type {
   ThreatModelTransfer, ThreatModelFlow, ThreatModelBoundary, ThreatModelValidation,
   ThreatModelAudit, ThreatModelOwnership, ThreatModelDataHandling, ThreatModelAssumption,
   ThreatModelFeature, ThreatModelComment, ThreatModelEntitlement,
-  ThreatModelReach, ThreatModelEffect, ThreatModelGate,
+  ThreatModelReach, ThreatModelEffect, ThreatModelGate, ThreatModelTicket,
 } from '../types/index.js';
 
 export type ClaimVerb =
   | 'mitigates' | 'exposes' | 'confirmed' | 'accepts' | 'transfers' | 'flows' | 'boundary'
   | 'validates' | 'audit' | 'owns' | 'handles' | 'assumes' | 'feature' | 'comment' | 'entitles'
-  | 'agents' | 'reaches' | 'effects' | 'gates';
+  | 'agents' | 'reaches' | 'effects' | 'gates' | 'ticket';
 
 /** Verbs whose staleness can hide an exposure: the two that remove one from the export. */
 export const DEMOTABLE_VERBS: ReadonlySet<AnnotationVerb> = new Set(['mitigates', 'accepts']);
@@ -115,7 +115,8 @@ type Rec =
   | ['boundary', ThreatModelBoundary] | ['validates', ThreatModelValidation] | ['audit', ThreatModelAudit]
   | ['owns', ThreatModelOwnership] | ['handles', ThreatModelDataHandling] | ['assumes', ThreatModelAssumption]
   | ['feature', ThreatModelFeature] | ['comment', ThreatModelComment] | ['entitles', ThreatModelEntitlement]
-  | ['agents', ThreatModelReach] | ['reaches', ThreatModelReach] | ['effects', ThreatModelEffect] | ['gates', ThreatModelGate];
+  | ['agents', ThreatModelReach] | ['reaches', ThreatModelReach] | ['effects', ThreatModelEffect] | ['gates', ThreatModelGate]
+  | ['ticket', ThreatModelTicket];
 
 /** Identity fields per verb, in a fixed order. Description last, file after that. */
 function identity([verb, r]: Rec): string[] {
@@ -123,6 +124,9 @@ function identity([verb, r]: Rec): string[] {
     case 'mitigates': return [s(r.asset), s(r.threat), s(r.control)];
     case 'exposes':   return [s(r.asset), s(r.threat), refs(r.external_refs)];
     case 'confirmed': return [s(r.asset), s(r.threat), refs(r.external_refs)];
+    // The ref is the ticket's identity; sla, assignee and due are its mutable
+    // state, so changing them keeps the claim key (diff reads it as modified).
+    case 'ticket':    return [s(r.asset), s(r.threat), s(r.ref)];
     // `by` and `until` are part of the claim's identity, not decoration: a
     // renewed expiry or a different signatory is a DIFFERENT decision, and it
     // should arrive in the ledger unverified rather than inheriting the
@@ -156,6 +160,7 @@ export function claimText(rec: Rec): string {
     case 'mitigates': return `${r.asset} against ${r.threat}${r.control ? ` using ${r.control}` : ''}`;
     case 'exposes':   return `${r.asset} to ${r.threat}`;
     case 'confirmed': return `${r.threat} on ${r.asset}`;
+    case 'ticket':    return `${r.threat} on ${r.asset} ${r.ref}`;
     case 'accepts':   return `${r.threat} on ${r.asset}${r.accepted_by ? ` by ${r.accepted_by}` : ''}${r.expires ? ` until ${r.expires}` : ''}`;
     case 'transfers': return `${r.threat} from ${r.source} to ${r.target}`;
     case 'flows':     return `${r.source} -> ${r.target}${r.mechanism ? ` via ${r.mechanism}` : ''}`;
@@ -206,6 +211,7 @@ function allRecords(model: ThreatModel): Rec[] {
   for (const r of model.reaches ?? []) out.push([r.agent ? 'agents' : 'reaches', r]);
   for (const r of model.effects ?? []) out.push(['effects', r]);
   for (const r of model.gates ?? []) out.push(['gates', r]);
+  for (const r of model.tickets ?? []) out.push(['ticket', r]);
   return out;
 }
 

@@ -11,8 +11,8 @@ accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 1048 annotations · 21 assets · 16 threats · 14 controls · 148 exposures · 226 flows
-Content hash: `sha256-v3:0ed75b716b292740184b8b0ea0c3b0adf2d12b1af2e7ace1459629428ae51e9b` — identical hash means identical model.
+Current model: 1061 annotations · 21 assets · 16 threats · 14 controls · 148 exposures · 228 flows
+Content hash: `sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87` — identical hash means identical model.
 
 ---
 
@@ -114,6 +114,7 @@ Assets are referenced as `#id` or as a `Dotted.Path`; both resolve to the same n
 | `@exposes` | `@exposes <asset> to <threat> [severity] cwe:CWE-89 -- "why"` |
 | `@mitigates` | `@mitigates <asset> against <threat> using <control> -- "how"` |
 | `@confirmed` | `@confirmed <threat> on <asset> [severity] cwe:CWE-89 -- "evidence"` |
+| `@ticket` | `@ticket <threat> on <asset> <id-or-url> sla "<label>" by <assignee> until <YYYY-MM-DD> -- "what it covers"` — an open tracker ticket; remove it when the ticket closes |
 | `@flows` | `@flows <A> -> <B> via <mechanism> -- "what moves"` — chains allowed: `A -> B -> C` |
 | `@boundary` | `@boundary from <outer> to <inner> (#id) -- "what changes across it"` when you know which side is less trusted; `@boundary between <A> and <B>` when you do not |
 | `@transfers` | `@transfers <threat> from <A> to <B> -- "who owns it now"` |

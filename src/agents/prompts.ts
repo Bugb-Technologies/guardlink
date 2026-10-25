@@ -505,6 +505,9 @@ These verbs are for agents the CODE embeds. Never write \`@agents\` or \`@reache
 // @shield:end
 \`\`\`
 
+### \`@ticket\` — An Open Ticket in the Team's Tracker
+\`@ticket <#threat> on <Asset> <id-or-url> [sla "<label>"] [by <assignee>] [until <YYYY-MM-DD>]\` records that a risk already has a ticket in Jira, Linear, GitHub Issues or similar. GuardLink never reads the tracker, so only write one when the ticket is in front of you — a ticket id in a code comment, an issue link the user gave you, a TODO naming one. Never invent an id, SLA, assignee or date. \`sla\` keeps the tracker's own priority word verbatim. A \`@ticket\` is not a control: the exposure stays open until a \`@mitigates\` lands, and when one does, leave the \`@ticket\` for the developer to close or keep.
+
 ### \`@accepts\` — NEVER USE (Human-Only Decision)
 @accepts marks a risk as intentionally unmitigated. This is a **human-only governance decision** — it requires conscious risk ownership by a person or team.
 As an AI agent, you MUST NEVER write @accepts annotations. You cannot accept risk on behalf of humans.

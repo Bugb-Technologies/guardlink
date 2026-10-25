@@ -62,6 +62,7 @@ You will receive:
 - **@agents** / **@reaches** — an LLM agent (\`@agents\`) or another principal (\`@reaches\`) **can** invoke a capability: what the harness hands out. Not a permission. \`agent_reach.unentitled_reaches\` lists the ones no cited @entitles covers — for an agent, the OWASP LLM06 Excessive Agency list.
 - **@effects** — what code **does** to an asset: read, write, delete, execute, spend or notify, optionally as an execution identity. A mutating effect with no @gates in front of it is listed in \`agent_reach.ungated_mutations\`.
 - **@gates** — a named approver decides before effects on an asset land. It suppresses nothing; it is a node on a path, not a mitigation.
+- **@ticket** — an open ticket in the team's tracker (id or URL, the tracker's own SLA label, assignee, due date) for a threat on an asset. Work already filed: report it beside the finding rather than recommending the same work as new. It is not a control; the exposure stays open until a @mitigates covers it.
 - **@audit** — marks an asset as requiring human review
 - **hypothesis** (a field on an @exposes row, when present) — what happened when it was tested: 'confirmed' with evidence is proven; 'refuted' with evidence was tried and found not exploitable and is **not an open risk** (report it as refuted, keep it out of the priority list); 'retest' was confirmed before and the code beneath it changed since
 

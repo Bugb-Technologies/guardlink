@@ -7,13 +7,15 @@
  *
  * @flows ThreatModel -> #gate via lintAnnotations -- "Claims and their descriptions"
  * @comment -- "Errors are what the gate rejects; warnings are what it reports. Governance verbs (@accepts, @entitles) are errors only for claims under check, because a human may legitimately have written the others"
+ * @comment -- "ticket-on-mitigated is the one info-level rule: a @ticket whose pair is now covered is a question for the developer (close it, or keep it as the record), never a failure"
  * @comment -- "@agents, @reaches, @effects and @gates are observations an agent may write, so no rule rejects them. A @gates that does not say what the approval step is gets the vague-description warning, because a gate claim is what a reviewer reads to decide a route is held"
  */
 import type { ThreatModel, ThreatModelExposure, ThreatModelConfirmed } from '../types/index.js';
 import { relationRecords } from '../parser/claim-key.js';
-import { buildCoverageIndex } from '../parser/coverage.js';
+import { buildCoverageIndex, ticketStatusResolver } from '../parser/coverage.js';
 
-export type LintLevel = 'error' | 'warn';
+/** `info` never fails anything: it is a question for the developer, not a defect. */
+export type LintLevel = 'error' | 'warn' | 'info';
 
 export type LintRule =
   | 'exposes-no-code-reference'
@@ -23,7 +25,8 @@ export type LintRule =
   | 'entitles-written'
   | 'confirmed-without-evidence'
   | 'mitigates-no-control'
-  | 'description-vague';
+  | 'description-vague'
+  | 'ticket-on-mitigated';
 
 export interface Violation {
   rule: LintRule;
@@ -60,6 +63,7 @@ export const RULE_FIX: Record<LintRule, string> = {
   'confirmed-without-evidence': 'Downgrade to @exposes unless you hold evidence — a request and its response, a reproduction, a scan with proof — and put that evidence in the description.',
   'mitigates-no-control': 'Name the control with `using #control-id`, adding the control to the definitions file if it does not exist.',
   'description-vague': 'Say what the code does, by name: which function, which field, which library, which check.',
+  'ticket-on-mitigated': 'Nothing is required. If the ticket is closed in the tracker, remove the @ticket line; to keep it as the record of the work, leave it — this stays an info note.',
 };
 
 const SEV_RANK: Record<string, number> = { critical: 4, p0: 4, high: 3, p1: 3, medium: 2, p2: 2, low: 1, p3: 1 };
@@ -172,6 +176,12 @@ export function lintAnnotations(model: ThreatModel, opts: LintOptions = {}): Vio
   for (const t of model.transfers) if (under(t.location) && isVague(t.description)) push('description-vague', 'warn', 'transfers', t, `"${t.description ?? ''}" does not say who holds the risk or how`);
   for (const a of model.assumptions) if (under(a.location) && isVague(a.description)) push('description-vague', 'warn', 'assumes', a, `"${a.description ?? ''}" does not say what must hold`);
   for (const g of model.gates || []) if (under(g.location) && isVague(g.description)) push('description-vague', 'warn', 'gates', g, `"${g.description ?? ''}" does not say what the approval step is or how it blocks`);
+  const ticketStatus = ticketStatusResolver(model);
+  for (const t of model.tickets || []) {
+    if (!under(t.location)) continue;
+    const st = ticketStatus(t);
+    if (st.state === 'mitigated' || st.state === 'accepted') push('ticket-on-mitigated', 'info', 'ticket', t, `${t.threat} on ${t.asset} is now ${st.state}, but ticket ${t.ref} is still recorded — close it and remove the line, or keep it as the record`);
+  }
 
   return out.sort((x, y) => (x.file < y.file ? -1 : x.file > y.file ? 1 : x.line - y.line || x.rule.localeCompare(y.rule)));
 }

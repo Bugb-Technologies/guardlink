@@ -162,6 +162,7 @@ const ICON_PATHS: Record<string, string> = {
   slant: '<path d="M7 4h14l-4 16H3z"/>',
   cylinder: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/>',
   flag: '<path d="M4 22V4h12l-3 5 3 5H4"/>',
+  ticket: '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>',
 };
 
 /**
@@ -172,6 +173,19 @@ export function icon(name: string, cls = ''): string {
   const d = ICON_PATHS[name];
   if (!d) return '';
   return `<svg class="ico${cls ? ` ${cls}` : ''}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+}
+
+/**
+ * An absolute `http(s)` URL from model or repository text, or null.
+ *
+ * Stricter than the report renderer's `safeHref` on purpose: that one also
+ * passes relative paths, and a ticket id like `SEC-42` would then become a link
+ * to a page that does not exist. `esc()` alone lets `javascript:` through an
+ * href, so every external link built from text goes through here first.
+ */
+export function externalHref(raw: string | undefined | null): string | null {
+  const href = (raw ?? '').trim();
+  return /^https?:\/\/[^\s"'<>]+$/i.test(href) ? href : null;
 }
 
 /** A small copy-to-clipboard button. The script reads `data-copy`. */
