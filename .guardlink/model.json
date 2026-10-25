@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:0ed75b716b292740184b8b0ea0c3b0adf2d12b1af2e7ace1459629428ae51e9b",
+    "annotation_hash": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
     "generator": "guardlink@2.4.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 184,
-  "annotations_parsed": 1048,
+  "source_files": 185,
+  "annotations_parsed": 1061,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agentconfig/bundle.ts",
@@ -78,6 +78,7 @@
     "src/dashboard/pages/overview.ts",
     "src/dashboard/pages/reports.ts",
     "src/dashboard/pages/tables.ts",
+    "src/dashboard/pages/tickets.ts",
     "src/dashboard/render-budget.ts",
     "src/dashboard/since.ts",
     "src/dashboard/styles.ts",
@@ -956,7 +957,7 @@
       "description": "Reads a client-named file, or client-supplied diff text, and returns suggested annotations",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 445
+        "line": 447
       }
     },
     {
@@ -968,7 +969,7 @@
       "description": "Ranked entry points from the installed code graph",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 467
+        "line": 469
       }
     },
     {
@@ -980,7 +981,7 @@
       "description": "What one client-named function reaches, from the installed code graph",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 517
+        "line": 519
       }
     },
     {
@@ -992,7 +993,7 @@
       "description": "Answers one supported query form against the parsed model",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 537
+        "line": 539
       }
     },
     {
@@ -1004,7 +1005,7 @@
       "description": "Annotations and neighbourhood for one file inside root; a path outside root is refused",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 558
+        "line": 560
       }
     },
     {
@@ -1016,7 +1017,7 @@
       "description": "Subgraph or path over the parsed model",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 592
+        "line": 594
       }
     },
     {
@@ -1028,7 +1029,7 @@
       "description": "Writes a validated @source block into the annotation sidecar for a file",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 648
+        "line": 650
       }
     },
     {
@@ -1040,7 +1041,7 @@
       "description": "Finds drifted @source anchors, and with apply: true moves them",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 687
+        "line": 689
       }
     },
     {
@@ -1052,7 +1053,7 @@
       "description": "Runs an AI threat report when a provider key is in the environment, otherwise returns the prompt",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 725
+        "line": 727
       }
     },
     {
@@ -1064,7 +1065,7 @@
       "description": "Builds the annotation prompt for the calling agent; writes nothing itself",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 810
+        "line": 812
       }
     },
     {
@@ -1076,7 +1077,7 @@
       "description": "Generates the markdown report and its JSON",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 862
+        "line": 864
       }
     },
     {
@@ -1088,7 +1089,7 @@
       "description": "Generates the HTML dashboard",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 911
+        "line": 913
       }
     },
     {
@@ -1100,7 +1101,7 @@
       "description": "Exports SARIF 2.1.0",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 950
+        "line": 952
       }
     },
     {
@@ -1112,7 +1113,7 @@
       "description": "Compares the current model with the model at a client-supplied git ref",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 990
+        "line": 992
       }
     },
     {
@@ -1124,7 +1125,7 @@
       "description": "Unmitigated routes through the parsed flow graph",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1020
+        "line": 1022
       }
     },
     {
@@ -1136,7 +1137,7 @@
       "description": "Lists saved threat reports under .guardlink/",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1050
+        "line": 1052
       }
     },
     {
@@ -1148,7 +1149,7 @@
       "description": "Rewrites the GuardLink block in the agent instruction files under root",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1069
+        "line": 1071
       }
     },
     {
@@ -1160,7 +1161,7 @@
       "description": "Removes GuardLink annotations from source files",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1096
+        "line": 1098
       }
     },
     {
@@ -1172,7 +1173,7 @@
       "description": "Lists scanned files with no annotations",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1140
+        "line": 1142
       }
     },
     {
@@ -1184,7 +1185,7 @@
       "description": "Lists unmitigated exposures eligible for review",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1177
+        "line": 1179
       }
     },
     {
@@ -1196,7 +1197,7 @@
       "description": "Records a review decision as @accepts or @audit lines in source",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1219
+        "line": 1221
       }
     },
     {
@@ -1208,7 +1209,7 @@
       "description": "Files an @entitles proposal for a human to accept",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1301
+        "line": 1303
       }
     },
     {
@@ -1220,7 +1221,7 @@
       "description": "Lists entitlement proposals and their decisions",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1349
+        "line": 1351
       }
     },
     {
@@ -1232,7 +1233,7 @@
       "description": "Attribution for each claim, read from git",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1380
+        "line": 1382
       }
     },
     {
@@ -1244,7 +1245,7 @@
       "description": "Reads the workspace configuration and sibling tag prefixes",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1415
+        "line": 1417
       }
     }
   ],
@@ -1264,7 +1265,7 @@
       "description": "loadWorklist spawns the graph binary through runChild (argv, no shell) with the project root as one argument",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 468
+        "line": 470
       }
     },
     {
@@ -1273,7 +1274,7 @@
       "description": "reachFor spawns the graph binary through runChild (argv, no shell); the client's symbol is one argv element",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 518
+        "line": 520
       }
     },
     {
@@ -1282,7 +1283,7 @@
       "description": "applyAnnotations appends to .guardlink/annotations/<file>.gal unless dry_run; a line that does not parse, an undeclared reference, @accepts and @entitles are refused before anything is written",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 649
+        "line": 651
       }
     },
     {
@@ -1291,7 +1292,7 @@
       "description": "With apply: true, applyReanchor rewrites @source lines in annotation sidecars",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 688
+        "line": 690
       }
     },
     {
@@ -1300,7 +1301,7 @@
       "description": "With a provider key set, generateThreatReport calls the provider API through chatCompletion, billed to that key; provider and model are client arguments",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 726
+        "line": 728
       }
     },
     {
@@ -1309,7 +1310,7 @@
       "description": "generateThreatReport saves the report under .guardlink/threat-reports/",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 727
+        "line": 729
       }
     },
     {
@@ -1318,7 +1319,7 @@
       "description": "code_graph defaults to true, so loadWorklist spawns the graph binary through runChild when one is installed",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 811
+        "line": 813
       }
     },
     {
@@ -1327,7 +1328,7 @@
       "description": "writeFile at resolve(root, output), plus the .json beside it; root and output are both client arguments",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 863
+        "line": 865
       }
     },
     {
@@ -1336,7 +1337,7 @@
       "description": "writeFile at resolve(root, output); root and output are both client arguments",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 912
+        "line": 914
       }
     },
     {
@@ -1345,7 +1346,7 @@
       "description": "writeFile at resolve(root, output); root and output are both client arguments",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 951
+        "line": 953
       }
     },
     {
@@ -1354,7 +1355,7 @@
       "description": "parseAtRef runs git at the client-supplied ref and extracts that revision into a temp directory",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 991
+        "line": 993
       }
     },
     {
@@ -1363,7 +1364,7 @@
       "description": "syncAgentFiles rewrites the stamped block in every agent instruction file that exists; text outside the markers is kept",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1070
+        "line": 1072
       }
     },
     {
@@ -1372,7 +1373,7 @@
       "description": "With dry_run: false, clearAnnotations strips annotation lines from every scanned source file, and from definitions with include_definitions",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1097
+        "line": 1099
       }
     },
     {
@@ -1381,7 +1382,7 @@
       "description": "applyReviewAction inserts @accepts + @audit, or @audit, into the source file of the exposure",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1220
+        "line": 1222
       }
     },
     {
@@ -1390,7 +1391,7 @@
       "description": "Then syncAgentFiles rewrites the agent instruction files",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1221
+        "line": 1223
       }
     },
     {
@@ -1399,7 +1400,7 @@
       "description": "proposeEntitlement writes .guardlink/entitlement-proposals.json and never a source file; a decided proposal is not overwritten",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1302
+        "line": 1304
       }
     },
     {
@@ -1408,7 +1409,7 @@
       "description": "computeBlame runs git blame and git log through execFileSync with an argv array",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1381
+        "line": 1383
       }
     }
   ],
@@ -1871,7 +1872,7 @@
       "description": "Path is the constant LEDGER_FILE under a root that must already carry .guardlink/; targets only select claims, they are never written to",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 633
+        "line": 635
       }
     },
     {
@@ -2128,6 +2129,16 @@
       "asset": "#dashboard",
       "threat": "#xss",
       "control": "#output-encoding",
+      "description": "A configuration doc URL is linked only when externalHref() reads it as absolute http(s), so a javascript: value in repository config is never an href",
+      "location": {
+        "file": "src/dashboard/pages/agents.ts",
+        "line": 16
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
       "description": "Asset names, paths, threat labels and classifications are escaped",
       "location": {
         "file": "src/dashboard/pages/assets.ts",
@@ -2202,6 +2213,16 @@
       "location": {
         "file": "src/dashboard/pages/tables.ts",
         "line": 13
+      }
+    },
+    {
+      "asset": "#dashboard",
+      "threat": "#xss",
+      "control": "#output-encoding",
+      "description": "Ticket refs, SLA labels, assignees and descriptions are model text and go through esc(); a ref is an href only when externalHref() reads it as absolute http(s), so a javascript: ref renders as text",
+      "location": {
+        "file": "src/dashboard/pages/tickets.ts",
+        "line": 11
       }
     },
     {
@@ -2461,7 +2482,7 @@
       "description": "Patterns are simple and bounded",
       "location": {
         "file": "src/mcp/lookup.ts",
-        "line": 25
+        "line": 26
       }
     },
     {
@@ -2732,6 +2753,16 @@
       "location": {
         "file": "src/parser/parse-line.ts",
         "line": 10
+      }
+    },
+    {
+      "asset": "#parser",
+      "threat": "#redos",
+      "control": "#regex-anchoring",
+      "description": "@ticket adds one TICKET_REF fragment: a quoted string or a single run of non-space, non-quote characters, so it cannot overlap the whitespace that separates it from the next clause",
+      "location": {
+        "file": "src/parser/parse-line.ts",
+        "line": 12
       }
     },
     {
@@ -3697,7 +3728,7 @@
       "description": "The one command that writes .guardlink/verified.json",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 632
+        "line": 634
       }
     },
     {
@@ -4189,7 +4220,7 @@
       "description": "Regex patterns applied to query strings",
       "location": {
         "file": "src/mcp/lookup.ts",
-        "line": 24
+        "line": 25
       }
     },
     {
@@ -4972,6 +5003,7 @@
     }
   ],
   "confirmed": [],
+  "tickets": [],
   "acceptances": [],
   "transfers": [],
   "flows": [
@@ -5346,7 +5378,7 @@
       "description": "Model input",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 59
+        "line": 60
       }
     },
     {
@@ -5357,7 +5389,7 @@
       "description": "SARIF output",
       "location": {
         "file": "src/analyzer/sarif.ts",
-        "line": 60
+        "line": 61
       }
     },
     {
@@ -5643,7 +5675,7 @@
       "description": "Read-only; a corrupt ledger becomes a validate error (ledger-corrupt) instead of being silently treated as absent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 464
+        "line": 466
       }
     },
     {
@@ -5654,7 +5686,7 @@
       "description": "validate --code-graph: project root; ranked entry points with route access, or a status",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 474
+        "line": 476
       }
     },
     {
@@ -5665,7 +5697,7 @@
       "description": "validate --code-graph: project root; the declared reach measured against the call graph, or a status",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 479
+        "line": 481
       }
     },
     {
@@ -5676,7 +5708,7 @@
       "description": "Targets, --by and mode flags",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 634
+        "line": 636
       }
     },
     {
@@ -5687,7 +5719,7 @@
       "description": "Attribution read from blame, log -L and commit trailers",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 751
+        "line": 753
       }
     },
     {
@@ -5698,7 +5730,7 @@
       "description": "report --blame attaches attribution before the metadata spread, so the shared records carry it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 946
+        "line": 948
       }
     },
     {
@@ -5709,7 +5741,7 @@
       "description": "report and dashboard --code-graph: project root; the declared reach measured against the call graph, or a status",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1347
+        "line": 1349
       }
     },
     {
@@ -5720,7 +5752,7 @@
       "description": "reach: project root; the declared reach measured against the call graph, or a status",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1361
+        "line": 1363
       }
     },
     {
@@ -5731,7 +5763,7 @@
       "description": "pentest profile: each claim's tested state goes into the SARIF",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1456
+        "line": 1458
       }
     },
     {
@@ -5742,7 +5774,7 @@
       "description": "Project root; the graph answers with ranked entry points or a status",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1817
+        "line": 1819
       }
     },
     {
@@ -5753,7 +5785,7 @@
       "description": "annotate: project root; tool registrations with no declared reach, or a status",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1824
+        "line": 1826
       }
     },
     {
@@ -5764,7 +5796,7 @@
       "description": "The model before and after the agent",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1869
+        "line": 1871
       }
     },
     {
@@ -5775,7 +5807,7 @@
       "description": "Which assets sit on an undefended path, for the ranking",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2004
+        "line": 2007
       }
     },
     {
@@ -5786,7 +5818,7 @@
       "description": "cxg findings recorded as confirmations, joined to claims",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2024
+        "line": 2027
       }
     },
     {
@@ -5797,7 +5829,7 @@
       "description": "Boundary outcomes read back by claim key",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2131
+        "line": 2134
       }
     },
     {
@@ -5808,7 +5840,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3284
+        "line": 3287
       }
     },
     {
@@ -5819,7 +5851,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3287
+        "line": 3290
       }
     },
     {
@@ -5900,6 +5932,17 @@
       }
     },
     {
+      "source": "ThreatModel",
+      "target": "#dashboard",
+      "mechanism": "computeTickets",
+      "route": null,
+      "description": "@ticket rows and each pair's coverage state for the Tickets page",
+      "location": {
+        "file": "src/dashboard/data.ts",
+        "line": 262
+      }
+    },
+    {
       "source": "LedgerFile",
       "target": "#dashboard",
       "mechanism": "readLedger",
@@ -5907,7 +5950,7 @@
       "description": "Claim states for the badges and the stale-claims action",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 547
+        "line": 589
       }
     },
     {
@@ -5995,7 +6038,7 @@
       "description": "Outcomes for the badges, the drawer and the open count",
       "location": {
         "file": "src/dashboard/generate.ts",
-        "line": 111
+        "line": 113
       }
     },
     {
@@ -6062,6 +6105,17 @@
       "location": {
         "file": "src/dashboard/pages/context.ts",
         "line": 11
+      }
+    },
+    {
+      "source": "ThreatModel",
+      "target": "#dashboard",
+      "mechanism": "computeTickets",
+      "route": null,
+      "description": "Ticket rows with their pair state",
+      "location": {
+        "file": "src/dashboard/pages/tickets.ts",
+        "line": 12
       }
     },
     {
@@ -6490,7 +6544,7 @@
       "description": "Query input path",
       "location": {
         "file": "src/mcp/lookup.ts",
-        "line": 26
+        "line": 27
       }
     },
     {
@@ -6567,7 +6621,7 @@
       "description": "Attribution read from blame, log -L and commit trailers for the connected agent",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1377
+        "line": 1379
       }
     },
     {
@@ -7238,7 +7292,7 @@
       "description": "Attribution read from blame, log -L and commit trailers",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 1007
+        "line": 1016
       }
     },
     {
@@ -7799,7 +7853,7 @@
       "description": "No confirmation step before the graph binary runs; every call spawns it when one is installed",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 469
+        "line": 471
       }
     },
     {
@@ -7807,7 +7861,7 @@
       "description": "No confirmation step before the graph binary runs; every call spawns it when one is installed",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 519
+        "line": 521
       }
     },
     {
@@ -7815,7 +7869,7 @@
       "description": "No confirmation step: the write lands on the agent's call. The refusals are validation of the lines, not a human decision",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 650
+        "line": 652
       }
     },
     {
@@ -7823,7 +7877,7 @@
       "description": "No confirmation step on this route: apply: true is the agent's own argument, so the confirmation applyReanchor expects of its caller is the agent's",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 689
+        "line": 691
       }
     },
     {
@@ -7831,7 +7885,7 @@
       "description": "No confirmation step and no budget: each call with a key set is a billed request the agent alone decides to make",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 728
+        "line": 730
       }
     },
     {
@@ -7839,7 +7893,7 @@
       "description": "No confirmation step before the graph binary runs; code_graph: false is the only way to skip it",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 812
+        "line": 814
       }
     },
     {
@@ -7847,7 +7901,7 @@
       "description": "No confirmation step: the agent chooses the output path and the write lands on its call",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 864
+        "line": 866
       }
     },
     {
@@ -7855,7 +7909,7 @@
       "description": "No confirmation step: the agent chooses the output path and the write lands on its call",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 913
+        "line": 915
       }
     },
     {
@@ -7863,7 +7917,7 @@
       "description": "No confirmation step: the agent chooses the output path and the write lands on its call",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 952
+        "line": 954
       }
     },
     {
@@ -7871,7 +7925,7 @@
       "description": "No confirmation step before git runs; the ref is the agent's argument",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 992
+        "line": 994
       }
     },
     {
@@ -7879,7 +7933,7 @@
       "description": "No confirmation step: the agent instruction files other agents read are rewritten on this agent's call",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1071
+        "line": 1073
       }
     },
     {
@@ -7887,7 +7941,7 @@
       "description": "No gate: dry_run defaults to true and the description asks the agent to get the user's confirmation, but the handler checks none, so dry_run: false from the agent is the whole of it",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1098
+        "line": 1100
       }
     },
     {
@@ -7895,7 +7949,7 @@
       "description": "No gate: an acceptance is refused without a human name in by and a date in until, but the agent supplies both, so that is a check on the arguments rather than a confirmation by the named human",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1222
+        "line": 1224
       }
     },
     {
@@ -8130,7 +8184,7 @@
       "description": "Author identities printed or emitted as JSON; --identity hash (or blame.identity in config.json) redacts emails",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 752
+        "line": 754
       }
     },
     {
@@ -8139,7 +8193,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 4179
+        "line": 4196
       }
     },
     {
@@ -8157,7 +8211,7 @@
       "description": "Author identities from git, already in the configured identity mode",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 292
+        "line": 334
       }
     },
     {
@@ -8256,7 +8310,7 @@
       "description": "Author identities, in the configured identity mode (blame.identity in config.json), reach the MCP client",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1378
+        "line": 1380
       }
     },
     {
@@ -8283,7 +8337,7 @@
       "description": "Author identities from git, in the configured identity mode",
       "location": {
         "file": "src/report/report.ts",
-        "line": 1539
+        "line": 1560
       }
     },
     {
@@ -8319,7 +8373,7 @@
       "description": "Author identities printed to the terminal in the configured identity mode",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 1008
+        "line": 1017
       }
     },
     {
@@ -8455,52 +8509,52 @@
       "reason": "@accepts alternative examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 520
+        "line": 523
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 530
+        "line": 533
       }
     },
     {
       "reason": "Definition syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 557
+        "line": 560
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 561
+        "line": 564
       }
     },
     {
       "reason": "Relationship syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 566
+        "line": 569
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 582
+        "line": 585
       }
     },
     {
       "reason": "Externalized relationship examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 587
+        "line": 590
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 592
+        "line": 595
       }
     },
     {
@@ -8565,20 +8619,20 @@
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 333
+        "line": 337
       }
     },
     {
       "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 901
+        "line": 917
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1217
+        "line": 1234
       }
     }
   ],
@@ -8812,10 +8866,17 @@
       }
     },
     {
-      "description": "--min-severity filters unmitigated exposures only: a @confirmed result is a reproduced exploit and is always exported",
+      "description": "Exposure and confirmed results whose pair has a @ticket carry properties.tickets [{ref, sla, assignee, due}], appended last and only when a ticket exists, so a model without @ticket exports byte-identically and a triager sees the work already filed",
       "location": {
         "file": "src/analyzer/sarif.ts",
         "line": 58
+      }
+    },
+    {
+      "description": "--min-severity filters unmitigated exposures only: a @confirmed result is a reproduced exploit and is always exported",
+      "location": {
+        "file": "src/analyzer/sarif.ts",
+        "line": 59
       }
     },
     {
@@ -8997,203 +9058,203 @@
       "description": "Closes the same blind spot ci's third check already closed (src/ci/index.ts) for the validate/CI-gate surface",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 465
+        "line": 467
       }
     },
     {
       "description": "Re-locking a stale claim is an assertion that the control still holds, so the default form never does it: --stale, --all or a named target is required, and each says so in its output",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 635
+        "line": 637
       }
     },
     {
       "description": "Always exits 0 once the model parsed: outside a git checkout every claim reads as unattributed, which is an answer, not a failure. Only an unknown --identity is an error",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 753
+        "line": 755
       }
     },
     {
       "description": "guardlink reach asks an installed code graph to check the declared agent reach and prints what it measured; --drafts prints annotation text for tool registrations nothing declares. It writes no file: a draft is stdout, and a person or the annotate agent decides what goes into source",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1360
+        "line": 1362
       }
     },
     {
       "description": "guardlink lookup is read-only: it parses the project as parse and validate do and answers with the same pure lookup() the guardlink_lookup MCP tool uses, so it adds no input surface beyond the query text, which lookup's anchored patterns already bound",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1401
+        "line": 1403
       }
     },
     {
       "description": "--baseline reads a file the caller names, relative to the cwd like any CLI path argument; it is parsed as JSON and only compared, never written or executed",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 1441
+        "line": 1443
       }
     },
     {
       "description": "ONE bound, applied before any renderer runs. `--intake` used to take the whole queue while --json and the table took -n, so the renderer built for the downstream consumer was the one that could not be asked for a bounded brief — `-n 3 --intake` printed all 142 on temporal. A per-renderer slice is the shape that drifts; a renderer added later inherits this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2008
+        "line": 2011
       }
     },
     {
       "description": "`key` is the claim key, the same one hypotheses-list/v1 carries and `hypothesis confirm`/`--from-scan` join on, so a consumer can address a queued claim instead of joining back to `hypothesis list` on (asset, threat, file, line). That join is positional and GAP-58 proved it unsafe: this population collides at the coarser (asset, threat, file) tier. The schema stays at v1 deliberately — the field is purely additive, nothing v1 carried is renamed or removed, and a consumer tells whether a build has it by the field's presence; bumping would strand consumers pinned to the v1 string for a change that breaks none of them",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2011
+        "line": 2014
       }
     },
     {
       "description": "`total` is the queue length before the bound, carried into all three renderers because a bounded queue that does not say it is bounded reads as the whole of what there is to test — the failure this guards is an operator handing bugb a 10-item plan off a 142-claim queue believing nothing else is outstanding. It is additive exactly as `key` is, so the schema stays at v1: nothing v1 carried is renamed or removed, and a consumer holding a page tells it apart from a whole queue by the field's presence",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2012
+        "line": 2015
       }
     },
     {
       "description": "`defaultVerifier` already returns `human:<name>` (src/parser/verify.ts:172), so prefixing it here recorded `human:human:<name>` — the form the ledger schema and this command's own --by help both say it is not. Do NOT 'repair' older entries that carry the doubled form: `by` is display and provenance metadata, never a join key — upsert and every reader match on the claim key — so pre-fix and post-fix entries coexist in one ledger and nothing stops matching. An explicit --by is passed through verbatim on this path, which is how `--by cxg:login-sqli` names its scheme",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2019
+        "line": 2022
       }
     },
     {
       "description": "Withheld is a fact about a CLAIM, not about a finding. Several findings can join to one claim — a stamped one beside an unstamped one during a cxg stamp rollout, or two templates probing the same exposure — so a per-finding list printed one claim's remediation command twice and, worse, could report a claim as skipped in the very run that wrote it. Keyed by record.key on the same rule `writes` uses, last occurrence kept because that is the entry the ledger ends up holding",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2027
+        "line": 2030
       }
     },
     {
       "description": "THE one calculation of where a line sits once the writes are done, used by every coordinate this command hands a user: the confirmations that landed, the ones already present, and the by-hand commands for both the withheld and the ambiguous. Each done.line is a PRE-write coordinate — descending order guarantees nothing at or above a target had been spliced when it was written — so an insertion at or at a lower number than a pre-write position pushes that position down by one. Only SUCCESSFUL writes are in `done`, so a write that threw shifts nothing, and with no --write it is empty and this is the identity. Two sites computing this independently is the shape that disagrees silently, and this command has already produced that defect twice",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2030
+        "line": 2033
       }
     },
     {
       "description": "Writes are applied per file in DESCENDING line order. Every record.line was resolved from the PRE-write model and writeConfirmedLine splices at line + 1, so an ascending pass shifts each later target in that file down by one: with consecutive @exposes lines the second write lands beneath the wrong claim's @exposes and its guards all pass, writing a confirmation against a claim the probe never tested. Inserting below a line never moves a line above it, so descending order cannot shift a target it has not written yet",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2034
+        "line": 2037
       }
     },
     {
       "description": "ONE CLAIM, ONE WRITE. Two findings can carry the same claim key — the ordinary shape when two cxg templates probe one exposure — and both resolve to the same record and fold into ONE ledger entry, so writing per finding attempted the same insertion twice and the second was refused as a failure. Keyed by record.key, keeping the LAST occurrence: upsert replaces the entry object on every call, so only the final one is the entry the ledger actually holds",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2035
+        "line": 2038
       }
     },
     {
       "description": "An exit code is a claim about what happened, and it has to be true in BOTH directions: honest about an under-write and honest about a success. A confirmation already in the source is the state we were asked to reach — from an earlier run, or a re-import of the same report — so it is separated from a real failure by the TYPE writeConfirmedLine returns, never by matching the wording of an error. Every remaining throw is a failure and still exits non-zero",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2038
+        "line": 2041
       }
     },
     {
       "description": "Reconciled against what the writes actually did. A claim whose confirmation IS in the source — inserted just now or already there — was not withheld, whatever else joined to it coarsely, so it is neither told to the operator as skipped nor counted toward the exit status. The rule it serves is the one the exit check states: the code is a claim about what happened and has to be true in BOTH directions, and reporting a claim as withheld in the run that wrote it is the half that was still false",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2049
+        "line": 2052
       }
     },
     {
       "description": "An inserted @confirmed comes to rest directly above the line it displaced, so it is that line's new position less one — derived from afterWrites rather than counted a second way. Printed in reading order, not in the order the writes went in",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2051
+        "line": 2054
       }
     },
     {
       "description": "Said in terms of what is true rather than as an error: the confirmation is there. The line an already-present @confirmed was found at is a pre-write coordinate like any other — the scan that found it stops at the next @exposes, and descending order means every insertion so far sits below that — so it goes through the same afterWrites",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2054
+        "line": 2057
       }
     },
     {
       "description": "--write only inserts an UNCONTESTED key-verified confirmation. An @confirmed in source is a claim in this repository that the exposure was tested and proven — later scans, reviewers and the SARIF export all read it, and unlike a ledger entry it never expires. A location- or CWE-joined confirmation may be about a different exposure than the one probed (GAP-58), and a contested one came from a report that named two different claims at once, so identity is in doubt in both cases. Losing that throughput is the point: those are exactly the joins that can be wrong",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2056
+        "line": 2059
       }
     },
     {
       "description": "Reported AFTER the writes, at the line the withheld claim occupies once they have landed. Printing pre-write lines here handed the operator a command naming a line that this same run then moved: with consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator writes a confirmation against an exposure the probe never tested — GAP-58 one layer out, in a human's fingers instead of ours. Documenting the hazard one block down was not guarding against it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2057
+        "line": 2060
       }
     },
     {
       "description": "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so every command printed here is position-dependent and is correct AT THE MOMENT OF PRINTING and no longer — a later write, or an edit, moves the target again. Tracked there, not widened here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2058
+        "line": 2061
       }
     },
     {
       "description": "The candidates for an ambiguous finding are by-hand targets like the withheld ones, so they are emitted here rather than inside formatImport: that formatter runs BEFORE the writes, and a key-verified write higher up the same file moves an ambiguous candidate exactly as it moves a withheld claim. With consecutive @exposes the shifted line holds a DIFFERENT claim, resolveTarget finds exactly one @exposes there, and the operator records a confirmation against an exposure the probe never tested — GAP-58 through a human's fingers, on our own instruction. Stays on stdout, where it was",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2070
+        "line": 2073
       }
     },
     {
       "description": "GAP-77: `hypothesis confirm` addresses a claim only as file:line, so these are correct AT THE MOMENT OF PRINTING and no longer. That residue is the addressing scheme and is tracked there; a command this run itself invalidated is a different problem and is fixed here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2071
+        "line": 2074
       }
     },
     {
       "description": "A scan whose findings were not all recorded exits non-zero: ambiguous, stale (the stamped claim is not in the model any more), malformed (a stamp arrived that is not a claim key) and unmatched each need a human, and a silent 0 would read as 'all imported'. A --write that withheld any confirmation is the same fact about the same run, so it exits non-zero too — PARTIALLY written included, not only the all-withheld case. The reader of this exit code is bravos, which orchestrates this loop and never sees the `! skipped` lines on stderr: give 0 two meanings and a half-written run is indistinguishable from a complete one, and the orchestrator proceeds believing the corpus carries confirmations that are not in it",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2076
+        "line": 2079
       }
     },
     {
       "description": "The by-hand path reads the same typed outcome as --from-scan. A claim whose source already carries this confirmation is in the state that was asked for, so it is reported and exits 0; it used to throw into the ✗ handler and exit non-zero on a run that changed nothing and needed to change nothing",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2087
+        "line": 2090
       }
     },
     {
       "description": "The accepted names and containers are INTERPOLATED from the one shared definition, not written out here. A hand-written copy drifts benignly when the definition widens (the help under-advertises) and harmfully when it narrows: the help then advertises a name the reader refuses, which is the one thing this definition exists to make impossible. The no-stamp banner in format.ts interpolates for the same reason, and both are pinned by tests that take the names out of the text and require the reader to accept them",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2114
+        "line": 2117
       }
     },
     {
       "description": "ONE string stating BOTH behaviours, because --write sits on `confirm` and genuinely serves both paths. An author writing against this flag reads --help, not our runtime output: 'inserts the @confirmed line' alone over-promises on the one surface that writes into someone else's repository, and an operator who believes every joined confirmation landed stops checking the ones that did not — which is exactly the knowledge the withholding rule exists to give them. Two per-path wordings were rejected for the reason this branch has already corrected on names, containers, grammars and positions: two descriptions of one thing can disagree, and one string cannot contradict itself",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 2117
+        "line": 2120
       }
     },
     {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 4085
+        "line": 4096
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 4180
+        "line": 4197
       }
     },
     {
@@ -9256,21 +9317,21 @@
       "description": "Pure projection of record.blame; the summariser is shared with the CLI and the report so every surface agrees on the numbers",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 293
+        "line": 335
       }
     },
     {
       "description": "Every item points somewhere: a hash route into the filtered view, a guardlink command, or both. Nothing here is a bare number",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 393
+        "line": 435
       }
     },
     {
       "description": "Reads .guardlink/verified.json once; the classification itself is the parser's, not re-derived here",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 548
+        "line": 590
       }
     },
     {
@@ -9288,10 +9349,17 @@
       }
     },
     {
-      "description": "No remote reference of any kind is emitted: the page renders offline and under a host policy that blocks every network origin",
+      "description": "The Tickets page and its rail link exist only when the model holds a @ticket, like Attribution: a model without one gets no Tickets page and no rail link",
       "location": {
         "file": "src/dashboard/generate.ts",
         "line": 42
+      }
+    },
+    {
+      "description": "No remote reference of any kind is emitted: the page renders offline and under a host policy that blocks every network origin",
+      "location": {
+        "file": "src/dashboard/generate.ts",
+        "line": 43
       }
     },
     {
@@ -9361,7 +9429,7 @@
       "description": "Chips carry state the design way: a capability is an outlined chip with ✓ (entitled) or ✕ (unentitled), a gated effect carries ⊢, an ungated mutation is a filled warm chip, a read is a plain tag",
       "location": {
         "file": "src/dashboard/pages/agents.ts",
-        "line": 16
+        "line": 17
       }
     },
     {
@@ -9400,10 +9468,17 @@
       }
     },
     {
-      "description": "Scope wording lives in a note, not in headings: the client feature filter rewrites headings by textContent",
+      "description": "An exposure or confirmed row whose pair has a @ticket carries a ticket chip linking to the Tickets page filtered to that pair; the join is ticketsForResolver in the coverage module",
       "location": {
         "file": "src/dashboard/pages/exposures.ts",
         "line": 22
+      }
+    },
+    {
+      "description": "Scope wording lives in a note, not in headings: the client feature filter rewrites headings by textContent",
+      "location": {
+        "file": "src/dashboard/pages/exposures.ts",
+        "line": 23
       }
     },
     {
@@ -9425,6 +9500,13 @@
       "location": {
         "file": "src/dashboard/pages/tables.ts",
         "line": 14
+      }
+    },
+    {
+      "description": "Overdue is not decided here: the page must be byte-identical across runs, so each row carries data-due and the client compares it with the viewer's own date",
+      "location": {
+        "file": "src/dashboard/pages/tickets.ts",
+        "line": 13
       }
     },
     {
@@ -9505,10 +9587,17 @@
       }
     },
     {
-      "description": "@agents, @reaches, @effects and @gates are observations an agent may write, so no rule rejects them. A @gates that does not say what the approval step is gets the vague-description warning, because a gate claim is what a reviewer reads to decide a route is held",
+      "description": "ticket-on-mitigated is the one info-level rule: a @ticket whose pair is now covered is a question for the developer (close it, or keep it as the record), never a failure",
       "location": {
         "file": "src/gate/lint.ts",
         "line": 10
+      }
+    },
+    {
+      "description": "@agents, @reaches, @effects and @gates are observations an agent may write, so no rule rejects them. A @gates that does not say what the approval step is gets the vague-description warning, because a gate claim is what a reviewer reads to decide a route is held",
+      "location": {
+        "file": "src/gate/lint.ts",
+        "line": 11
       }
     },
     {
@@ -9718,14 +9807,21 @@
       "description": "Pure function; no I/O; operates on in-memory ThreatModel",
       "location": {
         "file": "src/mcp/lookup.ts",
-        "line": 27
+        "line": 28
+      }
+    },
+    {
+      "description": "`tickets` reports each ticket's state from ticketStatusResolver, the coverage module's own join, so lookup, lint and the dashboard agree on which tickets sit on a mitigated pair",
+      "location": {
+        "file": "src/mcp/lookup.ts",
+        "line": 29
       }
     },
     {
       "description": "The reach forms project the parsed model and add no input surface. `unentitled reaches` answers from findUnentitledReaches, the same join diff uses, so the two cannot disagree about can minus may; `ungated effects` answers from buildReachAnalysis, the block the model export carries",
       "location": {
         "file": "src/mcp/lookup.ts",
-        "line": 28
+        "line": 30
       }
     },
     {
@@ -9746,28 +9842,28 @@
       "description": "A request written in a tool description is not a confirmation step, so no @gates is claimed here. The y/N prompt in guardlink clear guards the CLI route only; this handler never reaches it",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1099
+        "line": 1101
       }
     },
     {
       "description": "The description asks for explicit human confirmation first; nothing in the handler can observe whether it happened, so no @gates is claimed",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1223
+        "line": 1225
       }
     },
     {
       "description": "The human step is downstream of this effect: an @entitles reaches source only through guardlink entitle, which this server does not expose. It gates the grant, not the proposal file, so no @gates is claimed for this write",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1303
+        "line": 1305
       }
     },
     {
       "description": "Non-mutating: computeBlame leaves the cached model untouched, so a later guardlink_parse in the same session never carries blame unasked. Nothing is written to the repository",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1379
+        "line": 1381
       }
     },
     {
@@ -9953,10 +10049,17 @@
       }
     },
     {
-      "description": "Narrowing is one-directional by construction: coversExposure starts from the (asset, threat) match the old key computed and only ever subtracts. A refactor that made it additive would be a silent-wrong-answer path in the opposite direction",
+      "description": "ticketStatusResolver joins a @ticket to its pair's sites here, beside the coverage predicate, so the ticket state every surface shows comes from the one coverage answer",
       "location": {
         "file": "src/parser/coverage.ts",
         "line": 100
+      }
+    },
+    {
+      "description": "Narrowing is one-directional by construction: coversExposure starts from the (asset, threat) match the old key computed and only ever subtracts. A refactor that made it additive would be a silent-wrong-answer path in the opposite direction",
+      "location": {
+        "file": "src/parser/coverage.ts",
+        "line": 101
       }
     },
     {
@@ -10163,10 +10266,17 @@
       }
     },
     {
-      "description": "findUndeclaredActors also covers the actor on @agents/@reaches and the approver on @gates; findAgentReachConflicts errors when one actor is written under both @agents and @reaches, because which verb names an actor is what says whether it is an agent",
+      "description": "findTicketDiagnostics errors on a @ticket due date that is no calendar day and warns on a ticket whose pair the model never declares exposed — a typo in the threat or asset would otherwise track nothing",
       "location": {
         "file": "src/parser/validate.ts",
         "line": 11
+      }
+    },
+    {
+      "description": "findUndeclaredActors also covers the actor on @agents/@reaches and the approver on @gates; findAgentReachConflicts errors when one actor is written under both @agents and @reaches, because which verb names an actor is what says whether it is an agent",
+      "location": {
+        "file": "src/parser/validate.ts",
+        "line": 12
       }
     },
     {
@@ -10327,7 +10437,7 @@
       "description": "AI credit is what a commit declared in a trailer, never detected from code; a claim whose commits carry no trailer stays human. Every degraded status is listed so the reader never mistakes an unattributed claim for a clean one",
       "location": {
         "file": "src/report/report.ts",
-        "line": 1540
+        "line": 1561
       }
     },
     {
@@ -10432,21 +10542,21 @@
       "description": "Non-mutating on purpose: ctx.model is reused by every later command, and /blame must not make /report carry attribution unasked",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 1009
+        "line": 1018
       }
     },
     {
       "description": "Derived query over @flows and @mitigates; every hop it prints is an existing annotation location, so a finding here cannot cite a line that was never written",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 1082
+        "line": 1091
       }
     },
     {
       "description": "/dashboard opens the written file with spawn and an argument array; the project path never passes through a shell",
       "location": {
         "file": "src/tui/commands.ts",
-        "line": 2007
+        "line": 2016
       }
     },
     {
@@ -10500,7 +10610,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 1048,
+    "annotation_count": 1061,
     "coverage_percent": 92
   },
   "annotation_scope": {
@@ -10807,7 +10917,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:0ed75b716b292740184b8b0ea0c3b0adf2d12b1af2e7ace1459629428ae51e9b",
+          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10823,7 +10933,7 @@
         "bytes": 3285,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:0ed75b716b292740184b8b0ea0c3b0adf2d12b1af2e7ace1459629428ae51e9b",
+          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10840,7 +10950,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:0ed75b716b292740184b8b0ea0c3b0adf2d12b1af2e7ace1459629428ae51e9b",
+          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10857,7 +10967,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:0ed75b716b292740184b8b0ea0c3b0adf2d12b1af2e7ace1459629428ae51e9b",
+          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10873,7 +10983,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:0ed75b716b292740184b8b0ea0c3b0adf2d12b1af2e7ace1459629428ae51e9b",
+          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10892,7 +11002,7 @@
         "bytes": 3879,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:0ed75b716b292740184b8b0ea0c3b0adf2d12b1af2e7ace1459629428ae51e9b",
+          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10909,7 +11019,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:0ed75b716b292740184b8b0ea0c3b0adf2d12b1af2e7ace1459629428ae51e9b",
+          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11121,7 +11231,7 @@
         "index": 4,
         "claim_key": "588e636271b38fabf4c562ba5d3e2f3ad9cab9342724b446eed1e318cad29ed9:0",
         "file": "src/mcp/server.ts",
-        "line": 445,
+        "line": 447,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11137,7 +11247,7 @@
         "index": 5,
         "claim_key": "5e1f46eb97804c2c47ab6701b1c3cf5c2da623f510f1a1a412a0aeaa471fb75b:0",
         "file": "src/mcp/server.ts",
-        "line": 467,
+        "line": 469,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11152,7 +11262,7 @@
             "index": 1,
             "claim_key": "9217d4666f41da6a0873736cebfc2eb2e2ed514263edb5b199028cf7eee747e3:0",
             "file": "src/mcp/server.ts",
-            "line": 468,
+            "line": 470,
             "effect": "execute",
             "asset": "#codegraph",
             "identity": null,
@@ -11164,7 +11274,7 @@
         "index": 6,
         "claim_key": "855b841ea511bb398a2c242e43ef6d5a59414868a24320de50065b9680a27063:0",
         "file": "src/mcp/server.ts",
-        "line": 517,
+        "line": 519,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11179,7 +11289,7 @@
             "index": 2,
             "claim_key": "2490627f041c6a47745bdbe844a87d56677d2ad84c34b26ddb0f1e35c1a750a1:0",
             "file": "src/mcp/server.ts",
-            "line": 518,
+            "line": 520,
             "effect": "execute",
             "asset": "#codegraph",
             "identity": null,
@@ -11191,7 +11301,7 @@
         "index": 7,
         "claim_key": "88f3c69fc5a976233087165f4be41477e9c16ef8e9c0475d5317b7f64bda0067:0",
         "file": "src/mcp/server.ts",
-        "line": 537,
+        "line": 539,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11207,7 +11317,7 @@
         "index": 8,
         "claim_key": "bd7ead7129117b500aace0c891337448439cbe16fe46718fb121b1eff0b8f128:0",
         "file": "src/mcp/server.ts",
-        "line": 558,
+        "line": 560,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11223,7 +11333,7 @@
         "index": 9,
         "claim_key": "799753851b400f5aba525e4227266218ed66a430ee73f05dd1d5028c82dc6d95:0",
         "file": "src/mcp/server.ts",
-        "line": 592,
+        "line": 594,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11239,7 +11349,7 @@
         "index": 10,
         "claim_key": "3630e23bc2de9ca01c8139f2d10a448155ad7a83efc09e3ef1d7d61a323ef1fe:0",
         "file": "src/mcp/server.ts",
-        "line": 648,
+        "line": 650,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11254,7 +11364,7 @@
             "index": 3,
             "claim_key": "63c290366792b66435a596becf85baebfa7b8e60d8f18031d9cdf785ea0a1a46:0",
             "file": "src/mcp/server.ts",
-            "line": 649,
+            "line": 651,
             "effect": "write",
             "asset": "#mcp",
             "identity": null,
@@ -11266,7 +11376,7 @@
         "index": 11,
         "claim_key": "49f0a864edd0577d16c1b52c58eb52058a2fca03ca61c2ca4dc2a5deab45edff:0",
         "file": "src/mcp/server.ts",
-        "line": 687,
+        "line": 689,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11281,7 +11391,7 @@
             "index": 4,
             "claim_key": "868ef839ea6ee91c4f22cdc6236f0ce0e594208f7097130ba9ca7be0ca22e8ee:0",
             "file": "src/mcp/server.ts",
-            "line": 688,
+            "line": 690,
             "effect": "write",
             "asset": "#mcp",
             "identity": null,
@@ -11293,7 +11403,7 @@
         "index": 12,
         "claim_key": "305f4ed1c623c60d4741191f220ae4ce66e9d7c30b53b527dec5046290d07f57:0",
         "file": "src/mcp/server.ts",
-        "line": 725,
+        "line": 727,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11308,7 +11418,7 @@
             "index": 5,
             "claim_key": "00fb288ff5a371c0126b28c3bdc158b568957e05d14fc48734a30e54641d870b:0",
             "file": "src/mcp/server.ts",
-            "line": 726,
+            "line": 728,
             "effect": "spend",
             "asset": "#llm-client",
             "identity": null,
@@ -11318,7 +11428,7 @@
             "index": 6,
             "claim_key": "6c455d802b1b0feb059e89534744b84248cc646b76813084bc919bca4eb05171:0",
             "file": "src/mcp/server.ts",
-            "line": 727,
+            "line": 729,
             "effect": "write",
             "asset": "#llm-client",
             "identity": null,
@@ -11330,7 +11440,7 @@
         "index": 13,
         "claim_key": "dcd70d4e172f6e7bbcc0447b8b7a38c5417bc639732952f7df4e5b82f18ce8ec:0",
         "file": "src/mcp/server.ts",
-        "line": 810,
+        "line": 812,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11345,7 +11455,7 @@
             "index": 7,
             "claim_key": "803522113bac718d28f1874bb98b569db256fba20f96c10ebf4a02408fd07456:0",
             "file": "src/mcp/server.ts",
-            "line": 811,
+            "line": 813,
             "effect": "execute",
             "asset": "#codegraph",
             "identity": null,
@@ -11357,7 +11467,7 @@
         "index": 14,
         "claim_key": "ff64ab33ac67ba1c8a662a4c057cd790c30bf299bc05e384ed7a3f769c553078:0",
         "file": "src/mcp/server.ts",
-        "line": 862,
+        "line": 864,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11372,7 +11482,7 @@
             "index": 8,
             "claim_key": "2064512115da1bac005836e95e7c917c4c4054ae905d12db5fc7c3453c00015c:0",
             "file": "src/mcp/server.ts",
-            "line": 863,
+            "line": 865,
             "effect": "write",
             "asset": "#report",
             "identity": null,
@@ -11384,7 +11494,7 @@
         "index": 15,
         "claim_key": "7a126dc76d770d0c9007aa862d76b669a24c58c1e4a6323d52371b105875748f:0",
         "file": "src/mcp/server.ts",
-        "line": 911,
+        "line": 913,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11399,7 +11509,7 @@
             "index": 9,
             "claim_key": "44a5b83f02f727ca8086e835b926a257469560526301779e5be0829ee14305b6:0",
             "file": "src/mcp/server.ts",
-            "line": 912,
+            "line": 914,
             "effect": "write",
             "asset": "#dashboard",
             "identity": null,
@@ -11411,7 +11521,7 @@
         "index": 16,
         "claim_key": "d22134e49197f9c4e3f0a7bd7583230fd2f87d03625151352d05e6146e24eb0c:0",
         "file": "src/mcp/server.ts",
-        "line": 950,
+        "line": 952,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11426,7 +11536,7 @@
             "index": 10,
             "claim_key": "78fbf2bf0cf1af3a4c85845a04400e4c93792c36be826d060291a544dad72c1f:0",
             "file": "src/mcp/server.ts",
-            "line": 951,
+            "line": 953,
             "effect": "write",
             "asset": "#sarif",
             "identity": null,
@@ -11438,7 +11548,7 @@
         "index": 17,
         "claim_key": "ea08536f7324089f0430241011ccbf790c8536c51373d82ffdabc42f121320fd:0",
         "file": "src/mcp/server.ts",
-        "line": 990,
+        "line": 992,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11453,7 +11563,7 @@
             "index": 11,
             "claim_key": "a71752e15dd0506b7fda7096a0e110aee424ed932dd0d8bc5b1405d747ceb978:0",
             "file": "src/mcp/server.ts",
-            "line": 991,
+            "line": 993,
             "effect": "execute",
             "asset": "#diff",
             "identity": null,
@@ -11465,7 +11575,7 @@
         "index": 18,
         "claim_key": "45acb0afc17d426307ce719ead3e47dcf9af626fa0c4df9b2784b806480907e0:0",
         "file": "src/mcp/server.ts",
-        "line": 1020,
+        "line": 1022,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11481,7 +11591,7 @@
         "index": 19,
         "claim_key": "f735601acc8a431d40f8e21c3c42c179fcb1a7e6d90a44538639bee0f3b9a7a2:0",
         "file": "src/mcp/server.ts",
-        "line": 1050,
+        "line": 1052,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11497,7 +11607,7 @@
         "index": 20,
         "claim_key": "efc01508dccc52fe7697d70af483bddbbcfb1211cc3b37879d2347081b0cb731:0",
         "file": "src/mcp/server.ts",
-        "line": 1069,
+        "line": 1071,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11512,7 +11622,7 @@
             "index": 12,
             "claim_key": "2fb1a502e13288f70c9cb87faa66fe9915d91c29822ea38cb82e4a7cbc1be461:0",
             "file": "src/mcp/server.ts",
-            "line": 1070,
+            "line": 1072,
             "effect": "write",
             "asset": "#init",
             "identity": null,
@@ -11524,7 +11634,7 @@
         "index": 21,
         "claim_key": "5ecd449f94e52152aa1bc3bda07bea797b463ade0fa58d73492652aefc973d46:0",
         "file": "src/mcp/server.ts",
-        "line": 1096,
+        "line": 1098,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11539,7 +11649,7 @@
             "index": 13,
             "claim_key": "eac300b512668e74ab7835493729812089c18eefaa6d5e68152f33d9188b3b74:0",
             "file": "src/mcp/server.ts",
-            "line": 1097,
+            "line": 1099,
             "effect": "delete",
             "asset": "#parser",
             "identity": null,
@@ -11551,7 +11661,7 @@
         "index": 22,
         "claim_key": "e4ade699d1309ab3b0407767b1513010c4983e92389c203fcc5f0564f5cca895:0",
         "file": "src/mcp/server.ts",
-        "line": 1140,
+        "line": 1142,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11567,7 +11677,7 @@
         "index": 23,
         "claim_key": "c974c8a9dab69272bb9c212b4b13d60f37bc92a6924158381379839840a3e89b:0",
         "file": "src/mcp/server.ts",
-        "line": 1177,
+        "line": 1179,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11583,7 +11693,7 @@
         "index": 24,
         "claim_key": "4e5c04b869c79bea2ed74f84da3bfa3bc6b62cedbb219f09d87d4228e7c15046:0",
         "file": "src/mcp/server.ts",
-        "line": 1219,
+        "line": 1221,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11598,7 +11708,7 @@
             "index": 14,
             "claim_key": "28945705264231e244536c0af3a94b7d293f945d0f9af4e0398f035bbd77253a:0",
             "file": "src/mcp/server.ts",
-            "line": 1220,
+            "line": 1222,
             "effect": "write",
             "asset": "#mcp",
             "identity": null,
@@ -11608,7 +11718,7 @@
             "index": 15,
             "claim_key": "ab2dab6d66697fa7a0e27c197a270392a2b39ba10dfa095a3ba998a61695d04d:0",
             "file": "src/mcp/server.ts",
-            "line": 1221,
+            "line": 1223,
             "effect": "write",
             "asset": "#init",
             "identity": null,
@@ -11620,7 +11730,7 @@
         "index": 25,
         "claim_key": "fc9ef3e98701b0173488673f294da1661b89aecad0cb4e1ebf439ae27e9be0d6:0",
         "file": "src/mcp/server.ts",
-        "line": 1301,
+        "line": 1303,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11635,7 +11745,7 @@
             "index": 16,
             "claim_key": "8183ea5ee88b174ae086a3c287d129c1965b9f099b7cba46e9d0e2b55022cc87:0",
             "file": "src/mcp/server.ts",
-            "line": 1302,
+            "line": 1304,
             "effect": "write",
             "asset": "#mcp",
             "identity": null,
@@ -11647,7 +11757,7 @@
         "index": 26,
         "claim_key": "91bdd93245bb6b8c8293c4c330158c3502a6345021d41bb4c464ff19abdc9c31:0",
         "file": "src/mcp/server.ts",
-        "line": 1349,
+        "line": 1351,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11663,7 +11773,7 @@
         "index": 27,
         "claim_key": "a4b86df38204e3e92bc1f5c699ddcd23dfea1309ccb30841e49d79ea911b7343:0",
         "file": "src/mcp/server.ts",
-        "line": 1380,
+        "line": 1382,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11678,7 +11788,7 @@
             "index": 17,
             "claim_key": "06f72d1bfab16365d35444d7946ea53b1d210f7610515c7929b279edbe45097d:0",
             "file": "src/mcp/server.ts",
-            "line": 1381,
+            "line": 1383,
             "effect": "execute",
             "asset": "#blame",
             "identity": null,
@@ -11690,7 +11800,7 @@
         "index": 28,
         "claim_key": "501df3d434925f849d1913fd5b161be682766a115f8d8770e48d61e923f668cd:0",
         "file": "src/mcp/server.ts",
-        "line": 1415,
+        "line": 1417,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11737,7 +11847,7 @@
         "index": 1,
         "claim_key": "9217d4666f41da6a0873736cebfc2eb2e2ed514263edb5b199028cf7eee747e3:0",
         "file": "src/mcp/server.ts",
-        "line": 468,
+        "line": 470,
         "effect": "execute",
         "asset": "#codegraph",
         "identity": null,
@@ -11750,7 +11860,7 @@
             "index": 5,
             "claim_key": "5e1f46eb97804c2c47ab6701b1c3cf5c2da623f510f1a1a412a0aeaa471fb75b:0",
             "file": "src/mcp/server.ts",
-            "line": 467,
+            "line": 469,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -11766,7 +11876,7 @@
         "index": 2,
         "claim_key": "2490627f041c6a47745bdbe844a87d56677d2ad84c34b26ddb0f1e35c1a750a1:0",
         "file": "src/mcp/server.ts",
-        "line": 518,
+        "line": 520,
         "effect": "execute",
         "asset": "#codegraph",
         "identity": null,
@@ -11779,7 +11889,7 @@
             "index": 6,
             "claim_key": "855b841ea511bb398a2c242e43ef6d5a59414868a24320de50065b9680a27063:0",
             "file": "src/mcp/server.ts",
-            "line": 517,
+            "line": 519,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -11795,7 +11905,7 @@
         "index": 3,
         "claim_key": "63c290366792b66435a596becf85baebfa7b8e60d8f18031d9cdf785ea0a1a46:0",
         "file": "src/mcp/server.ts",
-        "line": 649,
+        "line": 651,
         "effect": "write",
         "asset": "#mcp",
         "identity": null,
@@ -11808,7 +11918,7 @@
             "index": 10,
             "claim_key": "3630e23bc2de9ca01c8139f2d10a448155ad7a83efc09e3ef1d7d61a323ef1fe:0",
             "file": "src/mcp/server.ts",
-            "line": 648,
+            "line": 650,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -11824,7 +11934,7 @@
         "index": 4,
         "claim_key": "868ef839ea6ee91c4f22cdc6236f0ce0e594208f7097130ba9ca7be0ca22e8ee:0",
         "file": "src/mcp/server.ts",
-        "line": 688,
+        "line": 690,
         "effect": "write",
         "asset": "#mcp",
         "identity": null,
@@ -11837,7 +11947,7 @@
             "index": 11,
             "claim_key": "49f0a864edd0577d16c1b52c58eb52058a2fca03ca61c2ca4dc2a5deab45edff:0",
             "file": "src/mcp/server.ts",
-            "line": 687,
+            "line": 689,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -11853,7 +11963,7 @@
         "index": 5,
         "claim_key": "00fb288ff5a371c0126b28c3bdc158b568957e05d14fc48734a30e54641d870b:0",
         "file": "src/mcp/server.ts",
-        "line": 726,
+        "line": 728,
         "effect": "spend",
         "asset": "#llm-client",
         "identity": null,
@@ -11866,7 +11976,7 @@
             "index": 12,
             "claim_key": "305f4ed1c623c60d4741191f220ae4ce66e9d7c30b53b527dec5046290d07f57:0",
             "file": "src/mcp/server.ts",
-            "line": 725,
+            "line": 727,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -11882,7 +11992,7 @@
         "index": 6,
         "claim_key": "6c455d802b1b0feb059e89534744b84248cc646b76813084bc919bca4eb05171:0",
         "file": "src/mcp/server.ts",
-        "line": 727,
+        "line": 729,
         "effect": "write",
         "asset": "#llm-client",
         "identity": null,
@@ -11895,7 +12005,7 @@
             "index": 12,
             "claim_key": "305f4ed1c623c60d4741191f220ae4ce66e9d7c30b53b527dec5046290d07f57:0",
             "file": "src/mcp/server.ts",
-            "line": 725,
+            "line": 727,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -11911,7 +12021,7 @@
         "index": 7,
         "claim_key": "803522113bac718d28f1874bb98b569db256fba20f96c10ebf4a02408fd07456:0",
         "file": "src/mcp/server.ts",
-        "line": 811,
+        "line": 813,
         "effect": "execute",
         "asset": "#codegraph",
         "identity": null,
@@ -11924,7 +12034,7 @@
             "index": 13,
             "claim_key": "dcd70d4e172f6e7bbcc0447b8b7a38c5417bc639732952f7df4e5b82f18ce8ec:0",
             "file": "src/mcp/server.ts",
-            "line": 810,
+            "line": 812,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -11940,7 +12050,7 @@
         "index": 8,
         "claim_key": "2064512115da1bac005836e95e7c917c4c4054ae905d12db5fc7c3453c00015c:0",
         "file": "src/mcp/server.ts",
-        "line": 863,
+        "line": 865,
         "effect": "write",
         "asset": "#report",
         "identity": null,
@@ -11953,7 +12063,7 @@
             "index": 14,
             "claim_key": "ff64ab33ac67ba1c8a662a4c057cd790c30bf299bc05e384ed7a3f769c553078:0",
             "file": "src/mcp/server.ts",
-            "line": 862,
+            "line": 864,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -11969,7 +12079,7 @@
         "index": 9,
         "claim_key": "44a5b83f02f727ca8086e835b926a257469560526301779e5be0829ee14305b6:0",
         "file": "src/mcp/server.ts",
-        "line": 912,
+        "line": 914,
         "effect": "write",
         "asset": "#dashboard",
         "identity": null,
@@ -11982,7 +12092,7 @@
             "index": 15,
             "claim_key": "7a126dc76d770d0c9007aa862d76b669a24c58c1e4a6323d52371b105875748f:0",
             "file": "src/mcp/server.ts",
-            "line": 911,
+            "line": 913,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -11998,7 +12108,7 @@
         "index": 10,
         "claim_key": "78fbf2bf0cf1af3a4c85845a04400e4c93792c36be826d060291a544dad72c1f:0",
         "file": "src/mcp/server.ts",
-        "line": 951,
+        "line": 953,
         "effect": "write",
         "asset": "#sarif",
         "identity": null,
@@ -12011,7 +12121,7 @@
             "index": 16,
             "claim_key": "d22134e49197f9c4e3f0a7bd7583230fd2f87d03625151352d05e6146e24eb0c:0",
             "file": "src/mcp/server.ts",
-            "line": 950,
+            "line": 952,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12027,7 +12137,7 @@
         "index": 11,
         "claim_key": "a71752e15dd0506b7fda7096a0e110aee424ed932dd0d8bc5b1405d747ceb978:0",
         "file": "src/mcp/server.ts",
-        "line": 991,
+        "line": 993,
         "effect": "execute",
         "asset": "#diff",
         "identity": null,
@@ -12040,7 +12150,7 @@
             "index": 17,
             "claim_key": "ea08536f7324089f0430241011ccbf790c8536c51373d82ffdabc42f121320fd:0",
             "file": "src/mcp/server.ts",
-            "line": 990,
+            "line": 992,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12056,7 +12166,7 @@
         "index": 12,
         "claim_key": "2fb1a502e13288f70c9cb87faa66fe9915d91c29822ea38cb82e4a7cbc1be461:0",
         "file": "src/mcp/server.ts",
-        "line": 1070,
+        "line": 1072,
         "effect": "write",
         "asset": "#init",
         "identity": null,
@@ -12069,7 +12179,7 @@
             "index": 20,
             "claim_key": "efc01508dccc52fe7697d70af483bddbbcfb1211cc3b37879d2347081b0cb731:0",
             "file": "src/mcp/server.ts",
-            "line": 1069,
+            "line": 1071,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12085,7 +12195,7 @@
         "index": 13,
         "claim_key": "eac300b512668e74ab7835493729812089c18eefaa6d5e68152f33d9188b3b74:0",
         "file": "src/mcp/server.ts",
-        "line": 1097,
+        "line": 1099,
         "effect": "delete",
         "asset": "#parser",
         "identity": null,
@@ -12098,7 +12208,7 @@
             "index": 21,
             "claim_key": "5ecd449f94e52152aa1bc3bda07bea797b463ade0fa58d73492652aefc973d46:0",
             "file": "src/mcp/server.ts",
-            "line": 1096,
+            "line": 1098,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12114,7 +12224,7 @@
         "index": 14,
         "claim_key": "28945705264231e244536c0af3a94b7d293f945d0f9af4e0398f035bbd77253a:0",
         "file": "src/mcp/server.ts",
-        "line": 1220,
+        "line": 1222,
         "effect": "write",
         "asset": "#mcp",
         "identity": null,
@@ -12127,7 +12237,7 @@
             "index": 24,
             "claim_key": "4e5c04b869c79bea2ed74f84da3bfa3bc6b62cedbb219f09d87d4228e7c15046:0",
             "file": "src/mcp/server.ts",
-            "line": 1219,
+            "line": 1221,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12143,7 +12253,7 @@
         "index": 15,
         "claim_key": "ab2dab6d66697fa7a0e27c197a270392a2b39ba10dfa095a3ba998a61695d04d:0",
         "file": "src/mcp/server.ts",
-        "line": 1221,
+        "line": 1223,
         "effect": "write",
         "asset": "#init",
         "identity": null,
@@ -12156,7 +12266,7 @@
             "index": 24,
             "claim_key": "4e5c04b869c79bea2ed74f84da3bfa3bc6b62cedbb219f09d87d4228e7c15046:0",
             "file": "src/mcp/server.ts",
-            "line": 1219,
+            "line": 1221,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12172,7 +12282,7 @@
         "index": 16,
         "claim_key": "8183ea5ee88b174ae086a3c287d129c1965b9f099b7cba46e9d0e2b55022cc87:0",
         "file": "src/mcp/server.ts",
-        "line": 1302,
+        "line": 1304,
         "effect": "write",
         "asset": "#mcp",
         "identity": null,
@@ -12185,7 +12295,7 @@
             "index": 25,
             "claim_key": "fc9ef3e98701b0173488673f294da1661b89aecad0cb4e1ebf439ae27e9be0d6:0",
             "file": "src/mcp/server.ts",
-            "line": 1301,
+            "line": 1303,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12201,7 +12311,7 @@
         "index": 17,
         "claim_key": "06f72d1bfab16365d35444d7946ea53b1d210f7610515c7929b279edbe45097d:0",
         "file": "src/mcp/server.ts",
-        "line": 1381,
+        "line": 1383,
         "effect": "execute",
         "asset": "#blame",
         "identity": null,
@@ -12214,7 +12324,7 @@
             "index": 27,
             "claim_key": "a4b86df38204e3e92bc1f5c699ddcd23dfea1309ccb30841e49d79ea911b7343:0",
             "file": "src/mcp/server.ts",
-            "line": 1380,
+            "line": 1382,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
