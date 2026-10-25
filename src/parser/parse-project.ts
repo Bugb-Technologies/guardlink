@@ -32,7 +32,7 @@ import type {
   FeatureAnnotation, CommentAnnotation,
   DataClassification,
   ExternalRef, AnnotationVerb, SourceLocation,
-  ThreatModelEntitlement, EntitlementDemotionBlocker,
+  ThreatModelEntitlement, EntitlementDemotionBlocker, AnnotationScopeRecord,
 } from '../types/index.js';
 import { parseFile } from './parse-file.js';
 import { isKnownVerb } from './parse-line.js';
@@ -44,6 +44,8 @@ import { readDisabledDiagnostics, readAgentConfigEnabled } from './annotation-mo
 import { readAgentConfig, type AgentConfigResult } from '../agentconfig/index.js';
 import { computeAnnotationHash } from './annotation-hash.js';
 import { attachAnchors } from '../structure/attach.js';
+import { onePathPerFile } from './scan-files.js';
+import { annotationScope } from './annotation-scope.js';
 import { parseRouteChannel } from './route.js';
 
 /** A standalone annotation sidecar, not a source file. */
@@ -304,7 +306,9 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   // from run to run on an identical tree. Every model array inherits file
   // order, so sort here — by code unit, not locale — or the same project
   // parses to differently ordered models. Sidecars stay after source files.
-  const files = [...new Set([...scanned.sort(), ...sidecars.sort()])];
+  // A file reached through a symlink as well as at its own path is parsed
+  // once, or every #id it defines is reported as a duplicate of itself.
+  const files = onePathPerFile(root, [...scanned.sort(), ...sidecars.sort()]);
 
   // Parse all files
   const allAnnotations: Annotation[] = [];
@@ -382,12 +386,22 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     }
   }
 
-  // Compute annotated vs unannotated files (exclude .guardlink/ definitions from unannotated)
+  // Compute annotated vs unannotated files. Unannotated is the annotation
+  // worklist: scanned files in the annotation scope (annotation-scope.ts) with
+  // nothing declared. A file out of scope was still parsed above, so what it
+  // declares is in the model and it can still be an annotated file.
   const allRelPaths = files.map(f => relative(root, f).replaceAll('\\', '/'));
   const annotatedFiles = [...filesWithAnnotations].filter(f => !isGalPath(f)).sort();
-  const unannotatedFiles = allRelPaths
-    .filter(f => !isGalPath(f) && !filesWithAnnotations.has(f) && !f.startsWith('.guardlink/'))
-    .sort();
+  const candidates = allRelPaths.filter(f => !isGalPath(f) && !f.startsWith('.guardlink/'));
+  const scope = annotationScope(root, candidates, { builtInExclude: exclude });
+  const inScope: string[] = [];
+  const outOfScope: AnnotationScopeRecord['excluded'] = [];
+  for (const f of candidates) {
+    const why = scope.classify(f);
+    if (why) outOfScope.push({ file: f, ...why });
+    else inScope.push(f);
+  }
+  const unannotatedFiles = inScope.filter(f => !filesWithAnnotations.has(f)).sort();
 
   // GL-502 — the denominator is source files, and a sidecar is not one.
   //
@@ -399,11 +413,18 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   // source file under test/ is excluded from the scan but can still be annotated
   // through its sidecar. Without the union it would appear in annotated_files
   // while missing from the denominator, so annotated could exceed scanned.
-  const sourceFiles = new Set(allRelPaths.filter(f => !isGalPath(f)));
+  //
+  // The annotation scope narrows the denominator the same way: in-scope files,
+  // plus every annotated file wherever it sits.
+  const sourceFiles = new Set(inScope);
   for (const f of annotatedFiles) sourceFiles.add(f);
 
   // Assemble ThreatModel
   const model = assembleModel(allAnnotations, sourceFiles.size, project, annotatedFiles, unannotatedFiles);
+  model.annotation_scope = {
+    view: scope.view,
+    excluded: outOfScope.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0)),
+  };
 
   // Detect cross-repo tag references (requires workspace.yaml)
   model.external_refs = detectExternalRefs(model, root);

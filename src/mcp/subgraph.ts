@@ -484,6 +484,9 @@ export function selectSubgraph(model: ThreatModel, options: SubgraphOptions = {}
     // exactly why the graph tool omits the key at emission rather than shipping
     // an empty array that reads as "this repo is fully annotated".
     unannotated_files: base.unannotated_files.filter(f => files.has(f)),
+    // The same whole-repository inventory, of files left out of annotation
+    // work. Not subgraph data either.
+    annotation_scope: undefined,
     assets, threats, controls, actors, mitigations, exposures, confirmed, acceptances,
     transfers, flows, boundaries, validations, audits, ownership,
     data_handling: dataHandling, assumptions, entitlements, reaches, effects, gates, tickets,

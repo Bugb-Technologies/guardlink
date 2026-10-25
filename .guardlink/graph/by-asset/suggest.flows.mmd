@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/suggest.flows.mmd
-%% scope:           PARTIAL — #suggest and its flow neighbourhood, grown until the drawing stopped fitting — 16 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9
+%% scope:           PARTIAL — #suggest and its flow neighbourhood, grown until the drawing stopped fitting — 20 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:0ed75b716b292740184b8b0ea0c3b0adf2d12b1af2e7ace1459629428ae51e9b
 %% generator:       guardlink@2.4.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -17,26 +17,27 @@ graph LR
   subgraph Z1["🧱 FileSystem · Trust boundary between parser and disk I/O"]
     filesystem["🧩 FileSystem"]
   end
+  configfile["🧩 ConfigFile"]
+  agent_launcher["🧩 GuardLink.Agent_Launcher"]
   filepath["🧩 FilePath"]
   suggest["🧩 GuardLink.Suggest"]
   suggestions["🧩 Suggestions"]
-  configfile["🧩 ConfigFile"]
   exportfile["🧩 ExportFile"]
-  ledgerfile["🧩 LedgerFile"]
   annotations["🧩 Annotations"]
   annotationsource["🧩 AnnotationSource"]
   agent_config["🧩 GuardLink.AgentConfig"]
   grammarfile["🧩 GrammarFile"]
   parser -.-|🧱 Trust boundary between parser and disk I/O| filesystem
+  configfile -- "🗄️ readFileSync" --> agent_launcher
+  agent_launcher -- "🗄️ writeFileSync" --> configfile
+  parser -- "📡 annotation worklist" --> agent_launcher
   filepath -- "🗄️ readFileSync" --> suggest
   suggest -- "📡 suggestAnnotations" --> suggestions
   configfile -- "📡 readAcceptancePolicy" --> parser
   parser -- "🗄️ writeFileSync" --> filesystem
   exportfile -- "🗄️ readFileSync" --> parser
-  ledgerfile -- "📡 readLedger" --> parser
   filepath -- "🗄️ readFile" --> parser
   parser -- "📡 parseString" --> annotations
   annotationsource -- "📡 existsSync" --> parser
   agent_config -- "📡 mergeAgentConfig" --> parser
-  ledgerfile -- "📡 classifyClaims" --> parser
   grammarfile -- "📡 Language.load" --> parser

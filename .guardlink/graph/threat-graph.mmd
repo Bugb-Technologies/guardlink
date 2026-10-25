@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9
+%% annotation_hash: sha256-v3:0ed75b716b292740184b8b0ea0c3b0adf2d12b1af2e7ace1459629428ae51e9b
 %% generator:       guardlink@2.4.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 49 nodes / 206 edges, past the 12 / 16 legibility budget (49 nodes against 12, 206 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 49 nodes / 209 edges, past the 12 / 16 legibility budget (49 nodes against 12, 209 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -60,7 +60,7 @@ graph LR
   report["🔷 GuardLink.Report [PII]"]
   workspace_config["🔷 Workspace.Config"]
   path_traversal["🟠 Path_Traversal (cwe:CWE-22, cwe:CWE-59)"]:::threat
-  dos["🟡 Denial_of_Service (cwe:CWE-400)"]:::threat
+  dos["🟡 Denial_of_Service (cwe:CWE-400, cwe:CWE-1333)"]:::threat
   cmd_injection["🔴 Command_Injection (cwe:CWE-78)"]:::threat
   data_exposure["🟡 Sensitive_Data_Exposure (cwe:CWE-200, cwe:CWE-532)"]:::threat
   prompt_injection["🟠 Prompt_Injection (cwe:CWE-77, cwe:CWE-74)"]:::threat
@@ -156,9 +156,10 @@ graph LR
   suggest -. exposes .-> redos
   suggest -. exposes .-> dos
   parser -. exposes .-> config_tamper
+  parser -. exposes .-> child_proc_injection
+  parser -. exposes .-> dos
   parser -. exposes .-> arbitrary_write
   parser -. exposes .-> redos
-  parser -. exposes .-> dos
   parser -. exposes .-> data_exposure
   cli -. exposes .-> redos
   tui -. exposes .-> path_traversal
@@ -245,10 +246,11 @@ graph LR
   path_validation -. protects .-> suggest
   regex_anchoring -. protects .-> suggest
   config_validation -- mitigates --> config_tamper
+  param_commands -. protects .-> parser
+  glob_filtering -. protects .-> parser
   input_sanitize -- mitigates --> insecure_deser
   input_sanitize -. protects .-> parser
   regex_anchoring -. protects .-> parser
-  glob_filtering -. protects .-> parser
   resource_limits -. protects .-> parser
   prefix_ownership -- mitigates --> tag_collision
   prefix_ownership -. protects .-> parser
@@ -276,6 +278,7 @@ graph LR
   regex_anchoring -. validates .-> parser
   glob_filtering -. validates .-> parser
   input_sanitize -. validates .-> parser
+  parser -- "📡 annotation worklist" --> agent_launcher
   codegraph -- "📡 worklist" --> agent_launcher
   codegraph -- "📡 undeclared agent tools" --> agent_launcher
   blame -- "📡 formatBlameText" --> cli

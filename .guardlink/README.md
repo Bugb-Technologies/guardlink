@@ -11,8 +11,8 @@ accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 1046 annotations · 21 assets · 16 threats · 14 controls · 143 exposures · 224 flows
-Content hash: `sha256-v3:5f08721876134920c6c74ca2cef59974226608ddac1de155c12d1da4a279d688` — identical hash means identical model.
+Current model: 1061 annotations · 21 assets · 16 threats · 14 controls · 148 exposures · 228 flows
+Content hash: `sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87` — identical hash means identical model.
 
 ---
 
@@ -123,9 +123,9 @@ Assets are referenced as `#id` or as a `Dotted.Path`; both resolve to the same n
 | `@owns` | `@owns <team> for <asset> -- "who reviews changes here"` |
 | `@handles` | `@handles <pii\|phi\|financial\|secrets\|internal\|public> on <asset> -- "what data"` |
 | `@assumes` | `@assumes <asset> -- "what must hold for this to be safe"` |
-| `@agents` | `@agents <agent actor> to <capability> on <asset> as <identity> -- "the tool registration"` — an LLM agent can invoke this |
-| `@reaches` | `@reaches <actor> to <capability> on <asset> as <identity> -- "where it is granted"` — the same, for a principal that is not an agent |
-| `@effects` | `@effects <read\|write\|delete\|execute\|spend\|notify> on <asset> as <identity> -- "what this code does"` |
+| `@agents` | `@agents <agent actor> to <capability> on <asset> as <#identity> -- "the tool registration"` — an LLM agent can invoke this |
+| `@reaches` | `@reaches <actor> to <capability> on <asset> as <#identity> -- "where it is granted"` — the same, for a principal that is not an agent |
+| `@effects` | `@effects <read\|write\|delete\|execute\|spend\|notify> on <asset> as <#identity> -- "what this code does"` — `<capability>` is a kebab token; `<asset>` and `<#identity>` are asset references (`#id`, `Dotted.Path` or `"quoted"`), so `as master-key` does not parse |
 | `@gates` | `@gates <asset> by <approver actor> for <capability> -- "the approval step"` |
 | `@feature` | `@feature "Name" -- "what it groups"` |
 | `@comment` | `@comment -- "context that fits no other verb"` |

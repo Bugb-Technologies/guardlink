@@ -236,6 +236,14 @@ export function fileContext(model: ThreatModel, input: FileContextInput): FileCo
         hint: 'This file was parsed and has no GuardLink annotations. Not every file needs them — only those crossing a security boundary.',
       });
     }
+    // Parsed, and left out of annotation work (annotation-scope.ts): the file
+    // was read, so an empty answer here is still a real answer.
+    const outOfScope = model.annotation_scope?.excluded.find(x => x.file === file);
+    if (outOfScope) {
+      return emptyContext(file, 'scanned_without_annotations', {
+        hint: `This file was parsed and has no GuardLink annotations. It is also outside the annotation scope (${outOfScope.reason}: ${outOfScope.detail}), so it is not on the annotation worklist.`,
+      });
+    }
     if (!exists) {
       return emptyContext(file, 'not_found', {
         hint: `Nothing exists at \`${file}\`. Check the path — it is resolved relative to the project root.`,

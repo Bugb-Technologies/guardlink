@@ -563,7 +563,7 @@ export function parseLine(
         diagnostic: {
           level: 'error',
           code: 'malformed-annotation',
-          message: `Malformed @${verb} annotation: could not parse arguments (looks structural — found ${evidence})`,
+          message: `Malformed @${verb} annotation: could not parse arguments (looks structural — found ${evidence})${reachHint(verb, rest)}`,
           file: location.file,
           line: location.line,
           raw: trimmed,
@@ -897,6 +897,58 @@ export function structuralEvidence(verb: string, rest: string): string | null {
   }
 
   return null;
+}
+
+/**
+ * The shape of each reach verb (SPEC §3.2.1), quoted in its malformed-line error.
+ *
+ * The reach verbs put three kinds of token side by side, and they do not share
+ * a charset: a capability is a kebab token (`run-sql`), while the asset after
+ * `on` and the identity after `as` are asset references, where a bare name is
+ * a `Dotted.Path` and cannot hold a hyphen. `as master-key-holder` therefore
+ * fails the whole line, and "found a #reference" alone does not say which
+ * token. The error names the shape and, where it can, the token that broke it,
+ * so a writer — often an agent — can correct the line without guessing.
+ */
+const REACH_SHAPES: Readonly<Record<string, string>> = {
+  agents:  '@agents <#agent> to <capability> [on <asset>] [as <identity>] [-- "description"]',
+  reaches: '@reaches <#actor> to <capability> [on <asset>] [as <identity>] [-- "description"]',
+  effects: '@effects <read|write|delete|execute|spend|notify> on <asset> [as <identity>] [-- "description"]',
+  gates:   '@gates <asset> by <#approver> [for <capability>] [-- "description"]',
+};
+
+const WHOLE_ASSET_REF = new RegExp(String.raw`^${ASSET_REF}$`);
+const WHOLE_EFFECT = new RegExp(String.raw`^${EFFECT}$`);
+
+/** Text appended to a malformed reach verb's error; empty for every other verb. */
+function reachHint(verb: string, rest: string): string {
+  const shape = REACH_SHAPES[verb];
+  if (!shape) return '';
+  const hint = `. Expected: ${shape}`;
+  // Only the arguments: the description is prose and may say "on" or "as".
+  const args = rest.split(/\s--(?:\s|$)/)[0].trim();
+
+  if (verb === 'effects') {
+    const effect = args.split(/\s+/)[0];
+    if (effect && !WHOLE_EFFECT.test(effect)) {
+      return `${hint} — \`${effect}\` is not an effect; use exactly one of read, write, delete, execute, spend, notify`;
+    }
+  }
+  if (verb === 'agents' || verb === 'reaches') {
+    const capability = args.match(/\bto\s+(\S+)/)?.[1];
+    if (capability?.startsWith('"')) {
+      return `${hint} — <capability> is one unquoted token such as \`run-sql\`, not prose`;
+    }
+  }
+  for (const [, keyword, value] of args.matchAll(/(?:^|\s)(on|as)\s+("(?:[^"\\]|\\.)*"|\S+)/g)) {
+    if (WHOLE_ASSET_REF.test(value)) continue;
+    const slot = keyword === 'on' ? '<asset>' : '<identity>';
+    const fix = /^[A-Za-z0-9_-]+$/.test(value)
+      ? `write \`${keyword} #${value}\` for an asset declared in the definitions file, or \`${keyword} "${value}"\``
+      : 'quote it, or use a declared #id';
+    return `${hint} — \`${keyword} ${value}\` is not an asset reference: ${slot} is a #id, a Dotted.Path (no hyphens) or a "quoted" name; ${fix}`;
+  }
+  return hint;
 }
 
 /** Like ok(), but for parser branches that emit multiple annotations from

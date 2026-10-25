@@ -21,9 +21,9 @@ RELATE   @mitigates <Asset> against <#threat> using <#control> -- "how"
          @entitles <#actor> to <capability> on <Asset> against <#threat> -- "by design + authz file:line"
                    ^ PROPOSED via `guardlink entitle --propose`, written only when a human accepts
 
-REACH    @agents <#agent-actor> to <capability> on <Asset> as <identity> -- "on the tool registration"
-         @reaches <#actor> to <capability> on <Asset> as <identity> -- "same, for a principal that is not an LLM agent"
-         @effects <read|write|delete|execute|spend|notify> on <Asset> as <identity> -- "on the code that acts"
+REACH    @agents <#agent-actor> to <capability> on <Asset> as <#identity> -- "on the tool registration"
+         @reaches <#actor> to <capability> on <Asset> as <#identity> -- "same, for a principal that is not an LLM agent"
+         @effects <read|write|delete|execute|spend|notify> on <Asset> as <#identity> -- "on the code that acts"
          @gates <Asset> by <#approver-actor> for <capability> -- "on the approval step"
                    ^ all four are agent-writable; `on`, `as` and `for` are optional
 
@@ -194,7 +194,9 @@ guardlink entitle --propose --actor "#ns-admin" --capability configure-archival-
     --rationale "By design: namespace config. Authz: common/api/metadata.go:189"
 guardlink clear [dir] [--dry-run]       # Remove all annotations from source files
 guardlink sync [dir]                    # Sync agent instruction files with current threat model
-guardlink unannotated [dir]             # List source files with no annotations
+guardlink unannotated [dir]             # The annotation worklist: in-scope files with no annotations
+guardlink unannotated . --excluded      # ...and each file left out, with its reason
+guardlink unannotated . --json          # The whole worklist as JSON (guardlink.annotation-worklist/v1)
 guardlink feature list [dir]            # List all @feature tags with stats
 guardlink feature show <name>           # Show threat model for a specific feature
 
@@ -216,6 +218,43 @@ guardlink report . --feature "SSO Login"          # Report filtered to feature
 guardlink dashboard . --feature "SSO,Payments"    # Dashboard filtered to features
 guardlink status . --feature "SSO Login"           # Status filtered to feature
 ```
+
+## The annotation worklist
+
+`unannotated_files` — what `guardlink unannotated`, `guardlink_unannotated`, the coverage
+playbook, the dashboard and file coverage count — is the **annotation worklist**: scanned files
+in the annotation scope that carry no annotation. Every other file is left out with one reason,
+the first that applies:
+
+| reason | left out because |
+|---|---|
+| `guardlink-data` | `.guardlink/**` or a `.gal` sidecar |
+| `built-in-exclude` | under the parser's own excludes (`node_modules`, `dist`, `build`, `tests`, `vendor`, …) |
+| `gitignored` | untracked and matched by `.gitignore` (a tracked file stays in scope) |
+| `linguist-vendored`, `linguist-generated` | `.gitattributes` sets the attribute |
+| `config-exclude` | `.guardlink/config.json` `exclude` matches it |
+| `asset` | an image, font, audio or video file |
+| `unsupported-extension` | GuardLink reads no comments in that file type |
+| `outside-config-include` | `.guardlink/config.json` has an `include` and none of it matches |
+| `generated-output` | a source map, a `*.min.js`/`*.min.css` bundle, or Next.js build output (`_next/`, and a directory holding `_next/` beside its HTML) |
+| `asset` | an SVG under an asset directory (`assets/`, `public/`, `static/`, `images/`, `icons/`, …) |
+| `not-scanned` | listed by git but not reached by the scan (a link to a file scanned at its own path) |
+
+`include` and `exclude` patterns read like `.gitignore`: a pattern without `/` (`dist`,
+`*.min.js`) matches at any depth, one with `/` is relative to the root, and a matched directory
+covers everything under it. The last two defaults can be overridden: `-linguist-generated` in
+`.gitattributes` keeps a file the generated rule would drop, and
+`"worklist": { "keep": ["templates/**/*.svg"] }` in `.guardlink/config.json` keeps any path the
+generated-output or asset-SVG rule would drop. SVG is not excluded as a format, since an SVG can be a
+template.
+
+**Discovery is not narrowed.** A file left out is still parsed: an annotation already written in
+it stays in the model, and the file stays in `annotated_files`. The model records the scanned files
+it left out in `annotation_scope`. `guardlink unannotated --json` adds the repository's other files,
+so a consumer planning annotation work gets one partition (`worklist`, `annotated`, `excluded` with
+`reason`, `detail` and `annotated: true` where a left-out file declares annotations) and applies no
+scope policy of its own. Outside a git work tree `view` is `walk` and `.gitignore` and
+`.gitattributes` are not read.
 
 ## Playbooks, the evidence bar and the gate
 
@@ -506,7 +545,7 @@ Run `guardlink tui` for the interactive terminal interface:
 9. **@comment always needs -- and quotes**: `@comment -- "your note here"`.
 10. **One annotation per comment line.** Do NOT put two @verbs on the same line.
 11. **@entitles capability is ONE identifier, not prose**: `configure-archival-destination`, not `"can configure archival"`. It is the join key, and prose would not join.
-12. **@agents / @reaches use the same capability token as @entitles**, and **@effects takes one of six effects**: `read`, `write`, `delete`, `execute`, `spend`, `notify`. Egress is `@flows … -> External.X`, not an effect. `@gates` needs `by <actor>`.
+12. **@agents / @reaches use the same capability token as @entitles**, and **@effects takes one of six effects**: `read`, `write`, `delete`, `execute`, `spend`, `notify`. Egress is `@flows … -> External.X`, not an effect. `@gates` needs `by <actor>`. The `on <asset>` and `as <identity>` of all three are **asset references** like any other (`#id`, `Dotted.Path`, or `"quoted"`), not tokens like the capability: write `@effects execute on #ext-mcp as #gateway-process`, never `as gateway-process`, which fails the whole line.
 13. **@ticket's ref is one token or a quoted string.** `SEC-42`, `jira:SEC-42` and a bare `https://…` URL all work; quote a ref with spaces. `sla` takes a quoted label. Only the description wraps onto a continuation line.
 
 ## MCP Tools

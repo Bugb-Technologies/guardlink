@@ -136,7 +136,7 @@ ${STOP_CONDITIONS}`,
 **Purpose.** Bring the files the model has never seen into it, in the order that matters: entry points and sinks before helpers, and structure before claims.
 
 ### Phase 1 — Rank the unannotated files
-From the unannotated list, put first the files that receive input from outside (handlers, commands, consumers), then the ones that reach storage, the network or the shell, then everything else. A pure helper or a formatter may need nothing; record that decision in a \`@comment\` only when a reader would otherwise wonder.
+The unannotated list is the annotation worklist (the prompt carries it; \`guardlink unannotated\` and \`guardlink_unannotated\` print it). Files left out of it — gitignored, generated or vendored per \`.gitattributes\`, excluded by \`.guardlink/config.json\`, minified bundles, build output, asset images — are not work: do not annotate them. From the list, put first the files that receive input from outside (handlers, commands, consumers), then the ones that reach storage, the network or the shell, then everything else. A pure helper or a formatter may need nothing; record that decision in a \`@comment\` only when a reader would otherwise wonder.
 
 ### Phase 2 — Structure first
 For each file, write the \`@flows\`, \`@boundary\` and \`@handles\` that place it in the model. Reuse existing asset ids; add a definition only for a component the model genuinely lacks.

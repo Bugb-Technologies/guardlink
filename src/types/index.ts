@@ -645,6 +645,13 @@ export interface AgentConfigBlock {
 
 // ─── Threat Model (§5.1) ─────────────────────────────────────────────
 
+/** Scanned files outside the annotation scope (`ThreatModel.annotation_scope`). */
+export interface AnnotationScopeRecord {
+  /** `git` when `.gitignore` and `.gitattributes` were consulted; `walk` outside a work tree. */
+  view: 'git' | 'walk';
+  excluded: Array<{ file: string; reason: string; detail: string }>;
+}
+
 export interface ThreatModel {
   version: string;
   project: string;
@@ -652,7 +659,17 @@ export interface ThreatModel {
   source_files: number;
   annotations_parsed: number;
   annotated_files: string[];
+  /** Scanned files in the annotation scope that carry no annotation: the annotation worklist. */
   unannotated_files: string[];
+  /**
+   * Scanned files left out of the annotation scope, each with why — gitignored,
+   * `.gitattributes` generated or vendored, `.guardlink/config.json` exclude, a
+   * minified bundle, an asset SVG (`parser/annotation-scope.ts`). They are
+   * still parsed: an annotation already written in one is in the model and its
+   * file is in `annotated_files`. Optional so report JSON written before it
+   * still satisfies the schema.
+   */
+  annotation_scope?: AnnotationScopeRecord;
 
   /** Report provenance — always populated in report JSON output */
   metadata?: ReportMetadata;

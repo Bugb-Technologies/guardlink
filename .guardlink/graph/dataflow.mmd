@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:2abab740f7803d1ed05ec16c127d000fd9b80a4fd65e209d08942d470ebc6df9
+%% annotation_hash: sha256-v3:0ed75b716b292740184b8b0ea0c3b0adf2d12b1af2e7ace1459629428ae51e9b
 %% generator:       guardlink@2.4.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 78 nodes / 208 edges, past the 12 / 16 legibility budget (78 nodes against 12, 208 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 78 nodes / 212 edges, past the 12 / 16 legibility budget (78 nodes against 12, 212 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -158,6 +158,7 @@ graph LR
   userprompt -- "📡 buildAskPrompt" --> agent_launcher
   threatmodel -- "📡 model" --> agent_launcher
   agent_launcher -- "📡 return" --> agentprompt
+  parser -- "📡 annotation worklist" --> agent_launcher
   codegraph -- "📡 worklist" --> agent_launcher
   codegraph -- "📡 undeclared agent tools" --> agent_launcher
   savedreport -- "📡 parseFindingsBlock" --> llm_client
@@ -279,6 +280,8 @@ graph LR
   configfile -- "📡 readAcceptancePolicy" --> parser
   threatmodel -- "📡 computeAnnotationHash" --> parser
   threatmodel -- "📡 detectAnnotationMode" --> parser
+  projectroot -- "📡 annotationScope" --> parser
+  projectroot -- "📡 buildAnnotationWorklist" --> parser
   mcpclient -- "📡 applyAnnotations" --> parser
   parser -- "🗄️ writeFileSync" --> filesystem
   threatmodel -- "📡 canonicalizeModelOrder" --> parser
@@ -299,6 +302,7 @@ graph LR
   agent_config -- "📡 mergeAgentConfig" --> parser
   threatmodel -- "📡 findAnchorDrift" --> parser
   threatmodel -- "📡 buildRouteIndex" --> parser
+  projectfiles -- "📡 realpathSync" --> parser
   threatmodel -- "📡 classifyClaims" --> parser
   ledgerfile -- "📡 classifyClaims" --> parser
   cli -- "📡 applyVerification" --> ledgerfile

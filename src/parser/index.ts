@@ -40,6 +40,12 @@ export { resolveGalPath, galPathFor, sourceFileForGal, isConventionalGalPath, AN
 // externally annotated repository whose consumers are all reading zero.
 export { checkHandoff, HANDOFF_PATH, HANDOFF_COMMAND } from './handoff.js';
 export type { HandoffReport, HandoffVerdict } from './handoff.js';
+// The annotation worklist: which files still need annotating, and why every
+// other file is left out. Discovery is not narrowed by it.
+export { annotationScope, compileScopePattern, readScopeConfig } from './annotation-scope.js';
+export type { AnnotationScope, ScopeExclusion, ScopeExclusionReason, ScopeConfig, ScopeView } from './annotation-scope.js';
+export { buildAnnotationWorklist, WORKLIST_SCHEMA } from './annotation-worklist.js';
+export type { AnnotationWorklist, WorklistFile, ExcludedFile } from './annotation-worklist.js';
 export { clearAnnotations } from './clear.js';
 export type { ClearAnnotationsOptions, ClearAnnotationsResult } from './clear.js';
 export { listFeatures, filterByFeature, getFeatureSummaries } from './feature-filter.js';
