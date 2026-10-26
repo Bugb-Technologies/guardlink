@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## \[Unreleased\]
 
+## \[2.5.0\] - 2026-10-26
+
+### Upgrading
+
+- **There are TypeScript and JSON-output changes since 2.4.0.** `AnnotationVerb` gains `'ticket'`, the `Annotation` union gains `TicketAnnotation`, and `DiagnosticCode` gains `'ticket-malformed-due'` and `'ticket-without-exposure'`. `LintLevel` gains `'info'` and `LintRule` gains `'ticket-on-mitigated'`. Consumers with exhaustive switches over these unions must handle the new members.
+- **The model adds optional `tickets` and `annotation_scope` fields; diff JSON adds `tickets`.** SARIF exposure and confirmed results gain `properties.tickets` only when their pair has a ticket. `guardlink lint --json` adds `summary.infos` and may return a violation with `level: "info"`; info never fails the gate. The model version (`1.2.0`), SARIF profile version and annotation-hash version are unchanged. Models without tickets keep the same annotation hash.
+- **File coverage now measures annotation scope.** `source_files` counts in-scope files plus every annotated file, and `unannotated_files` is the annotation worklist. Files excluded from annotation work are still parsed. `guardlink_parse` omits `annotation_scope` by default alongside `unannotated_files`, with an `annotation_scope_omitted` count; `include_unannotated: true` returns both. `guardlink_graph` omits the scope inventory.
+- **New worklist options:** `guardlink unannotated --json` returns the new `guardlink.annotation-worklist/v1` document; `--excluded` lists excluded files and reasons. The MCP `guardlink_unannotated` tool accepts `format: "json"`. Existing commands and flags remain available.
+- **Regenerate committed artifacts after upgrading** with `guardlink artifacts .` so their generator stamps match 2.5.0.
+
 ### Added
 
 - **`@ticket` records an open ticket in your tracker against a threat on an asset** (SPEC §3.2). `@ticket <threat> on <asset> <id-or-url> [sla "<label>"] [by <assignee>] [until <YYYY-MM-DD>] [-- "description"]`. There is no connector: the line is the whole record, and removing it is how a ticket closes. The ref is a quoted string or one bare token, so `SEC-42`, `jira:SEC-42` and a bare `https://…` URL all parse. `sla` keeps the tracker's own priority word verbatim and is never mapped onto GuardLink severity.
@@ -17,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - **The coverage playbook's prompt carries the worklist** and counts the left-out files by reason, with the instruction not to annotate them.
   - **Defaults a user can override.** `generated-output` covers source maps, `*.min.js` and `*.min.css`, `_next/` and a directory that holds `_next/` beside its own HTML (a Next.js static export). `asset` covers images, fonts and media, and an SVG only under an asset directory (`assets/`, `public/`, `static/`, `images/`, `icons/`, …): SVG is not excluded as a format, since an SVG can be a template. `-linguist-generated` in `.gitattributes` keeps a file the generated rule would drop; `"worklist": { "keep": [...] }` in `.guardlink/config.json` keeps a path from either rule.
   - **File coverage counts the scope.** `source_files` is now the in-scope files plus every annotated file. Measured on LiteLLM at `f2118fc`: 7,405 unannotated files before, 6,834 after. The 571 left out are 457 files of the committed Next.js export under `litellm/proxy/_experimental/out/`, 113 SVGs under `ui/litellm-dashboard/public/` (111 of them logos in `public/assets/`), and `ui/litellm-dashboard/src/lib/http/schema.d.ts`, which `.gitattributes` marks generated. On this repository the list goes from 25 to 14 files, because its `config.json` includes only `.ts`, `.tsx`, `.js` and `.jsx`.
+- **A Community section in the contributing guide** links to the BugB Discord for questions and ideas.
 
 ### Fixed
 
