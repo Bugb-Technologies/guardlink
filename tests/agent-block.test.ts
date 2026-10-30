@@ -90,9 +90,9 @@ describe('the block is a pointer, not a copy of the model', () => {
   const text = agentInstructions(project, 'inline', { model: populatedModel });
 
   it('stays short: about 30 lines', () => {
-    // 25 before the pre-PR step (SPEC §8.1); each `pre_pr` entry adds one more,
+    // Includes the everyday testing pointer; each `pre_pr` entry adds one more,
     // and init/pre-pr.ts renders at most five.
-    expect(text.trimEnd().split('\n').length).toBeLessThanOrEqual(31);
+    expect(text.trimEnd().split('\n').length).toBeLessThanOrEqual(33);
   });
 
   it('points at the reference document and the README for everything it leaves out', () => {
@@ -235,6 +235,11 @@ describe('GL-403 — end to end through sync', () => {
       agent_config_hash: model.agent_config!.agent_config_hash,
     });
     expect(text.indexOf('<!-- guardlink:stamp')).toBe(text.indexOf('<!-- guardlink:begin -->') + '<!-- guardlink:begin -->\n'.length);
+    expect(text).toContain('guardlink translate "<changed scope>"');
+    expect(text).toContain('without Bravos');
+    expect(text).toContain('not a full pentest');
+    expect(text).toContain('runs that can take hours');
+    expect(text).toContain('Keep existing annotations accurate as the code changes');
   });
 
   it('carries NO volatile fields', async () => {
