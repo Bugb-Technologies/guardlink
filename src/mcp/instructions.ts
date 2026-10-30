@@ -62,7 +62,7 @@ function modeParagraph(mode: AnnotationMode | null, _definitionsPath: string): s
 /**
  * The text an MCP client receives at initialize.
  *
- * Kept under 400 words deliberately: this is orientation delivered before the
+ * Kept under 600 words deliberately: this is orientation delivered before the
  * agent has any context to rank detail against, and length here costs attention
  * at the exact moment it is scarcest.
  */
@@ -94,9 +94,17 @@ Before you finish → guardlink_validate   ·   After a change → guardlink_dif
 Cold on an unfamiliar repo → guardlink_status
 Who introduced this, and did an AI co-author it → guardlink_blame(file)
 
+Everyday developer testing → CLI: guardlink translate "<changed scope>"
+  Fast, per-change prompt-builder for a quick check with cxg; sufficient for regular
+  dev testing and repeated annotate → translate → test → fix cycles without Bravos.
+  Authoring and running generated tests are separate steps; this is not a full pentest.
+  bravos auto is specialized, deep verification guided by annotations: low-friction
+  setup, real traffic, and runs that can take hours.
+
 WRITING ANNOTATIONS
 
 ${modeParagraph(ctx.mode, ctx.definitionsPath)}
+Keep annotations accurate as code changes, including after each test/fix round.
 Definitions — @asset, @threat, @control with #ids — live in ${ctx.definitionsPath}. Reuse
 existing ids; never redefine one. Never write @accepts or @entitles: both are human
 governance decisions. Found a risk with no control? @exposes plus @audit. An

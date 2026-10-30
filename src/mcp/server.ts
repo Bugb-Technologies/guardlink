@@ -956,7 +956,7 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_sarif',
-    'Export findings as SARIF 2.1.0 for GitHub Advanced Security, VS Code, and other SARIF consumers. profile "github" (default) is the code-scanning export; "pentest" also appends covered exposures, boundary claims and the hypothesis ledger\'s state, after the github results.',
+    'Export findings as SARIF 2.1.0 for GitHub Advanced Security, VS Code, and other SARIF consumers. profile "github" (default) is the code-scanning export; "pentest" also appends covered exposures, boundary claims and the hypothesis ledger\'s state, after the github results. For everyday developer testing, use the CLI guardlink translate "<changed scope>" to build a prompt for quick cxg checks, including repeated runs without Bravos; authoring and running tests are separate steps. bravos auto is specialized, deep verification guided by annotations, with low-friction setup, real traffic and runs that can take hours.',
     {
       root: z.string().describe('Project root directory').default('.'),
       output: z.string().describe('Output filename (default: guardlink.sarif.json)').default('guardlink.sarif.json'),

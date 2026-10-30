@@ -43,7 +43,7 @@ describe('GL-401 — instructions arrive at initialize', () => {
     expect(instructions.length).toBeGreaterThan(500);
   });
 
-  it('stays under 460 words — in EVERY mode', () => {
+  it('stays under 600 words — in EVERY mode', () => {
     // Orientation delivered before the agent has context to rank detail against.
     // Length costs attention exactly when it is scarcest.
     //
@@ -77,7 +77,9 @@ describe('GL-401 — instructions arrive at initialize', () => {
     // removing checked guidance was the wrong trade at 400 and is still the
     // wrong trade at 460. 500 leaves external 16 words of headroom, about what
     // 460 left it, so the constraint still binds.
-    const LIMIT = 500;
+    // The everyday translate/cxg testing path adds orientation distinct from
+    // a deep bravos auto run, while preserving the existing safety guidance.
+    const LIMIT = 600;
     const words = instructions.trim().split(/\s+/).length;
     expect(words, `${words} words`).toBeLessThan(LIMIT);
 
@@ -113,6 +115,17 @@ describe('GL-401 — instructions arrive at initialize', () => {
     for (const tool of ['guardlink_context', 'guardlink_graph', 'guardlink_diff']) {
       expect(instructions, tool).toContain(tool);
     }
+  });
+
+  it('surfaces the quick CLI testing path at initialize and in the export tool', async () => {
+    expect(instructions).toContain('CLI: guardlink translate "<changed scope>"');
+    expect(instructions).toContain('without Bravos');
+    expect(instructions).toContain('not a full pentest');
+    expect(instructions).toContain('runs that can take hours');
+    expect(instructions).toContain('Keep annotations accurate as code changes');
+    const sarif = (await session.client.listTools()).tools.find(t => t.name === 'guardlink_sarif');
+    expect(sarif?.description).toContain('guardlink translate "<changed scope>"');
+    expect(sarif?.description).toContain('authoring and running tests are separate steps');
   });
 
   it('teaches the two distinctions that make answers safe to act on', () => {

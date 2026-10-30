@@ -728,6 +728,14 @@ export function buildTranslatePrompt(
 ## Mission
 Convert pentest-confirmable threats into runnable CXG templates. Do NOT execute templates. Only author template files.
 
+\`guardlink translate\` is the fast, per-change prompt-builder for everyday developer testing.
+Keep this quick check scoped to the changed code. GuardLink + cxg is sufficient for regular
+dev testing without Bravos: repeat annotate → translate → test → fix as code changes,
+keeping annotations accurate after each round. This command builds the template-authoring
+prompt; the developer runs the generated tests separately. A quick check is not a full
+pentest. \`bravos auto\` is specialized, deep verification guided by the annotations, with
+low-friction setup, real traffic, and runs that can take hours.
+
 ## Current Threat Model
 ${modelSummary}${candidateExposures}
 

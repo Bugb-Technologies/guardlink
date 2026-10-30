@@ -480,9 +480,11 @@ ${populated ? populatedOpening() : emptyOpening(ctx.model ?? null)}
 
 ${placementLine(project, mode)} Placement in full: \`.guardlink/README.md\`; syntax and rules: \`${referencePath}\`.
 
+**Everyday developer testing:** \`guardlink translate "<changed scope>"\` is the fast, per-change prompt-builder for a quick check. Use it with cxg for regular testing, including repeated annotate → translate → test → fix cycles, without Bravos. It builds a template-authoring prompt; running the generated tests is a separate step. This quick path is sufficient for regular dev testing, not a full pentest. \`bravos auto\` is specialized, deep verification guided by the annotations: low-friction setup, real traffic, and runs that can take hours.
+
 **What you owe it back**, in the same change as the code:
 
-- Annotate security-relevant code you write or change — endpoints, authentication and authorization (ownership and tenant checks included), validation, queries, file I/O, external calls, crypto, process spawning, configuration parsing. Reuse the ids in \`.guardlink/definitions${project.definitionsExt ?? '.*'}\`; never redefine one.
+- Annotate security-relevant code you write or change — endpoints, authentication and authorization (ownership and tenant checks included), validation, queries, file I/O, external calls, crypto, process spawning, configuration parsing. Keep existing annotations accurate as the code changes, including after each test/fix round. Reuse the ids in \`.guardlink/definitions${project.definitionsExt ?? '.*'}\`; never redefine one.
 - Code that hands an LLM agent a tool: \`@agents\` on the registration, \`@effects\` on the code that acts, \`@gates\` on an approval step (\`@reaches\` for a principal that is no agent). Syntax: the reference above.
 - **Never write \`@accepts\` or \`@entitles\`** — both are a human's decision. A risk with no control is \`@exposes\` + \`@audit\`; an entitlement is proposed with \`guardlink entitle --propose\`, and a human's acceptance writes it.
 - \`@confirmed\` needs reproduction evidence in hand; reading the code is not reproduction.
