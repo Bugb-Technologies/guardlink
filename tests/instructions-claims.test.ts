@@ -30,6 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { buildServerInstructions } from '../src/mcp/instructions.js';
 import { parseProject } from '../src/parser/parse-project.js';
 import { applyAnnotations } from '../src/parser/apply-annotations.js';
+import { computeAnnotationHash } from '../src/parser/annotation-hash.js';
 import { fileContext } from '../src/mcp/context.js';
 import { lookup } from '../src/mcp/lookup.js';
 import { traverseGraph } from '../src/mcp/subgraph.js';
@@ -120,6 +121,22 @@ describe('D33 — every behavioural claim is executed, not just spell-checked', 
     expect(STATUSES).toContain(missing.status);
     // …and the distinction the text leans on must be a real one.
     expect(clean.status).not.toBe(missing.status);
+  });
+
+  it('annotation hash can stay equal while implementation and anchors change', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-hash-scope-'));
+    try {
+      const annotation = '// @audit App.API -- "Review authorization"\n';
+      await writeFile(join(root, 'app.ts'), annotation + 'export const allowed = false;\n');
+      const { model: before } = await parseProject({ root });
+      await writeFile(join(root, 'app.ts'), '\n' + annotation + 'export const allowed = true;\n');
+      const { model: after } = await parseProject({ root });
+      expect(computeAnnotationHash(before)).toBe(computeAnnotationHash(after));
+      expect(before.audits[0].location.line).not.toBe(after.audits[0].location.line);
+      expect(forMode('inline')).toMatch(/not unchanged code, anchors or agent configuration/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('lookup: external_id.declared exists and false means undeclared', () => {
