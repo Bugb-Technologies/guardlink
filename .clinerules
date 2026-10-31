@@ -1,5 +1,5 @@
 <!-- guardlink:begin -->
-<!-- guardlink:stamp annotation_hash=sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87 agent_config_hash=sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c -->
+<!-- guardlink:stamp annotation_hash=sha256-v3:397c03d78e4fa024c93fdc7893604f3618206c4f807ab87ab57d55739095698a agent_config_hash=sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c -->
 # GuardLink Security Annotations
 
 This project carries a [GuardLink](https://guardlink.bugb.io) threat model: security facts recorded
@@ -7,7 +7,7 @@ next to the code they describe — what each component is exposed to, what mitig
 **Ask it instead of inferring security context from the source:** `guardlink_context(file)` before you
 edit a file, `guardlink_graph` before you change a shared component, `guardlink_lookup("cwe:CWE-89")`
 for a scanner finding, `guardlink_paths` for routes no control covers. Without MCP, `guardlink status .`
-and `guardlink parse .` answer the same.
+and `guardlink parse .` provide repo-wide summaries and records; inspect the source to verify their claims.
 
 **Where annotations go:** `inline` mode — in the doc-block comment of the code they describe, in that file's comment syntax, never in `.gal` sidecars. Placement in full: `.guardlink/README.md`; syntax and rules: `docs/GUARDLINK_REFERENCE.md`.
 
@@ -17,13 +17,15 @@ and `guardlink parse .` answer the same.
 - Code that hands an LLM agent a tool: `@agents` on the registration, `@effects` on the code that acts, `@gates` on an approval step (`@reaches` for a principal that is no agent). Syntax: the reference above.
 - **Never write `@accepts` or `@entitles`** — both are a human's decision. A risk with no control is `@exposes` + `@audit`; an entitlement is proposed with `guardlink entitle --propose`, and a human's acceptance writes it.
 - `@confirmed` needs reproduction evidence in hand; reading the code is not reproduction.
+- For a routine developer check: `guardlink translate "<changed paths and threats>"` generates templates only; review/validate them, then run selected tests separately. See `.guardlink/README.md` for the regression workflow.
 - Before you finish: `guardlink validate .`, then `guardlink diff HEAD~1` — did this change add exposure?
 
-**Before you open or update a pull request**, check the annotations it adds against its base branch:
+**Before you open or update a pull request**, check its annotations against the base branch and run repository security tests:
 
 - `guardlink validate .` — they parse and their references resolve. It also says when a published `.guardlink/report.json` is behind them; `guardlink parse . -o .guardlink/report.json` refreshes it.
 - `guardlink lint . --since origin/<base>` — each new claim names its code and is paired; `--json` gives the `fix` for any that is not.
 - `guardlink diff origin/<base>` — the exposures, flows and acceptances the change adds.
+- Run all tests in the repository’s root `security/` directory with its configured runner. Report an absent suite (not applicable), skipped tests or anything that could not run; an existing suite that cannot complete blocks readiness. A pre-review tool that records complete execution of that suite satisfies this step once; generation alone and skipped execution do not.
 
 If you are asked to raise a pull request and this check has not come up, suggest it. Never write `@accepts` to clear what it reports.
 

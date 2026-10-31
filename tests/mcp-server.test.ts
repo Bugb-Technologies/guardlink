@@ -210,7 +210,7 @@ describe('MCP server — freshness envelope (GL-102)', () => {
   const ALL_TOOLS = [
     'guardlink_parse', 'guardlink_status', 'guardlink_validate', 'guardlink_suggest',
     'guardlink_context', 'guardlink_graph', 'guardlink_paths', 'guardlink_annotate_apply', 'guardlink_reanchor',
-    'guardlink_lookup', 'guardlink_threat_report', 'guardlink_annotate', 'guardlink_report',
+    'guardlink_lookup', 'guardlink_threat_report', 'guardlink_annotate', 'guardlink_translate', 'guardlink_report',
     'guardlink_dashboard', 'guardlink_sarif', 'guardlink_diff', 'guardlink_threat_reports',
     'guardlink_sync', 'guardlink_clear', 'guardlink_unannotated', 'guardlink_review_list',
     'guardlink_review_accept', 'guardlink_workspace_info',
@@ -492,4 +492,51 @@ describe('MCP server — guardlink_parse payload (GL-205)', () => {
       expect(env.annotation_hash, JSON.stringify(args)).toMatch(/^sha256-v\d+:/);
     }
   });
+});
+
+
+describe('annotation prompt placement', () => {
+  it('refuses mixed placement before producing an authoring prompt', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-annotate-mixed-'));
+    const session = await connect();
+    try {
+      await mkdir(join(root, '.guardlink/annotations'), { recursive: true });
+      await writeFile(join(root, 'app.ts'), '// @audit App.API -- "review inline path"\nexport const x = 1;\n');
+      await writeFile(join(root, '.guardlink/annotations/app.ts.gal'), '@source file:app.ts line:2\n@audit App.API -- "review sidecar path"\n');
+      await writeFile(join(root, '.guardlink/config.json'), '{"annotation_mode":"inline"}');
+      const result = await session.client.callTool({ name: 'guardlink_annotate', arguments: { root, prompt: 'maintain auth', code_graph: false } });
+      expect(result.isError).toBe(true);
+      expect(payload(result)).toMatch(/Resolve annotation placement/);
+      expect(payload(result)).not.toContain('prompt built');
+    } finally {
+      await session.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  for (const mode of ['inline', 'external'] as const) {
+    for (const configured of [true, false]) {
+      it(`preserves ${configured ? 'configured' : 'observed'} ${mode} placement`, async () => {
+        const root = await mkdtemp(join(tmpdir(), 'guardlink-annotate-mode-'));
+        const session = await connect();
+        try {
+          await mkdir(join(root, '.guardlink/annotations'), { recursive: true });
+          const annotation = '@audit App.API -- "review auth path"';
+          await writeFile(join(root, 'app.ts'), `${mode === 'inline' ? `// ${annotation}\n` : ''}export const x = 1;\n`);
+          if (mode === 'external') await writeFile(join(root, '.guardlink/annotations/app.ts.gal'), `@source file:app.ts line:1\n${annotation}\n`);
+          if (configured) await writeFile(join(root, '.guardlink/config.json'), JSON.stringify({ annotation_mode: mode }));
+          const result = await session.client.callTool({ name: 'guardlink_annotate', arguments: { root, prompt: 'maintain auth', code_graph: false } });
+          expect(result.isError).not.toBe(true);
+          const response = JSON.parse(payload(result));
+          expect(response.annotation_mode).toBe(mode);
+          expect(response.prompt).toContain(mode === 'inline' ? 'This run MUST produce annotations as inline source comments.' : 'This run MUST produce annotations as externalized .gal files.');
+          const conflicting = await session.client.callTool({ name: 'guardlink_annotate', arguments: { root, prompt: 'maintain auth', mode: mode === 'inline' ? 'external' : 'inline', code_graph: false } });
+          expect(conflicting.isError).toBe(true);
+        } finally {
+          await session.close();
+          await rm(root, { recursive: true, force: true });
+        }
+      });
+    }
+  }
 });

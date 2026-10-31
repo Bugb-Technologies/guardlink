@@ -41,83 +41,58 @@ export interface InstructionsContext {
 
 function modeParagraph(mode: AnnotationMode | null, _definitionsPath: string): string {
   if (mode === 'external') {
-    return [
-      'Annotations are stored EXTERNALLY; source files are not edited. They',
-      `live in .guardlink/annotations/<mirrored source path>.gal, grouped under`,
-      '`@source file:<path> line:<n> [symbol:<name>]` blocks. Sidecars work anywhere the',
-      'convention puts them, including under test/, vendor/ and dist/ — skipped for source,',
-      'not annotations.',
-    ].join(' ');
+    return 'Annotations are stored EXTERNALLY in .guardlink/annotations/<source path>.gal under `@source file:<path> line:<n> [symbol:<name>]` blocks. Sidecars work anywhere the convention puts them, including under test/, vendor/ and dist/ — skipped for source, not annotations. Write with guardlink_annotate_apply: pass the source path, not .gal; @source is synthesised. Send symbol: for reanchoring.';
   }
   if (mode === 'inline') {
-    return 'This project stores annotations INLINE, in source-file comments, using the host language comment syntax.';
+    return 'This project stores annotations INLINE in source-file comments. Edit those comments directly; guardlink_annotate_apply writes external sidecars only.';
   }
-  return [
-    'This project has not recorded an annotation mode. Every tool response carries',
-    '`mode` in its guardlink envelope, observed from the annotations themselves —',
-    'read that rather than assuming.',
-  ].join(' ');
+  if (mode === 'mixed') {
+    return 'This project is MIXED: resolve inline/sidecar drift before writing. guardlink_annotate_apply writes external sidecars only.';
+  }
+  return 'This project has not recorded an annotation mode. Read mode in the response envelope and inspect config before writing: inline uses source comments; external uses guardlink_annotate_apply sidecars.';
 }
 
 /**
  * The text an MCP client receives at initialize.
  *
- * Kept under 400 words deliberately: this is orientation delivered before the
+ * Kept under 500 words deliberately: this is orientation delivered before the
  * agent has any context to rank detail against, and length here costs attention
  * at the exact moment it is scarcest.
  */
 export function buildServerInstructions(ctx: InstructionsContext): string {
-  return `GuardLink is this project's threat model: security facts developers recorded next to the code — what each component is exposed to, what mitigates it, how data flows between them — parsed into a queryable model. Ask it instead of inferring security context from the source.
+  return `GuardLink is this project's threat model: recorded exposures, controls and flows. Query it, then verify claims against source.
 
 WHEN TO REACH FOR WHAT
 
 Opened a file, or about to edit one → guardlink_context(file)
-  Annotations declared there with line anchors, the assets they name with each
-  asset's immediate neighbours, open exposures, and the controls the file is
-  expected to uphold. An empty answer says which kind of empty it is:
-  scanned_without_annotations means genuinely clean; not_scanned means the parser
-  never read the file. Do not read them as the same thing.
+  Declared annotations, neighbours, exposures and controls. scanned_without_annotations means parsed; no annotations recorded; no security conclusion. not_scanned means the parser never read it.
 
 About to change a shared component → guardlink_graph(from, depth, direction)
-  Blast radius. Walks data flows and trust boundaries — not shared threats, which
-  are classifications rather than couplings. Defaults (depth 2, both, summary) are
-  the affordable setting; detail full costs ~40% more. Check traversal.completeness:
-  depth_limited means more is reachable, truncated means INCOMPLETE —
-  frontier_unexplored says what is missing.
+  Blast radius through flows and boundaries, not shared threats. Defaults: depth 2, both, summary. Check traversal.completeness: depth_limited means more is reachable; truncated means incomplete; frontier_unexplored names gaps.
 
 A scanner reported a CWE → guardlink_lookup("cwe:CWE-89")
-  Whether this model declares that weakness class at all, and whether affected
-  sites are mitigated, accepted, open or confirmed. Check external_id.declared:
-  false means never heard of it, which is NOT the same as declared-and-clean.
+  Check external_id.declared: false means undeclared, not declared-and-clean.
 
-Before you finish → guardlink_validate   ·   After a change → guardlink_diff("HEAD~1")
+Routine change → maintain code and annotations together; guardlink_translate returns an authoring prompt. Older servers: \`guardlink translate "<changed paths and threats>"\`. Scope the request explicitly. Generation only: review/validate templates, then execute selected tests separately. Keep durable regressions after mitigation removes candidates.
+
+Before a pull request → run the entire root security/ suite with its configured runner. Report absent suites (not applicable), skips and unavailable/partial execution; an existing suite that cannot complete blocks readiness. A pre-review tool's recorded complete execution satisfies this once; generation does not.
+
+Before you finish → guardlink_validate · After a change → guardlink_diff("HEAD~1")
 Cold on an unfamiliar repo → guardlink_status
-Who introduced this, and did an AI co-author it → guardlink_blame(file)
+Who introduced this → guardlink_blame(file)
 
 WRITING ANNOTATIONS
 
 ${modeParagraph(ctx.mode, ctx.definitionsPath)}
-Definitions — @asset, @threat, @control with #ids — live in ${ctx.definitionsPath}. Reuse
-existing ids; never redefine one. Never write @accepts or @entitles: both are human
-governance decisions. Found a risk with no control? @exposes plus @audit. An
-entitlement claims a privilege was always allowed this, so an over-grant hides a
-real escalation: propose it (guardlink_entitlement_propose) citing authz code as
-file:line, and a human's acceptance writes it. Never for ownership questions (IDOR,
-tenant isolation), where both peers hold the capability.
-
-Write with guardlink_annotate_apply, not by hand: pass the source path, not the .gal.
-@source is synthesised — never send one. Do send symbol:, which reanchor needs after a
-refactor; omitting it means the statement covers the whole asset rather than one symbol.
+Definitions (@asset, @threat, @control with #ids) live in ${ctx.definitionsPath}; reuse ids.
+Never write or alter @accepts or @entitles: human governance decisions. A risk with no control needs @exposes plus @audit. @confirmed requires reproduction evidence, not code reading or generated templates.
+Propose entitlements with guardlink_entitlement_propose, citing authz file:line; a human's acceptance writes them. Never for ownership questions (IDOR, tenant isolation).
 
 READING THE ANSWERS
 
-Every response carries a guardlink envelope: annotation_hash, git_sha, mode, root.
-Identical hash means identical model — use it to tell a fresh answer from a stale one.
+Every response carries annotation_hash, git_sha, mode, root in a guardlink envelope. Hash equality covers annotation content only, not unchanged code, anchors or agent configuration; re-query after edits.
 
-Anything resolving a reference reports matched_via: exact, alias or substring. A
-substring match is a suggestion, not an identification. ambiguous with candidates
-means several records tied and one was picked arbitrarily — re-ask precisely.
+Reference resolution reports matched_via: exact, alias or substring. A substring is a suggestion; ambiguous candidates need a precise re-query.
 
-guardlink_lookup understands ${SUPPORTED_QUERY_FORMS.length} named query forms and refuses anything else
-rather than guessing. Send it a deliberately bad query to get the list.`;
+guardlink_lookup understands ${SUPPORTED_QUERY_FORMS.length} named query forms and refuses others. A deliberately bad query returns the list.`;
 }

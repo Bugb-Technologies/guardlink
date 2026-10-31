@@ -12,7 +12,7 @@
  * @exposes #init to #data-exposure [low] cwe:CWE-200 -- "Writes API key config to .guardlink/config.json"
  * @audit #init -- "Config file may contain API keys; .gitignore entry added automatically"
  * @flows ProjectRoot -> #init via options.root -- "Project root input"
- * @flows #init -> AgentFiles via writeFileSync -- "Agent instruction file writes"
+ * @flows #init -> AgentFiles via writeFileSync -- "Agent instruction file and managed skill writes"
  * @flows #init -> ConfigFile via writeFileSync -- "Config file write"
  * @handles internal on #init -- "Generates definitions and agent instruction content"
  */
@@ -52,7 +52,7 @@ import type { AnnotationMode as ObservedAnnotationMode } from '../parser/annotat
 import type { ThreatModel } from '../types/index.js';
 import type { AnnotationMode } from '../agents/index.js';
 import { AGENT_CHOICES } from './picker.js';
-import { ANNOTATE_PLAYBOOKS, REPORT_SHAPES, skillFileFor, SKILL_GENERATED_MARKER } from '../playbooks/index.js';
+import { managedSkillFiles, SKILL_GENERATED_MARKER } from '../playbooks/index.js';
 import { definitionsArePopulated, configIsCustomised } from './preserve.js';
 import { readPrePrSteps, type PrePrStep } from './pre-pr.js';
 
@@ -434,6 +434,31 @@ export function initProject(options: InitOptions): InitResult {
 
 // ─── Agent file update logic ─────────────────────────────────────────
 
+/**
+ * Install or refresh GuardLink-managed skills; authored files keep ownership.
+ *
+ * @effects write on #init -- "Writes fixed skill paths under root; unreadable files and files without the generated marker are kept"
+ */
+function refreshSkills(root: string, dryRun: boolean): { created: string[]; updated: string[]; skipped: string[] } {
+  const created: string[] = [];
+  const updated: string[] = [];
+  const skipped: string[] = [];
+  for (const skill of managedSkillFiles()) {
+    const abs = join(root, skill.path);
+    if (existsSync(abs)) {
+      const existing = readForGuard(abs);
+      if (existing === null || !existing.includes(SKILL_GENERATED_MARKER)) { skipped.push(`${skill.path} (authored — kept)`); continue; }
+      if (existing === skill.content) { skipped.push(`${skill.path} (up to date)`); continue; }
+      if (!dryRun) writeFileSync(abs, skill.content);
+      updated.push(skill.path);
+      continue;
+    }
+    if (!dryRun) { mkdirSync(dirname(abs), { recursive: true }); writeFileSync(abs, skill.content); }
+    created.push(skill.path);
+  }
+  return { created, updated, skipped };
+}
+
 function updateAgentFiles(
   root: string,
   project: ProjectInfo,
@@ -458,23 +483,11 @@ function updateAgentFiles(
   // `agentIds` gets its file created.
   const ids = AGENT_CHOICES.map(c => c.id).filter(id => agentIds?.includes(id) || agentFileExists(root, AGENT_CHOICES.find(c => c.id === id)!.file));
 
-  // The playbooks as Claude Code skills, one file each. A skill file a person
-  // wrote (no generated marker) is theirs and stays.
   if (ids.includes('claude')) {
-    for (const pb of [...ANNOTATE_PLAYBOOKS, ...REPORT_SHAPES.filter(s => s.id !== 'full')]) {
-      const skill = skillFileFor(pb);
-      const abs = join(root, skill.path);
-      if (existsSync(abs)) {
-        const existing = readForGuard(abs);
-        if (existing === null || !existing.includes(SKILL_GENERATED_MARKER)) { skipped.push(`${skill.path} (authored — kept)`); continue; }
-        if (existing === skill.content) { skipped.push(`${skill.path} (up to date)`); continue; }
-        if (!dryRun) writeFileSync(abs, skill.content);
-        updated.push(skill.path);
-        continue;
-      }
-      if (!dryRun) { mkdirSync(dirname(abs), { recursive: true }); writeFileSync(abs, skill.content); }
-      created.push(skill.path);
-    }
+    const skills = refreshSkills(root, dryRun);
+    created.push(...skills.created);
+    updated.push(...skills.updated);
+    skipped.push(...skills.skipped);
   }
 
   const stamp = stampNow();
@@ -842,6 +855,13 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
   const project = detectProject(root);
   const updated: string[] = [];
   const skipped: string[] = [];
+
+  // Skills contribute to agent configuration; refresh before taking its stamp.
+  if (agentFileExists(root, 'CLAUDE.md')) {
+    const skills = refreshSkills(root, dryRun);
+    updated.push(...skills.created, ...skills.updated);
+    skipped.push(...skills.skipped);
+  }
 
   // The provenance stamp every block carries: the content hashes, nothing
   // volatile. synced_at and git_sha used to be in the block and are gone —

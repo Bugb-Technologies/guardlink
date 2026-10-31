@@ -5,7 +5,7 @@
  *
  * @exposes #cli to #redos [low] cwe:CWE-1333 -- "selectAnnotatePlaybook() runs each Playbook.triggers RegExp against the prompt text the user typed"
  * @mitigates #cli against #redos using #regex-anchoring -- "Every trigger is a short literal or word-boundary pattern with no nested quantifiers; the prompt is capped before matching"
- * @comment -- "Order matters where prompts match several playbooks: chains beats exploitable because a prompt that asks for chains also asks for exploitability, and diff beats coverage because a change is narrower than the tree"
+ * @comment -- "Order matters where prompts match several playbooks: diff preserves change scope before chains, and chains beats exploitable because a prompt that asks for chains also asks for exploitability, and diff beats coverage because a change is narrower than the tree"
  */
 import type { AnnotatePlaybookId, ReportShapeId, Playbook, PlaybookSelection, PlaybookId } from './types.js';
 import { ANNOTATE_PLAYBOOKS } from './annotate.js';
@@ -22,7 +22,7 @@ export function getPlaybook(id: PlaybookId): Playbook {
 }
 
 /** The order rules are tried in when a prompt matches more than one. */
-const ANNOTATE_PRIORITY: AnnotatePlaybookId[] = ['chains', 'diff', 'verify', 'coverage', 'map', 'exploitable'];
+const ANNOTATE_PRIORITY: AnnotatePlaybookId[] = ['diff', 'chains', 'verify', 'coverage', 'map', 'exploitable'];
 const DEFAULT_ANNOTATE: AnnotatePlaybookId = 'exploitable';
 
 function matches(pb: Playbook, text: string): string[] {

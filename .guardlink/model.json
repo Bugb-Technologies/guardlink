@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+    "annotation_hash": "sha256-v3:397c03d78e4fa024c93fdc7893604f3618206c4f807ab87ab57d55739095698a",
     "generator": "guardlink@2.5.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 185,
-  "annotations_parsed": 1061,
+  "source_files": 186,
+  "annotations_parsed": 1067,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agentconfig/bundle.ts",
@@ -192,6 +192,7 @@
     "src/parser/format.ts",
     "src/parser/index.ts",
     "src/parser/normalize.ts",
+    "src/playbooks/translate.ts",
     "src/tui/format.ts",
     "src/types/index.ts",
     "vitest.config.ts"
@@ -876,7 +877,7 @@
       "imprecise": false,
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 57
+        "line": 58
       }
     }
   ],
@@ -921,7 +922,7 @@
       "description": "Parses the project under the client-supplied root and returns the whole model",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 265
+        "line": 267
       }
     },
     {
@@ -933,7 +934,7 @@
       "description": "Coverage counts and the unmitigated list for the client-supplied root",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 319
+        "line": 321
       }
     },
     {
@@ -945,7 +946,7 @@
       "description": "Diagnostics for the client-supplied root",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 367
+        "line": 369
       }
     },
     {
@@ -957,7 +958,7 @@
       "description": "Reads a client-named file, or client-supplied diff text, and returns suggested annotations",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 447
+        "line": 449
       }
     },
     {
@@ -969,7 +970,7 @@
       "description": "Ranked entry points from the installed code graph",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 469
+        "line": 471
       }
     },
     {
@@ -981,7 +982,7 @@
       "description": "What one client-named function reaches, from the installed code graph",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 519
+        "line": 521
       }
     },
     {
@@ -993,7 +994,7 @@
       "description": "Answers one supported query form against the parsed model",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 539
+        "line": 541
       }
     },
     {
@@ -1005,7 +1006,7 @@
       "description": "Annotations and neighbourhood for one file inside root; a path outside root is refused",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 560
+        "line": 562
       }
     },
     {
@@ -1017,7 +1018,7 @@
       "description": "Subgraph or path over the parsed model",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 594
+        "line": 596
       }
     },
     {
@@ -1029,7 +1030,7 @@
       "description": "Writes a validated @source block into the annotation sidecar for a file",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 650
+        "line": 652
       }
     },
     {
@@ -1041,7 +1042,7 @@
       "description": "Finds drifted @source anchors, and with apply: true moves them",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 689
+        "line": 691
       }
     },
     {
@@ -1053,7 +1054,7 @@
       "description": "Runs an AI threat report when a provider key is in the environment, otherwise returns the prompt",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 727
+        "line": 729
       }
     },
     {
@@ -1062,10 +1063,22 @@
       "capability": "guardlink_annotate",
       "canonical_capability": "guardlink_annotate",
       "asset": "#mcp",
-      "description": "Builds the annotation prompt for the calling agent; writes nothing itself",
+      "description": "Builds the annotation prompt preserving project placement; refuses conflicts and writes nothing itself",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 812
+        "line": 814
+      }
+    },
+    {
+      "actor": "#mcp-agent",
+      "agent": true,
+      "capability": "guardlink_translate",
+      "canonical_capability": "guardlink_translate",
+      "asset": "#mcp",
+      "description": "Returns a template-authoring prompt and output locations for the calling agent; no spawned agent, file write or scan",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 878
       }
     },
     {
@@ -1077,7 +1090,7 @@
       "description": "Generates the markdown report and its JSON",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 864
+        "line": 903
       }
     },
     {
@@ -1089,7 +1102,7 @@
       "description": "Generates the HTML dashboard",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 913
+        "line": 952
       }
     },
     {
@@ -1101,7 +1114,7 @@
       "description": "Exports SARIF 2.1.0",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 952
+        "line": 991
       }
     },
     {
@@ -1113,7 +1126,7 @@
       "description": "Compares the current model with the model at a client-supplied git ref",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 992
+        "line": 1031
       }
     },
     {
@@ -1125,7 +1138,7 @@
       "description": "Unmitigated routes through the parsed flow graph",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1022
+        "line": 1061
       }
     },
     {
@@ -1137,7 +1150,7 @@
       "description": "Lists saved threat reports under .guardlink/",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1052
+        "line": 1091
       }
     },
     {
@@ -1149,7 +1162,7 @@
       "description": "Rewrites the GuardLink block in the agent instruction files under root",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1071
+        "line": 1110
       }
     },
     {
@@ -1161,7 +1174,7 @@
       "description": "Removes GuardLink annotations from source files",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1098
+        "line": 1137
       }
     },
     {
@@ -1173,7 +1186,7 @@
       "description": "Lists scanned files with no annotations",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1142
+        "line": 1181
       }
     },
     {
@@ -1185,7 +1198,7 @@
       "description": "Lists unmitigated exposures eligible for review",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1179
+        "line": 1218
       }
     },
     {
@@ -1197,7 +1210,7 @@
       "description": "Records a review decision as @accepts or @audit lines in source",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1221
+        "line": 1260
       }
     },
     {
@@ -1209,7 +1222,7 @@
       "description": "Files an @entitles proposal for a human to accept",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1303
+        "line": 1342
       }
     },
     {
@@ -1221,7 +1234,7 @@
       "description": "Lists entitlement proposals and their decisions",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1351
+        "line": 1390
       }
     },
     {
@@ -1233,7 +1246,7 @@
       "description": "Attribution for each claim, read from git",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1382
+        "line": 1421
       }
     },
     {
@@ -1245,18 +1258,36 @@
       "description": "Reads the workspace configuration and sibling tag prefixes",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1417
+        "line": 1456
       }
     }
   ],
   "effects": [
+    {
+      "effect": "read",
+      "asset": "#agent-launcher",
+      "description": "Reads optional local CXG authoring references; returns text without writing files or executing a child process",
+      "location": {
+        "file": "src/agents/prompts.ts",
+        "line": 679
+      }
+    },
+    {
+      "effect": "write",
+      "asset": "#init",
+      "description": "Writes fixed skill paths under root; unreadable files and files without the generated marker are kept",
+      "location": {
+        "file": "src/init/index.ts",
+        "line": 440
+      }
+    },
     {
       "effect": "execute",
       "asset": "#codegraph",
       "description": "With code_graph: true, loadWorklist spawns the installed graph binary through runChild (argv, no shell)",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 368
+        "line": 370
       }
     },
     {
@@ -1265,7 +1296,7 @@
       "description": "loadWorklist spawns the graph binary through runChild (argv, no shell) with the project root as one argument",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 470
+        "line": 472
       }
     },
     {
@@ -1274,7 +1305,7 @@
       "description": "reachFor spawns the graph binary through runChild (argv, no shell); the client's symbol is one argv element",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 520
+        "line": 522
       }
     },
     {
@@ -1283,7 +1314,7 @@
       "description": "applyAnnotations appends to .guardlink/annotations/<file>.gal unless dry_run; a line that does not parse, an undeclared reference, @accepts and @entitles are refused before anything is written",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 651
+        "line": 653
       }
     },
     {
@@ -1292,7 +1323,7 @@
       "description": "With apply: true, applyReanchor rewrites @source lines in annotation sidecars",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 690
+        "line": 692
       }
     },
     {
@@ -1301,7 +1332,7 @@
       "description": "With a provider key set, generateThreatReport calls the provider API through chatCompletion, billed to that key; provider and model are client arguments",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 728
+        "line": 730
       }
     },
     {
@@ -1310,7 +1341,7 @@
       "description": "generateThreatReport saves the report under .guardlink/threat-reports/",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 729
+        "line": 731
       }
     },
     {
@@ -1319,7 +1350,16 @@
       "description": "code_graph defaults to true, so loadWorklist spawns the graph binary through runChild when one is installed",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 813
+        "line": 816
+      }
+    },
+    {
+      "effect": "read",
+      "asset": "#agent-launcher",
+      "description": "buildTranslatePrompt reads optional local authoring references and returns text; it executes no templates",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 879
       }
     },
     {
@@ -1328,7 +1368,7 @@
       "description": "writeFile at resolve(root, output), plus the .json beside it; root and output are both client arguments",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 865
+        "line": 904
       }
     },
     {
@@ -1337,7 +1377,7 @@
       "description": "writeFile at resolve(root, output); root and output are both client arguments",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 914
+        "line": 953
       }
     },
     {
@@ -1346,7 +1386,7 @@
       "description": "writeFile at resolve(root, output); root and output are both client arguments",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 953
+        "line": 992
       }
     },
     {
@@ -1355,7 +1395,7 @@
       "description": "parseAtRef runs git at the client-supplied ref and extracts that revision into a temp directory",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 993
+        "line": 1032
       }
     },
     {
@@ -1364,7 +1404,7 @@
       "description": "syncAgentFiles rewrites the stamped block in every agent instruction file that exists; text outside the markers is kept",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1072
+        "line": 1111
       }
     },
     {
@@ -1373,7 +1413,7 @@
       "description": "With dry_run: false, clearAnnotations strips annotation lines from every scanned source file, and from definitions with include_definitions",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1099
+        "line": 1138
       }
     },
     {
@@ -1382,7 +1422,7 @@
       "description": "applyReviewAction inserts @accepts + @audit, or @audit, into the source file of the exposure",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1222
+        "line": 1261
       }
     },
     {
@@ -1391,7 +1431,7 @@
       "description": "Then syncAgentFiles rewrites the agent instruction files",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1223
+        "line": 1262
       }
     },
     {
@@ -1400,7 +1440,7 @@
       "description": "proposeEntitlement writes .guardlink/entitlement-proposals.json and never a source file; a decided proposal is not overwritten",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1304
+        "line": 1343
       }
     },
     {
@@ -1409,7 +1449,7 @@
       "description": "computeBlame runs git blame and git log through execFileSync with an argv array",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1383
+        "line": 1422
       }
     }
   ],
@@ -2422,7 +2462,7 @@
       "description": "callers pass join(root, ...) constrained paths",
       "location": {
         "file": "src/init/index.ts",
-        "line": 677
+        "line": 690
       }
     },
     {
@@ -2492,7 +2532,7 @@
       "description": "Zod schema validates root; resolve() canonicalizes",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 36
+        "line": 37
       }
     },
     {
@@ -2502,7 +2542,7 @@
       "description": "Output paths resolved relative to validated root",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 38
+        "line": 39
       }
     },
     {
@@ -2512,7 +2552,7 @@
       "description": "Keys from env only; never logged or returned",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 42
+        "line": 43
       }
     },
     {
@@ -2522,7 +2562,7 @@
       "description": "The proposal artifact path is fixed, and its target file must resolve inside the project root — a proposal never writes to source",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 46
+        "line": 47
       }
     },
     {
@@ -4116,7 +4156,7 @@
       "description": "Creates directories for agent-file writes",
       "location": {
         "file": "src/init/index.ts",
-        "line": 676
+        "line": 689
       }
     },
     {
@@ -4233,7 +4273,7 @@
       "description": "Tool arguments include 'root' directory path from external client",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 35
+        "line": 36
       }
     },
     {
@@ -4246,7 +4286,7 @@
       "description": "report, dashboard, sarif tools write files",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 37
+        "line": 38
       }
     },
     {
@@ -4259,7 +4299,7 @@
       "description": "annotate and threat_report tools pass user prompts to LLM",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 39
+        "line": 40
       }
     },
     {
@@ -4272,7 +4312,7 @@
       "description": "threat_report tool uses API keys from environment",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 41
+        "line": 42
       }
     },
     {
@@ -4285,7 +4325,7 @@
       "description": "Resources expose full threat model to MCP clients",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 43
+        "line": 44
       }
     },
     {
@@ -4298,7 +4338,7 @@
       "description": "guardlink_entitlement_propose writes a client-supplied claim into .guardlink/entitlement-proposals.json",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 45
+        "line": 46
       }
     },
     {
@@ -6387,7 +6427,7 @@
       "target": "AgentFiles",
       "mechanism": "writeFileSync",
       "route": null,
-      "description": "Agent instruction file writes",
+      "description": "Agent instruction file and managed skill writes",
       "location": {
         "file": "src/init/index.ts",
         "line": 15
@@ -6555,7 +6595,7 @@
       "description": "Tool invocation input",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 48
+        "line": 49
       }
     },
     {
@@ -6566,7 +6606,7 @@
       "description": "Report/dashboard output",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 49
+        "line": 50
       }
     },
     {
@@ -6577,7 +6617,7 @@
       "description": "LLM API call path",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 50
+        "line": 51
       }
     },
     {
@@ -6588,7 +6628,7 @@
       "description": "Threat model data output",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 51
+        "line": 52
       }
     },
     {
@@ -6599,7 +6639,7 @@
       "description": "Ranked entry points for an annotating agent, when a code graph is installed",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 52
+        "line": 53
       }
     },
     {
@@ -6610,7 +6650,18 @@
       "description": "Client-supplied symbol address, passed to the graph as one argument",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 53
+        "line": 54
+      }
+    },
+    {
+      "source": "ConfigFile",
+      "target": "#mcp",
+      "mechanism": "readConfiguredMode",
+      "route": null,
+      "description": "Project annotation placement governs the calling-agent prompt",
+      "location": {
+        "file": "src/mcp/server.ts",
+        "line": 815
       }
     },
     {
@@ -6621,7 +6672,7 @@
       "description": "Attribution read from blame, log -L and commit trailers for the connected agent",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1379
+        "line": 1418
       }
     },
     {
@@ -7605,7 +7656,7 @@
       "description": "Trust boundary at tool argument parsing",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 54
+        "line": 55
       }
     },
     {
@@ -7829,7 +7880,7 @@
       "description": "User prompts passed to LLM; model context is read-only",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 40
+        "line": 41
       }
     },
     {
@@ -7837,7 +7888,7 @@
       "description": "Threat model data intentionally exposed to connected agents",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 44
+        "line": 45
       }
     },
     {
@@ -7845,7 +7896,7 @@
       "description": "No confirmation step: the agent's own code_graph argument decides whether the graph binary runs",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 369
+        "line": 371
       }
     },
     {
@@ -7853,7 +7904,7 @@
       "description": "No confirmation step before the graph binary runs; every call spawns it when one is installed",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 471
+        "line": 473
       }
     },
     {
@@ -7861,7 +7912,7 @@
       "description": "No confirmation step before the graph binary runs; every call spawns it when one is installed",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 521
+        "line": 523
       }
     },
     {
@@ -7869,7 +7920,7 @@
       "description": "No confirmation step: the write lands on the agent's call. The refusals are validation of the lines, not a human decision",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 652
+        "line": 654
       }
     },
     {
@@ -7877,7 +7928,7 @@
       "description": "No confirmation step on this route: apply: true is the agent's own argument, so the confirmation applyReanchor expects of its caller is the agent's",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 691
+        "line": 693
       }
     },
     {
@@ -7885,7 +7936,7 @@
       "description": "No confirmation step and no budget: each call with a key set is a billed request the agent alone decides to make",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 730
+        "line": 732
       }
     },
     {
@@ -7893,7 +7944,7 @@
       "description": "No confirmation step before the graph binary runs; code_graph: false is the only way to skip it",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 814
+        "line": 817
       }
     },
     {
@@ -7901,7 +7952,7 @@
       "description": "No confirmation step: the agent chooses the output path and the write lands on its call",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 866
+        "line": 905
       }
     },
     {
@@ -7909,7 +7960,7 @@
       "description": "No confirmation step: the agent chooses the output path and the write lands on its call",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 915
+        "line": 954
       }
     },
     {
@@ -7917,7 +7968,7 @@
       "description": "No confirmation step: the agent chooses the output path and the write lands on its call",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 954
+        "line": 993
       }
     },
     {
@@ -7925,7 +7976,7 @@
       "description": "No confirmation step before git runs; the ref is the agent's argument",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 994
+        "line": 1033
       }
     },
     {
@@ -7933,7 +7984,7 @@
       "description": "No confirmation step: the agent instruction files other agents read are rewritten on this agent's call",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1073
+        "line": 1112
       }
     },
     {
@@ -7941,7 +7992,7 @@
       "description": "No gate: dry_run defaults to true and the description asks the agent to get the user's confirmation, but the handler checks none, so dry_run: false from the agent is the whole of it",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1100
+        "line": 1139
       }
     },
     {
@@ -7949,7 +8000,7 @@
       "description": "No gate: an acceptance is refused without a human name in by and a date in until, but the agent supplies both, so that is a check on the arguments rather than a confirmation by the named human",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1224
+        "line": 1263
       }
     },
     {
@@ -8301,7 +8352,7 @@
       "description": "Processes project annotations and threat model data",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 55
+        "line": 56
       }
     },
     {
@@ -8310,7 +8361,7 @@
       "description": "Author identities, in the configured identity mode (blame.identity in config.json), reach the MCP client",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1380
+        "line": 1419
       }
     },
     {
@@ -8418,143 +8469,143 @@
       "reason": "Example annotation block for reference, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 340
+        "line": 339
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 353
+        "line": 352
       }
     },
     {
       "reason": "Description examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 360
+        "line": 359
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 370
+        "line": 369
       }
     },
     {
       "reason": "Flow examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 377
+        "line": 376
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 386
+        "line": 385
       }
     },
     {
       "reason": "Boundary examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 394
+        "line": 393
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 400
+        "line": 399
       }
     },
     {
       "reason": "Actor example, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 461
+        "line": 460
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 463
+        "line": 462
       }
     },
     {
       "reason": "Entitlement example, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 480
+        "line": 479
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 483
+        "line": 482
       }
     },
     {
       "reason": "Agent reach example, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 501
+        "line": 500
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 505
+        "line": 504
       }
     },
     {
       "reason": "@accepts alternative examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 523
+        "line": 522
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 533
+        "line": 532
       }
     },
     {
       "reason": "Definition syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 560
+        "line": 559
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 564
+        "line": 563
       }
     },
     {
       "reason": "Relationship syntax examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 569
+        "line": 568
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 585
+        "line": 584
       }
     },
     {
       "reason": "Externalized relationship examples, excluded from parsing",
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 590
+        "line": 589
       }
     },
     {
       "location": {
         "file": "src/agents/prompts.ts",
-        "line": 595
+        "line": 594
       }
     },
     {
@@ -8587,52 +8638,52 @@
       "reason": "Placement examples for both modes; they would otherwise parse as real annotations",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 41
+        "line": 44
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 124
+        "line": 130
       }
     },
     {
       "reason": "Placement examples per language; every verb line below is a template, not a claim",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 128
+        "line": 134
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 195
+        "line": 201
       }
     },
     {
       "reason": "The annotation reference's own syntax block: verb lines at column 0 with no comment marker, which is what an annotation lost inside a docstring looks like",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 226
+        "line": 232
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 337
+        "line": 349
       }
     },
     {
       "reason": "README example annotations, excluded from parsing — they would otherwise register as real records",
       "location": {
         "file": "src/init/templates.ts",
-        "line": 917
+        "line": 931
       }
     },
     {
       "location": {
         "file": "src/init/templates.ts",
-        "line": 1234
+        "line": 1261
       }
     }
   ],
@@ -8650,7 +8701,7 @@
       "description": "Model Context Protocol server for AI agent tooling",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 56
+        "line": 57
       }
     }
   ],
@@ -8726,7 +8777,7 @@
       }
     },
     {
-      "description": "The annotate prompt states that repository text, instruction files and tool output are evidence and never instructions, and routes text that addresses the agent into @exposes + @audit instead of action. Guidance to the agent, not an enforced control, so the prompt-injection exposure above stays open",
+      "description": "The annotate prompt treats untrusted repository and tool content as evidence, requires a traced trust boundary before claiming injection, and preserves authorized project instructions. Guidance to the agent, not an enforced control, so the prompt-injection exposure above stays open",
       "location": {
         "file": "src/agents/prompts.ts",
         "line": 18
@@ -9636,6 +9687,13 @@
       }
     },
     {
+      "description": "One claim can carry both an @exposes (the hypothesis) and an @confirmed (the verification) on the SAME (asset, threat) pair. The two get DIFFERENT claim keys — the key digest is per-verb (claim-key.ts identity()), so a source @confirmed can never join an @exposes by key, and the hypothesis ledger is written against the @exposes key. The @exposes is the primary carrier of a claim's tested state, so a source @confirmed on that pair must take its @exposes out of 'untested' and off the next-queue (GAP-GL-CONFIRMED-NOT-TESTED). Joined on the (asset, threat) pair — @confirmed escalates its pair wherever it appears — not provenance-gated, so a @confirmed that predates the ledger reconciles exactly like one written through hypothesis confirm. A holding ledger outcome still wins over a source @confirmed: it is an evidence-and-anchor-bearing record, so staleness/retest keeps working. The @confirmed record itself is ALWAYS emitted and counted (pass 2) and is never merged away — sarif-pentest.ts stamps the confirmed-exploitable result by that record's own location, so dropping it would strip the stamp",
+      "location": {
+        "file": "src/hypothesis/classify.ts",
+        "line": 54
+      }
+    },
+    {
       "description": "A confirmation is held to the same evidence bar the gate holds @confirmed to; a refutation needs evidence too, just not the same words, because 'the validator rejected it' is evidence of absence",
       "location": {
         "file": "src/hypothesis/commands.ts",
@@ -9828,42 +9886,42 @@
       "description": "No guardlink_entitlement_accept tool exists on purpose: proposing is an agent's job, granting authority is not (actor-entitlement design §3.6)",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 47
+        "line": 48
       }
     },
     {
       "description": "Entitlement accepted by zippon on 2026-08-10 via guardlink entitle (proposal ent-mcp_agent.mcp.data_exposure).",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 58
+        "line": 59
       }
     },
     {
       "description": "A request written in a tool description is not a confirmation step, so no @gates is claimed here. The y/N prompt in guardlink clear guards the CLI route only; this handler never reaches it",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1101
+        "line": 1140
       }
     },
     {
       "description": "The description asks for explicit human confirmation first; nothing in the handler can observe whether it happened, so no @gates is claimed",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1225
+        "line": 1264
       }
     },
     {
       "description": "The human step is downstream of this effect: an @entitles reaches source only through guardlink entitle, which this server does not expose. It gates the grant, not the proposal file, so no @gates is claimed for this write",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1305
+        "line": 1344
       }
     },
     {
       "description": "Non-mutating: computeBlame leaves the cached model untouched, so a later guardlink_parse in the same session never carries blame unasked. Nothing is written to the repository",
       "location": {
         "file": "src/mcp/server.ts",
-        "line": 1381
+        "line": 1420
       }
     },
     {
@@ -10343,7 +10401,7 @@
       }
     },
     {
-      "description": "Order matters where prompts match several playbooks: chains beats exploitable because a prompt that asks for chains also asks for exploitability, and diff beats coverage because a change is narrower than the tree",
+      "description": "Order matters where prompts match several playbooks: diff preserves change scope before chains, and chains beats exploitable because a prompt that asks for chains also asks for exploitability, and diff beats coverage because a change is narrower than the tree",
       "location": {
         "file": "src/playbooks/select.ts",
         "line": 8
@@ -10610,7 +10668,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 1061,
+    "annotation_count": 1067,
     "coverage_percent": 92
   },
   "annotation_scope": {
@@ -10914,10 +10972,10 @@
           "cline"
         ],
         "scope": "root",
-        "bytes": 3202,
+        "bytes": 3894,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+          "stamp": "sha256-v3:397c03d78e4fa024c93fdc7893604f3618206c4f807ab87ab57d55739095698a",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10930,10 +10988,10 @@
           "cursor"
         ],
         "scope": "root",
-        "bytes": 3285,
+        "bytes": 3977,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+          "stamp": "sha256-v3:397c03d78e4fa024c93fdc7893604f3618206c4f807ab87ab57d55739095698a",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10947,10 +11005,10 @@
           "gemini-cli"
         ],
         "scope": "root",
-        "bytes": 3239,
+        "bytes": 3931,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+          "stamp": "sha256-v3:397c03d78e4fa024c93fdc7893604f3618206c4f807ab87ab57d55739095698a",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10964,10 +11022,10 @@
           "copilot-review"
         ],
         "scope": "root",
-        "bytes": 3239,
+        "bytes": 3931,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+          "stamp": "sha256-v3:397c03d78e4fa024c93fdc7893604f3618206c4f807ab87ab57d55739095698a",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10980,10 +11038,10 @@
           "windsurf"
         ],
         "scope": "root",
-        "bytes": 3202,
+        "bytes": 3894,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+          "stamp": "sha256-v3:397c03d78e4fa024c93fdc7893604f3618206c4f807ab87ab57d55739095698a",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10999,10 +11057,10 @@
           "opencode"
         ],
         "scope": "root",
-        "bytes": 3879,
+        "bytes": 4571,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+          "stamp": "sha256-v3:397c03d78e4fa024c93fdc7893604f3618206c4f807ab87ab57d55739095698a",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11016,10 +11074,10 @@
           "copilot-review"
         ],
         "scope": "root",
-        "bytes": 3239,
+        "bytes": 3931,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+          "stamp": "sha256-v3:397c03d78e4fa024c93fdc7893604f3618206c4f807ab87ab57d55739095698a",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11123,12 +11181,12 @@
   "reach_analysis": {
     "version": 1,
     "summary": {
-      "reaches": 29,
-      "agent_reaches": 29,
-      "unentitled_reaches": 29,
-      "effects": 18,
-      "mutating_effects": 18,
-      "ungated_effects": 18,
+      "reaches": 30,
+      "agent_reaches": 30,
+      "unentitled_reaches": 30,
+      "effects": 21,
+      "mutating_effects": 19,
+      "ungated_effects": 19,
       "gates": 0,
       "coding_agent_reaches": 1,
       "unentitled_coding_agent_reaches": 1
@@ -11172,7 +11230,7 @@
         "index": 1,
         "claim_key": "80b48e5071b2bdf072d7972784dd318664c1eda890ab3327a5b811140d874d61:0",
         "file": "src/mcp/server.ts",
-        "line": 265,
+        "line": 267,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11188,7 +11246,7 @@
         "index": 2,
         "claim_key": "40ac58c93d224c6bc8543ebbfc2ebc99897c6843c20891e60490aecac8419feb:0",
         "file": "src/mcp/server.ts",
-        "line": 319,
+        "line": 321,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11204,7 +11262,7 @@
         "index": 3,
         "claim_key": "b8dd2f480ef8fdb82fcdaf40e5a325ec8084d816afc883dfd14f2480de63b4d2:0",
         "file": "src/mcp/server.ts",
-        "line": 367,
+        "line": 369,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11216,10 +11274,10 @@
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 0,
+            "index": 2,
             "claim_key": "bc09ea25faa7304f7642243a5c0b1536bd03a8deeb79b7c1487c3a99b54d2ad8:0",
             "file": "src/mcp/server.ts",
-            "line": 368,
+            "line": 370,
             "effect": "execute",
             "asset": "#codegraph",
             "identity": null,
@@ -11231,7 +11289,7 @@
         "index": 4,
         "claim_key": "588e636271b38fabf4c562ba5d3e2f3ad9cab9342724b446eed1e318cad29ed9:0",
         "file": "src/mcp/server.ts",
-        "line": 447,
+        "line": 449,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11247,7 +11305,7 @@
         "index": 5,
         "claim_key": "5e1f46eb97804c2c47ab6701b1c3cf5c2da623f510f1a1a412a0aeaa471fb75b:0",
         "file": "src/mcp/server.ts",
-        "line": 469,
+        "line": 471,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11259,10 +11317,10 @@
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 1,
+            "index": 3,
             "claim_key": "9217d4666f41da6a0873736cebfc2eb2e2ed514263edb5b199028cf7eee747e3:0",
             "file": "src/mcp/server.ts",
-            "line": 470,
+            "line": 472,
             "effect": "execute",
             "asset": "#codegraph",
             "identity": null,
@@ -11274,7 +11332,7 @@
         "index": 6,
         "claim_key": "855b841ea511bb398a2c242e43ef6d5a59414868a24320de50065b9680a27063:0",
         "file": "src/mcp/server.ts",
-        "line": 519,
+        "line": 521,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11286,10 +11344,10 @@
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 2,
+            "index": 4,
             "claim_key": "2490627f041c6a47745bdbe844a87d56677d2ad84c34b26ddb0f1e35c1a750a1:0",
             "file": "src/mcp/server.ts",
-            "line": 520,
+            "line": 522,
             "effect": "execute",
             "asset": "#codegraph",
             "identity": null,
@@ -11301,7 +11359,7 @@
         "index": 7,
         "claim_key": "88f3c69fc5a976233087165f4be41477e9c16ef8e9c0475d5317b7f64bda0067:0",
         "file": "src/mcp/server.ts",
-        "line": 539,
+        "line": 541,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11317,7 +11375,7 @@
         "index": 8,
         "claim_key": "bd7ead7129117b500aace0c891337448439cbe16fe46718fb121b1eff0b8f128:0",
         "file": "src/mcp/server.ts",
-        "line": 560,
+        "line": 562,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11333,7 +11391,7 @@
         "index": 9,
         "claim_key": "799753851b400f5aba525e4227266218ed66a430ee73f05dd1d5028c82dc6d95:0",
         "file": "src/mcp/server.ts",
-        "line": 594,
+        "line": 596,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11349,7 +11407,7 @@
         "index": 10,
         "claim_key": "3630e23bc2de9ca01c8139f2d10a448155ad7a83efc09e3ef1d7d61a323ef1fe:0",
         "file": "src/mcp/server.ts",
-        "line": 650,
+        "line": 652,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11361,10 +11419,10 @@
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 3,
+            "index": 5,
             "claim_key": "63c290366792b66435a596becf85baebfa7b8e60d8f18031d9cdf785ea0a1a46:0",
             "file": "src/mcp/server.ts",
-            "line": 651,
+            "line": 653,
             "effect": "write",
             "asset": "#mcp",
             "identity": null,
@@ -11376,7 +11434,7 @@
         "index": 11,
         "claim_key": "49f0a864edd0577d16c1b52c58eb52058a2fca03ca61c2ca4dc2a5deab45edff:0",
         "file": "src/mcp/server.ts",
-        "line": 689,
+        "line": 691,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11388,10 +11446,10 @@
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 4,
+            "index": 6,
             "claim_key": "868ef839ea6ee91c4f22cdc6236f0ce0e594208f7097130ba9ca7be0ca22e8ee:0",
             "file": "src/mcp/server.ts",
-            "line": 690,
+            "line": 692,
             "effect": "write",
             "asset": "#mcp",
             "identity": null,
@@ -11403,7 +11461,7 @@
         "index": 12,
         "claim_key": "305f4ed1c623c60d4741191f220ae4ce66e9d7c30b53b527dec5046290d07f57:0",
         "file": "src/mcp/server.ts",
-        "line": 727,
+        "line": 729,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11415,20 +11473,20 @@
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 5,
+            "index": 7,
             "claim_key": "00fb288ff5a371c0126b28c3bdc158b568957e05d14fc48734a30e54641d870b:0",
             "file": "src/mcp/server.ts",
-            "line": 728,
+            "line": 730,
             "effect": "spend",
             "asset": "#llm-client",
             "identity": null,
             "description": "With a provider key set, generateThreatReport calls the provider API through chatCompletion, billed to that key; provider and model are client arguments"
           },
           {
-            "index": 6,
+            "index": 8,
             "claim_key": "6c455d802b1b0feb059e89534744b84248cc646b76813084bc919bca4eb05171:0",
             "file": "src/mcp/server.ts",
-            "line": 729,
+            "line": 731,
             "effect": "write",
             "asset": "#llm-client",
             "identity": null,
@@ -11438,9 +11496,9 @@
       },
       {
         "index": 13,
-        "claim_key": "dcd70d4e172f6e7bbcc0447b8b7a38c5417bc639732952f7df4e5b82f18ce8ec:0",
+        "claim_key": "a6973d206595615059912d4b881800db7371f738af4a05e8b4ebc6b80bc338ea:0",
         "file": "src/mcp/server.ts",
-        "line": 812,
+        "line": 814,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11448,14 +11506,14 @@
         "canonical_capability": "guardlink_annotate",
         "asset": "#mcp",
         "identity": null,
-        "description": "Builds the annotation prompt for the calling agent; writes nothing itself",
+        "description": "Builds the annotation prompt preserving project placement; refuses conflicts and writes nothing itself",
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 7,
+            "index": 9,
             "claim_key": "803522113bac718d28f1874bb98b569db256fba20f96c10ebf4a02408fd07456:0",
             "file": "src/mcp/server.ts",
-            "line": 813,
+            "line": 816,
             "effect": "execute",
             "asset": "#codegraph",
             "identity": null,
@@ -11465,9 +11523,36 @@
       },
       {
         "index": 14,
+        "claim_key": "012f1fb730c7e1199800ef89b2bd45838c30f087da91df611e33fd84fca642e1:0",
+        "file": "src/mcp/server.ts",
+        "line": 878,
+        "verb": "agents",
+        "actor": "#mcp-agent",
+        "agent": true,
+        "capability": "guardlink_translate",
+        "canonical_capability": "guardlink_translate",
+        "asset": "#mcp",
+        "identity": null,
+        "description": "Returns a template-authoring prompt and output locations for the calling agent; no spawned agent, file write or scan",
+        "near_misses": [],
+        "colocated_effects": [
+          {
+            "index": 10,
+            "claim_key": "abe1c17befaf395ea9e409576463c2d0dc9fbea7441e55beff2140177f52ba14:0",
+            "file": "src/mcp/server.ts",
+            "line": 879,
+            "effect": "read",
+            "asset": "#agent-launcher",
+            "identity": null,
+            "description": "buildTranslatePrompt reads optional local authoring references and returns text; it executes no templates"
+          }
+        ]
+      },
+      {
+        "index": 15,
         "claim_key": "ff64ab33ac67ba1c8a662a4c057cd790c30bf299bc05e384ed7a3f769c553078:0",
         "file": "src/mcp/server.ts",
-        "line": 864,
+        "line": 903,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11479,10 +11564,10 @@
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 8,
+            "index": 11,
             "claim_key": "2064512115da1bac005836e95e7c917c4c4054ae905d12db5fc7c3453c00015c:0",
             "file": "src/mcp/server.ts",
-            "line": 865,
+            "line": 904,
             "effect": "write",
             "asset": "#report",
             "identity": null,
@@ -11491,10 +11576,10 @@
         ]
       },
       {
-        "index": 15,
+        "index": 16,
         "claim_key": "7a126dc76d770d0c9007aa862d76b669a24c58c1e4a6323d52371b105875748f:0",
         "file": "src/mcp/server.ts",
-        "line": 913,
+        "line": 952,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11506,10 +11591,10 @@
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 9,
+            "index": 12,
             "claim_key": "44a5b83f02f727ca8086e835b926a257469560526301779e5be0829ee14305b6:0",
             "file": "src/mcp/server.ts",
-            "line": 914,
+            "line": 953,
             "effect": "write",
             "asset": "#dashboard",
             "identity": null,
@@ -11518,10 +11603,10 @@
         ]
       },
       {
-        "index": 16,
+        "index": 17,
         "claim_key": "d22134e49197f9c4e3f0a7bd7583230fd2f87d03625151352d05e6146e24eb0c:0",
         "file": "src/mcp/server.ts",
-        "line": 952,
+        "line": 991,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11533,10 +11618,10 @@
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 10,
+            "index": 13,
             "claim_key": "78fbf2bf0cf1af3a4c85845a04400e4c93792c36be826d060291a544dad72c1f:0",
             "file": "src/mcp/server.ts",
-            "line": 953,
+            "line": 992,
             "effect": "write",
             "asset": "#sarif",
             "identity": null,
@@ -11545,10 +11630,10 @@
         ]
       },
       {
-        "index": 17,
+        "index": 18,
         "claim_key": "ea08536f7324089f0430241011ccbf790c8536c51373d82ffdabc42f121320fd:0",
         "file": "src/mcp/server.ts",
-        "line": 992,
+        "line": 1031,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11560,10 +11645,10 @@
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 11,
+            "index": 14,
             "claim_key": "a71752e15dd0506b7fda7096a0e110aee424ed932dd0d8bc5b1405d747ceb978:0",
             "file": "src/mcp/server.ts",
-            "line": 993,
+            "line": 1032,
             "effect": "execute",
             "asset": "#diff",
             "identity": null,
@@ -11572,10 +11657,10 @@
         ]
       },
       {
-        "index": 18,
+        "index": 19,
         "claim_key": "45acb0afc17d426307ce719ead3e47dcf9af626fa0c4df9b2784b806480907e0:0",
         "file": "src/mcp/server.ts",
-        "line": 1022,
+        "line": 1061,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11588,10 +11673,10 @@
         "colocated_effects": []
       },
       {
-        "index": 19,
+        "index": 20,
         "claim_key": "f735601acc8a431d40f8e21c3c42c179fcb1a7e6d90a44538639bee0f3b9a7a2:0",
         "file": "src/mcp/server.ts",
-        "line": 1052,
+        "line": 1091,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11604,10 +11689,10 @@
         "colocated_effects": []
       },
       {
-        "index": 20,
+        "index": 21,
         "claim_key": "efc01508dccc52fe7697d70af483bddbbcfb1211cc3b37879d2347081b0cb731:0",
         "file": "src/mcp/server.ts",
-        "line": 1071,
+        "line": 1110,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11619,10 +11704,10 @@
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 12,
+            "index": 15,
             "claim_key": "2fb1a502e13288f70c9cb87faa66fe9915d91c29822ea38cb82e4a7cbc1be461:0",
             "file": "src/mcp/server.ts",
-            "line": 1072,
+            "line": 1111,
             "effect": "write",
             "asset": "#init",
             "identity": null,
@@ -11631,10 +11716,10 @@
         ]
       },
       {
-        "index": 21,
+        "index": 22,
         "claim_key": "5ecd449f94e52152aa1bc3bda07bea797b463ade0fa58d73492652aefc973d46:0",
         "file": "src/mcp/server.ts",
-        "line": 1098,
+        "line": 1137,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11646,10 +11731,10 @@
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 13,
+            "index": 16,
             "claim_key": "eac300b512668e74ab7835493729812089c18eefaa6d5e68152f33d9188b3b74:0",
             "file": "src/mcp/server.ts",
-            "line": 1099,
+            "line": 1138,
             "effect": "delete",
             "asset": "#parser",
             "identity": null,
@@ -11658,10 +11743,10 @@
         ]
       },
       {
-        "index": 22,
+        "index": 23,
         "claim_key": "e4ade699d1309ab3b0407767b1513010c4983e92389c203fcc5f0564f5cca895:0",
         "file": "src/mcp/server.ts",
-        "line": 1142,
+        "line": 1181,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11674,10 +11759,10 @@
         "colocated_effects": []
       },
       {
-        "index": 23,
+        "index": 24,
         "claim_key": "c974c8a9dab69272bb9c212b4b13d60f37bc92a6924158381379839840a3e89b:0",
         "file": "src/mcp/server.ts",
-        "line": 1179,
+        "line": 1218,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11690,10 +11775,10 @@
         "colocated_effects": []
       },
       {
-        "index": 24,
+        "index": 25,
         "claim_key": "4e5c04b869c79bea2ed74f84da3bfa3bc6b62cedbb219f09d87d4228e7c15046:0",
         "file": "src/mcp/server.ts",
-        "line": 1221,
+        "line": 1260,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11705,20 +11790,20 @@
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 14,
+            "index": 17,
             "claim_key": "28945705264231e244536c0af3a94b7d293f945d0f9af4e0398f035bbd77253a:0",
             "file": "src/mcp/server.ts",
-            "line": 1222,
+            "line": 1261,
             "effect": "write",
             "asset": "#mcp",
             "identity": null,
             "description": "applyReviewAction inserts @accepts + @audit, or @audit, into the source file of the exposure"
           },
           {
-            "index": 15,
+            "index": 18,
             "claim_key": "ab2dab6d66697fa7a0e27c197a270392a2b39ba10dfa095a3ba998a61695d04d:0",
             "file": "src/mcp/server.ts",
-            "line": 1223,
+            "line": 1262,
             "effect": "write",
             "asset": "#init",
             "identity": null,
@@ -11727,10 +11812,10 @@
         ]
       },
       {
-        "index": 25,
+        "index": 26,
         "claim_key": "fc9ef3e98701b0173488673f294da1661b89aecad0cb4e1ebf439ae27e9be0d6:0",
         "file": "src/mcp/server.ts",
-        "line": 1303,
+        "line": 1342,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11742,10 +11827,10 @@
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 16,
+            "index": 19,
             "claim_key": "8183ea5ee88b174ae086a3c287d129c1965b9f099b7cba46e9d0e2b55022cc87:0",
             "file": "src/mcp/server.ts",
-            "line": 1304,
+            "line": 1343,
             "effect": "write",
             "asset": "#mcp",
             "identity": null,
@@ -11754,10 +11839,10 @@
         ]
       },
       {
-        "index": 26,
+        "index": 27,
         "claim_key": "91bdd93245bb6b8c8293c4c330158c3502a6345021d41bb4c464ff19abdc9c31:0",
         "file": "src/mcp/server.ts",
-        "line": 1351,
+        "line": 1390,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11770,10 +11855,10 @@
         "colocated_effects": []
       },
       {
-        "index": 27,
+        "index": 28,
         "claim_key": "a4b86df38204e3e92bc1f5c699ddcd23dfea1309ccb30841e49d79ea911b7343:0",
         "file": "src/mcp/server.ts",
-        "line": 1382,
+        "line": 1421,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11785,10 +11870,10 @@
         "near_misses": [],
         "colocated_effects": [
           {
-            "index": 17,
+            "index": 20,
             "claim_key": "06f72d1bfab16365d35444d7946ea53b1d210f7610515c7929b279edbe45097d:0",
             "file": "src/mcp/server.ts",
-            "line": 1383,
+            "line": 1422,
             "effect": "execute",
             "asset": "#blame",
             "identity": null,
@@ -11797,10 +11882,10 @@
         ]
       },
       {
-        "index": 28,
+        "index": 29,
         "claim_key": "501df3d434925f849d1913fd5b161be682766a115f8d8770e48d61e923f668cd:0",
         "file": "src/mcp/server.ts",
-        "line": 1417,
+        "line": 1456,
         "verb": "agents",
         "actor": "#mcp-agent",
         "agent": true,
@@ -11815,10 +11900,24 @@
     ],
     "mutating_effects": [
       {
-        "index": 0,
+        "index": 1,
+        "claim_key": "4dd386d43215e090440965c6a4851337ff42ef562e4f503a520afa17821b6c13:0",
+        "file": "src/init/index.ts",
+        "line": 440,
+        "effect": "write",
+        "asset": "#init",
+        "identity": null,
+        "description": "Writes fixed skill paths under root; unreadable files and files without the generated marker are kept",
+        "gated": false,
+        "gates": [],
+        "gate_near_misses": [],
+        "colocated_reaches": []
+      },
+      {
+        "index": 2,
         "claim_key": "bc09ea25faa7304f7642243a5c0b1536bd03a8deeb79b7c1487c3a99b54d2ad8:0",
         "file": "src/mcp/server.ts",
-        "line": 368,
+        "line": 370,
         "effect": "execute",
         "asset": "#codegraph",
         "identity": null,
@@ -11831,7 +11930,7 @@
             "index": 3,
             "claim_key": "b8dd2f480ef8fdb82fcdaf40e5a325ec8084d816afc883dfd14f2480de63b4d2:0",
             "file": "src/mcp/server.ts",
-            "line": 367,
+            "line": 369,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -11844,10 +11943,10 @@
         ]
       },
       {
-        "index": 1,
+        "index": 3,
         "claim_key": "9217d4666f41da6a0873736cebfc2eb2e2ed514263edb5b199028cf7eee747e3:0",
         "file": "src/mcp/server.ts",
-        "line": 470,
+        "line": 472,
         "effect": "execute",
         "asset": "#codegraph",
         "identity": null,
@@ -11860,7 +11959,7 @@
             "index": 5,
             "claim_key": "5e1f46eb97804c2c47ab6701b1c3cf5c2da623f510f1a1a412a0aeaa471fb75b:0",
             "file": "src/mcp/server.ts",
-            "line": 469,
+            "line": 471,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -11873,10 +11972,10 @@
         ]
       },
       {
-        "index": 2,
+        "index": 4,
         "claim_key": "2490627f041c6a47745bdbe844a87d56677d2ad84c34b26ddb0f1e35c1a750a1:0",
         "file": "src/mcp/server.ts",
-        "line": 520,
+        "line": 522,
         "effect": "execute",
         "asset": "#codegraph",
         "identity": null,
@@ -11889,7 +11988,7 @@
             "index": 6,
             "claim_key": "855b841ea511bb398a2c242e43ef6d5a59414868a24320de50065b9680a27063:0",
             "file": "src/mcp/server.ts",
-            "line": 519,
+            "line": 521,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -11902,10 +12001,10 @@
         ]
       },
       {
-        "index": 3,
+        "index": 5,
         "claim_key": "63c290366792b66435a596becf85baebfa7b8e60d8f18031d9cdf785ea0a1a46:0",
         "file": "src/mcp/server.ts",
-        "line": 651,
+        "line": 653,
         "effect": "write",
         "asset": "#mcp",
         "identity": null,
@@ -11918,7 +12017,7 @@
             "index": 10,
             "claim_key": "3630e23bc2de9ca01c8139f2d10a448155ad7a83efc09e3ef1d7d61a323ef1fe:0",
             "file": "src/mcp/server.ts",
-            "line": 650,
+            "line": 652,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -11931,10 +12030,10 @@
         ]
       },
       {
-        "index": 4,
+        "index": 6,
         "claim_key": "868ef839ea6ee91c4f22cdc6236f0ce0e594208f7097130ba9ca7be0ca22e8ee:0",
         "file": "src/mcp/server.ts",
-        "line": 690,
+        "line": 692,
         "effect": "write",
         "asset": "#mcp",
         "identity": null,
@@ -11947,7 +12046,7 @@
             "index": 11,
             "claim_key": "49f0a864edd0577d16c1b52c58eb52058a2fca03ca61c2ca4dc2a5deab45edff:0",
             "file": "src/mcp/server.ts",
-            "line": 689,
+            "line": 691,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -11960,10 +12059,10 @@
         ]
       },
       {
-        "index": 5,
+        "index": 7,
         "claim_key": "00fb288ff5a371c0126b28c3bdc158b568957e05d14fc48734a30e54641d870b:0",
         "file": "src/mcp/server.ts",
-        "line": 728,
+        "line": 730,
         "effect": "spend",
         "asset": "#llm-client",
         "identity": null,
@@ -11976,7 +12075,7 @@
             "index": 12,
             "claim_key": "305f4ed1c623c60d4741191f220ae4ce66e9d7c30b53b527dec5046290d07f57:0",
             "file": "src/mcp/server.ts",
-            "line": 727,
+            "line": 729,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -11989,10 +12088,10 @@
         ]
       },
       {
-        "index": 6,
+        "index": 8,
         "claim_key": "6c455d802b1b0feb059e89534744b84248cc646b76813084bc919bca4eb05171:0",
         "file": "src/mcp/server.ts",
-        "line": 729,
+        "line": 731,
         "effect": "write",
         "asset": "#llm-client",
         "identity": null,
@@ -12005,7 +12104,7 @@
             "index": 12,
             "claim_key": "305f4ed1c623c60d4741191f220ae4ce66e9d7c30b53b527dec5046290d07f57:0",
             "file": "src/mcp/server.ts",
-            "line": 727,
+            "line": 729,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12018,10 +12117,10 @@
         ]
       },
       {
-        "index": 7,
+        "index": 9,
         "claim_key": "803522113bac718d28f1874bb98b569db256fba20f96c10ebf4a02408fd07456:0",
         "file": "src/mcp/server.ts",
-        "line": 813,
+        "line": 816,
         "effect": "execute",
         "asset": "#codegraph",
         "identity": null,
@@ -12032,9 +12131,9 @@
         "colocated_reaches": [
           {
             "index": 13,
-            "claim_key": "dcd70d4e172f6e7bbcc0447b8b7a38c5417bc639732952f7df4e5b82f18ce8ec:0",
+            "claim_key": "a6973d206595615059912d4b881800db7371f738af4a05e8b4ebc6b80bc338ea:0",
             "file": "src/mcp/server.ts",
-            "line": 812,
+            "line": 814,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12042,15 +12141,15 @@
             "canonical_capability": "guardlink_annotate",
             "asset": "#mcp",
             "identity": null,
-            "description": "Builds the annotation prompt for the calling agent; writes nothing itself"
+            "description": "Builds the annotation prompt preserving project placement; refuses conflicts and writes nothing itself"
           }
         ]
       },
       {
-        "index": 8,
+        "index": 11,
         "claim_key": "2064512115da1bac005836e95e7c917c4c4054ae905d12db5fc7c3453c00015c:0",
         "file": "src/mcp/server.ts",
-        "line": 865,
+        "line": 904,
         "effect": "write",
         "asset": "#report",
         "identity": null,
@@ -12060,10 +12159,10 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 14,
+            "index": 15,
             "claim_key": "ff64ab33ac67ba1c8a662a4c057cd790c30bf299bc05e384ed7a3f769c553078:0",
             "file": "src/mcp/server.ts",
-            "line": 864,
+            "line": 903,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12076,10 +12175,10 @@
         ]
       },
       {
-        "index": 9,
+        "index": 12,
         "claim_key": "44a5b83f02f727ca8086e835b926a257469560526301779e5be0829ee14305b6:0",
         "file": "src/mcp/server.ts",
-        "line": 914,
+        "line": 953,
         "effect": "write",
         "asset": "#dashboard",
         "identity": null,
@@ -12089,10 +12188,10 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 15,
+            "index": 16,
             "claim_key": "7a126dc76d770d0c9007aa862d76b669a24c58c1e4a6323d52371b105875748f:0",
             "file": "src/mcp/server.ts",
-            "line": 913,
+            "line": 952,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12105,10 +12204,10 @@
         ]
       },
       {
-        "index": 10,
+        "index": 13,
         "claim_key": "78fbf2bf0cf1af3a4c85845a04400e4c93792c36be826d060291a544dad72c1f:0",
         "file": "src/mcp/server.ts",
-        "line": 953,
+        "line": 992,
         "effect": "write",
         "asset": "#sarif",
         "identity": null,
@@ -12118,10 +12217,10 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 16,
+            "index": 17,
             "claim_key": "d22134e49197f9c4e3f0a7bd7583230fd2f87d03625151352d05e6146e24eb0c:0",
             "file": "src/mcp/server.ts",
-            "line": 952,
+            "line": 991,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12134,10 +12233,10 @@
         ]
       },
       {
-        "index": 11,
+        "index": 14,
         "claim_key": "a71752e15dd0506b7fda7096a0e110aee424ed932dd0d8bc5b1405d747ceb978:0",
         "file": "src/mcp/server.ts",
-        "line": 993,
+        "line": 1032,
         "effect": "execute",
         "asset": "#diff",
         "identity": null,
@@ -12147,10 +12246,10 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 17,
+            "index": 18,
             "claim_key": "ea08536f7324089f0430241011ccbf790c8536c51373d82ffdabc42f121320fd:0",
             "file": "src/mcp/server.ts",
-            "line": 992,
+            "line": 1031,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12163,10 +12262,10 @@
         ]
       },
       {
-        "index": 12,
+        "index": 15,
         "claim_key": "2fb1a502e13288f70c9cb87faa66fe9915d91c29822ea38cb82e4a7cbc1be461:0",
         "file": "src/mcp/server.ts",
-        "line": 1072,
+        "line": 1111,
         "effect": "write",
         "asset": "#init",
         "identity": null,
@@ -12176,10 +12275,10 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 20,
+            "index": 21,
             "claim_key": "efc01508dccc52fe7697d70af483bddbbcfb1211cc3b37879d2347081b0cb731:0",
             "file": "src/mcp/server.ts",
-            "line": 1071,
+            "line": 1110,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12192,10 +12291,10 @@
         ]
       },
       {
-        "index": 13,
+        "index": 16,
         "claim_key": "eac300b512668e74ab7835493729812089c18eefaa6d5e68152f33d9188b3b74:0",
         "file": "src/mcp/server.ts",
-        "line": 1099,
+        "line": 1138,
         "effect": "delete",
         "asset": "#parser",
         "identity": null,
@@ -12205,10 +12304,10 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 21,
+            "index": 22,
             "claim_key": "5ecd449f94e52152aa1bc3bda07bea797b463ade0fa58d73492652aefc973d46:0",
             "file": "src/mcp/server.ts",
-            "line": 1098,
+            "line": 1137,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12221,10 +12320,10 @@
         ]
       },
       {
-        "index": 14,
+        "index": 17,
         "claim_key": "28945705264231e244536c0af3a94b7d293f945d0f9af4e0398f035bbd77253a:0",
         "file": "src/mcp/server.ts",
-        "line": 1222,
+        "line": 1261,
         "effect": "write",
         "asset": "#mcp",
         "identity": null,
@@ -12234,10 +12333,10 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 24,
+            "index": 25,
             "claim_key": "4e5c04b869c79bea2ed74f84da3bfa3bc6b62cedbb219f09d87d4228e7c15046:0",
             "file": "src/mcp/server.ts",
-            "line": 1221,
+            "line": 1260,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12250,10 +12349,10 @@
         ]
       },
       {
-        "index": 15,
+        "index": 18,
         "claim_key": "ab2dab6d66697fa7a0e27c197a270392a2b39ba10dfa095a3ba998a61695d04d:0",
         "file": "src/mcp/server.ts",
-        "line": 1223,
+        "line": 1262,
         "effect": "write",
         "asset": "#init",
         "identity": null,
@@ -12263,10 +12362,10 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 24,
+            "index": 25,
             "claim_key": "4e5c04b869c79bea2ed74f84da3bfa3bc6b62cedbb219f09d87d4228e7c15046:0",
             "file": "src/mcp/server.ts",
-            "line": 1221,
+            "line": 1260,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12279,10 +12378,10 @@
         ]
       },
       {
-        "index": 16,
+        "index": 19,
         "claim_key": "8183ea5ee88b174ae086a3c287d129c1965b9f099b7cba46e9d0e2b55022cc87:0",
         "file": "src/mcp/server.ts",
-        "line": 1304,
+        "line": 1343,
         "effect": "write",
         "asset": "#mcp",
         "identity": null,
@@ -12292,10 +12391,10 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 25,
+            "index": 26,
             "claim_key": "fc9ef3e98701b0173488673f294da1661b89aecad0cb4e1ebf439ae27e9be0d6:0",
             "file": "src/mcp/server.ts",
-            "line": 1303,
+            "line": 1342,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,
@@ -12308,10 +12407,10 @@
         ]
       },
       {
-        "index": 17,
+        "index": 20,
         "claim_key": "06f72d1bfab16365d35444d7946ea53b1d210f7610515c7929b279edbe45097d:0",
         "file": "src/mcp/server.ts",
-        "line": 1383,
+        "line": 1422,
         "effect": "execute",
         "asset": "#blame",
         "identity": null,
@@ -12321,10 +12420,10 @@
         "gate_near_misses": [],
         "colocated_reaches": [
           {
-            "index": 27,
+            "index": 28,
             "claim_key": "a4b86df38204e3e92bc1f5c699ddcd23dfea1309ccb30841e49d79ea911b7343:0",
             "file": "src/mcp/server.ts",
-            "line": 1382,
+            "line": 1421,
             "verb": "agents",
             "actor": "#mcp-agent",
             "agent": true,

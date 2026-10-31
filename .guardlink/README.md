@@ -5,14 +5,13 @@ developers recorded next to the code they describe — what each component is ex
 what mitigates it, how data flows between components — parsed into a queryable model.
 
 **If you are an AI coding agent: read this file before inferring security context from
-the source.** The model already answers most of what you would otherwise guess at, and it
-records decisions that are not visible in the code, such as which risks a human has
-accepted.
+the source.** The model provides recorded context to verify against the code, including
+decisions that are not visible there, such as which risks a human has accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 1061 annotations · 21 assets · 16 threats · 14 controls · 148 exposures · 228 flows
-Content hash: `sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87` — identical hash means identical model.
+Current model: 1067 annotations · 21 assets · 16 threats · 14 controls · 148 exposures · 229 flows
+Content hash: `sha256-v3:397c03d78e4fa024c93fdc7893604f3618206c4f807ab87ab57d55739095698a` — identical hash means identical hashed annotation content, not unchanged code, anchors or agent configuration.
 
 ---
 
@@ -42,17 +41,16 @@ Without `jq`, `guardlink status .` is the closest thing — repo-wide counts and
 unmitigated list, not a per-file view.
 
 **Read the empty answer carefully.** `guardlink_context` reports *which kind* of empty it
-found, and they mean opposite things:
+found; these describe annotation inventory, not security conclusions:
 
 | `status` | Meaning |
 |---|---|
 | `annotated` | It has annotations. |
-| `scanned_without_annotations` | Parsed, genuinely clean. Nothing to know. |
+| `scanned_without_annotations` | Parsed; no annotations recorded; no security conclusion. |
 | `not_scanned` | The parser never read this file. Its annotations, if any, were **not** considered. |
 | `not_found` | Nothing at that path. |
 
-Treating `not_scanned` as "clean" is the single easiest way to draw a wrong conclusion
-from this model.
+Neither `not_scanned` nor `scanned_without_annotations` establishes that code was security-reviewed.
 
 ---
 
@@ -76,11 +74,13 @@ syntax of the file you are editing — the doc-block of the function or module t
 
 ```ts
 /**
- * @exposes #api to #sqli [critical] cwe:CWE-89 -- "email concatenated into SQL"
- * @mitigates #api against #sqli using #prepared-stmts -- "parameterized query"
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "login email reaches db.query via concatenation; no parameterisation on this path"
+ * @audit #api -- "Replace concatenation in login with bound parameters"
  */
 export function login(email: string) { … }
 ```
+This example describes an unparameterized login path. After implementing bound parameters,
+update its code-backed claims and record `@mitigates` for that handler.
 
 Do not create `.gal` sidecars under `.guardlink/annotations/` in this mode; a repo with
 both is a mixed repo, and that is the failure this section exists to prevent.
@@ -164,8 +164,8 @@ If you are documenting real annotation syntax and the examples do look structura
 them in `@shield:begin` / `@shield:end`. That is the deterministic override; the split
 above is a heuristic.
 
-**The complete reference is `docs/GUARDLINK_REFERENCE.md`** — every verb, every alias, the conformance
-levels, and worked examples per language. Read it before inventing syntax.
+**The annotation quick reference is `docs/GUARDLINK_REFERENCE.md`** — common syntax, rules and commands.
+For all aliases and conformance levels, read [the specification](https://github.com/Bugb-Technologies/guardlink/blob/main/docs/SPEC.md).
 
 **Never write `@accepts`.** Accepting a risk is a human governance decision. If you find a
 risk with no control, write `@exposes` to record it and `@audit` to flag it for review.
@@ -180,6 +180,28 @@ reported. That is why it is the one decision a person has to sign.
 
 ---
 
+## Quick developer test
+
+## Developer check — generate, then run
+1. Keep code and its annotations current in the same change. Run `guardlink validate .` and `guardlink lint . --since <base>`.
+2. Request `guardlink_translate` with the changed paths and threats, or use `guardlink translate "<changed paths and threats>"` on older servers. The CLI launches an authoring agent; the MCP tool returns a prompt for the calling agent. Translation generates polyglot scanner templates only: no scan, test execution or runtime confirmation. There is no translate `--since` flag; scope the request explicitly (or use the CLI's `--feature` filter).
+3. Author templates under `.guardlink/cxg-templates/` and an index mapping exposures to files, including audit-only items and gaps. Preserve unrelated templates and authored tests. Review the index against the requested change, inspect the generated code, and validate templates with the installed cxg template commands discovered through help.
+4. Execute the selected tests separately with `cxg scan` or the repository's configured runner, using its actual scope and target options. Scanner templates are distinct from browser pentest probes. Save cxg findings under `.guardlink/pentest-findings/`. Record what ran, evidence, failures, skips and prerequisites; generated files alone prove no behavior.
+5. Retain useful regression tests in the repository's durable suite. Generated templates under `.guardlink/cxg-templates/` do not automatically become root `security/` tests. Keep the regression after a fix: a mitigation can remove an exposure from translation's candidate list. Before opening or updating a pull request, run the entire root `security/` suite with its configured runner. A pre-review tool's recorded complete execution satisfies this once. Report absent suites as not applicable and skipped, partial or unavailable execution as incomplete, never a pass. For live regressions, you may start a target and use already configured auth profiles: tell the user when doing so, and never fabricate credentials or authorization.
+
+Generation is complete when the requested scope is accounted for in the template index or explicit gaps. Execution is a separate result with its own evidence and coverage.
+
+Claude Code skills are installed by `guardlink init --agent claude`; `guardlink sync` refreshes managed skills when `CLAUDE.md` exists. Authored files without the generated marker are kept.
+
+**Before you open or update a pull request**, check its annotations against the base branch and run repository security tests:
+
+- `guardlink validate .` — they parse and their references resolve. It also says when a published `.guardlink/report.json` is behind them; `guardlink parse . -o .guardlink/report.json` refreshes it.
+- `guardlink lint . --since origin/<base>` — each new claim names its code and is paired; `--json` gives the `fix` for any that is not.
+- `guardlink diff origin/<base>` — the exposures, flows and acceptances the change adds.
+- Run all tests in the repository’s root `security/` directory with its configured runner. Report an absent suite (not applicable), skipped tests or anything that could not run; an existing suite that cannot complete blocks readiness. A pre-review tool that records complete execution of that suite satisfies this step once; generation alone and skipped execution do not.
+
+If you are asked to raise a pull request and this check has not come up, suggest it. Never write `@accepts` to clear what it reports.
+
 ## Asking questions without MCP
 
 ```sh
@@ -188,6 +210,7 @@ guardlink parse .                        # the whole model as JSON, on stdout
 guardlink validate .                     # syntax errors and dangling #id references
 guardlink report . --format md           # human-readable threat model report
 guardlink diff HEAD~1                    # what your change did to the model
+guardlink translate "<changed paths and threats>" # template generation only; review/validate, then execute separately
 guardlink paths .                        # undefended routes from an entry point to a sink
 guardlink dashboard .                    # interactive HTML view
 guardlink blame .                        # who introduced / declared / fixed each claim, and which AI co-authored it
@@ -206,11 +229,14 @@ The MCP server exposes the model as tools. The ones worth knowing by name:
 | `guardlink_diff(ref)` | After a change — did I make this worse? |
 | `guardlink_status` | Cold start on an unfamiliar repo. |
 | `guardlink_blame(file)` | Who introduced this, and did an AI co-author it. Read from git; nothing written. |
-| `guardlink_annotate_apply(file, line, annotations)` | **You are writing annotations.** Prefer it over editing `.gal` files by hand. |
+| `guardlink_translate(prompt)` | Return a generation-only template prompt for this change; execution is separate. Older servers: `guardlink translate "<scope>"`. |
+| `guardlink_annotate_apply(file, line, annotations)` | **External mode only:** write a sidecar. In inline mode edit source comments directly. |
 
 ### Writing annotations with the MCP server
 
-`guardlink_annotate_apply` writes the sidecar for you. Pass the **source** file
+In inline mode, edit source comments directly; `guardlink_annotate_apply` never writes inline comments. Resolve mixed placement first; for an unrecorded mode inspect config and the response envelope before choosing a writer.
+
+In external mode, `guardlink_annotate_apply` writes the sidecar for you. Pass the **source** file
 you are describing — not the `.gal` path, which it derives — the line the block
 anchors to, and the raw GAL lines. Two things worth knowing before you reach for
 a text editor instead:
@@ -223,8 +249,9 @@ a text editor instead:
   an unanchored `@mitigates` is never narrowed to a single symbol.
 
 `dry_run: true` returns the diff without writing. Every line is re-parsed before
-anything reaches disk, so a syntax error is rejected with its reason — but an
-undefined `#id` is not, so run `guardlink_validate` afterwards.
+anything reaches disk. Syntax errors and undefined `#id` references are rejected by default.
+Only deliberate forward references may use `allow_undeclared_refs: true` and return warnings;
+add their definitions and run `guardlink_validate` afterwards.
 
 `guardlink_lookup` understands a fixed set of named forms and **refuses anything else
 rather than guessing**. Send it a deliberately bad query and it returns the full list.
@@ -273,7 +300,7 @@ comment so it does not affect the diagram.
 like source, and a reader who does not know a file is derived will not think to ask
 whether it is current. If the header's hash differs from the one above, the diagram
 is stale — regenerate it. Never hand-edit an artifact to make the check pass: the
-hash describes the annotations, so editing the file only makes it lie.
+hash describes annotation content, not implementation or anchor freshness. Editing the file to match it only makes it lie; regenerate after code or configuration changes too.
 
 The same hash stamps `model.json`, `report.json`, `findings.sarif` and **this file**,
 and `guardlink validate . --artifacts` checks every one of them that exists. So the
@@ -288,8 +315,8 @@ regenerating, never by hand-merging.
 ## Reading the answers
 
 Every MCP response carries a `guardlink` envelope alongside the payload:
-`annotation_hash`, `git_sha`, `mode`, `root`. Identical hash means identical model, so
-you can tell a fresh answer from a cached one without asking twice.
+`annotation_hash`, `git_sha`, `mode`, `root`. Hash equality covers hashed annotation content only;
+code, line anchors and agent configuration can change without it. Check those separately and re-query after edits.
 
 Anything that resolves a reference reports `matched_via`: `exact`, `alias` or
 `substring`. **A substring match is a suggestion, not an identification.** When
