@@ -120,7 +120,7 @@ with three different fixes, and each is a warning rather than a silent zero. A s
 
 | Situation | Annotation |
 |-----------|------------|
-| Writing new endpoint/handler | `@exposes` + `@mitigates` (or `@audit`) + `@flows` + `@comment` — tell the complete story |
+| Writing new endpoint/handler | Trace `@flows`, boundaries and controls; add `@exposes` plus its control or audit only when entry, input, sink and absent/bypassed control are supported |
 | New service/component | `@asset` in definitions, then reference in source |
 | New role / permission tier | `@actor` in definitions, then `guardlink entitle --propose` for each capability it holds by design |
 | Code hands an LLM agent a tool / MCP server / file, shell or DB access | `@agents #agent to <capability> on Asset` on the registration + `@effects <effect> on Asset` where the code acts + `@gates Asset by #approver` on any approval step |
@@ -176,7 +176,7 @@ guardlink annotate <prompt> [--playbook map|exploitable|chains|diff|coverage|ver
 guardlink lint [dir] [--since <ref>] [--json]   # Check annotations against the evidence bar; --since checks only what a session added
 guardlink hypothesis list|next|refute|confirm   # What happened when an exposure was tested (see below)
 guardlink hypothesis boundaries|support|contradict   # ...and when a declared @boundary was tested
-guardlink translate [prompt]            # Generate CERT-X-GEN pentest templates from threat findings
+guardlink translate "<changed paths and threats>" # Generate scanner templates only; review/validate, then run separately
 guardlink ask <query>                   # Ask questions about the threat model and codebase
 guardlink config <show|set|clear>       # Manage LLM provider / CLI agent configuration
 
@@ -548,6 +548,14 @@ Run `guardlink tui` for the interactive terminal interface:
 12. **@agents / @reaches use the same capability token as @entitles**, and **@effects takes one of six effects**: `read`, `write`, `delete`, `execute`, `spend`, `notify`. Egress is `@flows … -> External.X`, not an effect. `@gates` needs `by <actor>`. The `on <asset>` and `as <identity>` of all three are **asset references** like any other (`#id`, `Dotted.Path`, or `"quoted"`), not tokens like the capability: write `@effects execute on #ext-mcp as #gateway-process`, never `as gateway-process`, which fails the whole line.
 13. **@ticket's ref is one token or a quoted string.** `SEC-42`, `jira:SEC-42` and a bare `https://…` URL all work; quote a ref with spaces. `sla` takes a quoted label. Only the description wraps onto a continuation line.
 
+## Routine developer checks
+
+Keep code and code-backed annotations current in the same change; preserve human-owned `@accepts`/`@entitles` and reproduction provenance. After validate/lint, scope `guardlink translate` to the changed paths and threats (or use its `--feature` filter). The CLI launches an authoring agent; the `guardlink_translate` MCP tool returns a prompt and output locations to the calling agent. Both are generation-only. Review the template index and validate the generated code, then run selected scanner templates separately with `cxg scan` or the configured runner. Browser pentest probes use a different runtime contract.
+
+Generated `.guardlink/cxg-templates/` files do not automatically become durable root `security/` tests. Retain useful regressions after a fix: mitigation can remove an exposure from future translation candidates. Record execution, failures, skips and coverage separately from generated files. Live regression execution may start a target and use existing configured auth profiles, with notice to the user; it must never fabricate credentials or authorization. This is a later execution step, not translation behavior.
+
+`guardlink init --agent claude` installs a standalone translate skill; `guardlink sync` refreshes managed skills when `CLAUDE.md` exists and preserves authored files without the generated marker.
+
 ## MCP Tools
 
 When connected via `.mcp.json`, use:
@@ -624,7 +632,7 @@ GuardLink's frontmatter and no markers, so there is no boundary to preserve arou
 replaced whole the first time.
 
 **Before you open or update a pull request**, the block tells the agent to check the annotations
-the change adds against its base branch, with GuardLink's deterministic verbs only:
+the change adds against its base branch, starting with GuardLink's deterministic verbs:
 
 ```bash
 guardlink validate .                          # they parse and resolve; a published report.json is not behind them
@@ -632,7 +640,9 @@ guardlink lint . --since origin/<base>        # each new claim names its code an
 guardlink diff origin/<base>                  # the exposures, flows and acceptances the change adds
 ```
 
-and to suggest the check when asked to raise a pull request without it.
+Then run all tests in the repository's root `security/` directory with its configured runner. Report an absent suite as not applicable, and report skipped or unavailable execution; an existing suite that cannot complete blocks readiness. A pre-review tool that records complete execution satisfies this once; generation alone and skipped execution do not. This built-in duty precedes contributions and uses no `pre_pr` slot.
+
+The block also suggests the check when asked to raise a pull request without it.
 
 **Other tools add a line to that step** with `pre_pr` in `.guardlink/config.json`, instead of writing
 a block of their own into the same files:
@@ -645,7 +655,7 @@ a block of their own into the same files:
 
 | Key | Type | Rendered as |
 |---|---|---|
-| `command` | string, required, at most 200 characters | a code span, after GuardLink's own three |
+| `command` | string, required, at most 200 characters | a code span, after GuardLink's checks and the repository suite duty |
 | `why` | string, optional, at most 200 characters | text after the command; empty is the same as absent |
 
 Each entry becomes one line, in order, labelled with where it came from. At most five are rendered.

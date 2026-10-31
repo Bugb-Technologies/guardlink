@@ -1,11 +1,11 @@
 {
   "summary": {
-    "reaches": 29,
-    "agent_reaches": 29,
-    "unentitled_reaches": 29,
-    "effects": 18,
-    "mutating_effects": 18,
-    "ungated_effects": 18,
+    "reaches": 30,
+    "agent_reaches": 30,
+    "unentitled_reaches": 30,
+    "effects": 21,
+    "mutating_effects": 19,
+    "ungated_effects": 19,
     "gates": 0,
     "coding_agent_reaches": 1,
     "unentitled_coding_agent_reaches": 1
@@ -133,6 +133,11 @@
     },
     {
       "actor": "#mcp-agent",
+      "capability": "guardlink_translate",
+      "asset": "#mcp"
+    },
+    {
+      "actor": "#mcp-agent",
       "capability": "guardlink_unannotated",
       "asset": "#parser"
     },
@@ -232,6 +237,11 @@
       "tool": "guardlink_threat_report",
       "effect": "write",
       "asset": "#llm-client"
+    },
+    {
+      "tool": "guardlink_translate",
+      "effect": "read",
+      "asset": "#agent-launcher"
     },
     {
       "tool": "guardlink_validate",

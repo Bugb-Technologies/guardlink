@@ -133,6 +133,12 @@ describe('GL-402 — content an agent needs', () => {
   const inline = () => guardlinkReadmeContent(project, { ...base, mode: 'inline', mcpAtRoot: true });
   const external = () => guardlinkReadmeContent(project, { ...base, mode: 'external', mcpAtRoot: false });
 
+  it('labels mixed placement as drift in its short summary', () => {
+    const text = guardlinkReadmeContent(project, { ...base, mode: 'mixed', mcpAtRoot: true });
+    expect(text).toContain('**mixed** — annotations exist both inline and in sidecars');
+    expect(text).not.toContain('**inline** — annotations live in source-file comments');
+  });
+
   it('addresses an agent reader explicitly', () => {
     expect(inline()).toMatch(/If you are an AI coding agent/);
   });
@@ -150,7 +156,8 @@ describe('GL-402 — content an agent needs', () => {
     for (const status of ['annotated', 'scanned_without_annotations', 'not_scanned', 'not_found']) {
       expect(text, status).toContain(status);
     }
-    expect(text).toMatch(/easiest way to draw a wrong conclusion/);
+    expect(text).toMatch(/no security conclusion/);
+    expect(text).not.toMatch(/genuinely clean/);
   });
 
   it('explains where .gal files live and how paths map to source', () => {

@@ -106,7 +106,7 @@ always move together — see **Releasing** below.
 
 | Set | Regenerate with | Checked by |
 |---|---|---|
-| `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.cursor/rules/guardlink.mdc`, `.windsurfrules`, `.clinerules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `.guardlink/README.md` | `guardlink sync .` | — |
+| `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.cursor/rules/guardlink.mdc`, `.windsurfrules`, `.clinerules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `.guardlink/README.md`, managed `.claude/skills/guardlink-*/SKILL.md` when `CLAUDE.md` exists | `guardlink sync .` | — |
 | `.guardlink/graph/**`, `.guardlink/model.json`, `.guardlink/graph/MANIFEST.json` | `guardlink artifacts .` | `guardlink validate . --artifacts` (D28, in CI) |
 
 **Run both after any change to annotations, and check the second before you push:**
@@ -121,7 +121,7 @@ guardlink validate . --artifacts      # exits 1 on stale/missing/unheadered — 
 (tooling should not silently install a hook that rewrites files):
 `cp docs/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`.
 
-Never hand-edit a generated file. In the agent files, the region between the `guardlink:begin` /
+Never hand-edit a generated file. To take ownership of a generated skill, remove its `guardlink:generated` marker; init and sync preserve files without it. In the agent files, the region between the `guardlink:begin` /
 `guardlink:end` markers is overwritten by the next sync — change `src/init/templates.ts` instead.
 Text outside the markers is never touched, in any of those files (`.cursor/rules/guardlink.mdc`
 included), and `tests/init-pre-pr.test.ts` pins that; the block's contributed pre-PR lines come
