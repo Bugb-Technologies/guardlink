@@ -2251,3 +2251,79 @@ describe('the total a bounded renderer prints is the caller’s to state', () =>
     expect(formatQueue([], 0)).toBe('Nothing to test: every exposure has an outcome that still holds.');
   });
 });
+
+// GAP-GL-CONFIRMED-NOT-TESTED — a source @confirmed on a pair takes its paired
+// @exposes out of the untested set and off the next-queue, keyed not
+// provenance-gated (so a @confirmed that predates the ledger reconciles the same
+// way), without double-counting or hiding a real contradiction.
+describe('a source @confirmed reconciles with its paired @exposes', () => {
+  // Three exposures; #api/#sqli ALSO carries a source @confirmed. The ledger is
+  // empty — this is the exact reported shape: before the fix the @exposes sat in
+  // untested while a separate confirmed row named the same pair.
+  const RECON_SOURCE = `import x from 'x';
+
+/**
+ * @exposes #api to #sqli [critical] cwe:CWE-89 -- "req.body.email into findUser()"
+ * @confirmed #sqli on #api [critical] cwe:CWE-89 -- "POST /login with email=' OR 1=1-- dumped users; reproduced twice"
+ * @exposes #api to #dos [medium] -- "parseBody() has no size cap"
+ * @exposes #web to #xss [high] cwe:CWE-79 -- "profile.bio via innerHTML"
+ */
+export function login(email: string) { return email; }
+`;
+  async function reconProject(): Promise<string> {
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-recon-'));
+    await mkdir(join(root, '.guardlink'), { recursive: true });
+    await mkdir(join(root, 'src'), { recursive: true });
+    await writeFile(join(root, '.guardlink', 'definitions.ts'), DEFINITIONS);
+    await writeFile(join(root, 'src', 'a.ts'), RECON_SOURCE);
+    return root;
+  }
+
+  it('takes the confirmed pair out of untested — its @exposes now reads confirmed', async () => {
+    const root = await reconProject();
+    try {
+      const model = await parse(root);
+      const c = classifyHypotheses(model, readHypotheses(root)); // ledger absent/empty
+      // Only the two genuinely-untested exposures remain untested (#api/#dos, #web/#xss);
+      // #api/#sqli is no longer counted untested (it was, before the fix).
+      expect(c.summary.untested).toBe(2);
+
+      // The @exposes for the confirmed pair now reads confirmed, not untested.
+      const sqliExposes = c.records.find(r => r.verb === 'exposes' && r.asset === '#api' && r.threat === '#sqli');
+      expect(sqliExposes?.state).toBe('confirmed');
+      // The @confirmed line keeps its own record (a consumer stamps it by location).
+      expect(c.records.some(r => r.verb === 'confirmed' && r.asset === '#api' && r.threat === '#sqli')).toBe(true);
+      // No untested row survives for the confirmed pair.
+      expect(c.records.some(r => r.asset === '#api' && r.threat === '#sqli' && r.state === 'untested')).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('does not rank the confirmed pair in the next-queue', async () => {
+    const root = await reconProject();
+    try {
+      const model = await parse(root);
+      const c = classifyHypotheses(model, readHypotheses(root));
+      const ranked = rankUntested(c.records, model);
+      // The queue holds only the two real untested exposures; the proven pair is gone.
+      expect(ranked.map(r => r.threat)).not.toContain('#sqli');
+      expect(ranked).toHaveLength(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('stamps the confirmed state onto the exposure for the dashboard/report/lint', async () => {
+    const root = await reconProject();
+    try {
+      const model = await parse(root);
+      const c = classifyHypotheses(model, readHypotheses(root));
+      attachHypotheses(model, c);
+      const ex = model.exposures.find(e => e.asset === '#api' && e.threat === '#sqli');
+      expect(ex?.hypothesis?.state).toBe('confirmed');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});

@@ -24,7 +24,7 @@ export function formatHypothesisList(c: HypothesisClassification, state?: string
     const e = r.entry;
     const outcome = r.state === 'untested' && r.previous ? `previously ${r.previous.outcome} ${r.previous.at.slice(0, 10)} by ${r.previous.by} — code changed since`
       : r.state === 'retest' && e ? `confirmed ${e.at.slice(0, 10)} by ${e.by} — code changed since, retest`
-      : e ? `${e.at.slice(0, 10)} by ${e.by}` : r.verb === 'confirmed' ? 'in source (@confirmed)' : '';
+      : e ? `${e.at.slice(0, 10)} by ${e.by}` : r.state === 'confirmed' ? 'in source (@confirmed)' : '';
     lines.push(`  ${pad(r.state, 10)}${pad(r.severity, 10)}${pad(short(r.asset, 17), 18)}${pad(short(r.threat, 21), 22)}${pad(short(`${r.file}:${r.line}`, 33), 34)}${outcome}`);
   }
   if (rows.length === 0) lines.push('  (none)');
