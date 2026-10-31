@@ -51,21 +51,31 @@ export function classifyHypotheses(model: ThreatModel, read: HypothesesRead): Hy
   const records: HypothesisRecord[] = [];
   const summary: HypothesisSummary = { untested: 0, confirmed: 0, refuted: 0, retest: 0 };
 
+  // @comment -- "One claim can carry both an @exposes (the hypothesis) and an @confirmed (the verification) on the SAME (asset, threat) pair. The two get DIFFERENT claim keys — the key digest is per-verb (claim-key.ts identity()), so a source @confirmed can never join an @exposes by key, and the hypothesis ledger is written against the @exposes key. The @exposes is the primary carrier of a claim's tested state, so a source @confirmed on that pair must take its @exposes out of 'untested' and off the next-queue (GAP-GL-CONFIRMED-NOT-TESTED). Joined on the (asset, threat) pair — @confirmed escalates its pair wherever it appears — not provenance-gated, so a @confirmed that predates the ledger reconciles exactly like one written through hypothesis confirm. A holding ledger outcome still wins over a source @confirmed: it is an evidence-and-anchor-bearing record, so staleness/retest keeps working. The @confirmed record itself is ALWAYS emitted and counted (pass 2) and is never merged away — sarif-pentest.ts stamps the confirmed-exploitable result by that record's own location, so dropping it would strip the stamp"
+  const pairId = (asset: string, threat: string): string => `${asset}\u0000${threat}`;
+  const confirmedPairs = new Set((model.confirmed ?? []).map(r => pairId(r.asset, r.threat)));
+
+  // Pass 1 — @exposes: a holding ledger outcome wins; else a source @confirmed on
+  // the same pair confirms it; else untested.
   for (const src of relationRecords(model)) {
-    if (src.verb !== 'exposes' && src.verb !== 'confirmed') continue;
-    const rec = (src.verb === 'exposes' ? model.exposures : model.confirmed || []).find(r => r.location === src.location);
+    if (src.verb !== 'exposes') continue;
+    const rec = model.exposures.find(r => r.location === src.location);
     if (!rec) continue;
     const base = {
       key: src.key, verb: src.verb, claim: src.claim, asset: rec.asset, threat: rec.threat, severity: rec.severity || 'unset', refs: rec.external_refs ?? [],
       file: src.location.origin_file ?? src.location.file, line: src.location.origin_line ?? src.location.line, location: src.location,
     };
-    if (src.verb === 'confirmed') {
-      records.push({ ...base, state: 'confirmed', entry: null, expired: false, previous: null });
-      summary.confirmed++;
+    const entry = entries.get(src.key) ?? null;
+    if (!entry) {
+      if (confirmedPairs.has(pairId(rec.asset, rec.threat))) {
+        records.push({ ...base, state: 'confirmed', entry: null, expired: false, previous: null });
+        summary.confirmed++;
+      } else {
+        records.push({ ...base, state: 'untested', entry: null, expired: false, previous: null });
+        summary.untested++;
+      }
       continue;
     }
-    const entry = entries.get(src.key) ?? null;
-    if (!entry) { records.push({ ...base, state: 'untested', entry: null, expired: false, previous: null }); summary.untested++; continue; }
     const hashNow = src.location.anchor?.hash ?? null;
     const holds = entry.anchor !== null && hashNow !== null && entry.anchor.hash === hashNow;
     if (holds) {
@@ -77,6 +87,20 @@ export function classifyHypotheses(model: ThreatModel, read: HypothesesRead): Hy
     const { history: _h, key: _k, claim: _c, file: _f, line: _l, ...previous } = entry;
     records.push({ ...base, state, entry, expired: true, previous });
     summary[state]++;
+  }
+
+  // Pass 2 — @confirmed: every source @confirmed is its own record, stamped and
+  // counted (a consumer stamps the confirmed-exploitable result by this location).
+  for (const src of relationRecords(model)) {
+    if (src.verb !== 'confirmed') continue;
+    const rec = (model.confirmed ?? []).find(r => r.location === src.location);
+    if (!rec) continue;
+    records.push({
+      key: src.key, verb: src.verb, claim: src.claim, asset: rec.asset, threat: rec.threat, severity: rec.severity || 'unset', refs: rec.external_refs ?? [],
+      file: src.location.origin_file ?? src.location.file, line: src.location.origin_line ?? src.location.line, location: src.location,
+      state: 'confirmed', entry: null, expired: false, previous: null,
+    });
+    summary.confirmed++;
   }
   return { records, summary, ledger: read.status };
 }
