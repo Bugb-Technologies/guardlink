@@ -26,7 +26,7 @@ export const REPORT_SHAPES: readonly Playbook[] = [
 This report is for someone who decides what to fund, not someone who fixes it. Keep it to **one page** above the findings block.
 1. **Posture in one sentence** — the risk grade and why, in plain words.
 2. **The five findings that matter** — one line each: what an attacker gets, how sure we are, what closes it. No CWE numbers in the prose.
-3. **What is covered well** — two or three controls that are doing their job, so the reader knows what not to cut.
+3. **What is covered well** — two or three controls, labeling each as declared, code-reviewed or exercised and citing the evidence.
 4. **What to fund** — the three changes with the best risk reduction per effort, each with a rough size (days, not story points).
 5. **What we do not know** — the assumptions and audit items that a reviewer should resolve.
 Every finding still goes in the findings block below the page, in full.`,
@@ -43,7 +43,8 @@ This report reviews **a change**, not the codebase. The scope lists the files th
 2. **New exposures** the change introduces, each with evidence from the changed lines.
 3. **Exposures the change closes**, and whether the closing control is complete.
 4. **Claims the change invalidates** — existing annotations that no longer match the code.
-5. **Verdict** — merge, merge with the listed annotations added, or hold, and why.
+5. **Threat-model review recommendation** — ready for review, needs annotation corrections, or hold, and why; this is not overall merge approval.
+6. **Testing and gaps** — tests actually executed and their results, generated-only templates, skips and unknowns. Before opening or updating the pull request, run the repository's root \`security/\` suite with its configured runner; recorded complete execution by a pre-review tool satisfies this once. An absent suite is not applicable; an existing suite that cannot complete is not a pass.
 Only findings in the changed files go in the findings block; reference unchanged code only as context.`,
   },
   {
@@ -55,7 +56,7 @@ Only findings in the changed files go in the findings block; reference unchanged
     body: `## Shape — Audit
 This report is for someone who checks claims against evidence. Precision over narrative.
 1. **Scope and method** — what was reviewed, how (annotations, code reading, scan evidence), and what was out of scope.
-2. **Control inventory** — every declared control: what it is, where it is implemented (file:line), which threats it covers, and whether the code confirms it.
+2. **Control inventory** — every declared control: what it is, where it is implemented (file:line), which threats it covers, and whether it is only declared, supported by code review, or exercised with cited runtime evidence.
 3. **Findings** — each with an identifier, the asset and threat, the evidence (request and response, or the code path), the severity with its justification, the owning team where \`@owns\` names one, and the remediation.
 4. **Accepted risks** — every \`@accepts\` with who accepted it, why, and whether the acceptance is still reasonable.
 5. **Gaps in the model** — assets with no owner, sensitive data with no control, entry points with no annotation.

@@ -7,7 +7,7 @@
 import type { Playbook } from './types.js';
 import { EVIDENCE_BAR, WRITE_LAST, STOP_CONDITIONS } from './evidence.js';
 
-const NEVER = `Never write \`@accepts\` or \`@entitles\`; never delete or rewrite an existing annotation; never write executable code.`;
+const NEVER = `Never write \`@accepts\` or \`@entitles\`; preserve human-owned decisions and reproduction evidence. During an annotation-only review, flag unsupported claims with \`@audit\` for their owner; when maintaining code in the same change, correct or remove code-backed claims that the changed implementation invalidates. Preserve unchanged claims and unrelated tests. This annotation method writes no executable code.`;
 
 export const ANNOTATE_PLAYBOOKS: readonly Playbook[] = [
   {
@@ -17,7 +17,7 @@ export const ANNOTATE_PLAYBOOKS: readonly Playbook[] = [
     summary: 'Architecture first: assets, flows, boundaries and data classes. Writes no exposures.',
     triggers: [/\bmap\b/, /\barchitecture\b/, /\bflows? only\b/, /\bdata flows?\b/, /\btrust boundar/],
     body: `## Method — Map
-**Purpose.** Build the skeleton every other playbook reads: what the components are, how data moves between them, where trust changes hands, and what sensitive data each part touches. This pass writes **no \`@exposes\`** — a threat claimed before the flow graph exists is guessed, not traced.
+**Purpose.** Build the skeleton every other playbook reads: what the components are, how data moves between them, where trust changes hands, and what sensitive data each part touches. This pass writes **no \`@exposes\`** — tracing the relevant path comes before claiming a threat; persisting the graph first makes that trace reusable.
 
 ### Phase 1 — Inventory the components
 Read the entry points (HTTP handlers, CLI commands, consumers, cron, listeners), the storage and the outbound calls. For each component that is not yet an asset, add one to the definitions file with a stable \`#id\` and a one-line description of what it is for. Reuse every existing id; never redefine one.
@@ -32,7 +32,7 @@ Where the caller's trust level changes — internet to app, app to database, ser
 Where an asset stores, logs or forwards personal, financial, health or secret data, write \`@handles <class> on Asset\` with the fields by name. Where the code trusts something it never checks, write \`@assumes\`. Where you know the accountable team, write \`@owns\`.
 
 ### What not to write
-No @exposes in this pass, and no \`@confirmed\` or \`@mitigates\` either: run the \`exploitable\` playbook next for those. ${NEVER}
+No @exposes in this pass, and no \`@confirmed\` or \`@mitigates\` either: run the \`exploitable\` playbook next for exposures and mitigations. Only reproduction evidence can support \`@confirmed\`. ${NEVER}
 
 ${WRITE_LAST}
 
@@ -45,7 +45,7 @@ ${STOP_CONDITIONS}`,
     summary: 'The default: trace every path, then claim only what an attacker can reach with input they control.',
     triggers: [/\bexploit/, /\breal threats?\b/, /\breachab/, /\bactually\b/, /\battacker\b/],
     body: `## Method — Exploitable
-**Purpose.** Annotate the threats an attacker can actually reach, and only those, with enough evidence in each description that a reader can check it without re-deriving it.
+**Purpose.** Annotate code-supported hypotheses about threats an attacker can reach, with enough evidence in each description that a reader can check it without re-deriving it.
 
 ### Phase 1 — Map what you are about to claim
 If the model has no flows for the code in scope, trace them first (entry point → middleware → handler → service → sink) and write the \`@flows\` and \`@boundary\` edges. You cannot claim a path you have not drawn.
@@ -54,7 +54,7 @@ If the model has no flows for the code in scope, trace them first (entry point �
 At every place attacker-controlled input meets a sink — a query, a shell, a template, a file path, a deserialiser, a redirect, an authorisation decision — write down a candidate: asset, threat, entry point, input, sink, and the control you expect to find.
 
 ### Phase 3 — Verify each candidate by reading the path
-For every candidate, read the code from entry point to sink. Establish: does the input really reach the sink unchanged? Is there validation, encoding, parameterisation, an authorisation check, a size cap? Is it applied on this path, or only on another? Drop the candidate the moment a control on the path holds; turn it into a \`@mitigates\` naming that control instead.
+For every candidate, read the code from entry point to sink. Establish: does the input really reach the sink unchanged? Is there validation, encoding, parameterisation, an authorisation check, a size cap? Is it applied on this path, or only on another? Drop a candidate only when a control completely covers the attempted path; record the \`@mitigates\` naming it. For partial coverage, retain the exposure with the remaining bypass and scope the mitigation to what it covers.
 
 ### Phase 4 — Write
 For each survivor, write the coupled block: the \`@exposes\` with all four evidence fields, the \`@mitigates\` where a control covers part of it, an \`@audit\` where you could not establish the path, the \`@flows\` that carry the input, and a \`@comment\` for anything a reader would need to know.
@@ -84,10 +84,10 @@ Take the open exposures the model lists (and any you find with the \`exploitable
 From that foothold, follow the \`@flows\` out of the asset. At each next asset ask: does what the attacker now holds reach this component as trusted input? Can it read, write, execute or impersonate here? A trust boundary that the first exposure already crossed is not a defence for the second hop.
 
 ### Phase 3 — Verify the hop
-Read the receiving code. Confirm the second asset treats the value as trusted (no re-validation, no re-authorisation, no origin check). Drop the hop if it re-checks; write a \`@mitigates\` naming the re-check.
+Read the receiving code. Confirm the second asset treats the value as trusted (no re-validation, no re-authorisation, no origin check). Drop the hop only when the re-check covers the attempted transition; write a \`@mitigates\` naming that coverage.
 
 ### Phase 4 — Write the chain
-GuardLink has no verb for "A enables B" yet, so write a chain as its parts: the \`@exposes\` at each hop with the four evidence fields, the \`@flows\` edges the foothold travels along, and a \`@comment\` at the first hop that names the whole chain in order (\`"Chain: #upload path traversal → #worker reads attacker file → #config parsed with secrets"\`). The severity of the first hop reflects where the chain ends, within the threat's declared band.
+GuardLink has no verb for "A enables B" yet, so write a chain as its parts: the \`@exposes\` at each hop with the four evidence fields, the \`@flows\` edges the foothold travels along, and a \`@comment\` at the first hop that names the whole chain in order (\`"Chain: #upload path traversal → #worker reads attacker file → #config parsed with secrets"\`). The severity of the first hop estimates the potential impact where the chain ends, within the threat's declared band. The chain and its flow edges are source-backed claims; only an exercised chain is a test result.
 
 ${EVIDENCE_BAR}
 
@@ -103,7 +103,7 @@ ${STOP_CONDITIONS}`,
     kind: 'annotate',
     title: 'Diff',
     summary: 'Only the files this branch changed; everything else is context.',
-    triggers: [/\bchanged\b/, /\bdiff\b/, /\bpull request\b/, /\bPR\b/, /\bthis branch\b/, /\bcommit\b/],
+    triggers: [/\bchanged\b/, /\bdiff\b/, /\bpull request\b/, /\bpr\b/, /\bthis branch\b/, /\bcommit\b/],
     body: `## Method — Diff
 **Purpose.** Annotate a change, not a codebase. The files listed in scope are the ones this branch touched; the rest of the model is context you read and extend but do not re-annotate.
 
@@ -111,7 +111,7 @@ ${STOP_CONDITIONS}`,
 For each file in scope, read the diff and the surrounding function, then the callers and callees it touches. Decide whether the change adds an entry point, a sink, a flow, a trust crossing, or a control — or removes one.
 
 ### Phase 2 — Trace only what changed
-Follow the new or altered path from entry point to sink with the \`exploitable\` method's evidence bar. Existing annotations on the path stay; if the change invalidates one (a control removed, a sink added), write an \`@audit\` next to it saying so rather than editing it.
+Follow the new or altered path from entry point to sink with the \`exploitable\` method's evidence bar. Preserve unchanged claims. Correct or remove code-backed flow, boundary, exposure and control claims that the changed implementation invalidates, in the same change. An audit alone does not retire a stale mitigation. Preserve human-owned \`@accepts\`/\`@entitles\` and historical reproduction evidence; flag decisions that need their owner to review them. If the request also asks about chains, follow them only from the changed paths.
 
 ### Phase 3 — Write
 Add the coupled block for what the change introduced: \`@exposes\` with the four evidence fields, \`@mitigates\` for a control the change added, \`@flows\` for a new hop, \`@boundary\` for a new crossing, \`@handles\` for new sensitive data. A change that touches nothing security-relevant gets nothing.
@@ -133,10 +133,10 @@ ${STOP_CONDITIONS}`,
     triggers: [/\bunannotated\b/, /\bcoverage\b/, /\bmissing files\b/, /\bno annotations\b/, /\bevery file\b/],
     worklistUse: `**Coverage, Phase 1, with this worklist:** it is the "entry points first" order, derived from the code rather than guessed from file names. Take the \`[none]\` and \`[file]\` handlers in the order listed — each is an entry point the model does not cover yet, and the sink classes beside it say what to trace it to. Then continue with the remaining unannotated files the way Phase 1 ranks them.`,
     body: `## Method — Coverage
-**Purpose.** Bring the files the model has never seen into it, in the order that matters: entry points and sinks before helpers, and structure before claims.
+**Purpose.** Review files with no recorded annotations, in the order that matters: entry points and sinks before helpers, and structure before claims.
 
 ### Phase 1 — Rank the unannotated files
-The unannotated list is the annotation worklist (the prompt carries it; \`guardlink unannotated\` and \`guardlink_unannotated\` print it). Files left out of it — gitignored, generated or vendored per \`.gitattributes\`, excluded by \`.guardlink/config.json\`, minified bundles, build output, asset images — are not work: do not annotate them. From the list, put first the files that receive input from outside (handlers, commands, consumers), then the ones that reach storage, the network or the shell, then everything else. A pure helper or a formatter may need nothing; record that decision in a \`@comment\` only when a reader would otherwise wonder.
+The unannotated list is the annotation worklist (the prompt carries it; \`guardlink unannotated\` and \`guardlink_unannotated\` print it). Files left out of it — gitignored, generated or vendored per \`.gitattributes\`, excluded by \`.guardlink/config.json\`, minified bundles, build output, asset images — are outside this annotation worklist: do not annotate them. That exclusion says nothing about whether they were parsed or are secure. From the list, put first the files that receive input from outside (handlers, commands, consumers), then the ones that reach storage, the network or the shell, then everything else. A pure helper or a formatter may need nothing; record that decision in a \`@comment\` only when a reader would otherwise wonder.
 
 ### Phase 2 — Structure first
 For each file, write the \`@flows\`, \`@boundary\` and \`@handles\` that place it in the model. Reuse existing asset ids; add a definition only for a component the model genuinely lacks.
@@ -147,7 +147,7 @@ Only after the file's flows are drawn, apply the \`exploitable\` method's eviden
 ${EVIDENCE_BAR}
 
 ### What not to write
-${NEVER} Do not annotate for the sake of coverage: a file with no security-relevant behaviour stays clean, and that is the correct outcome.
+${NEVER} Do not annotate for the sake of coverage: a file with no security-relevant behaviour stays unannotated; that is not a security verdict. For routine changes use the diff method instead of repeating whole-tree coverage.
 
 ${WRITE_LAST}
 
@@ -166,15 +166,15 @@ ${STOP_CONDITIONS}`,
 For every \`@mitigates\`: does the named control still exist on this path, and does it still cover the asset against that threat? For every \`@exposes\`: is the path still reachable, is the sink still there, is the severity still right? For every \`@flows\` and \`@boundary\`: does the code still move data that way?
 
 ### Phase 2 — Record the disagreements
-Where a claim no longer holds, do not delete or edit it. Write an \`@audit\` on the asset beside it that says what the claim asserts, what the code now does, and what should change (\`"@mitigates names #input-validation but validateEmail() was removed in the refactor; the exposure is open again"\`). A human decides what to do with the claim; your job is to make the disagreement visible.
+During an annotation-only review, flag another owner's unsupported claim with an \`@audit\` on the asset beside it that says what the claim asserts, what the code now does, and what should change (\`"@mitigates names #input-validation but validateEmail() was removed in the refactor; the exposure is open again"\`). When maintaining the implementation in this same change, correct or remove its invalidated code-backed claims instead; leaving an audit beside a stale mitigation is insufficient. Preserve human-owned decisions and historical reproduction evidence, and flag those for their owner when review is needed.
 
 ### Phase 3 — Close the loop
-Where the verification shows a path that is now defended, write the \`@mitigates\` that names the control. Where it shows a new sink on a known path, apply the evidence bar and write the \`@exposes\` with its pair. Then run \`guardlink verify --dry-run\` and report what it says.
+Where the verification shows a path that is now defended, write the \`@mitigates\` that names the control. Where it shows a new sink on a known path, apply the evidence bar and write the \`@exposes\` with its pair. Then run \`guardlink verify --dry-run\` and report what it says. This checks claims, not runtime behavior.
 
 ${EVIDENCE_BAR}
 
 ### What not to write
-${NEVER} Do not "fix" a claim by rewording it: an edited claim hides the history of being wrong.
+${NEVER} Explain substantive claim corrections in the change; retain evidence provenance and unrelated history.
 
 ${WRITE_LAST}
 

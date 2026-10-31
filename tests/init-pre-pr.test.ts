@@ -14,7 +14,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { agentInstructions } from '../src/init/templates.js';
+import { agentInstructions, SECURITY_SUITE_DUTY } from '../src/init/templates.js';
 import { readPrePrSteps, findPrePrDrift, PRE_PR_MAX_STEPS } from '../src/init/pre-pr.js';
 import { initProject, syncAgentFiles, replaceOrAppend } from '../src/init/index.js';
 import { parseProject } from '../src/parser/parse-project.js';
@@ -366,4 +366,49 @@ describe('replaceOrAppend', () => {
     expect(replaceOrAppend('a\n', block)).toBe(`a\n\n${block}`);
     expect(replaceOrAppend('a', block)).toBe(`a\n\n${block}`);
   });
+});
+
+
+describe('built-in repository suite duty across init and sync', () => {
+  for (const mode of ['inline', 'external'] as const) {
+    for (const populated of [false, true]) {
+      for (const contributed of [false, true]) {
+        for (const rootFiles of [false, true]) {
+          it(`${mode}, populated=${populated}, contributed=${contributed}, rootFiles=${rootFiles}`, async () => {
+            const root = tmp();
+            writeFileSync(join(root, 'package.json'), '{"name":"suite"}');
+            mkdirSync(join(root, '.guardlink'));
+            writeFileSync(join(root, 'app.ts'), populated && mode === 'inline' ? '// @comment -- "security-relevant review context"\nexport const x = 1;\n' : 'export const x = 1;\n');
+            if (populated && mode === 'external') {
+              mkdirSync(join(root, '.guardlink/annotations'));
+              writeFileSync(join(root, '.guardlink/annotations/app.ts.gal'), '@source file:app.ts line:1\n@comment -- "security-relevant review context"\n');
+            }
+            const prePr = contributed ? Array.from({ length: PRE_PR_MAX_STEPS }, (_, i) => ({ command: `check-${i}` })) : [];
+            writeFileSync(join(root, '.guardlink/config.json'), JSON.stringify({ annotation_mode: mode, pre_pr: prePr }));
+            const { model } = await parseProject({ root, project: 'suite' });
+            initProject({ root, mode, rootFiles, agentIds: ['claude'], model });
+            const check = () => {
+              const files = ['.guardlink/README.md', ...(rootFiles ? ['CLAUDE.md'] : [])];
+              for (const file of files) {
+                const text = read(root, file);
+                expect(text.split(SECURITY_SUITE_DUTY)).toHaveLength(2);
+                const diff = text.indexOf('- `guardlink diff origin/<base>`');
+                const duty = text.indexOf(`- ${SECURITY_SUITE_DUTY}`);
+                expect(duty).toBeGreaterThan(diff);
+                expect(text.slice(duty, duty + SECURITY_SUITE_DUTY.length + 2)).not.toContain('(from `pre_pr`');
+                if (contributed && file === 'CLAUDE.md') {
+                  expect(text.indexOf('- `check-0`')).toBeGreaterThan(duty);
+                  expect(text).toContain(`check-${PRE_PR_MAX_STEPS - 1}`);
+                }
+              }
+              expect(JSON.parse(read(root, '.guardlink/config.json')).pre_pr).toEqual(prePr);
+            };
+            check();
+            syncAgentFiles({ root, model });
+            check();
+          });
+        }
+      }
+    }
+  }
 });
