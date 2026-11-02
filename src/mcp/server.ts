@@ -90,6 +90,7 @@ import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary
 import { loadReachCheck, checkReach, reachCheckSummaryLine, type ReachCheck } from '../codegraph/reach-check.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildTranslateContext, loadTranslateContext, selectTranslateThreats } from '../agents/translate-context.js';
+import { loadTranslateSources } from '../agents/translate-source.js';
 import { filterByFeature } from '../parser/feature-filter.js';
 import { buildAnnotatePrompt, buildTranslatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
@@ -863,35 +864,39 @@ export function createServer(): McpServer {
 
   /**
    * @agents #mcp-agent to guardlink_translate on #mcp -- "Returns a template-authoring prompt; never launches an author or executes templates"
-   * @effects read on #agent-launcher -- "Reads the client-selected context JSON and installed CXG guide"
+   * @effects read on #agent-launcher -- "Reads client-selected context JSON, scanner conversion source files or directories, and the installed CXG guide"
    * @effects execute on #codegraph -- "Without explicit context, optional loadWorklist and reachFor may spawn the installed graph binary"
    * @audit #codegraph -- "No confirmation step before optional graph reads; code_graph false disables them"
-   * @exposes #mcp to #prompt-injection [medium] -- "guardlink_translate carries caller and graph context into the returned prompt"
+   * @exposes #mcp to #prompt-injection [medium] -- "guardlink_translate carries caller context, scanner conversion sources and graph context into the returned prompt"
    * @audit #mcp -- "Schema-validated context remains untrusted evidence; the returned prompt cannot constrain the calling agent"
    * @flows #mcp -> #agent-launcher via guardlink_translate -- "Filtered threat model, context pack and requested output contract"
    */
   registerTool(
     server, cache,
     'guardlink_translate',
-    'Build a template-authoring prompt from selected threats. Returns prompt text only; never executes templates. Optional context is a path to a version 1 JSON context pack, relative to root. Without it, an available code graph supplies route/reach facts.',
+    'Build a template-authoring prompt from selected threats or convert scanner templates with from and contract probe. Returns prompt text only; never executes templates. Conversion writes are requested only under .guardlink/cxg-templates/ for review. Optional context is a path to a version 1 JSON context pack, relative to root. Without it, an available code graph supplies route/reach facts.',
     {
       root: z.string().default('.'),
       prompt: z.string().default(''),
       context: z.string().optional().describe('Context-pack JSON file path, relative to root or absolute'),
       contract: z.enum(['scanner', 'probe']).optional().describe('Output contract; defaults to pack request or scanner'),
+      from: z.array(z.string()).min(1).max(256).optional().describe('Scanner files or directories, relative to root or absolute; requires contract probe'),
       out: z.string().optional(),
       threat: z.array(z.string()).optional().describe('Threat ids or threat@file:line exposure ids'),
       feature: z.string().optional().describe('Comma-separated feature scope'),
       code_graph: z.boolean().default(true),
     },
-    async ({ root, prompt, context, contract, out, threat, feature, code_graph }) => {
+    async ({ root, prompt, context, contract, from, out, threat, feature, code_graph }) => {
+      if (from && contract !== 'probe') throw new Error('from requires contract probe');
+      const sources = from ? loadTranslateSources(from, resolve(root)) : undefined;
+      if (sources?.failures.length) throw new Error(sources.failures.map(f => `${f.source}: ${f.error}`).join('\n'));
       let { model } = await getModel(root);
       if (feature) model = filterByFeature(model, feature.split(',').map((f: string) => f.trim()));
       model = selectTranslateThreats(model, threat);
       const pack = context ? loadTranslateContext(context, resolve(root))
         : await buildTranslateContext(resolve(root), model, { enabled: code_graph });
       return { content: [{ type: 'text', text: JSON.stringify({ mode: 'agent',
-        prompt: buildTranslatePrompt(prompt, resolve(root), model, { context: pack, contract, out, threats: threat }),
+        prompt: buildTranslatePrompt(prompt, resolve(root), model, { context: pack, sources: sources?.sources, contract, out, threats: threat }),
       }) }] };
     },
   );
