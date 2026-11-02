@@ -125,6 +125,20 @@ describe('GL-401 — instructions arrive at initialize', () => {
     }
   });
 
+  it('routes everyday testing from initialize and export to generation with a separate execution step', async () => {
+    expect(instructions).toContain('annotate → translate → test → fix');
+    expect(instructions).toContain('keep existing annotations accurate after each test/fix round');
+    expect(instructions).toContain('guardlink_translate returns an authoring prompt');
+    expect(instructions).toContain('execute selected tests separately');
+    expect(instructions).toContain('without Bravos');
+    expect(instructions).toContain('not a full pentest');
+    expect(instructions).toContain('runs that can take hours');
+    const sarif = (await session.client.listTools()).tools.find(t => t.name === 'guardlink_sarif');
+    expect(sarif?.description).toContain('guardlink_translate');
+    expect(sarif?.description).toContain('guardlink translate "<changed paths and threats>"');
+    expect(sarif?.description).toContain('run selected tests separately');
+  });
+
   it('teaches the two distinctions that make answers safe to act on', () => {
     // Empty-vs-never-read, and declared-vs-never-heard-of.
     expect(instructions).toMatch(/scanned_without_annotations/);

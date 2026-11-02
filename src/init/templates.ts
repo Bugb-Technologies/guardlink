@@ -502,11 +502,11 @@ ${placementLine(project, mode)} Placement in full: \`.guardlink/README.md\`; syn
 
 **What you owe it back**, in the same change as the code:
 
-- Annotate security-relevant code you write or change — endpoints, authentication and authorization (ownership and tenant checks included), validation, queries, file I/O, external calls, crypto, process spawning, configuration parsing. Reuse the ids in \`.guardlink/definitions${project.definitionsExt ?? '.*'}\`; never redefine one.
+- Annotate security-relevant code you write or change — endpoints, authentication and authorization (ownership and tenant checks included), validation, queries, file I/O, external calls, crypto, process spawning, configuration parsing. Keep existing annotations accurate as the code changes, including after each test/fix round. Reuse the ids in \`.guardlink/definitions${project.definitionsExt ?? '.*'}\`; never redefine one.
 - Code that hands an LLM agent a tool: \`@agents\` on the registration, \`@effects\` on the code that acts, \`@gates\` on an approval step (\`@reaches\` for a principal that is no agent). Syntax: the reference above.
 - **Never write \`@accepts\` or \`@entitles\`** — both are a human's decision. A risk with no control is \`@exposes\` + \`@audit\`; an entitlement is proposed with \`guardlink entitle --propose\`, and a human's acceptance writes it.
 - \`@confirmed\` needs reproduction evidence in hand; reading the code is not reproduction.
-- For a routine developer check: \`guardlink translate "<changed paths and threats>"\` generates templates only; review/validate them, then run selected tests separately. See \`.guardlink/README.md\` for the regression workflow.
+- For an everyday, per-change developer check: \`guardlink translate "<changed paths and threats>"\` generates templates only; review/validate them, then run selected tests separately. Repeat annotate → translate → test → fix. See \`.guardlink/README.md\` for the workflow, regression retention and deep verification with Bravos.
 - Before you finish: \`guardlink validate .\`, then \`guardlink diff HEAD~1\` — did this change add exposure?
 
 ${prePrSection(ctx.prePr ?? [], project.securityTestsDir ?? DEFAULT_SECURITY_TESTS_DIR)}
@@ -1137,8 +1137,6 @@ exposure from the SARIF a pentest reads, which means it stops the risk being TES
 reported. That is why it is the one decision a person has to sign.
 
 ---
-
-## Quick developer test
 
 ${TRANSLATE_GUIDE}
 

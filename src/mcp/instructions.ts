@@ -76,7 +76,9 @@ About to change a shared component → guardlink_graph(from, depth, direction)
 A scanner reported a CWE → guardlink_lookup("cwe:CWE-89")
   Check external_id.declared: false means undeclared, not declared-and-clean.
 
-Routine change → maintain code and annotations together; guardlink_translate returns an authoring prompt. Older servers: \`guardlink translate "<changed paths and threats>"\`. Scope the request explicitly. Generation only: review/validate templates, then execute selected tests separately. Keep durable regressions after mitigation removes candidates.
+Everyday developer testing → annotate → translate → test → fix; keep existing annotations accurate after each test/fix round. guardlink_translate returns an authoring prompt. Older servers: \`guardlink translate "<changed paths and threats>"\`. Scope the quick cxg check explicitly. Generation only: review/validate templates, then execute selected tests separately. Keep durable regressions after mitigation removes candidates. The returned workflow covers standalone checks without Bravos and the tested Bravos authoring path.
+
+A quick check is not a full pentest. bravos auto is specialized, annotation-guided deep verification with low-friction setup, real traffic and runs that can take hours.
 
 Before a pull request → run the entire root security/ suite with its configured runner. Report absent suites (not applicable), skips and unavailable/partial execution; an existing suite that cannot complete blocks readiness. A pre-review tool's recorded complete execution satisfies this once; generation does not.
 
