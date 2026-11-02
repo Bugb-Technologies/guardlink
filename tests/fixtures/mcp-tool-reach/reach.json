@@ -1,8 +1,8 @@
 {
   "summary": {
-    "reaches": 29,
-    "agent_reaches": 29,
-    "unentitled_reaches": 29,
+    "reaches": 30,
+    "agent_reaches": 30,
+    "unentitled_reaches": 30,
     "effects": 18,
     "mutating_effects": 18,
     "ungated_effects": 18,
@@ -129,6 +129,11 @@
     {
       "actor": "#mcp-agent",
       "capability": "guardlink_threat_reports",
+      "asset": "#mcp"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_translate",
       "asset": "#mcp"
     },
     {

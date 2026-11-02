@@ -735,6 +735,7 @@ export function buildTranslatePrompt(
   // generated guardlink-translate skill cannot drift from this prompt. Only the
   // live model summary, the user request and the CXG skeleton excerpts are
   // composed in here.
+  // @comment -- "Composes the shared translate method (TRANSLATE_HEADER/METHOD_A/METHOD_B from src/playbooks/translate.ts) with the per-run model summary, user request and CXG skeleton excerpts; the static method is one source the skill renderer also reads so the two cannot drift"
   return `${TRANSLATE_HEADER}## Current Threat Model
 ${modelSummary}${candidateExposures}
 

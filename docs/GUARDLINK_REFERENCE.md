@@ -176,7 +176,7 @@ guardlink annotate <prompt> [--playbook map|exploitable|chains|diff|coverage|ver
 guardlink lint [dir] [--since <ref>] [--json]   # Check annotations against the evidence bar; --since checks only what a session added
 guardlink hypothesis list|next|refute|confirm   # What happened when an exposure was tested (see below)
 guardlink hypothesis boundaries|support|contradict   # ...and when a declared @boundary was tested
-guardlink translate [prompt]            # Generate CERT-X-GEN pentest templates from threat findings
+guardlink translate [prompt] [--stdout] # Generate CERT-X-GEN pentest templates from threat findings; --stdout prints the prompt and exits (no agent launched)
 guardlink ask <query>                   # Ask questions about the threat model and codebase
 guardlink config <show|set|clear>       # Manage LLM provider / CLI agent configuration
 
@@ -291,9 +291,11 @@ hold a person's `@accepts` against them.
 ````json guardlink-findings```` block the dashboard and the CLI read; ids that name nothing in
 the model are reported on stderr.
 
-**Skills.** `guardlink init` writes each playbook as `.claude/skills/guardlink-<kind>-<id>/SKILL.md`
-so a developer's own agent session runs the same method. A skill file without the generated marker
-is treated as authored and left alone.
+**Skills.** `guardlink init` writes each playbook as `.claude/skills/guardlink-<kind>-<id>/SKILL.md`,
+and the translate method as `.claude/skills/guardlink-translate/SKILL.md`, so a developer's own agent
+session runs the same method without launching a child agent (`guardlink translate --stdout` prints
+the same prompt with live data). `guardlink sync` refreshes these generated skills. A skill file
+without the generated marker is treated as authored and left alone.
 
 ## Hypotheses (`guardlink hypothesis`)
 

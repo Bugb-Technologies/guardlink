@@ -2245,6 +2245,7 @@ program
     // --stdout prints only the prompt (stderr still carries the feature-filter
     // and diagnostics lines above), so a session can pipe or read it without a
     // child agent ever being launched — mirrors `annotate --stdout`.
+    // @comment -- "translate --stdout writes the prompt to stdout and returns; no agent is launched and nothing is copied to the clipboard, so an in-session agent reads the method instead of spawning a child through the launcher"
     if (agent.id !== 'stdout') {
       console.log(`Launching ${agent.name} for CXG template translation...`);
       console.log(`Threat model: ${model.annotations_parsed} annotations, ${model.exposures.length} exposures`);

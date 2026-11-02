@@ -460,6 +460,7 @@ function updateAgentFiles(
 
   // The playbooks as Claude Code skills, one file each, plus the one translate
   // skill. A skill file a person wrote (no generated marker) is theirs and stays.
+  // @comment -- "init writes the annotate and report playbook skills and the one guardlink-translate skill for Claude Code; a skill file without the generated marker is authored and kept, never overwritten"
   if (ids.includes('claude')) {
     const skills: SkillFile[] = [
       ...[...ANNOTATE_PLAYBOOKS, ...REPORT_SHAPES.filter(s => s.id !== 'full')].map(skillFileFor),
@@ -958,6 +959,7 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
   // Generated skills: refresh the ones that are already here, marker-gated. A
   // skill file a person wrote (no generated marker) is theirs and left alone; a
   // missing one is init's to create, not sync's, so sync stays quiet about it.
+  // @comment -- "sync rewrites generated skill files that already exist (marker present) to the current method text, keeps an authored one (no marker), and does not create a missing skill — that is init's job"
   const syncSkills: SkillFile[] = [
     ...[...ANNOTATE_PLAYBOOKS, ...REPORT_SHAPES.filter(s => s.id !== 'full')].map(skillFileFor),
     translateSkillFile(),

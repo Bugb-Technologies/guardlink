@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## \[Unreleased\]
 
+### Added
+
+- **`guardlink translate` gains the three in-session surfaces `guardlink annotate` already has**, so a coding agent runs the translation method itself instead of the CLI launching a second agent with permission-bypass flags.
+  - **`guardlink translate --stdout`** prints the translation prompt (with the live threat model folded in) to stdout and exits — no agent launched, nothing copied to the clipboard — for piping or for an agent to read directly.
+  - **A generated `.claude/skills/guardlink-translate/SKILL.md`**, written by `guardlink init` for Claude Code and refreshed by `guardlink sync`, marker-gated: a skill file without the `<!-- guardlink:generated -->` marker is treated as authored and left alone. The skill tells the agent to fetch the live model (`guardlink lookup unmitigated`, `guardlink parse`) and the CXG skeleton itself rather than baking a per-run copy in.
+  - **A `guardlink_translate` MCP tool**, mirroring `guardlink_annotate`: optional `prompt` and `feature`, returns the translation prompt for the calling agent, writes nothing.
+  - The method text is factored into one source (`src/playbooks/translate.ts`) read by both the prompt builder and the skill renderer, so the CLI prompt and the skill cannot drift.
+
 ## \[2.5.0\] - 2026-10-26
 
 ### Upgrading
