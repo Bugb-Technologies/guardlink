@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-boundary/agent-boundary.mmd
 %% scope:           PARTIAL — the Trust boundary at process spawn between agent-launcher and agentprocess, and what flows across it
-%% annotation_hash: sha256-v3:00592b68c0847cc94c5d417736175a6f077a97c653075a7f2ec543ec5bb5abd8
+%% annotation_hash: sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -18,22 +18,16 @@ graph LR
     agentprocess["🧩 AgentProcess"]
   end
   parser["🧩 GuardLink.Parser"]
-  codegraph["🧩 GuardLink.CodeGraph"]
   mcp["🧩 GuardLink.MCP"]
   tui["👤 GuardLink.TUI"]
   agent_launcher -.-|🧱 Trust boundary at process spawn| agentprocess
   agent_launcher -- "📡 spawn" --> agentprocess
   agentprocess -- "📡 stdout" --> agent_launcher
   parser -- "📡 annotation worklist" --> agent_launcher
-  codegraph -- "📡 worklist" --> agent_launcher
-  codegraph -- "📡 undeclared agent tools" --> agent_launcher
-  codegraph -- "📡 buildTranslateContext" --> agent_launcher
+  agentprocess -- "📡 readAgentCompletion" --> agent_launcher
   agent_launcher -- "📡 runTranslateAgent" --> agentprocess
   agentprocess -- "📡 templates" --> agent_launcher
   agentprocess -- "📡 validateProbeIdentities" --> agent_launcher
   agentprocess -- "📡 validateScannerYaml" --> agent_launcher
-  codegraph -- "📡 loadRouteFacts" --> agent_launcher
-  mcp -- "📡 guardlink_worklist" --> codegraph
-  mcp -- "📡 guardlink_reach" --> codegraph
   mcp -- "📡 guardlink_translate" --> agent_launcher
   tui -- "📡 launchAgent" --> agent_launcher

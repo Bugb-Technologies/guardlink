@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:00592b68c0847cc94c5d417736175a6f077a97c653075a7f2ec543ec5bb5abd8
+%% annotation_hash: sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 49 nodes / 216 edges, past the 12 / 16 legibility budget (49 nodes against 12, 216 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 49 nodes / 218 edges, past the 12 / 16 legibility budget (49 nodes against 12, 218 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -69,24 +69,24 @@ graph LR
   arbitrary_write["🟠 Arbitrary_File_Write (cwe:CWE-73, cwe:CWE-74)"]:::threat
   child_proc_injection["🔴 Child_Process_Injection (cwe:CWE-78)"]:::threat
   config_tamper["🟡 Config_Tampering (cwe:CWE-15)"]:::threat
+  vacuous_pass["🟠 Vacuous_Pass (cwe:CWE-754)"]:::threat
   ssrf["🟡 Server_Side_Request_Forgery (cwe:CWE-918)"]:::threat
   redos["🟡 ReDoS (cwe:CWE-1333)"]:::threat
   xss["🟠 Cross_Site_Scripting (cwe:CWE-79)"]:::threat
   info_disclosure["🔵 Information_Disclosure (cwe:CWE-200)"]:::threat
-  vacuous_pass["🟠 Vacuous_Pass (cwe:CWE-754)"]:::threat
   tag_collision["🟡 Tag_Collision"]:::threat
   path_validation["🛡️ Path_Validation"]:::control
   resource_limits["🛡️ Resource_Limits"]:::control
   param_commands["🛡️ Parameterized_Commands"]:::control
   key_redaction["🛡️ Key_Redaction"]:::control
   config_validation["🛡️ Config_Validation"]:::control
+  fail_closed["🛡️ Fail_Closed"]:::control
   input_sanitize["🛡️ Input_Sanitization"]:::control
   glob_filtering["🛡️ Glob_Pattern_Filtering"]:::control
   regex_anchoring["🛡️ Regex_Anchoring"]:::control
   identity_redaction["🛡️ Identity_Redaction"]:::control
   output_encoding["🛡️ Output_Encoding"]:::control
   prefix_ownership["🛡️ Prefix_Ownership"]:::control
-  fail_closed["🛡️ Fail_Closed"]:::control
   yaml_validation["🛡️ YAML_Validation"]:::control
   agent_config -. exposes .-> path_traversal
   agent_config -. exposes .-> dos
@@ -101,6 +101,7 @@ graph LR
   agent_launcher -. exposes .-> prompt_injection
   agent_launcher -. exposes .-> dos
   agent_launcher -. exposes .-> config_tamper
+  agent_launcher -. exposes .-> vacuous_pass
   agent_launcher -. exposes .-> insecure_deser
   llm_client -. exposes .-> insecure_deser
   llm_client -. exposes .-> path_traversal
@@ -190,6 +191,8 @@ graph LR
   param_commands -- mitigates --> child_proc_injection
   param_commands -. protects .-> agent_launcher
   resource_limits -. protects .-> agent_launcher
+  fail_closed -- mitigates --> vacuous_pass
+  fail_closed -. protects .-> agent_launcher
   config_validation -. protects .-> agent_launcher
   input_sanitize -- mitigates --> path_traversal
   input_sanitize -. protects .-> agent_launcher
@@ -266,7 +269,6 @@ graph LR
   path_validation -. protects .-> tui
   key_redaction -. protects .-> tui
   resource_limits -. protects .-> tui
-  fail_closed -- mitigates --> vacuous_pass
   fail_closed -. protects .-> estate_view
   config_validation -. protects .-> estate_view
   prefix_ownership -. protects .-> merge_engine

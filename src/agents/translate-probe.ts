@@ -6,9 +6,9 @@
  */
 import { readFileSync, statSync } from 'node:fs';
 import type { ThreatModel } from '../types/index.js';
-import { matchesThreat, type TranslateContextPack } from './translate-context.js';
+import { matchesThreat, matchesTranslateReference, type TranslateContextPack } from './translate-context.js';
 
-export function validateProbeIdentities(file: string, model: ThreatModel, context?: TranslateContextPack): string[] {
+export function validateProbeIdentities(file: string, model: ThreatModel, context?: TranslateContextPack, references?: readonly string[]): string[] {
   try {
     if (statSync(file).size > 2 * 1024 * 1024) return ['Probe exceeds 2 MiB'];
     const source = readFileSync(file, 'utf8');
@@ -17,7 +17,7 @@ export function validateProbeIdentities(file: string, model: ThreatModel, contex
     if (declarations.length > 1) return ['Duplicate requires_identities headers'];
     const roles: unknown = JSON.parse(declarations[0][1]);
     if (!roles || typeof roles !== 'object' || Array.isArray(roles)) return ['requires_identities must be a JSON role-to-profile-name object'];
-    const available = new Set(context?.threats.filter(t => model.exposures.some(e => matchesThreat(t.id, e)))
+    const available = new Set(context?.threats.filter(t => references ? references.some(ref => matchesTranslateReference(t.id, ref)) : model.exposures.some(e => matchesThreat(t.id, e)))
       .flatMap(t => t.identity?.available?.map(i => i.name) || []));
     let authenticated = 0;
     const used = new Set<string>();

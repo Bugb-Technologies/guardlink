@@ -88,11 +88,11 @@ describe('translate context schema and prompts', () => {
     const root = directory();
     vi.stubEnv('GUARDLINK_CXG_ROOT', root);
     vi.stubEnv('GUARDLINK_CXG_SKELETON_DIR', root);
-    const prompt = buildTranslatePrompt('Generate templates', '/project', null);
+    const prompt = buildTranslatePrompt('Generate templates', root, null);
     for (const rule of ['Do NOT execute templates', 'CERT_X_GEN_PROJECT_ROOT', 'CERT_X_GEN_TARGET_HOST', 'nargs="?"',
       'JSON array', 'matched_patterns', '"request"', '"response"', 'author MUST be an AuthorInfo mapping',
       'protected resource named by the threat', '@guardlink_threat:']) expect(prompt).toContain(rule);
-    expect(buildTranslatePrompt('Generate templates', '/project', null, { contract: 'scanner' })).toBe(prompt);
+    expect(buildTranslatePrompt('Generate templates', root, null, { contract: 'scanner' })).toBe(prompt);
   });
 
   it('renders only in-scope context as quoted untrusted evidence and supports exposure ids', async () => {
@@ -183,7 +183,7 @@ describe('headless authoring', () => {
   it('CLI emits only JSON, preserves feature/threat scope and fails on agent error', async () => {
     const { root } = await project();
     const bin = join(root, 'codex');
-    writeFileSync(bin, `#!${process.execPath}\nconst fs=require('node:fs'),p=fs.readFileSync(0,'utf8'); const match=p.match(/Write JavaScript files under ("[^\\n]+")\\./); fs.writeFileSync(require('node:path').join(JSON.parse(match[1]),'probe.js'),'// authored'); process.stdout.write('agent noise'); process.exit(process.env.STUB_FAIL ? 4 : 0);`);
+    writeFileSync(bin, `#!${process.execPath}\nconst fs=require('node:fs'),p=fs.readFileSync(0,'utf8'); const match=p.match(/Write JavaScript files under ("[^\\n]+")\\./); fs.writeFileSync(require('node:path').join(JSON.parse(match[1]),'probe.js'),'// authored'); process.stdout.write(JSON.stringify({type:'turn.completed',usage:{}})); process.exit(process.env.STUB_FAIL ? 4 : 0);`);
     chmodSync(bin, 0o755);
     const args = ['--import', 'tsx', 'src/cli/index.ts', 'translate', '--dir', root, '--headless', '--agent', 'codex', '--contract', 'probe', '--out', 'generated', '--threat', 'idor', '--feature', 'Orders', '--format', 'json', '--no-code-graph'];
     const env = { ...process.env, PATH: root + delimiter + process.env.PATH };

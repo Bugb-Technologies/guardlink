@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:00592b68c0847cc94c5d417736175a6f077a97c653075a7f2ec543ec5bb5abd8",
+    "annotation_hash": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
     "generator": "guardlink@2.5.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 189,
-  "annotations_parsed": 1106,
+  "source_files": 190,
+  "annotations_parsed": 1111,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agentconfig/bundle.ts",
@@ -22,6 +22,7 @@
     "src/agents/index.ts",
     "src/agents/launcher.ts",
     "src/agents/prompts.ts",
+    "src/agents/translate-completion.ts",
     "src/agents/translate-context.ts",
     "src/agents/translate-headless.ts",
     "src/agents/translate-probe.ts",
@@ -1272,7 +1273,7 @@
       "description": "Uses the existing optional graph adapter, never builds an index",
       "location": {
         "file": "src/agents/translate-context.ts",
-        "line": 119
+        "line": 127
       }
     },
     {
@@ -1281,7 +1282,7 @@
       "description": "Runs an author CLI without a TTY, with closed stdin and captured output",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 24
+        "line": 25
       }
     },
     {
@@ -1290,7 +1291,7 @@
       "description": "stampScannerThreatHeader adds source identity only to templates changed during this author run; existing matching headers remain byte-identical",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 64
+        "line": 77
       }
     },
     {
@@ -1667,6 +1668,26 @@
     },
     {
       "asset": "#agent-launcher",
+      "threat": "#vacuous-pass",
+      "control": "#fail-closed",
+      "description": "Requires a terminal structured completion; safety/refusal/error metadata cannot be cleared by a later success",
+      "location": {
+        "file": "src/agents/translate-completion.ts",
+        "line": 4
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "threat": "#insecure-deser",
+      "control": "#config-validation",
+      "description": "Bounded transcript, known completion shapes and control-metadata containers; tool payloads are not control signals",
+      "location": {
+        "file": "src/agents/translate-completion.ts",
+        "line": 6
+      }
+    },
+    {
+      "asset": "#agent-launcher",
       "threat": "#insecure-deser",
       "control": "#config-validation",
       "description": "parseTranslateContext validates known fields, strips unknown fields and refuses duplicate ids",
@@ -1692,7 +1713,7 @@
       "description": "Per-exposure child names use a sanitized label plus a hash; context ids are never path components",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 96
+        "line": 109
       }
     },
     {
@@ -3499,6 +3520,28 @@
     },
     {
       "asset": "#agent-launcher",
+      "threat": "#vacuous-pass",
+      "severity": "high",
+      "external_refs": [],
+      "description": "readAgentCompletion could mistake exit-zero output for successful authoring despite a provider safety stop",
+      "location": {
+        "file": "src/agents/translate-completion.ts",
+        "line": 3
+      }
+    },
+    {
+      "asset": "#agent-launcher",
+      "threat": "#insecure-deser",
+      "severity": "medium",
+      "external_refs": [],
+      "description": "Parses JSON/JSONL emitted by the selected author CLI",
+      "location": {
+        "file": "src/agents/translate-completion.ts",
+        "line": 5
+      }
+    },
+    {
+      "asset": "#agent-launcher",
       "threat": "#insecure-deser",
       "severity": "medium",
       "external_refs": [],
@@ -3549,7 +3592,7 @@
       "description": "translateHeadless creates directories below the caller-selected output root",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 95
+        "line": 108
       }
     },
     {
@@ -5457,6 +5500,17 @@
       }
     },
     {
+      "source": "AgentProcess",
+      "target": "#agent-launcher",
+      "mechanism": "readAgentCompletion",
+      "route": null,
+      "description": "Reported completion and safety metadata only; never evaluates author output",
+      "location": {
+        "file": "src/agents/translate-completion.ts",
+        "line": 7
+      }
+    },
+    {
       "source": "ContextPack",
       "target": "#agent-launcher",
       "mechanism": "loadTranslateContext",
@@ -5475,7 +5529,7 @@
       "description": "Optional route and entry-to-sink facts for selected exposure symbols",
       "location": {
         "file": "src/agents/translate-context.ts",
-        "line": 118
+        "line": 126
       }
     },
     {
@@ -5497,7 +5551,7 @@
       "description": "Inventory changed regular template files per exposure, without evaluating them",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 97
+        "line": 110
       }
     },
     {
@@ -8123,7 +8177,7 @@
       "description": "Installed graph binary runs without confirmation; graph failures contribute no context",
       "location": {
         "file": "src/agents/translate-context.ts",
-        "line": 120
+        "line": 128
       }
     },
     {
@@ -8139,7 +8193,7 @@
       "description": "Author runs with its CLI editing permissions; GuardLink never runs a generated template",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 25
+        "line": 26
       }
     },
     {
@@ -8147,7 +8201,7 @@
       "description": "The operator chooses the output directory; a header records authoring scope, not proof of the template's logic",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 65
+        "line": 78
       }
     },
     {
@@ -11054,7 +11108,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 1106,
+    "annotation_count": 1111,
     "coverage_percent": 93
   },
   "annotation_scope": {
@@ -11361,7 +11415,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:00592b68c0847cc94c5d417736175a6f077a97c653075a7f2ec543ec5bb5abd8",
+          "stamp": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11377,7 +11431,7 @@
         "bytes": 3285,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:00592b68c0847cc94c5d417736175a6f077a97c653075a7f2ec543ec5bb5abd8",
+          "stamp": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11394,7 +11448,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:00592b68c0847cc94c5d417736175a6f077a97c653075a7f2ec543ec5bb5abd8",
+          "stamp": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11411,7 +11465,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:00592b68c0847cc94c5d417736175a6f077a97c653075a7f2ec543ec5bb5abd8",
+          "stamp": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11427,7 +11481,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:00592b68c0847cc94c5d417736175a6f077a97c653075a7f2ec543ec5bb5abd8",
+          "stamp": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11446,7 +11500,7 @@
         "bytes": 3879,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:00592b68c0847cc94c5d417736175a6f077a97c653075a7f2ec543ec5bb5abd8",
+          "stamp": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11463,7 +11517,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:00592b68c0847cc94c5d417736175a6f077a97c653075a7f2ec543ec5bb5abd8",
+          "stamp": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -12299,7 +12353,7 @@
         "index": 0,
         "claim_key": "8ae2481e8734f7497dd7c5f1bca637a1fa8802b0dd0776a2483f8c3e9889b410:0",
         "file": "src/agents/translate-context.ts",
-        "line": 119,
+        "line": 127,
         "effect": "execute",
         "asset": "#codegraph",
         "identity": null,
@@ -12313,7 +12367,7 @@
         "index": 1,
         "claim_key": "bfabe1a20530d23c7c0c67fc1180f9af426339ebce89403e0cc7db9d159ab178:0",
         "file": "src/agents/translate-headless.ts",
-        "line": 24,
+        "line": 25,
         "effect": "execute",
         "asset": "#agent-launcher",
         "identity": null,
@@ -12327,7 +12381,7 @@
         "index": 2,
         "claim_key": "264be6b0241866e4b5a43d77891dfee8ed62ad98ba74a0fd763f8da38de34ce9:0",
         "file": "src/agents/translate-headless.ts",
-        "line": 64,
+        "line": 77,
         "effect": "write",
         "asset": "#agent-launcher",
         "identity": null,

@@ -9,11 +9,13 @@
  * @audit #agent-launcher -- "The installed cxg executable is operator-trusted; schema checks do not prove the detection logic"
  */
 import { spawnSync } from 'node:child_process';
-import { readFileSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, statSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { parseDocument } from 'yaml';
 
 export function validateScannerYaml(file: string): string[] {
+  let validatorHome: string | undefined;
   try {
     if (statSync(file).size > 2 * 1024 * 1024) return ['YAML template exceeds 2 MiB'];
     const doc = parseDocument(readFileSync(file, 'utf8'));
@@ -33,8 +35,12 @@ export function validateScannerYaml(file: string): string[] {
         }
       }
     }
+    validatorHome = mkdtempSync(join(tmpdir(), 'guardlink-cxg-validate-'));
     const result = spawnSync('cxg', ['template', 'validate', resolve(file), '--json', '--disable-update-check'], {
       encoding: 'utf8', shell: false, timeout: 30000, maxBuffer: 1024 * 1024,
+      // Older validators persist updater preferences even for template validate.
+      // This is the child's actual home, not a change to the parent environment.
+      env: { ...process.env, CERT_X_GEN_HOME: validatorHome, HOME: validatorHome, USERPROFILE: validatorHome },
     });
     if (result.error) return [`Cannot validate scanner YAML with cxg: ${result.error.message}`];
     if (result.status !== 0) return [`cxg template validate failed (${result.signal || result.status}): ${(result.stderr || result.stdout).slice(-2000)}`];
@@ -51,5 +57,5 @@ export function validateScannerYaml(file: string): string[] {
     return [];
   } catch (error) {
     return [`Invalid scanner YAML: ${(error as Error).message}`];
-  }
+  } finally { if (validatorHome) rmSync(validatorHome, { recursive: true, force: true }); }
 }

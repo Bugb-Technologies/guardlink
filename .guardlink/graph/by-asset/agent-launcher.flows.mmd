@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/agent-launcher.flows.mmd
-%% scope:           PARTIAL — #agent-launcher and its flow neighbourhood, grown until the drawing stopped fitting — 30 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:00592b68c0847cc94c5d417736175a6f077a97c653075a7f2ec543ec5bb5abd8
+%% scope:           PARTIAL — #agent-launcher and its flow neighbourhood, grown until the drawing stopped fitting — 31 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -11,27 +11,15 @@
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
 graph LR
-  subgraph Z0["🧱 GuardLink.Agent_Launcher · Trust boundary at process spawn"]
-    agent_launcher["🧩 GuardLink.Agent_Launcher"]
-  end
-  subgraph Z1["🧱 AgentProcess · Trust boundary at process spawn"]
-    agentprocess["🧩 AgentProcess"]
-  end
   parser["🧩 GuardLink.Parser"]
+  agent_launcher["🧩 GuardLink.Agent_Launcher"]
   codegraph["🧩 GuardLink.CodeGraph"]
   mcp["🧩 GuardLink.MCP"]
   tui["👤 GuardLink.TUI"]
-  agent_launcher -.-|🧱 Trust boundary at process spawn| agentprocess
-  agent_launcher -- "📡 spawn" --> agentprocess
-  agentprocess -- "📡 stdout" --> agent_launcher
   parser -- "📡 annotation worklist" --> agent_launcher
   codegraph -- "📡 worklist" --> agent_launcher
   codegraph -- "📡 undeclared agent tools" --> agent_launcher
   codegraph -- "📡 buildTranslateContext" --> agent_launcher
-  agent_launcher -- "📡 runTranslateAgent" --> agentprocess
-  agentprocess -- "📡 templates" --> agent_launcher
-  agentprocess -- "📡 validateProbeIdentities" --> agent_launcher
-  agentprocess -- "📡 validateScannerYaml" --> agent_launcher
   codegraph -- "📡 loadRouteFacts" --> agent_launcher
   mcp -- "📡 guardlink_worklist" --> codegraph
   mcp -- "📡 guardlink_reach" --> codegraph

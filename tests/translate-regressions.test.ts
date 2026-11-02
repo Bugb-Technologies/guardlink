@@ -7,7 +7,7 @@ import { validateProbeIdentities } from '../src/agents/translate-probe.js';
 import { validateScannerYaml } from '../src/agents/translate-yaml.js';
 import { buildTranslatePrompt, loadProbeGuide } from '../src/agents/prompts.js';
 import { translateHeadless } from '../src/agents/translate-headless.js';
-import { buildTranslateContext } from '../src/agents/translate-context.js';
+import { buildTranslateContext, renderTranslateContext, parseTranslateContext } from '../src/agents/translate-context.js';
 import { QUERY_TIMEOUT_MS, graphQueryTimeout } from '../src/codegraph/index.js';
 import { parseProject } from '../src/parser/index.js';
 
@@ -136,9 +136,45 @@ describe('translate authoring regression paths', () => {
     expect(validateScannerYaml(file)[0]).toContain('author.email');
   });
 
+  it('isolates and removes the validator home instead of changing operator updater preferences', () => {
+    const root = directory();
+    const marker = join(root, 'validator-home.json');
+    const originalHome = process.env.HOME;
+    const originalCxgHome = process.env.CERT_X_GEN_HOME;
+    const binary = join(root, 'cxg');
+    writeFileSync(binary, `#!${process.execPath}\nconst fs=require('node:fs');fs.writeFileSync(${JSON.stringify(marker)},JSON.stringify({home:process.env.HOME,cxg:process.env.CERT_X_GEN_HOME}));fs.writeFileSync(require('node:path').join(process.env.HOME,'updater-preference'),'disabled');console.log(JSON.stringify([{passed:true}]));`); chmodSync(binary, 0o755);
+    vi.stubEnv('PATH', root + delimiter + process.env.PATH);
+    const file = join(root, 'check.yaml'); writeFileSync(file, 'author: {name: Security Team}\nhttp: []\n');
+    expect(validateScannerYaml(file)).toEqual([]);
+    const child = JSON.parse(readFileSync(marker, 'utf8'));
+    expect(child.home).not.toBe(originalHome);
+    expect(child.cxg).toBe(child.home);
+    expect(existsSync(child.home)).toBe(false);
+    expect(process.env.HOME).toBe(originalHome);
+    expect(process.env.CERT_X_GEN_HOME).toBe(originalCxgHome);
+  });
+
 });
 
 describe('portable replay contracts', () => {
+  it('keeps explicit source-reference context usable without annotations while excluding unrelated profiles', async () => {
+    const {root,model} = await project();
+    const noExposures = {...model, exposures: []};
+    const pack = parseTranslateContext({version:1, threats:[
+      {id:'missing-auth@original.ts:12',identity:{available:[{name:'a-member',role:'member'}]}},
+      {id:'missing-auth@other.ts:12',identity:{available:[{name:'b-member',role:'member'}]}}
+    ]});
+    const refs = ['#missing-auth@original.ts:12'];
+    const prompt = renderTranslateContext(pack, noExposures, refs);
+    expect(prompt).toContain('a-member'); expect(prompt).not.toContain('b-member');
+    expect(renderTranslateContext(pack, noExposures)).toBe('');
+    const file = join(root,'probe.js');
+    writeFileSync(file,'// @requires_identities: {"entitled":"a-member","attacker":"anonymous"}\n// @requires_auth_count: 1\n');
+    expect(validateProbeIdentities(file,noExposures,pack,refs)).toEqual([]);
+    expect(validateProbeIdentities(file,noExposures,pack)[0]).toContain('not supplied');
+    writeFileSync(file,'// @requires_identities: {"entitled":"b-member"}\n');
+    expect(validateProbeIdentities(file,noExposures,pack,refs)[0]).toContain('not supplied');
+  });
   it('constrains named bindings to supplied profiles and reserves anonymous without counting it as authenticated', () => {
     const root = directory();
     const guide = join(root, '.cert-x-gen', 'pentest', 'docs'); mkdirSync(guide, { recursive: true });

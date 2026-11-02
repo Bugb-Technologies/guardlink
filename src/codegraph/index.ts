@@ -966,7 +966,7 @@ export async function loadRouteFacts(root: string, opts: CodeGraphOptions = {}):
       if (!['bound', 'bound_unique_name'].includes(route.resolution) || typeof route.handler !== 'string') continue;
       const split = route.handler.indexOf('::');
       if (split < 1) continue;
-      const e = byHandler.get(route.handler) || { position: 0, graph_rank: null, handler: route.handler, file: route.handler.slice(0, split), name: route.handler.slice(split + 2), line: null, routes: [], access: [], reaches: [], score: 0, annotated: 'none' as const };
+      const e: WorklistEntry = byHandler.get(route.handler) || { position: 0, graph_rank: null, handler: route.handler, file: route.handler.slice(0, split), name: route.handler.slice(split + 2), line: null, routes: [], access: [], reaches: [], score: 0, annotated: 'none' as const };
       e.routes.push(routeLabel(route));
       byHandler.set(route.handler, e);
     }

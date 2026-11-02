@@ -248,9 +248,11 @@ describe('the node counter against browser-measured geometry', () => {
     // {nodes:49, links:215, clusters:9}.
     // Bound route facts independently measured at 1440x900: filtered
     // {nodes:35, links:110, clusters:9}; whole {nodes:49, links:216, clusters:9}.
+    // Structured completion safety checks measured at the same viewport:
+    // filtered {nodes:35, links:112, clusters:9}; whole {nodes:49, links:218, clusters:9}.
     const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
     expect(m.nodes).toBe(35);
-    expect(m.edges).toBe(110);
+    expect(m.edges).toBe(112);
     // And the whole model is 49 nodes, which is the number this work exists for.
     expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(49);
   }, 30_000);

@@ -178,6 +178,7 @@ Headless stdout is one JSON object (also the default without `--format json`):
     "contract": "probe",
     "template_dir": "/project/generated-probes/idor-0123456789ab",
     "templates": ["/project/generated-probes/idor-0123456789ab/order-read.js"],
+    "completion": {"status": "completed", "safety_stops": 0},
     "status": "written"
   }],
   "failures": []
@@ -194,10 +195,24 @@ README for audit-only explanations. `failed` preserves any partial file list.
 Each failure has `threat`, `error` and `exit_code` (null for spawn/file errors).
 Preflight errors use `threat: "*"` with empty results. Any author or preflight
 failure exits nonzero, including a nonzero agent exit after partial stdout.
+The CLI requests Claude/Gemini JSON or Codex JSONL and requires a recognized
+terminal completion. Exit zero alone is insufficient. A parsed author completion
+appears as `completion.status` (`completed`, `failed`, `refused`, `safety_stopped`, or
+`unknown`), with `safety_stops` when the provider reports it and a failure
+`reason` when applicable. Missing/malformed completion, provider errors and
+output over 8 MiB fail authoring. Spawn/preflight failures and skipped authors
+have no completion field. Provider safety stops and refusals preserve
+partial paths without stamping or validating their drafts, fail the batch and
+skip remaining authors. There is no retry or provider fallback. Audit-only
+completion with no templates remains `no_templates`; tool/source quotations
+are not treated as author refusals. CLI relays must preserve terminal structured
+completion and safety metadata rather than returning only an exit code.
 An empty candidate scope is an error. Written scanner YAML files undergo an
 explicit AuthorInfo check plus `cxg template validate --json --disable-update-check`. CXG must be installed for that schema check; missing
 validator, invalid schema, invalid author or validator errors mark the exposure
 `failed` and make translate exit nonzero even when the author exited zero.
+The validator receives a temporary child home, removed after use, so older CXG
+versions cannot persist updater preferences in the operator's home.
 Foreground scanner agents get the same validation for newly written YAML on
 return. MCP/clipboard/IDE workflows return a prompt and cannot validate files an
 external author has not yet written. Validation only parses templates; it never

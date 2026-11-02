@@ -6,6 +6,7 @@
  * @audit #agent-launcher -- "Headless authoring requires the operator's explicit --headless and --agent; output instructions do not sandbox the agent"
  * @flows #agent-launcher -> AgentProcess via runTranslateAgent -- "Prompt, project cwd and chosen output directory"
  */
+import { readAgentCompletion, MAX_COMPLETION_BYTES, type AgentCompletion } from './translate-completion.js';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -17,7 +18,7 @@ import { defaultTranslateExposures, exposureId, type TranslateContextPack, type 
 import type { ThreatModel } from '../types/index.js';
 
 export type TranslateAgent = 'claude' | 'codex' | 'gemini';
-export interface TranslateAgentResult { exitCode: number | null; error?: string }
+export interface TranslateAgentResult { exitCode: number | null; error?: string; completion?: AgentCompletion; safety_stops?: number }
 export type TranslateRunner = (agent: TranslateAgent, prompt: string, root: string, out: string) => Promise<TranslateAgentResult>;
 
 /**
@@ -26,9 +27,9 @@ export type TranslateRunner = (agent: TranslateAgent, prompt: string, root: stri
  */
 export const runTranslateAgent: TranslateRunner = async (agent, prompt, root, out) => {
   const commands = {
-    claude: ['claude', ['-p', '--dangerously-skip-permissions', '--allowedTools', 'Read,Write,Edit,Glob,Grep', '--output-format', 'text']],
-    codex: ['codex', ['exec', '--full-auto', '--skip-git-repo-check', '--add-dir', out, '--color', 'never', '-']],
-    gemini: ['gemini', ['--prompt', 'Author templates according to the instructions on stdin.', '--approval-mode', 'auto_edit']],
+    claude: ['claude', ['-p', '--dangerously-skip-permissions', '--allowedTools', 'Read,Write,Edit,Glob,Grep', '--output-format', 'json']],
+    codex: ['codex', ['exec', '--json', '--full-auto', '--skip-git-repo-check', '--add-dir', out, '--color', 'never', '-']],
+    gemini: ['gemini', ['--prompt', 'Author templates according to the instructions on stdin.', '--approval-mode', 'auto_edit', '--output-format', 'json']],
   } as const;
   const [command, args] = commands[agent];
   return new Promise(resolveResult => {
@@ -37,11 +38,23 @@ export const runTranslateAgent: TranslateRunner = async (agent, prompt, root, ou
     child.stdin.on('error', () => {}); // An early process exit can close the pipe before the write.
     child.stdin.end(prompt);
     let stderr = '';
-    // Drain output without accumulating an unbounded agent transcript.
-    child.stdout.on('data', () => {});
+    let stdout = '';
+    let bytes = 0;
+    let overflow = false;
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (data: string) => {
+      bytes += Buffer.byteLength(data);
+      if (bytes > MAX_COMPLETION_BYTES) { overflow = true; child.kill(); return; }
+      stdout += data;
+    });
     child.stderr.on('data', (data: Buffer) => { stderr = (stderr + data.toString()).slice(-4000); });
     child.on('error', error => resolveResult({ exitCode: null, error: error.message }));
-    child.on('close', (code, signal) => resolveResult({ exitCode: code, ...(code !== 0 ? { error: `Agent ${agent} ${signal ? `terminated by ${signal}` : `exited with code ${code}`}${stderr ? ': ' + stderr : ''}` } : {}) }));
+    child.on('close', (code, signal) => {
+      const completion: AgentCompletion = overflow ? { status: 'failed', reason: 'Agent structured output exceeds 8 MiB' } : readAgentCompletion(stdout);
+      const errors = [code !== 0 ? `Agent ${agent} ${signal ? `terminated by ${signal}` : `exited with code ${code}`}${stderr ? ': ' + stderr : ''}` : '',
+        completion.status !== 'completed' ? completion.reason || 'Agent completion failed' : ''].filter(Boolean);
+      resolveResult({ exitCode: code, completion, ...(errors.length ? { error: errors.join('; ') } : {}) });
+    });
   });
 };
 
@@ -87,7 +100,7 @@ export interface TranslateHeadlessOptions {
 }
 export interface TranslateHeadlessReport {
   version: 1;
-  results: Array<{ threat: string; contract: TranslateContract; template_dir: string; templates: string[]; status: 'written' | 'no_templates' | 'failed' }>;
+  results: Array<{ threat: string; contract: TranslateContract; template_dir: string; templates: string[]; completion?: AgentCompletion; status: 'written' | 'no_templates' | 'failed' }>;
   failures: Array<{ threat: string; error: string; exit_code: number | null }>;
 }
 
@@ -100,6 +113,7 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
   const report: TranslateHeadlessReport = { version: 1, results: [], failures: [] };
   const exposures = options.selected ? options.model.exposures : defaultTranslateExposures(options.model);
   if (!exposures.length) throw new Error('No in-scope translate exposure candidates');
+  let safetyStop: string | undefined;
   for (const exposure of exposures) {
     const id = exposureId(exposure);
     const model = { ...options.model, exposures: [exposure] };
@@ -107,6 +121,11 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
     const suffix = createHash('sha256').update(id).digest('hex').slice(0, 12);
     const dir = resolve(options.root, options.out, `${exposure.threat.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)}-${suffix}`);
     let written: string[] = [];
+    if (safetyStop) {
+      report.failures.push({ threat: id, error: `Not authored after earlier safety stop/refusal: ${safetyStop}`, exit_code: null });
+      report.results.push({ threat: id, contract, template_dir: dir, templates: [], status: 'failed' });
+      continue;
+    }
     try {
       mkdirSync(dir, { recursive: true });
       const before = snapshotTemplates(dir);
@@ -114,6 +133,15 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
         + '\nHeadless authoring: write files directly. Do not ask questions or perform CLI usage discovery. Return when authoring is complete.';
       const result = await run(options.agent, prompt, options.root, dir);
       written = [...snapshotTemplates(dir)].filter(([file, hash]) => before.get(file) !== hash).map(([file]) => file).sort();
+      const reportedStops = Math.max(result.safety_stops ?? 0, result.completion?.safety_stops ?? 0);
+      const completion: AgentCompletion | undefined = reportedStops > 0
+        ? { status: 'safety_stopped', safety_stops: reportedStops, reason: `Provider reported ${reportedStops} safety stops` } : result.completion;
+      if (completion?.status === 'safety_stopped' || completion?.status === 'refused') {
+        safetyStop = completion.reason || 'Provider reported a safety stop/refusal';
+        report.failures.push({ threat: id, error: safetyStop, exit_code: result.exitCode });
+        report.results.push({ threat: id, contract, template_dir: dir, templates: written, completion, status: 'failed' });
+        continue;
+      }
       const sourceErrors = contract === 'scanner' ? written.flatMap(file => stampScannerThreatHeader(file, id).map(error => `${file}: ${error}`)) : [];
       const invalid = [...sourceErrors, ...(contract === 'scanner' ? written.filter(file => /\.ya?ml$/i.test(file))
         .flatMap(file => validateScannerYaml(file).map(error => `${file}: ${error}`))
@@ -121,11 +149,11 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
       if (invalid.length) {
         report.failures.push({ threat: id, error: `Invalid ${contract === 'scanner' ? sourceErrors.length ? 'scanner source metadata' : 'scanner YAML' : 'probe identity metadata'}: ${invalid.join('; ')}`, exit_code: result.exitCode });
       }
-      if (result.error || result.exitCode !== 0) {
-        report.failures.push({ threat: id, error: result.error || 'Agent did not exit successfully', exit_code: result.exitCode });
-        report.results.push({ threat: id, contract, template_dir: dir, templates: written, status: 'failed' });
+      if (result.error || result.exitCode !== 0 || (completion && completion.status !== 'completed')) {
+        report.failures.push({ threat: id, error: result.error || completion?.reason || 'Agent did not exit successfully', exit_code: result.exitCode });
+        report.results.push({ threat: id, contract, template_dir: dir, templates: written, completion, status: 'failed' });
       } else {
-        report.results.push({ threat: id, contract, template_dir: dir, templates: written, status: invalid.length ? 'failed' : written.length ? 'written' : 'no_templates' });
+        report.results.push({ threat: id, contract, template_dir: dir, templates: written, completion, status: invalid.length ? 'failed' : written.length ? 'written' : 'no_templates' });
       }
     } catch (error) {
       report.failures.push({ threat: id, error: (error as Error).message, exit_code: null });
