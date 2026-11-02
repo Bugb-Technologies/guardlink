@@ -10,11 +10,12 @@ import { readAgentCompletion, MAX_COMPLETION_BYTES, type AgentCompletion } from 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { validateProbeIdentities } from './translate-probe.js';
 import { validateScannerYaml } from './translate-yaml.js';
 import { buildTranslatePrompt, translateContract } from './prompts.js';
 import { defaultTranslateExposures, exposureId, type TranslateContextPack, type TranslateContract } from './translate-context.js';
+import { translateDraftOutput, type TranslateSources } from './translate-source.js';
 import type { ThreatModel } from '../types/index.js';
 
 export type TranslateAgent = 'claude' | 'codex' | 'gemini';
@@ -95,51 +96,66 @@ function stampScannerThreatHeader(file: string, id: string): string[] {
 export interface TranslateHeadlessOptions {
   root: string; model: ThreatModel; agent: TranslateAgent; out: string;
   userPrompt: string; context?: TranslateContextPack; contract?: TranslateContract;
+  sources?: TranslateSources;
   /** An explicit threat selection includes mitigated exposures too. */
   selected?: boolean;
 }
 export interface TranslateHeadlessReport {
   version: 1;
-  results: Array<{ threat: string; contract: TranslateContract; template_dir: string; templates: string[]; completion?: AgentCompletion; status: 'written' | 'no_templates' | 'failed' }>;
-  failures: Array<{ threat: string; error: string; exit_code: number | null }>;
+  results: Array<TranslateIdentity & { contract: TranslateContract; template_dir: string; templates: string[]; completion?: AgentCompletion; status: 'written' | 'no_templates' | 'failed' }>;
+  failures: Array<TranslateIdentity & { error: string; exit_code: number | null }>;
 }
+type TranslateIdentity = { threat: string; source?: never } | { source: string; threat?: never };
 
 /**
  * @exposes #agent-launcher to #path-traversal [medium] -- "translateHeadless creates directories below the caller-selected output root"
- * @mitigates #agent-launcher against #path-traversal using #input-sanitize -- "Per-exposure child names use a sanitized label plus a hash; context ids are never path components"
- * @flows AgentProcess -> #agent-launcher via templates -- "Inventory changed regular template files per exposure, without evaluating them"
+ * @mitigates #agent-launcher against #path-traversal using #input-sanitize -- "translateHeadless child names use a sanitized exposure or source label plus a hash; context ids are never path components"
+ * @flows AgentProcess -> #agent-launcher via templates -- "Inventory changed regular template files per exposure or conversion source, without evaluating them"
  */
 export async function translateHeadless(options: TranslateHeadlessOptions, run: TranslateRunner = runTranslateAgent): Promise<TranslateHeadlessReport> {
   const report: TranslateHeadlessReport = { version: 1, results: [], failures: [] };
+  if (options.sources) {
+    if (options.contract !== 'probe') throw new Error('--from requires --contract probe');
+    translateDraftOutput(options.root, options.out);
+    for (const failure of options.sources.failures) {
+      report.results.push({ source: failure.source, contract: 'probe', template_dir: resolve(options.root, options.out), templates: [], status: 'failed' });
+      report.failures.push({ ...failure, exit_code: null });
+    }
+  }
   const exposures = options.selected ? options.model.exposures : defaultTranslateExposures(options.model);
-  if (!exposures.length) throw new Error('No in-scope translate exposure candidates');
+  const candidates = options.sources
+    ? options.sources.sources.map(source => ({ id: source.path, label: basename(source.path), source, model: options.model }))
+    : exposures.map(exposure => ({ id: exposureId(exposure), label: exposure.threat, source: undefined, model: { ...options.model, exposures: [exposure] } }));
+  if (!candidates.length && !report.failures.length) throw new Error('No in-scope translate candidates');
   let safetyStop: string | undefined;
-  for (const exposure of exposures) {
-    const id = exposureId(exposure);
-    const model = { ...options.model, exposures: [exposure] };
-    const contract = translateContract(model, options);
+  for (const { id, label, source, model } of candidates) {
+    const identity: TranslateIdentity = source ? { source: id } : { threat: id };
+    const contract = translateContract(model, { contract: options.contract, context: options.context });
     const suffix = createHash('sha256').update(id).digest('hex').slice(0, 12);
-    const dir = resolve(options.root, options.out, `${exposure.threat.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)}-${suffix}`);
+    const dir = resolve(options.root, options.out, `${label.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)}-${suffix}`);
     let written: string[] = [];
     if (safetyStop) {
-      report.failures.push({ threat: id, error: `Not authored after earlier safety stop/refusal: ${safetyStop}`, exit_code: null });
-      report.results.push({ threat: id, contract, template_dir: dir, templates: [], status: 'failed' });
+      report.failures.push({ ...identity, error: `Not authored after earlier safety stop/refusal: ${safetyStop}`, exit_code: null });
+      report.results.push({ ...identity, contract, template_dir: dir, templates: [], status: 'failed' });
       continue;
     }
     try {
+      if (source) translateDraftOutput(options.root, dir);
       mkdirSync(dir, { recursive: true });
       const before = snapshotTemplates(dir);
-      const prompt = buildTranslatePrompt(options.userPrompt, options.root, model, { context: options.context, contract, out: dir, threats: [id] })
+      const prompt = buildTranslatePrompt(options.userPrompt, options.root, model, { context: options.context, contract, out: dir,
+        sources: source ? [source] : undefined,
+        threats: source ? (options.selected ? model.exposures.map(exposureId) : undefined) : [id] })
         + '\nHeadless authoring: write files directly. Do not ask questions or perform CLI usage discovery. Return when authoring is complete.';
       const result = await run(options.agent, prompt, options.root, dir);
-      written = [...snapshotTemplates(dir)].filter(([file, hash]) => before.get(file) !== hash).map(([file]) => file).sort();
+      written = [...snapshotTemplates(dir)].filter(([file, hash]) => before.get(file) !== hash && (!source || /\.(js|mjs)$/i.test(file))).map(([file]) => file).sort();
       const reportedStops = Math.max(result.safety_stops ?? 0, result.completion?.safety_stops ?? 0);
       const completion: AgentCompletion | undefined = reportedStops > 0
         ? { status: 'safety_stopped', safety_stops: reportedStops, reason: `Provider reported ${reportedStops} safety stops` } : result.completion;
       if (completion?.status === 'safety_stopped' || completion?.status === 'refused') {
         safetyStop = completion.reason || 'Provider reported a safety stop/refusal';
-        report.failures.push({ threat: id, error: safetyStop, exit_code: result.exitCode });
-        report.results.push({ threat: id, contract, template_dir: dir, templates: written, completion, status: 'failed' });
+        report.failures.push({ ...identity, error: safetyStop, exit_code: result.exitCode });
+        report.results.push({ ...identity, contract, template_dir: dir, templates: written, completion, status: 'failed' });
         continue;
       }
       const sourceErrors = contract === 'scanner' ? written.flatMap(file => stampScannerThreatHeader(file, id).map(error => `${file}: ${error}`)) : [];
@@ -147,17 +163,17 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
         .flatMap(file => validateScannerYaml(file).map(error => `${file}: ${error}`))
         : written.filter(file => /\.(js|mjs)$/i.test(file)).flatMap(file => validateProbeIdentities(file, model, options.context).map(error => `${file}: ${error}`)))];
       if (invalid.length) {
-        report.failures.push({ threat: id, error: `Invalid ${contract === 'scanner' ? sourceErrors.length ? 'scanner source metadata' : 'scanner YAML' : 'probe identity metadata'}: ${invalid.join('; ')}`, exit_code: result.exitCode });
+        report.failures.push({ ...identity, error: `Invalid ${contract === 'scanner' ? sourceErrors.length ? 'scanner source metadata' : 'scanner YAML' : 'probe identity metadata'}: ${invalid.join('; ')}`, exit_code: result.exitCode });
       }
-      if (result.error || result.exitCode !== 0 || (completion && completion.status !== 'completed')) {
-        report.failures.push({ threat: id, error: result.error || completion?.reason || 'Agent did not exit successfully', exit_code: result.exitCode });
-        report.results.push({ threat: id, contract, template_dir: dir, templates: written, completion, status: 'failed' });
+      if (result.error || result.exitCode !== 0 || (completion && completion.status !== 'completed') || (source && !written.length)) {
+        report.failures.push({ ...identity, error: result.error || completion?.reason || (result.exitCode !== 0 ? 'Agent did not exit successfully' : 'Author exited without writing a JavaScript probe; consult README.md for conversion limitations'), exit_code: result.exitCode });
+        report.results.push({ ...identity, contract, template_dir: dir, templates: written, completion, status: 'failed' });
       } else {
-        report.results.push({ threat: id, contract, template_dir: dir, templates: written, completion, status: invalid.length ? 'failed' : written.length ? 'written' : 'no_templates' });
+        report.results.push({ ...identity, contract, template_dir: dir, templates: written, completion, status: invalid.length ? 'failed' : written.length ? 'written' : 'no_templates' });
       }
     } catch (error) {
-      report.failures.push({ threat: id, error: (error as Error).message, exit_code: null });
-      report.results.push({ threat: id, contract, template_dir: dir, templates: written, status: 'failed' });
+      report.failures.push({ ...identity, error: (error as Error).message, exit_code: null });
+      report.results.push({ ...identity, contract, template_dir: dir, templates: written, status: 'failed' });
     }
   }
   return report;
