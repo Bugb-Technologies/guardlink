@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:977a1b4c61353c08b90c088083d183076365b40756e5f50ef0e4100bee782a12",
+    "annotation_hash": "sha256-v3:41aa3e36b7e3000e7ebfe3886a6febcb149c36c8fd3a835fcf5b2ea928c5d4e8",
     "generator": "guardlink@2.5.0"
   },
   "version": "1.2.0",
@@ -2810,7 +2810,7 @@
       "asset": "#parser",
       "threat": "#path-traversal",
       "control": "#path-validation",
-      "description": "Rejects absolute paths and parent segments; real paths of existing ancestors must stay inside the repository",
+      "description": "Rejects absolute paths, parent segments and the reserved root directories .bravos, .guardlink and .git; real paths of existing ancestors must stay inside the repository",
       "location": {
         "file": "src/parser/security-tests.ts",
         "line": 14
@@ -10982,7 +10982,7 @@
         "bytes": 3741,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:977a1b4c61353c08b90c088083d183076365b40756e5f50ef0e4100bee782a12",
+          "stamp": "sha256-v3:41aa3e36b7e3000e7ebfe3886a6febcb149c36c8fd3a835fcf5b2ea928c5d4e8",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10998,7 +10998,7 @@
         "bytes": 3824,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:977a1b4c61353c08b90c088083d183076365b40756e5f50ef0e4100bee782a12",
+          "stamp": "sha256-v3:41aa3e36b7e3000e7ebfe3886a6febcb149c36c8fd3a835fcf5b2ea928c5d4e8",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11015,7 +11015,7 @@
         "bytes": 3778,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:977a1b4c61353c08b90c088083d183076365b40756e5f50ef0e4100bee782a12",
+          "stamp": "sha256-v3:41aa3e36b7e3000e7ebfe3886a6febcb149c36c8fd3a835fcf5b2ea928c5d4e8",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11032,7 +11032,7 @@
         "bytes": 3778,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:977a1b4c61353c08b90c088083d183076365b40756e5f50ef0e4100bee782a12",
+          "stamp": "sha256-v3:41aa3e36b7e3000e7ebfe3886a6febcb149c36c8fd3a835fcf5b2ea928c5d4e8",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11048,7 +11048,7 @@
         "bytes": 3741,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:977a1b4c61353c08b90c088083d183076365b40756e5f50ef0e4100bee782a12",
+          "stamp": "sha256-v3:41aa3e36b7e3000e7ebfe3886a6febcb149c36c8fd3a835fcf5b2ea928c5d4e8",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11067,7 +11067,7 @@
         "bytes": 4418,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:977a1b4c61353c08b90c088083d183076365b40756e5f50ef0e4100bee782a12",
+          "stamp": "sha256-v3:41aa3e36b7e3000e7ebfe3886a6febcb149c36c8fd3a835fcf5b2ea928c5d4e8",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11084,7 +11084,7 @@
         "bytes": 3778,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:977a1b4c61353c08b90c088083d183076365b40756e5f50ef0e4100bee782a12",
+          "stamp": "sha256-v3:41aa3e36b7e3000e7ebfe3886a6febcb149c36c8fd3a835fcf5b2ea928c5d4e8",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },

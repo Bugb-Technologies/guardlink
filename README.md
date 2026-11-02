@@ -166,7 +166,8 @@ every file. `security_tests_dir` in `.guardlink/config.json` selects the single
 curated security suite (default root `security/`): only verified templates deliberately
 promoted as security test cases belong there. Drafts stay in `.guardlink/cxg-templates/`;
 run output and confirmed probes do not enter automatically. Run the configured suite
-before review. Details: [Agent instruction files](docs/GUARDLINK_REFERENCE.md#agent-instruction-files).
+before review. Its path must stay outside the root `.bravos/`, `.guardlink/` and `.git/`
+directories; a missing suite is valid but has no tests. Details: [Agent instruction files](docs/GUARDLINK_REFERENCE.md#agent-instruction-files).
 
 | Agent | Config file | MCP support |
 |-------|------------|-------------|

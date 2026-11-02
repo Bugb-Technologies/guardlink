@@ -11,7 +11,7 @@ export const DEFAULT_SECURITY_TESTS_DIR = 'security';
  * No directory is created and no tests are executed.
  *
  * @exposes #parser to #path-traversal [medium] cwe:CWE-22 -- "readSecurityTestsDir reads security_tests_dir from config.json for downstream filesystem paths; absolute or parent paths would escape root"
- * @mitigates #parser against #path-traversal using #path-validation -- "Rejects absolute paths and parent segments; real paths of existing ancestors must stay inside the repository"
+ * @mitigates #parser against #path-traversal using #path-validation -- "Rejects absolute paths, parent segments and the reserved root directories .bravos, .guardlink and .git; real paths of existing ancestors must stay inside the repository"
  * @exposes #parser to #prompt-injection [medium] cwe:CWE-77 -- "readSecurityTestsDir returns security_tests_dir for agentInstructions and buildTranslatePrompt; unfiltered path text could end a code span"
  * @mitigates #parser against #prompt-injection using #input-sanitize -- "Rejects controls, hidden Unicode, backticks and HTML comment delimiters before rendering a single-line code span"
  * @flows ConfigFile -> #parser via readSecurityTestsDir -- "Validated repository-relative security-test directory"
@@ -40,6 +40,9 @@ export function readSecurityTestsDir(root: string): string {
   }
   const directory = portable.split('/').filter(part => part && part !== '.').join('/');
   if (!directory) return invalid('must name a directory below the repository root');
+  if (['.bravos', '.guardlink', '.git'].includes(directory.split('/')[0])) {
+    return invalid('must be outside the repository-root .bravos/, .guardlink/ and .git/ directories');
+  }
   const repo = realpathSync(root);
   // Check the nearest existing ancestor too, so a missing child below an
   // outward-pointing symlink cannot be treated as an in-repository location.

@@ -12,7 +12,7 @@ accepted.
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
 Current model: 1067 annotations · 21 assets · 16 threats · 14 controls · 150 exposures · 229 flows
-Content hash: `sha256-v3:977a1b4c61353c08b90c088083d183076365b40756e5f50ef0e4100bee782a12` — identical hash means identical model.
+Content hash: `sha256-v3:41aa3e36b7e3000e7ebfe3886a6febcb149c36c8fd3a835fcf5b2ea928c5d4e8` — identical hash means identical model.
 
 ---
 
@@ -69,7 +69,7 @@ from this model.
 
 ## Committed security tests
 
-Keep the curated security suite in `security/`, relative to the repository root. This is the single committed security-test directory, selected by `security_tests_dir` in `config.json` (default `security`). Only verified templates deliberately promoted as security test cases belong in this suite. Drafts, run output and confirmed probes do not enter automatically; promotion after verification is the only way in. Translation drafts stay in `.guardlink/cxg-templates/`. Run `guardlink sync` after changing the setting. No files are moved automatically.
+Keep the curated security suite in `security/`, relative to the repository root. This is the single committed security-test directory, selected by `security_tests_dir` in `config.json` (default `security`). Only verified templates deliberately promoted as security test cases belong in this suite. Drafts, run output and confirmed probes do not enter automatically; promotion after verification is the only way in. Translation drafts stay in `.guardlink/cxg-templates/`. The suite must be outside the repository-root `.bravos/`, `.guardlink/` and `.git/` directories. A missing suite is valid but has no tests. Run `guardlink sync` after changing the setting. No files are moved automatically.
 
 Before opening or updating a pull request, run the entire configured suite with its runner. Report an absent suite as not applicable and skipped or unavailable execution as incomplete. A pre-review tool's recorded complete execution satisfies this once; generation alone does not.
 

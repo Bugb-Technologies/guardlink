@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -51,6 +51,37 @@ describe('committed security-test directory configuration', () => {
     const root = repo();
     config(root, { security_tests_dir: value });
     expect(() => readSecurityTestsDir(root)).toThrow(/security_tests_dir:/);
+  });
+
+  it.each(['.bravos', '.guardlink', '.git'])('refuses the reserved root %s and its descendants', reserved => {
+    const root = repo();
+    for (const directory of [reserved, `${reserved}/suite`, `./${reserved}//suite`, `${reserved}\\suite`]) {
+      config(root, { security_tests_dir: directory });
+      expect(() => readSecurityTestsDir(root), directory).toThrow(/security_tests_dir:.*outside.*\.bravos.*\.guardlink.*\.git/);
+    }
+    config(root, { security_tests_dir: `qa/${reserved}/suite` });
+    expect(readSecurityTestsDir(root)).toBe(`qa/${reserved}/suite`);
+    config(root, { security_tests_dir: `${reserved}-suite` });
+    expect(readSecurityTestsDir(root)).toBe(`${reserved}-suite`);
+  });
+
+  it('builds translation and README guidance for a suite that does not exist yet', async () => {
+    const root = repo();
+    config(root, { security_tests_dir: 'qa/sec-suite' });
+    const { model } = await parseProject({ root });
+    const prompt = buildTranslatePrompt('Review changed paths', root, model);
+    expect(prompt).toContain('`qa/sec-suite/`');
+    expect(prompt).not.toMatch(/root (?:`)?security\//);
+    expect(existsSync(join(root, 'qa/sec-suite'))).toBe(false);
+    mkdirSync(join(root, 'qa/sec-suite'), { recursive: true });
+    expect(buildTranslatePrompt('Review changed paths', root, model)).toBe(prompt);
+    rmSync(join(root, 'qa'), { recursive: true });
+    initProject({ root, agentIds: ['claude'] });
+    syncAgentFiles({ root, model });
+    const readme = readFileSync(join(root, '.guardlink/README.md'), 'utf8');
+    expect(readme).toContain('`qa/sec-suite/`');
+    expect(readme).not.toMatch(/root (?:`)?security\//);
+    expect(existsSync(join(root, 'qa/sec-suite'))).toBe(false);
   });
 
   it('refuses escaping symlinks for overrides, missing children, and the default', () => {

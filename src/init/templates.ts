@@ -234,7 +234,7 @@ export function referenceDocContent(project: ProjectInfo): string {
 ## Security tests directory
 
 Set \`security_tests_dir\` in \`.guardlink/config.json\` to the one curated, committed security-test directory, relative to the repository root (default \`security\`).
-Absolute paths, parent (\`..\`) segments and symlinks escaping the repository are refused. Run \`guardlink sync\` after changing it.
+The suite must be outside the repository-root \`.bravos/\`, \`.guardlink/\` and \`.git/\` directories. Absolute paths, parent (\`..\`) segments and symlinks escaping the repository are refused. A directory that does not exist yet is valid and contains no tests. Run \`guardlink sync\` after changing it.
 Only verified templates deliberately promoted as security test cases belong there; drafts, run output and confirmed probes are not automatically promoted. \`.guardlink/cxg-templates/\` remains unreviewed translation scratch. This setting creates or moves no files.
 
 ## Quick Reference
@@ -1020,7 +1020,7 @@ from this model.
 
 ## Committed security tests
 
-Keep the curated security suite in \`${project.securityTestsDir ?? DEFAULT_SECURITY_TESTS_DIR}/\`, relative to the repository root. This is the single committed security-test directory, selected by \`security_tests_dir\` in \`config.json\` (default \`security\`). Only verified templates deliberately promoted as security test cases belong in this suite. Drafts, run output and confirmed probes do not enter automatically; promotion after verification is the only way in. Translation drafts stay in \`.guardlink/cxg-templates/\`. Run \`guardlink sync\` after changing the setting. No files are moved automatically.
+Keep the curated security suite in \`${project.securityTestsDir ?? DEFAULT_SECURITY_TESTS_DIR}/\`, relative to the repository root. This is the single committed security-test directory, selected by \`security_tests_dir\` in \`config.json\` (default \`security\`). Only verified templates deliberately promoted as security test cases belong in this suite. Drafts, run output and confirmed probes do not enter automatically; promotion after verification is the only way in. Translation drafts stay in \`.guardlink/cxg-templates/\`. The suite must be outside the repository-root \`.bravos/\`, \`.guardlink/\` and \`.git/\` directories. A missing suite is valid but has no tests. Run \`guardlink sync\` after changing the setting. No files are moved automatically.
 
 Before opening or updating a pull request, run the entire configured suite with its runner. Report an absent suite as not applicable and skipped or unavailable execution as incomplete. A pre-review tool's recorded complete execution satisfies this once; generation alone does not.
 
