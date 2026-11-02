@@ -210,7 +210,7 @@ describe('MCP server — freshness envelope (GL-102)', () => {
   const ALL_TOOLS = [
     'guardlink_parse', 'guardlink_status', 'guardlink_validate', 'guardlink_suggest',
     'guardlink_context', 'guardlink_graph', 'guardlink_paths', 'guardlink_annotate_apply', 'guardlink_reanchor',
-    'guardlink_lookup', 'guardlink_threat_report', 'guardlink_annotate', 'guardlink_report',
+    'guardlink_lookup', 'guardlink_threat_report', 'guardlink_annotate', 'guardlink_translate', 'guardlink_report',
     'guardlink_dashboard', 'guardlink_sarif', 'guardlink_diff', 'guardlink_threat_reports',
     'guardlink_sync', 'guardlink_clear', 'guardlink_unannotated', 'guardlink_review_list',
     'guardlink_review_accept', 'guardlink_workspace_info',
@@ -227,6 +227,7 @@ describe('MCP server — freshness envelope (GL-102)', () => {
     const args: Record<string, any> = {
       guardlink_lookup: { query: 'unmitigated' },
       guardlink_annotate: { prompt: 'annotate auth' },
+      guardlink_translate: { prompt: 'translate injection threats' },
       guardlink_clear: { dry_run: true },
       guardlink_review_accept: { exposure_id: 'nope', decision: 'skip', justification: 'test' },
       guardlink_diff: { ref: 'HEAD' },
@@ -264,6 +265,14 @@ describe('MCP server — freshness envelope (GL-102)', () => {
     expect(parsed).toHaveProperty('unmitigated');
     expect(parsed).not.toHaveProperty('guardlink');
     expect(parsed).not.toHaveProperty('annotation_hash');
+  });
+
+  it('guardlink_translate returns the translate prompt and writes nothing', async () => {
+    const result: any = await session.client.callTool({ name: 'guardlink_translate', arguments: { root, prompt: 'cover injection' } });
+    const payload = JSON.parse(result.content[0].text);
+    expect(payload.mode).toBe('agent');
+    expect(payload.prompt).toContain('senior offensive security engineer');
+    expect(payload.prompt).toContain('cxg template validate');
   });
 
   it('guardlink_blame answers, and leaves the cached model without blame', async () => {

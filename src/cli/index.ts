@@ -2191,11 +2191,12 @@ program
   .option('--cursor', 'Open Cursor IDE with prompt on clipboard')
   .option('--windsurf', 'Open Windsurf IDE with prompt on clipboard')
   .option('--clipboard', 'Copy translation prompt to clipboard only')
+  .option('--stdout', 'Print translation prompt to stdout and exit (for piping)')
   .option('--feature <names>', 'Filter to specific feature(s) (comma-separated)')
   .action(async (promptParts: string[], opts: {
     dir: string; project: string;
     claudeCode?: boolean; codex?: boolean; gemini?: boolean;
-    cursor?: boolean; windsurf?: boolean; clipboard?: boolean;
+    cursor?: boolean; windsurf?: boolean; clipboard?: boolean; stdout?: boolean;
     feature?: string;
   }) => {
     const root = resolve(opts.dir);
@@ -2241,13 +2242,21 @@ program
       process.exit(1);
     }
 
-    console.log(`Launching ${agent.name} for CXG template translation...`);
-    console.log(`Threat model: ${model.annotations_parsed} annotations, ${model.exposures.length} exposures`);
-    if (agent.cmd) {
-      console.log(`${agent.name} will take over this terminal. Exit the agent to return.\n`);
+    // --stdout prints only the prompt (stderr still carries the feature-filter
+    // and diagnostics lines above), so a session can pipe or read it without a
+    // child agent ever being launched — mirrors `annotate --stdout`.
+    if (agent.id !== 'stdout') {
+      console.log(`Launching ${agent.name} for CXG template translation...`);
+      console.log(`Threat model: ${model.annotations_parsed} annotations, ${model.exposures.length} exposures`);
+      if (agent.cmd) {
+        console.log(`${agent.name} will take over this terminal. Exit the agent to return.\n`);
+      }
     }
 
     const result = launchAgent(agent, fullPrompt, root);
+
+    // stdout mode: prompt already written to stdout — no launch, nothing else to do
+    if (agent.id === 'stdout') return;
 
     if (result.clipboardCopied) {
       console.log(`✓ Prompt copied to clipboard (${fullPrompt.length.toLocaleString()} chars)`);

@@ -9,6 +9,7 @@
  *   guardlink_lookup   — Query the threat model graph
  *   guardlink_threat_report — AI threat report generation (STRIDE, DREAD, etc.)
  *   guardlink_annotate — Build annotation prompt for the calling agent
+ *   guardlink_translate — Build a CXG template-translation prompt for the calling agent
  *   guardlink_report   — Generate markdown report + JSON
  *   guardlink_dashboard — Generate HTML threat model dashboard
  *   guardlink_sarif    — Export SARIF 2.1.0
@@ -89,7 +90,8 @@ import { loadWorklist, reachFor, worklistSummaryLine, type Worklist } from '../c
 import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary-check.js';
 import { loadReachCheck, checkReach, reachCheckSummaryLine, type ReachCheck } from '../codegraph/reach-check.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
-import { buildAnnotatePrompt } from '../agents/prompts.js';
+import { buildAnnotatePrompt, buildTranslatePrompt } from '../agents/prompts.js';
+import { filterByFeature } from '../parser/feature-filter.js';
 import { syncAgentFiles } from '../init/index.js';
 import { findPrePrDrift } from '../init/pre-pr.js';
 import { loadWorkspaceConfig, readVersionControl } from '../workspace/index.js';
@@ -853,6 +855,42 @@ export function createServer(): McpServer {
               ? 'Keep definitions in .guardlink/definitions.* and use raw GAL lines without comment prefixes'
               : 'Use the project\'s comment style (// for TS/JS/Rust/Go, # for Python/Ruby/Shell)',
             'After annotating, call guardlink_parse to verify results',
+          ],
+        }, null, 2) }],
+      };
+    },
+  );
+
+  // ── Tool: guardlink_translate ──
+  /**
+   * @agents #mcp-agent to guardlink_translate on #mcp -- "Builds the CXG template-translation prompt for the calling agent; writes nothing and launches no child agent"
+   * @comment -- "Mirrors guardlink_annotate: returns the translate method with live model context for the agent to follow in-session, instead of guardlink translate's launcher spawning a child coding agent"
+   */
+  registerTool(
+    server, cache,
+    'guardlink_translate',
+    'Build a prompt that turns pentest-confirmable threats in this project into CERT-X-GEN (CXG) pentest templates. Returns the prompt text with the live threat model folded in — the calling agent should follow it to author template files under .guardlink/cxg-templates/ (generation only; never execute a template). Writes nothing and launches no other agent.',
+    {
+      root: z.string().describe('Project root directory').default('.'),
+      prompt: z.string().describe('Optional translation instructions (e.g., "cover the critical injection exposures first")').optional(),
+      feature: z.string().describe('Filter to specific feature(s) (comma-separated)').optional(),
+    },
+    async ({ root, prompt, feature }) => {
+      let { model } = await getModel(root);
+      if (feature) {
+        model = filterByFeature(model, feature.split(',').map((s: string) => s.trim()));
+      }
+      const translatePrompt = buildTranslatePrompt(prompt ?? '', resolve(root), model);
+
+      return {
+        content: [{ type: 'text', text: JSON.stringify({
+          mode: 'agent',
+          message: 'Translation prompt built with the live threat model. Follow it in this session: author CXG templates under .guardlink/cxg-templates/, keep checks non-destructive, and do NOT execute any template or launch another agent. Validate what you write with `cxg template validate .guardlink/cxg-templates/ --recursive`.',
+          prompt: translatePrompt,
+          guidelines: [
+            'Templates are generated only, never executed',
+            'Write them under .guardlink/cxg-templates/; CXG scan output belongs in .guardlink/pentest-findings/',
+            'A pure governance/design gap gets an @audit note, not a template',
           ],
         }, null, 2) }],
       };

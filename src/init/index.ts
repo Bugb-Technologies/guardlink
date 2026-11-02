@@ -52,7 +52,7 @@ import type { AnnotationMode as ObservedAnnotationMode } from '../parser/annotat
 import type { ThreatModel } from '../types/index.js';
 import type { AnnotationMode } from '../agents/index.js';
 import { AGENT_CHOICES } from './picker.js';
-import { ANNOTATE_PLAYBOOKS, REPORT_SHAPES, skillFileFor, SKILL_GENERATED_MARKER } from '../playbooks/index.js';
+import { ANNOTATE_PLAYBOOKS, REPORT_SHAPES, skillFileFor, translateSkillFile, SKILL_GENERATED_MARKER, type SkillFile } from '../playbooks/index.js';
 import { definitionsArePopulated, configIsCustomised } from './preserve.js';
 import { readPrePrSteps, type PrePrStep } from './pre-pr.js';
 
@@ -458,11 +458,14 @@ function updateAgentFiles(
   // `agentIds` gets its file created.
   const ids = AGENT_CHOICES.map(c => c.id).filter(id => agentIds?.includes(id) || agentFileExists(root, AGENT_CHOICES.find(c => c.id === id)!.file));
 
-  // The playbooks as Claude Code skills, one file each. A skill file a person
-  // wrote (no generated marker) is theirs and stays.
+  // The playbooks as Claude Code skills, one file each, plus the one translate
+  // skill. A skill file a person wrote (no generated marker) is theirs and stays.
   if (ids.includes('claude')) {
-    for (const pb of [...ANNOTATE_PLAYBOOKS, ...REPORT_SHAPES.filter(s => s.id !== 'full')]) {
-      const skill = skillFileFor(pb);
+    const skills: SkillFile[] = [
+      ...[...ANNOTATE_PLAYBOOKS, ...REPORT_SHAPES.filter(s => s.id !== 'full')].map(skillFileFor),
+      translateSkillFile(),
+    ];
+    for (const skill of skills) {
       const abs = join(root, skill.path);
       if (existsSync(abs)) {
         const existing = readForGuard(abs);
@@ -950,6 +953,23 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
       }
       updated.push(choice.file);
     }
+  }
+
+  // Generated skills: refresh the ones that are already here, marker-gated. A
+  // skill file a person wrote (no generated marker) is theirs and left alone; a
+  // missing one is init's to create, not sync's, so sync stays quiet about it.
+  const syncSkills: SkillFile[] = [
+    ...[...ANNOTATE_PLAYBOOKS, ...REPORT_SHAPES.filter(s => s.id !== 'full')].map(skillFileFor),
+    translateSkillFile(),
+  ];
+  for (const skill of syncSkills) {
+    const abs = join(root, skill.path);
+    if (!existsSync(abs)) continue;
+    const existing = readForGuard(abs);
+    if (existing === null || !existing.includes(SKILL_GENERATED_MARKER)) { skipped.push(`${skill.path} (authored — kept)`); continue; }
+    if (existing === skill.content) continue;
+    if (!dryRun) writeFileSync(abs, skill.content);
+    updated.push(skill.path);
   }
 
   return { updated, skipped };

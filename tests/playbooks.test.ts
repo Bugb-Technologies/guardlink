@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { ANNOTATE_PLAYBOOKS, REPORT_SHAPES, selectAnnotatePlaybook, selectReportShape, getPlaybook, skillFileFor, EVIDENCE_BAR } from '../src/playbooks/index.js';
+import { ANNOTATE_PLAYBOOKS, REPORT_SHAPES, selectAnnotatePlaybook, selectReportShape, getPlaybook, skillFileFor, translateSkillFile, EVIDENCE_BAR } from '../src/playbooks/index.js';
 import { buildAnnotatePrompt } from '../src/agents/prompts.js';
 
 const ids = ANNOTATE_PLAYBOOKS.map(p => p.id);
@@ -88,6 +88,39 @@ describe('skills', () => {
     expect(f.content).toContain(getPlaybook('exploitable').body.trim());
     expect(skillFileFor(getPlaybook('executive')).path).toBe('.claude/skills/guardlink-report-executive/SKILL.md');
   });
+
+  it('renders the one translate skill from the shared method, with no live data baked in', () => {
+    const f = translateSkillFile();
+    expect(f.path).toBe('.claude/skills/guardlink-translate/SKILL.md');
+    expect(f.content).toMatch(/^---\nname: guardlink-translate\ndescription: .+\n---\n/);
+    expect(f.content).toContain('<!-- guardlink:generated -->');
+    // hard rules carried verbatim from the shared method
+    expect(f.content).toContain('cxg template validate .guardlink/cxg-templates/ --recursive');
+    expect(f.content).toContain('.guardlink/cxg-templates/');
+    expect(f.content).toContain('CERT_X_GEN_MODE');
+    // live data is fetched by the agent, not frozen into the file
+    expect(f.content).toContain('guardlink lookup unmitigated');
+    expect(f.content).toContain('guardlink translate --stdout');
+    expect(f.content).not.toMatch(/Unmitigated exposure candidates/);
+    expect(f.content).not.toMatch(/annotations_parsed/);
+  });
+});
+
+describe('the translate CLI', () => {
+  it('--stdout prints the prompt and launches nothing', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-tr-'));
+    await mkdir(join(root, '.guardlink'), { recursive: true });
+    await mkdir(join(root, 'src'), { recursive: true });
+    await writeFile(join(root, '.guardlink', 'definitions.ts'), '/**\n * @asset App.API (#api) -- "API"\n * @threat SQLi (#sqli) [critical] cwe:CWE-89 -- "x"\n */\nexport {};\n');
+    await writeFile(join(root, 'src', 'a.ts'), '/**\n * @exposes #api to #sqli [critical] cwe:CWE-89 -- "q"\n */\nexport const x = 1;\n');
+    const tsx = createRequire(import.meta.url).resolve('tsx/cli');
+    const cli = join(process.cwd(), 'src', 'cli', 'index.ts');
+    const out = await new Promise<{ stdout: string; stderr: string }>((res, rej) =>
+      execFile(process.execPath, [tsx, cli, 'translate', 'cover injection', '--stdout'], { cwd: root, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => (err ? rej(err) : res({ stdout, stderr }))));
+    expect(out.stdout).toContain('senior offensive security engineer');
+    expect(out.stdout).toContain('cxg template validate');
+    expect(out.stdout).not.toContain('Launching');
+  }, 60_000);
 });
 
 describe('the CLI', () => {
