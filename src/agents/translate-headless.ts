@@ -9,9 +9,10 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { buildTranslatePrompt, translateContract } from './prompts.js';
 import { defaultTranslateExposures, exposureId, type TranslateContextPack, type TranslateContract } from './translate-context.js';
+import { translateDraftOutput, type TranslateSources } from './translate-source.js';
 import type { ThreatModel } from '../types/index.js';
 
 export type TranslateAgent = 'claude' | 'codex' | 'gemini';
@@ -60,47 +61,62 @@ function templates(dir: string): Map<string, string> {
 export interface TranslateHeadlessOptions {
   root: string; model: ThreatModel; agent: TranslateAgent; out: string;
   userPrompt: string; context?: TranslateContextPack; contract?: TranslateContract;
+  sources?: TranslateSources;
   /** An explicit threat selection includes mitigated exposures too. */
   selected?: boolean;
 }
 export interface TranslateHeadlessReport {
   version: 1;
-  results: Array<{ threat: string; contract: TranslateContract; templates: string[]; status: 'written' | 'no_templates' | 'failed' }>;
-  failures: Array<{ threat: string; error: string; exit_code: number | null }>;
+  results: Array<TranslateIdentity & { contract: TranslateContract; templates: string[]; status: 'written' | 'no_templates' | 'failed' }>;
+  failures: Array<TranslateIdentity & { error: string; exit_code: number | null }>;
 }
+type TranslateIdentity = { threat: string; source?: never } | { source: string; threat?: never };
 
 /**
  * @exposes #agent-launcher to #path-traversal [medium] -- "translateHeadless creates directories below the caller-selected output root"
- * @mitigates #agent-launcher against #path-traversal using #input-sanitize -- "Per-exposure child names use a sanitized label plus a hash; context ids are never path components"
- * @flows AgentProcess -> #agent-launcher via templates -- "Inventory changed regular template files per exposure, without evaluating them"
+ * @mitigates #agent-launcher against #path-traversal using #input-sanitize -- "translateHeadless child names use a sanitized exposure or source label plus a hash; context ids are never path components"
+ * @flows AgentProcess -> #agent-launcher via templates -- "Inventory changed regular template files per exposure or conversion source, without evaluating them"
  */
 export async function translateHeadless(options: TranslateHeadlessOptions, run: TranslateRunner = runTranslateAgent): Promise<TranslateHeadlessReport> {
   const report: TranslateHeadlessReport = { version: 1, results: [], failures: [] };
+  if (options.sources) {
+    if (options.contract !== 'probe') throw new Error('--from requires --contract probe');
+    translateDraftOutput(options.root, options.out);
+    for (const failure of options.sources.failures) {
+      report.results.push({ source: failure.source, contract: 'probe', templates: [], status: 'failed' });
+      report.failures.push({ ...failure, exit_code: null });
+    }
+  }
   const exposures = options.selected ? options.model.exposures : defaultTranslateExposures(options.model);
-  if (!exposures.length) throw new Error('No in-scope translate exposure candidates');
-  for (const exposure of exposures) {
-    const id = exposureId(exposure);
-    const model = { ...options.model, exposures: [exposure] };
-    const contract = translateContract(model, options);
+  const candidates = options.sources
+    ? options.sources.sources.map(source => ({ id: source.path, label: basename(source.path), source, model: options.model }))
+    : exposures.map(exposure => ({ id: exposureId(exposure), label: exposure.threat, source: undefined, model: { ...options.model, exposures: [exposure] } }));
+  if (!candidates.length && !report.failures.length) throw new Error('No in-scope translate candidates');
+  for (const { id, label, source, model } of candidates) {
+    const identity: TranslateIdentity = source ? { source: id } : { threat: id };
+    const contract = translateContract(model, { contract: options.contract, context: options.context });
     const suffix = createHash('sha256').update(id).digest('hex').slice(0, 12);
-    const dir = resolve(options.root, options.out, `${exposure.threat.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)}-${suffix}`);
+    const dir = resolve(options.root, options.out, `${label.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)}-${suffix}`);
     let written: string[] = [];
     try {
+      if (source) translateDraftOutput(options.root, dir);
       mkdirSync(dir, { recursive: true });
       const before = templates(dir);
-      const prompt = buildTranslatePrompt(options.userPrompt, options.root, model, { context: options.context, contract, out: dir, threats: [id] })
+      const prompt = buildTranslatePrompt(options.userPrompt, options.root, model, { context: options.context, contract, out: dir,
+        sources: source ? [source] : undefined,
+        threats: source ? (options.selected ? model.exposures.map(exposureId) : undefined) : [id] })
         + '\nHeadless authoring: write files directly. Do not ask questions or perform CLI usage discovery. Return when authoring is complete.';
       const result = await run(options.agent, prompt, options.root, dir);
-      written = [...templates(dir)].filter(([file, hash]) => before.get(file) !== hash).map(([file]) => file).sort();
-      if (result.error || result.exitCode !== 0) {
-        report.failures.push({ threat: id, error: result.error || 'Agent did not exit successfully', exit_code: result.exitCode });
-        report.results.push({ threat: id, contract, templates: written, status: 'failed' });
+      written = [...templates(dir)].filter(([file, hash]) => before.get(file) !== hash && (!source || /\.(js|mjs)$/i.test(file))).map(([file]) => file).sort();
+      if (result.error || result.exitCode !== 0 || (source && !written.length)) {
+        report.failures.push({ ...identity, error: result.error || (result.exitCode !== 0 ? 'Agent did not exit successfully' : 'Author exited without writing a JavaScript probe; consult README.md for conversion limitations'), exit_code: result.exitCode });
+        report.results.push({ ...identity, contract, templates: written, status: 'failed' });
       } else {
-        report.results.push({ threat: id, contract, templates: written, status: written.length ? 'written' : 'no_templates' });
+        report.results.push({ ...identity, contract, templates: written, status: written.length ? 'written' : 'no_templates' });
       }
     } catch (error) {
-      report.failures.push({ threat: id, error: (error as Error).message, exit_code: null });
-      report.results.push({ threat: id, contract, templates: written, status: 'failed' });
+      report.failures.push({ ...identity, error: (error as Error).message, exit_code: null });
+      report.results.push({ ...identity, contract, templates: written, status: 'failed' });
     }
   }
   return report;

@@ -71,6 +71,7 @@ import type { SinceInput } from '../dashboard/analytics.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt, buildTranslatePrompt, buildAskPrompt, resolveAnnotationMode } from '../agents/index.js';
 import { buildTranslateContext, loadTranslateContext, selectTranslateThreats, type TranslateContract } from '../agents/translate-context.js';
 import { translateHeadless, type TranslateAgent } from '../agents/translate-headless.js';
+import { loadTranslateSources, translateDraftOutput } from '../agents/translate-source.js';
 import { loadWorklist, worklistSummaryLine } from '../codegraph/index.js';
 import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary-check.js';
 import { loadReachCheck, checkReach, reachCheckSummaryLine, reachDrafts, renderDrafts, type ReachCheck } from '../codegraph/reach-check.js';
@@ -2196,6 +2197,7 @@ program
   .option('--feature <names>', 'Filter to specific feature(s) (comma-separated)')
   .option('--context <file.json>', 'Version 1 per-threat authoring context pack')
   .option('--contract <contract>', 'Template output contract: scanner (default) or probe')
+  .option('--from <path>', 'Convert a scanner template file or directory to draft JS probes (repeatable; requires --contract probe)', (path: string, paths: string[]) => [...paths, path], [] as string[])
   .option('--headless', 'Run an author CLI to completion without a TTY')
   .option('--agent <agent>', 'Headless author: claude, codex or gemini')
   .option('--out <dir>', 'Template output directory (default .guardlink/cxg-templates/)')
@@ -2207,14 +2209,20 @@ program
     claudeCode?: boolean; codex?: boolean; gemini?: boolean;
     cursor?: boolean; windsurf?: boolean; clipboard?: boolean;
     feature?: string; context?: string; contract?: TranslateContract; headless?: boolean;
-    agent?: TranslateAgent; out?: string; threat?: string[]; format?: string; codeGraph?: boolean;
+    agent?: TranslateAgent; out?: string; threat?: string[]; format?: string; codeGraph?: boolean; from?: string[];
   }) => {
     try {
       if (opts.contract && !['scanner', 'probe'].includes(opts.contract)) throw new Error('Invalid --contract: use scanner or probe');
       if (opts.headless && !['claude', 'codex', 'gemini'].includes(opts.agent || '')) throw new Error('--headless requires --agent claude, codex or gemini');
       if (opts.format && (opts.format !== 'json' || !opts.headless)) throw new Error('--format json requires --headless');
       if (opts.agent && !opts.headless) throw new Error('--agent requires --headless; use the interactive agent flags otherwise');
+      if (opts.from?.length && opts.contract !== 'probe') throw new Error('--from requires --contract probe');
       const root = resolve(opts.dir);
+      const sources = opts.from?.length ? loadTranslateSources(opts.from, root) : undefined;
+      if (sources) {
+        translateDraftOutput(root, opts.out);
+        if (!opts.headless && sources.failures.length) throw new Error(sources.failures.map(f => `${f.source}: ${f.error}`).join('\n'));
+      }
       const project = detectProjectName(root, opts.project);
       const userPrompt = promptParts.join(' ').trim();
 
@@ -2229,7 +2237,7 @@ program
       const errors = diagnostics.filter(d => d.level === 'error');
       if (errors.length > 0) printDiagnostics(errors);
 
-      if (model.annotations_parsed === 0) {
+      if (model.annotations_parsed === 0 && !sources) {
         if (opts.headless) throw new Error('No annotations found. Add annotations first.');
         console.error('No annotations found. Run: guardlink init . && add annotations first.');
         process.exit(1);
@@ -2239,7 +2247,7 @@ program
       const context = opts.context ? loadTranslateContext(opts.context, root)
         : await buildTranslateContext(root, model, { enabled: opts.codeGraph !== false });
       if (opts.headless) {
-        const report = await translateHeadless({ root, model, userPrompt, context,
+        const report = await translateHeadless({ root, model, userPrompt, context, sources,
           contract: opts.contract, out: opts.out || '.guardlink/cxg-templates/',
           agent: opts.agent!, selected: !!opts.threat?.length });
         console.log(JSON.stringify(report));
@@ -2247,7 +2255,7 @@ program
         return;
       }
       const fullPrompt = buildTranslatePrompt(userPrompt, root, model, {
-        context, contract: opts.contract, out: opts.out, threats: opts.threat,
+        context, sources: sources?.sources, contract: opts.contract, out: opts.out, threats: opts.threat,
       });
 
       // Resolve agent: explicit flag > project config > default (Claude Code)

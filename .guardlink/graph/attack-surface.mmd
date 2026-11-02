@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        attack-surface.mmd
-%% annotation_hash: sha256-v3:c44fb28f664110e33a55f108afd708946931b249a40c94e64a5ca088774bc4c5
+%% annotation_hash: sha256-v3:3715a98901e46d90ffb5a3db205c7e34e0f2636b99cc7bccc57fb58969dade41
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -38,11 +38,11 @@ graph TB
     E9["✅ Child_Process_Injection ×2"]:::sev_crit
     E10["✅ API_Key_Exposure"]:::sev_high
     E11["✅ Arbitrary_File_Write ×2"]:::sev_high
-    E12["⚠️ Prompt_Injection ×4"]:::sev_high
-    E13["✅ Path_Traversal ×3"]:::sev_med
-    E14["⚠️ Config_Tampering"]:::sev_med
-    E15["✅ Insecure_Deserialization"]:::sev_med
-    E16["✅ Denial_of_Service ×2"]:::sev_low
+    E12["⚠️ Prompt_Injection ×5"]:::sev_high
+    E13["✅ Path_Traversal ×4"]:::sev_med
+    E14["✅ Denial_of_Service ×3"]:::sev_med
+    E15["⚠️ Config_Tampering"]:::sev_med
+    E16["✅ Insecure_Deserialization"]:::sev_med
   end
   subgraph A_llm_client["GuardLink.LLM_Client · ⚠ 2 open"]
     direction TB
