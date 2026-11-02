@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
+    "annotation_hash": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
     "generator": "guardlink@2.5.0"
   },
   "version": "1.2.0",
@@ -8190,7 +8190,7 @@
     },
     {
       "asset": "#agent-launcher",
-      "description": "Author runs with its CLI editing permissions; GuardLink never runs a generated template",
+      "description": "Codex uses workspace-write with approval_policy=never; other authors retain their CLI editing permissions; GuardLink never runs a generated template",
       "location": {
         "file": "src/agents/translate-headless.ts",
         "line": 26
@@ -11415,7 +11415,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
+          "stamp": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11431,7 +11431,7 @@
         "bytes": 3285,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
+          "stamp": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11448,7 +11448,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
+          "stamp": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11465,7 +11465,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
+          "stamp": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11481,7 +11481,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
+          "stamp": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11500,7 +11500,7 @@
         "bytes": 3879,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
+          "stamp": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11517,7 +11517,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:a35860b49801ef26e771afb5cf8f45d9a8b460843f5a691656a3318d6133a55f",
+          "stamp": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },

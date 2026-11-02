@@ -167,6 +167,10 @@ the project working directory and a per-exposure subdirectory under `--out`
 (default `.guardlink/cxg-templates/`). The subdirectory includes a sanitized
 threat label and an exposure hash to avoid collisions. The CLI uses the installed
 agent's editing permissions; authoring instructions are not an agent sandbox.
+Codex is launched with explicit `--sandbox workspace-write`,
+`-c 'approval_policy="never"'` and `--add-dir` for the requested output directory.
+Commands requiring an exception to that sandbox are denied without prompting.
+The launcher does not enable an unrestricted sandbox or an approval bypass.
 
 Headless stdout is one JSON object (also the default without `--format json`):
 

@@ -23,12 +23,12 @@ export type TranslateRunner = (agent: TranslateAgent, prompt: string, root: stri
 
 /**
  * @effects execute on #agent-launcher -- "Runs an author CLI without a TTY, with closed stdin and captured output"
- * @audit #agent-launcher -- "Author runs with its CLI editing permissions; GuardLink never runs a generated template"
+ * @audit #agent-launcher -- "Codex uses workspace-write with approval_policy=never; other authors retain their CLI editing permissions; GuardLink never runs a generated template"
  */
 export const runTranslateAgent: TranslateRunner = async (agent, prompt, root, out) => {
   const commands = {
     claude: ['claude', ['-p', '--dangerously-skip-permissions', '--allowedTools', 'Read,Write,Edit,Glob,Grep', '--output-format', 'json']],
-    codex: ['codex', ['exec', '--json', '--full-auto', '--skip-git-repo-check', '--add-dir', out, '--color', 'never', '-']],
+    codex: ['codex', ['exec', '--json', '--sandbox', 'workspace-write', '-c', 'approval_policy="never"', '--skip-git-repo-check', '--add-dir', out, '--color', 'never', '-']],
     gemini: ['gemini', ['--prompt', 'Author templates according to the instructions on stdin.', '--approval-mode', 'auto_edit', '--output-format', 'json']],
   } as const;
   const [command, args] = commands[agent];
