@@ -100,10 +100,10 @@ const LANG_CONFIG: Record<ProjectLanguage, { commentPrefix: string; ext: string 
 
 // ─── Detection functions ─────────────────────────────────────────────
 
-export function detectProject(root: string): ProjectInfo {
+export function detectProject(root: string, options: { resetConfig?: boolean } = {}): ProjectInfo {
   return {
     root,
-    securityTestsDir: readSecurityTestsDir(root),
+    securityTestsDir: readSecurityTestsDir(root, options),
     name: detectProjectName(root),
     language: detectLanguage(root),
     commentPrefix: LANG_CONFIG[detectLanguage(root)].commentPrefix,

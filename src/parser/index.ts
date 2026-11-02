@@ -74,4 +74,4 @@ export type { ClaimRecord, ClaimState, VerificationReport } from './verification
 export { planVerification, applyVerification, defaultVerifier, headCommit, nowIso } from './verify.js';
 export type { VerifyMode, VerifyPlan, VerifyTarget, VerifierIdentity } from './verify.js';
 
-export { readSecurityTestsDir, DEFAULT_SECURITY_TESTS_DIR } from './security-tests.js';
+export { readSecurityTestsDir, DEFAULT_SECURITY_TESTS_DIR, SecurityTestsConfigError } from './security-tests.js';

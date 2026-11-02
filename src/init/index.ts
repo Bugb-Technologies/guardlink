@@ -211,7 +211,7 @@ export function initProject(options: InitOptions): InitResult {
   // model is reviewable as one directory.
   const mode: 'inline' | 'external' = options.mode === 'inline' ? 'inline' : 'external';
 
-  const project = detectProject(root);
+  const project = detectProject(root, { resetConfig: reset });
   if (options.project) project.name = options.project;
 
   const created: string[] = [];

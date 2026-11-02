@@ -5,10 +5,19 @@ import { findHiddenUnicode } from '../agentconfig/hidden-unicode.js';
 
 export const DEFAULT_SECURITY_TESTS_DIR = 'security';
 
+/** A user-correctable directory setting, distinct from unexpected runtime errors. */
+export class SecurityTestsConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SecurityTestsConfigError';
+  }
+}
+
 /**
  * Read `security_tests_dir` from `.guardlink/config.json`, defaulting to `security`.
  * Returns a normalized repository-relative path without a trailing slash.
- * No directory is created and no tests are executed.
+ * No directory is created and no tests are executed. `resetConfig` is used
+ * only by explicit init --reset: validate the default instead of the old setting.
  *
  * @exposes #parser to #path-traversal [medium] cwe:CWE-22 -- "readSecurityTestsDir reads security_tests_dir from config.json for downstream filesystem paths; absolute or parent paths would escape root"
  * @mitigates #parser against #path-traversal using #path-validation -- "Rejects absolute paths, parent segments and the reserved root directories .bravos, .guardlink and .git; real paths of existing ancestors must stay inside the repository"
@@ -16,16 +25,18 @@ export const DEFAULT_SECURITY_TESTS_DIR = 'security';
  * @mitigates #parser against #prompt-injection using #input-sanitize -- "Rejects controls, hidden Unicode, backticks and HTML comment delimiters before rendering a single-line code span"
  * @flows ConfigFile -> #parser via readSecurityTestsDir -- "Validated repository-relative security-test directory"
  */
-export function readSecurityTestsDir(root: string): string {
+export function readSecurityTestsDir(root: string, options: { resetConfig?: boolean } = {}): string {
   const invalid = (reason: string): never => {
-    throw new Error(`.guardlink/config.json security_tests_dir: ${reason}`);
+    throw new SecurityTestsConfigError(`.guardlink/config.json security_tests_dir: ${reason}`);
   };
-  let config: unknown;
-  try {
-    config = JSON.parse(readFileSync(join(root, '.guardlink', 'config.json'), 'utf8'));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') config = {};
-    else return invalid(`cannot read configuration: ${(error as Error).message}`);
+  let config: unknown = {};
+  if (!options.resetConfig) {
+    try {
+      config = JSON.parse(readFileSync(join(root, '.guardlink', 'config.json'), 'utf8'));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') config = {};
+      else return invalid(`cannot read configuration: ${(error as Error).message}`);
+    }
   }
   const raw = config !== null && typeof config === 'object' && 'security_tests_dir' in config
     ? config.security_tests_dir : DEFAULT_SECURITY_TESTS_DIR;
@@ -43,7 +54,20 @@ export function readSecurityTestsDir(root: string): string {
   if (['.bravos', '.guardlink', '.git'].includes(directory.split('/')[0])) {
     return invalid('must be outside the repository-root .bravos/, .guardlink/ and .git/ directories');
   }
-  const repo = realpathSync(root);
+  let repo: string;
+  try {
+    repo = realpathSync(root);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      // Prompt builders also accept a project path before it has been created.
+      // No config or suite can exist there. Existing roots still take the
+      // canonical containment checks below, including the default suite.
+      try { lstatSync(root); } catch (missing) {
+        if ((missing as NodeJS.ErrnoException).code === 'ENOENT') return directory;
+      }
+    }
+    throw error;
+  }
   // Check the nearest existing ancestor too, so a missing child below an
   // outward-pointing symlink cannot be treated as an in-repository location.
   let ancestor = resolve(root, directory);

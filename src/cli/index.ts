@@ -44,6 +44,7 @@
  * @handles secrets on #cli -- "Processes API keys via config commands"
  */
 
+import { SecurityTestsConfigError } from '../parser/security-tests.js';
 import { Command } from 'commander';
 import fg from 'fast-glob';
 import { resolve, basename, join, isAbsolute, relative } from 'node:path';
@@ -4032,9 +4033,16 @@ program
 
 // If no subcommand given, launch TUI
 if (process.argv.length <= 2) {
-  import('../tui/index.js').then(({ startTui }) => startTui('.'));
+  import('../tui/index.js').then(({ startTui }) => startTui('.')).catch(handleCliError);
 } else {
-  program.parse();
+  program.parseAsync().catch(handleCliError);
+}
+
+/** Keep expected configuration refusals concise while surfacing unexpected bugs. */
+function handleCliError(error: unknown): void {
+  if (!(error instanceof SecurityTestsConfigError)) throw error;
+  console.error(`error: ${error.message}`);
+  process.exitCode = 1;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────

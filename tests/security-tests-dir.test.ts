@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { readSecurityTestsDir, parseProject } from '../src/parser/index.js';
+import { readSecurityTestsDir, parseProject, SecurityTestsConfigError } from '../src/parser/index.js';
 import { initProject, syncAgentFiles } from '../src/init/index.js';
 import { buildTranslatePrompt } from '../src/agents/prompts.js';
 import { createServer } from '../src/mcp/server.js';
@@ -50,6 +53,7 @@ describe('committed security-test directory configuration', () => {
   ])('refuses invalid directory %j with a named config error', value => {
     const root = repo();
     config(root, { security_tests_dir: value });
+    expect(() => readSecurityTestsDir(root)).toThrow(SecurityTestsConfigError);
     expect(() => readSecurityTestsDir(root)).toThrow(/security_tests_dir:/);
   });
 
@@ -83,6 +87,77 @@ describe('committed security-test directory configuration', () => {
     expect(readme).not.toMatch(/root (?:`)?security\//);
     expect(existsSync(join(root, 'qa/sec-suite'))).toBe(false);
   });
+
+  it('keeps prompt generation valid for a repository path that does not exist yet', () => {
+    const root = join(repo(), 'not-created');
+    expect(readSecurityTestsDir(root)).toBe('security');
+    expect(buildTranslatePrompt('Generate templates', root, null)).toContain('`security/`');
+    expect(existsSync(root)).toBe(false);
+  });
+
+  it.each(['.bravos/suite', '.guardlink/suite', '.git/suite'])('prints a clean CLI refusal for %s', directory => {
+    const root = repo();
+    config(root, { security_tests_dir: directory });
+    const tsx = createRequire(import.meta.url).resolve('tsx/cli');
+    const cli = fileURLToPath(new URL('../src/cli/index.ts', import.meta.url));
+    for (const command of ['parse', 'init']) {
+      const result = spawnSync(process.execPath, [tsx, cli, command, root], { encoding: 'utf8', timeout: 60_000 });
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toMatch(/^error: \.guardlink\/config\.json security_tests_dir:/);
+      expect(result.stderr).not.toMatch(/^\s+at |node:internal|file:\/\//m);
+      expect(result.stderr.trim().split('\n')).toHaveLength(1);
+    }
+  }, 120_000);
+
+  it('resets a custom suite setting and renders the resulting default', () => {
+    const root = repo();
+    config(root, { security_tests_dir: 'qa/sec-suite' });
+    initProject({ root, agentIds: ['claude'], reset: true });
+    expect(readSecurityTestsDir(root)).toBe('security');
+    expect(readFileSync(join(root, 'CLAUDE.md'), 'utf8')).toContain('`security/`');
+    expect(readFileSync(join(root, '.guardlink/README.md'), 'utf8')).not.toContain('`qa/sec-suite/`');
+  });
+
+  it('allows an explicit reset to repair an invalid suite setting', () => {
+    const root = repo();
+    config(root, { security_tests_dir: '.bravos/suite' });
+    expect(() => initProject({ root, agentIds: ['claude'], reset: true })).not.toThrow();
+    expect(readSecurityTestsDir(root)).toBe('security');
+  });
+
+  it('preserves a custom suite under --force and still checks the default under --reset', () => {
+    const root = repo();
+    config(root, { security_tests_dir: 'qa/sec-suite' });
+    initProject({ root, agentIds: ['claude'], force: true });
+    expect(readSecurityTestsDir(root)).toBe('qa/sec-suite');
+    expect(readFileSync(join(root, '.guardlink/README.md'), 'utf8')).toContain('`qa/sec-suite/`');
+    symlinkSync(repo(), join(root, 'security'));
+    expect(() => initProject({ root, agentIds: ['claude'], reset: true })).toThrow(/outside the repository/);
+    expect(readSecurityTestsDir(root)).toBe('qa/sec-suite');
+  });
+
+  it('preserves the suite during config set and retains config clear semantics', () => {
+    const root = repo();
+    config(root, { security_tests_dir: 'qa/sec-suite' });
+    const tsx = createRequire(import.meta.url).resolve('tsx/cli');
+    const cli = fileURLToPath(new URL('../src/cli/index.ts', import.meta.url));
+    const run = (...args: string[]) => spawnSync(process.execPath, [tsx, cli, ...args], { cwd: root, encoding: 'utf8', timeout: 60_000 });
+    expect(run('config', 'set', 'model', 'example-model').status).toBe(0);
+    expect(readSecurityTestsDir(root)).toBe('qa/sec-suite');
+    expect(run('config', 'clear').status).toBe(0);
+    expect(readSecurityTestsDir(root)).toBe('security');
+  }, 120_000);
+
+  it('still surfaces unexpected I/O errors instead of treating them as config refusals', () => {
+    const root = repo();
+    const tsx = createRequire(import.meta.url).resolve('tsx/cli');
+    const cli = fileURLToPath(new URL('../src/cli/index.ts', import.meta.url));
+    const result = spawnSync(process.execPath, [tsx, cli, 'parse', root, '--output', root], { encoding: 'utf8', timeout: 60_000 });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('EISDIR');
+    expect(result.stderr).not.toMatch(/^error: \.guardlink\/config\.json security_tests_dir:/);
+  }, 120_000);
 
   it('refuses escaping symlinks for overrides, missing children, and the default', () => {
     const root = repo();
