@@ -8,6 +8,7 @@
  * @comment -- "Detection is read-only; no file writes"
  */
 
+import { readSecurityTestsDir } from '../parser/security-tests.js';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, basename } from 'node:path';
 
@@ -36,6 +37,8 @@ export interface AgentFile {
 export interface ProjectInfo {
   /** Project root directory */
   root: string;
+  /** Validated repository-relative committed security-test directory. */
+  securityTestsDir?: string;
   /** Detected project name */
   name: string;
   /** Primary language */
@@ -100,6 +103,7 @@ const LANG_CONFIG: Record<ProjectLanguage, { commentPrefix: string; ext: string 
 export function detectProject(root: string): ProjectInfo {
   return {
     root,
+    securityTestsDir: readSecurityTestsDir(root),
     name: detectProjectName(root),
     language: detectLanguage(root),
     commentPrefix: LANG_CONFIG[detectLanguage(root)].commentPrefix,

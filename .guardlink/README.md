@@ -11,8 +11,8 @@ accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 1061 annotations · 21 assets · 16 threats · 14 controls · 148 exposures · 228 flows
-Content hash: `sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87` — identical hash means identical model.
+Current model: 1067 annotations · 21 assets · 16 threats · 14 controls · 150 exposures · 229 flows
+Content hash: `sha256-v3:977a1b4c61353c08b90c088083d183076365b40756e5f50ef0e4100bee782a12` — identical hash means identical model.
 
 ---
 
@@ -61,11 +61,17 @@ from this model.
 | Path | What it is |
 |---|---|
 | `definitions.ts` | **Definitions.** Every `@asset`, `@threat` and `@control`, each with a `#id`. Read this first — it is the vocabulary everything else references. |
-| `config.json` | Project name, language, which files are scanned, and the annotation mode. |
+| `config.json` | Project name, language, which files are scanned, annotation mode, and `security_tests_dir` (default `security`). |
 | `prompt.md` | Project description used when generating threat reports. |
 | `threat-reports/` | Saved AI threat analyses, if any have been generated. |
 | `model.json` | The whole parsed model as JSON, canonically ordered. Generated. |
 | `graph/` | Mermaid diagrams of the model, plus a MANIFEST. Generated — see below. |
+
+## Committed security tests
+
+Keep the curated security suite in `security/`, relative to the repository root. This is the single committed security-test directory, selected by `security_tests_dir` in `config.json` (default `security`). Only verified templates deliberately promoted as security test cases belong in this suite. Drafts, run output and confirmed probes do not enter automatically; promotion after verification is the only way in. Translation drafts stay in `.guardlink/cxg-templates/`. Run `guardlink sync` after changing the setting. No files are moved automatically.
+
+Before opening or updating a pull request, run the entire configured suite with its runner. Report an absent suite as not applicable and skipped or unavailable execution as incomplete. A pre-review tool's recorded complete execution satisfies this once; generation alone does not.
 
 ## Annotation mode in effect
 

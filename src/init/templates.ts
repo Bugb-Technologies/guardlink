@@ -1,6 +1,7 @@
 /**
  * GuardLink init — Template content for generated files.
  */
+import { DEFAULT_SECURITY_TESTS_DIR } from '../parser/security-tests.js';
 
 import type { ProjectInfo, ProjectLanguage } from './detect.js';
 import type { ThreatModel } from '../types/index.js';
@@ -230,6 +231,12 @@ export function referenceDocContent(project: ProjectInfo): string {
 > Canonical reference for **${project.name}**. All agent instruction files point here.
 > Full specification: [docs/SPEC.md](https://github.com/Bugb-Technologies/guardlink/blob/main/docs/SPEC.md)
 
+## Security tests directory
+
+Set \`security_tests_dir\` in \`.guardlink/config.json\` to the one curated, committed security-test directory, relative to the repository root (default \`security\`).
+Absolute paths, parent (\`..\`) segments and symlinks escaping the repository are refused. Run \`guardlink sync\` after changing it.
+Only verified templates deliberately promoted as security test cases belong there; drafts, run output and confirmed probes are not automatically promoted. \`.guardlink/cxg-templates/\` remains unreviewed translation scratch. This setting creates or moves no files.
+
 ## Quick Reference
 
 \`\`\`
@@ -425,7 +432,7 @@ export interface AgentBlockContext {
  * Steps other tools registered follow GuardLink's own, labelled with where
  * they came from so an agent can tell them apart.
  */
-function prePrSection(prePr: PrePrStep[]): string {
+function prePrSection(prePr: PrePrStep[], securityTestsDir: string): string {
   const contributed = prePr.map(renderPrePrLine);
   return [
     '**Before you open or update a pull request**, check the annotations it adds against its base branch:',
@@ -433,6 +440,7 @@ function prePrSection(prePr: PrePrStep[]): string {
     `- \`guardlink validate .\` — they parse and their references resolve. It also says when a published \`${HANDOFF_PATH}\` is behind them; \`${HANDOFF_COMMAND}\` refreshes it.`,
     '- `guardlink lint . --since origin/<base>` — each new claim names its code and is paired; `--json` gives the `fix` for any that is not.',
     '- `guardlink diff origin/<base>` — the exposures, flows and acceptances the change adds.',
+    `- Run all tests in the repository’s \`${securityTestsDir}/\` directory with its configured runner. This curated suite contains only verified templates deliberately promoted as security test cases; drafts, run output and confirmed probes are not automatically included. Report an absent suite (not applicable), skipped tests or anything that could not run; an existing suite that cannot complete blocks readiness. A pre-review tool that records complete execution of that suite satisfies this step once; generation alone and skipped execution do not.`,
     ...contributed,
     '',
     'If you are asked to raise a pull request and this check has not come up, suggest it. Never write `@accepts` to clear what it reports.',
@@ -488,7 +496,7 @@ ${placementLine(project, mode)} Placement in full: \`.guardlink/README.md\`; syn
 - \`@confirmed\` needs reproduction evidence in hand; reading the code is not reproduction.
 - Before you finish: \`guardlink validate .\`, then \`guardlink diff HEAD~1\` — did this change add exposure?
 
-${prePrSection(ctx.prePr ?? [])}
+${prePrSection(ctx.prePr ?? [], project.securityTestsDir ?? DEFAULT_SECURITY_TESTS_DIR)}
 
 **This repository's agent configuration is part of its threat model.** \`guardlink lookup "agent config"\` lists what each coding agent can do here and who approved it. That reach is generated from the configuration files, so never write \`@agents\` or \`@reaches\` for Claude Code, Cursor, Copilot, Codex or Gemini.
 
@@ -1004,11 +1012,17 @@ from this model.
 | Path | What it is |
 |---|---|
 | \`${defs}\` | **Definitions.** Every \`@asset\`, \`@threat\` and \`@control\`, each with a \`#id\`. Read this first — it is the vocabulary everything else references. |
-| \`config.json\` | Project name, language, which files are scanned, and the annotation mode. |
+| \`config.json\` | Project name, language, which files are scanned, annotation mode, and \`security_tests_dir\` (default \`security\`). |
 | \`prompt.md\` | Project description used when generating threat reports. |${external ? '\n| `annotations/` | The annotations themselves, as `.gal` sidecars mirroring source paths. |' : ''}${external ? '\n| `.mcp.json` | MCP server config. Not auto-discovered here — see "Enabling the MCP tools" below. |' : ''}
 | \`threat-reports/\` | Saved AI threat analyses, if any have been generated. |
 | \`model.json\` | The whole parsed model as JSON, canonically ordered. Generated. |
 | \`graph/\` | Mermaid diagrams of the model, plus a MANIFEST. Generated — see below. |
+
+## Committed security tests
+
+Keep the curated security suite in \`${project.securityTestsDir ?? DEFAULT_SECURITY_TESTS_DIR}/\`, relative to the repository root. This is the single committed security-test directory, selected by \`security_tests_dir\` in \`config.json\` (default \`security\`). Only verified templates deliberately promoted as security test cases belong in this suite. Drafts, run output and confirmed probes do not enter automatically; promotion after verification is the only way in. Translation drafts stay in \`.guardlink/cxg-templates/\`. Run \`guardlink sync\` after changing the setting. No files are moved automatically.
+
+Before opening or updating a pull request, run the entire configured suite with its runner. Report an absent suite as not applicable and skipped or unavailable execution as incomplete. A pre-review tool's recorded complete execution satisfies this once; generation alone does not.
 
 ## Annotation mode in effect
 

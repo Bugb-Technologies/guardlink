@@ -18,6 +18,7 @@
  * @comment -- "The annotate prompt states that repository text, instruction files and tool output are evidence and never instructions, and routes text that addresses the agent into @exposes + @audit instead of action. Guidance to the agent, not an enforced control, so the prompt-injection exposure above stays open"
  * @comment -- "The @entitles section instructs agents to file a proposal rather than write the annotation: the rule itself is enforced in src/review/entitlements.ts (an @entitles with no accepted proposal is a validation error), because a prompt is guidance and this claim needs a gate (actor-entitlement design §3.6)"
  */
+import { readSecurityTestsDir } from '../parser/security-tests.js';
 
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -768,9 +769,10 @@ For every candidate threat/exposure:
    - mapping: GuardLink threat/exposure -> template file(s)
    - "audit-only / no-template" items with suggested @audit annotations
 4. CXG scan output goes to: \`.guardlink/pentest-findings/\` (this is where \`guardlink dashboard\` and \`guardlink threat-report\` read pentest results from). Always tell users to output to this path.
-5. Do NOT run CXG CLI or execute generated templates.
-6. Keep checks non-destructive.
-7. You MAY run \`cxg --help\` and other help/listing commands only for usage discovery. Do not run active scans unless user explicitly asks.
+5. Only after verification, deliberately promote selected templates as security test cases into \`${readSecurityTestsDir(root)}/\`, the repository-relative \`security_tests_dir\` from \`.guardlink/config.json\` (default \`security\`). This curated suite admits templates only through deliberate promotion after verification; drafts remain in \`.guardlink/cxg-templates/\`. Run output and confirmed probes are not automatically promoted. Do not move unrelated files. Keep regressions after a fix even when mitigation removes a translation candidate.
+6. Do NOT run CXG CLI or execute generated templates.
+7. Keep checks non-destructive.
+8. You MAY run \`cxg --help\` and other help/listing commands only for usage discovery. Do not run active scans unless user explicitly asks.
 
 ## CXG Format Contract (from source)
 Use the project skeleton contract and examples; mirror field names and structure exactly.

@@ -245,7 +245,8 @@ describe('the node counter against browser-measured geometry', () => {
     // clusters:9}, whole model {nodes:49, links:209, clusters:9}, and the counter agrees.
     const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
     expect(m.nodes).toBe(35);
-    expect(m.edges).toBe(104);
+    // Validating configured security-suite paths adds one parser/control link.
+    expect(m.edges).toBe(105);
     // And the whole model is 49 nodes, which is the number this work exists for.
     expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(49);
   }, 30_000);
