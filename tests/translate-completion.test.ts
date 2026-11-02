@@ -25,6 +25,27 @@ function binary(agent: TranslateAgent, output: string, exitCode = 0) {
 }
 
 describe('headless structured completion', () => {
+  it('uses supported Codex exec flags with bounded writes and no interactive approvals', async () => {
+    const root = directory(), out = join(root, 'drafts'); mkdirSync(out);
+    const file = join(root, 'codex');
+    // Model the current CLI parser: reject obsolete or unsafe modes before any author work.
+    writeFileSync(file, `#!${process.execPath}\nconst fs=require('node:fs'),path=require('node:path'),args=process.argv.slice(2); const prompt=fs.readFileSync(0,'utf8');
+      const valued=new Set(['--sandbox','-c','--add-dir','--color']);
+      for(let i=1;i<args.length;i++) {
+        if(valued.has(args[i])) {if(args[++i]===undefined) process.exit(2);continue;}
+        if(!['--json','--skip-git-repo-check','-'].includes(args[i])) {console.error("error: unexpected argument '"+args[i]+"' found");process.exit(2);}
+      }
+      if(args.includes('--dangerously-bypass-approvals-and-sandbox') || args[args.indexOf('--sandbox')+1]!=='workspace-write' || args[args.indexOf('-c')+1]!=='approval_policy="never"') process.exit(3);
+      if(args[0]!=='exec' || !args.includes('--json') || args.at(-1)!=='-' || !prompt.includes('Author templates') || process.stdin.isTTY) process.exit(4);
+      fs.writeFileSync(path.join(args[args.indexOf('--add-dir')+1],'draft.py'),'# authored draft');
+      console.log(JSON.stringify({type:'turn.completed',usage:{}}));`);
+    chmodSync(file, 0o755); vi.stubEnv('PATH', root + delimiter + process.env.PATH);
+    const result = await runTranslateAgent('codex', 'Author templates', root, out);
+    expect(result).toMatchObject({exitCode:0,completion:{status:'completed'}});
+    expect(result.error).toBeUndefined();
+    expect(readFileSync(join(out,'draft.py'),'utf8')).toBe('# authored draft');
+  });
+
   it.each(['claude', 'codex', 'gemini'] as const)('rejects %s safety stops even when its completion and process say success', async agent => {
     const root = binary(agent, frame(agent, 'Files written.', { safety_stops: 2 }));
     const result = await runTranslateAgent(agent, 'Author templates', root, root);
