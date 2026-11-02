@@ -209,14 +209,14 @@ describe('translate context schema and prompts', () => {
     expect(() => loadTranslateContext('large.json', root)).toThrow(/2 MiB/);
   });
 
-  it('keeps the default prompt byte-compatible with the original scanner implementation', () => {
+  it('keeps the default scanner contract equivalent to selecting scanner explicitly', () => {
     const root = directory();
     vi.stubEnv('GUARDLINK_CXG_ROOT', root);
     vi.stubEnv('GUARDLINK_CXG_SKELETON_DIR', root);
-    // Pin the pre-extension implementation as a hash, without duplicating its prose.
-    const hash = createHash('sha256').update(buildTranslatePrompt('Generate templates', '/project', null)).digest('hex');
-    expect(hash).toBe('6c0f5fced7e41ad42f015c61a3efc29f803d6019d14255e946a6134119c28988');
-    expect(buildTranslatePrompt('Generate templates', '/project', null, { contract: 'scanner' })).toBe(buildTranslatePrompt('Generate templates', '/project', null));
+    const prompt = buildTranslatePrompt('Generate templates', root, null);
+    expect(buildTranslatePrompt('Generate templates', root, null, { contract: 'scanner' })).toBe(prompt);
+    expect(prompt).toContain('CXG Engine Contract');
+    expect(prompt).not.toContain('async function cxgProbe(cxg)');
   });
 
   it('renders only in-scope context as quoted untrusted evidence and supports exposure ids', async () => {

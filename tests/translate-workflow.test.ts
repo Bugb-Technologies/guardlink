@@ -48,7 +48,7 @@ describe('generation-only translation', () => {
       await writeFile(join(root, 'security', 'regression.py'), 'raise RuntimeError("must not execute")\n');
       const before = await snapshot(root);
       vi.clearAllMocks();
-      const result = await client.callTool({ name: 'guardlink_translate', arguments: { root, prompt: 'Only app.ts SQL input on this branch' } });
+      const result = await client.callTool({ name: 'guardlink_translate', arguments: { root, prompt: 'Only app.ts SQL input on this branch', code_graph: false } });
       expect(result.isError).not.toBe(true);
       const blocks = result.content as { type: string; text: string }[];
       const response = JSON.parse(blocks[0].text);
@@ -67,6 +67,35 @@ describe('generation-only translation', () => {
       expect(await snapshot(root)).toEqual(before);
       for (const fn of [childProcess.spawn, childProcess.spawnSync, childProcess.exec, childProcess.execSync, childProcess.execFile]) expect(fn).not.toHaveBeenCalled();
       for (const args of vi.mocked(childProcess.execFileSync).mock.calls) expect(args[0]).toBe('git');
+    } finally {
+      await client.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('uses a configured missing suite and selected draft output without creating either', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-translate-suite-'));
+    const client = await connect();
+    try {
+      await mkdir(join(root, '.guardlink'));
+      await writeFile(join(root, '.guardlink/config.json'), '{"security_tests_dir":"qa/sec-suite"}');
+      const before = await snapshot(root);
+      for (const contract of ['scanner', 'probe']) {
+        const result = await client.callTool({ name: 'guardlink_translate', arguments: {
+          root, prompt: 'Review changed paths', contract, out: '.guardlink/cxg-templates/change', code_graph: false,
+        } });
+        expect(result.isError).not.toBe(true);
+        const response = JSON.parse((result.content as { text: string }[])[0].text);
+        expect(response.generation_only).toBe(true);
+        expect(response.outputs).toMatchObject({ templates: '.guardlink/cxg-templates/change/', index: '.guardlink/cxg-templates/change/README.md' });
+        expect(response.next_step).toContain('configured qa/sec-suite/ suite');
+        expect(response.next_step).not.toContain('root security/');
+        if (contract === 'scanner') {
+          expect(response.prompt).toContain('run the entire configured `qa/sec-suite/` suite');
+          expect(response.prompt).not.toMatch(/root `security\/`/);
+        }
+      }
+      expect(await snapshot(root)).toEqual(before);
     } finally {
       await client.close();
       await rm(root, { recursive: true, force: true });

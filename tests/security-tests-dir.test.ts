@@ -91,18 +91,22 @@ describe('committed security-test directory configuration', () => {
       const read = (file: string) => readFileSync(join(root, file), 'utf8');
       for (const file of ['CLAUDE.md', 'AGENTS.md', '.cursor/rules/guardlink.mdc', '.guardlink/README.md']) {
         expect(read(file), file).toContain('`checks/security/`');
+        expect(read(file), file).not.toMatch(/root `security\/`/);
         expect(read(file).toLowerCase(), file).toContain('only verified templates deliberately promoted as security test cases');
       }
       expect(read('docs/GUARDLINK_REFERENCE.md')).toContain('security_tests_dir');
+      expect(read('.claude/skills/guardlink-translate/SKILL.md')).toContain('`checks/security/`');
+      expect(read('.claude/skills/guardlink-translate/SKILL.md')).not.toMatch(/root `security\/`/);
       expect(read('CLAUDE.md').indexOf('`checks/security/`')).toBeLessThan(read('CLAUDE.md').indexOf('other-tool check'));
       const { model } = await parseProject({ root });
       const prompt = buildTranslatePrompt('Review changed paths', root, model);
       expect(prompt).toContain('deliberately promote selected templates as security test cases into `checks/security/`');
+      expect(prompt).not.toMatch(/root `security\/`/);
       expect(prompt).toContain('Create templates under: `.guardlink/cxg-templates/`');
-      expect(prompt).toContain('Do NOT run CXG CLI or execute generated templates');
+      expect(prompt).toContain('Do NOT run scans or execute generated templates');
       config(root, { security_tests_dir: 'regressions', annotation_mode: mode });
       syncAgentFiles({ root, model });
-      for (const file of ['CLAUDE.md', 'AGENTS.md', '.cursor/rules/guardlink.mdc', '.guardlink/README.md']) {
+      for (const file of ['CLAUDE.md', 'AGENTS.md', '.cursor/rules/guardlink.mdc', '.guardlink/README.md', '.claude/skills/guardlink-translate/SKILL.md']) {
         expect(read(file), file).toContain('`regressions/`');
         expect(read(file), file).not.toContain('`checks/security/`');
       }

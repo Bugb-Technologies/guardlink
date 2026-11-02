@@ -46,7 +46,7 @@ function readIfExists(path: string, maxChars = 5000): string {
 
 import { ANNOTATIONS_DIR, galPathFor } from '../parser/gal-path.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
-import { selectAnnotatePlaybook, getPlaybook, type AnnotatePlaybookId, TRANSLATE_GUIDE } from '../playbooks/index.js';
+import { selectAnnotatePlaybook, getPlaybook, type AnnotatePlaybookId, buildTranslateGuide } from '../playbooks/index.js';
 import { renderWorklistBlock, type Worklist } from '../codegraph/index.js';
 import { renderUndeclaredToolsBlock, type ReachCheck } from '../codegraph/reach-check.js';
 
@@ -816,7 +816,7 @@ ${modelSummary}${candidateExposures}
 ${instruction}
 
 ## Workflow context — execution is a later handoff
-${TRANSLATE_GUIDE}
+${buildTranslateGuide(readSecurityTestsDir(root))}
 
 For this generation-only task, author the scoped templates and index, then return execution instructions. Target startup, auth-profile use and test execution belong to the later, separately requested execution step.
 
@@ -855,7 +855,7 @@ For every candidate threat/exposure:
    - "audit-only / no-template" items with suggested @audit annotations
 4. CXG scan output goes to: \`.guardlink/pentest-findings/\` (this is where \`guardlink dashboard\` and \`guardlink threat-report\` read pentest results from). Always tell users to output to this path.
 5. Only after verification, deliberately promote selected templates as security test cases into \`${readSecurityTestsDir(root)}/\`, the repository-relative \`security_tests_dir\` from \`.guardlink/config.json\` (default \`security\`). This curated suite admits templates only through deliberate promotion after verification; drafts remain in \`.guardlink/cxg-templates/\`. Run output and confirmed probes are not automatically promoted. Do not move unrelated files. Keep regressions after a fix even when mitigation removes a translation candidate.
-6. Do NOT run CXG CLI or execute generated templates.
+6. Do NOT run scans or execute generated templates. Preserve unrelated template files and durable regression tests; generation updates only the requested scope.
 7. Keep checks non-destructive.
 8. You MAY run \`cxg --help\` and other help/listing commands only for usage discovery. Do not run active scans unless user explicitly asks.
 
