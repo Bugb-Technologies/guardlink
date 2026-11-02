@@ -514,6 +514,28 @@ describe('annotation prompt placement', () => {
     }
   });
 
+  it.each(['inline', 'external', undefined] as const)('preserves the unconfigured placement choice %s', async requested => {
+    const root = await mkdtemp(join(tmpdir(), 'guardlink-annotate-unconfigured-'));
+    const session = await connect();
+    try {
+      const source = 'export const x = 1;\n';
+      await writeFile(join(root, 'app.ts'), source);
+      const result = await session.client.callTool({ name: 'guardlink_annotate', arguments: {
+        root, prompt: 'review auth', code_graph: false, ...(requested ? { mode: requested } : {}),
+      } });
+      expect(result.isError).not.toBe(true);
+      expect(JSON.parse(payload(result))).toMatchObject({
+        mode: 'agent', annotation_mode: requested ?? 'external',
+        annotation_mode_source: requested ? 'argument' : 'default',
+      });
+      const { readFile } = await import('node:fs/promises');
+      expect(await readFile(join(root, 'app.ts'), 'utf8')).toBe(source);
+    } finally {
+      await session.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   for (const mode of ['inline', 'external'] as const) {
     for (const configured of [true, false]) {
       it(`preserves ${configured ? 'configured' : 'observed'} ${mode} placement`, async () => {
@@ -532,6 +554,8 @@ describe('annotation prompt placement', () => {
           expect(response.prompt).toContain(mode === 'inline' ? 'This run MUST produce annotations as inline source comments.' : 'This run MUST produce annotations as externalized .gal files.');
           const conflicting = await session.client.callTool({ name: 'guardlink_annotate', arguments: { root, prompt: 'maintain auth', mode: mode === 'inline' ? 'external' : 'inline', code_graph: false } });
           expect(conflicting.isError).toBe(true);
+          const blocks = conflicting.content as { type: string; text: string }[];
+          expect(JSON.parse(blocks.at(-1)!.text).guardlink).toMatchObject({ root, mode });
         } finally {
           await session.close();
           await rm(root, { recursive: true, force: true });
