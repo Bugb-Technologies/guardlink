@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:977a1b4c61353c08b90c088083d183076365b40756e5f50ef0e4100bee782a12
+%% annotation_hash: sha256-v3:c44fb28f664110e33a55f108afd708946931b249a40c94e64a5ca088774bc4c5
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 49 nodes / 210 edges, past the 12 / 16 legibility budget (49 nodes against 12, 210 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 49 nodes / 216 edges, past the 12 / 16 legibility budget (49 nodes against 12, 216 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -101,6 +101,7 @@ graph LR
   agent_launcher -. exposes .-> prompt_injection
   agent_launcher -. exposes .-> dos
   agent_launcher -. exposes .-> config_tamper
+  agent_launcher -. exposes .-> insecure_deser
   llm_client -. exposes .-> insecure_deser
   llm_client -. exposes .-> path_traversal
   llm_client -. exposes .-> arbitrary_write
@@ -190,6 +191,9 @@ graph LR
   param_commands -- mitigates --> child_proc_injection
   param_commands -. protects .-> agent_launcher
   resource_limits -. protects .-> agent_launcher
+  config_validation -. protects .-> agent_launcher
+  input_sanitize -- mitigates --> path_traversal
+  input_sanitize -. protects .-> agent_launcher
   config_validation -. protects .-> llm_client
   path_validation -. protects .-> llm_client
   config_validation -- mitigates --> ssrf
@@ -282,6 +286,7 @@ graph LR
   parser -- "📡 annotation worklist" --> agent_launcher
   codegraph -- "📡 worklist" --> agent_launcher
   codegraph -- "📡 undeclared agent tools" --> agent_launcher
+  codegraph -- "📡 buildTranslateContext" --> agent_launcher
   blame -- "📡 formatBlameText" --> cli
   blame -- "🗄️ buildBlamePayload" --> cli
   blame -- "📡 summarise" --> dashboard
@@ -293,6 +298,7 @@ graph LR
   mcp -- "📡 generateThreatReport" --> llm_client
   mcp -- "📡 guardlink_worklist" --> codegraph
   mcp -- "📡 guardlink_reach" --> codegraph
+  mcp -- "📡 guardlink_translate" --> agent_launcher
   agent_config -- "📡 mergeAgentConfig" --> parser
   tui -- "📡 launchAgent" --> agent_launcher
   tui -- "📡 chatCompletion" --> llm_client

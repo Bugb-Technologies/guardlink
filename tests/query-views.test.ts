@@ -243,10 +243,13 @@ describe('the node counter against browser-measured geometry', () => {
     // filtered {nodes:35, links:102, clusters:9}; whole {nodes:49, links:206, clusters:9}.
     // Re-measured for 104 the same way: filtered {nodes:35, links:104,
     // clusters:9}, whole model {nodes:49, links:209, clusters:9}, and the counter agrees.
+    // Translate context and headless authoring re-measured with mermaid@11 at
+    // 1440x900: filtered {nodes:35, links:109, clusters:9}; whole model
+    // {nodes:49, links:215, clusters:9}.
     const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
     expect(m.nodes).toBe(35);
-    // Validating configured security-suite paths adds one parser/control link.
-    expect(m.edges).toBe(105);
+    // Context translation plus configured suite validation both contribute model links.
+    expect(m.edges).toBe(110);
     // And the whole model is 49 nodes, which is the number this work exists for.
     expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(49);
   }, 30_000);

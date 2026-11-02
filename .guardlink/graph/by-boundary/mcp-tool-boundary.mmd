@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-boundary/mcp-tool-boundary.mmd
 %% scope:           PARTIAL — the Trust boundary at tool argument parsing between mcp and mcpclient, and what flows across it
-%% annotation_hash: sha256-v3:977a1b4c61353c08b90c088083d183076365b40756e5f50ef0e4100bee782a12
+%% annotation_hash: sha256-v3:c44fb28f664110e33a55f108afd708946931b249a40c94e64a5ca088774bc4c5
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -17,27 +17,21 @@ graph LR
   subgraph Z1["🧱 MCPClient · Trust boundary at MCP protocol"]
     mcpclient["👤 MCPClient"]
   end
-  subgraph Z2["🧱 GuardLink.Parser · Trust boundary between parser and disk I/O"]
-    parser["🧩 GuardLink.Parser"]
-  end
-  subgraph Z3["🧱 FileSystem · Trust boundary between parser and disk I/O"]
-    filesystem["🧩 FileSystem"]
-  end
-  configfile["🧩 ConfigFile"]
-  llm_client["👤 GuardLink.LLM_Client"]
+  parser["🧩 GuardLink.Parser"]
+  agent_launcher["🧩 GuardLink.Agent_Launcher"]
   codegraph["🧩 GuardLink.CodeGraph"]
+  llm_client["👤 GuardLink.LLM_Client"]
   mcp -.-|🧱 Trust boundary at MCP protocol| mcpclient
-  parser -.-|🧱 Trust boundary between parser and disk I/O| filesystem
+  parser -- "📡 annotation worklist" --> agent_launcher
+  codegraph -- "📡 worklist" --> agent_launcher
+  codegraph -- "📡 undeclared agent tools" --> agent_launcher
+  codegraph -- "📡 buildTranslateContext" --> agent_launcher
   mcpclient -- "📡 guardlink_context" --> mcp
   mcpclient -- "📡 stdio" --> mcp
-  configfile -- "🗄️ readFileSync" --> mcp
   mcpclient -- "📡 tool_call" --> mcp
-  mcp -- "🗄️ writeFile" --> filesystem
   mcp -- "📡 generateThreatReport" --> llm_client
   mcp -- "📡 resource" --> mcpclient
   mcp -- "📡 guardlink_worklist" --> codegraph
   mcp -- "📡 guardlink_reach" --> codegraph
-  configfile -- "📡 readAcceptancePolicy" --> parser
+  mcp -- "📡 guardlink_translate" --> agent_launcher
   mcpclient -- "📡 applyAnnotations" --> parser
-  parser -- "🗄️ writeFileSync" --> filesystem
-  configfile -- "📡 readSecurityTestsDir" --> parser

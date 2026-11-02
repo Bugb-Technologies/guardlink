@@ -69,6 +69,8 @@ import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard,
 import { generateDashboardHTML, loadSince } from '../dashboard/index.js';
 import type { SinceInput } from '../dashboard/analytics.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt, buildTranslatePrompt, buildAskPrompt, resolveAnnotationMode } from '../agents/index.js';
+import { buildTranslateContext, loadTranslateContext, selectTranslateThreats, type TranslateContract } from '../agents/translate-context.js';
+import { translateHeadless, type TranslateAgent } from '../agents/translate-headless.js';
 import { loadWorklist, worklistSummaryLine } from '../codegraph/index.js';
 import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary-check.js';
 import { loadReachCheck, checkReach, reachCheckSummaryLine, reachDrafts, renderDrafts, type ReachCheck } from '../codegraph/reach-check.js';
@@ -2192,92 +2194,125 @@ program
   .option('--windsurf', 'Open Windsurf IDE with prompt on clipboard')
   .option('--clipboard', 'Copy translation prompt to clipboard only')
   .option('--feature <names>', 'Filter to specific feature(s) (comma-separated)')
+  .option('--context <file.json>', 'Version 1 per-threat authoring context pack')
+  .option('--contract <contract>', 'Template output contract: scanner (default) or probe')
+  .option('--headless', 'Run an author CLI to completion without a TTY')
+  .option('--agent <agent>', 'Headless author: claude, codex or gemini')
+  .option('--out <dir>', 'Template output directory (default .guardlink/cxg-templates/)')
+  .option('--threat <id>', 'Select a threat or exposure id (repeatable)', (id: string, ids: string[]) => [...ids, id], [] as string[])
+  .option('--format <format>', 'Headless result format: json')
+  .option('--no-code-graph', 'Do not supplement translate with optional graph facts')
   .action(async (promptParts: string[], opts: {
     dir: string; project: string;
     claudeCode?: boolean; codex?: boolean; gemini?: boolean;
     cursor?: boolean; windsurf?: boolean; clipboard?: boolean;
-    feature?: string;
+    feature?: string; context?: string; contract?: TranslateContract; headless?: boolean;
+    agent?: TranslateAgent; out?: string; threat?: string[]; format?: string; codeGraph?: boolean;
   }) => {
-    const root = resolve(opts.dir);
-    const project = detectProjectName(root, opts.project);
-    const userPrompt = promptParts.join(' ').trim();
+    try {
+      if (opts.contract && !['scanner', 'probe'].includes(opts.contract)) throw new Error('Invalid --contract: use scanner or probe');
+      if (opts.headless && !['claude', 'codex', 'gemini'].includes(opts.agent || '')) throw new Error('--headless requires --agent claude, codex or gemini');
+      if (opts.format && (opts.format !== 'json' || !opts.headless)) throw new Error('--format json requires --headless');
+      if (opts.agent && !opts.headless) throw new Error('--agent requires --headless; use the interactive agent flags otherwise');
+      const root = resolve(opts.dir);
+      const project = detectProjectName(root, opts.project);
+      const userPrompt = promptParts.join(' ').trim();
 
-    let { model, diagnostics } = await parseProject({ root, project });
+      let { model, diagnostics } = await parseProject({ root, project });
 
-    // Apply feature filter if specified
-    if (opts.feature) {
-      const featureNames = opts.feature.split(',').map(s => s.trim());
-      model = filterByFeature(model, featureNames);
-      console.error(`Filtered to feature(s): ${featureNames.map(f => `"${f}"`).join(', ')}`);
-    }
-    const errors = diagnostics.filter(d => d.level === 'error');
-    if (errors.length > 0) printDiagnostics(errors);
-
-    if (model.annotations_parsed === 0) {
-      console.error('No annotations found. Run: guardlink init . && add annotations first.');
-      process.exit(1);
-    }
-
-    // Build translate prompt
-    const fullPrompt = buildTranslatePrompt(userPrompt, root, model);
-
-    // Resolve agent: explicit flag > project config > default (Claude Code)
-    let agent = agentFromOpts(opts);
-    if (!agent) {
-      const projCfg = loadProjectConfig(root);
-      if (projCfg?.aiMode === 'cli-agent' && projCfg?.cliAgent) {
-        agent = AGENTS.find(a => a.id === projCfg.cliAgent) || null;
+      // Apply feature filter if specified
+      if (opts.feature) {
+        const featureNames = opts.feature.split(',').map(s => s.trim());
+        model = filterByFeature(model, featureNames);
+        console.error(`Filtered to feature(s): ${featureNames.map(f => `"${f}"`).join(', ')}`);
       }
+      const errors = diagnostics.filter(d => d.level === 'error');
+      if (errors.length > 0) printDiagnostics(errors);
+
+      if (model.annotations_parsed === 0) {
+        if (opts.headless) throw new Error('No annotations found. Add annotations first.');
+        console.error('No annotations found. Run: guardlink init . && add annotations first.');
+        process.exit(1);
+      }
+
+      model = selectTranslateThreats(model, opts.threat);
+      const context = opts.context ? loadTranslateContext(opts.context, root)
+        : await buildTranslateContext(root, model, { enabled: opts.codeGraph !== false });
+      if (opts.headless) {
+        const report = await translateHeadless({ root, model, userPrompt, context,
+          contract: opts.contract, out: opts.out || '.guardlink/cxg-templates/',
+          agent: opts.agent!, selected: !!opts.threat?.length });
+        console.log(JSON.stringify(report));
+        if (report.failures.length) process.exitCode = 1;
+        return;
+      }
+      const fullPrompt = buildTranslatePrompt(userPrompt, root, model, {
+        context, contract: opts.contract, out: opts.out, threats: opts.threat,
+      });
+
+      // Resolve agent: explicit flag > project config > default (Claude Code)
+      let agent = agentFromOpts(opts);
       if (!agent) {
-        agent = AGENTS.find(a => a.id === 'claude-code') || null;
+        const projCfg = loadProjectConfig(root);
+        if (projCfg?.aiMode === 'cli-agent' && projCfg?.cliAgent) {
+          agent = AGENTS.find(a => a.id === projCfg.cliAgent) || null;
+        }
+        if (!agent) {
+          agent = AGENTS.find(a => a.id === 'claude-code') || null;
+        }
       }
-    }
 
-    if (!agent) {
-      console.error('No agent available. Use one of:');
-      for (const a of AGENTS) {
-        console.error(`  ${a.flag.padEnd(16)} ${a.name}`);
+      if (!agent) {
+        console.error('No agent available. Use one of:');
+        for (const a of AGENTS) {
+          console.error(`  ${a.flag.padEnd(16)} ${a.name}`);
+        }
+        process.exit(1);
       }
-      process.exit(1);
-    }
 
-    console.log(`Launching ${agent.name} for CXG template translation...`);
-    console.log(`Threat model: ${model.annotations_parsed} annotations, ${model.exposures.length} exposures`);
-    if (agent.cmd) {
-      console.log(`${agent.name} will take over this terminal. Exit the agent to return.\n`);
-    }
+      console.log(`Launching ${agent.name} for CXG template translation...`);
+      console.log(`Threat model: ${model.annotations_parsed} annotations, ${model.exposures.length} exposures`);
+      if (agent.cmd) {
+        console.log(`${agent.name} will take over this terminal. Exit the agent to return.\n`);
+      }
 
-    const result = launchAgent(agent, fullPrompt, root);
+      const result = launchAgent(agent, fullPrompt, root);
 
-    if (result.clipboardCopied) {
-      console.log(`✓ Prompt copied to clipboard (${fullPrompt.length.toLocaleString()} chars)`);
-    }
-
-    if (result.error) {
-      console.error(`✗ ${result.error}`);
       if (result.clipboardCopied) {
-        console.log('Prompt is on your clipboard — paste it manually.');
+        console.log(`✓ Prompt copied to clipboard (${fullPrompt.length.toLocaleString()} chars)`);
       }
-      process.exit(1);
-    }
 
-    if (agent.cmd && result.launched) {
-      // D31 — a non-zero exit is a failed run, not a finished one.
-      if (result.exitCode != null && result.exitCode !== 0) {
-        console.error(`\n✗ ${agent.name} exited with code ${result.exitCode}.`);
-        process.exitCode = 1;
-      } else {
-        console.log(`\n✓ ${agent.name} session ended.`);
+      if (result.error) {
+        console.error(`✗ ${result.error}`);
+        if (result.clipboardCopied) {
+          console.log('Prompt is on your clipboard — paste it manually.');
+        }
+        process.exit(1);
       }
-      console.log('  Expected output location: .guardlink/cxg-templates/');
-      console.log('  Note: Templates are generated only, not executed.');
-    } else if (agent.app && result.launched) {
-      console.log(`✓ ${agent.name} launched with project: ${project}`);
-      console.log('\nPaste (Cmd+V) the prompt in the AI chat panel.');
-      console.log('When done, review .guardlink/cxg-templates/');
-    } else if (agent.id === 'clipboard') {
-      console.log('\nPaste the prompt into your preferred AI tool.');
-      console.log('When done, review .guardlink/cxg-templates/');
+
+      if (agent.cmd && result.launched) {
+        // D31 — a non-zero exit is a failed run, not a finished one.
+        if (result.exitCode != null && result.exitCode !== 0) {
+          console.error(`\n✗ ${agent.name} exited with code ${result.exitCode}.`);
+          process.exitCode = 1;
+        } else {
+          console.log(`\n✓ ${agent.name} session ended.`);
+        }
+        console.log(`  Expected output location: ${opts.out || '.guardlink/cxg-templates/'}`);
+        console.log('  Note: Templates are generated only, not executed.');
+      } else if (agent.app && result.launched) {
+        console.log(`✓ ${agent.name} launched with project: ${project}`);
+        console.log('\nPaste (Cmd+V) the prompt in the AI chat panel.');
+        console.log('When done, review .guardlink/cxg-templates/');
+      } else if (agent.id === 'clipboard') {
+        console.log('\nPaste the prompt into your preferred AI tool.');
+        console.log('When done, review .guardlink/cxg-templates/');
+      }
+    } catch (error) {
+      const message = (error as Error).message;
+      if (opts.headless) console.log(JSON.stringify({ version: 1, results: [], failures: [{ threat: '*', error: message, exit_code: null }] }));
+      else console.error(message);
+      process.exitCode = 1;
     }
   });
 

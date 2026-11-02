@@ -54,7 +54,7 @@ describe('MCP tools as agent reach', () => {
     const declared = serverReaches().map(r => r.capability);
     expect([...declared].sort()).toEqual([...toolNames].sort());
     expect(new Set(declared).size).toBe(declared.length);
-    expect(toolNames.length).toBe(28);
+    expect(toolNames.length).toBe(29);
   });
 
   it('each row is an agent reach by #mcp-agent, written by hand', () => {
