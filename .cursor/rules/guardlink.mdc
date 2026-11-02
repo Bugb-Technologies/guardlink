@@ -5,7 +5,7 @@ alwaysApply: true
 ---
 
 <!-- guardlink:begin -->
-<!-- guardlink:stamp annotation_hash=sha256-v3:232899ce6b892ff6ba37af074d01ff0d22b9f10dbb8ee1167c98bb0e9b7e86ce agent_config_hash=sha256-v1:b85da68b1ee0133116c8c11c9b83b2d198bdb44cc33846df2b3ba093ea118828 -->
+<!-- guardlink:stamp annotation_hash=sha256-v3:93ba837a9611dbd063c17e0a87b878cad1649ded4796189511ae3dc4b52ec1a0 agent_config_hash=sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25 -->
 # GuardLink Security Annotations
 
 This project carries a [GuardLink](https://guardlink.bugb.io) threat model: security facts recorded
@@ -30,6 +30,7 @@ and `guardlink parse .` answer the same.
 - `guardlink validate .` — they parse and their references resolve. It also says when a published `.guardlink/report.json` is behind them; `guardlink parse . -o .guardlink/report.json` refreshes it.
 - `guardlink lint . --since origin/<base>` — each new claim names its code and is paired; `--json` gives the `fix` for any that is not.
 - `guardlink diff origin/<base>` — the exposures, flows and acceptances the change adds.
+- Run all tests in the repository’s `security/` directory with its configured runner. This curated suite contains only verified templates deliberately promoted as security test cases; drafts, run output and confirmed probes are not automatically included. Report an absent suite (not applicable), skipped tests or anything that could not run; an existing suite that cannot complete blocks readiness. A pre-review tool that records complete execution of that suite satisfies this step once; generation alone and skipped execution do not.
 
 If you are asked to raise a pull request and this check has not come up, suggest it. Never write `@accepts` to clear what it reports.
 

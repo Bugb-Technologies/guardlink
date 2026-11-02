@@ -57,6 +57,7 @@
  * @entitles #mcp-agent to read-threat-model on #mcp against #data-exposure -- "By design: guardlink mcp exists to hand a connected coding agent the threat model — that disclosure is the product, not a leak. No privilege gain either: the agent already reads the annotated source these records are parsed from, so the assembled model tells it nothing it could not derive itself. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:23"
  * @comment -- "Entitlement accepted by zippon on 2026-08-10 via guardlink entitle (proposal ent-mcp_agent.mcp.data_exposure)."
  */
+import { readSecurityTestsDir } from '../parser/security-tests.js';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { resolve } from 'node:path';
@@ -256,6 +257,7 @@ export function createServer(): McpServer {
       instructions: buildServerInstructions({
         mode: readConfiguredMode(cwd),
         definitionsPath: '.guardlink/definitions.*',
+        securityTestsDir: readSecurityTestsDir(cwd),
       }),
     },
   );
@@ -280,10 +282,10 @@ export function createServer(): McpServer {
       invalidateCache();
       const { model: parsed } = await getModel(root);
       // The derived reach_analysis block (SPEC §5.5), as `guardlink parse` writes it.
-      const model = withReachAnalysis(parsed);
+      const model = { ...withReachAnalysis(parsed), config: { security_tests_dir: readSecurityTestsDir(root) } };
 
       if (compact) {
-        return { content: [{ type: 'text', text: serializeModelCompact(model) }] };
+        return { content: [{ type: 'text', text: JSON.stringify({ ...JSON.parse(serializeModelCompact(model)), config: model.config }) }] };
       }
 
       // The one non-additive change in this epic: the default payload drops a

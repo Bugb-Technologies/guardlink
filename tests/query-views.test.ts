@@ -195,6 +195,21 @@ describe('the node counter against browser-measured geometry', () => {
   });
 });
 
+/**
+ * The counter needs an independent SVG oracle, not a count that changes when
+ * unrelated repository annotations are merged. Keep the measured source fixed;
+ * the generator tests above still exercise current output.
+ */
+describe('the node counter against browser-measured geometry', () => {
+  it.each([
+    ['filtered', { nodes: 35, edges: 105, clusters: 9 }],
+    ['all', { nodes: 49, edges: 210, clusters: 9 }],
+  ] as const)('agrees with the rendered SVG for the frozen %s threat graph', async (name, geometry) => {
+    const source = await readFile(new URL(`./fixtures/graph-geometry/${name}.mmd`, import.meta.url), 'utf8');
+    expect(measureLegibility(source)).toEqual(geometry);
+  });
+});
+
 // ─── Selection ───────────────────────────────────────────────────────
 
 describe('growing a neighbourhood to fit', () => {

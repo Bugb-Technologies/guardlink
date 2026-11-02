@@ -11,8 +11,8 @@ accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 1125 annotations · 21 assets · 16 threats · 14 controls · 166 exposures · 241 flows
-Content hash: `sha256-v3:232899ce6b892ff6ba37af074d01ff0d22b9f10dbb8ee1167c98bb0e9b7e86ce` — identical hash means identical model.
+Current model: 1130 annotations · 21 assets · 16 threats · 14 controls · 168 exposures · 242 flows
+Content hash: `sha256-v3:93ba837a9611dbd063c17e0a87b878cad1649ded4796189511ae3dc4b52ec1a0` — identical hash means identical model.
 
 ---
 
@@ -61,11 +61,17 @@ from this model.
 | Path | What it is |
 |---|---|
 | `definitions.ts` | **Definitions.** Every `@asset`, `@threat` and `@control`, each with a `#id`. Read this first — it is the vocabulary everything else references. |
-| `config.json` | Project name, language, which files are scanned, and the annotation mode. |
+| `config.json` | Project name, language, which files are scanned, annotation mode, and `security_tests_dir` (default `security`). |
 | `prompt.md` | Project description used when generating threat reports. |
 | `threat-reports/` | Saved AI threat analyses, if any have been generated. |
 | `model.json` | The whole parsed model as JSON, canonically ordered. Generated. |
 | `graph/` | Mermaid diagrams of the model, plus a MANIFEST. Generated — see below. |
+
+## Committed security tests
+
+Keep the curated security suite in `security/`, relative to the repository root. This is the single committed security-test directory, selected by `security_tests_dir` in `config.json` (default `security`). Only verified templates deliberately promoted as security test cases belong in this suite. Drafts, run output and confirmed probes do not enter automatically; promotion after verification is the only way in. Translation drafts stay in `.guardlink/cxg-templates/`. The suite must be outside the repository-root `.bravos/`, `.guardlink/` and `.git/` directories. A missing suite is valid but has no tests. Run `guardlink sync` after changing the setting. No files are moved automatically.
+
+Before opening or updating a pull request, run the entire configured suite with its runner. Report an absent suite as not applicable and skipped or unavailable execution as incomplete. A pre-review tool's recorded complete execution satisfies this once; generation alone does not.
 
 ## Annotation mode in effect
 

@@ -165,7 +165,12 @@ change added against the base branch — `guardlink validate .`,
 other tools can add their own pre-PR line to that step with `pre_pr` in
 `.guardlink/config.json` rather than writing a second block. `guardlink sync`
 rewrites only what is between GuardLink's markers; text around them is kept, in
-every file. Details: [Agent instruction files](docs/GUARDLINK_REFERENCE.md#agent-instruction-files).
+every file. `security_tests_dir` in `.guardlink/config.json` selects the single
+curated security suite (default root `security/`): only verified templates deliberately
+promoted as security test cases belong there. Drafts stay in `.guardlink/cxg-templates/`;
+run output and confirmed probes do not enter automatically. Run the configured suite
+before review. Its path must stay outside the root `.bravos/`, `.guardlink/` and `.git/`
+directories; a missing suite is valid but has no tests. Details: [Agent instruction files](docs/GUARDLINK_REFERENCE.md#agent-instruction-files).
 
 | Agent | Config file | MCP support |
 |-------|------------|-------------|

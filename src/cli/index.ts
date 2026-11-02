@@ -44,6 +44,7 @@
  * @handles secrets on #cli -- "Processes API keys via config commands"
  */
 
+import { SecurityTestsConfigError } from '../parser/security-tests.js';
 import { Command } from 'commander';
 import fg from 'fast-glob';
 import { resolve, basename, join, isAbsolute, relative } from 'node:path';
@@ -332,7 +333,7 @@ program
   .option('--blame', 'Attach git attribution to each exposure, confirmed and mitigation: who introduced, declared and fixed it, and which AI co-authored those commits')
   .action(async (dir: string, opts: { project: string; output?: string; pretty: boolean; blame?: boolean }) => {
     const root = resolve(dir);
-    const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    const { model, diagnostics, config } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
 
     // Print diagnostics to stderr
     printDiagnostics(diagnostics);
@@ -349,9 +350,9 @@ program
     // this command already emitted.
     //
     // `reach_analysis` (SPEC §5.5) is derived here, from the model as exported,
-    // and only when it declares a reach, effect or gate — a model without them
-    // exports exactly what it did before.
-    const stamped = withReachAnalysis(populateMetadata(model, root, diagnostics));
+    // and only when it declares a reach, effect or gate. The additive config
+    // member exposes the resolved security-test directory without LLM secrets.
+    const stamped = { ...withReachAnalysis(populateMetadata(model, root, diagnostics)), config };
 
     // Output model
     const json = JSON.stringify(stamped, null, opts.pretty ? 2 : 0);
@@ -4099,9 +4100,16 @@ program
 
 // If no subcommand given, launch TUI
 if (process.argv.length <= 2) {
-  import('../tui/index.js').then(({ startTui }) => startTui('.'));
+  import('../tui/index.js').then(({ startTui }) => startTui('.')).catch(handleCliError);
 } else {
-  program.parse();
+  program.parseAsync().catch(handleCliError);
+}
+
+/** Keep expected configuration refusals concise while surfacing unexpected bugs. */
+function handleCliError(error: unknown): void {
+  if (!(error instanceof SecurityTestsConfigError)) throw error;
+  console.error(`error: ${error.message}`);
+  process.exitCode = 1;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────

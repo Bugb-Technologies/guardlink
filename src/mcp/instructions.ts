@@ -26,6 +26,7 @@
  * @comment -- "Pure string builder; the only I/O is one optional config read by the caller"
  */
 
+import { DEFAULT_SECURITY_TESTS_DIR } from '../parser/security-tests.js';
 import { SUPPORTED_QUERY_FORMS } from './lookup.js';
 import { readConfiguredMode, type AnnotationMode } from '../parser/annotation-mode.js';
 
@@ -36,6 +37,8 @@ export interface InstructionsContext {
   mode: AnnotationMode | null;
   /** Where annotations are written. */
   definitionsPath: string;
+  /** Validated repository-relative committed security-test directory. */
+  securityTestsDir?: string;
 }
 
 
@@ -79,11 +82,10 @@ Opened a file, or about to edit one → guardlink_context(file)
   never read the file. Do not read them as the same thing.
 
 About to change a shared component → guardlink_graph(from, depth, direction)
-  Blast radius. Walks data flows and trust boundaries — not shared threats, which
-  are classifications rather than couplings. Defaults (depth 2, both, summary) are
-  the affordable setting; detail full costs ~40% more. Check traversal.completeness:
-  depth_limited means more is reachable, truncated means INCOMPLETE —
-  frontier_unexplored says what is missing.
+  Blast radius through flows and trust boundaries, not shared threats. Defaults:
+  depth 2, both, summary; full costs ~40% more. Check traversal.completeness:
+  depth_limited means more reachable; truncated means INCOMPLETE;
+  frontier_unexplored names gaps.
 
 A scanner reported a CWE → guardlink_lookup("cwe:CWE-89")
   Whether this model declares that weakness class at all, and whether affected
@@ -91,6 +93,7 @@ A scanner reported a CWE → guardlink_lookup("cwe:CWE-89")
   false means never heard of it, which is NOT the same as declared-and-clean.
 
 Before you finish → guardlink_validate   ·   After a change → guardlink_diff("HEAD~1")
+Before PRs → run ${ctx.securityTestsDir ?? DEFAULT_SECURITY_TESTS_DIR}/ suite (security_tests_dir) completely; report missing/skipped/incomplete. Only verified templates deliberately promoted as tests enter; drafts: .guardlink/cxg-templates/.
 Cold on an unfamiliar repo → guardlink_status
 Who introduced this, and did an AI co-author it → guardlink_blame(file)
 

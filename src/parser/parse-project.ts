@@ -13,6 +13,7 @@
  * @comment -- "Same reasoning for imprecise:true when the claim omits `on <asset>` or `against <threat>`, plus canEntitlementDemote/entitlementDemotionBlockers so the cited-and-precise test is written once here rather than re-derived by every consumer — a consumer that checks only !inert would demote on an entitlement that joins nothing (actor-entitlement design §9.7)"
  * @boundary #parser and FileSystem (#fs-boundary) -- "Trust boundary between parser and disk I/O"
  */
+import { readSecurityTestsDir } from './security-tests.js';
 import { relationRecords } from './claim-key.js';
 import { readObservedState, buildReachAttestation } from '../attest/index.js';
 
@@ -265,6 +266,7 @@ export const AGENT_CONFIG_ENV = 'GUARDLINK_AGENT_CONFIG';
 export async function parseProject(options: ParseProjectOptions): Promise<{
   model: ThreatModel;
   diagnostics: ParseDiagnostic[];
+  config: { security_tests_dir: string };
 }> {
   const {
     root,
@@ -273,6 +275,8 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     project = 'unknown',
     anchors = true,
   } = options;
+
+  const config = { security_tests_dir: readSecurityTestsDir(root) };
 
   // Discover files (dot: true to include .guardlink/ definitions)
   const scanned = await fg(include, {
@@ -449,7 +453,7 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     ? allDiagnostics
     : allDiagnostics.filter(d => !(d.level === 'warning' && d.code && disabled.has(d.code)));
 
-  return { model, diagnostics };
+  return { model, diagnostics, config };
 }
 
 /**

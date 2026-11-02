@@ -634,6 +634,26 @@ guardlink diff origin/<base>                  # the exposures, flows and accepta
 
 and to suggest the check when asked to raise a pull request without it.
 
+### Security-test directory configuration
+
+`security_tests_dir` in `.guardlink/config.json` selects the single committed security-test directory. It defaults to `security`, relative to the repository root; `init` need not write the default.
+
+```json
+{ "security_tests_dir": "checks/security" }
+```
+
+This is a curated suite: only verified templates deliberately promoted as security test cases belong there. Promotion after verification is the only way in; drafts, run output and confirmed probes are not automatically promoted. `.guardlink/` owns the threat model and GuardLink state; `.guardlink/cxg-templates/` remains unreviewed translation scratch, and `.guardlink/pentest-findings/` holds imported findings. This setting creates or moves no content and does not change translation's draft output location.
+
+The value must be a non-empty relative directory below the repository root and outside its top-level `.bravos/`, `.guardlink/` and `.git/` directories. This reserved-root rule is applied after slash and dot-segment normalization; nested names such as `qa/.bravos/suite` are allowed. A directory that does not exist yet is valid and contains no tests. Absolute paths (including Windows drive and UNC paths), parent (`..`) segments, outward-pointing or dangling symlinks, and characters that could break generated instructions are refused with a `security_tests_dir` error. Run `guardlink sync` after changing it to refresh agent guidance and `.guardlink/README.md`.
+
+`init --force` preserves a customized directory; explicit `init --reset` discards it with the rest of the old configuration and renders the resulting default. Reset can repair an invalid old setting, while containment checks still apply to the default. A repository path that has not been created yet resolves to the default because it has no configuration or suite to inspect.
+
+CLI configuration refusals print one concise `error:` message on stderr and exit 1. Library callers can catch `SecurityTestsConfigError`, an `Error` subclass whose message still identifies `security_tests_dir`. Unexpected runtime errors are not converted into configuration refusals.
+
+Before opening or updating a pull request, run the entire configured suite with its runner, after validate/lint/diff and before contributed commands. Report an absent suite as not applicable; skipped, unavailable or partial execution is incomplete, and an existing suite that cannot complete blocks readiness. A pre-review tool's recorded complete execution satisfies this once; generating templates does not.
+
+Consumers can import `readSecurityTestsDir(root)` from `guardlink` or `guardlink/parser`. It returns the validated, normalized repository-relative path without a trailing slash. `parseProject({ root })` returns it as `config.security_tests_dir`; `guardlink parse` and MCP `guardlink_parse` expose the same `config` alongside the model, including when the key is omitted. Use the same value for CI and pre-PR tests rather than introducing another folder setting.
+
 **Other tools add a line to that step** with `pre_pr` in `.guardlink/config.json`, instead of writing
 a block of their own into the same files:
 
