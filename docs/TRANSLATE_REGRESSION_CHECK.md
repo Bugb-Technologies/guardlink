@@ -41,7 +41,9 @@ The original conversion intent and constraints are recorded in
 [`7e2bdc6`](https://github.com/Bugb-Technologies/guardlink/commit/7e2bdc6)
 and [the translate contract](TRANSLATE.md). The context/guide/scanner behavior is
 owned by [the context-pack change](https://github.com/Bugb-Technologies/guardlink/pull/90),
-including its [guide and validation fix](https://github.com/Bugb-Technologies/guardlink/commit/2a326db).
+including its [guide and validation fix](https://github.com/Bugb-Technologies/guardlink/commit/2a326db),
+[portable identity and scanner-header contract](https://github.com/Bugb-Technologies/guardlink/commit/9c290ae)
+and [structured completion checks](https://github.com/Bugb-Technologies/guardlink/commit/9fd6073).
 
 | Surface altered or added relative to the base | Original purpose and disposition |
 | --- | --- |
@@ -52,13 +54,13 @@ including its [guide and validation fix](https://github.com/Bugb-Technologies/gu
 | Probe guidance | Engine-owned requests, capabilities, exact source refs and class-appropriate proof were already intended. Guidance now explicitly rejects body-only proof, preserves an existing supported oracle and requires a proof plan or unsupported reason. Reserved trusted stamps remain engine-owned. |
 | Source identity | Exact `#` spelling and exposure suffix are preserved; conflicting source identities fail. Missing source headers retain the template-id fallback, with `threat_ref: null` and an unlinked-attribution warning rather than an invented threat link. |
 | Headless iteration/directories | Existing per-exposure sanitization/hash and sequential execution are preserved. Conversion adds equivalent per-source directories; `template_dir` still identifies the actual generated directory. |
-| Existing report fields | `version`, threat-mode `threat`, `contract`, `template_dir`, `templates`, `status`, and failure `error`/`exit_code` remain. Conversion uses `source` and adds `threat_ref`/`proof_plan`; production consumption remains in the CLI. The result type exposes both identity variants. |
+| Existing report fields | `version`, threat-mode `threat`, `contract`, `template_dir`, `templates`, `completion`, `status`, and failure `error`/`exit_code` remain. Conversion uses `source` and adds `threat_ref`/`proof_plan`; production consumption remains in the CLI. The result type exposes both identity variants. |
 | Written-file inventory | Regular changed files remain inventory, never executed proof. Conversion accepts JS/MJS only; README/manifest and symlinks are excluded. Partial output remains visible on failure. |
 | Successful conversion | Deliberately tightened: JS output alone is insufficient. Missing, invalid or unsupported plans fail with retained drafts and a reason. Existing positive stub-author tests now supply review plans while keeping their original file, attribution and no-execution assertions. |
 | Empty scope/error text | The human message generalizes “No in-scope translate exposure candidates” to “No in-scope translate candidates” because source inputs need no exposure. Empty scope still fails. |
-| Exit/error paths | Existing agent/spawn/nonzero/partial-output failure semantics remain. Source read, identity, plan and unsupported-route failures also exit nonzero. Non-conversion `no_templates` is retained; a conversion producing no JS remains failed, with an explicit unsupported reason preferred when supplied. |
-| Context and graph | Context schema, scoping, optional graph lookup, deadlines, skip/partial status and guide refusal remain owned by the base and covered by its regression suite. No graph query or model call is added to pentest execution. |
-| Scanner authoring | No scanner output contract, author-schema check or protected-resource proof rule is removed. The default scanner prompt compatibility check remains relative to the base's deliberate safety additions. |
+| Exit/error paths | Existing agent/spawn/nonzero/partial-output and structured-completion failure semantics remain. Refusal/safety stops retain draft inventory and prevent later source authoring, just as for later threat exposures. Source read, identity, plan and unsupported-route failures also exit nonzero. Non-conversion `no_templates` is retained; a conversion producing no JS remains failed, with an explicit unsupported reason preferred when supplied. |
+| Context and graph | Context schema, optional graph lookup, deadlines, skip/partial status and guide refusal remain owned by the base and covered by its regression suite. Conversion scopes context and named identity validation to exact source refs even without local annotations. Other exposure rows cannot supply bindings; absent source links grant no profile bindings. No graph query or model call is added to pentest execution. |
+| Scanner authoring | No scanner output contract, author-schema check, relative-path rule, source-header stamping or protected-resource proof rule is removed. The base now checks explicit engine, evidence and non-execution contracts instead of hashing all prompt prose; those assertions remain unchanged. |
 | Instruction/model artifacts | Regenerated because annotations changed; managed stamps reflect the parsed source. No agent entitlement or risk acceptance is added. |
 
 ## Test/assertion review
@@ -70,6 +72,8 @@ shows repeated edge-count updates whenever annotations changed. Combining
 independent valid annotations reproduced 111 versus the expected 110; this was
 not a counter regression.
 
+The base subsequently recorded 112 links after completion checks; that number also
+describes a particular repository revision rather than the counter contract.
 The replacement uses frozen Mermaid input with independently measured SVG counts.
 It retains the exact 35/110 and 49/216 node/link observations and strengthens the
 check with source hashes, both graphs' edge counts and cluster counts. Refresh
@@ -82,7 +86,12 @@ review plan when expecting success. Added regressions cover absent proof plans,
 explicit unsupported reasons, exact scanner identity in output, unlinked legacy
 sources, malformed/oversized/symlinked plans, duplicate/escaping/unlisted files,
 and the original exact-header checks. Non-conversion schema, graph, guide,
-headless argv/output and scanner-validation tests are retained.
+headless argv/output and scanner-validation tests are retained. CLI stub authors
+now emit the structured terminal completion required by the base, retaining noisy
+stdout and nonzero-exit checks. A scanner-to-probe roundtrip verifies deterministic
+source stamping, distinct template/exposure identities, annotation-free context,
+exact named bindings and rejection of unrelated/invented profiles. Conversion
+refusal and safety-stop cases verify that later source authors are never launched.
 
 The public [scanner extension filter](https://github.com/Bugb-Technologies/cert-x-gen/blob/fc9ce0f15d37e5777587f5ac8b69bec65621dd88/src/template/engine.rs)
 also provides the input-language check: directory conversion now covers Perl and

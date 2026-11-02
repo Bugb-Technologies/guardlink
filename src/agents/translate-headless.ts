@@ -162,7 +162,8 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
       const sourceErrors = contract === 'scanner' ? written.flatMap(file => stampScannerThreatHeader(file, id).map(error => `${file}: ${error}`)) : [];
       const invalid = [...sourceErrors, ...(contract === 'scanner' ? written.filter(file => /\.ya?ml$/i.test(file))
         .flatMap(file => validateScannerYaml(file).map(error => `${file}: ${error}`))
-        : written.filter(file => /\.(js|mjs)$/i.test(file)).flatMap(file => validateProbeIdentities(file, model, options.context).map(error => `${file}: ${error}`)))];
+        : written.filter(file => /\.(js|mjs)$/i.test(file)).flatMap(file => validateProbeIdentities(file, model, options.context,
+          source ? source.threat_ref ? [source.threat_ref] : [] : undefined).map(error => `${file}: ${error}`)))];
       if (invalid.length) {
         report.failures.push({ ...identity, error: `Invalid ${contract === 'scanner' ? sourceErrors.length ? 'scanner source metadata' : 'scanner YAML' : 'probe identity metadata'}: ${invalid.join('; ')}`, exit_code: result.exitCode });
       }
@@ -177,7 +178,7 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
           ? `Author exited without writing a JavaScript probe; ${proof_plan.reason}` : proof_plan.reason) : undefined;
       const error = [result.error, ...identityErrors, proofError].filter(Boolean).join('; ');
       if (error || result.exitCode !== 0 || (completion && completion.status !== 'completed') || (source && !written.length)) {
-        report.failures.push({ ...identity, error: error || completion?.reason || (result.exitCode !== 0 ? 'Agent did not exit successfully' : 'Author exited without writing a JavaScript probe; consult README.md for conversion limitations'), exit_code: result.exitCode });
+        report.failures.push({ ...identity, error: error || completion?.reason || (source && !written.length ? 'Author exited without writing a JavaScript probe; consult README.md for conversion limitations' : 'Agent did not exit successfully'), exit_code: result.exitCode });
         report.results.push({ ...identity, ...attribution, contract, template_dir: dir, templates: written, completion, status: 'failed' });
       } else {
         report.results.push({ ...identity, ...attribution, contract, template_dir: dir, templates: written, completion, status: invalid.length ? 'failed' : written.length ? 'written' : 'no_templates' });

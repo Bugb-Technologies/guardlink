@@ -755,7 +755,8 @@ export function translateContract(model: ThreatModel | null, options: TranslateP
 export function buildTranslatePrompt(userPrompt: string, root: string, model: ThreatModel | null, options: TranslatePromptOptions = {}): string {
   const contract = translateContract(model, options);
   if (options.sources?.length && contract !== 'probe') throw new Error('--from requires --contract probe');
-  const context = renderTranslateContext(options.context, model);
+  const sourceRefs = options.sources?.length ? options.sources.flatMap(source => source.threat_ref ? [source.threat_ref] : []) : undefined;
+  const context = renderTranslateContext(options.context, model, sourceRefs);
   const scope = options.threats?.length ? `\n\n## Selected threats\nAuthor only these threat/exposure ids: ${JSON.stringify(options.threats)}. Do not expand this scope.\n` : '';
   const out = options.sources?.length ? translateDraftOutput(root, options.out) : options.out || '.guardlink/cxg-templates/';
   if (contract === 'scanner') {

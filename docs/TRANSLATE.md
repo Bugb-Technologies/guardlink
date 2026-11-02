@@ -201,6 +201,10 @@ descriptive identity and documents the missing GuardLink link. Response-body
 matching alone must not become proof: prefer the matching cxg oracle and submit
 candidate findings for engine adjudication. Unsupported capabilities or missing
 proof mechanisms need an explanation, never invented APIs or confirmation.
+Context rows and named identity bindings are scoped to the source's exact threat
+reference, including during annotation-free conversion. A profile supplied for
+another exposure is unavailable; a source without a threat link cannot borrow
+profile bindings from unrelated local annotations.
 
 Each conversion also writes `conversion.json` in its draft output directory:
 
