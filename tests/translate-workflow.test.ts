@@ -56,6 +56,12 @@ describe('generation-only translation', () => {
       expect(response.prompt).toContain('Only app.ts SQL input on this branch');
       expect(response.prompt).toContain('App.API -> #sqli');
       expect(response.prompt).toContain('Do NOT execute templates');
+      expect(response.prompt).toContain('fast, per-change annotate → translate → test → fix cycle');
+      expect(response.prompt).toContain('including after each test/fix round');
+      expect(response.prompt).toContain('scoped checks without Bravos');
+      expect(response.prompt).toContain('Bravos template authoring remains the tested authoring path');
+      expect(response.prompt).toContain('A quick check is not a full pentest');
+      expect(response.prompt).toContain('low-friction setup and real traffic; runs can take hours');
       expect(response.next_step).toMatch(/execute selected tests separately/);
       expect(JSON.parse(blocks.at(-1)!.text).guardlink.root).toBe(root);
       expect(await snapshot(root)).toEqual(before);
