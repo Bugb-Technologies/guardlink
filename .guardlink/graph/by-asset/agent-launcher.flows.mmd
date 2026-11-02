@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/agent-launcher.flows.mmd
-%% scope:           PARTIAL — #agent-launcher and its flow neighbourhood, grown until the drawing stopped fitting — 29 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87
+%% scope:           PARTIAL — #agent-launcher and its flow neighbourhood, grown until the drawing stopped fitting — 30 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:18d155c686d9dc93fc19e07b6bf4603e5bc28a42092a37df611f2b9945789d62
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -17,23 +17,22 @@ graph LR
   subgraph Z1["🧱 AgentProcess · Trust boundary at process spawn"]
     agentprocess["🧩 AgentProcess"]
   end
-  envvars["🧩 EnvVars"]
-  configfile["🧩 ConfigFile"]
   agentprompt["🧩 AgentPrompt"]
   parser["🧩 GuardLink.Parser"]
   codegraph["🧩 GuardLink.CodeGraph"]
+  mcp["🧩 GuardLink.MCP"]
   tui["👤 GuardLink.TUI"]
   agent_launcher -.-|🧱 Trust boundary at process spawn| agentprocess
-  envvars -- "📡 process.env" --> agent_launcher
-  configfile -- "🗄️ readFileSync" --> agent_launcher
-  agent_launcher -- "🗄️ writeFileSync" --> configfile
   agent_launcher -- "📡 spawn" --> agentprocess
   agentprocess -- "📡 stdout" --> agent_launcher
   agent_launcher -- "📡 return" --> agentprompt
   parser -- "📡 annotation worklist" --> agent_launcher
   codegraph -- "📡 worklist" --> agent_launcher
   codegraph -- "📡 undeclared agent tools" --> agent_launcher
-  configfile -- "📡 readAcceptancePolicy" --> parser
+  codegraph -- "📡 buildTranslateContext" --> agent_launcher
+  agent_launcher -- "📡 runTranslateAgent" --> agentprocess
+  agentprocess -- "📡 templates" --> agent_launcher
+  mcp -- "📡 guardlink_worklist" --> codegraph
+  mcp -- "📡 guardlink_reach" --> codegraph
+  mcp -- "📡 guardlink_translate" --> agent_launcher
   tui -- "📡 launchAgent" --> agent_launcher
-  configfile -- "📡 loadProjectConfig" --> tui
-  tui -- "📡 saveProjectConfig" --> configfile

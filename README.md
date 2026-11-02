@@ -46,6 +46,9 @@ npm install -g guardlink
 
 Requires Node.js 18+. To install from a clone: `npm run build && npm link`.
 
+For template context packs, probe contracts and headless authoring, see
+[Template authoring with translate](docs/TRANSLATE.md).
+
 ## Quick start
 
 ```bash

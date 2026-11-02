@@ -89,7 +89,9 @@ import { loadWorklist, reachFor, worklistSummaryLine, type Worklist } from '../c
 import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary-check.js';
 import { loadReachCheck, checkReach, reachCheckSummaryLine, type ReachCheck } from '../codegraph/reach-check.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
-import { buildAnnotatePrompt } from '../agents/prompts.js';
+import { buildTranslateContext, loadTranslateContext, selectTranslateThreats } from '../agents/translate-context.js';
+import { filterByFeature } from '../parser/feature-filter.js';
+import { buildAnnotatePrompt, buildTranslatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
 import { findPrePrDrift } from '../init/pre-pr.js';
 import { loadWorkspaceConfig, readVersionControl } from '../workspace/index.js';
@@ -856,6 +858,41 @@ export function createServer(): McpServer {
           ],
         }, null, 2) }],
       };
+    },
+  );
+
+  /**
+   * @agents #mcp-agent to guardlink_translate on #mcp -- "Returns a template-authoring prompt; never launches an author or executes templates"
+   * @effects read on #agent-launcher -- "Reads the client-selected context JSON and installed CXG guide"
+   * @effects execute on #codegraph -- "Without explicit context, optional loadWorklist and reachFor may spawn the installed graph binary"
+   * @audit #codegraph -- "No confirmation step before optional graph reads; code_graph false disables them"
+   * @exposes #mcp to #prompt-injection [medium] -- "guardlink_translate carries caller and graph context into the returned prompt"
+   * @audit #mcp -- "Schema-validated context remains untrusted evidence; the returned prompt cannot constrain the calling agent"
+   * @flows #mcp -> #agent-launcher via guardlink_translate -- "Filtered threat model, context pack and requested output contract"
+   */
+  registerTool(
+    server, cache,
+    'guardlink_translate',
+    'Build a template-authoring prompt from selected threats. Returns prompt text only; never executes templates. Optional context is a path to a version 1 JSON context pack, relative to root. Without it, an available code graph supplies route/reach facts.',
+    {
+      root: z.string().default('.'),
+      prompt: z.string().default(''),
+      context: z.string().optional().describe('Context-pack JSON file path, relative to root or absolute'),
+      contract: z.enum(['scanner', 'probe']).optional().describe('Output contract; defaults to pack request or scanner'),
+      out: z.string().optional(),
+      threat: z.array(z.string()).optional().describe('Threat ids or threat@file:line exposure ids'),
+      feature: z.string().optional().describe('Comma-separated feature scope'),
+      code_graph: z.boolean().default(true),
+    },
+    async ({ root, prompt, context, contract, out, threat, feature, code_graph }) => {
+      let { model } = await getModel(root);
+      if (feature) model = filterByFeature(model, feature.split(',').map((f: string) => f.trim()));
+      model = selectTranslateThreats(model, threat);
+      const pack = context ? loadTranslateContext(context, resolve(root))
+        : await buildTranslateContext(resolve(root), model, { enabled: code_graph });
+      return { content: [{ type: 'text', text: JSON.stringify({ mode: 'agent',
+        prompt: buildTranslatePrompt(prompt, resolve(root), model, { context: pack, contract, out, threats: threat }),
+      }) }] };
     },
   );
 

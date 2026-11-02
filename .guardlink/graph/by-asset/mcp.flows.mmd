@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/mcp.flows.mmd
-%% scope:           PARTIAL — #mcp and its flow neighbourhood, grown until the drawing stopped fitting — 20 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87
+%% scope:           PARTIAL — #mcp and its flow neighbourhood, grown until the drawing stopped fitting — 26 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:18d155c686d9dc93fc19e07b6bf4603e5bc28a42092a37df611f2b9945789d62
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -11,28 +11,23 @@
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
 graph LR
-  subgraph Z0["🧱 GuardLink.MCP · Trust boundary at MCP protocol"]
-    mcp["🧩 GuardLink.MCP"]
-  end
-  subgraph Z1["🧱 MCPClient · Trust boundary at MCP protocol"]
-    mcpclient["👤 MCPClient"]
-  end
-  gitrepo["🧩 GitRepo"]
   configfile["🧩 ConfigFile"]
-  querystring["🧩 QueryString"]
+  agent_launcher["🧩 GuardLink.Agent_Launcher"]
+  codegraph["🧩 GuardLink.CodeGraph"]
+  gitrepo["🧩 GitRepo"]
+  mcp["🧩 GuardLink.MCP"]
   filesystem["🧩 FileSystem"]
   llm_client["👤 GuardLink.LLM_Client"]
-  codegraph["🧩 GuardLink.CodeGraph"]
-  mcp -.-|🧱 Trust boundary at MCP protocol| mcpclient
-  mcpclient -- "📡 guardlink_context" --> mcp
+  configfile -- "🗄️ readFileSync" --> agent_launcher
+  agent_launcher -- "🗄️ writeFileSync" --> configfile
+  codegraph -- "📡 worklist" --> agent_launcher
+  codegraph -- "📡 undeclared agent tools" --> agent_launcher
+  codegraph -- "📡 buildTranslateContext" --> agent_launcher
   gitrepo -- "🗄️ readFileSync" --> mcp
-  mcpclient -- "📡 stdio" --> mcp
   configfile -- "🗄️ readFileSync" --> mcp
-  querystring -- "📡 lookup" --> mcp
-  mcpclient -- "📡 tool_call" --> mcp
   mcp -- "🗄️ writeFile" --> filesystem
   mcp -- "📡 generateThreatReport" --> llm_client
-  mcp -- "📡 resource" --> mcpclient
   mcp -- "📡 guardlink_worklist" --> codegraph
   mcp -- "📡 guardlink_reach" --> codegraph
+  mcp -- "📡 guardlink_translate" --> agent_launcher
   gitrepo -- "📡 computeBlame" --> mcp
