@@ -9,7 +9,7 @@
 import type { Playbook } from './types.js';
 import { ANNOTATE_PLAYBOOKS } from './annotate.js';
 import { REPORT_SHAPES } from './report.js';
-import { TRANSLATE_GUIDE } from './translate.js';
+import { buildTranslateGuide } from './translate.js';
 
 export const SKILL_GENERATED_MARKER = '<!-- guardlink:generated -->';
 
@@ -20,7 +20,7 @@ export interface SkillFile {
 }
 
 /** Translation is a workflow, not an annotate method or report shape. */
-export function translateSkillFile(): SkillFile {
+export function translateSkillFile(securityTestsDir?: string): SkillFile {
   return {
     path: '.claude/skills/guardlink-translate/SKILL.md',
     content: `---
@@ -31,15 +31,15 @@ ${SKILL_GENERATED_MARKER}
 
 # GuardLink translate
 
-${TRANSLATE_GUIDE}
+${buildTranslateGuide(securityTestsDir)}
 `,
   };
 }
 
-export function managedSkillFiles(): SkillFile[] {
+export function managedSkillFiles(securityTestsDir?: string): SkillFile[] {
   return [
     ...[...ANNOTATE_PLAYBOOKS, ...REPORT_SHAPES.filter(s => s.id !== 'full')].map(skillFileFor),
-    translateSkillFile(),
+    translateSkillFile(securityTestsDir),
   ];
 }
 

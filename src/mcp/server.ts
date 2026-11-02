@@ -92,7 +92,7 @@ import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary
 import { loadReachCheck, checkReach, reachCheckSummaryLine, type ReachCheck } from '../codegraph/reach-check.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
 import { buildTranslateContext, loadTranslateContext, selectTranslateThreats, type TranslateGraphStatus } from '../agents/translate-context.js';
-import { loadTranslateSources } from '../agents/translate-source.js';
+import { loadTranslateSources, translateDraftOutput } from '../agents/translate-source.js';
 import { filterByFeature } from '../parser/feature-filter.js';
 import { buildAnnotatePrompt, buildTranslatePrompt } from '../agents/prompts.js';
 import { detectAnnotationMode } from '../parser/annotation-mode.js';
@@ -890,7 +890,7 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_translate',
-    'Build a template-authoring prompt from selected threats or convert scanner templates with from and contract probe. Returns prompt text only; never executes templates. Conversion writes are requested only under .guardlink/cxg-templates/ for review. Optional context is a path to a version 1 JSON context pack, relative to root. Without it, an available code graph supplies route/reach facts.',
+    'Build a generation-only template-authoring prompt from selected threats or convert scanner templates with from and contract probe. Returns prompt, output locations and a separate execution handoff; never launches an author, writes files or executes templates. Conversion writes are requested only under .guardlink/cxg-templates/ for review. Optional context is a path to a version 1 JSON context pack, relative to root. Without it, an available code graph supplies route/reach facts; code_graph false disables those optional graph-process reads.',
     {
       root: z.string().default('.'),
       prompt: z.string().default(''),
@@ -913,9 +913,16 @@ export function createServer(): McpServer {
       let contextGraph: TranslateGraphStatus = { status: 'not_requested', reason: 'Explicit context pack supplied' };
       const pack = context ? loadTranslateContext(context, resolve(root))
         : await buildTranslateContext(resolve(root), model, { enabled: code_graph, timeoutMs: code_graph_timeout_ms, onStatus: status => { contextGraph = status; } });
-      return { content: [{ type: 'text', text: JSON.stringify({ mode: 'agent', context_graph: contextGraph, template_dir: resolve(root, out || '.guardlink/cxg-templates/'),
+      const output = sources?.sources.length ? translateDraftOutput(resolve(root), out) : out || '.guardlink/cxg-templates/';
+      const templates = output.endsWith('/') ? output : output + '/';
+      const securityTestsDir = readSecurityTestsDir(resolve(root));
+      return { content: [{ type: 'text', text: JSON.stringify({ mode: 'agent',
+        context_graph: contextGraph, template_dir: resolve(root, output),
+        generation_only: true,
         prompt: buildTranslatePrompt(prompt, resolve(root), model, { context: pack, sources: sources?.sources, contract, out, threats: threat }),
-      }) }] };
+        outputs: { templates, index: templates + 'README.md', findings: '.guardlink/pentest-findings/' },
+        next_step: `Author scoped templates and their index; preserve unrelated files. Review and validate them, then execute selected tests separately with the matching engine or configured runner. Keep durable regressions and run the entire configured ${securityTestsDir}/ suite before review; report execution and gaps separately from generation.`,
+      }, null, 2) }] };
     },
   );
 

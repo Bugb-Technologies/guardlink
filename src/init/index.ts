@@ -439,11 +439,11 @@ export function initProject(options: InitOptions): InitResult {
  *
  * @effects write on #init -- "Writes fixed skill paths under root; unreadable files and files without the generated marker are kept"
  */
-function refreshSkills(root: string, dryRun: boolean): { created: string[]; updated: string[]; skipped: string[] } {
+function refreshSkills(root: string, dryRun: boolean, securityTestsDir?: string): { created: string[]; updated: string[]; skipped: string[] } {
   const created: string[] = [];
   const updated: string[] = [];
   const skipped: string[] = [];
-  for (const skill of managedSkillFiles()) {
+  for (const skill of managedSkillFiles(securityTestsDir)) {
     const abs = join(root, skill.path);
     if (existsSync(abs)) {
       const existing = readForGuard(abs);
@@ -484,7 +484,7 @@ function updateAgentFiles(
   const ids = AGENT_CHOICES.map(c => c.id).filter(id => agentIds?.includes(id) || agentFileExists(root, AGENT_CHOICES.find(c => c.id === id)!.file));
 
   if (ids.includes('claude')) {
-    const skills = refreshSkills(root, dryRun);
+    const skills = refreshSkills(root, dryRun, project.securityTestsDir);
     created.push(...skills.created);
     updated.push(...skills.updated);
     skipped.push(...skills.skipped);
@@ -858,7 +858,7 @@ export function syncAgentFiles(options: SyncOptions): SyncResult {
 
   // Skills contribute to agent configuration; refresh before taking its stamp.
   if (agentFileExists(root, 'CLAUDE.md')) {
-    const skills = refreshSkills(root, dryRun);
+    const skills = refreshSkills(root, dryRun, project.securityTestsDir);
     updated.push(...skills.created, ...skills.updated);
     skipped.push(...skills.skipped);
   }

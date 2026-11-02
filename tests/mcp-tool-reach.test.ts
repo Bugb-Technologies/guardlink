@@ -33,7 +33,7 @@ const GOLDEN = './fixtures/mcp-tool-reach/reach.json';
 
 let model: ThreatModel;
 let toolNames: string[];
-let close: () => Promise<void>;
+let close: () => Promise<void> = async () => {};
 
 beforeAll(async () => {
   ({ model } = await parseProject({ root: ROOT, project: 'guardlink' }));
@@ -43,7 +43,7 @@ beforeAll(async () => {
   await Promise.all([server.connect(st), client.connect(ct)]);
   toolNames = (await client.listTools()).tools.map(t => t.name);
   close = () => client.close();
-});
+}, 60_000);
 
 afterAll(async () => { await close(); });
 

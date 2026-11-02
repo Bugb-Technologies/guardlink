@@ -44,7 +44,7 @@ This report reviews **a change**, not the codebase. The scope lists the files th
 3. **Exposures the change closes**, and whether the closing control is complete.
 4. **Claims the change invalidates** — existing annotations that no longer match the code.
 5. **Threat-model review recommendation** — ready for review, needs annotation corrections, or hold, and why; this is not overall merge approval.
-6. **Testing and gaps** — tests actually executed and their results, generated-only templates, skips and unknowns. Before opening or updating the pull request, run the repository's root \`security/\` suite with its configured runner; recorded complete execution by a pre-review tool satisfies this once. An absent suite is not applicable; an existing suite that cannot complete is not a pass.
+6. **Testing and gaps** — tests actually executed and their results, generated-only templates, skips and unknowns. Before opening or updating the pull request, run the repository's configured \`security_tests_dir\` suite (default \`security/\`) with its configured runner; recorded complete execution by a pre-review tool satisfies this once. An absent suite is not applicable; an existing suite that cannot complete is not a pass.
 Only findings in the changed files go in the findings block; reference unchanged code only as context.`,
   },
   {

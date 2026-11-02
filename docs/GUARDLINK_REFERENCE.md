@@ -552,7 +552,7 @@ Run `guardlink tui` for the interactive terminal interface:
 
 Keep code and code-backed annotations current in the same change; preserve human-owned `@accepts`/`@entitles` and reproduction provenance. After validate/lint, scope `guardlink translate` to the changed paths and threats (or use its `--feature` filter). The CLI launches an authoring agent; the `guardlink_translate` MCP tool returns a prompt and output locations to the calling agent. Both are generation-only. Review the template index and validate the generated code, then run selected scanner templates separately with `cxg scan` or the configured runner. Browser pentest probes use a different runtime contract.
 
-Generated `.guardlink/cxg-templates/` files do not automatically become durable root `security/` tests. Retain useful regressions after a fix: mitigation can remove an exposure from future translation candidates. Record execution, failures, skips and coverage separately from generated files. Live regression execution may start a target and use existing configured auth profiles, with notice to the user; it must never fabricate credentials or authorization. This is a later execution step, not translation behavior.
+Generated `.guardlink/cxg-templates/` files do not automatically become durable tests in the configured `security_tests_dir` suite (default `security/`). Retain useful regressions after a fix: mitigation can remove an exposure from future translation candidates. Record execution, failures, skips and coverage separately from generated files. Live regression execution may start a target and use existing configured auth profiles, with notice to the user; it must never fabricate credentials or authorization. This is a later execution step, not translation behavior.
 
 `guardlink init --agent claude` installs a standalone translate skill; `guardlink sync` refreshes managed skills when `CLAUDE.md` exists and preserves authored files without the generated marker.
 
@@ -640,7 +640,7 @@ guardlink lint . --since origin/<base>        # each new claim names its code an
 guardlink diff origin/<base>                  # the exposures, flows and acceptances the change adds
 ```
 
-Then run all tests in the repository's root `security/` directory with its configured runner. Report an absent suite as not applicable, and report skipped or unavailable execution; an existing suite that cannot complete blocks readiness. A pre-review tool that records complete execution satisfies this once; generation alone and skipped execution do not. This built-in duty precedes contributions and uses no `pre_pr` slot.
+Then run all tests in the repository's configured `security_tests_dir` directory (default `security/`) with its configured runner. Report an absent suite as not applicable, and report skipped or unavailable execution; an existing suite that cannot complete blocks readiness. A pre-review tool that records complete execution satisfies this once; generation alone and skipped execution do not. This built-in duty precedes contributions and uses no `pre_pr` slot.
 
 The block also suggests the check when asked to raise a pull request without it.
 

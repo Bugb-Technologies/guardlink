@@ -1,7 +1,7 @@
 # Guardlink — Project Instructions
 
 <!-- guardlink:begin -->
-<!-- guardlink:stamp annotation_hash=sha256-v3:93ba837a9611dbd063c17e0a87b878cad1649ded4796189511ae3dc4b52ec1a0 agent_config_hash=sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25 -->
+<!-- guardlink:stamp annotation_hash=sha256-v3:c64a380710375e65cfc721fe1ae615c7964ddedb24cc235b729e1d64ed721ec4 agent_config_hash=sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25 -->
 ## GuardLink — Security Model
 
 This project carries a [GuardLink](https://guardlink.bugb.io) threat model: security facts recorded
@@ -9,19 +9,20 @@ next to the code they describe — what each component is exposed to, what mitig
 **Ask it instead of inferring security context from the source:** `guardlink_context(file)` before you
 edit a file, `guardlink_graph` before you change a shared component, `guardlink_lookup("cwe:CWE-89")`
 for a scanner finding, `guardlink_paths` for routes no control covers. Without MCP, `guardlink status .`
-and `guardlink parse .` answer the same.
+and `guardlink parse .` provide repo-wide summaries and records; inspect the source to verify their claims.
 
 **Where annotations go:** `inline` mode — in the doc-block comment of the code they describe, in that file's comment syntax, never in `.gal` sidecars. Placement in full: `.guardlink/README.md`; syntax and rules: `docs/GUARDLINK_REFERENCE.md`.
 
 **What you owe it back**, in the same change as the code:
 
-- Annotate security-relevant code you write or change — endpoints, authentication and authorization (ownership and tenant checks included), validation, queries, file I/O, external calls, crypto, process spawning, configuration parsing. Reuse the ids in `.guardlink/definitions.ts`; never redefine one.
+- Annotate security-relevant code you write or change — endpoints, authentication and authorization (ownership and tenant checks included), validation, queries, file I/O, external calls, crypto, process spawning, configuration parsing. Keep existing annotations accurate as the code changes, including after each test/fix round. Reuse the ids in `.guardlink/definitions.ts`; never redefine one.
 - Code that hands an LLM agent a tool: `@agents` on the registration, `@effects` on the code that acts, `@gates` on an approval step (`@reaches` for a principal that is no agent). Syntax: the reference above.
 - **Never write `@accepts` or `@entitles`** — both are a human's decision. A risk with no control is `@exposes` + `@audit`; an entitlement is proposed with `guardlink entitle --propose`, and a human's acceptance writes it.
 - `@confirmed` needs reproduction evidence in hand; reading the code is not reproduction.
+- For an everyday, per-change developer check: `guardlink translate "<changed paths and threats>"` generates templates only; review/validate them, then run selected tests separately. Repeat annotate → translate → test → fix. See `.guardlink/README.md` for the workflow, regression retention and deep verification with Bravos.
 - Before you finish: `guardlink validate .`, then `guardlink diff HEAD~1` — did this change add exposure?
 
-**Before you open or update a pull request**, check the annotations it adds against its base branch:
+**Before you open or update a pull request**, check its annotations against the base branch and run repository security tests:
 
 - `guardlink validate .` — they parse and their references resolve. It also says when a published `.guardlink/report.json` is behind them; `guardlink parse . -o .guardlink/report.json` refreshes it.
 - `guardlink lint . --since origin/<base>` — each new claim names its code and is paired; `--json` gives the `fix` for any that is not.

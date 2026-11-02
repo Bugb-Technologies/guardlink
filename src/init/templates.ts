@@ -17,9 +17,14 @@ import { HANDOFF_COMMAND, HANDOFF_PATH } from '../parser/handoff.js';
 // from the scan set, and .gitignore ignores them, from the same constant.
 import { GENERATED_OUTPUT_FILES } from '../parser/parse-project.js';
 import { renderPrePrLine, type PrePrStep } from './pre-pr.js';
-import { TRANSLATE_GUIDE } from '../playbooks/translate.js';
+import { buildTranslateGuide } from '../playbooks/translate.js';
 
-export const SECURITY_SUITE_DUTY = 'Run all tests in the repository’s root `security/` directory with its configured runner. Report an absent suite (not applicable), skipped tests or anything that could not run; an existing suite that cannot complete blocks readiness. A pre-review tool that records complete execution of that suite satisfies this step once; generation alone and skipped execution do not.';
+/** The directory has already been validated by project detection. */
+export function securitySuiteDuty(directory = DEFAULT_SECURITY_TESTS_DIR): string {
+  return `Run all tests in the repository’s \`${directory}/\` directory with its configured runner. This curated suite contains only verified templates deliberately promoted as security test cases; drafts, run output and confirmed probes are not automatically included. Report an absent suite (not applicable), skipped tests or anything that could not run; an existing suite that cannot complete blocks readiness. A pre-review tool that records complete execution of that suite satisfies this step once; generation alone and skipped execution do not.`;
+}
+
+export const SECURITY_SUITE_DUTY = securitySuiteDuty();
 
 // ─── Where annotations go (D27) ──────────────────────────────────────
 
@@ -337,7 +342,7 @@ guardlink entitle --propose     # File an @entitles proposal (writes nothing to 
 guardlink entitle               # Human review of proposals: accept / reject / defer
 \`\`\`
 
-Before opening or updating a pull request: ${SECURITY_SUITE_DUTY}
+Before opening or updating a pull request: ${securitySuiteDuty(project.securityTestsDir ?? DEFAULT_SECURITY_TESTS_DIR)}
 
 Generated \`.guardlink/cxg-templates/\` are distinct from durable regression tests. Keep those tests after a mitigation removes an exposure from future translation candidates.
 
@@ -452,7 +457,7 @@ function prePrSection(prePr: PrePrStep[], securityTestsDir: string): string {
     `- \`guardlink validate .\` — they parse and their references resolve. It also says when a published \`${HANDOFF_PATH}\` is behind them; \`${HANDOFF_COMMAND}\` refreshes it.`,
     '- `guardlink lint . --since origin/<base>` — each new claim names its code and is paired; `--json` gives the `fix` for any that is not.',
     '- `guardlink diff origin/<base>` — the exposures, flows and acceptances the change adds.',
-    `- Run all tests in the repository’s \`${securityTestsDir}/\` directory with its configured runner. This curated suite contains only verified templates deliberately promoted as security test cases; drafts, run output and confirmed probes are not automatically included. Report an absent suite (not applicable), skipped tests or anything that could not run; an existing suite that cannot complete blocks readiness. A pre-review tool that records complete execution of that suite satisfies this step once; generation alone and skipped execution do not.`,
+    `- ${securitySuiteDuty(securityTestsDir)}`,
     ...contributed,
     '',
     'If you are asked to raise a pull request and this check has not come up, suggest it. Never write `@accepts` to clear what it reports.',
@@ -1138,7 +1143,7 @@ reported. That is why it is the one decision a person has to sign.
 
 ---
 
-${TRANSLATE_GUIDE}
+${buildTranslateGuide(project.securityTestsDir ?? DEFAULT_SECURITY_TESTS_DIR)}
 
 Claude Code skills are installed by \`guardlink init --agent claude\`; \`guardlink sync\` refreshes managed skills when \`CLAUDE.md\` exists. Authored files without the generated marker are kept.
 

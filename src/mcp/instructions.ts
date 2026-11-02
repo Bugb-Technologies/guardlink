@@ -80,7 +80,7 @@ Everyday developer testing → annotate → translate → test → fix; keep exi
 
 A quick check is not a full pentest. bravos auto is specialized, annotation-guided deep verification with low-friction setup, real traffic and runs that can take hours.
 
-Before a pull request → run the entire root security/ suite with its configured runner. Report absent suites (not applicable), skips and unavailable/partial execution; an existing suite that cannot complete blocks readiness. A pre-review tool's recorded complete execution satisfies this once; generation does not.
+Before a pull request → run the entire ${ctx.securityTestsDir ?? DEFAULT_SECURITY_TESTS_DIR}/ suite (security_tests_dir) with its configured runner. Only verified templates deliberately promoted as tests enter; drafts stay in .guardlink/cxg-templates/. Report absent suites (not applicable), skips and unavailable/partial execution; an existing suite that cannot complete blocks readiness. A pre-review tool's recorded complete execution satisfies this once; generation does not.
 
 Before you finish → guardlink_validate · After a change → guardlink_diff("HEAD~1")
 Cold on an unfamiliar repo → guardlink_status
