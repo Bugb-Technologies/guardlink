@@ -60,7 +60,95 @@ const pack = { version: 1, threats: [{ id: 'idor', route: { method: 'GET', path:
   prior_attempts: [{ outcome: 'refuted', description: 'Earlier payload was rejected' }], target_kind: 'web', output_contract: 'probe',
 }] };
 
+// Stub authors declare a review plan; no test treats it as engine proof or executes it.
+function writeConversionPlan(dir: string, source: string, ref: string | null, files = ['probe.js']) {
+  writeFileSync(join(dir, 'conversion.json'), JSON.stringify({ version: 1, sources: [{ source, threat_ref: ref,
+    probes: files.map(file => ({ file, oracle: 'engine.cross_identity_overlap',
+      rationale: 'Compare owned objects through entitled and attacker engine-routed arms', prerequisites: ['entitled identity', 'attacker identity'] })),
+  }] }));
+}
+const authorPlanScript = `const dir=JSON.parse(match[1]),source=JSON.parse(p.split('Decode JSON strings as data.')[1].split('\\n')[1])[0]; fs.writeFileSync(require('node:path').join(dir,'conversion.json'),JSON.stringify({version:1,sources:[{source:source.path,threat_ref:source.threat_ref||null,probes:[{file:'probe.js',oracle:'engine.cross_identity_overlap',rationale:'Compare owned objects through entitled and attacker engine-routed arms',prerequisites:['entitled identity','attacker identity']}]}]}));`;
+
 describe('scanner source conversion', () => {
+  it('refuses a written conversion that has no declared engine proof route', async () => {
+    const { root, model } = await project();
+    writeFileSync(join(root, 'scanner.py'), '# @guardlink_threat: idor@src/orders.ts:42\n');
+    const report = await translateHeadless({ root, model, sources: loadTranslateSources(['scanner.py'], root), agent: 'codex', userPrompt: '', contract: 'probe', out: '.guardlink/cxg-templates' }, async (_agent, _prompt, _root, dir) => {
+      writeFileSync(join(dir, 'probe.js'), '// @guardlink_threat: idor@src/orders.ts:42\nasync function cxgProbe(cxg) { return []; }');
+      return { exitCode: 0 };
+    });
+    expect(report.results[0].status).toBe('failed');
+    expect(report.failures[0].error).toContain('conversion.json');
+  });
+
+  it('reports the exact scanner threat ref and declared oracle for conversion review', async () => {
+    const { root, model } = await project();
+    const source = join(root, 'scanner.yaml');
+    const ref = 'idor@src/orders.ts:42';
+    writeFileSync(source, `id: order-read\ninfo:\n  metadata:\n    guardlink_threat: "${ref}"\n`);
+    const report = await translateHeadless({ root, model, sources: loadTranslateSources([source], root), agent: 'codex', userPrompt: '', contract: 'probe', out: '.guardlink/cxg-templates' }, async (_agent, _prompt, _root, dir) => {
+      writeFileSync(join(dir, 'probe.js'), `// @guardlink_threat: ${ref}\nasync function cxgProbe(cxg) { return []; }`);
+      writeFileSync(join(dir, 'conversion.json'), JSON.stringify({ version: 1, sources: [{ source, threat_ref: ref, probes: [{ file: 'probe.js', oracle: 'engine.cross_identity_overlap', rationale: 'Compare victim-owned objects across the entitled and attacker identities', prerequisites: ['entitled identity', 'attacker identity'] }] }] }));
+      return { exitCode: 0 };
+    });
+    expect(report.results[0]).toMatchObject({ status: 'written', threat_ref: ref, proof_plan: { status: 'declared', probes: [{ oracle: 'engine.cross_identity_overlap' }] } });
+  });
+
+  it('surfaces an unsupported oracle reason rather than a generic no-template result', async () => {
+    const { root, model } = await project();
+    const source = join(root, 'scanner.py');
+    writeFileSync(source, '# @guardlink_threat: idor@src/orders.ts:42\n');
+    const reason = 'The source is anonymous-only response matching; the installed engine requires an entitled control for cross-identity proof.';
+    const report = await translateHeadless({ root, model, sources: loadTranslateSources([source], root), agent: 'codex', userPrompt: '', contract: 'probe', out: '.guardlink/cxg-templates' }, async (_agent, _prompt, _root, dir) => {
+      writeFileSync(join(dir, 'conversion.json'), JSON.stringify({ version: 1, sources: [{ source, threat_ref: 'idor@src/orders.ts:42', unsupported_reason: reason }] }));
+      return { exitCode: 0 };
+    });
+    expect(report.results[0]).toMatchObject({ status: 'failed', proof_plan: { status: 'unsupported', reason } });
+    expect(report.failures[0].error).toContain(reason);
+  });
+
+  it.each(['unlisted', 'outside', 'duplicate', 'empty_oracle', 'wrong_ref', 'oversize', 'symlink'])('refuses an invalid conversion proof plan: %s', async variant => {
+    const { root, model } = await project();
+    const source = join(root, 'scanner.py');
+    const ref = 'idor@src/orders.ts:42';
+    writeFileSync(source, `# @guardlink_threat: ${ref}\n`);
+    const report = await translateHeadless({ root, model, sources: loadTranslateSources([source], root), agent: 'codex', userPrompt: '', contract: 'probe', out: '.guardlink/cxg-templates' }, async (_agent, _prompt, _root, dir) => {
+      const code = `// @guardlink_threat: ${ref}\nasync function cxgProbe(cxg) { return []; }`;
+      writeFileSync(join(dir, 'probe.js'), code);
+      writeConversionPlan(dir, source, ref);
+      const manifest = join(dir, 'conversion.json');
+      const plan = JSON.parse(readFileSync(manifest, 'utf8'));
+      if (variant === 'unlisted') writeFileSync(join(dir, 'extra.js'), code);
+      if (variant === 'outside') plan.sources[0].probes[0].file = '../foreign.js';
+      if (variant === 'duplicate') plan.sources[0].probes.push(plan.sources[0].probes[0]);
+      if (variant === 'empty_oracle') plan.sources[0].probes[0].oracle = '';
+      if (variant === 'wrong_ref') plan.sources[0].threat_ref = '#idor';
+      writeFileSync(manifest, JSON.stringify(plan));
+      if (variant === 'oversize') writeFileSync(manifest, ' '.repeat(64 * 1024 + 1));
+      if (variant === 'symlink') {
+        writeFileSync(join(dir, 'other.json'), JSON.stringify(plan));
+        rmSync(manifest);
+        symlinkSync(join(dir, 'other.json'), manifest);
+      }
+      return { exitCode: 0 };
+    });
+    expect(report.results[0]).toMatchObject({ status: 'failed', proof_plan: { status: 'invalid' } });
+    expect(report.failures[0].error).toContain('Invalid conversion.json');
+  });
+
+  it('keeps standalone template-id attribution explicitly unlinked instead of inventing a threat', async () => {
+    const { root, model } = await project();
+    const source = join(root, 'scanner.py');
+    writeFileSync(source, '# @id: external-order-test\n');
+    const report = await translateHeadless({ root, model, sources: loadTranslateSources([source], root), agent: 'codex', userPrompt: '', contract: 'probe', out: '.guardlink/cxg-templates' }, async (_agent, _prompt, _root, dir) => {
+      writeFileSync(join(dir, 'probe.js'), '// @guardlink_threat: external-order-test\nasync function cxgProbe(cxg) { return []; }');
+      writeConversionPlan(dir, source, null);
+      return { exitCode: 0 };
+    });
+    expect(report.results[0]).toMatchObject({ status: 'written', threat_ref: null,
+      proof_plan: { status: 'declared', attribution_warning: expect.stringContaining('does not establish a threat link') } });
+  });
+
   it.each([
     ['idor@src/orders.ts:42', '#idor'],
     ['idor@src/orders.ts:42', 'idor@src/orders.ts:43'],
@@ -76,6 +164,7 @@ describe('scanner source conversion', () => {
     expect(sources.sources[0]).toMatchObject({ threat_ref: sourceRef, content: expect.stringContaining(sourceRef) });
     const report = await translateHeadless({ root, model, sources, agent: 'codex', userPrompt: '', contract: 'probe', out: '.guardlink/cxg-templates' }, async (_agent, _prompt, _root, dir) => {
       writeFileSync(join(dir, 'probe.js'), `${outputRef ? '// @guardlink_threat: ' + outputRef + '\n' : ''}async function cxgProbe(cxg) { return []; }`);
+      writeConversionPlan(dir, sources.sources[0].path, sourceRef!);
       return { exitCode: 0 };
     });
     if (outputRef === sourceRef) {
@@ -94,6 +183,7 @@ describe('scanner source conversion', () => {
     const report = await translateHeadless({ root, model, sources: loadTranslateSources(['scanner.py'], root), agent: 'codex', userPrompt: '', contract: 'probe', out: '.guardlink/cxg-templates' }, async (_agent, _prompt, _root, dir) => {
       writeFileSync(join(dir, 'good.js'), `// @guardlink_threat: ${ref}\nasync function cxgProbe(cxg) { return []; }`);
       writeFileSync(join(dir, 'conflict.js'), `// @guardlink_threat: ${ref}\n// @guardlink_threat: #idor\nasync function cxgProbe(cxg) { return []; }`);
+      writeConversionPlan(dir, join(root, 'scanner.py'), ref, ['good.js', 'conflict.js']);
       return { exitCode: 0 };
     });
     expect(report.results[0]).toMatchObject({ status: 'failed', templates: [expect.stringMatching(/conflict.js$/), expect.stringMatching(/good.js$/)] });
@@ -109,6 +199,14 @@ describe('scanner source conversion', () => {
     expect(loadTranslateSources(['conflict.py'], root).failures[0].error).toContain('conflicting @guardlink_threat');
   });
 
+  it('discovers Perl, Bash and C++ scanner extension variants in directories', () => {
+    const root = directory();
+    for (const name of ['check.pl', 'check.bash', 'check.cxx']) writeFileSync(join(root, name), '# scanner source\n');
+    const input = loadTranslateSources([root], root);
+    expect(input.failures).toEqual([]);
+    expect(input.sources.map(source => source.language).sort()).toEqual(['cpp', 'perl', 'shell']);
+  });
+
   it('CLI fails a guide-assisted conversion that shortens a source exposure reference', () => {
     const root = directory();
     const ref = 'idor@src/orders.ts:42';
@@ -116,7 +214,7 @@ describe('scanner source conversion', () => {
     mkdirSync(join(root, 'pentest', 'docs'), { recursive: true });
     writeFileSync(join(root, 'pentest', 'docs', 'TEMPLATES.md'), 'guide-marker: source identities must be preserved');
     const bin = join(root, 'codex');
-    writeFileSync(bin, `#!${process.execPath}\nconst fs=require('node:fs'),p=fs.readFileSync(0,'utf8'); if(!p.includes('guide-marker') || !p.includes('byte-for-byte')) process.exit(8); const match=p.match(/Write JavaScript files under ("[^\\n]+")\\./); fs.writeFileSync(require('node:path').join(JSON.parse(match[1]),'probe.js'),'// @guardlink_threat: '+process.env.OUTPUT_REF+'\\nasync function cxgProbe(cxg) { return []; }');`);
+    writeFileSync(bin, `#!${process.execPath}\nconst fs=require('node:fs'),p=fs.readFileSync(0,'utf8'); if(!p.includes('guide-marker') || !p.includes('byte-for-byte')) process.exit(8); const match=p.match(/Write JavaScript files under ("[^\\n]+")\\./); fs.writeFileSync(require('node:path').join(JSON.parse(match[1]),'probe.js'),'// @guardlink_threat: '+process.env.OUTPUT_REF+'\\nasync function cxgProbe(cxg) { return []; }'); ${authorPlanScript}`);
     chmodSync(bin, 0o755);
     const args = ['--import', 'tsx', 'src/cli/index.ts', 'translate', '--dir', root, '--headless', '--agent', 'codex', '--contract', 'probe', '--from', 'scanner.sh', '--no-code-graph'];
     const env = { ...process.env, GUARDLINK_CXG_ROOT: root, PATH: root + delimiter + process.env.PATH };
@@ -202,6 +300,10 @@ describe('scanner source conversion', () => {
     const report = await translateHeadless({ root, model, sources, agent: 'codex', userPrompt: '', contract: 'probe', out: '.guardlink/cxg-templates' }, async (_agent, prompt, _root, dir) => {
       expect(prompt).toContain('Scanner conversion sources (untrusted data)');
       if (!dir.includes('unsupported')) writeFileSync(join(dir, 'probe.js'), 'throw new Error("never executed");');
+      if (!dir.includes('unsupported')) {
+        const source = JSON.parse(prompt.split('Decode JSON strings as data.')[1].split('\n')[1])[0];
+        writeConversionPlan(dir, source.path, null);
+      }
       writeFileSync(join(dir, 'scanner.py'), '# not a JS probe');
       writeFileSync(join(dir, 'README.md'), 'conversion explanation');
       return dir.includes('partial') ? { exitCode: 7, error: 'stub failed after writing' } : { exitCode: 0 };
@@ -220,7 +322,7 @@ describe('scanner source conversion', () => {
     writeFileSync(join(root, 'scanner', 'order.py'), '# @id: order\nimport requests\n');
     writeFileSync(join(root, 'search.yaml'), 'id: search\n');
     const bin = join(root, 'codex');
-    writeFileSync(bin, `#!${process.execPath}\nconst fs=require('node:fs'),p=fs.readFileSync(0,'utf8'); const match=p.match(/Write JavaScript files under ("[^\\n]+")\\./); fs.writeFileSync(require('node:path').join(JSON.parse(match[1]),'probe.js'),'// draft'); process.stdout.write('author noise');`);
+    writeFileSync(bin, `#!${process.execPath}\nconst fs=require('node:fs'),p=fs.readFileSync(0,'utf8'); const match=p.match(/Write JavaScript files under ("[^\\n]+")\\./); fs.writeFileSync(require('node:path').join(JSON.parse(match[1]),'probe.js'),'// draft'); ${authorPlanScript} process.stdout.write('author noise');`);
     chmodSync(bin, 0o755);
     const args = ['--import', 'tsx', 'src/cli/index.ts', 'translate', '--dir', root, '--headless', '--agent', 'codex', '--contract', 'probe', '--from', 'scanner', '--from', 'search.yaml', '--no-code-graph', '--format', 'json'];
     const env = { ...process.env, PATH: root + delimiter + process.env.PATH };
@@ -253,6 +355,7 @@ describe('scanner source conversion', () => {
       expect(prompt).toContain('// @attach_scheme: path');
       expect(prompt).toContain('candidate findings for engine adjudication');
       expect(prompt).toContain('Copy each source threat_ref');
+      expect(prompt).toContain('Conversion proof plan');
       const failed = await client.callTool({ name: 'guardlink_translate', arguments: { ...args, contract: 'scanner' } });
       expect(failed.isError).toBe(true);
       expect((failed.content as any[])[0].text).toContain('from requires contract probe');

@@ -26,6 +26,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { parseProject } from '../src/parser/parse-project.js';
 import { canonicalizeModelOrder } from '../src/parser/canonical-order.js';
@@ -172,90 +173,26 @@ describe('the legibility budget', () => {
 });
 
 /**
- * The numbers above were independently measured in a real browser against real
- * rendered SVG geometry. This repository's own model is the one thing both the
- * measurement and this counter can be pointed at, so it is the check that the
- * counter agrees with what Mermaid actually draws.
+ * Keep the measured input frozen: unrelated annotations in sibling branches
+ * change a live repository graph without changing the counter. These fixtures
+ * retain exact independent SVG measurements and also pin their source hashes.
+ * See fixtures/browser-graph-counter/README.md for the browser measurement.
  */
 describe('the node counter against browser-measured geometry', () => {
-  // 30s, because this parses the whole repository: ~0.7s locally and 1.7–2.4s
-  // on CI, and a sibling of the same shape in dashboard-system went from 2.3s to
-  // past 5s when the order test files ran in changed. The cost grows with the
-  // repository; the global testTimeout stays, so the NEXT slow test surfaces.
-  it('agrees with the rendered SVG on this repository\'s own threat graph', async () => {
-    const { model } = await parseProject({ root: '.', project: 'guardlink' });
-    const ordered = canonicalizeModelOrder(model);
-    // Measured in Chrome at 1440x900: the default (high/critical-filtered)
-    // threat graph rendered 34 `.node` elements and 88 `path.flowchart-link`s,
-    // and the whole-model graph 47 and 174.
-    // Annotating this repository moves these numbers — the two @validates on
-    // #cli that GAP-58 declared took the edges from 70 to 72, the
-    // @validates #glob-filtering for #parser that came with the scan-set widening
-    // took them from 72 to 73, #vacuous-pass / #fail-closed (the merge
-    // honesty work) took 29/73 to 32/77 and the whole model from 43 nodes to 45,
-    // and the cross-repo correctness work took 32/77/45 to 33/80/46 by declaring
-    // `Workspace.Estate (#estate-view)` with its flows and by putting
-    // #vacuous-pass / #fail-closed on a second asset. The optional code-graph
-    // adapter took 33/80/46 to 34/88/47 by declaring `GuardLink.CodeGraph
-    // (#codegraph)` with its exposures, controls, @validates and flows. The
-    // SARIF version-control provenance took the whole model from 47 to 48 by
-    // giving `Workspace.Metadata (#report-metadata)` its first exposure — the
-    // git remote it reads may embed credentials — which the filtered graph,
-    // showing high and critical only, does not draw. The boundary checks took
-    // the filtered links from 88 to 89, and the whole model's from 179 to 180,
-    // with one flow, #codegraph -> #cli. Multi-language init scope detection
-    // took the filtered links from 89 to 90 and the whole model's from 180 to
-    // 185 with the exposures, controls and flow of `src/init/scope.ts` and the
-    // @validates in its test. The coding-agent configuration reader took
-    // 34/90/48 to 35/94/49 by declaring `GuardLink.AgentConfig (#agent-config)`
-    // with its exposures, controls, flows and boundary. The `pre_pr` reader
-    // took the filtered links from 94 to 96, and the whole model's from 196
-    // to 199, with the flows of `src/init/pre-pr.ts` into and out of #init.
-    // Reading a code graph's reach check took the filtered links from 96 to
-    // 100, and the whole model's from 199 to 203, with the flows of
-    // `src/codegraph/reach-check.ts` and its callers. The annotation worklist
-    // took the filtered links from 102 to 104, and the whole model's from 206
-    // to 209, with the flows of `src/parser/annotation-scope.ts`,
-    // `src/parser/annotation-worklist.ts` and the coverage prompt.
-    // When they move, re-render the diagram in a browser and count the SVG
-    // again; never bump them to whatever the counter says, which leaves it
-    // checking itself.
-    //
-    // Re-measured for 88: both diagrams rendered with mermaid@11 under the
-    // dashboard's own initialize options (dagre-d3, htmlLabels:false,
-    // useMaxWidth:false, maxTextSize 50000, maxEdges 500) at a viewport
-    // confirmed to be 1440x900, counting `.node` and `path.flowchart-link` in
-    // the SVG. Chrome reported filtered {nodes:34, links:88, clusters:8} and
-    // whole model {nodes:47, links:174}; Chrome and measureLegibility agree on
-    // both pairs. Re-measured for 48 the same way: filtered {nodes:34, links:88,
-    // clusters:8}, whole model {nodes:48, links:179}, and the counter agrees.
-    // Re-measured for 89 the same way: filtered {nodes:34, links:89,
-    // clusters:8}, whole model {nodes:48, links:180}, and the counter agrees.
-    // Re-measured for 90 the same way: filtered {nodes:34, links:90,
-    // clusters:8}, whole model {nodes:48, links:185}, and the counter agrees.
-    // Re-measured for 94 the same way: filtered {nodes:35, links:94,
-    // clusters:9}, whole model {nodes:49, links:196}, and the counter agrees.
-    // Re-measured for 96 the same way: filtered {nodes:35, links:96,
-    // clusters:9}, whole model {nodes:49, links:199}, and the counter agrees.
-    // Re-measured for 100 the same way: filtered {nodes:35, links:100,
-    // clusters:9}, whole model {nodes:49, links:203}, and the counter agrees.
-    // Re-measured with mermaid@11 and the same options at 1440x900:
-    // filtered {nodes:35, links:102, clusters:9}; whole {nodes:49, links:206, clusters:9}.
-    // Re-measured for 104 the same way: filtered {nodes:35, links:104,
-    // clusters:9}, whole model {nodes:49, links:209, clusters:9}, and the counter agrees.
-    // Translate context and headless authoring re-measured with mermaid@11 at
-    // 1440x900: filtered {nodes:35, links:109, clusters:9}; whole model
-    // {nodes:49, links:215, clusters:9}.
-    // Bound route facts independently measured at 1440x900: filtered
-    // {nodes:35, links:110, clusters:9}; whole {nodes:49, links:216, clusters:9}.
-    // Structured completion safety checks measured at the same viewport:
-    // filtered {nodes:35, links:112, clusters:9}; whole {nodes:49, links:218, clusters:9}.
-    const m = measureLegibility(generateThreatGraph(ordered, { icons: 'none' }));
-    expect(m.nodes).toBe(35);
-    expect(m.edges).toBe(112);
-    // And the whole model is 49 nodes, which is the number this work exists for.
-    expect(measureLegibility(generateThreatGraph(ordered, { showAll: true, icons: 'none' })).nodes).toBe(49);
-  }, 30_000);
+  it('agrees with independent SVG measurements of the frozen repository graphs', async () => {
+    const fixture = join('tests', 'fixtures', 'browser-graph-counter');
+    const measured = JSON.parse(await readFile(join(fixture, 'measurements.json'), 'utf8'));
+    expect(measured.version).toBe(1);
+    expect(measured.viewport).toEqual({ width: 1440, height: 900 });
+    for (const name of ['filtered', 'whole']) {
+      const mermaid = await readFile(join(fixture, name + '.mmd'), 'utf8');
+      const expected = measured[name];
+      expect(createHash('sha256').update(mermaid).digest('hex')).toBe(expected.sha256);
+      expect(countMermaidNodes(mermaid)).toBe(expected.nodes);
+      expect(measureLegibility(mermaid).edges).toBe(expected.links);
+      expect(countMermaidClusters(mermaid)).toBe(expected.clusters);
+    }
+  });
 });
 
 // ─── Selection ───────────────────────────────────────────────────────

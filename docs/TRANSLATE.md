@@ -170,8 +170,8 @@ reference loading is unchanged apart from normalizing scalar-author skeletons.
 Use repeatable `--from <path>` with explicit `--contract probe` to re-author
 existing scanner templates as JS probes. Each path can be a file or a directory,
 relative to `--dir` or absolute. Directories are traversed recursively for scanner
-source extensions (YAML, Python, JavaScript, TypeScript, Go, Rust, Ruby, shell,
-PHP, Java, C/C++, C# and Lua); unrelated files and directory symlinks are skipped.
+source extensions (YAML, Python, JavaScript, TypeScript, Go, Rust, Ruby, Perl, shell,
+PHP, Java, C/C++, C# and Lua, including `.bash` and `.cxx` variants); unrelated files and directory symlinks are skipped.
 Explicit symlink inputs are refused. Overlapping paths are deduplicated.
 
 ```sh
@@ -202,6 +202,41 @@ matching alone must not become proof: prefer the matching cxg oracle and submit
 candidate findings for engine adjudication. Unsupported capabilities or missing
 proof mechanisms need an explanation, never invented APIs or confirmation.
 
+Each conversion also writes `conversion.json` in its draft output directory:
+
+```json
+{
+  "version": 1,
+  "sources": [{
+    "source": "/project/scanners/check.py",
+    "threat_ref": "idor@src/orders.ts:42",
+    "probes": [{
+      "file": "check.js",
+      "oracle": "engine.cross_identity_overlap",
+      "rationale": "Compare the same victim-owned object through entitled and attacker arms",
+      "prerequisites": ["entitled identity", "attacker identity"]
+    }]
+  }]
+}
+```
+
+Choose the matching oracle from the installed guide and use its actual request,
+payload, capability and evidence contract in the probe. Preserve an existing
+source oracle when supported; do not replace it with a body matcher. An alias may
+be mapped to the engine's canonical class only when it describes the same test.
+Do not rename an unrelated check merely to obtain confirmation. For example,
+anonymous-only response matching does not establish a cross-identity control.
+If no matching oracle or prerequisite is available, replace `probes` with a
+concrete `unsupported_reason`. This fails conversion with that reason instead
+of silently presenting an inevitably ambiguous probe as ready.
+
+Plans are bounded to 64 KiB, 256 source/probe entries and 64 prerequisites per
+probe. They must name exactly the written probe files without duplicates.
+The plan is an author's declaration for review, not engine proof or runtime API
+validation. Only subsequent execution and engine adjudication establish a verdict.
+For older or standalone sources with no threat header, `threat_ref` stays `null`;
+the descriptive template-id fallback remains available with an attribution warning.
+
 Converted probes stay under `.guardlink/cxg-templates/`; conversion `--out` may
 choose a subdirectory within that draft tree. Symlinked output ancestors are
 refused. Review and verify the drafts before promoting them into the curated
@@ -220,6 +255,7 @@ paths or a failure reason in `failures`:
   "results": [{
     "source": "/project/scanners/check.py",
     "contract": "probe",
+    "threat_ref": "idor@src/orders.ts:42",
     "template_dir": "/project/.guardlink/cxg-templates/checkpy-0123456789ab",
     "templates": ["/project/.guardlink/cxg-templates/checkpy-0123456789ab/check.js"],
     "status": "written"
@@ -242,6 +278,15 @@ A written path means a changed file was inventoried and any existing source
 threat reference was preserved; probe validation and threat proof are separate.
 Interactive and MCP prompt requests
 refuse source-read errors before returning or launching an author.
+
+Conversion JSON results additionally include the exact source `threat_ref` and
+`proof_plan`. Its status is `declared`, `unsupported`, `missing` or `invalid`.
+Only `declared` can yield a `written` conversion. Other statuses produce a
+source failure and a nonzero CLI exit, including after an author exits zero.
+Unsupported reasons, declared oracle names, rationale and prerequisites remain
+visible in the result. Non-conversion scanner/probe authoring keeps its existing
+result fields and `no_templates` behavior. See the
+[regression review](TRANSLATE_REGRESSION_CHECK.md) for the compatibility audit.
 
 ## Headless results
 

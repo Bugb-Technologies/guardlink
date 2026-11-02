@@ -16,6 +16,7 @@ import { validateScannerYaml } from './translate-yaml.js';
 import { buildTranslatePrompt, translateContract } from './prompts.js';
 import { defaultTranslateExposures, exposureId, type TranslateContextPack, type TranslateContract } from './translate-context.js';
 import { convertedThreatRefError, translateDraftOutput, type TranslateSources } from './translate-source.js';
+import { readConversionPlan, type ConversionProofPlan } from './translate-conversion.js';
 import type { ThreatModel } from '../types/index.js';
 
 export type TranslateAgent = 'claude' | 'codex' | 'gemini';
@@ -102,7 +103,7 @@ export interface TranslateHeadlessOptions {
 }
 export interface TranslateHeadlessReport {
   version: 1;
-  results: Array<TranslateIdentity & { contract: TranslateContract; template_dir: string; templates: string[]; completion?: AgentCompletion; status: 'written' | 'no_templates' | 'failed' }>;
+  results: Array<TranslateIdentity & { contract: TranslateContract; template_dir: string; templates: string[]; completion?: AgentCompletion; status: 'written' | 'no_templates' | 'failed'; threat_ref?: string | null; proof_plan?: ConversionProofPlan }>;
   failures: Array<TranslateIdentity & { error: string; exit_code: number | null }>;
 }
 type TranslateIdentity = { threat: string; source?: never } | { source: string; threat?: never };
@@ -169,12 +170,17 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
         const error = convertedThreatRefError(source, readFileSync(file, 'utf8'));
         return error ? [`${file}: ${error}`] : [];
       }) : [];
-      const error = [result.error, ...identityErrors].filter(Boolean).join('; ');
+      const proof_plan = source ? readConversionPlan(dir, source, written) : undefined;
+      const attribution = source ? { threat_ref: source.threat_ref ?? null, proof_plan } : {};
+      const proofError = proof_plan && proof_plan.status !== 'declared'
+        ? (proof_plan.status === 'missing' && !written.length
+          ? `Author exited without writing a JavaScript probe; ${proof_plan.reason}` : proof_plan.reason) : undefined;
+      const error = [result.error, ...identityErrors, proofError].filter(Boolean).join('; ');
       if (error || result.exitCode !== 0 || (completion && completion.status !== 'completed') || (source && !written.length)) {
         report.failures.push({ ...identity, error: error || completion?.reason || (result.exitCode !== 0 ? 'Agent did not exit successfully' : 'Author exited without writing a JavaScript probe; consult README.md for conversion limitations'), exit_code: result.exitCode });
-        report.results.push({ ...identity, contract, template_dir: dir, templates: written, completion, status: 'failed' });
+        report.results.push({ ...identity, ...attribution, contract, template_dir: dir, templates: written, completion, status: 'failed' });
       } else {
-        report.results.push({ ...identity, contract, template_dir: dir, templates: written, completion, status: invalid.length ? 'failed' : written.length ? 'written' : 'no_templates' });
+        report.results.push({ ...identity, ...attribution, contract, template_dir: dir, templates: written, completion, status: invalid.length ? 'failed' : written.length ? 'written' : 'no_templates' });
       }
     } catch (error) {
       report.failures.push({ ...identity, error: (error as Error).message, exit_code: null });
