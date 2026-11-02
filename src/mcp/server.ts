@@ -89,7 +89,7 @@ import { loadWorklist, reachFor, worklistSummaryLine, type Worklist } from '../c
 import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary-check.js';
 import { loadReachCheck, checkReach, reachCheckSummaryLine, type ReachCheck } from '../codegraph/reach-check.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
-import { buildTranslateContext, loadTranslateContext, selectTranslateThreats } from '../agents/translate-context.js';
+import { buildTranslateContext, loadTranslateContext, selectTranslateThreats, type TranslateGraphStatus } from '../agents/translate-context.js';
 import { filterByFeature } from '../parser/feature-filter.js';
 import { buildAnnotatePrompt, buildTranslatePrompt } from '../agents/prompts.js';
 import { syncAgentFiles } from '../init/index.js';
@@ -883,14 +883,16 @@ export function createServer(): McpServer {
       threat: z.array(z.string()).optional().describe('Threat ids or threat@file:line exposure ids'),
       feature: z.string().optional().describe('Comma-separated feature scope'),
       code_graph: z.boolean().default(true),
+      code_graph_timeout_ms: z.number().int().min(1).max(2147483647).optional().describe('Timeout per graph query in milliseconds; default 300000, or GUARDLINK_CODEGRAPH_TIMEOUT_MS'),
     },
-    async ({ root, prompt, context, contract, out, threat, feature, code_graph }) => {
+    async ({ root, prompt, context, contract, out, threat, feature, code_graph, code_graph_timeout_ms }) => {
       let { model } = await getModel(root);
       if (feature) model = filterByFeature(model, feature.split(',').map((f: string) => f.trim()));
       model = selectTranslateThreats(model, threat);
+      let contextGraph: TranslateGraphStatus = { status: 'not_requested', reason: 'Explicit context pack supplied' };
       const pack = context ? loadTranslateContext(context, resolve(root))
-        : await buildTranslateContext(resolve(root), model, { enabled: code_graph });
-      return { content: [{ type: 'text', text: JSON.stringify({ mode: 'agent',
+        : await buildTranslateContext(resolve(root), model, { enabled: code_graph, timeoutMs: code_graph_timeout_ms, onStatus: status => { contextGraph = status; } });
+      return { content: [{ type: 'text', text: JSON.stringify({ mode: 'agent', context_graph: contextGraph, template_dir: resolve(root, out || '.guardlink/cxg-templates/'),
         prompt: buildTranslatePrompt(prompt, resolve(root), model, { context: pack, contract, out, threats: threat }),
       }) }] };
     },

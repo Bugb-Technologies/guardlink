@@ -8,8 +8,9 @@
  */
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { validateScannerYaml } from './translate-yaml.js';
 import { buildTranslatePrompt, translateContract } from './prompts.js';
 import { defaultTranslateExposures, exposureId, type TranslateContextPack, type TranslateContract } from './translate-context.js';
 import type { ThreatModel } from '../types/index.js';
@@ -44,12 +45,13 @@ export const runTranslateAgent: TranslateRunner = async (agent, prompt, root, ou
 };
 
 /** Walk only regular files, never symlinks; exclude author indexes from template results. */
-function templates(dir: string): Map<string, string> {
+export function snapshotTemplates(dir: string): Map<string, string> {
   const found = new Map<string, string>();
+  if (!existsSync(dir)) return found;
   for (const item of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, item.name);
     if (item.isDirectory()) {
-      for (const [file, hash] of templates(path)) found.set(file, hash);
+      for (const [file, hash] of snapshotTemplates(path)) found.set(file, hash);
     } else if (item.isFile() && /\.(yaml|yml|py|js|mjs|ts|go|rs|rb|sh)$/i.test(item.name)) {
       found.set(path, `${statSync(path).mtimeMs}:${createHash('sha256').update(readFileSync(path)).digest('hex')}`);
     }
@@ -65,7 +67,7 @@ export interface TranslateHeadlessOptions {
 }
 export interface TranslateHeadlessReport {
   version: 1;
-  results: Array<{ threat: string; contract: TranslateContract; templates: string[]; status: 'written' | 'no_templates' | 'failed' }>;
+  results: Array<{ threat: string; contract: TranslateContract; template_dir: string; templates: string[]; status: 'written' | 'no_templates' | 'failed' }>;
   failures: Array<{ threat: string; error: string; exit_code: number | null }>;
 }
 
@@ -87,20 +89,25 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
     let written: string[] = [];
     try {
       mkdirSync(dir, { recursive: true });
-      const before = templates(dir);
+      const before = snapshotTemplates(dir);
       const prompt = buildTranslatePrompt(options.userPrompt, options.root, model, { context: options.context, contract, out: dir, threats: [id] })
         + '\nHeadless authoring: write files directly. Do not ask questions or perform CLI usage discovery. Return when authoring is complete.';
       const result = await run(options.agent, prompt, options.root, dir);
-      written = [...templates(dir)].filter(([file, hash]) => before.get(file) !== hash).map(([file]) => file).sort();
+      written = [...snapshotTemplates(dir)].filter(([file, hash]) => before.get(file) !== hash).map(([file]) => file).sort();
+      const invalid = contract === 'scanner' ? written.filter(file => /\.ya?ml$/i.test(file))
+        .flatMap(file => validateScannerYaml(file).map(error => `${file}: ${error}`)) : [];
+      if (invalid.length) {
+        report.failures.push({ threat: id, error: `Invalid scanner YAML: ${invalid.join('; ')}`, exit_code: result.exitCode });
+      }
       if (result.error || result.exitCode !== 0) {
         report.failures.push({ threat: id, error: result.error || 'Agent did not exit successfully', exit_code: result.exitCode });
-        report.results.push({ threat: id, contract, templates: written, status: 'failed' });
+        report.results.push({ threat: id, contract, template_dir: dir, templates: written, status: 'failed' });
       } else {
-        report.results.push({ threat: id, contract, templates: written, status: written.length ? 'written' : 'no_templates' });
+        report.results.push({ threat: id, contract, template_dir: dir, templates: written, status: invalid.length ? 'failed' : written.length ? 'written' : 'no_templates' });
       }
     } catch (error) {
       report.failures.push({ threat: id, error: (error as Error).message, exit_code: null });
-      report.results.push({ threat: id, contract, templates: written, status: 'failed' });
+      report.results.push({ threat: id, contract, template_dir: dir, templates: written, status: 'failed' });
     }
   }
   return report;

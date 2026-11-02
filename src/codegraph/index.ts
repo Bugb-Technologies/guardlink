@@ -57,7 +57,7 @@
  * @exposes #codegraph to #config-tamper [medium] cwe:CWE-15 -- "GUARDLINK_CODEGRAPH_MCP names the binary to run; whoever controls the environment chooses what executes"
  * @audit #codegraph -- "The override is an operator convenience, as PATH itself is; confirm CI environments do not let untrusted input set GUARDLINK_CODEGRAPH_MCP"
  * @exposes #codegraph to #dos [low] cwe:CWE-400 -- "A wedged or runaway graph server could hold the annotate command or an MCP call open, or stream unbounded output"
- * @mitigates #codegraph against #dos using #resource-limits -- "Every query has a timeout (QUERY_TIMEOUT_MS) and an output cap (MAX_OUTPUT_BYTES); the process is killed when either is hit"
+ * @mitigates #codegraph against #dos using #resource-limits -- "runChild bounds each query with QUERY_TIMEOUT_MS (overridable by GUARDLINK_CODEGRAPH_TIMEOUT_MS or timeoutMs) and MAX_OUTPUT_BYTES; it kills the process when either is hit"
  * @exposes #codegraph to #prompt-injection [medium] cwe:CWE-77 -- "Route paths, symbol names and sink call text come from the repository's own source and are rendered into the annotate prompt"
  * @audit #codegraph -- "Same trust as the source files the agent is told to read; the worklist adds no content the agent could not read itself, but a crafted route string is prose in the prompt"
  * @flows CodeGraphServer -> #codegraph via stdout -- "JSON answers to routes, attack_surface, reachable_sinks, entry_reach"
@@ -94,10 +94,21 @@ export const USABLE_VERDICT = 'sinks_reached';
 export const ACCESS_USABLE_VERDICT = 'classified';
 
 /**
- * A graph query is a read over an index that already exists. The ceiling is for a
- * wedged process, not a slow answer; exceeding it degrades to "no graph".
+ * A graph query reads an existing index. Allow five minutes for cold query batches;
+ * GUARDLINK_CODEGRAPH_TIMEOUT_MS or timeoutMs can override that per query.
+ * Exceeding the ceiling returns an explicit timeout status, never a clean graph.
  */
-export const QUERY_TIMEOUT_MS = 60_000;
+export const QUERY_TIMEOUT_MS = 300_000;
+export const ENV_TIMEOUT_MS = 'GUARDLINK_CODEGRAPH_TIMEOUT_MS';
+
+/** Positive milliseconds, bounded to the platform timer range. Invalid input is an explicit graph error. */
+export function graphQueryTimeout(env: NodeJS.ProcessEnv = process.env, explicit?: number): number {
+  const value = explicit ?? (env[ENV_TIMEOUT_MS] ? Number(env[ENV_TIMEOUT_MS]) : QUERY_TIMEOUT_MS);
+  if (!Number.isSafeInteger(value) || value <= 0 || value > 2_147_483_647) {
+    throw new Error(`${ENV_TIMEOUT_MS} / graph timeout must be a positive integer in milliseconds (at most 2147483647)`);
+  }
+  return value;
+}
 /** An attack-surface answer on a large service is a few MB; this is far past that. */
 export const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 /** Set at the graph's own caps, so a large application is read whole. */
@@ -188,7 +199,7 @@ function runChild(
       child.once('exit', () => clearTimeout(reaper));
       if (err) reject(err); else resolvePromise({ stdout, stderr, code });
     };
-    const timer = setTimeout(() => settle(new Error(`${binary} gave no answer within ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
+    const timer = setTimeout(() => settle(new Error(`${binary} gave no answer within ${timeoutMs < 1000 ? `${timeoutMs}ms` : `${timeoutMs / 1000}s`}`)), timeoutMs);
     child.on('error', (e: NodeJS.ErrnoException) => {
       settle(e.code === 'ENOENT' || e.code === 'EACCES'
         ? new GraphToolingMissing(`${binary}: ${e.code === 'ENOENT' ? 'not found' : 'not executable'}`)
@@ -330,7 +341,7 @@ export function graphSwitchedOff(env: NodeJS.ProcessEnv = process.env): boolean 
 }
 
 /** Find a transport, or null. Never runs anything. */
-export function discoverTransport(env: NodeJS.ProcessEnv = process.env, timeoutMs = QUERY_TIMEOUT_MS): CodeGraphTransport | null {
+export function discoverTransport(env: NodeJS.ProcessEnv = process.env, timeoutMs = graphQueryTimeout(env)): CodeGraphTransport | null {
   const explicit = (env[ENV_MCP_BIN] || '').trim();
   if (explicit) return mcpTransport(explicit, timeoutMs);
   const mcp = onPath(MCP_BIN, env);
@@ -350,7 +361,9 @@ export async function ask(root: string, calls: ToolCall[], opts: CodeGraphOption
   const env = opts.env ?? process.env;
   if (opts.enabled === false) return { status: 'off', via: '', note: 'disabled with --no-code-graph' };
   if (graphSwitchedOff(env)) return { status: 'off', via: '', note: `disabled with ${ENV_SWITCH}=${env[ENV_SWITCH]}` };
-  const transport = opts.transport !== undefined ? opts.transport : discoverTransport(env, opts.timeoutMs);
+  let transport: CodeGraphTransport | null;
+  try { transport = opts.transport !== undefined ? opts.transport : discoverTransport(env, graphQueryTimeout(env, opts.timeoutMs)); }
+  catch (error) { return { status: 'error', via: '', note: (error as Error).message }; }
   if (!transport) {
     return { status: 'unavailable', via: '', note: `no code graph tooling found (${MCP_BIN} or ${BRAVOS_BIN} on PATH, or $${ENV_MCP_BIN})` };
   }

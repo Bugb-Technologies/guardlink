@@ -3,9 +3,9 @@
     "reaches": 30,
     "agent_reaches": 30,
     "unentitled_reaches": 30,
-    "effects": 22,
-    "mutating_effects": 21,
-    "ungated_effects": 21,
+    "effects": 23,
+    "mutating_effects": 22,
+    "ungated_effects": 22,
     "gates": 0,
     "coding_agent_reaches": 1,
     "unentitled_coding_agent_reaches": 1

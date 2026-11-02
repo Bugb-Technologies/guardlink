@@ -1,7 +1,8 @@
 # Template authoring with translate
 
-`guardlink translate` authors templates without executing them. With no new
-options and no available code graph, its interactive scanner prompt is unchanged.
+`guardlink translate` authors templates without executing them. It defaults to
+the interactive scanner contract. Scanner proof requirements and AuthorInfo
+guidance apply to every scanner prompt.
 Existing `--claude-code`, `--codex`, `--gemini`, IDE and clipboard flags still work.
 
 ```sh
@@ -70,10 +71,27 @@ route and entry-to-sink facts at selected exposure symbols. File-level claims
 without a symbol are not assigned to an arbitrary handler. Missing, refused or
 insufficient graph answers contribute no pack. No index is built or installed.
 `--no-code-graph` or `GUARDLINK_CODEGRAPH=off` disables this lookup.
+Graph queries default to 300,000 ms per query batch. Override with
+`GUARDLINK_CODEGRAPH_TIMEOUT_MS`, `--code-graph-timeout <ms>`, or MCP
+`code_graph_timeout_ms` (a positive integer in milliseconds). Graph errors,
+timeouts and unavailable tooling remain optional-input failures: the CLI reports
+why the graph pack was skipped on stderr, and headless/MCP JSON includes
+`context_graph` with `status`, `reason` and any per-exposure `skipped` reasons.
+A partial pack reports which exposures received no facts instead of silently
+hiding their lookup failures.
 
 ## Output contracts
 
-`--contract scanner` keeps the existing YAML/Python scanner contract.
+`--contract scanner` uses the YAML/Python scanner contract. YAML `author` is
+an AuthorInfo mapping with a required nonempty `name` string and optional
+`email`/`github` strings, never a scalar. Older installed skeleton excerpts are
+normalized to this form in the prompt.
+
+Proof must come from the protected resource named by the threat. An anonymous
+200 from a root, banner or health endpoint does not prove missing authentication
+on another resource. Where possible compare entitled and unauthorized access to
+the same resource as a negative control; missing context means unevaluated or
+audit-only, rather than inventing endpoints or confirming on a version banner.
 `--contract probe` requests JavaScript with `async function cxgProbe(cxg)` and
 single-line metadata headers including `@id`, `@vuln_class`, `@severity`,
 `@description`, `@requires_auth_count`, `@destructive_priority` and
@@ -87,11 +105,15 @@ matching pack request chooses the contract; otherwise scanner is the default.
 Mixed requests in an interactive prompt require an explicit contract or narrower
 scope. Headless mode resolves each exposure separately.
 
-Probe guidance reads `pentest/docs/TEMPLATES.md` under `GUARDLINK_CXG_ROOT`, or
-`docs/TEMPLATES.md` in an installed template layout. The default root remains
-`~/.cert-x-gen/templates/official`. Missing documentation is stated in the prompt;
-unsupported bridge APIs must not be invented. Scanner guide/skeleton loading is
-unchanged.
+Probe guidance first checks `GUARDLINK_CXG_ROOT/pentest/docs/TEMPLATES.md`
+and `GUARDLINK_CXG_ROOT/docs/TEMPLATES.md`, when that override is set. It then
+checks the actual installed `~/.cert-x-gen/pentest/docs/TEMPLATES.md` and the
+installed template layout. `CERT_X_GEN_HOME` replaces the base home, matching
+CXG: the guide is then at
+`$CERT_X_GEN_HOME/.cert-x-gen/pentest/docs/TEMPLATES.md`. A missing, unreadable
+or empty guide refuses probe authoring before the author agent is started;
+probe contracts requested by a context pack follow the same rule. Scanner
+reference loading is unchanged apart from normalizing scalar-author skeletons.
 
 ## Headless results
 
@@ -111,6 +133,7 @@ Headless stdout is one JSON object (also the default without `--format json`):
   "results": [{
     "threat": "idor@src/orders.ts:42",
     "contract": "probe",
+    "template_dir": "/project/generated-probes/idor-0123456789ab",
     "templates": ["/project/generated-probes/idor-0123456789ab/order-read.js"],
     "status": "written"
   }],
@@ -118,20 +141,32 @@ Headless stdout is one JSON object (also the default without `--format json`):
 }
 ```
 
-Paths are absolute and list regular template files created or changed during
-that exposure's run; README indexes and symlinks are excluded. `no_templates`
+`template_dir` is the exact per-exposure directory used by the author. Pass that
+directory to `cxg scan --pentest --template-dir`, one exposure at a time; the
+pentest runner may not recurse through the parent `--out` directory.
+`templates` paths are absolute and list regular template files created or changed
+during that exposure's run; README indexes and symlinks are excluded. `no_templates`
 means the author exited successfully without writing a template; consult its
 README for audit-only explanations. `failed` preserves any partial file list.
 Each failure has `threat`, `error` and `exit_code` (null for spawn/file errors).
 Preflight errors use `threat: "*"` with empty results. Any author or preflight
 failure exits nonzero, including a nonzero agent exit after partial stdout.
-An empty candidate scope is an error. Successful author exit is not template
-validation or proof of the threat. Translate never loads or executes templates.
+An empty candidate scope is an error. Written scanner YAML files undergo an
+explicit AuthorInfo check plus `cxg template validate --json --disable-update-check`. CXG must be installed for that schema check; missing
+validator, invalid schema, invalid author or validator errors mark the exposure
+`failed` and make translate exit nonzero even when the author exited zero.
+Foreground scanner agents get the same validation for newly written YAML on
+return. MCP/clipboard/IDE workflows return a prompt and cannot validate files an
+external author has not yet written. Validation only parses templates; it never
+executes them and does not prove their detection logic. Other code templates are
+reported as authored, not executed or proven.
 
 ## MCP
 
 `guardlink_translate` returns an authoring prompt for the calling agent; it does
 not launch another agent. Arguments are `root`, `prompt`, `context` (the same
 JSON file path), `contract`, `out`, `threat` (array), `feature` (comma-separated),
-and `code_graph` (default true). Contract selection, context validation, graph
-fallback and scoping match the CLI. The response has `mode: "agent"` and `prompt`.
+`code_graph` (default true), and `code_graph_timeout_ms`. Contract selection, context validation, graph
+fallback and scoping match the CLI. The response has `mode: "agent"`, `prompt`,
+`context_graph` and the requested absolute `template_dir` (the prompt's output
+directory; MCP does not claim files have been written).

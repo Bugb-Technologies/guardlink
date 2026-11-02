@@ -1,11 +1,11 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, delimiter } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { parseProject } from '../src/parser/index.js';
-import { buildTranslatePrompt } from '../src/agents/prompts.js';
+import { buildTranslatePrompt, SCANNER_SAFETY_REQUIREMENTS } from '../src/agents/prompts.js';
 import { buildTranslateContext, loadTranslateContext, parseTranslateContext, exposureId, selectTranslateThreats, TRANSLATE_CONTEXT_SCHEMA } from '../src/agents/translate-context.js';
 import { translateHeadless, runTranslateAgent } from '../src/agents/translate-headless.js';
 import type { CodeGraphTransport } from '../src/codegraph/index.js';
@@ -19,6 +19,13 @@ function directory() {
   temporary.push(dir);
   return dir;
 }
+beforeEach(() => {
+  const installHome = directory();
+  const guideDir = join(installHome, '.cert-x-gen', 'pentest', 'docs');
+  mkdirSync(guideDir, { recursive: true });
+  writeFileSync(join(guideDir, 'TEMPLATES.md'), 'Test guide: cxg.fetch(path, options) returns status, body_json and body_text.');
+  vi.stubEnv('CERT_X_GEN_HOME', installHome);
+});
 afterEach(() => { vi.unstubAllEnvs(); for (const dir of temporary.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
 async function project() {
@@ -78,12 +85,14 @@ describe('translate context schema and prompts', () => {
     expect(() => loadTranslateContext('large.json', root)).toThrow(/2 MiB/);
   });
 
-  it('keeps the default prompt byte-compatible with the original scanner implementation', () => {
+  it('preserves original scanner prompt bytes around the deliberate proof and author safety additions', () => {
     const root = directory();
     vi.stubEnv('GUARDLINK_CXG_ROOT', root);
     vi.stubEnv('GUARDLINK_CXG_SKELETON_DIR', root);
     // Pin the pre-extension implementation as a hash, without duplicating its prose.
-    const hash = createHash('sha256').update(buildTranslatePrompt('Generate templates', '/project', null)).digest('hex');
+    const prompt = buildTranslatePrompt('Generate templates', '/project', null);
+    const compatibilityPrompt = prompt.replace(SCANNER_SAFETY_REQUIREMENTS, '');
+    const hash = createHash('sha256').update(compatibilityPrompt).digest('hex');
     expect(hash).toBe('6c0f5fced7e41ad42f015c61a3efc29f803d6019d14255e946a6134119c28988');
     expect(buildTranslatePrompt('Generate templates', '/project', null, { contract: 'scanner' })).toBe(buildTranslatePrompt('Generate templates', '/project', null));
   });
@@ -182,6 +191,8 @@ describe('headless authoring', () => {
     const result = JSON.parse(success.stdout);
     expect(result).toMatchObject({ version: 1, failures: [], results: [{ threat: expect.stringContaining('idor@api.ts:'), status: 'written', contract: 'probe' }] });
     expect(result.results[0].templates.every((path: string) => existsSync(path))).toBe(true);
+    expect(result.results[0].template_dir).toBe(result.results[0].templates[0].slice(0, result.results[0].templates[0].lastIndexOf('/')));
+    expect(result.context_graph).toMatchObject({ status: 'skipped', reason: expect.stringContaining('disabled') });
     const failed = spawnSync(process.execPath, args, { env: { ...env, STUB_FAIL: '1' }, encoding: 'utf8' });
     expect(failed.status).toBe(1);
     expect(JSON.parse(failed.stdout).failures[0].exit_code).toBe(4);

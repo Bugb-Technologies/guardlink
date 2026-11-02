@@ -69,8 +69,10 @@ import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard,
 import { generateDashboardHTML, loadSince } from '../dashboard/index.js';
 import type { SinceInput } from '../dashboard/analytics.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt, buildTranslatePrompt, buildAskPrompt, resolveAnnotationMode } from '../agents/index.js';
-import { buildTranslateContext, loadTranslateContext, selectTranslateThreats, type TranslateContract } from '../agents/translate-context.js';
-import { translateHeadless, type TranslateAgent } from '../agents/translate-headless.js';
+import { buildTranslateContext, loadTranslateContext, selectTranslateThreats, type TranslateContract, type TranslateGraphStatus } from '../agents/translate-context.js';
+import { validateScannerYaml } from '../agents/translate-yaml.js';
+import { translateContract, loadProbeGuide } from '../agents/prompts.js';
+import { translateHeadless, snapshotTemplates, type TranslateAgent } from '../agents/translate-headless.js';
 import { loadWorklist, worklistSummaryLine } from '../codegraph/index.js';
 import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary-check.js';
 import { loadReachCheck, checkReach, reachCheckSummaryLine, reachDrafts, renderDrafts, type ReachCheck } from '../codegraph/reach-check.js';
@@ -2202,12 +2204,13 @@ program
   .option('--threat <id>', 'Select a threat or exposure id (repeatable)', (id: string, ids: string[]) => [...ids, id], [] as string[])
   .option('--format <format>', 'Headless result format: json')
   .option('--no-code-graph', 'Do not supplement translate with optional graph facts')
+  .option('--code-graph-timeout <ms>', 'Graph query timeout in milliseconds (default 300000; also GUARDLINK_CODEGRAPH_TIMEOUT_MS)')
   .action(async (promptParts: string[], opts: {
     dir: string; project: string;
     claudeCode?: boolean; codex?: boolean; gemini?: boolean;
     cursor?: boolean; windsurf?: boolean; clipboard?: boolean;
     feature?: string; context?: string; contract?: TranslateContract; headless?: boolean;
-    agent?: TranslateAgent; out?: string; threat?: string[]; format?: string; codeGraph?: boolean;
+    agent?: TranslateAgent; out?: string; threat?: string[]; format?: string; codeGraph?: boolean; codeGraphTimeout?: string;
   }) => {
     try {
       if (opts.contract && !['scanner', 'probe'].includes(opts.contract)) throw new Error('Invalid --contract: use scanner or probe');
@@ -2236,13 +2239,18 @@ program
       }
 
       model = selectTranslateThreats(model, opts.threat);
+      if (opts.contract === 'probe') loadProbeGuide();
+      let contextGraph: TranslateGraphStatus = { status: 'not_requested', reason: 'Explicit context pack supplied' };
       const context = opts.context ? loadTranslateContext(opts.context, root)
-        : await buildTranslateContext(root, model, { enabled: opts.codeGraph !== false });
+        : await buildTranslateContext(root, model, { enabled: opts.codeGraph !== false, timeoutMs: opts.codeGraphTimeout === undefined ? undefined : Number(opts.codeGraphTimeout), onStatus: status => { contextGraph = status; } });
+      if (contextGraph.status === 'skipped' || contextGraph.status === 'partial') {
+        console.error(`Translate graph context ${contextGraph.status}: ${contextGraph.reason}`);
+      }
       if (opts.headless) {
         const report = await translateHeadless({ root, model, userPrompt, context,
           contract: opts.contract, out: opts.out || '.guardlink/cxg-templates/',
           agent: opts.agent!, selected: !!opts.threat?.length });
-        console.log(JSON.stringify(report));
+        console.log(JSON.stringify({ ...report, context_graph: contextGraph }));
         if (report.failures.length) process.exitCode = 1;
         return;
       }
@@ -2276,7 +2284,19 @@ program
         console.log(`${agent.name} will take over this terminal. Exit the agent to return.\n`);
       }
 
+      const outputDir = resolve(root, opts.out || '.guardlink/cxg-templates/');
+      const validateYaml = !!agent.cmd && translateContract(model, { context, contract: opts.contract }) === 'scanner';
+      const before = validateYaml ? snapshotTemplates(outputDir) : new Map<string, string>();
       const result = launchAgent(agent, fullPrompt, root);
+      if (validateYaml && result.launched) {
+        for (const [file, hash] of snapshotTemplates(outputDir)) {
+          if (before.get(file) === hash || !/\.ya?ml$/i.test(file)) continue;
+          for (const error of validateScannerYaml(file)) {
+            console.error(`Invalid scanner YAML ${file}: ${error}`);
+            process.exitCode = 1;
+          }
+        }
+      }
 
       if (result.clipboardCopied) {
         console.log(`✓ Prompt copied to clipboard (${fullPrompt.length.toLocaleString()} chars)`);
