@@ -937,3 +937,44 @@ export function worklistSummaryLine(w: Worklist): string {
   const access = accessUsable(w) ? ', route access classified' : w.auth_verdict ? `, route access withheld (${w.auth_verdict})` : '';
   return `Code graph (via ${w.via}): ${w.entries.length} entry point(s) ranked, ${open} not yet annotated at the handler${access}; worklist added to the prompt`;
 }
+
+/** Bound route facts are useful even when reachable-sink ranking is withheld. No rank is inferred. */
+export interface RouteFacts extends StatusFields {
+  entries: Array<Pick<WorklistEntry, 'handler' | 'file' | 'name' | 'routes' | 'access'>>;
+  auth_verdict: string;
+  access_withheld_reason: string;
+  currency_caveat: string;
+}
+
+/**
+ * @flows #codegraph -> #agent-launcher via loadRouteFacts -- "Bound routes and classified route access without asserting a sink ranking"
+ * @comment -- "The ranking honesty gate remains unchanged; unbound handlers are omitted and access is carried only for a classified auth verdict"
+ */
+export async function loadRouteFacts(root: string, opts: CodeGraphOptions = {}): Promise<RouteFacts> {
+  const asked = await ask(root, [
+    { tool: TOOL_ROUTES, args: { limit: ROUTE_LIMIT } },
+    { tool: TOOL_AUTH_BOUNDARY, args: { limit: ROUTE_LIMIT }, optional: true },
+  ], opts);
+  const empty: RouteFacts = { status: asked.status, via: asked.via, note: asked.note, entries: [], auth_verdict: '', access_withheld_reason: '', currency_caveat: '' };
+  if (asked.status !== 'available' || !asked.answers) return empty;
+  try {
+    const [routes, auth] = asked.answers;
+    if (!routes.ok) return { ...empty, status: 'error', note: routes.message };
+    const w = emptyWorklist(asked);
+    const byHandler = new Map<string, WorklistEntry>();
+    for (const route of routes.value?.routes || []) {
+      if (!['bound', 'bound_unique_name'].includes(route.resolution) || typeof route.handler !== 'string') continue;
+      const split = route.handler.indexOf('::');
+      if (split < 1) continue;
+      const e = byHandler.get(route.handler) || { position: 0, graph_rank: null, handler: route.handler, file: route.handler.slice(0, split), name: route.handler.slice(split + 2), line: null, routes: [], access: [], reaches: [], score: 0, annotated: 'none' as const };
+      e.routes.push(routeLabel(route));
+      byHandler.set(route.handler, e);
+    }
+    w.entries = [...byHandler.values()];
+    attachAccess(w, auth);
+    const currency = routes.value?.graph_currency;
+    return { ...empty, entries: w.entries.map(({ handler, file, name, routes, access }) => ({ handler, file, name, routes, access })),
+      auth_verdict: w.auth_verdict, access_withheld_reason: w.access_withheld_reason,
+      currency_caveat: currency?.state && currency.state !== 'current' ? `Graph is ${currency.state}: ${currency.caveat || 'facts describe the indexed tree'}` : '' };
+  } catch (error) { return { ...empty, status: 'error', note: `Unreadable route facts: ${(error as Error).message}` }; }
+}

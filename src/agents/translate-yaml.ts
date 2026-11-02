@@ -26,6 +26,13 @@ export function validateScannerYaml(file: string): string[] {
     for (const key of ['email', 'github']) {
       if (author[key] != null && typeof author[key] !== 'string') return [`author.${key} must be a string or null`];
     }
+    for (const request of value?.http || []) {
+      for (const path of request?.path || []) {
+        if (typeof path === 'string' && (/\{\{.*?\}\}/.test(path) || !path.startsWith('/') || path.startsWith('//'))) {
+          return ['Use relative HTTP paths with concrete parameters; unresolved placeholders (including BaseURL/RootURL) are not portable scanner requests'];
+        }
+      }
+    }
     const result = spawnSync('cxg', ['template', 'validate', resolve(file), '--json', '--disable-update-check'], {
       encoding: 'utf8', shell: false, timeout: 30000, maxBuffer: 1024 * 1024,
     });

@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:a61cbeace751da849f8aa10d15555dbb437fbea33e0c0caedf419f0984fbd58f
+%% annotation_hash: sha256-v3:00592b68c0847cc94c5d417736175a6f077a97c653075a7f2ec543ec5bb5abd8
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 79 nodes / 220 edges, past the 12 / 16 legibility budget (79 nodes against 12, 220 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 79 nodes / 222 edges, past the 12 / 16 legibility budget (79 nodes against 12, 222 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -167,6 +167,7 @@ graph LR
   codegraph -- "📡 buildTranslateContext" --> agent_launcher
   agent_launcher -- "📡 runTranslateAgent" --> agentprocess
   agentprocess -- "📡 templates" --> agent_launcher
+  agentprocess -- "📡 validateProbeIdentities" --> agent_launcher
   agentprocess -- "📡 validateScannerYaml" --> agent_launcher
   savedreport -- "📡 parseFindingsBlock" --> llm_client
   threatmodel -- "📡 serializeModel" --> llm_client
@@ -220,6 +221,7 @@ graph LR
   codegraphserver -- "📡 stdout" --> codegraph
   codegraphserver -- "📡 codegraph_auth_boundary" --> codegraph
   codegraph -- "📡 spawn" --> codegraphserver
+  codegraph -- "📡 loadRouteFacts" --> agent_launcher
   codegraph -- "📡 loadReachCheck" --> cli
   sourcefiles -- "🗄️ readFileSync" --> dashboard
   threatmodel -- "📡 computeTickets" --> dashboard

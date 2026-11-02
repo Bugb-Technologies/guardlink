@@ -8,8 +8,9 @@
  */
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { validateProbeIdentities } from './translate-probe.js';
 import { validateScannerYaml } from './translate-yaml.js';
 import { buildTranslatePrompt, translateContract } from './prompts.js';
 import { defaultTranslateExposures, exposureId, type TranslateContextPack, type TranslateContract } from './translate-context.js';
@@ -59,6 +60,25 @@ export function snapshotTemplates(dir: string): Map<string, string> {
   return found;
 }
 
+/**
+ * @effects write on #agent-launcher -- "stampScannerThreatHeader adds source identity only to templates changed during this author run; existing matching headers remain byte-identical"
+ * @audit #agent-launcher -- "The operator chooses the output directory; a header records authoring scope, not proof of the template's logic"
+ */
+function stampScannerThreatHeader(file: string, id: string): string[] {
+  const source = readFileSync(file, 'utf8');
+  const headers = [...source.matchAll(/^\s*(?:#|\/\/)\s*@guardlink_threat:\s*(.*)$/gm)];
+  if (headers.length) return headers.length === 1 && headers[0][1].trim().replace(/^#/, '') === id
+    ? [] : ['Scanner source header does not match the selected exposure; refusing to relabel it'];
+  const comment = /\.(yaml|yml|py|rb|sh)$/i.test(file) ? '#' : '//';
+  const lines = source.split('\n');
+  // Preserve executable shebangs and Python encoding declarations at the start.
+  let position = lines[0]?.startsWith('#!') ? 1 : 0;
+  if (/\.py$/i.test(file) && /^#.*coding[:=]/.test(lines[position] || '')) position++;
+  lines.splice(position, 0, `${comment} @guardlink_threat: ${id}`);
+  writeFileSync(file, lines.join('\n'));
+  return [];
+}
+
 export interface TranslateHeadlessOptions {
   root: string; model: ThreatModel; agent: TranslateAgent; out: string;
   userPrompt: string; context?: TranslateContextPack; contract?: TranslateContract;
@@ -94,10 +114,12 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
         + '\nHeadless authoring: write files directly. Do not ask questions or perform CLI usage discovery. Return when authoring is complete.';
       const result = await run(options.agent, prompt, options.root, dir);
       written = [...snapshotTemplates(dir)].filter(([file, hash]) => before.get(file) !== hash).map(([file]) => file).sort();
-      const invalid = contract === 'scanner' ? written.filter(file => /\.ya?ml$/i.test(file))
-        .flatMap(file => validateScannerYaml(file).map(error => `${file}: ${error}`)) : [];
+      const sourceErrors = contract === 'scanner' ? written.flatMap(file => stampScannerThreatHeader(file, id).map(error => `${file}: ${error}`)) : [];
+      const invalid = [...sourceErrors, ...(contract === 'scanner' ? written.filter(file => /\.ya?ml$/i.test(file))
+        .flatMap(file => validateScannerYaml(file).map(error => `${file}: ${error}`))
+        : written.filter(file => /\.(js|mjs)$/i.test(file)).flatMap(file => validateProbeIdentities(file, model, options.context).map(error => `${file}: ${error}`)))];
       if (invalid.length) {
-        report.failures.push({ threat: id, error: `Invalid scanner YAML: ${invalid.join('; ')}`, exit_code: result.exitCode });
+        report.failures.push({ threat: id, error: `Invalid ${contract === 'scanner' ? sourceErrors.length ? 'scanner source metadata' : 'scanner YAML' : 'probe identity metadata'}: ${invalid.join('; ')}`, exit_code: result.exitCode });
       }
       if (result.error || result.exitCode !== 0) {
         report.failures.push({ threat: id, error: result.error || 'Agent did not exit successfully', exit_code: result.exitCode });

@@ -19,7 +19,7 @@
  * @comment -- "The @entitles section instructs agents to file a proposal rather than write the annotation: the rule itself is enforced in src/review/entitlements.ts (an @entitles with no accepted proposal is a validation error), because a prompt is guidance and this claim needs a gate (actor-entitlement design §3.6)"
  */
 
-import { renderTranslateContext, matchesThreat, type TranslateContextPack, type TranslateContract } from './translate-context.js';
+import { renderTranslateContext, matchesThreat, exposureId, type TranslateContextPack, type TranslateContract } from './translate-context.js';
 import { parseDocument } from 'yaml';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -697,16 +697,17 @@ export function loadProbeGuide(env: NodeJS.ProcessEnv = process.env, home = home
 function scannerYamlSkeleton(source: string): string {
   if (!source) return '';
   const doc = parseDocument(source);
-  if (!doc.errors.length && typeof doc.get('author') === 'string') {
-    doc.set('author', { name: doc.get('author') });
-    return doc.toString();
+  if (doc.errors.length) return 'Installed YAML skeleton could not be parsed; use the required AuthorInfo and relative-path contract above.';
+  const value = doc.toJS({ maxAliasCount: 100 });
+  if (typeof value?.author === 'string') doc.set('author', { name: value.author });
+  if (Array.isArray(value?.http)) {
+    for (const request of value.http) {
+      if (Array.isArray(request?.path)) request.path = request.path.map((path: unknown) => typeof path === 'string'
+        ? path.replace(/^\{\{(?:BaseURL|RootURL)\}\}(?=\/|$)/, '') || '/' : path);
+    }
+    doc.set('http', value.http);
   }
-  // A size-limited excerpt may end mid-document. Never repeat its scalar author.
-  return source.replace(/^author:[ \t]+([^\n]+)$/m, (line, scalar: string) => {
-    const field = parseDocument(`author: ${scalar}`);
-    return !field.errors.length && typeof field.get('author') === 'string'
-      ? `author:\n  name: ${JSON.stringify(field.get('author'))}` : line;
-  });
+  return doc.toString();
 }
 
 /** Safety additions kept separate so the surrounding scanner prompt remains byte-compatible. */
@@ -718,6 +719,7 @@ author:
   # email and github are optional strings
 \`\`\`
 This mapping rule overrides any older scalar-author examples in the reference excerpts below.
+Use relative HTTP paths such as /tasks, not origin placeholders such as BaseURL or RootURL. The scanner joins the target origin to each path. Do not emit unresolved {{...}} placeholders in HTTP paths; bind concrete parameters before authoring the request.
 
 ## Scanner proof requirements
 Proof must come from the protected resource named by the threat, using that resource's real route, parameters and identity requirements. A successful anonymous GET / or a root/banner/health response does not prove missing authentication on a protected resource. Never substitute a public discovery endpoint for the threatened endpoint.
@@ -756,7 +758,8 @@ export function buildTranslatePrompt(userPrompt: string, root: string, model: Th
   if (contract === 'scanner') {
     let prompt = buildScannerTranslatePrompt(userPrompt, root, model);
     if (options.out) prompt = prompt.replaceAll('.guardlink/cxg-templates/', out.endsWith('/') ? out : out + '/');
-    return prompt + scope + context;
+    const identity = `\n\n## Source threat identity\nEvery scanner template must carry @guardlink_threat: <exact-source-threat-or-exposure-id> in its header. Use # for YAML/Python/shell and // for JavaScript/Go/Rust; use the file language's comment syntax for other code templates. Preserve the exact source exposure ref, including file and annotation line, rather than substituting the template id. Source exposure refs: ${JSON.stringify(model?.exposures.map(exposureId) || [])}.\n`;
+    return prompt + scope + context + identity;
   }
   const guide = loadProbeGuide().content;
   return `You are authoring CERT-X-GEN pentest JavaScript probes from GuardLink threats.
@@ -779,10 +782,14 @@ Required single-line metadata headers:
 // @vuln_class: <normalized-vulnerability-class>
 // @severity: <low|medium|high|critical>
 // @description: <one-line-test-purpose>
-// @requires_auth_count: <0-5, based on actual identity requirements>
+// @requires_auth_count: <nonnegative authenticated count, based on actual identity requirements>
 // @destructive_priority: <0-100>
 // @attach_scheme: path
 // @guardlink_threat: <exact-source-threat-or-exposure-id>
+For named roles, declare // @requires_identities: <JSON role-to-profile-name map>.
+Keys are abstract lowercase snake_case probe roles (for example entitled and attacker). Choose authenticated profile values only from the selected context pack's identity.available names. Never invent profile names or substitute an arbitrary same-role account. Missing exact bindings must remain not-run/unevaluated.
+The reserved value "anonymous" requests a clean guest context with no credentials; it never means a captured authenticated profile named anonymous. Count only non-anonymous bindings as authenticated. If @requires_auth_count is also present, it must equal that authenticated count, not the total number of roles. For example a supplied profile named a-member may bind entitled while attacker binds anonymous; use cxg.identities.entitled.index and cxg.identities.attacker.index with the documented As APIs.
+Preserve legacy numeric @requires_auth_count declarations when no named roster is supplied; do not invent named bindings to satisfy a numeric requirement. An empty named map requests anonymous-only execution. If required role/tenant evidence is ambiguous, report the missing setup instead of guessing. This contract overrides older guide examples that count anonymous roles as authenticated.
 Use @requires_capability for non-HTTP probes. Preserve source threat identity in @guardlink_threat and the README mapping.
 The trusted @threat_id and @exposure_* stamps are reserved for cxg; do not forge them.
 Use cxg.fetch/cxg.fetchAs and the documented bridge APIs, with concrete payloads and success conditions from the evidence.
@@ -816,7 +823,7 @@ function buildScannerTranslatePrompt(
   // does not exist; readIfExists() returns '' gracefully and the prompt
   // still works — they just get a slightly leaner template-authoring guide.
   const promptEngine = readIfExists(resolve(cxgRoot, 'src', 'ai', 'prompt.rs'), 4000);
-  const yamlSkeleton = scannerYamlSkeleton(readIfExists(resolve(skeletonDir, 'yaml-template-skeleton.yaml'), 5000));
+  const yamlSkeleton = scannerYamlSkeleton(readIfExists(resolve(skeletonDir, 'yaml-template-skeleton.yaml'), 120000)).slice(0, 5000);
   const pythonSkeleton = readIfExists(resolve(skeletonDir, 'python-template-skeleton.py'), 3000);
 
   let modelSummary = 'No threat model parsed yet.';

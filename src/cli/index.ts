@@ -70,6 +70,7 @@ import { generateDashboardHTML, loadSince } from '../dashboard/index.js';
 import type { SinceInput } from '../dashboard/analytics.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt, buildTranslatePrompt, buildAskPrompt, resolveAnnotationMode } from '../agents/index.js';
 import { buildTranslateContext, loadTranslateContext, selectTranslateThreats, type TranslateContract, type TranslateGraphStatus } from '../agents/translate-context.js';
+import { validateProbeIdentities } from '../agents/translate-probe.js';
 import { validateScannerYaml } from '../agents/translate-yaml.js';
 import { translateContract, loadProbeGuide } from '../agents/prompts.js';
 import { translateHeadless, snapshotTemplates, type TranslateAgent } from '../agents/translate-headless.js';
@@ -2285,14 +2286,17 @@ program
       }
 
       const outputDir = resolve(root, opts.out || '.guardlink/cxg-templates/');
-      const validateYaml = !!agent.cmd && translateContract(model, { context, contract: opts.contract }) === 'scanner';
-      const before = validateYaml ? snapshotTemplates(outputDir) : new Map<string, string>();
+      const writtenContract = translateContract(model, { context, contract: opts.contract });
+      const validateWritten = !!agent.cmd;
+      const before = validateWritten ? snapshotTemplates(outputDir) : new Map<string, string>();
       const result = launchAgent(agent, fullPrompt, root);
-      if (validateYaml && result.launched) {
+      if (validateWritten && result.launched) {
         for (const [file, hash] of snapshotTemplates(outputDir)) {
-          if (before.get(file) === hash || !/\.ya?ml$/i.test(file)) continue;
-          for (const error of validateScannerYaml(file)) {
-            console.error(`Invalid scanner YAML ${file}: ${error}`);
+          if (before.get(file) === hash) continue;
+          const errors = writtenContract === 'scanner' && /\.ya?ml$/i.test(file) ? validateScannerYaml(file)
+            : writtenContract === 'probe' && /\.(js|mjs)$/i.test(file) ? validateProbeIdentities(file, model, context) : [];
+          for (const error of errors) {
+            console.error(`Invalid ${writtenContract} template ${file}: ${error}`);
             process.exitCode = 1;
           }
         }
@@ -2323,10 +2327,10 @@ program
       } else if (agent.app && result.launched) {
         console.log(`✓ ${agent.name} launched with project: ${project}`);
         console.log('\nPaste (Cmd+V) the prompt in the AI chat panel.');
-        console.log('When done, review .guardlink/cxg-templates/');
+        console.log(`When done, review ${opts.out || '.guardlink/cxg-templates/'}`);
       } else if (agent.id === 'clipboard') {
         console.log('\nPaste the prompt into your preferred AI tool.');
-        console.log('When done, review .guardlink/cxg-templates/');
+        console.log(`When done, review ${opts.out || '.guardlink/cxg-templates/'}`);
       }
     } catch (error) {
       const message = (error as Error).message;

@@ -129,6 +129,14 @@
             },
             "maxItems": 1000
           },
+          "graph_facts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 16000
+            },
+            "maxItems": 1000
+          },
           "sink": {
             "type": "string",
             "maxLength": 16000

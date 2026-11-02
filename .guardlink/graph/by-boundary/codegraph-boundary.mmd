@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-boundary/codegraph-boundary.mmd
 %% scope:           PARTIAL — the Process boundary: an external binary's JSON is parsed defensively and never executed between codegraph and codegraphserver, and what flows across it
-%% annotation_hash: sha256-v3:a61cbeace751da849f8aa10d15555dbb437fbea33e0c0caedf419f0984fbd58f
+%% annotation_hash: sha256-v3:00592b68c0847cc94c5d417736175a6f077a97c653075a7f2ec543ec5bb5abd8
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -32,6 +32,7 @@ graph LR
   codegraphserver -- "📡 stdout" --> codegraph
   codegraphserver -- "📡 codegraph_auth_boundary" --> codegraph
   codegraph -- "📡 spawn" --> codegraphserver
+  codegraph -- "📡 loadRouteFacts" --> agent_launcher
   codegraph -- "📡 loadReachCheck" --> cli
   mcp -- "📡 guardlink_worklist" --> codegraph
   mcp -- "📡 guardlink_reach" --> codegraph

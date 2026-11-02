@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, chmodSync, existsSync, r
 import { tmpdir } from 'node:os';
 import { join, delimiter } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { validateProbeIdentities } from '../src/agents/translate-probe.js';
 import { validateScannerYaml } from '../src/agents/translate-yaml.js';
 import { buildTranslatePrompt, loadProbeGuide } from '../src/agents/prompts.js';
 import { translateHeadless } from '../src/agents/translate-headless.js';
@@ -133,6 +134,118 @@ describe('translate authoring regression paths', () => {
     expect(validateScannerYaml(file)[0]).toContain('AuthorInfo');
     writeFileSync(file, 'author: {name: Security Team, email: 4}');
     expect(validateScannerYaml(file)[0]).toContain('author.email');
+  });
+
+});
+
+describe('portable replay contracts', () => {
+  it('constrains named bindings to supplied profiles and reserves anonymous without counting it as authenticated', () => {
+    const root = directory();
+    const guide = join(root, '.cert-x-gen', 'pentest', 'docs'); mkdirSync(guide, { recursive: true });
+    writeFileSync(join(guide, 'TEMPLATES.md'), 'Use cxg.identities for named roles.');
+    vi.stubEnv('CERT_X_GEN_HOME', root); vi.stubEnv('GUARDLINK_CXG_ROOT', root);
+    const prompt = buildTranslatePrompt('', root, null, { contract: 'probe' });
+    expect(prompt).toContain('@requires_identities');
+    expect(prompt).toContain('identity.available');
+    expect(prompt).toContain('"anonymous"');
+    expect(prompt).toContain('only non-anonymous bindings');
+    expect(prompt).toContain('Never invent profile names');
+    expect(prompt).toContain('legacy numeric');
+  });
+
+  it('requires an exact source-threat header for every scanner language', async () => {
+    const { root, model } = await project();
+    const prompt = buildTranslatePrompt('', root, model, { contract: 'scanner' });
+    expect(prompt).toContain('@guardlink_threat: <exact-source-threat-or-exposure-id>');
+    expect(prompt).toContain('YAML/Python/shell');
+    expect(prompt).toContain('JavaScript/Go/Rust');
+    expect(prompt).toContain('missing-auth@api.ts:');
+  });
+
+  it('normalizes target-origin skeleton placeholders and refuses unresolved YAML HTTP paths before the old validator can accept them', () => {
+    const root = directory();
+    vi.stubEnv('GUARDLINK_CXG_ROOT', root); vi.stubEnv('GUARDLINK_CXG_SKELETON_DIR', root);
+    writeFileSync(join(root, 'yaml-template-skeleton.yaml'), 'author: Security Team\nhttp:\n  - path: ["{{BaseURL}}/tasks"]\n');
+    const prompt = buildTranslatePrompt('', root, null);
+    expect(prompt).toContain('relative HTTP paths');
+    expect(prompt).not.toContain('"{{BaseURL}}/tasks"');
+    const file = join(root, 'invalid.yaml');
+    writeFileSync(file, 'id: check\nname: Check\nauthor: {name: Security Team}\nseverity: high\ndescription: record\nlanguage: yaml\nhttp:\n  - path: ["{{BaseURL}}/tasks"]\n');
+    expect(validateScannerYaml(file)[0]).toMatch(/placeholder|relative HTTP path/i);
+  });
+
+  it('retains route/auth/entry facts when no classified sink exists, while keeping sink absence explicit', async () => {
+    const { root, model } = await project();
+    const answers: Record<string, any> = {
+      codegraph_attack_surface: { verdict: 'no_sinks_reached', rows: [] },
+      codegraph_routes: { routes: [{ resolution: 'bound', handler: 'api.ts::getRecords', methods: ['GET'], path: '/records' }] },
+      codegraph_auth_boundary: { verdict: 'classified', routes: [{ resolution: 'bound', handler: 'api.ts::getRecords', methods: ['GET'], path: '/records', access: { level: 'authenticated', basis: 'declared', summary: 'login required' } }] },
+      codegraph_reachable_sinks: { verdict: 'no_sinks_reached', reach: { classes: [] } },
+      codegraph_entry_reach: { reach: { liveness: 'live_via_route', entries: [{ node_id: 'api.ts::getRecords', path: ['api.ts::getRecords'], routes: [{ methods: ['GET'], path: '/records' }] }] } },
+    };
+    const context = await buildTranslateContext(root, model, { env: {}, transport: { via: 'stub', async query(_root, calls) { return calls.map(c => ({ ok: true as const, value: answers[c.tool] })); } } });
+    expect(context?.threats[0].route).toEqual({ method: 'GET', path: '/records', handler: 'api.ts::getRecords' });
+    expect(context?.threats[0].graph_facts?.join('\n')).toContain('no_sinks_reached');
+    expect(context?.threats[0].graph_facts?.join('\n')).toContain('authenticated');
+    expect(context?.threats[0].codegraph_path).toEqual(['api.ts::getRecords']);
+    expect(context?.threats[0].sink).toBeUndefined();
+    answers.codegraph_entry_reach.reach.entries.push({ node_id: 'cli.ts::main', path: ['cli.ts::main', 'api.ts::getRecords'], routes: [] });
+    answers.codegraph_routes.routes.push({ resolution: 'bound', handler: 'api.ts::getRecords', methods: ['POST'], path: '/records/search' });
+    const more = await buildTranslateContext(root, model, { env: {}, transport: { via: 'stub', async query(_root, calls) { return calls.map(c => ({ ok: true as const, value: answers[c.tool] })); } } });
+    expect(more?.threats[0].graph_facts?.join('\n')).toContain('cli.ts::main');
+    expect(more?.threats[0].graph_facts?.join('\n')).toContain('POST /records/search');
+  });
+  it('accepts supplied slot names plus an anonymous arm, preserves legacy numeric declarations, and rejects invented bindings', async () => {
+    const { root, model } = await project();
+    const context = { version: 1 as const, threats: [{ id: 'missing-auth', identity: { available: [{ name: 'a-member', role: 'member' }] } }] };
+    const file = join(root, 'probe.js');
+    const source = '// @requires_identities: {"entitled":"a-member","attacker":"anonymous"}\n// @requires_auth_count: 1\nasync function cxgProbe(cxg) { return []; }';
+    writeFileSync(file, source);
+    expect(validateProbeIdentities(file, model, context)).toEqual([]);
+    expect(readFileSync(file, 'utf8')).toBe(source); // Binding validation never rewrites a committed kit.
+    writeFileSync(file, source.replace('a-member', 'unprovided-local-profile'));
+    expect(validateProbeIdentities(file, model, context)[0]).toContain('not supplied by context identity.available');
+    writeFileSync(file, source.replace('@requires_auth_count: 1', '@requires_auth_count: 2'));
+    expect(validateProbeIdentities(file, model, context)[0]).toContain('anonymous roles do not count');
+    writeFileSync(file, '// @requires_auth_count: 6\nasync function cxgProbe(cxg) { return []; }');
+    expect(validateProbeIdentities(file, model)).toEqual([]);
+    writeFileSync(file, '// @requires_identities: {"attacker":"anonymous"}\n// @requires_auth_count: 0');
+    expect(validateProbeIdentities(file, model)).toEqual([]);
+  });
+
+  it('emits scanner source identity deterministically while preserving shebangs and existing matching headers', async () => {
+    const { root, model } = await project();
+    const run = async (_agent: string, _prompt: string, _root: string, out: string) => {
+      writeFileSync(join(out, 'check.py'), '#!/usr/bin/env python3\n# coding: utf-8\nraise RuntimeError("must never execute")\n');
+      return { exitCode: 0 };
+    };
+    const report = await translateHeadless({ root, model, agent: 'codex', userPrompt: '', out: 'generated', contract: 'scanner' }, run);
+    expect(report.failures).toEqual([]);
+    const source = readFileSync(report.results[0].templates[0], 'utf8');
+    expect(source.split('\n').slice(0, 3)).toEqual(['#!/usr/bin/env python3', '# coding: utf-8', `# @guardlink_threat: ${report.results[0].threat}`]);
+    const unchanged = await translateHeadless({ root, model, agent: 'codex', userPrompt: '', out: 'generated', contract: 'scanner' }, async (_agent, _prompt, _root, out) => {
+      writeFileSync(join(out, 'check.py'), source); return { exitCode: 0 };
+    });
+    expect(unchanged.failures).toEqual([]);
+    expect(readFileSync(report.results[0].templates[0], 'utf8')).toBe(source);
+    const conflicting = await translateHeadless({ root, model, agent: 'codex', userPrompt: '', out: 'generated', contract: 'scanner' }, async (_agent, _prompt, _root, out) => {
+      writeFileSync(join(out, 'check.py'), '# @guardlink_threat: another-exposure\n'); return { exitCode: 0 };
+    });
+    expect(conflicting.results[0].status).toBe('failed');
+    expect(conflicting.failures[0].error).toContain('refusing to relabel');
+  });
+
+  it('clipboard guidance names the requested output directory without touching the real clipboard', async () => {
+    const { root } = await project();
+    for (const name of ['pbcopy', 'xclip', 'xsel', 'clip']) {
+      const file = join(root, name);
+      writeFileSync(file, `#!${process.execPath}\nprocess.stdin.resume();`); chmodSync(file, 0o755);
+    }
+    const result = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/index.ts', 'translate', '--dir', root, '--clipboard', '--out', 'chosen-output', '--no-code-graph'], {
+      encoding: 'utf8', env: { ...process.env, PATH: root + delimiter + process.env.PATH },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('When done, review chosen-output');
   });
 
 });

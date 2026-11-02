@@ -3,12 +3,11 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync,
 import { tmpdir } from 'node:os';
 import { join, delimiter } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { parseProject } from '../src/parser/index.js';
-import { buildTranslatePrompt, SCANNER_SAFETY_REQUIREMENTS } from '../src/agents/prompts.js';
+import { buildTranslatePrompt } from '../src/agents/prompts.js';
 import { buildTranslateContext, loadTranslateContext, parseTranslateContext, exposureId, selectTranslateThreats, TRANSLATE_CONTEXT_SCHEMA } from '../src/agents/translate-context.js';
 import { translateHeadless, runTranslateAgent } from '../src/agents/translate-headless.js';
-import type { CodeGraphTransport } from '../src/codegraph/index.js';
+import { loadWorklist, type CodeGraphTransport } from '../src/codegraph/index.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from '../src/mcp/server.js';
@@ -85,16 +84,15 @@ describe('translate context schema and prompts', () => {
     expect(() => loadTranslateContext('large.json', root)).toThrow(/2 MiB/);
   });
 
-  it('preserves original scanner prompt bytes around the deliberate proof and author safety additions', () => {
+  it('preserves the scanner engine, evidence and non-execution contracts while allowing additive project duties', () => {
     const root = directory();
     vi.stubEnv('GUARDLINK_CXG_ROOT', root);
     vi.stubEnv('GUARDLINK_CXG_SKELETON_DIR', root);
-    // Pin the pre-extension implementation as a hash, without duplicating its prose.
     const prompt = buildTranslatePrompt('Generate templates', '/project', null);
-    const compatibilityPrompt = prompt.replace(SCANNER_SAFETY_REQUIREMENTS, '');
-    const hash = createHash('sha256').update(compatibilityPrompt).digest('hex');
-    expect(hash).toBe('6c0f5fced7e41ad42f015c61a3efc29f803d6019d14255e946a6134119c28988');
-    expect(buildTranslatePrompt('Generate templates', '/project', null, { contract: 'scanner' })).toBe(buildTranslatePrompt('Generate templates', '/project', null));
+    for (const rule of ['Do NOT execute templates', 'CERT_X_GEN_PROJECT_ROOT', 'CERT_X_GEN_TARGET_HOST', 'nargs="?"',
+      'JSON array', 'matched_patterns', '"request"', '"response"', 'author MUST be an AuthorInfo mapping',
+      'protected resource named by the threat', '@guardlink_threat:']) expect(prompt).toContain(rule);
+    expect(buildTranslatePrompt('Generate templates', '/project', null, { contract: 'scanner' })).toBe(prompt);
   });
 
   it('renders only in-scope context as quoted untrusted evidence and supports exposure ids', async () => {
@@ -150,7 +148,10 @@ describe('optional graph context', () => {
     answers.codegraph_entry_reach.reach.entries[0].path = ['unrelated::handler'];
     expect((await buildTranslateContext(root, selected, opts))?.threats[0]).not.toHaveProperty('codegraph_path');
     answers.codegraph_attack_surface.verdict = 'insufficient_resolution';
-    expect(await buildTranslateContext(root, selected, opts)).toBeUndefined();
+    const partial = await buildTranslateContext(root, selected, opts);
+    expect(partial?.threats[0].graph_facts?.join('\n')).toContain('insufficient_resolution');
+    expect(partial?.threats[0]).not.toHaveProperty('codegraph_path');
+    expect((await loadWorklist(root, selected, opts)).entries).toEqual([]);
   });
 });
 

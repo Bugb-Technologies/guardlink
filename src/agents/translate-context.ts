@@ -9,7 +9,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Ajv } from 'ajv';
-import { loadWorklist, reachFor, type CodeGraphOptions } from '../codegraph/index.js';
+import { loadWorklist, loadRouteFacts, reachFor, type CodeGraphOptions } from '../codegraph/index.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
 import type { ThreatModel, ThreatModelExposure } from '../types/index.js';
 
@@ -22,6 +22,7 @@ export interface TranslateContextEntry {
   success_condition?: string;
   identity?: { requirements?: string[]; available?: Array<{ name: string; role?: string; description?: string }> };
   codegraph_path?: string[];
+  graph_facts?: string[];
   sink?: string;
   prior_attempts?: Array<{ outcome: 'confirmed' | 'refuted' | 'ambiguous' | 'unevaluated' | 'failed'; description?: string; evidence?: string }>;
   target_kind?: string;
@@ -48,6 +49,7 @@ export const TRANSLATE_CONTEXT_SCHEMA = {
       success_condition: text,
       identity: object({ requirements: texts, available: { type: 'array', maxItems: 1000, items: object({ name: text, role: text, description: text }, ['name']) } }),
       codegraph_path: texts,
+      graph_facts: texts,
       sink: text,
       prior_attempts: { type: 'array', maxItems: 1000, items: object({ outcome: { enum: ['confirmed', 'refuted', 'ambiguous', 'unevaluated', 'failed'] }, description: text, evidence: text }, ['outcome']) },
       target_kind: text,
@@ -124,20 +126,41 @@ export async function buildTranslateContext(root: string, model: ThreatModel, op
     opts.onStatus?.({ status: pack ? (skipped.length ? 'partial' : 'used') : 'skipped', reason, via: worklist.via, skipped });
     return pack;
   };
-  if (worklist.status !== 'available' || worklist.verdict !== 'sinks_reached') {
+  if (worklist.status !== 'available') {
     return finish(undefined, worklist.withheld_reason || worklist.note || `graph verdict: ${worklist.verdict}`);
   }
+  const routeFacts = worklist.verdict !== 'sinks_reached' ? await loadRouteFacts(root, opts) : undefined;
+  const bindings = routeFacts?.entries || worklist.entries;
   const threats: TranslateContextEntry[] = [];
   const cache = new Map<string, Awaited<ReturnType<typeof reachFor>>>();
   for (const e of model.exposures) {
     const symbol = e.location.parent_symbol || e.location.anchor?.symbol;
     // A file-level exposure cannot safely be assigned to an arbitrary handler in the file.
     if (!symbol) { skipped.push({ threat: exposureId(e), reason: 'Exposure has no anchored symbol; no handler can be assigned safely' }); continue; }
-    const handler = worklist.entries.find(h => h.file === e.location.file && (h.name === symbol || h.handler === symbol));
+    const exact = bindings.filter(h => h.file === e.location.file && (h.name === symbol || h.handler === symbol));
+    const leaf = bindings.filter(h => h.file === e.location.file && h.name === symbol.split('.').at(-1));
+    const handler = exact.length === 1 ? exact[0] : !exact.length && leaf.length === 1 ? leaf[0] : undefined;
     const address = handler?.handler || `${e.location.file}::${symbol}`;
     let reach = cache.get(address);
     if (!reach) { reach = await reachFor(root, address, opts); cache.set(address, reach); }
-    if (reach.status !== 'available' || reach.refused) { skipped.push({ threat: exposureId(e), reason: reach.refused || reach.note || reach.status }); continue; }
+    const facts = [
+      `Attack-surface verdict: ${worklist.verdict}; ${worklist.withheld_reason || worklist.message}`,
+      `Route access verdict: ${routeFacts?.auth_verdict || worklist.auth_verdict}`,
+      ...(handler ? [`Bound routes/access: ${JSON.stringify(handler)}`] : []),
+      ...[worklist.currency_caveat, routeFacts?.currency_caveat, routeFacts?.access_withheld_reason || worklist.access_withheld_reason].filter((note): note is string => !!note),
+    ];
+    if (reach.status !== 'available' || reach.refused) {
+      skipped.push({ threat: exposureId(e), reason: reach.refused || reach.note || reach.status });
+      if (handler) {
+        const [method, ...path] = (handler.routes[0] || '').split(' ');
+        threats.push({ id: exposureId(e), route: { method, path: path.join(' '), handler: address }, graph_facts: [...facts, `Reach query unavailable: ${reach.refused || reach.note || reach.status}; candidates: ${JSON.stringify(reach.candidates)}`] });
+      }
+      continue;
+    }
+    facts.push(`Sink verdict: ${reach.sinks_verdict}; ${reach.sinks_withheld_reason || reach.message}`,
+      `Entry liveness: ${reach.liveness}; ${reach.liveness_note}`,
+      ...reach.entries.map(entry => `Entry path: ${JSON.stringify(entry)}`),
+      ...reach.reaches.map(sink => `Sink reach: ${JSON.stringify(sink)}`));
     const entry = reach.entries[0];
     const sink = reach.sinks_verdict === 'sinks_reached' ? reach.reaches[0] : undefined;
     const route = handler?.routes[0] || entry?.routes[0];
@@ -148,7 +171,7 @@ export async function buildTranslateContext(root: string, model: ThreatModel, op
     const connected = entryPath.length && sinkPath.length ? entryPath.at(-1) === sinkPath[0] : true;
     const graphPath = connected ? [...entryPath, ...sinkPath.slice(entryPath.length ? 1 : 0)] : [];
     threats.push({
-      id: exposureId(e),
+      id: exposureId(e), graph_facts: facts,
       route: { ...(route ? { method, path: path.join(' ') } : {}), handler: address },
       ...(sink ? { sink: sink.example } : {}),
       ...(graphPath.length ? { codegraph_path: graphPath } : {}),

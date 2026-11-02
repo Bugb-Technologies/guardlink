@@ -46,6 +46,7 @@ fields at every level are ignored. Files are limited to 2 MiB.
       "available": [{ "name": "user-a", "role": "user", "description": "Attacker account" }]
     },
     "codegraph_path": ["src/orders.ts::getOrder", "src/store.ts::readOrder"],
+    "graph_facts": ["Sink verdict: sinks_reached", "Entry path: getOrder -> readOrder"],
     "sink": "readOrder at src/store.ts:81",
     "prior_attempts": [{ "outcome": "refuted", "description": "Previous request returned 403", "evidence": "Ownership guard rejected user-a" }],
     "target_kind": "web",
@@ -55,7 +56,12 @@ fields at every level are ignored. Files are limited to 2 MiB.
 ```
 
 `route.handler` can name a `file:symbol` or the graph's symbol address.
-`codegraph_path` is ordered from entry to sink. Prior attempt outcomes are
+`codegraph_path` is a connected path; when no sink is classified it may stop at
+the exposed symbol. `graph_facts` retains all available route bindings, classified
+access, entry paths, sink paths and explicit unknown/withheld verdicts as untrusted
+text. A missing sink is not evidence of safety. The ranked annotation worklist
+remains withheld when resolution is insufficient; unranked bound-route facts can
+still supplement an exposure without inventing a ranking or sink. Prior attempt outcomes are
 `confirmed`, `refuted`, `ambiguous`, `unevaluated` or `failed`.
 `target_kind` describes the intended substrate, such as `web`, `electron`,
 `local` or `network`. Available identities describe accounts and roles; avoid
@@ -67,7 +73,8 @@ JSON-quoted and marked as untrusted evidence; it grants no execution permission.
 Prior outcomes remain supplied claims for the author to verify.
 
 Without `--context`, translate asks the existing optional code-graph adapter for
-route and entry-to-sink facts at selected exposure symbols. File-level claims
+route and entry-to-sink facts at selected exposure symbols, including route and entry facts when no
+classified sink is available. File-level claims
 without a symbol are not assigned to an arbitrary handler. Missing, refused or
 insufficient graph answers contribute no pack. No index is built or installed.
 `--no-code-graph` or `GUARDLINK_CODEGRAPH=off` disables this lookup.
@@ -85,7 +92,20 @@ hiding their lookup failures.
 `--contract scanner` uses the YAML/Python scanner contract. YAML `author` is
 an AuthorInfo mapping with a required nonempty `name` string and optional
 `email`/`github` strings, never a scalar. Older installed skeleton excerpts are
-normalized to this form in the prompt.
+normalized to this form in the prompt. Ordinary `http[].path` requests use
+origin-relative concrete paths such as `/tasks`. Installed skeleton prefixes
+`{{BaseURL}}` and `{{RootURL}}` are removed from those path examples. Written
+scanner YAML rejects unresolved HTTP-path placeholders rather than trusting an
+older validator that accepts strings its HTTP engine cannot substitute. This
+path policy does not alter request bodies, headers or the flow engine's own
+explicit variable-binding contract.
+
+Every scanner language also declares its exact source reference with
+`@guardlink_threat: <threat@file:line>`: `#` comments for YAML/Python/shell,
+`//` for JavaScript/Go/Rust, and the language's own syntax elsewhere. Headless scanner drafts receive this header automatically if it is missing,
+with shebangs/encoding declarations preserved. Matching headers remain byte-identical;
+conflicting headers fail rather than being relabelled. Conversions
+can then preserve the source threat rather than falling back to a template id.
 
 Proof must come from the protected resource named by the threat. An anonymous
 200 from a root, banner or health endpoint does not prove missing authentication
@@ -97,7 +117,30 @@ single-line metadata headers including `@id`, `@vuln_class`, `@severity`,
 `@description`, `@requires_auth_count`, `@destructive_priority` and
 `// @attach_scheme: path`. Non-HTTP probes also declare `@requires_capability`.
 A descriptive `@guardlink_threat` header and the README mapping preserve the
-source threat/exposure id. The cxg-managed `@threat_id` and `@exposure_*` evidence
+source threat/exposure id.
+
+For named probe roles use `@requires_identities` as a JSON role-to-profile-name
+map. Authenticated values come only from the matching pack's
+`identity.available[].name` values. Use the reserved value `"anonymous"` for a
+clean guest with no credentials; it is not a captured profile to create or fill.
+Only non-anonymous bindings count toward `@requires_auth_count`. For example:
+
+```js
+// @requires_identities: {"entitled":"a-member","attacker":"anonymous"}
+// @requires_auth_count: 1
+```
+
+That example is valid only when `a-member` is supplied by the caller. Role keys
+are abstract, but bindings remain exact names so replay can materialize the same
+slots without rewriting committed templates. Missing or ambiguous bindings are
+not-run/unevaluated; never substitute a same-role identity. An empty map requests
+anonymous-only execution. Legacy numeric `@requires_auth_count` declarations
+remain supported when no named roster is available. Headless and foreground
+probe output checks reject invented names and inconsistent authenticated counts,
+without rewriting template bytes. MCP/IDE/clipboard prompts express the same
+contract but cannot validate files written later by an external author.
+
+The cxg-managed `@threat_id` and `@exposure_*` evidence
 stamps remain reserved for cxg, as its guide requires.
 
 The explicit flag overrides pack `output_contract` requests. With no flag, a
