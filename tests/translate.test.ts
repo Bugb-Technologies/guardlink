@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync, existsSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, delimiter } from 'node:path';
+import { dirname, join, delimiter } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { parseProject } from '../src/parser/index.js';
 import { buildTranslatePrompt } from '../src/agents/prompts.js';
@@ -61,6 +61,73 @@ const pack = { version: 1, threats: [{ id: 'idor', route: { method: 'GET', path:
 }] };
 
 describe('scanner source conversion', () => {
+  it.each([
+    ['idor@src/orders.ts:42', '#idor'],
+    ['idor@src/orders.ts:42', 'idor@src/orders.ts:43'],
+    ['idor@src/orders.ts:42', undefined],
+    ['idor@src/orders.ts:42', '#idor@src/orders.ts:42'],
+    ['#idor@src/orders.ts:42', 'idor@src/orders.ts:42'],
+    ['#idor@src/orders.ts:42', '#idor@src/orders.ts:42'],
+    ['idor@src/orders.ts:42', 'idor@src/orders.ts:42'],
+  ])('checks the exact source threat ref %s against converted ref %s', async (sourceRef, outputRef) => {
+    const { root, model } = await project();
+    writeFileSync(join(root, 'scanner.sh'), `# @id: order-read\n# @guardlink_threat: ${sourceRef}\necho source\n`);
+    const sources = loadTranslateSources(['scanner.sh'], root);
+    expect(sources.sources[0]).toMatchObject({ threat_ref: sourceRef, content: expect.stringContaining(sourceRef) });
+    const report = await translateHeadless({ root, model, sources, agent: 'codex', userPrompt: '', contract: 'probe', out: '.guardlink/cxg-templates' }, async (_agent, _prompt, _root, dir) => {
+      writeFileSync(join(dir, 'probe.js'), `${outputRef ? '// @guardlink_threat: ' + outputRef + '\n' : ''}async function cxgProbe(cxg) { return []; }`);
+      return { exitCode: 0 };
+    });
+    if (outputRef === sourceRef) {
+      expect(report.failures).toEqual([]);
+      expect(report.results[0].status).toBe('written');
+    } else {
+      expect(report.results[0]).toMatchObject({ source: sources.sources[0].path, status: 'failed', templates: [expect.stringMatching(/probe.js$/)] });
+      expect(report.failures[0]).toMatchObject({ source: sources.sources[0].path, error: expect.stringContaining(sourceRef), exit_code: 0 });
+    }
+  });
+
+  it('fails a conversion with conflicting output headers and retains every draft path for review', async () => {
+    const { root, model } = await project();
+    const ref = 'idor@src/orders.ts:42';
+    writeFileSync(join(root, 'scanner.py'), `# @guardlink_threat: ${ref}\n`);
+    const report = await translateHeadless({ root, model, sources: loadTranslateSources(['scanner.py'], root), agent: 'codex', userPrompt: '', contract: 'probe', out: '.guardlink/cxg-templates' }, async (_agent, _prompt, _root, dir) => {
+      writeFileSync(join(dir, 'good.js'), `// @guardlink_threat: ${ref}\nasync function cxgProbe(cxg) { return []; }`);
+      writeFileSync(join(dir, 'conflict.js'), `// @guardlink_threat: ${ref}\n// @guardlink_threat: #idor\nasync function cxgProbe(cxg) { return []; }`);
+      return { exitCode: 0 };
+    });
+    expect(report.results[0]).toMatchObject({ status: 'failed', templates: [expect.stringMatching(/conflict.js$/), expect.stringMatching(/good.js$/)] });
+    expect(report.failures[0].error).toContain('conflict.js');
+    expect(report.failures[0].error).toContain(ref);
+  });
+
+  it('reads YAML identity scalars and refuses conflicting source identities', () => {
+    const root = directory();
+    writeFileSync(join(root, 'scanner.yaml'), 'guardlink_threat: "idor@src/orders.ts:42"\n');
+    expect(loadTranslateSources(['scanner.yaml'], root).sources[0].threat_ref).toBe('idor@src/orders.ts:42');
+    writeFileSync(join(root, 'conflict.py'), '# @guardlink_threat: idor@src/orders.ts:42\n# @guardlink_threat: #idor\n');
+    expect(loadTranslateSources(['conflict.py'], root).failures[0].error).toContain('conflicting @guardlink_threat');
+  });
+
+  it('CLI fails a guide-assisted conversion that shortens a source exposure reference', () => {
+    const root = directory();
+    const ref = 'idor@src/orders.ts:42';
+    writeFileSync(join(root, 'scanner.sh'), `# @guardlink_threat: ${ref}\n`);
+    mkdirSync(join(root, 'pentest', 'docs'), { recursive: true });
+    writeFileSync(join(root, 'pentest', 'docs', 'TEMPLATES.md'), 'guide-marker: source identities must be preserved');
+    const bin = join(root, 'codex');
+    writeFileSync(bin, `#!${process.execPath}\nconst fs=require('node:fs'),p=fs.readFileSync(0,'utf8'); if(!p.includes('guide-marker') || !p.includes('byte-for-byte')) process.exit(8); const match=p.match(/Write JavaScript files under ("[^\\n]+")\\./); fs.writeFileSync(require('node:path').join(JSON.parse(match[1]),'probe.js'),'// @guardlink_threat: '+process.env.OUTPUT_REF+'\\nasync function cxgProbe(cxg) { return []; }');`);
+    chmodSync(bin, 0o755);
+    const args = ['--import', 'tsx', 'src/cli/index.ts', 'translate', '--dir', root, '--headless', '--agent', 'codex', '--contract', 'probe', '--from', 'scanner.sh', '--no-code-graph'];
+    const env = { ...process.env, GUARDLINK_CXG_ROOT: root, PATH: root + delimiter + process.env.PATH };
+    const failed = spawnSync(process.execPath, args, { env: { ...env, OUTPUT_REF: '#idor' }, encoding: 'utf8' });
+    expect(failed.status, failed.stderr).toBe(1);
+    expect(JSON.parse(failed.stdout)).toMatchObject({ results: [{ status: 'failed' }], failures: [{ error: expect.stringContaining(ref), exit_code: 0 }] });
+    const exact = spawnSync(process.execPath, args, { env: { ...env, OUTPUT_REF: ref }, encoding: 'utf8' });
+    expect(exact.status, exact.stderr).toBe(0);
+    expect(JSON.parse(exact.stdout)).toMatchObject({ results: [{ status: 'written' }], failures: [] });
+  }, 30000);
+
   it('loads nested directories, deduplicates repeated paths and preserves complete source and metadata as untrusted data', async () => {
     const { root, model } = await project();
     mkdirSync(join(root, 'scanner', 'nested'), { recursive: true });
@@ -73,12 +140,14 @@ describe('scanner source conversion', () => {
     const input = loadTranslateSources(['scanner/read.py', 'scanner'], root);
     expect(input.failures).toEqual([]);
     expect(input.sources).toHaveLength(2);
-    expect(input.sources.find(s => s.language === 'python')).toMatchObject({ content: python, metadata: ['# @id: order-read', '# @guardlink_threat: idor', '# @severity: high'], sha256: createHash('sha256').update(python).digest('hex') });
+    expect(input.sources.find(s => s.language === 'python')).toMatchObject({ content: python, threat_ref: 'idor', metadata: ['# @id: order-read', '# @guardlink_threat: idor', '# @severity: high'], sha256: createHash('sha256').update(python).digest('hex') });
     const prompt = buildTranslatePrompt('', root, model, { sources: input.sources, contract: 'probe' });
     const encoded = prompt.split('Decode JSON strings as data.')[1].split('\n')[1];
     expect(JSON.parse(encoded).map((s: { content: string }) => s.content).sort()).toEqual([python, yaml].sort());
     for (const required of ['async function cxgProbe(cxg)', '// @attach_scheme: path', '// @guardlink_threat:', '// @requires_capability:', 'engine owns requests, sessions and proof', 'candidate findings for engine adjudication', 'Response-body matching alone must never be written as proof', 'Prefer the matching cxg oracle', 'Never write directly to a curated security-test folder']) expect(prompt).toContain(required);
     expect(prompt).not.toContain('\nimport requests\n');
+    expect(prompt).toContain('Copy each source threat_ref');
+    expect(prompt).toContain('Never shorten an exposure reference to a bare threat id');
     expect(() => buildTranslatePrompt('', root, model, { sources: input.sources, contract: 'scanner' })).toThrow(/requires --contract probe/);
   });
 
@@ -160,7 +229,7 @@ describe('scanner source conversion', () => {
     const report = JSON.parse(success.stdout);
     expect(report.failures).toEqual([]);
     expect(report.results.map((r: { source: string }) => r.source).sort()).toEqual([join(root, 'scanner', 'order.py'), join(root, 'search.yaml')]);
-    expect(report.results.every((r: { status: string; templates: string[] }) => r.status === 'written' && r.templates.every(p => p.startsWith(join(root, '.guardlink', 'cxg-templates')) && existsSync(p)))).toBe(true);
+    expect(report.results.every((r: { status: string; template_dir: string; templates: string[] }) => r.status === 'written' && r.templates.every(p => dirname(p) === r.template_dir && p.startsWith(join(root, '.guardlink', 'cxg-templates')) && existsSync(p)))).toBe(true);
     const failed = spawnSync(process.execPath, [...args, '--from', 'missing.go'], { env, encoding: 'utf8' });
     expect(failed.status).toBe(1);
     expect(JSON.parse(failed.stdout).failures).toEqual([{ source: join(root, 'missing.go'), error: expect.stringContaining('ENOENT'), exit_code: null }]);
@@ -183,6 +252,7 @@ describe('scanner source conversion', () => {
       expect(prompt).toContain('import requests\\n');
       expect(prompt).toContain('// @attach_scheme: path');
       expect(prompt).toContain('candidate findings for engine adjudication');
+      expect(prompt).toContain('Copy each source threat_ref');
       const failed = await client.callTool({ name: 'guardlink_translate', arguments: { ...args, contract: 'scanner' } });
       expect(failed.isError).toBe(true);
       expect((failed.content as any[])[0].text).toContain('from requires contract probe');

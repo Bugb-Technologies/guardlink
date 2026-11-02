@@ -15,7 +15,7 @@ import { validateProbeIdentities } from './translate-probe.js';
 import { validateScannerYaml } from './translate-yaml.js';
 import { buildTranslatePrompt, translateContract } from './prompts.js';
 import { defaultTranslateExposures, exposureId, type TranslateContextPack, type TranslateContract } from './translate-context.js';
-import { translateDraftOutput, type TranslateSources } from './translate-source.js';
+import { convertedThreatRefError, translateDraftOutput, type TranslateSources } from './translate-source.js';
 import type { ThreatModel } from '../types/index.js';
 
 export type TranslateAgent = 'claude' | 'codex' | 'gemini';
@@ -165,8 +165,13 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
       if (invalid.length) {
         report.failures.push({ ...identity, error: `Invalid ${contract === 'scanner' ? sourceErrors.length ? 'scanner source metadata' : 'scanner YAML' : 'probe identity metadata'}: ${invalid.join('; ')}`, exit_code: result.exitCode });
       }
-      if (result.error || result.exitCode !== 0 || (completion && completion.status !== 'completed') || (source && !written.length)) {
-        report.failures.push({ ...identity, error: result.error || completion?.reason || (result.exitCode !== 0 ? 'Agent did not exit successfully' : 'Author exited without writing a JavaScript probe; consult README.md for conversion limitations'), exit_code: result.exitCode });
+      const identityErrors = source ? written.flatMap(file => {
+        const error = convertedThreatRefError(source, readFileSync(file, 'utf8'));
+        return error ? [`${file}: ${error}`] : [];
+      }) : [];
+      const error = [result.error, ...identityErrors].filter(Boolean).join('; ');
+      if (error || result.exitCode !== 0 || (completion && completion.status !== 'completed') || (source && !written.length)) {
+        report.failures.push({ ...identity, error: error || completion?.reason || (result.exitCode !== 0 ? 'Agent did not exit successfully' : 'Author exited without writing a JavaScript probe; consult README.md for conversion limitations'), exit_code: result.exitCode });
         report.results.push({ ...identity, contract, template_dir: dir, templates: written, completion, status: 'failed' });
       } else {
         report.results.push({ ...identity, contract, template_dir: dir, templates: written, completion, status: invalid.length ? 'failed' : written.length ? 'written' : 'no_templates' });

@@ -192,7 +192,11 @@ This is model-assisted re-authoring: preserve test intent and payloads while
 replacing independent HTTP clients with documented engine primitives such as
 fetch, raw, oracles and page. Declare required capabilities and identity headers,
 including `// @attach_scheme: path` and `// @guardlink_threat:`. Preserve the source
-threat identity; if absent, the prompt requests the source template id as a
+threat identity exactly, including any leading `#` and complete `@file:line`
+exposure suffix. The parsed `threat_ref` is included alongside the source text;
+it must be copied unchanged into exactly one `// @guardlink_threat:` header.
+Never replace an exposure reference with a bare threat id. If absent, the prompt
+requests the source template id as a
 descriptive identity and documents the missing GuardLink link. Response-body
 matching alone must not become proof: prefer the matching cxg oracle and submit
 candidate findings for engine adjudication. Unsupported capabilities or missing
@@ -216,6 +220,7 @@ paths or a failure reason in `failures`:
   "results": [{
     "source": "/project/scanners/check.py",
     "contract": "probe",
+    "template_dir": "/project/.guardlink/cxg-templates/checkpy-0123456789ab",
     "templates": ["/project/.guardlink/cxg-templates/checkpy-0123456789ab/check.js"],
     "status": "written"
   }],
@@ -226,8 +231,16 @@ paths or a failure reason in `failures`:
 Missing/unreadable sources and successful author exits without a JS probe are
 failures, with `source`, `error` and `exit_code`. Other sources still convert.
 A failed author can leave partial draft files, which remain listed with
-`status: "failed"`. A written path means a changed file was inventoried, not that
-the probe was validated or the threat proved. Interactive and MCP prompt requests
+`status: "failed"`. Headless conversion checks every changed JS/MJS probe against
+its source's exact threat reference. A missing, duplicated or changed header
+fails that source even when the author exits zero; the failure names the file
+and expected/observed references. Drafts remain available for review. Conflicting
+source references are refused before authoring. Interactive and MCP prompts
+require the same exact-copy check before the author reports success; MCP itself
+returns a prompt and cannot inspect files written after that response.
+A written path means a changed file was inventoried and any existing source
+threat reference was preserved; probe validation and threat proof are separate.
+Interactive and MCP prompt requests
 refuse source-read errors before returning or launching an author.
 
 ## Headless results
