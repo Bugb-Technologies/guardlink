@@ -21,6 +21,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { relative } from 'node:path';
 import { isStandaloneAnnotationFile, stripCommentPrefix } from './comment-strip.js';
 import { GAL_GLOB, sourceGlobs } from './languages.js';
+import { NESTED_CHECKOUT_GLOBS, scanIgnore } from './nested-checkouts.js';
 import { onePathPerFile } from './scan-files.js';
 
 // ─── Known GuardLink verbs ──────────────────────────────────────────
@@ -47,6 +48,8 @@ const DEFAULT_EXCLUDE = [
   // Bugb's own artifact dirs — never clear annotations inside a rollback backup (.bravos) or
   // siete's session store (.bugb); they are not live source.
   '**/.bravos/**', '**/.bugb/**',
+  // @comment -- "Another checkout nested in the tree (Claude Code's worktrees under .claude/worktrees/) is not this repository's source: a clear must never rewrite another session's checkout. Same rule and same source as the parser's DEFAULT_EXCLUDE"
+  ...NESTED_CHECKOUT_GLOBS,
 ];
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -145,9 +148,10 @@ export async function clearAnnotations(options: ClearAnnotationsOptions): Promis
     includeDefinitions = false,
   } = options;
 
+  // @comment -- "scanIgnore adds one ignore per nested checkout under root (a directory holding a .git file), the same set the parser skips, so clear writes to exactly the files parse reads"
   const candidateFiles = await fg(include, {
     cwd: root,
-    ignore: exclude,
+    ignore: scanIgnore(root, exclude),
     absolute: true,
     dot: true,
   });

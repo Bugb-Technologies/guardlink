@@ -1,13 +1,15 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+    "annotation_hash": "sha256-v3:670ce156629df69409ffc531c37b44e546336ec9b71e2c29ed72557d5faabf4b",
     "generator": "guardlink@2.5.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
-  "source_files": 185,
-  "annotations_parsed": 1061,
+  "source_files": 188,
+  "annotations_parsed": 1078,
   "annotated_files": [
+    ".claude/skills/joseph-annotate/scripts/lib/pick.mjs",
+    ".claude/skills/joseph-annotate/scripts/slice.mjs",
     ".guardlink/definitions.ts",
     "src/agentconfig/bundle.ts",
     "src/agentconfig/discover.ts",
@@ -133,6 +135,7 @@
     "src/parser/languages.ts",
     "src/parser/ledger.ts",
     "src/parser/migrate-mode.ts",
+    "src/parser/nested-checkouts.ts",
     "src/parser/parse-file.ts",
     "src/parser/parse-line.ts",
     "src/parser/parse-project.ts",
@@ -2737,6 +2740,16 @@
     },
     {
       "asset": "#parser",
+      "threat": "#dos",
+      "control": "#resource-limits",
+      "description": "Directories only, each read once with withFileTypes and no stat per entry; symbolic links are not followed; the names the excludes prune (node_modules, .git, dist, …), the named checkout directories and every checkout found end the walk there",
+      "location": {
+        "file": "src/parser/nested-checkouts.ts",
+        "line": 32
+      }
+    },
+    {
+      "asset": "#parser",
       "threat": "#redos",
       "control": "#regex-anchoring",
       "description": "All patterns are anchored (^...$) to prevent backtracking",
@@ -2792,7 +2805,7 @@
       "description": "Existence only: no read, no write, and the result reaches the model as a warning string that echoes the path the author already wrote",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 151
+        "line": 152
       }
     },
     {
@@ -4587,6 +4600,19 @@
     },
     {
       "asset": "#parser",
+      "threat": "#dos",
+      "severity": "low",
+      "external_refs": [
+        "cwe:CWE-400"
+      ],
+      "description": "`findNestedCheckouts` walks every directory under the root that the scan's excludes do not prune, once per scan",
+      "location": {
+        "file": "src/parser/nested-checkouts.ts",
+        "line": 31
+      }
+    },
+    {
+      "asset": "#parser",
       "threat": "#path-traversal",
       "severity": "high",
       "external_refs": [
@@ -4660,7 +4686,7 @@
       "description": "`@source file:` is author-controlled text and is joined onto the project root to test existence",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 150
+        "line": 151
       }
     },
     {
@@ -6889,6 +6915,17 @@
       }
     },
     {
+      "source": "ProjectRoot",
+      "target": "#parser",
+      "mechanism": "findNestedCheckouts",
+      "route": null,
+      "description": "Directory listing of the scanned tree, read for .git marker files",
+      "location": {
+        "file": "src/parser/nested-checkouts.ts",
+        "line": 33
+      }
+    },
+    {
       "source": "FilePath",
       "target": "#parser",
       "mechanism": "readFile",
@@ -6951,7 +6988,7 @@
       "description": "Declared @source paths probed for existence",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 152
+        "line": 153
       }
     },
     {
@@ -6962,7 +6999,7 @@
       "description": "Generated reach rows, actors and the agent_config block join the assembled model",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 468
+        "line": 472
       }
     },
     {
@@ -8656,10 +8693,38 @@
   ],
   "comments": [
     {
+      "description": "Pure slice picker for joseph-annotate: decides which files this session annotates, skipping files teammates have in open PRs; dependency-free, copied verbatim into target repos.",
+      "location": {
+        "file": ".claude/skills/joseph-annotate/scripts/lib/pick.mjs",
+        "line": 1
+      }
+    },
+    {
+      "description": "Entry for joseph-annotate: gathers git diff, guardlink worklist/coverage and open PRs via read-only spawnSync calls, runs pickSlice and prints joseph.slice/v1 JSON; dependency-free, copied verbatim into target repos.",
+      "location": {
+        "file": ".claude/skills/joseph-annotate/scripts/slice.mjs",
+        "line": 2
+      }
+    },
+    {
       "description": "Never executes, imports or interprets a bundled file: kind comes from the file name, the digest from its bytes",
       "location": {
         "file": "src/agentconfig/bundle.ts",
         "line": 27
+      }
+    },
+    {
+      "description": "Another checkout nested under a skill directory (a .git-file directory) is not the skill's content; same rule as discovery and the parser's scan",
+      "location": {
+        "file": "src/agentconfig/bundle.ts",
+        "line": 99
+      }
+    },
+    {
+      "description": "Another checkout nested in the tree (a Claude Code worktree under .claude/worktrees, any directory holding a .git file) carries its own CLAUDE.md, settings and skills, which no agent loads from here. Read as this repository's configuration they were scope `root` — a copy of every instruction file, and of every reach row. Same rule as the parser's scan",
+      "location": {
+        "file": "src/agentconfig/discover.ts",
+        "line": 165
       }
     },
     {
@@ -8779,6 +8844,13 @@
       "location": {
         "file": "src/analyze/tools.ts",
         "line": 15
+      }
+    },
+    {
+      "description": "A nested checkout (a directory holding a .git file; .claude/worktrees is already a dot-directory) is another repository's source: a hit there would hand the analyst a line the model does not describe. Same rule as the parser's scan",
+      "location": {
+        "file": "src/analyze/tools.ts",
+        "line": 307
       }
     },
     {
@@ -9636,6 +9708,13 @@
       }
     },
     {
+      "description": "One claim can carry both an @exposes (the hypothesis) and an @confirmed (the verification) on the SAME (asset, threat) pair. The two get DIFFERENT claim keys — the key digest is per-verb (claim-key.ts identity()), so a source @confirmed can never join an @exposes by key, and the hypothesis ledger is written against the @exposes key. The @exposes is the primary carrier of a claim's tested state, so a source @confirmed on that pair must take its @exposes out of 'untested' and off the next-queue (GAP-GL-CONFIRMED-NOT-TESTED). Joined on the (asset, threat) pair — @confirmed escalates its pair wherever it appears — not provenance-gated, so a @confirmed that predates the ledger reconciles exactly like one written through hypothesis confirm. A holding ledger outcome still wins over a source @confirmed: it is an evidence-and-anchor-bearing record, so staleness/retest keeps working. The @confirmed record itself is ALWAYS emitted and counted (pass 2) and is never merged away — sarif-pentest.ts stamps the confirmed-exploitable result by that record's own location, so dropping it would strip the stamp",
+      "location": {
+        "file": "src/hypothesis/classify.ts",
+        "line": 54
+      }
+    },
+    {
       "description": "A confirmation is held to the same evidence bar the gate holds @confirmed to; a refutation needs evidence too, just not the same words, because 'the validator rejected it' is evidence of absence",
       "location": {
         "file": "src/hypothesis/commands.ts",
@@ -9773,6 +9852,13 @@
       "location": {
         "file": "src/init/scope.ts",
         "line": 17
+      }
+    },
+    {
+      "description": "scanIgnore adds the nested checkouts under root (a directory holding a .git file, or .claude/worktrees), so another checkout's languages do not shape this repository's include",
+      "location": {
+        "file": "src/init/scope.ts",
+        "line": 138
       }
     },
     {
@@ -9979,6 +10065,13 @@
       }
     },
     {
+      "description": "Another checkout nested in the tree (a Claude Code worktree under .claude/worktrees, any directory holding a .git file) is not this repository's annotation work under any reason. git already takes that view — ls-files lists a nested checkout as one opaque `dir/` entry and never descends — and the walk outside a work tree is held to the same one, so the worklist neither lists nor counts it, as excluded or otherwise",
+      "location": {
+        "file": "src/parser/annotation-worklist.ts",
+        "line": 61
+      }
+    },
+    {
       "description": "Idempotent by construction: an identical @source block is detected and skipped rather than duplicated",
       "location": {
         "file": "src/parser/apply-annotations.ts",
@@ -10025,6 +10118,20 @@
       "location": {
         "file": "src/parser/clear.ts",
         "line": 13
+      }
+    },
+    {
+      "description": "Another checkout nested in the tree (Claude Code's worktrees under .claude/worktrees/) is not this repository's source: a clear must never rewrite another session's checkout. Same rule and same source as the parser's DEFAULT_EXCLUDE",
+      "location": {
+        "file": "src/parser/clear.ts",
+        "line": 51
+      }
+    },
+    {
+      "description": "scanIgnore adds one ignore per nested checkout under root (a directory holding a .git file), the same set the parser skips, so clear writes to exactly the files parse reads",
+      "location": {
+        "file": "src/parser/clear.ts",
+        "line": 151
       }
     },
     {
@@ -10105,6 +10212,13 @@
       }
     },
     {
+      "description": "scanIgnore skips nested checkouts (a directory holding a .git file, or .claude/worktrees) exactly as the parser does, so an edit inside another session's worktree does not invalidate this repository's cached model — and a file there is not part of what the fingerprint claims to cover",
+      "location": {
+        "file": "src/parser/fingerprint.ts",
+        "line": 52
+      }
+    },
+    {
       "description": "Pure path arithmetic; no I/O. The inverse is exact, which is what makes migration reversible.",
       "location": {
         "file": "src/parser/gal-path.ts",
@@ -10158,6 +10272,13 @@
       "location": {
         "file": "src/parser/migrate-mode.ts",
         "line": 41
+      }
+    },
+    {
+      "description": "Deliberately not a nested .git DIRECTORY: a folder of repositories is a thing people point GuardLink at on purpose. What git itself marks with a file — and lists as one opaque `dir/` entry in ls-files, never descending — is what is skipped",
+      "location": {
+        "file": "src/parser/nested-checkouts.ts",
+        "line": 34
       }
     },
     {
@@ -10220,7 +10341,21 @@
       "description": "A traversing path is already a broken annotation and this is the diagnostic that says so; refusing to stat it would return the silence this function exists to remove",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 153
+        "line": 154
+      }
+    },
+    {
+      "description": "Another checkout nested in the tree: Claude Code's per-session worktrees under .claude/worktrees/, each a full copy of the repository with its own definitions, which parsed as source made every definition id a duplicate and every exposure count twice. This is the by-name half of the rule; the .git-file half cannot be a glob and is applied by scanIgnore (nested-checkouts.ts)",
+      "location": {
+        "file": "src/parser/parse-project.ts",
+        "line": 253
+      }
+    },
+    {
+      "description": "scanIgnore adds one ignore per nested checkout found under root (a directory holding a .git FILE: a linked worktree or a submodule), so another checkout's source and definitions are never read as this repository's. The same call bounds clear, the fingerprint and init's scope, so the four walks keep one scan set",
+      "location": {
+        "file": "src/parser/parse-project.ts",
+        "line": 281
       }
     },
     {
@@ -10610,12 +10745,22 @@
     }
   ],
   "coverage": {
-    "annotation_count": 1061,
-    "coverage_percent": 92
+    "annotation_count": 1078,
+    "coverage_percent": 93
   },
   "annotation_scope": {
     "view": "git",
     "excluded": [
+      {
+        "file": ".claude/skills/joseph-annotate/scripts/lib/pick.mjs",
+        "reason": "gitignored",
+        "detail": "untracked and matched by .gitignore"
+      },
+      {
+        "file": ".claude/skills/joseph-annotate/scripts/slice.mjs",
+        "reason": "gitignored",
+        "detail": "untracked and matched by .gitignore"
+      },
       {
         "file": ".github/ISSUE_TEMPLATE/bug_report.yml",
         "reason": "outside-config-include",
@@ -10917,7 +11062,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+          "stamp": "sha256-v3:670ce156629df69409ffc531c37b44e546336ec9b71e2c29ed72557d5faabf4b",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10933,7 +11078,7 @@
         "bytes": 3285,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+          "stamp": "sha256-v3:670ce156629df69409ffc531c37b44e546336ec9b71e2c29ed72557d5faabf4b",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10950,7 +11095,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+          "stamp": "sha256-v3:670ce156629df69409ffc531c37b44e546336ec9b71e2c29ed72557d5faabf4b",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10967,7 +11112,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+          "stamp": "sha256-v3:670ce156629df69409ffc531c37b44e546336ec9b71e2c29ed72557d5faabf4b",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -10983,7 +11128,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+          "stamp": "sha256-v3:670ce156629df69409ffc531c37b44e546336ec9b71e2c29ed72557d5faabf4b",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11002,7 +11147,7 @@
         "bytes": 3879,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+          "stamp": "sha256-v3:670ce156629df69409ffc531c37b44e546336ec9b71e2c29ed72557d5faabf4b",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11019,7 +11164,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87",
+          "stamp": "sha256-v3:670ce156629df69409ffc531c37b44e546336ec9b71e2c29ed72557d5faabf4b",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },

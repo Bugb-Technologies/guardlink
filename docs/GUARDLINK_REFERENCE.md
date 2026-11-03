@@ -229,7 +229,7 @@ the first that applies:
 | reason | left out because |
 |---|---|
 | `guardlink-data` | `.guardlink/**` or a `.gal` sidecar |
-| `built-in-exclude` | under the parser's own excludes (`node_modules`, `dist`, `build`, `tests`, `vendor`, …) |
+| `built-in-exclude` | under the parser's own excludes (`node_modules`, `dist`, `build`, `tests`, `vendor`, `.claude/worktrees`, …) |
 | `gitignored` | untracked and matched by `.gitignore` (a tracked file stays in scope) |
 | `linguist-vendored`, `linguist-generated` | `.gitattributes` sets the attribute |
 | `config-exclude` | `.guardlink/config.json` `exclude` matches it |
@@ -247,6 +247,18 @@ covers everything under it. The last two defaults can be overridden: `-linguist-
 `"worklist": { "keep": ["templates/**/*.svg"] }` in `.guardlink/config.json` keeps any path the
 generated-output or asset-SVG rule would drop. SVG is not excluded as a format, since an SVG can be a
 template.
+
+**Another checkout nested in the tree is not scanned at all.** Claude Code's desktop app keeps one
+git worktree per session under `.claude/worktrees/<name>/`, a full copy of the repository with its
+own `.guardlink/definitions.ts`; parsed as source, it reported every definition id as a duplicate
+and every exposure twice. The parser, `clear`, the worklist, the scan fingerprint, `init`'s scope
+detection, agent-config discovery and the analyst's `search_codebase` all skip, wherever it sits:
+`.claude/worktrees/`, and any directory holding a `.git` **file** — the marker git writes for a
+linked worktree (under `.worktrees/`, `worktrees/` or anywhere else) and for a submodule. A
+repository root has a `.git` directory, which marks nothing, so a folder of repositories still
+reads them all; and the root being scanned is never tested, since the scan may itself be running
+inside a worktree. git takes the same view: `ls-files` lists a nested checkout as one `dir/` entry
+and never descends. The rule lives in `src/parser/nested-checkouts.ts` and nowhere else.
 
 **Discovery is not narrowed.** A file left out is still parsed: an annotation already written in
 it stays in the model, and the file stays in `annotated_files`. The model records the scanned files

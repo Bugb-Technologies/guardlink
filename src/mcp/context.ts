@@ -251,7 +251,7 @@ export function fileContext(model: ThreatModel, input: FileContextInput): FileCo
     }
     return emptyContext(file, 'not_scanned', {
       hint: hasScannedExtension(file)
-        ? `\`${file}\` exists but is not in the parser's scan set — it is under an excluded directory (node_modules, dist, build, test, tests, __tests__, vendor, target, .bravos, .bugb). Its annotations, if any, were never read.`
+        ? `\`${file}\` exists but is not in the parser's scan set — it is under an excluded directory (node_modules, dist, build, test, tests, __tests__, vendor, target, .bravos, .bugb, .claude/worktrees) or inside another checkout nested in the tree (a directory holding a .git file: a linked worktree or a submodule). Its annotations, if any, were never read.`
         : `\`${file}\` exists but its extension is not scanned, so it was never parsed. An empty result here does NOT mean the file is clean.`,
     });
   }
