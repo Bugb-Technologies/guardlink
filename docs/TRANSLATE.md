@@ -223,6 +223,12 @@ successful provider outcome into a failure. Consumers that previously equated a
 positive counter with `completion.status: "safety_stopped"` must now read the
 status and counter separately; the version remains 1 and existing fields remain.
 
+Each author has a 15-minute deadline. `--agent-timeout <ms>` changes it for
+headless mode; it must be an integer from 1 to 2147483647. Timeout or process
+interruption preserves raw partial paths, fails the batch and skips later
+authors. A successful terminal record cannot override a nonzero exit or signal.
+Ordinary provider errors fail their exposure while later exposures can proceed.
+
 An explicit provider safety-stop/refusal outcome still preserves raw partial
 paths, fails the batch and skips remaining authors. Provider failures remain
 failures even with a positive counter. There is no retry, prompt rewording or
@@ -230,6 +236,48 @@ provider fallback to suppress telemetry. Audit-only completion with no templates
 remains `no_templates`; tool/source quotations are not treated as author refusals.
 CLI relays must preserve terminal structured completion and telemetry rather
 than returning only an exit code.
+
+### Completion transport and limits
+
+Supported native outcomes are Claude JSON/result or stream-json, Codex JSONL
+terminal turns, and Gemini JSON response/stats/error or stream-json result
+events. Complete JSON arrays of events are also accepted. Claude child events
+with a non-null `parent_tool_use_id` do not complete or refuse the parent run.
+Tool payloads and `structured_output` remain data. Conflicting main session or
+thread ids, unfinished turns, malformed/truncated structured records, explicit
+errors/refusals and non-success stop reasons fail even after an earlier success.
+Gemini stream warnings remain warnings; a Codex stream error is terminal.
+
+A wrapper can forward native records on stdout, including multiple JSON records,
+pretty JSON, a UTF-8 BOM, ANSI CSI prefixes, ISO UTC timestamps and known
+`[claude]`, `[codex]`, `[gemini]`, `[agent]`, `[relay]`, `[stdout]`, `[info]`
+(or corresponding `name:`) log prefixes. Separate banner lines are ignored.
+Unknown prefixes around protocol records fail closed. Wrappers should preferably
+emit unadorned native JSON/JSONL. A wrapper that stores its actual SDK result in
+a file must read that invocation's result and forward the native envelope on
+stdout, or normalize it to this terminal shape while preserving failure,
+refusal, stop reasons and counters:
+
+```json
+{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","result":"Draft written.","safety_stops":2}
+```
+
+GuardLink cannot safely infer completion from empty/plain-text/stderr-only
+output, exit zero, generated templates, or an arbitrary result file. It does
+not search files for completion records. A trusted wrapper owns binding a
+forwarded result to the current invocation; stale or misassociated metadata
+cannot be authenticated from stdout. Future or unrecognized outcome schemas
+remain `unknown` and fail authoring rather than being guessed successful.
+Explicit provider refusal signals are authoritative; the additional short
+primary-answer refusal heuristic is not a general natural-language classifier.
+
+On POSIX, timeout/overflow cleanup signals the author invocation's own process
+group, escalates after one second, and bounds the wait for output pipes. It
+cannot guarantee cleanup of intentionally detached descendants, upstream SDK
+jobs outside that group, Windows process trees, or a run whose GuardLink parent
+is itself killed. Wrappers must cancel their upstream jobs. Partial paths in a
+failed report are drafts, not evidence of clean author completion or execution.
+
 An empty candidate scope is an error. Written scanner YAML files undergo an
 explicit AuthorInfo check plus `cxg template validate --json --disable-update-check`. CXG must be installed for that schema check; missing
 validator, invalid schema, invalid author or validator errors mark the exposure

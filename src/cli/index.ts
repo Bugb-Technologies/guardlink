@@ -73,7 +73,7 @@ import { buildTranslateContext, loadTranslateContext, selectTranslateThreats, ty
 import { validateProbeIdentities } from '../agents/translate-probe.js';
 import { validateScannerYaml } from '../agents/translate-yaml.js';
 import { translateContract, loadProbeGuide } from '../agents/prompts.js';
-import { translateHeadless, snapshotTemplates, type TranslateAgent } from '../agents/translate-headless.js';
+import { translateHeadless, snapshotTemplates, translateAgentTimeoutMs, type TranslateAgent } from '../agents/translate-headless.js';
 import { loadWorklist, worklistSummaryLine } from '../codegraph/index.js';
 import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary-check.js';
 import { loadReachCheck, checkReach, reachCheckSummaryLine, reachDrafts, renderDrafts, type ReachCheck } from '../codegraph/reach-check.js';
@@ -2201,6 +2201,7 @@ program
   .option('--contract <contract>', 'Template output contract: scanner (default) or probe')
   .option('--headless', 'Run an author CLI to completion without a TTY')
   .option('--agent <agent>', 'Headless author: claude, codex or gemini')
+  .option('--agent-timeout <ms>', 'Headless author timeout in milliseconds (default 900000)')
   .option('--out <dir>', 'Template output directory (default .guardlink/cxg-templates/)')
   .option('--threat <id>', 'Select a threat or exposure id (repeatable)', (id: string, ids: string[]) => [...ids, id], [] as string[])
   .option('--format <format>', 'Headless result format: json')
@@ -2211,13 +2212,15 @@ program
     claudeCode?: boolean; codex?: boolean; gemini?: boolean;
     cursor?: boolean; windsurf?: boolean; clipboard?: boolean;
     feature?: string; context?: string; contract?: TranslateContract; headless?: boolean;
-    agent?: TranslateAgent; out?: string; threat?: string[]; format?: string; codeGraph?: boolean; codeGraphTimeout?: string;
+    agent?: TranslateAgent; agentTimeout?: string; out?: string; threat?: string[]; format?: string; codeGraph?: boolean; codeGraphTimeout?: string;
   }) => {
     try {
       if (opts.contract && !['scanner', 'probe'].includes(opts.contract)) throw new Error('Invalid --contract: use scanner or probe');
       if (opts.headless && !['claude', 'codex', 'gemini'].includes(opts.agent || '')) throw new Error('--headless requires --agent claude, codex or gemini');
       if (opts.format && (opts.format !== 'json' || !opts.headless)) throw new Error('--format json requires --headless');
       if (opts.agent && !opts.headless) throw new Error('--agent requires --headless; use the interactive agent flags otherwise');
+      if (opts.agentTimeout !== undefined && !opts.headless) throw new Error('--agent-timeout requires --headless');
+      const agentTimeoutMs = opts.headless ? translateAgentTimeoutMs(opts.agentTimeout === undefined ? undefined : Number(opts.agentTimeout)) : undefined;
       const root = resolve(opts.dir);
       const project = detectProjectName(root, opts.project);
       const userPrompt = promptParts.join(' ').trim();
@@ -2250,7 +2253,7 @@ program
       if (opts.headless) {
         const report = await translateHeadless({ root, model, userPrompt, context,
           contract: opts.contract, out: opts.out || '.guardlink/cxg-templates/',
-          agent: opts.agent!, selected: !!opts.threat?.length });
+          agent: opts.agent!, agentTimeoutMs, selected: !!opts.threat?.length });
         for (const warning of report.warnings) console.error(`Translate warning [${warning.threat}]: ${warning.message}`);
         console.log(JSON.stringify({ ...report, context_graph: contextGraph }));
         if (report.failures.length) process.exitCode = 1;
