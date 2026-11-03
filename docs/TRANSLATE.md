@@ -182,10 +182,15 @@ Headless stdout is one JSON object (also the default without `--format json`):
     "contract": "probe",
     "template_dir": "/project/generated-probes/idor-0123456789ab",
     "templates": ["/project/generated-probes/idor-0123456789ab/order-read.js"],
-    "completion": {"status": "completed", "safety_stops": 0},
+    "completion": {"status": "completed", "safety_stops": 2},
     "status": "written"
   }],
-  "failures": []
+  "failures": [],
+  "warnings": [{
+    "threat": "idor@src/orders.ts:42",
+    "safety_stops": 2,
+    "message": "Provider reported safety_stops=2; this counter is telemetry, not the provider's completion outcome"
+  }]
 }
 ```
 
@@ -203,14 +208,28 @@ The CLI requests Claude/Gemini JSON or Codex JSONL and requires a recognized
 terminal completion. Exit zero alone is insufficient. A parsed author completion
 appears as `completion.status` (`completed`, `failed`, `refused`, `safety_stopped`, or
 `unknown`), with `safety_stops` when the provider reports it and a failure
-`reason` when applicable. Missing/malformed completion, provider errors and
-output over 8 MiB fail authoring. Spawn/preflight failures and skipped authors
-have no completion field. Provider safety stops and refusals preserve
-partial paths without stamping or validating their drafts, fail the batch and
-skip remaining authors. There is no retry or provider fallback. Audit-only
-completion with no templates remains `no_templates`; tool/source quotations
-are not treated as author refusals. CLI relays must preserve terminal structured
-completion and safety metadata rather than returning only an exit code.
+`reason` when applicable. Pass/fail follows the provider's outcome (`is_error`,
+result subtype, refusal or non-success stop reason), process exit, and template
+validation. Missing terminal completion and output over 8 MiB also fail authoring.
+Spawn/preflight failures and skipped authors have no completion field.
+
+`safety_stops` is telemetry, independent of completion status. A successful
+completion with a positive count can be `written` or `no_templates`; the count
+is retained in `results[].completion.safety_stops` and a per-threat `warnings[]`
+entry, and the CLI prints that warning on stderr. Headless stdout remains one
+JSON object, suitable for saving as `translate.json`. Malformed counter telemetry
+is described in `completion.warnings` and the report warnings without turning a
+successful provider outcome into a failure. Consumers that previously equated a
+positive counter with `completion.status: "safety_stopped"` must now read the
+status and counter separately; the version remains 1 and existing fields remain.
+
+An explicit provider safety-stop/refusal outcome still preserves raw partial
+paths, fails the batch and skips remaining authors. Provider failures remain
+failures even with a positive counter. There is no retry, prompt rewording or
+provider fallback to suppress telemetry. Audit-only completion with no templates
+remains `no_templates`; tool/source quotations are not treated as author refusals.
+CLI relays must preserve terminal structured completion and telemetry rather
+than returning only an exit code.
 An empty candidate scope is an error. Written scanner YAML files undergo an
 explicit AuthorInfo check plus `cxg template validate --json --disable-update-check`. CXG must be installed for that schema check; missing
 validator, invalid schema, invalid author or validator errors mark the exposure

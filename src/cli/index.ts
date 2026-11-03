@@ -2251,6 +2251,7 @@ program
         const report = await translateHeadless({ root, model, userPrompt, context,
           contract: opts.contract, out: opts.out || '.guardlink/cxg-templates/',
           agent: opts.agent!, selected: !!opts.threat?.length });
+        for (const warning of report.warnings) console.error(`Translate warning [${warning.threat}]: ${warning.message}`);
         console.log(JSON.stringify({ ...report, context_graph: contextGraph }));
         if (report.failures.length) process.exitCode = 1;
         return;
@@ -2334,7 +2335,7 @@ program
       }
     } catch (error) {
       const message = (error as Error).message;
-      if (opts.headless) console.log(JSON.stringify({ version: 1, results: [], failures: [{ threat: '*', error: message, exit_code: null }] }));
+      if (opts.headless) console.log(JSON.stringify({ version: 1, results: [], failures: [{ threat: '*', error: message, exit_code: null }], warnings: [] }));
       else console.error(message);
       process.exitCode = 1;
     }

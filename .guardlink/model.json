@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
+    "annotation_hash": "sha256-v3:08337faabbc64b11c3f9c70931ad7810be8cf1c10b94600fb0edba0705a7b9d4",
     "generator": "guardlink@2.5.0"
   },
   "version": "1.2.0",
@@ -1670,7 +1670,7 @@
       "asset": "#agent-launcher",
       "threat": "#vacuous-pass",
       "control": "#fail-closed",
-      "description": "Requires a terminal structured completion; safety/refusal/error metadata cannot be cleared by a later success",
+      "description": "Requires a terminal structured completion; provider failure/refusal/error signals cannot be cleared by a later success; safety counters remain telemetry",
       "location": {
         "file": "src/agents/translate-completion.ts",
         "line": 4
@@ -1713,7 +1713,7 @@
       "description": "Per-exposure child names use a sanitized label plus a hash; context ids are never path components",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 109
+        "line": 110
       }
     },
     {
@@ -3523,7 +3523,7 @@
       "threat": "#vacuous-pass",
       "severity": "high",
       "external_refs": [],
-      "description": "readAgentCompletion could mistake exit-zero output for successful authoring despite a provider safety stop",
+      "description": "readAgentCompletion could mistake exit-zero output for successful authoring despite a provider failure or refusal",
       "location": {
         "file": "src/agents/translate-completion.ts",
         "line": 3
@@ -3592,7 +3592,7 @@
       "description": "translateHeadless creates directories below the caller-selected output root",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 108
+        "line": 109
       }
     },
     {
@@ -5551,7 +5551,7 @@
       "description": "Inventory changed regular template files per exposure, without evaluating them",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 110
+        "line": 111
       }
     },
     {
@@ -6222,7 +6222,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3346
+        "line": 3347
       }
     },
     {
@@ -6233,7 +6233,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3349
+        "line": 3350
       }
     },
     {
@@ -8677,7 +8677,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 4255
+        "line": 4256
       }
     },
     {
@@ -9731,14 +9731,14 @@
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 4155
+        "line": 4156
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 4256
+        "line": 4257
       }
     },
     {
@@ -11415,7 +11415,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
+          "stamp": "sha256-v3:08337faabbc64b11c3f9c70931ad7810be8cf1c10b94600fb0edba0705a7b9d4",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11431,7 +11431,7 @@
         "bytes": 3285,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
+          "stamp": "sha256-v3:08337faabbc64b11c3f9c70931ad7810be8cf1c10b94600fb0edba0705a7b9d4",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11448,7 +11448,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
+          "stamp": "sha256-v3:08337faabbc64b11c3f9c70931ad7810be8cf1c10b94600fb0edba0705a7b9d4",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11465,7 +11465,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
+          "stamp": "sha256-v3:08337faabbc64b11c3f9c70931ad7810be8cf1c10b94600fb0edba0705a7b9d4",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11481,7 +11481,7 @@
         "bytes": 3202,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
+          "stamp": "sha256-v3:08337faabbc64b11c3f9c70931ad7810be8cf1c10b94600fb0edba0705a7b9d4",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11500,7 +11500,7 @@
         "bytes": 3879,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
+          "stamp": "sha256-v3:08337faabbc64b11c3f9c70931ad7810be8cf1c10b94600fb0edba0705a7b9d4",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },
@@ -11517,7 +11517,7 @@
         "bytes": 3239,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:8b081ced64685f6e63ee8b94a5f8dfb98e862b5c50b0cc9ef82f62a8c23f6b0b",
+          "stamp": "sha256-v3:08337faabbc64b11c3f9c70931ad7810be8cf1c10b94600fb0edba0705a7b9d4",
           "agent_config_stamp": "sha256-v1:5823a383fcde3f7c97f0c0214016d068740bab7f493546a1103b34f8ed87ae9c",
           "current": true
         },

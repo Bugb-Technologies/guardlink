@@ -183,7 +183,7 @@ describe('headless authoring', () => {
   it('CLI emits only JSON, preserves feature/threat scope and fails on agent error', async () => {
     const { root } = await project();
     const bin = join(root, 'codex');
-    writeFileSync(bin, `#!${process.execPath}\nconst fs=require('node:fs'),p=fs.readFileSync(0,'utf8'); const match=p.match(/Write JavaScript files under ("[^\\n]+")\\./); fs.writeFileSync(require('node:path').join(JSON.parse(match[1]),'probe.js'),'// authored'); process.stdout.write(JSON.stringify({type:'turn.completed',usage:{}})); process.exit(process.env.STUB_FAIL ? 4 : 0);`);
+    writeFileSync(bin, `#!${process.execPath}\nconst fs=require('node:fs'),p=fs.readFileSync(0,'utf8'); const match=p.match(/Write JavaScript files under ("[^\\n]+")\\./); fs.writeFileSync(require('node:path').join(JSON.parse(match[1]),'probe.js'),'// authored'); process.stdout.write(JSON.stringify({type:'turn.completed',usage:{},safety_stops:2})); process.exit(process.env.STUB_FAIL ? 4 : 0);`);
     chmodSync(bin, 0o755);
     const args = ['--import', 'tsx', 'src/cli/index.ts', 'translate', '--dir', root, '--headless', '--agent', 'codex', '--contract', 'probe', '--out', 'generated', '--threat', 'idor', '--feature', 'Orders', '--format', 'json', '--no-code-graph'];
     const env = { ...process.env, PATH: root + delimiter + process.env.PATH };
@@ -193,6 +193,10 @@ describe('headless authoring', () => {
     expect(result).toMatchObject({ version: 1, failures: [], results: [{ threat: expect.stringContaining('idor@api.ts:'), status: 'written', contract: 'probe' }] });
     expect(result.results[0].templates.every((path: string) => existsSync(path))).toBe(true);
     expect(result.results[0].template_dir).toBe(result.results[0].templates[0].slice(0, result.results[0].templates[0].lastIndexOf('/')));
+    expect(result.results[0].completion).toMatchObject({status:'completed',safety_stops:2});
+    expect(result.warnings[0]).toMatchObject({safety_stops:2,message:expect.stringContaining('safety_stops=2')});
+    expect(success.stderr).toContain('Translate warning');
+    expect(success.stderr).toContain('safety_stops=2');
     expect(result.context_graph).toMatchObject({ status: 'skipped', reason: expect.stringContaining('disabled') });
     const failed = spawnSync(process.execPath, args, { env: { ...env, STUB_FAIL: '1' }, encoding: 'utf8' });
     expect(failed.status).toBe(1);

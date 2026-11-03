@@ -102,6 +102,7 @@ export interface TranslateHeadlessReport {
   version: 1;
   results: Array<{ threat: string; contract: TranslateContract; template_dir: string; templates: string[]; completion?: AgentCompletion; status: 'written' | 'no_templates' | 'failed' }>;
   failures: Array<{ threat: string; error: string; exit_code: number | null }>;
+  warnings: Array<{ threat: string; message: string; safety_stops?: number }>;
 }
 
 /**
@@ -110,7 +111,7 @@ export interface TranslateHeadlessReport {
  * @flows AgentProcess -> #agent-launcher via templates -- "Inventory changed regular template files per exposure, without evaluating them"
  */
 export async function translateHeadless(options: TranslateHeadlessOptions, run: TranslateRunner = runTranslateAgent): Promise<TranslateHeadlessReport> {
-  const report: TranslateHeadlessReport = { version: 1, results: [], failures: [] };
+  const report: TranslateHeadlessReport = { version: 1, results: [], failures: [], warnings: [] };
   const exposures = options.selected ? options.model.exposures : defaultTranslateExposures(options.model);
   if (!exposures.length) throw new Error('No in-scope translate exposure candidates');
   let safetyStop: string | undefined;
@@ -121,6 +122,7 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
     const suffix = createHash('sha256').update(id).digest('hex').slice(0, 12);
     const dir = resolve(options.root, options.out, `${exposure.threat.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)}-${suffix}`);
     let written: string[] = [];
+    let completion: AgentCompletion | undefined;
     if (safetyStop) {
       report.failures.push({ threat: id, error: `Not authored after earlier safety stop/refusal: ${safetyStop}`, exit_code: null });
       report.results.push({ threat: id, contract, template_dir: dir, templates: [], status: 'failed' });
@@ -132,10 +134,17 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
       const prompt = buildTranslatePrompt(options.userPrompt, options.root, model, { context: options.context, contract, out: dir, threats: [id] })
         + '\nHeadless authoring: write files directly. Do not ask questions or perform CLI usage discovery. Return when authoring is complete.';
       const result = await run(options.agent, prompt, options.root, dir);
+      const counters = [result.safety_stops, result.completion?.safety_stops]
+        .filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0);
+      const reportedStops = counters.length ? Math.max(...counters) : undefined;
+      completion = result.completion;
+      if (reportedStops !== undefined) {
+        completion = { ...(completion || { status: result.exitCode === 0 && !result.error ? 'completed' : 'failed' }), safety_stops: reportedStops };
+        if (reportedStops > 0) report.warnings.push({ threat: id, safety_stops: reportedStops,
+          message: `Provider reported safety_stops=${reportedStops}; this counter is telemetry, not the provider's completion outcome` });
+      }
+      for (const message of completion?.warnings || []) report.warnings.push({ threat: id, message });
       written = [...snapshotTemplates(dir)].filter(([file, hash]) => before.get(file) !== hash).map(([file]) => file).sort();
-      const reportedStops = Math.max(result.safety_stops ?? 0, result.completion?.safety_stops ?? 0);
-      const completion: AgentCompletion | undefined = reportedStops > 0
-        ? { status: 'safety_stopped', safety_stops: reportedStops, reason: `Provider reported ${reportedStops} safety stops` } : result.completion;
       if (completion?.status === 'safety_stopped' || completion?.status === 'refused') {
         safetyStop = completion.reason || 'Provider reported a safety stop/refusal';
         report.failures.push({ threat: id, error: safetyStop, exit_code: result.exitCode });
@@ -157,7 +166,7 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
       }
     } catch (error) {
       report.failures.push({ threat: id, error: (error as Error).message, exit_code: null });
-      report.results.push({ threat: id, contract, template_dir: dir, templates: written, status: 'failed' });
+      report.results.push({ threat: id, contract, template_dir: dir, templates: written, completion, status: 'failed' });
     }
   }
   return report;
