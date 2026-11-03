@@ -20,14 +20,22 @@ import { readConversionPlan, type ConversionProofPlan } from './translate-conver
 import type { ThreatModel } from '../types/index.js';
 
 export type TranslateAgent = 'claude' | 'codex' | 'gemini';
-export interface TranslateAgentResult { exitCode: number | null; error?: string; completion?: AgentCompletion; safety_stops?: number }
-export type TranslateRunner = (agent: TranslateAgent, prompt: string, root: string, out: string) => Promise<TranslateAgentResult>;
+export interface TranslateAgentResult { exitCode: number | null; error?: string; completion?: AgentCompletion; safety_stops?: number; timedOut?: boolean; signal?: NodeJS.Signals | null }
+export interface TranslateRunOptions { timeoutMs?: number }
+export const DEFAULT_TRANSLATE_AGENT_TIMEOUT_MS = 15 * 60 * 1000;
+export function translateAgentTimeoutMs(value = DEFAULT_TRANSLATE_AGENT_TIMEOUT_MS): number {
+  if (!Number.isInteger(value) || value < 1 || value > 2147483647) throw new Error('Agent timeout must be an integer from 1 to 2147483647 milliseconds');
+  return value;
+}
+export type TranslateRunner = (agent: TranslateAgent, prompt: string, root: string, out: string, options?: TranslateRunOptions) => Promise<TranslateAgentResult>;
 
 /**
- * @effects execute on #agent-launcher -- "Runs an author CLI without a TTY, with closed stdin and captured output"
+ * @effects execute on #agent-launcher -- "Runs an author CLI without a TTY, with bounded output/deadline; POSIX signals target its own process group"
+ * @audit #agent-launcher -- "Timeout cleanup cannot guarantee detached helpers or upstream SDK jobs; wrappers must cancel those jobs themselves"
  * @audit #agent-launcher -- "Codex uses workspace-write with approval_policy=never; other authors retain their CLI editing permissions; GuardLink never runs a generated template"
  */
-export const runTranslateAgent: TranslateRunner = async (agent, prompt, root, out) => {
+export const runTranslateAgent: TranslateRunner = async (agent, prompt, root, out, options = {}) => {
+  const timeoutMs = translateAgentTimeoutMs(options.timeoutMs);
   const commands = {
     claude: ['claude', ['-p', '--dangerously-skip-permissions', '--allowedTools', 'Read,Write,Edit,Glob,Grep', '--output-format', 'json']],
     codex: ['codex', ['exec', '--json', '--sandbox', 'workspace-write', '-c', 'approval_policy="never"', '--skip-git-repo-check', '--add-dir', out, '--color', 'never', '-']],
@@ -35,28 +43,54 @@ export const runTranslateAgent: TranslateRunner = async (agent, prompt, root, ou
   } as const;
   const [command, args] = commands[agent];
   return new Promise(resolveResult => {
-    const child = spawn(command, [...args], { cwd: root, stdio: ['pipe', 'pipe', 'pipe'], shell: false, env: { ...process.env, NO_COLOR: '1' } });
-    // Pipe the prompt so multi-megabyte context packs do not exceed argv limits.
-    child.stdin.on('error', () => {}); // An early process exit can close the pipe before the write.
+    // An isolated POSIX process group confines timeout signals to this invocation.
+    const child = spawn(command, [...args], { cwd: root, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'], shell: false, env: { ...process.env, NO_COLOR: '1' } });
+    let stderr = '', stdout = '';
+    let bytes = 0, overflow = false, timedOut = false, settled = false;
+    let forced: ReturnType<typeof setTimeout> | undefined;
+    const stop = (signal: NodeJS.Signals): void => {
+      if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
+      try {
+        if (process.platform !== 'win32') process.kill(-child.pid, signal);
+        else child.kill(signal);
+      } catch { /* The owned process may already have exited. */ }
+    };
+    const finish = (code: number | null, signal: NodeJS.Signals | null, spawnError?: Error, transportError?: string): void => {
+      if (settled) return;
+      settled = true; clearTimeout(deadline); if (forced) clearTimeout(forced);
+      const completion: AgentCompletion = overflow ? { status: 'failed', reason: 'Agent structured output exceeds 8 MiB' } : readAgentCompletion(stdout, agent);
+      const errors = [spawnError?.message, timedOut ? `Agent ${agent} timed out after ${timeoutMs} milliseconds` : '', transportError,
+        code !== 0 ? `Agent ${agent} ${signal ? `terminated by ${signal}` : `exited with code ${code}`}${stderr ? ': ' + stderr : ''}` : '',
+        completion.status !== 'completed' ? completion.reason || 'Agent completion failed' : ''].filter(Boolean);
+      resolveResult({ exitCode: code, completion, signal, ...(timedOut ? { timedOut: true } : {}), ...(errors.length ? { error: errors.join('; ') } : {}) });
+    };
+    const forceStop = (): void => {
+      if (forced) return;
+      forced = setTimeout(() => {
+        stop('SIGKILL'); child.stdin.destroy(); child.stdout.destroy(); child.stderr.destroy();
+        finish(child.exitCode, child.signalCode, undefined, 'Agent output did not close after termination');
+      }, 1000);
+    };
+    const deadline = setTimeout(() => { timedOut = true; stop('SIGTERM'); forceStop(); }, timeoutMs);
+    child.stdin.on('error', () => {}); // Early process exit may close stdin before the prompt is drained.
     child.stdin.end(prompt);
-    let stderr = '';
-    let stdout = '';
-    let bytes = 0;
-    let overflow = false;
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (data: string) => {
+      if (settled || overflow) return;
       bytes += Buffer.byteLength(data);
-      if (bytes > MAX_COMPLETION_BYTES) { overflow = true; child.kill(); return; }
+      if (bytes > MAX_COMPLETION_BYTES) { overflow = true; stop('SIGTERM'); forceStop(); return; }
       stdout += data;
     });
     child.stderr.on('data', (data: Buffer) => { stderr = (stderr + data.toString()).slice(-4000); });
-    child.on('error', error => resolveResult({ exitCode: null, error: error.message }));
-    child.on('close', (code, signal) => {
-      const completion: AgentCompletion = overflow ? { status: 'failed', reason: 'Agent structured output exceeds 8 MiB' } : readAgentCompletion(stdout);
-      const errors = [code !== 0 ? `Agent ${agent} ${signal ? `terminated by ${signal}` : `exited with code ${code}`}${stderr ? ': ' + stderr : ''}` : '',
-        completion.status !== 'completed' ? completion.reason || 'Agent completion failed' : ''].filter(Boolean);
-      resolveResult({ exitCode: code, completion, ...(errors.length ? { error: errors.join('; ') } : {}) });
+    child.on('error', error => finish(null, null, error));
+    child.on('exit', (code, signal) => {
+      // A descendant retaining a pipe cannot leave the caller waiting forever.
+      if (!settled && !forced && (code !== 0 || signal)) forced = setTimeout(() => {
+        stop('SIGKILL'); child.stdout.destroy(); child.stderr.destroy();
+        finish(code, signal, undefined, 'Agent output remained open after its process exited');
+      }, 1000);
     });
+    child.on('close', (code, signal) => finish(code, signal));
   });
 };
 
@@ -100,6 +134,7 @@ export interface TranslateHeadlessOptions {
   sources?: TranslateSources;
   /** An explicit threat selection includes mitigated exposures too. */
   selected?: boolean;
+  agentTimeoutMs?: number;
 }
 export interface TranslateHeadlessReport {
   version: 1;
@@ -115,6 +150,7 @@ type TranslateIdentity = { threat: string; source?: never } | { source: string; 
  * @flows AgentProcess -> #agent-launcher via templates -- "Inventory changed regular template files per exposure or conversion source, without evaluating them"
  */
 export async function translateHeadless(options: TranslateHeadlessOptions, run: TranslateRunner = runTranslateAgent): Promise<TranslateHeadlessReport> {
+  const timeoutMs = translateAgentTimeoutMs(options.agentTimeoutMs);
   const report: TranslateHeadlessReport = { version: 1, results: [], failures: [], warnings: [] };
   if (options.sources) {
     if (options.contract !== 'probe') throw new Error('--from requires --contract probe');
@@ -129,7 +165,7 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
     ? options.sources.sources.map(source => ({ id: source.path, label: basename(source.path), source, model: options.model }))
     : exposures.map(exposure => ({ id: exposureId(exposure), label: exposure.threat, source: undefined, model: { ...options.model, exposures: [exposure] } }));
   if (!candidates.length && !report.failures.length) throw new Error('No in-scope translate candidates');
-  let safetyStop: string | undefined;
+  let batchStop: { reason: string; kind: 'process' | 'provider' } | undefined;
   for (const { id, label, source, model } of candidates) {
     const identity: TranslateIdentity = source ? { source: id } : { threat: id };
     const contract = translateContract(model, { contract: options.contract, context: options.context });
@@ -137,8 +173,8 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
     const dir = resolve(options.root, options.out, `${label.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)}-${suffix}`);
     let written: string[] = [];
     let completion: AgentCompletion | undefined;
-    if (safetyStop) {
-      report.failures.push({ ...identity, error: `Not authored after earlier safety stop/refusal: ${safetyStop}`, exit_code: null });
+    if (batchStop) {
+      report.failures.push({ ...identity, error: `Not authored after earlier ${batchStop.kind === 'process' ? 'process interruption' : 'safety stop/refusal'}: ${batchStop.reason}`, exit_code: null });
       report.results.push({ ...identity, contract, template_dir: dir, templates: [], status: 'failed' });
       continue;
     }
@@ -150,7 +186,7 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
         sources: source ? [source] : undefined,
         threats: source ? (options.selected ? model.exposures.map(exposureId) : undefined) : [id] })
         + '\nHeadless authoring: write files directly. Do not ask questions or perform CLI usage discovery. Return when authoring is complete.';
-      const result = await run(options.agent, prompt, options.root, dir);
+      const result = await run(options.agent, prompt, options.root, dir, { timeoutMs });
       const counters = [result.safety_stops, result.completion?.safety_stops]
         .filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0);
       const reportedStops = counters.length ? Math.max(...counters) : undefined;
@@ -162,9 +198,15 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
       }
       for (const message of completion?.warnings || []) report.warnings.push({ ...identity, message });
       written = [...snapshotTemplates(dir)].filter(([file, hash]) => before.get(file) !== hash && (!source || /\.(js|mjs)$/i.test(file))).map(([file]) => file).sort();
+      if (result.timedOut || result.signal || [130, 137, 143].includes(result.exitCode ?? 0)) {
+        batchStop = { kind: 'process', reason: result.error || 'Author process terminated before clean completion' };
+        report.failures.push({ ...identity, error: batchStop.reason, exit_code: result.exitCode });
+        report.results.push({ ...identity, contract, template_dir: dir, templates: written, completion, status: 'failed' });
+        continue;
+      }
       if (completion?.status === 'safety_stopped' || completion?.status === 'refused') {
-        safetyStop = completion.reason || 'Provider reported a safety stop/refusal';
-        report.failures.push({ ...identity, error: safetyStop, exit_code: result.exitCode });
+        batchStop = { kind: 'provider', reason: completion.reason || 'Provider reported a safety stop/refusal' };
+        report.failures.push({ ...identity, error: batchStop.reason, exit_code: result.exitCode });
         report.results.push({ ...identity, contract, template_dir: dir, templates: written, completion, status: 'failed' });
         continue;
       }

@@ -157,7 +157,7 @@ describe('completion protocol boundaries', () => {
     expect(readAgentCompletion(frame('claude','Done.',{stop_reason:'refusal',safety_stops:2}))).toMatchObject({status:'refused',safety_stops:2});
     expect(readAgentCompletion(frame('claude','Done.',{safety_stop:true,safety_stops:2}))).toMatchObject({status:'safety_stopped',safety_stops:2});
     expect(readAgentCompletion('x'.repeat(MAX_COMPLETION_BYTES+1)).status).toBe('failed');
-    expect(readAgentCompletion('{invalid JSON').status).toBe('unknown');
+    expect(readAgentCompletion('{invalid JSON').status).toBe('failed');
     expect(readAgentCompletion(frame('claude', "I'm sorry, but I can't assist with that request.")).status).toBe('refused');
     expect(readAgentCompletion(frame('gemini', "I’m unable to provide that template.")).status).toBe('refused');
     expect(() => readAgentCompletion(JSON.stringify({message:{role:'assistant',content:{}},type:'turn.completed'}))).not.toThrow();

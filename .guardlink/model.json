@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:b772b3fc45d5ea53a92331e8318aa48de6eb06789195f0142a17f89ac1410583",
+    "annotation_hash": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
     "generator": "guardlink@2.5.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 194,
-  "annotations_parsed": 1133,
+  "annotations_parsed": 1134,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agentconfig/bundle.ts",
@@ -1292,10 +1292,10 @@
     {
       "effect": "execute",
       "asset": "#agent-launcher",
-      "description": "Runs an author CLI without a TTY, with closed stdin and captured output",
+      "description": "Runs an author CLI without a TTY, with bounded output/deadline; POSIX signals target its own process group",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 27
+        "line": 33
       }
     },
     {
@@ -1304,7 +1304,7 @@
       "description": "stampScannerThreatHeader adds source identity only to templates changed during this author run; existing matching headers remain byte-identical",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 79
+        "line": 113
       }
     },
     {
@@ -1755,7 +1755,7 @@
       "description": "translateHeadless child names use a sanitized exposure or source label plus a hash; context ids are never path components",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 114
+        "line": 149
       }
     },
     {
@@ -3696,7 +3696,7 @@
       "description": "translateHeadless creates directories below the caller-selected output root",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 113
+        "line": 148
       }
     },
     {
@@ -5725,7 +5725,7 @@
       "description": "Inventory changed regular template files per exposure or conversion source, without evaluating them",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 115
+        "line": 150
       }
     },
     {
@@ -6418,7 +6418,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3356
+        "line": 3359
       }
     },
     {
@@ -6429,7 +6429,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3359
+        "line": 3362
       }
     },
     {
@@ -8417,10 +8417,18 @@
     },
     {
       "asset": "#agent-launcher",
+      "description": "Timeout cleanup cannot guarantee detached helpers or upstream SDK jobs; wrappers must cancel those jobs themselves",
+      "location": {
+        "file": "src/agents/translate-headless.ts",
+        "line": 34
+      }
+    },
+    {
+      "asset": "#agent-launcher",
       "description": "Codex uses workspace-write with approval_policy=never; other authors retain their CLI editing permissions; GuardLink never runs a generated template",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 28
+        "line": 35
       }
     },
     {
@@ -8428,7 +8436,7 @@
       "description": "The operator chooses the output directory; a header records authoring scope, not proof of the template's logic",
       "location": {
         "file": "src/agents/translate-headless.ts",
-        "line": 80
+        "line": 114
       }
     },
     {
@@ -8912,7 +8920,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 4272
+        "line": 4275
       }
     },
     {
@@ -9966,14 +9974,14 @@
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 4172
+        "line": 4175
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 4273
+        "line": 4276
       }
     },
     {
@@ -11343,7 +11351,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 1133,
+    "annotation_count": 1134,
     "coverage_percent": 92
   },
   "annotation_scope": {
@@ -11666,7 +11674,7 @@
         "bytes": 4259,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:b772b3fc45d5ea53a92331e8318aa48de6eb06789195f0142a17f89ac1410583",
+          "stamp": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11682,7 +11690,7 @@
         "bytes": 4342,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:b772b3fc45d5ea53a92331e8318aa48de6eb06789195f0142a17f89ac1410583",
+          "stamp": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11699,7 +11707,7 @@
         "bytes": 4296,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:b772b3fc45d5ea53a92331e8318aa48de6eb06789195f0142a17f89ac1410583",
+          "stamp": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11716,7 +11724,7 @@
         "bytes": 4296,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:b772b3fc45d5ea53a92331e8318aa48de6eb06789195f0142a17f89ac1410583",
+          "stamp": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11732,7 +11740,7 @@
         "bytes": 4259,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:b772b3fc45d5ea53a92331e8318aa48de6eb06789195f0142a17f89ac1410583",
+          "stamp": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11751,7 +11759,7 @@
         "bytes": 4936,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:b772b3fc45d5ea53a92331e8318aa48de6eb06789195f0142a17f89ac1410583",
+          "stamp": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11768,7 +11776,7 @@
         "bytes": 4296,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:b772b3fc45d5ea53a92331e8318aa48de6eb06789195f0142a17f89ac1410583",
+          "stamp": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -12616,13 +12624,13 @@
       },
       {
         "index": 2,
-        "claim_key": "bfabe1a20530d23c7c0c67fc1180f9af426339ebce89403e0cc7db9d159ab178:0",
+        "claim_key": "8b631d286b3ecad3cdd834523220741731c7f0689ad6d7306d9b15d762eed58e:0",
         "file": "src/agents/translate-headless.ts",
-        "line": 27,
+        "line": 33,
         "effect": "execute",
         "asset": "#agent-launcher",
         "identity": null,
-        "description": "Runs an author CLI without a TTY, with closed stdin and captured output",
+        "description": "Runs an author CLI without a TTY, with bounded output/deadline; POSIX signals target its own process group",
         "gated": false,
         "gates": [],
         "gate_near_misses": [],
@@ -12632,7 +12640,7 @@
         "index": 3,
         "claim_key": "264be6b0241866e4b5a43d77891dfee8ed62ad98ba74a0fd763f8da38de34ce9:0",
         "file": "src/agents/translate-headless.ts",
-        "line": 79,
+        "line": 113,
         "effect": "write",
         "asset": "#agent-launcher",
         "identity": null,

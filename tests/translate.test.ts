@@ -396,7 +396,7 @@ describe('scanner source conversion', () => {
     expect(JSON.parse(scanner.stdout).failures[0].error).toContain('--from requires --contract probe');
   }, 30000);
 
-  it.each(['refused', 'safety_stopped'] as const)('keeps explicit %s outcomes source-scoped and skips later conversion authors', async status => {
+  it.each(['refused', 'safety_stopped', 'timeout', 'signal'] as const)('keeps %s outcomes source-scoped and skips later conversion authors', async status => {
     const { root, model } = await project();
     for (const name of ['first.py', 'second.py']) writeFileSync(join(root, name), '# scanner source\n');
     const sources = loadTranslateSources(['first.py', 'second.py'], root);
@@ -405,14 +405,17 @@ describe('scanner source conversion', () => {
       calls++;
       writeFileSync(join(dir, 'probe.js'), 'throw new Error("must never execute");');
       writeFileSync(join(dir, 'scanner.py'), '# not a converted probe');
+      if (status === 'timeout') return { exitCode: null, timedOut: true, error: 'Author timed out', completion: { status: 'completed', safety_stops: 2 } };
+      if (status === 'signal') return { exitCode: null, signal: 'SIGTERM', error: 'Author interrupted', completion: { status: 'completed', safety_stops: 2 } };
       return { exitCode: 0, completion: { status, safety_stops: 2, reason: 'Provider explicitly ' + status } };
     });
     expect(calls).toBe(1);
     expect(report.failures).toHaveLength(2);
-    expect(report.results[0]).toMatchObject({ source: sources.sources[0].path, status: 'failed', templates: [expect.stringMatching(/probe.js$/)], completion: { status, safety_stops: 2 } });
+    const processStop = status === 'timeout' || status === 'signal';
+    expect(report.results[0]).toMatchObject({ source: sources.sources[0].path, status: 'failed', templates: [expect.stringMatching(/probe.js$/)], completion: { status: processStop ? 'completed' : status, safety_stops: 2 } });
     expect(readFileSync(report.results[0].templates[0], 'utf8')).toBe('throw new Error("must never execute");');
     expect(report.results[1]).toMatchObject({ source: sources.sources[1].path, status: 'failed', templates: [] });
-    expect(report.failures[1]).toMatchObject({ source: sources.sources[1].path, error: expect.stringContaining('earlier safety stop/refusal') });
+    expect(report.failures[1]).toMatchObject({ source: sources.sources[1].path, error: expect.stringContaining(processStop ? 'earlier process interruption' : 'earlier safety stop/refusal') });
     expect(report.warnings[0]).toMatchObject({ source: sources.sources[0].path, safety_stops: 2 });
     for (const row of [...report.results, ...report.failures, ...report.warnings]) expect(row).not.toHaveProperty('threat');
   });
