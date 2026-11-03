@@ -44,6 +44,7 @@
  * @handles secrets on #cli -- "Processes API keys via config commands"
  */
 
+import { SecurityTestsConfigError } from '../parser/security-tests.js';
 import { Command } from 'commander';
 import fg from 'fast-glob';
 import { resolve, basename, join, isAbsolute, relative } from 'node:path';
@@ -69,6 +70,12 @@ import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard,
 import { generateDashboardHTML, loadSince } from '../dashboard/index.js';
 import type { SinceInput } from '../dashboard/analytics.js';
 import { AGENTS, agentFromOpts, launchAgent, launchAgentInline, buildAnnotatePrompt, buildTranslatePrompt, buildAskPrompt, resolveAnnotationMode } from '../agents/index.js';
+import { buildTranslateContext, loadTranslateContext, selectTranslateThreats, type TranslateContract, type TranslateGraphStatus } from '../agents/translate-context.js';
+import { validateProbeIdentities } from '../agents/translate-probe.js';
+import { validateScannerYaml } from '../agents/translate-yaml.js';
+import { translateContract, loadProbeGuide } from '../agents/prompts.js';
+import { translateHeadless, snapshotTemplates, translateAgentTimeoutMs, type TranslateAgent } from '../agents/translate-headless.js';
+import { loadTranslateSources, translateDraftOutput } from '../agents/translate-source.js';
 import { loadWorklist, worklistSummaryLine } from '../codegraph/index.js';
 import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary-check.js';
 import { loadReachCheck, checkReach, reachCheckSummaryLine, reachDrafts, renderDrafts, type ReachCheck } from '../codegraph/reach-check.js';
@@ -326,7 +333,7 @@ program
   .option('--blame', 'Attach git attribution to each exposure, confirmed and mitigation: who introduced, declared and fixed it, and which AI co-authored those commits')
   .action(async (dir: string, opts: { project: string; output?: string; pretty: boolean; blame?: boolean }) => {
     const root = resolve(dir);
-    const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    const { model, diagnostics, config } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
 
     // Print diagnostics to stderr
     printDiagnostics(diagnostics);
@@ -343,9 +350,9 @@ program
     // this command already emitted.
     //
     // `reach_analysis` (SPEC §5.5) is derived here, from the model as exported,
-    // and only when it declares a reach, effect or gate — a model without them
-    // exports exactly what it did before.
-    const stamped = withReachAnalysis(populateMetadata(model, root, diagnostics));
+    // and only when it declares a reach, effect or gate. The additive config
+    // member exposes the resolved security-test directory without LLM secrets.
+    const stamped = { ...withReachAnalysis(populateMetadata(model, root, diagnostics)), config };
 
     // Output model
     const json = JSON.stringify(stamped, null, opts.pretty ? 2 : 0);
@@ -2192,92 +2199,157 @@ program
   .option('--windsurf', 'Open Windsurf IDE with prompt on clipboard')
   .option('--clipboard', 'Copy translation prompt to clipboard only')
   .option('--feature <names>', 'Filter to specific feature(s) (comma-separated)')
+  .option('--context <file.json>', 'Version 1 per-threat authoring context pack')
+  .option('--contract <contract>', 'Template output contract: scanner (default) or probe')
+  .option('--from <path>', 'Convert a scanner template file or directory to draft JS probes (repeatable; requires --contract probe)', (path: string, paths: string[]) => [...paths, path], [] as string[])
+  .option('--headless', 'Run an author CLI to completion without a TTY')
+  .option('--agent <agent>', 'Headless author: claude, codex or gemini')
+  .option('--agent-timeout <ms>', 'Headless author timeout in milliseconds (default 900000)')
+  .option('--out <dir>', 'Template output directory (default .guardlink/cxg-templates/)')
+  .option('--threat <id>', 'Select a threat or exposure id (repeatable)', (id: string, ids: string[]) => [...ids, id], [] as string[])
+  .option('--format <format>', 'Headless result format: json')
+  .option('--no-code-graph', 'Do not supplement translate with optional graph facts')
+  .option('--code-graph-timeout <ms>', 'Graph query timeout in milliseconds (default 300000; also GUARDLINK_CODEGRAPH_TIMEOUT_MS)')
   .action(async (promptParts: string[], opts: {
     dir: string; project: string;
     claudeCode?: boolean; codex?: boolean; gemini?: boolean;
     cursor?: boolean; windsurf?: boolean; clipboard?: boolean;
-    feature?: string;
+    feature?: string; context?: string; contract?: TranslateContract; headless?: boolean;
+    agent?: TranslateAgent; agentTimeout?: string; out?: string; threat?: string[]; format?: string; codeGraph?: boolean; codeGraphTimeout?: string; from?: string[];
   }) => {
-    const root = resolve(opts.dir);
-    const project = detectProjectName(root, opts.project);
-    const userPrompt = promptParts.join(' ').trim();
-
-    let { model, diagnostics } = await parseProject({ root, project });
-
-    // Apply feature filter if specified
-    if (opts.feature) {
-      const featureNames = opts.feature.split(',').map(s => s.trim());
-      model = filterByFeature(model, featureNames);
-      console.error(`Filtered to feature(s): ${featureNames.map(f => `"${f}"`).join(', ')}`);
-    }
-    const errors = diagnostics.filter(d => d.level === 'error');
-    if (errors.length > 0) printDiagnostics(errors);
-
-    if (model.annotations_parsed === 0) {
-      console.error('No annotations found. Run: guardlink init . && add annotations first.');
-      process.exit(1);
-    }
-
-    // Build translate prompt
-    const fullPrompt = buildTranslatePrompt(userPrompt, root, model);
-
-    // Resolve agent: explicit flag > project config > default (Claude Code)
-    let agent = agentFromOpts(opts);
-    if (!agent) {
-      const projCfg = loadProjectConfig(root);
-      if (projCfg?.aiMode === 'cli-agent' && projCfg?.cliAgent) {
-        agent = AGENTS.find(a => a.id === projCfg.cliAgent) || null;
+    try {
+      if (opts.contract && !['scanner', 'probe'].includes(opts.contract)) throw new Error('Invalid --contract: use scanner or probe');
+      if (opts.headless && !['claude', 'codex', 'gemini'].includes(opts.agent || '')) throw new Error('--headless requires --agent claude, codex or gemini');
+      if (opts.format && (opts.format !== 'json' || !opts.headless)) throw new Error('--format json requires --headless');
+      if (opts.agent && !opts.headless) throw new Error('--agent requires --headless; use the interactive agent flags otherwise');
+      if (opts.from?.length && opts.contract !== 'probe') throw new Error('--from requires --contract probe');
+      if (opts.agentTimeout !== undefined && !opts.headless) throw new Error('--agent-timeout requires --headless');
+      const agentTimeoutMs = opts.headless ? translateAgentTimeoutMs(opts.agentTimeout === undefined ? undefined : Number(opts.agentTimeout)) : undefined;
+      const root = resolve(opts.dir);
+      const sources = opts.from?.length ? loadTranslateSources(opts.from, root) : undefined;
+      if (sources) {
+        translateDraftOutput(root, opts.out);
+        if (!opts.headless && sources.failures.length) throw new Error(sources.failures.map(f => `${f.source}: ${f.error}`).join('\n'));
       }
+      const project = detectProjectName(root, opts.project);
+      const userPrompt = promptParts.join(' ').trim();
+
+      let { model, diagnostics } = await parseProject({ root, project });
+
+      // Apply feature filter if specified
+      if (opts.feature) {
+        const featureNames = opts.feature.split(',').map(s => s.trim());
+        model = filterByFeature(model, featureNames);
+        console.error(`Filtered to feature(s): ${featureNames.map(f => `"${f}"`).join(', ')}`);
+      }
+      const errors = diagnostics.filter(d => d.level === 'error');
+      if (errors.length > 0) printDiagnostics(errors);
+
+      if (model.annotations_parsed === 0 && !sources) {
+        if (opts.headless) throw new Error('No annotations found. Add annotations first.');
+        console.error('No annotations found. Run: guardlink init . && add annotations first.');
+        process.exit(1);
+      }
+
+      model = selectTranslateThreats(model, opts.threat);
+      if (opts.contract === 'probe') loadProbeGuide();
+      let contextGraph: TranslateGraphStatus = { status: 'not_requested', reason: 'Explicit context pack supplied' };
+      const context = opts.context ? loadTranslateContext(opts.context, root)
+        : await buildTranslateContext(root, model, { enabled: opts.codeGraph !== false, timeoutMs: opts.codeGraphTimeout === undefined ? undefined : Number(opts.codeGraphTimeout), onStatus: status => { contextGraph = status; } });
+      if (contextGraph.status === 'skipped' || contextGraph.status === 'partial') {
+        console.error(`Translate graph context ${contextGraph.status}: ${contextGraph.reason}`);
+      }
+      if (opts.headless) {
+        const report = await translateHeadless({ root, model, userPrompt, context, sources,
+          contract: opts.contract, out: opts.out || '.guardlink/cxg-templates/',
+          agent: opts.agent!, agentTimeoutMs, selected: !!opts.threat?.length });
+        for (const warning of report.warnings) console.error(`Translate warning [${warning.threat ?? warning.source}]: ${warning.message}`);
+        console.log(JSON.stringify({ ...report, context_graph: contextGraph }));
+        if (report.failures.length) process.exitCode = 1;
+        return;
+      }
+      const fullPrompt = buildTranslatePrompt(userPrompt, root, model, {
+        context, sources: sources?.sources, contract: opts.contract, out: opts.out, threats: opts.threat,
+      });
+
+      // Resolve agent: explicit flag > project config > default (Claude Code)
+      let agent = agentFromOpts(opts);
       if (!agent) {
-        agent = AGENTS.find(a => a.id === 'claude-code') || null;
+        const projCfg = loadProjectConfig(root);
+        if (projCfg?.aiMode === 'cli-agent' && projCfg?.cliAgent) {
+          agent = AGENTS.find(a => a.id === projCfg.cliAgent) || null;
+        }
+        if (!agent) {
+          agent = AGENTS.find(a => a.id === 'claude-code') || null;
+        }
       }
-    }
 
-    if (!agent) {
-      console.error('No agent available. Use one of:');
-      for (const a of AGENTS) {
-        console.error(`  ${a.flag.padEnd(16)} ${a.name}`);
+      if (!agent) {
+        console.error('No agent available. Use one of:');
+        for (const a of AGENTS) {
+          console.error(`  ${a.flag.padEnd(16)} ${a.name}`);
+        }
+        process.exit(1);
       }
-      process.exit(1);
-    }
 
-    console.log(`Launching ${agent.name} for CXG template translation...`);
-    console.log(`Threat model: ${model.annotations_parsed} annotations, ${model.exposures.length} exposures`);
-    if (agent.cmd) {
-      console.log(`${agent.name} will take over this terminal. Exit the agent to return.\n`);
-    }
+      console.log(`Launching ${agent.name} for CXG template translation...`);
+      console.log(`Threat model: ${model.annotations_parsed} annotations, ${model.exposures.length} exposures`);
+      if (agent.cmd) {
+        console.log(`${agent.name} will take over this terminal. Exit the agent to return.\n`);
+      }
 
-    const result = launchAgent(agent, fullPrompt, root);
+      const outputDir = resolve(root, opts.out || '.guardlink/cxg-templates/');
+      const writtenContract = translateContract(model, { context, contract: opts.contract });
+      const validateWritten = !!agent.cmd;
+      const before = validateWritten ? snapshotTemplates(outputDir) : new Map<string, string>();
+      const result = launchAgent(agent, fullPrompt, root);
+      if (validateWritten && result.launched) {
+        for (const [file, hash] of snapshotTemplates(outputDir)) {
+          if (before.get(file) === hash) continue;
+          const errors = writtenContract === 'scanner' && /\.ya?ml$/i.test(file) ? validateScannerYaml(file)
+            : writtenContract === 'probe' && /\.(js|mjs)$/i.test(file) ? validateProbeIdentities(file, model, context) : [];
+          for (const error of errors) {
+            console.error(`Invalid ${writtenContract} template ${file}: ${error}`);
+            process.exitCode = 1;
+          }
+        }
+      }
 
-    if (result.clipboardCopied) {
-      console.log(`✓ Prompt copied to clipboard (${fullPrompt.length.toLocaleString()} chars)`);
-    }
-
-    if (result.error) {
-      console.error(`✗ ${result.error}`);
       if (result.clipboardCopied) {
-        console.log('Prompt is on your clipboard — paste it manually.');
+        console.log(`✓ Prompt copied to clipboard (${fullPrompt.length.toLocaleString()} chars)`);
       }
-      process.exit(1);
-    }
 
-    if (agent.cmd && result.launched) {
-      // D31 — a non-zero exit is a failed run, not a finished one.
-      if (result.exitCode != null && result.exitCode !== 0) {
-        console.error(`\n✗ ${agent.name} exited with code ${result.exitCode}.`);
-        process.exitCode = 1;
-      } else {
-        console.log(`\n✓ ${agent.name} session ended.`);
+      if (result.error) {
+        console.error(`✗ ${result.error}`);
+        if (result.clipboardCopied) {
+          console.log('Prompt is on your clipboard — paste it manually.');
+        }
+        process.exit(1);
       }
-      console.log('  Expected output location: .guardlink/cxg-templates/');
-      console.log('  Note: Templates are generated only, not executed.');
-    } else if (agent.app && result.launched) {
-      console.log(`✓ ${agent.name} launched with project: ${project}`);
-      console.log('\nPaste (Cmd+V) the prompt in the AI chat panel.');
-      console.log('When done, review .guardlink/cxg-templates/');
-    } else if (agent.id === 'clipboard') {
-      console.log('\nPaste the prompt into your preferred AI tool.');
-      console.log('When done, review .guardlink/cxg-templates/');
+
+      if (agent.cmd && result.launched) {
+        // D31 — a non-zero exit is a failed run, not a finished one.
+        if (result.exitCode != null && result.exitCode !== 0) {
+          console.error(`\n✗ ${agent.name} exited with code ${result.exitCode}.`);
+          process.exitCode = 1;
+        } else {
+          console.log(`\n✓ ${agent.name} session ended.`);
+        }
+        console.log(`  Expected output location: ${opts.out || '.guardlink/cxg-templates/'}`);
+        console.log('  Note: Templates are generated only, not executed.');
+      } else if (agent.app && result.launched) {
+        console.log(`✓ ${agent.name} launched with project: ${project}`);
+        console.log('\nPaste (Cmd+V) the prompt in the AI chat panel.');
+        console.log(`When done, review ${opts.out || '.guardlink/cxg-templates/'}`);
+      } else if (agent.id === 'clipboard') {
+        console.log('\nPaste the prompt into your preferred AI tool.');
+        console.log(`When done, review ${opts.out || '.guardlink/cxg-templates/'}`);
+      }
+    } catch (error) {
+      const message = (error as Error).message;
+      if (opts.headless) console.log(JSON.stringify({ version: 1, results: [], failures: [{ threat: '*', error: message, exit_code: null }], warnings: [] }));
+      else console.error(message);
+      process.exitCode = 1;
     }
   });
 
@@ -4032,9 +4104,16 @@ program
 
 // If no subcommand given, launch TUI
 if (process.argv.length <= 2) {
-  import('../tui/index.js').then(({ startTui }) => startTui('.'));
+  import('../tui/index.js').then(({ startTui }) => startTui('.')).catch(handleCliError);
 } else {
-  program.parse();
+  program.parseAsync().catch(handleCliError);
+}
+
+/** Keep expected configuration refusals concise while surfacing unexpected bugs. */
+function handleCliError(error: unknown): void {
+  if (!(error instanceof SecurityTestsConfigError)) throw error;
+  console.error(`error: ${error.message}`);
+  process.exitCode = 1;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────

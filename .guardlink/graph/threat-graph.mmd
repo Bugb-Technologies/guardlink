@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87
+%% annotation_hash: sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 49 nodes / 209 edges, past the 12 / 16 legibility budget (49 nodes against 12, 209 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 49 nodes / 220 edges, past the 12 / 16 legibility budget (49 nodes against 12, 220 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -69,24 +69,24 @@ graph LR
   arbitrary_write["🟠 Arbitrary_File_Write (cwe:CWE-73, cwe:CWE-74)"]:::threat
   child_proc_injection["🔴 Child_Process_Injection (cwe:CWE-78)"]:::threat
   config_tamper["🟡 Config_Tampering (cwe:CWE-15)"]:::threat
+  vacuous_pass["🟠 Vacuous_Pass (cwe:CWE-754)"]:::threat
   ssrf["🟡 Server_Side_Request_Forgery (cwe:CWE-918)"]:::threat
   redos["🟡 ReDoS (cwe:CWE-1333)"]:::threat
   xss["🟠 Cross_Site_Scripting (cwe:CWE-79)"]:::threat
   info_disclosure["🔵 Information_Disclosure (cwe:CWE-200)"]:::threat
-  vacuous_pass["🟠 Vacuous_Pass (cwe:CWE-754)"]:::threat
   tag_collision["🟡 Tag_Collision"]:::threat
   path_validation["🛡️ Path_Validation"]:::control
   resource_limits["🛡️ Resource_Limits"]:::control
   param_commands["🛡️ Parameterized_Commands"]:::control
   key_redaction["🛡️ Key_Redaction"]:::control
   config_validation["🛡️ Config_Validation"]:::control
+  fail_closed["🛡️ Fail_Closed"]:::control
   input_sanitize["🛡️ Input_Sanitization"]:::control
   glob_filtering["🛡️ Glob_Pattern_Filtering"]:::control
   regex_anchoring["🛡️ Regex_Anchoring"]:::control
   identity_redaction["🛡️ Identity_Redaction"]:::control
   output_encoding["🛡️ Output_Encoding"]:::control
   prefix_ownership["🛡️ Prefix_Ownership"]:::control
-  fail_closed["🛡️ Fail_Closed"]:::control
   yaml_validation["🛡️ YAML_Validation"]:::control
   agent_config -. exposes .-> path_traversal
   agent_config -. exposes .-> dos
@@ -101,6 +101,8 @@ graph LR
   agent_launcher -. exposes .-> prompt_injection
   agent_launcher -. exposes .-> dos
   agent_launcher -. exposes .-> config_tamper
+  agent_launcher -. exposes .-> vacuous_pass
+  agent_launcher -. exposes .-> insecure_deser
   llm_client -. exposes .-> insecure_deser
   llm_client -. exposes .-> path_traversal
   llm_client -. exposes .-> arbitrary_write
@@ -161,6 +163,7 @@ graph LR
   parser -. exposes .-> arbitrary_write
   parser -. exposes .-> redos
   parser -. exposes .-> data_exposure
+  parser -. exposes .-> prompt_injection
   cli -. exposes .-> redos
   tui -. exposes .-> path_traversal
   tui -. exposes .-> arbitrary_write
@@ -189,6 +192,11 @@ graph LR
   param_commands -- mitigates --> child_proc_injection
   param_commands -. protects .-> agent_launcher
   resource_limits -. protects .-> agent_launcher
+  fail_closed -- mitigates --> vacuous_pass
+  fail_closed -. protects .-> agent_launcher
+  config_validation -. protects .-> agent_launcher
+  input_sanitize -- mitigates --> path_traversal
+  input_sanitize -. protects .-> agent_launcher
   config_validation -. protects .-> llm_client
   path_validation -. protects .-> llm_client
   config_validation -- mitigates --> ssrf
@@ -262,7 +270,6 @@ graph LR
   path_validation -. protects .-> tui
   key_redaction -. protects .-> tui
   resource_limits -. protects .-> tui
-  fail_closed -- mitigates --> vacuous_pass
   fail_closed -. protects .-> estate_view
   config_validation -. protects .-> estate_view
   prefix_ownership -. protects .-> merge_engine
@@ -270,6 +277,7 @@ graph LR
   key_redaction -. protects .-> report_metadata
   yaml_validation -- mitigates --> config_tamper
   yaml_validation -. protects .-> workspace_config
+  input_sanitize -. validates .-> agent_launcher
   resource_limits -. validates .-> codegraph
   param_commands -. validates .-> codegraph
   config_validation -. validates .-> cli
@@ -281,6 +289,7 @@ graph LR
   parser -- "📡 annotation worklist" --> agent_launcher
   codegraph -- "📡 worklist" --> agent_launcher
   codegraph -- "📡 undeclared agent tools" --> agent_launcher
+  codegraph -- "📡 buildTranslateContext" --> agent_launcher
   blame -- "📡 formatBlameText" --> cli
   blame -- "🗄️ buildBlamePayload" --> cli
   blame -- "📡 summarise" --> dashboard
@@ -288,10 +297,12 @@ graph LR
   cli -- "📡 loadReachCheck" --> codegraph
   cli -- "📡 runGate" --> gate
   codegraph -- "📡 checkBoundaries" --> cli
+  codegraph -- "📡 loadRouteFacts" --> agent_launcher
   codegraph -- "📡 loadReachCheck" --> cli
   mcp -- "📡 generateThreatReport" --> llm_client
   mcp -- "📡 guardlink_worklist" --> codegraph
   mcp -- "📡 guardlink_reach" --> codegraph
+  mcp -- "📡 guardlink_translate" --> agent_launcher
   agent_config -- "📡 mergeAgentConfig" --> parser
   tui -- "📡 launchAgent" --> agent_launcher
   tui -- "📡 chatCompletion" --> llm_client

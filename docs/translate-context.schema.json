@@ -1,0 +1,197 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://guardlink.bugb.io/schemas/translate-context-v1.json",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "threats": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "route": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "maxLength": 16000
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 16000
+              },
+              "handler": {
+                "type": "string",
+                "maxLength": 16000
+              }
+            },
+            "required": [],
+            "additionalProperties": true
+          },
+          "parameters": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 16000
+                },
+                "in": {
+                  "type": "string",
+                  "maxLength": 16000
+                },
+                "type": {
+                  "type": "string",
+                  "maxLength": 16000
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 16000
+                },
+                "example": {
+                  "type": "string",
+                  "maxLength": 16000
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "payload_hints": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 16000
+            },
+            "maxItems": 1000
+          },
+          "success_condition": {
+            "type": "string",
+            "maxLength": 16000
+          },
+          "identity": {
+            "type": "object",
+            "properties": {
+              "requirements": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 16000
+                },
+                "maxItems": 1000
+              },
+              "available": {
+                "type": "array",
+                "maxItems": 1000,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "maxLength": 16000
+                    },
+                    "role": {
+                      "type": "string",
+                      "maxLength": 16000
+                    },
+                    "description": {
+                      "type": "string",
+                      "maxLength": 16000
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "required": [],
+            "additionalProperties": true
+          },
+          "codegraph_path": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 16000
+            },
+            "maxItems": 1000
+          },
+          "graph_facts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 16000
+            },
+            "maxItems": 1000
+          },
+          "sink": {
+            "type": "string",
+            "maxLength": 16000
+          },
+          "prior_attempts": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "type": "object",
+              "properties": {
+                "outcome": {
+                  "enum": [
+                    "confirmed",
+                    "refuted",
+                    "ambiguous",
+                    "unevaluated",
+                    "failed"
+                  ]
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 16000
+                },
+                "evidence": {
+                  "type": "string",
+                  "maxLength": 16000
+                }
+              },
+              "required": [
+                "outcome"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "target_kind": {
+            "type": "string",
+            "maxLength": 16000
+          },
+          "output_contract": {
+            "enum": [
+              "scanner",
+              "probe"
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": true
+      }
+    }
+  },
+  "required": [
+    "version",
+    "threats"
+  ],
+  "additionalProperties": true
+}

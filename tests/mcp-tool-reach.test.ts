@@ -33,7 +33,7 @@ const GOLDEN = './fixtures/mcp-tool-reach/reach.json';
 
 let model: ThreatModel;
 let toolNames: string[];
-let close: () => Promise<void>;
+let close: () => Promise<void> = async () => {};
 
 beforeAll(async () => {
   ({ model } = await parseProject({ root: ROOT, project: 'guardlink' }));
@@ -43,7 +43,7 @@ beforeAll(async () => {
   await Promise.all([server.connect(st), client.connect(ct)]);
   toolNames = (await client.listTools()).tools.map(t => t.name);
   close = () => client.close();
-});
+}, 60_000);
 
 afterAll(async () => { await close(); });
 
@@ -54,7 +54,7 @@ describe('MCP tools as agent reach', () => {
     const declared = serverReaches().map(r => r.capability);
     expect([...declared].sort()).toEqual([...toolNames].sort());
     expect(new Set(declared).size).toBe(declared.length);
-    expect(toolNames.length).toBe(28);
+    expect(toolNames.length).toBe(29);
   });
 
   it('each row is an agent reach by #mcp-agent, written by hand', () => {

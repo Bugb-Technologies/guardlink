@@ -68,7 +68,7 @@ describe('GL-403 — weakness 1: leads with capability, not obligation', () => {
   });
 
   it('offers the CLI path for an agent with no MCP', () => {
-    expect(text).toMatch(/Without MCP, `guardlink status \.`\s+and `guardlink parse \.` answer the same/);
+    expect(text).toMatch(/Without MCP, `guardlink status \.`\s+and `guardlink parse \.` provide repo-wide summaries and records/);
   });
 });
 
@@ -90,9 +90,9 @@ describe('the block is a pointer, not a copy of the model', () => {
   const text = agentInstructions(project, 'inline', { model: populatedModel });
 
   it('stays short: about 30 lines', () => {
-    // 25 before the pre-PR step (SPEC §8.1); each `pre_pr` entry adds one more,
+    // Includes the translate pointer and built-in security suite duty; each `pre_pr` entry adds one more,
     // and init/pre-pr.ts renders at most five.
-    expect(text.trimEnd().split('\n').length).toBeLessThanOrEqual(31);
+    expect(text.trimEnd().split('\n').length).toBeLessThanOrEqual(32);
   });
 
   it('points at the reference document and the README for everything it leaves out', () => {
@@ -235,6 +235,12 @@ describe('GL-403 — end to end through sync', () => {
       agent_config_hash: model.agent_config!.agent_config_hash,
     });
     expect(text.indexOf('<!-- guardlink:stamp')).toBe(text.indexOf('<!-- guardlink:begin -->') + '<!-- guardlink:begin -->\n'.length);
+    expect(text).toContain('everyday, per-change developer check');
+    expect(text).toContain('guardlink translate "<changed paths and threats>"');
+    expect(text).toContain('annotate → translate → test → fix');
+    expect(text).toContain('Keep existing annotations accurate as the code changes, including after each test/fix round');
+    expect(text).toContain('generates templates only');
+    expect(text).toContain('run selected tests separately');
   });
 
   it('carries NO volatile fields', async () => {

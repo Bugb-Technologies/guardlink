@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87
+%% annotation_hash: sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 78 nodes / 213 edges, past the 12 / 16 legibility budget (78 nodes against 12, 213 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 80 nodes / 228 edges, past the 12 / 16 legibility budget (80 nodes against 12, 228 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -80,6 +80,8 @@ graph LR
   userprompt["👤 UserPrompt"]
   threatmodel["🧩 ThreatModel"]
   agentprompt["🧩 AgentPrompt"]
+  contextpack["🧩 ContextPack"]
+  scannertemplate["🧩 ScannerTemplate"]
   savedreport["🧩 SavedReport"]
   reportfile["🧩 ReportFile"]
   pentestfindings["🧩 PentestFindings"]
@@ -161,6 +163,17 @@ graph LR
   parser -- "📡 annotation worklist" --> agent_launcher
   codegraph -- "📡 worklist" --> agent_launcher
   codegraph -- "📡 undeclared agent tools" --> agent_launcher
+  contextpack -- "📡 buildTranslatePrompt" --> agent_launcher
+  agentprocess -- "📡 readAgentCompletion" --> agent_launcher
+  contextpack -- "📡 loadTranslateContext" --> agent_launcher
+  codegraph -- "📡 buildTranslateContext" --> agent_launcher
+  agentprocess -- "📡 readConversionPlan" --> agent_launcher
+  agent_launcher -- "📡 runTranslateAgent" --> agentprocess
+  agentprocess -- "📡 templates" --> agent_launcher
+  agentprocess -- "📡 validateProbeIdentities" --> agent_launcher
+  scannertemplate -- "📡 loadTranslateSources" --> agent_launcher
+  agentprocess -- "📡 convertedThreatRefError" --> agent_launcher
+  agentprocess -- "📡 validateScannerYaml" --> agent_launcher
   savedreport -- "📡 parseFindingsBlock" --> llm_client
   threatmodel -- "📡 serializeModel" --> llm_client
   projectfiles -- "🗄️ readFileSync" --> llm_client
@@ -213,6 +226,7 @@ graph LR
   codegraphserver -- "📡 stdout" --> codegraph
   codegraphserver -- "📡 codegraph_auth_boundary" --> codegraph
   codegraph -- "📡 spawn" --> codegraphserver
+  codegraph -- "📡 loadRouteFacts" --> agent_launcher
   codegraph -- "📡 loadReachCheck" --> cli
   sourcefiles -- "🗄️ readFileSync" --> dashboard
   threatmodel -- "📡 computeTickets" --> dashboard
@@ -272,6 +286,8 @@ graph LR
   mcp -- "📡 resource" --> mcpclient
   mcp -- "📡 guardlink_worklist" --> codegraph
   mcp -- "📡 guardlink_reach" --> codegraph
+  configfile -- "📡 readConfiguredMode" --> mcp
+  mcp -- "📡 guardlink_translate" --> agent_launcher
   gitrepo -- "📡 computeBlame" --> mcp
   threatmodel -- "📡 selectSubgraph" --> mcp
   filepath -- "🗄️ readFileSync" --> suggest
@@ -304,6 +320,7 @@ graph LR
   threatmodel -- "📡 findAnchorDrift" --> parser
   threatmodel -- "📡 buildRouteIndex" --> parser
   projectfiles -- "📡 realpathSync" --> parser
+  configfile -- "📡 readSecurityTestsDir" --> parser
   threatmodel -- "📡 classifyClaims" --> parser
   ledgerfile -- "📡 classifyClaims" --> parser
   cli -- "📡 applyVerification" --> ledgerfile

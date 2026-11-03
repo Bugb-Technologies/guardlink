@@ -16,6 +16,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from '../src/mcp/server.js';
 import { buildServerInstructions, readConfiguredMode } from '../src/mcp/instructions.js';
+import { agentInstructions, guardlinkReadmeContent, referenceDocContent } from '../src/init/templates.js';
+import { detectProject } from '../src/init/detect.js';
+import { translateSkillFile } from '../src/playbooks/index.js';
 import { SUPPORTED_QUERY_FORMS } from '../src/mcp/lookup.js';
 
 async function connect() {
@@ -43,7 +46,7 @@ describe('GL-401 — instructions arrive at initialize', () => {
     expect(instructions.length).toBeGreaterThan(500);
   });
 
-  it('stays under 460 words — in EVERY mode', () => {
+  it('stays under 500 words — in EVERY mode', () => {
     // Orientation delivered before the agent has context to rank detail against.
     // Length costs attention exactly when it is scarcest.
     //
@@ -91,7 +94,14 @@ describe('GL-401 — instructions arrive at initialize', () => {
   it('every tool it names actually exists', () => {
     // The guard that replaces runtime generation. A renamed or removed tool
     // fails here instead of misdirecting agents indefinitely.
-    const named = [...new Set(instructions.match(/guardlink_[a-z_]+/g) ?? [])];
+    const project = detectProject(process.cwd());
+    const surfaces = [instructions, referenceDocContent(project), translateSkillFile().content];
+    for (const mode of ['inline', 'external', 'mixed', null] as const) {
+      surfaces.push(buildServerInstructions({ mode, definitionsPath: '.guardlink/definitions.ts' }));
+      surfaces.push(agentInstructions(project, mode));
+      surfaces.push(guardlinkReadmeContent(project, { mode, modeSource: 'config', model: null, annotationHash: null, mcpAtRoot: true, referencePath: 'docs/GUARDLINK_REFERENCE.md' }));
+    }
+    const named = [...new Set(surfaces.join('\n').match(/guardlink_[a-z_]+/g) ?? [])];
     expect(named.length).toBeGreaterThan(3);
     const missing = named.filter(n => !toolNames.includes(n));
     expect(missing, `named but not registered: ${missing.join(', ')}`).toEqual([]);
@@ -113,6 +123,20 @@ describe('GL-401 — instructions arrive at initialize', () => {
     for (const tool of ['guardlink_context', 'guardlink_graph', 'guardlink_diff']) {
       expect(instructions, tool).toContain(tool);
     }
+  });
+
+  it('routes everyday testing from initialize and export to generation with a separate execution step', async () => {
+    expect(instructions).toContain('annotate → translate → test → fix');
+    expect(instructions).toContain('keep existing annotations accurate after each test/fix round');
+    expect(instructions).toContain('guardlink_translate returns an authoring prompt');
+    expect(instructions).toContain('execute selected tests separately');
+    expect(instructions).toContain('without Bravos');
+    expect(instructions).toContain('not a full pentest');
+    expect(instructions).toContain('runs that can take hours');
+    const sarif = (await session.client.listTools()).tools.find(t => t.name === 'guardlink_sarif');
+    expect(sarif?.description).toContain('guardlink_translate');
+    expect(sarif?.description).toContain('guardlink translate "<changed paths and threats>"');
+    expect(sarif?.description).toContain('run selected tests separately');
   });
 
   it('teaches the two distinctions that make answers safe to act on', () => {

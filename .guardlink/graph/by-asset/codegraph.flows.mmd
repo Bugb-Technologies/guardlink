@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/codegraph.flows.mmd
-%% scope:           PARTIAL — #codegraph and its flow neighbourhood, grown until the drawing stopped fitting — 42 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87
+%% scope:           PARTIAL — #codegraph and its flow neighbourhood, grown until the drawing stopped fitting — 37 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -19,23 +19,21 @@ graph LR
   end
   parser["🧩 GuardLink.Parser"]
   agent_launcher["🧩 GuardLink.Agent_Launcher"]
-  blame["🧩 GuardLink.Blame"]
   cli["🧩 GuardLink.CLI"]
   mcp["🧩 GuardLink.MCP"]
-  llm_client["👤 GuardLink.LLM_Client"]
   codegraph -.-|🧱 Process boundary: an external binary's JSON is parsed defensively and never executed| codegraphserver
   parser -- "📡 annotation worklist" --> agent_launcher
   codegraph -- "📡 worklist" --> agent_launcher
   codegraph -- "📡 undeclared agent tools" --> agent_launcher
-  blame -- "📡 formatBlameText" --> cli
-  blame -- "🗄️ buildBlamePayload" --> cli
+  codegraph -- "📡 buildTranslateContext" --> agent_launcher
   cli -- "📡 loadWorklist" --> codegraph
   cli -- "📡 loadReachCheck" --> codegraph
   codegraph -- "📡 checkBoundaries" --> cli
   codegraphserver -- "📡 stdout" --> codegraph
   codegraphserver -- "📡 codegraph_auth_boundary" --> codegraph
   codegraph -- "📡 spawn" --> codegraphserver
+  codegraph -- "📡 loadRouteFacts" --> agent_launcher
   codegraph -- "📡 loadReachCheck" --> cli
-  mcp -- "📡 generateThreatReport" --> llm_client
   mcp -- "📡 guardlink_worklist" --> codegraph
   mcp -- "📡 guardlink_reach" --> codegraph
+  mcp -- "📡 guardlink_translate" --> agent_launcher

@@ -21,8 +21,10 @@ export interface Repo {
 
 export async function makeRepo(prefix = 'guardlink-blame'): Promise<Repo> {
   const root = await mkdtemp(join(tmpdir(), `${prefix}-`));
+  // Fixtures must retain their exact commit bodies even when the caller configures hooks.
+  // Command-local configuration affects this disposable repository only.
   const git = (...args: string[]): string =>
-    execFileSync('git', args, { cwd: root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    execFileSync('git', ['-c', 'core.hooksPath=', ...args], { cwd: root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   git('init', '-q', '.');
   git('config', 'user.name', 'Test Human');
   git('config', 'user.email', 'human@example.com');
@@ -45,7 +47,7 @@ export async function makeRepo(prefix = 'guardlink-blame'): Promise<Repo> {
       const args = ['commit', '-q', '--allow-empty', '-m', body];
       if (opts.author) args.push('--author', opts.author);
       execFileSync('git', ['add', '-A'], { cwd: root, stdio: 'pipe' });
-      execFileSync('git', args, { cwd: root, stdio: 'pipe', env });
+      execFileSync('git', ['-c', 'core.hooksPath=', ...args], { cwd: root, stdio: 'pipe', env });
       return git('rev-parse', 'HEAD');
     },
   };

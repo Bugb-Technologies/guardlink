@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-boundary/mcp-tool-boundary.mmd
 %% scope:           PARTIAL — the Trust boundary at tool argument parsing between mcp and mcpclient, and what flows across it
-%% annotation_hash: sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87
+%% annotation_hash: sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -17,29 +17,22 @@ graph LR
   subgraph Z1["🧱 MCPClient · Trust boundary at MCP protocol"]
     mcpclient["👤 MCPClient"]
   end
-  subgraph Z2["🧱 GuardLink.Parser · Trust boundary between parser and disk I/O"]
-    parser["🧩 GuardLink.Parser"]
-  end
-  subgraph Z3["🧱 FileSystem · Trust boundary between parser and disk I/O"]
-    filesystem["🧩 FileSystem"]
-  end
-  gitrepo["🧩 GitRepo"]
-  configfile["🧩 ConfigFile"]
-  llm_client["👤 GuardLink.LLM_Client"]
+  parser["🧩 GuardLink.Parser"]
+  agent_launcher["🧩 GuardLink.Agent_Launcher"]
   codegraph["🧩 GuardLink.CodeGraph"]
+  llm_client["👤 GuardLink.LLM_Client"]
   mcp -.-|🧱 Trust boundary at MCP protocol| mcpclient
-  parser -.-|🧱 Trust boundary between parser and disk I/O| filesystem
+  parser -- "📡 annotation worklist" --> agent_launcher
+  codegraph -- "📡 worklist" --> agent_launcher
+  codegraph -- "📡 undeclared agent tools" --> agent_launcher
+  codegraph -- "📡 buildTranslateContext" --> agent_launcher
+  codegraph -- "📡 loadRouteFacts" --> agent_launcher
   mcpclient -- "📡 guardlink_context" --> mcp
-  gitrepo -- "🗄️ readFileSync" --> mcp
   mcpclient -- "📡 stdio" --> mcp
-  configfile -- "🗄️ readFileSync" --> mcp
   mcpclient -- "📡 tool_call" --> mcp
-  mcp -- "🗄️ writeFile" --> filesystem
   mcp -- "📡 generateThreatReport" --> llm_client
   mcp -- "📡 resource" --> mcpclient
   mcp -- "📡 guardlink_worklist" --> codegraph
   mcp -- "📡 guardlink_reach" --> codegraph
-  gitrepo -- "📡 computeBlame" --> mcp
-  configfile -- "📡 readAcceptancePolicy" --> parser
+  mcp -- "📡 guardlink_translate" --> agent_launcher
   mcpclient -- "📡 applyAnnotations" --> parser
-  parser -- "🗄️ writeFileSync" --> filesystem

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "mermaid": "11.17.2",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "filtered": {
+    "nodes": 35,
+    "links": 110,
+    "clusters": 9,
+    "sha256": "eaadcb7e5e1b82ce5ed583fd7d55a3f10332321814a18bf6a1f0fa6d63db89f4"
+  },
+  "whole": {
+    "nodes": 49,
+    "links": 216,
+    "clusters": 9,
+    "sha256": "eef2fa9a608e56cba562e725be1755b74aa83d77e6e7d78cf15f595eb023857d"
+  }
+}

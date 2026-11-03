@@ -9,6 +9,7 @@
  *   guardlink_lookup   — Query the threat model graph
  *   guardlink_threat_report — AI threat report generation (STRIDE, DREAD, etc.)
  *   guardlink_annotate — Build annotation prompt for the calling agent
+ *   guardlink_translate — Return a generation-only template prompt for the calling agent
  *   guardlink_report   — Generate markdown report + JSON
  *   guardlink_dashboard — Generate HTML threat model dashboard
  *   guardlink_sarif    — Export SARIF 2.1.0
@@ -57,6 +58,7 @@
  * @entitles #mcp-agent to read-threat-model on #mcp against #data-exposure -- "By design: guardlink mcp exists to hand a connected coding agent the threat model — that disclosure is the product, not a leak. No privilege gain either: the agent already reads the annotated source these records are parsed from, so the assembled model tells it nothing it could not derive itself. Authorization is the channel: the server is stdio-only with no network listener, so the only client is the process the operator launched, at src/mcp/index.ts:23"
  * @comment -- "Entitlement accepted by zippon on 2026-08-10 via guardlink entitle (proposal ent-mcp_agent.mcp.data_exposure)."
  */
+import { readSecurityTestsDir } from '../parser/security-tests.js';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { resolve } from 'node:path';
@@ -89,7 +91,11 @@ import { loadWorklist, reachFor, worklistSummaryLine, type Worklist } from '../c
 import { checkBoundaries, boundaryCheckSummaryLine } from '../codegraph/boundary-check.js';
 import { loadReachCheck, checkReach, reachCheckSummaryLine, type ReachCheck } from '../codegraph/reach-check.js';
 import { generateThreatReport, listThreatReports, loadThreatReportsForDashboard, buildConfig, serializeModelCompact, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage, type AnalysisFramework } from '../analyze/index.js';
-import { buildAnnotatePrompt } from '../agents/prompts.js';
+import { buildTranslateContext, loadTranslateContext, selectTranslateThreats, type TranslateGraphStatus } from '../agents/translate-context.js';
+import { loadTranslateSources, translateDraftOutput } from '../agents/translate-source.js';
+import { filterByFeature } from '../parser/feature-filter.js';
+import { buildAnnotatePrompt, buildTranslatePrompt } from '../agents/prompts.js';
+import { detectAnnotationMode } from '../parser/annotation-mode.js';
 import { syncAgentFiles } from '../init/index.js';
 import { findPrePrDrift } from '../init/pre-pr.js';
 import { loadWorkspaceConfig, readVersionControl } from '../workspace/index.js';
@@ -205,12 +211,12 @@ function registerTool(
   name: string,
   description: string,
   schema: z.ZodRawShape,
-  handler: (args: any) => Promise<{ content: TextBlock[] }>,
+  handler: (args: any) => Promise<{ content: TextBlock[]; isError?: boolean }>,
 ): void {
   server.tool(name, description, schema, (async (args: any) => {
     const result = await handler(args);
     const root = typeof args?.root === 'string' && args.root ? args.root : cache.resourceRoot().root;
-    return { content: [...result.content, envelopeBlock(await cache.envelopeFor(root))] };
+    return { ...result, content: [...result.content, envelopeBlock(await cache.envelopeFor(root))] };
   }) as any);
 }
 
@@ -253,6 +259,7 @@ export function createServer(): McpServer {
       instructions: buildServerInstructions({
         mode: readConfiguredMode(cwd),
         definitionsPath: '.guardlink/definitions.*',
+        securityTestsDir: readSecurityTestsDir(cwd),
       }),
     },
   );
@@ -277,10 +284,10 @@ export function createServer(): McpServer {
       invalidateCache();
       const { model: parsed } = await getModel(root);
       // The derived reach_analysis block (SPEC §5.5), as `guardlink parse` writes it.
-      const model = withReachAnalysis(parsed);
+      const model = { ...withReachAnalysis(parsed), config: { security_tests_dir: readSecurityTestsDir(root) } };
 
       if (compact) {
-        return { content: [{ type: 'text', text: serializeModelCompact(model) }] };
+        return { content: [{ type: 'text', text: JSON.stringify({ ...JSON.parse(serializeModelCompact(model)), config: model.config }) }] };
       }
 
       // The one non-additive change in this epic: the default payload drops a
@@ -562,7 +569,7 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_context',
-    'Everything GuardLink knows about one file: the annotations declared there, the assets they name with each asset\'s depth-1 neighbourhood, open exposures and @confirmed findings, controls the file upholds, and its @assumes/@handles/@owns. Call this when you open or are about to edit a file. Accepts the source path or, in external mode, the .gal path that annotates it. An empty result is explicit about WHY: `scanned_without_annotations` means the file is genuinely clean, `not_scanned` means the parser never read it, `not_found` means nothing is there — do not read them as the same answer. Reports origin_file for annotations that already exist, not a destination for a new one. In external mode a new sidecar goes at `.guardlink/annotations/<source path>.gal` — the source path mirrored, with .gal appended.',
+    'Everything GuardLink knows about one file: the annotations declared there, the assets they name with each asset\'s depth-1 neighbourhood, open exposures and @confirmed findings, controls the file upholds, and its @assumes/@handles/@owns. Call this when you open or are about to edit a file. Accepts the source path or, in external mode, the .gal path that annotates it. An empty result is explicit about WHY: `scanned_without_annotations` means parsed with no annotations recorded, not a security conclusion, `not_scanned` means the parser never read it, `not_found` means nothing is there — do not read them as the same answer. Reports origin_file for annotations that already exist, not a destination for a new one. In external mode a new sidecar goes at `.guardlink/annotations/<source path>.gal` — the source path mirrored, with .gal appended.',
     {
       root: z.string().describe('Project root directory').default('.'),
       file: z.string().describe('File to describe. Absolute, relative or ./-prefixed; resolved against root. In external mode the .gal path resolves to the source file it annotates.'),
@@ -654,7 +661,7 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_annotate_apply',
-    'Write a validated @source block into the annotation sidecar for a file. Unlike guardlink_annotate — which returns a prompt for you to act on — this writes the annotations itself, into .guardlink/annotations/, never into source. Rejected with the reason, before anything touches disk: a line the parser cannot read, a #reference that is not declared in .guardlink/definitions.*, a source file that does not exist, and @accepts or @entitles, which are human governance decisions — for an entitlement use guardlink_entitlement_propose, which files it for human acceptance instead of writing it. Idempotent: re-applying the same block is a no-op, not a duplicate. Definitions come first — if you need a new asset, threat or control, declare it before you reference it, or pass allow_undeclared_refs to write ahead of the definition and get a warning instead.',
+    'Write a validated @source block into the annotation sidecar for a file. Unlike guardlink_annotate — which returns a prompt for you to act on — this writes the annotations itself, into .guardlink/annotations/, never into source. Use only for external projects; inline projects must edit source comments directly, and mixed placement needs resolution first. Rejected with the reason, before anything touches disk: a line the parser cannot read, a #reference that is not declared in .guardlink/definitions.*, a source file that does not exist, and @accepts or @entitles, which are human governance decisions — for an entitlement use guardlink_entitlement_propose, which files it for human acceptance instead of writing it. Idempotent: re-applying the same block is a no-op, not a duplicate. Definitions come first — if you need a new asset, threat or control, declare it before you reference it, or pass allow_undeclared_refs to write ahead of the definition and get a warning instead.',
     {
       root: z.string().describe('Project root directory').default('.'),
       file: z.string().describe('Source file the annotations describe. Must exist — the sidecar is named after it, and one for a missing file puts annotations into the model that describe nothing. The sidecar path is derived from it; you do not choose where it is written.'),
@@ -809,18 +816,19 @@ export function createServer(): McpServer {
 
   // ── Tool: guardlink_annotate ──
   /**
-   * @agents #mcp-agent to guardlink_annotate on #mcp -- "Builds the annotation prompt for the calling agent; writes nothing itself"
+   * @agents #mcp-agent to guardlink_annotate on #mcp -- "Builds the annotation prompt preserving project placement; refuses conflicts and writes nothing itself"
+   * @flows ConfigFile -> #mcp via readConfiguredMode -- "Project annotation placement governs the calling-agent prompt"
    * @effects execute on #codegraph -- "code_graph defaults to true, so loadWorklist spawns the graph binary through runChild when one is installed"
    * @audit #codegraph -- "No confirmation step before the graph binary runs; code_graph: false is the only way to skip it"
    */
   registerTool(
     server, cache,
     'guardlink_annotate',
-    'Build an annotation prompt with project context, GuardLink reference docs, and GAL syntax guidelines. The calling agent should use this prompt to read source files and add security annotations directly. Returns the prompt text — the agent should then read files, decide annotation placement, and write comments.',
+    'Build an annotation prompt with project context, GuardLink reference docs, and GAL syntax guidelines. The calling agent should use this prompt to read source files and add security annotations directly. Returns the prompt text — preserve the project annotation mode: inline uses source comments, external uses sidecars. Writes no annotations itself.',
     {
       root: z.string().describe('Project root directory').default('.'),
       prompt: z.string().describe('Annotation instructions (e.g., "annotate auth endpoints for OWASP Top 10")'),
-      mode: z.enum(['inline', 'external']).describe('Annotation placement mode — inline (default) or external (externalized .gal files)').default('inline'),
+      mode: z.enum(['inline', 'external']).optional().describe('Placement for an unconfigured project. Otherwise preserve the configured or observed mode; conflicts are refused. With no recorded or observed placement, use the labeled external init default.'),
       playbook: z.enum(['map', 'exploitable', 'chains', 'diff', 'coverage', 'verify']).optional().describe('The method: map (architecture first, no exposures), exploitable (default: claim only what an attacker can reach), chains (follow flows from open exposures), diff (changed files only), coverage (unannotated files), verify (re-check existing claims). Inferred from the prompt when omitted.'),
       code_graph: z.boolean().default(true).describe('Add a ranked entry-point worklist when a code graph is installed and built for this repository (false to leave it out). Without a graph the prompt is unchanged either way.'),
     },
@@ -835,27 +843,86 @@ export function createServer(): McpServer {
         }
       } catch { /* no model yet — fine */ }
 
+      const observed = parsed ? detectAnnotationMode(parsed) : null;
+      const configured = readConfiguredMode(resolve(root));
+      const projectMode = configured
+        ?? (observed && observed.inline + observed.external > 0 ? observed.mode : null);
+      if (projectMode === 'mixed' || observed?.mode === 'mixed' || (mode && projectMode && mode !== projectMode)) {
+        return { isError: true, content: [{ type: 'text', text: 'Resolve annotation placement first; the requested mode conflicts with the project mode.' }] };
+      }
+      // Match init's documented default only when no placement is recorded or observed.
+      const placement = projectMode ?? mode ?? 'external';
       const worklist: Worklist = await loadWorklist(resolve(root), parsed, { enabled: code_graph !== false });
       const reachCheck: ReachCheck | null = worklist.status === 'available' ? await loadReachCheck(resolve(root)) : null;
-      const annotatePrompt = buildAnnotatePrompt(prompt, root, model, mode, playbook, worklist, reachCheck);
+      const annotatePrompt = buildAnnotatePrompt(prompt, root, model, placement, playbook, worklist, reachCheck);
 
       return {
         content: [{ type: 'text', text: JSON.stringify({
           mode: 'agent',
-          message: `Annotation prompt built with project context. Read the source files in the project directory, then add GuardLink annotations using ${mode === 'external' ? 'associated .gal files' : 'inline source comments'} following the guidelines in the prompt. After annotating, call guardlink_parse to verify the annotations were parsed correctly.`,
+          annotation_mode: placement,
+          annotation_mode_source: configured ? 'config' : projectMode ? 'observed' : mode ? 'argument' : 'default',
+          message: `Annotation prompt built with project context. Read the source files in the project directory, then add GuardLink annotations using ${placement === 'external' ? 'associated .gal files' : 'inline source comments'} following the guidelines in the prompt. After annotating, call guardlink_parse to verify the annotations were parsed correctly.`,
           prompt: annotatePrompt,
           code_graph: worklistSummaryLine(worklist) || 'disabled',
           guidelines: [
-            mode === 'external'
+            placement === 'external'
               ? 'Write externalized annotations into associated .gal files using @source blocks'
               : 'Add annotations as comments directly above security-relevant code',
-            mode === 'external'
+            placement === 'external'
               ? 'Keep definitions in .guardlink/definitions.* and use raw GAL lines without comment prefixes'
               : 'Use the project\'s comment style (// for TS/JS/Rust/Go, # for Python/Ruby/Shell)',
             'After annotating, call guardlink_parse to verify results',
           ],
         }, null, 2) }],
       };
+    },
+  );
+
+  /**
+   * @agents #mcp-agent to guardlink_translate on #mcp -- "Returns a template-authoring prompt; never launches an author or executes templates"
+   * @effects read on #agent-launcher -- "Reads client-selected context JSON, scanner conversion source files or directories, and the installed CXG guide"
+   * @effects execute on #codegraph -- "Without explicit context, optional loadWorklist and reachFor may spawn the installed graph binary"
+   * @audit #codegraph -- "No confirmation step before optional graph reads; code_graph false disables them"
+   * @exposes #mcp to #prompt-injection [medium] -- "guardlink_translate carries caller context, scanner conversion sources and graph context into the returned prompt"
+   * @audit #mcp -- "Schema-validated context remains untrusted evidence; the returned prompt cannot constrain the calling agent"
+   * @flows #mcp -> #agent-launcher via guardlink_translate -- "Filtered threat model, context pack and requested output contract"
+   */
+  registerTool(
+    server, cache,
+    'guardlink_translate',
+    'Build a generation-only template-authoring prompt from selected threats or convert scanner templates with from and contract probe. Returns prompt, output locations and a separate execution handoff; never launches an author, writes files or executes templates. Conversion writes are requested only under .guardlink/cxg-templates/ for review. Optional context is a path to a version 1 JSON context pack, relative to root. Without it, an available code graph supplies route/reach facts; code_graph false disables those optional graph-process reads.',
+    {
+      root: z.string().default('.'),
+      prompt: z.string().default(''),
+      context: z.string().optional().describe('Context-pack JSON file path, relative to root or absolute'),
+      contract: z.enum(['scanner', 'probe']).optional().describe('Output contract; defaults to pack request or scanner'),
+      from: z.array(z.string()).min(1).max(256).optional().describe('Scanner files or directories, relative to root or absolute; requires contract probe'),
+      out: z.string().optional(),
+      threat: z.array(z.string()).optional().describe('Threat ids or threat@file:line exposure ids'),
+      feature: z.string().optional().describe('Comma-separated feature scope'),
+      code_graph: z.boolean().default(true),
+      code_graph_timeout_ms: z.number().int().min(1).max(2147483647).optional().describe('Timeout per graph query in milliseconds; default 300000, or GUARDLINK_CODEGRAPH_TIMEOUT_MS'),
+    },
+    async ({ root, prompt, context, contract, from, out, threat, feature, code_graph, code_graph_timeout_ms }) => {
+      if (from && contract !== 'probe') throw new Error('from requires contract probe');
+      const sources = from ? loadTranslateSources(from, resolve(root)) : undefined;
+      if (sources?.failures.length) throw new Error(sources.failures.map(f => `${f.source}: ${f.error}`).join('\n'));
+      let { model } = await getModel(root);
+      if (feature) model = filterByFeature(model, feature.split(',').map((f: string) => f.trim()));
+      model = selectTranslateThreats(model, threat);
+      let contextGraph: TranslateGraphStatus = { status: 'not_requested', reason: 'Explicit context pack supplied' };
+      const pack = context ? loadTranslateContext(context, resolve(root))
+        : await buildTranslateContext(resolve(root), model, { enabled: code_graph, timeoutMs: code_graph_timeout_ms, onStatus: status => { contextGraph = status; } });
+      const output = sources?.sources.length ? translateDraftOutput(resolve(root), out) : out || '.guardlink/cxg-templates/';
+      const templates = output.endsWith('/') ? output : output + '/';
+      const securityTestsDir = readSecurityTestsDir(resolve(root));
+      return { content: [{ type: 'text', text: JSON.stringify({ mode: 'agent',
+        context_graph: contextGraph, template_dir: resolve(root, output),
+        generation_only: true,
+        prompt: buildTranslatePrompt(prompt, resolve(root), model, { context: pack, sources: sources?.sources, contract, out, threats: threat }),
+        outputs: { templates, index: templates + 'README.md', findings: '.guardlink/pentest-findings/' },
+        next_step: `Author scoped templates and their index; preserve unrelated files. Review and validate them, then execute selected tests separately with the matching engine or configured runner. Keep durable regressions and run the entire configured ${securityTestsDir}/ suite before review; report execution and gaps separately from generation.`,
+      }, null, 2) }] };
     },
   );
 
@@ -956,7 +1023,7 @@ export function createServer(): McpServer {
   registerTool(
     server, cache,
     'guardlink_sarif',
-    'Export findings as SARIF 2.1.0 for GitHub Advanced Security, VS Code, and other SARIF consumers. profile "github" (default) is the code-scanning export; "pentest" also appends covered exposures, boundary claims and the hypothesis ledger\'s state, after the github results.',
+    'Export findings as SARIF 2.1.0 for GitHub Advanced Security, VS Code, and other SARIF consumers. profile "github" (default) is the code-scanning export; "pentest" also appends covered exposures, boundary claims and the hypothesis ledger\'s state, after the github results. For everyday developer testing, use guardlink_translate or the CLI guardlink translate "<changed paths and threats>" to build a scoped cxg template-authoring prompt; review/validate templates, then run selected tests separately. The returned workflow explains repeatable standalone checks and deep verification with bravos auto.',
     {
       root: z.string().describe('Project root directory').default('.'),
       output: z.string().describe('Output filename (default: guardlink.sarif.json)').default('guardlink.sarif.json'),

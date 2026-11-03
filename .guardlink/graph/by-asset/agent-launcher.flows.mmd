@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/agent-launcher.flows.mmd
-%% scope:           PARTIAL — #agent-launcher and its flow neighbourhood, grown until the drawing stopped fitting — 29 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:eebfe786379ae01c37d362c6ddc806a10894157b04af7d4a83fa1132b0902f87
+%% scope:           PARTIAL — #agent-launcher and its flow neighbourhood, grown until the drawing stopped fitting — 32 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -11,29 +11,17 @@
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
 graph LR
-  subgraph Z0["🧱 GuardLink.Agent_Launcher · Trust boundary at process spawn"]
-    agent_launcher["🧩 GuardLink.Agent_Launcher"]
-  end
-  subgraph Z1["🧱 AgentProcess · Trust boundary at process spawn"]
-    agentprocess["🧩 AgentProcess"]
-  end
-  envvars["🧩 EnvVars"]
-  configfile["🧩 ConfigFile"]
-  agentprompt["🧩 AgentPrompt"]
   parser["🧩 GuardLink.Parser"]
+  agent_launcher["🧩 GuardLink.Agent_Launcher"]
   codegraph["🧩 GuardLink.CodeGraph"]
+  mcp["🧩 GuardLink.MCP"]
   tui["👤 GuardLink.TUI"]
-  agent_launcher -.-|🧱 Trust boundary at process spawn| agentprocess
-  envvars -- "📡 process.env" --> agent_launcher
-  configfile -- "🗄️ readFileSync" --> agent_launcher
-  agent_launcher -- "🗄️ writeFileSync" --> configfile
-  agent_launcher -- "📡 spawn" --> agentprocess
-  agentprocess -- "📡 stdout" --> agent_launcher
-  agent_launcher -- "📡 return" --> agentprompt
   parser -- "📡 annotation worklist" --> agent_launcher
   codegraph -- "📡 worklist" --> agent_launcher
   codegraph -- "📡 undeclared agent tools" --> agent_launcher
-  configfile -- "📡 readAcceptancePolicy" --> parser
+  codegraph -- "📡 buildTranslateContext" --> agent_launcher
+  codegraph -- "📡 loadRouteFacts" --> agent_launcher
+  mcp -- "📡 guardlink_worklist" --> codegraph
+  mcp -- "📡 guardlink_reach" --> codegraph
+  mcp -- "📡 guardlink_translate" --> agent_launcher
   tui -- "📡 launchAgent" --> agent_launcher
-  configfile -- "📡 loadProjectConfig" --> tui
-  tui -- "📡 saveProjectConfig" --> configfile
