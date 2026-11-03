@@ -371,7 +371,7 @@ describe('scanner source conversion', () => {
     writeFileSync(join(root, 'scanner', 'order.py'), '# @id: order\nimport requests\n');
     writeFileSync(join(root, 'search.yaml'), 'id: search\n');
     const bin = join(root, 'codex');
-    writeFileSync(bin, `#!${process.execPath}\nconst fs=require('node:fs'),p=fs.readFileSync(0,'utf8'); const match=p.match(/Write JavaScript files under ("[^\\n]+")\\./); fs.writeFileSync(require('node:path').join(JSON.parse(match[1]),'probe.js'),'// draft'); ${authorPlanScript} process.stdout.write('author noise\\n'+JSON.stringify({type:'turn.completed',usage:{}}));`);
+    writeFileSync(bin, `#!${process.execPath}\nconst fs=require('node:fs'),p=fs.readFileSync(0,'utf8'); const match=p.match(/Write JavaScript files under ("[^\\n]+")\\./); fs.writeFileSync(require('node:path').join(JSON.parse(match[1]),'probe.js'),'// draft'); ${authorPlanScript} process.stdout.write('author noise\\n'+JSON.stringify({type:'turn.completed',usage:{},safety_stops:2}));`);
     chmodSync(bin, 0o755);
     const args = ['--import', 'tsx', 'src/cli/index.ts', 'translate', '--dir', root, '--headless', '--agent', 'codex', '--contract', 'probe', '--from', 'scanner', '--from', 'search.yaml', '--no-code-graph', '--format', 'json'];
     const env = { ...process.env, PATH: root + delimiter + process.env.PATH };
@@ -379,6 +379,13 @@ describe('scanner source conversion', () => {
     expect(success.status, success.stderr).toBe(0);
     const report = JSON.parse(success.stdout);
     expect(report.failures).toEqual([]);
+    expect(report.warnings.map((warning: { source: string }) => warning.source).sort()).toEqual([join(root, 'scanner', 'order.py'), join(root, 'search.yaml')]);
+    for (const warning of report.warnings) {
+      expect(warning).toMatchObject({ safety_stops: 2, message: expect.stringContaining('safety_stops=2') });
+      expect(warning).not.toHaveProperty('threat');
+      expect(success.stderr).toContain(`Translate warning [${warning.source}]`);
+    }
+    expect(success.stderr).not.toContain('Translate warning [undefined]');
     expect(report.results.map((r: { source: string }) => r.source).sort()).toEqual([join(root, 'scanner', 'order.py'), join(root, 'search.yaml')]);
     expect(report.results.every((r: { status: string; template_dir: string; templates: string[] }) => r.status === 'written' && r.templates.every(p => dirname(p) === r.template_dir && p.startsWith(join(root, '.guardlink', 'cxg-templates')) && existsSync(p)))).toBe(true);
     const failed = spawnSync(process.execPath, [...args, '--from', 'missing.go'], { env, encoding: 'utf8' });
@@ -388,6 +395,27 @@ describe('scanner source conversion', () => {
     expect(scanner.status).toBe(1);
     expect(JSON.parse(scanner.stdout).failures[0].error).toContain('--from requires --contract probe');
   }, 30000);
+
+  it.each(['refused', 'safety_stopped'] as const)('keeps explicit %s outcomes source-scoped and skips later conversion authors', async status => {
+    const { root, model } = await project();
+    for (const name of ['first.py', 'second.py']) writeFileSync(join(root, name), '# scanner source\n');
+    const sources = loadTranslateSources(['first.py', 'second.py'], root);
+    let calls = 0;
+    const report = await translateHeadless({ root, model, sources, agent: 'codex', userPrompt: '', contract: 'probe', out: '.guardlink/cxg-templates' }, async (_agent, _prompt, _root, dir) => {
+      calls++;
+      writeFileSync(join(dir, 'probe.js'), 'throw new Error("must never execute");');
+      writeFileSync(join(dir, 'scanner.py'), '# not a converted probe');
+      return { exitCode: 0, completion: { status, safety_stops: 2, reason: 'Provider explicitly ' + status } };
+    });
+    expect(calls).toBe(1);
+    expect(report.failures).toHaveLength(2);
+    expect(report.results[0]).toMatchObject({ source: sources.sources[0].path, status: 'failed', templates: [expect.stringMatching(/probe.js$/)], completion: { status, safety_stops: 2 } });
+    expect(readFileSync(report.results[0].templates[0], 'utf8')).toBe('throw new Error("must never execute");');
+    expect(report.results[1]).toMatchObject({ source: sources.sources[1].path, status: 'failed', templates: [] });
+    expect(report.failures[1]).toMatchObject({ source: sources.sources[1].path, error: expect.stringContaining('earlier safety stop/refusal') });
+    expect(report.warnings[0]).toMatchObject({ source: sources.sources[0].path, safety_stops: 2 });
+    for (const row of [...report.results, ...report.failures, ...report.warnings]) expect(row).not.toHaveProperty('threat');
+  });
 
   it('MCP returns conversion source and headers and refuses a scanner output contract', async () => {
     const { root } = await project();
@@ -537,7 +565,7 @@ describe('headless authoring', () => {
   it('CLI emits only JSON, preserves feature/threat scope and fails on agent error', async () => {
     const { root } = await project();
     const bin = join(root, 'codex');
-    writeFileSync(bin, `#!${process.execPath}\nconst fs=require('node:fs'),p=fs.readFileSync(0,'utf8'); const match=p.match(/Write JavaScript files under ("[^\\n]+")\\./); fs.writeFileSync(require('node:path').join(JSON.parse(match[1]),'probe.js'),'// authored'); process.stdout.write(JSON.stringify({type:'turn.completed',usage:{}})); process.exit(process.env.STUB_FAIL ? 4 : 0);`);
+    writeFileSync(bin, `#!${process.execPath}\nconst fs=require('node:fs'),p=fs.readFileSync(0,'utf8'); const match=p.match(/Write JavaScript files under ("[^\\n]+")\\./); fs.writeFileSync(require('node:path').join(JSON.parse(match[1]),'probe.js'),'// authored'); process.stdout.write(JSON.stringify({type:'turn.completed',usage:{},safety_stops:2})); process.exit(process.env.STUB_FAIL ? 4 : 0);`);
     chmodSync(bin, 0o755);
     const args = ['--import', 'tsx', 'src/cli/index.ts', 'translate', '--dir', root, '--headless', '--agent', 'codex', '--contract', 'probe', '--out', 'generated', '--threat', 'idor', '--feature', 'Orders', '--format', 'json', '--no-code-graph'];
     const env = { ...process.env, PATH: root + delimiter + process.env.PATH };
@@ -547,6 +575,10 @@ describe('headless authoring', () => {
     expect(result).toMatchObject({ version: 1, failures: [], results: [{ threat: expect.stringContaining('idor@api.ts:'), status: 'written', contract: 'probe' }] });
     expect(result.results[0].templates.every((path: string) => existsSync(path))).toBe(true);
     expect(result.results[0].template_dir).toBe(result.results[0].templates[0].slice(0, result.results[0].templates[0].lastIndexOf('/')));
+    expect(result.results[0].completion).toMatchObject({status:'completed',safety_stops:2});
+    expect(result.warnings[0]).toMatchObject({safety_stops:2,message:expect.stringContaining('safety_stops=2')});
+    expect(success.stderr).toContain('Translate warning');
+    expect(success.stderr).toContain('safety_stops=2');
     expect(result.context_graph).toMatchObject({ status: 'skipped', reason: expect.stringContaining('disabled') });
     const failed = spawnSync(process.execPath, args, { env: { ...env, STUB_FAIL: '1' }, encoding: 'utf8' });
     expect(failed.status).toBe(1);

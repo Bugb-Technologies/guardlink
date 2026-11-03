@@ -11,7 +11,7 @@ function directory() { const dir = mkdtempSync(join(tmpdir(), 'guardlink-complet
 afterEach(() => { vi.unstubAllEnvs(); for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
 function frame(agent: TranslateAgent, text: string, metadata: Record<string, unknown> = {}) {
-  if (agent === 'claude') return JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: text, ...metadata });
+  if (agent === 'claude') return JSON.stringify({ type: 'result', subtype: 'success', is_error: false, stop_reason: 'end_turn', result: text, ...metadata });
   if (agent === 'gemini') return JSON.stringify({ response: text, stats: metadata });
   return [JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text } }), JSON.stringify({ type: 'turn.completed', usage: {}, ...metadata })].join('\n');
 }
@@ -46,11 +46,11 @@ describe('headless structured completion', () => {
     expect(readFileSync(join(out,'draft.py'),'utf8')).toBe('# authored draft');
   });
 
-  it.each(['claude', 'codex', 'gemini'] as const)('rejects %s safety stops even when its completion and process say success', async agent => {
+  it.each(['claude', 'codex', 'gemini'] as const)('accepts successful %s completion while preserving its safety telemetry', async agent => {
     const root = binary(agent, frame(agent, 'Files written.', { safety_stops: 2 }));
     const result = await runTranslateAgent(agent, 'Author templates', root, root);
-    expect(result.error).toMatch(/safety/i);
-    expect(result.completion).toMatchObject({ status: 'safety_stopped', safety_stops: 2 });
+    expect(result.error).toBeUndefined();
+    expect(result.completion).toMatchObject({ status: 'completed', safety_stops: 2 });
   });
 
   it.each(['claude', 'codex', 'gemini'] as const)('requests and accepts %s native structured success', async agent => {
@@ -68,6 +68,33 @@ describe('headless structured completion', () => {
     const result = await runTranslateAgent(agent, 'Author templates', root, root);
     expect(result.error).toMatch(/refus/i);
     expect(result.completion?.status).toBe('refused');
+  });
+
+  it.each(['claude','codex','gemini'] as const)('still rejects %s provider errors with a positive safety counter', async agent => {
+    const output = agent==='claude' ? JSON.stringify({type:'result',subtype:'error_during_execution',is_error:true,safety_stops:2})
+      : agent==='codex' ? JSON.stringify({type:'turn.failed',error:{message:'Provider failed'},usage:{safety_stops:2}})
+      : JSON.stringify({error:{message:'Provider failed'},stats:{safety_stops:2}});
+    const root = binary(agent,output);
+    const result = await runTranslateAgent(agent,'Author templates',root,root);
+    expect(result.error).toBeTruthy();
+    expect(result.completion).toMatchObject({status:'failed',safety_stops:2});
+  });
+
+  it.each(['refused','safety_stopped'] as const)('keeps an explicit %s provider outcome failed and skips later authors', async status => {
+    const root=directory();mkdirSync(join(root,'.guardlink'));
+    writeFileSync(join(root,'.guardlink','definitions.ts'),'// @asset API (#api) -- "API"\n// @threat Auth (#auth) [high] -- "Missing auth"\n');
+    for(const file of ['first','second']) writeFileSync(join(root,file+'.ts'),'// @exposes #api to #auth [high] -- "'+file+' returns protected records"\nexport function '+file+'() {}');
+    const model=(await parseProject({root,project:'fixture'})).model;
+    let calls=0;
+    const report=await translateHeadless({root,model,agent:'claude',userPrompt:'',contract:'scanner',out:'generated'},async(_agent,_prompt,_root,out)=>{
+      calls++;writeFileSync(join(out,'draft.py'),'# raw draft');
+      return {exitCode:0,completion:{status,safety_stops:2,reason:'Provider explicitly '+status}};
+    });
+    expect(calls).toBe(1);expect(report.failures).toHaveLength(2);
+    expect(report.results[0]).toMatchObject({status:'failed',completion:{status,safety_stops:2}});
+    expect(readFileSync(report.results[0].templates[0],'utf8')).toBe('# raw draft');
+    expect(report.results[1]).toMatchObject({status:'failed',templates:[]});
+    expect(report.warnings[0].safety_stops).toBe(2);
   });
 
   it('preserves audit-only completion and does not interpret quoted source/tool text as a refusal', async () => {
@@ -92,7 +119,7 @@ describe('headless structured completion', () => {
     expect((await runTranslateAgent('codex', 'Author templates', failed, failed)).error).toContain('code 6');
   });
 
-  it.each(['counter', 'completion'] as const)('keeps written paths and halts later authors after a %s safety stop', async location => {
+  it.each(['counter', 'completion'] as const)('warns and continues after successful authoring with a %s safety counter', async location => {
     const root = directory(); mkdirSync(join(root, '.guardlink'));
     writeFileSync(join(root, '.guardlink', 'definitions.ts'), '// @asset API (#api) -- "API"\n// @threat Auth (#auth) [high] -- "Missing auth"\n');
     writeFileSync(join(root, 'api.ts'), '// @exposes #api to #auth [high] -- "getRecords returns protected records"\nexport function getRecords() {}');
@@ -104,13 +131,15 @@ describe('headless structured completion', () => {
       writeFileSync(join(out, 'probe.py'), '# draft only\n');
       return location === 'counter' ? { exitCode: 0, safety_stops: 2 } : { exitCode: 0, completion: { status: 'completed', safety_stops: 2 } };
     });
-    expect(report.results[0]).toMatchObject({ status: 'failed', templates: [expect.stringContaining('probe.py')], completion: { status: 'safety_stopped', safety_stops: 2 } });
-    expect(report.failures[0].error).toMatch(/safety/i);
-    expect(readFileSync(report.results[0].templates[0], 'utf8')).toBe('# draft only\n');
-    expect(calls).toBe(1);
     expect(report.results).toHaveLength(2);
-    expect(report.results[1]).toMatchObject({status:'failed',templates:[]});
-    expect(report.failures[1].error).toMatch(/earlier safety stop/i);
+    expect(calls).toBe(2);
+    expect(report.failures).toEqual([]);
+    for (const row of report.results) {
+      expect(row).toMatchObject({status:'written',completion:{status:'completed',safety_stops:2}});
+      expect(readFileSync(row.templates[0],'utf8')).toContain('@guardlink_threat: '+row.threat);
+    }
+    expect(report.warnings).toHaveLength(2);
+    expect(report.warnings[0]).toMatchObject({threat:report.results[0].threat,safety_stops:2,message:expect.stringContaining('safety_stops=2')});
   });
 });
 
@@ -120,10 +149,13 @@ describe('completion protocol boundaries', () => {
     const tool = {type:'item.completed',item:{type:'mcp_tool_call',result:{safety_stops:7,refusal:true,error:'source fixture'}}};
     expect(readAgentCompletion(JSON.stringify(tool)+'\n'+frame('codex','Audit-only: no executable template.')).status).toBe('completed');
   });
-  it('rejects provider errors, max-turn results, invalid counters and oversized transcripts', () => {
+  it('rejects provider errors, max-turn results and oversized transcripts while warning on malformed telemetry', () => {
     expect(readAgentCompletion(JSON.stringify({type:'result',subtype:'error_max_turns',is_error:true})).status).toBe('failed');
     expect(readAgentCompletion(JSON.stringify({error:{message:'provider failed'},response:''})).status).toBe('failed');
-    expect(readAgentCompletion(frame('claude','Done.',{safety_stops:null})).status).toBe('failed');
+    expect(readAgentCompletion(frame('claude','Done.',{safety_stops:null}))).toMatchObject({status:'completed',warnings:[expect.stringContaining('safety_stops')]});
+    expect(readAgentCompletion(frame('claude','Done.',{stop_reason:'max_tokens',safety_stops:2}))).toMatchObject({status:'failed',safety_stops:2});
+    expect(readAgentCompletion(frame('claude','Done.',{stop_reason:'refusal',safety_stops:2}))).toMatchObject({status:'refused',safety_stops:2});
+    expect(readAgentCompletion(frame('claude','Done.',{safety_stop:true,safety_stops:2}))).toMatchObject({status:'safety_stopped',safety_stops:2});
     expect(readAgentCompletion('x'.repeat(MAX_COMPLETION_BYTES+1)).status).toBe('failed');
     expect(readAgentCompletion('{invalid JSON').status).toBe('unknown');
     expect(readAgentCompletion(frame('claude', "I'm sorry, but I can't assist with that request.")).status).toBe('refused');

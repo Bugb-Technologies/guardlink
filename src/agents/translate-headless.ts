@@ -105,6 +105,7 @@ export interface TranslateHeadlessReport {
   version: 1;
   results: Array<TranslateIdentity & { contract: TranslateContract; template_dir: string; templates: string[]; completion?: AgentCompletion; status: 'written' | 'no_templates' | 'failed'; threat_ref?: string | null; proof_plan?: ConversionProofPlan }>;
   failures: Array<TranslateIdentity & { error: string; exit_code: number | null }>;
+  warnings: Array<TranslateIdentity & { message: string; safety_stops?: number }>;
 }
 type TranslateIdentity = { threat: string; source?: never } | { source: string; threat?: never };
 
@@ -114,7 +115,7 @@ type TranslateIdentity = { threat: string; source?: never } | { source: string; 
  * @flows AgentProcess -> #agent-launcher via templates -- "Inventory changed regular template files per exposure or conversion source, without evaluating them"
  */
 export async function translateHeadless(options: TranslateHeadlessOptions, run: TranslateRunner = runTranslateAgent): Promise<TranslateHeadlessReport> {
-  const report: TranslateHeadlessReport = { version: 1, results: [], failures: [] };
+  const report: TranslateHeadlessReport = { version: 1, results: [], failures: [], warnings: [] };
   if (options.sources) {
     if (options.contract !== 'probe') throw new Error('--from requires --contract probe');
     translateDraftOutput(options.root, options.out);
@@ -135,6 +136,7 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
     const suffix = createHash('sha256').update(id).digest('hex').slice(0, 12);
     const dir = resolve(options.root, options.out, `${label.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)}-${suffix}`);
     let written: string[] = [];
+    let completion: AgentCompletion | undefined;
     if (safetyStop) {
       report.failures.push({ ...identity, error: `Not authored after earlier safety stop/refusal: ${safetyStop}`, exit_code: null });
       report.results.push({ ...identity, contract, template_dir: dir, templates: [], status: 'failed' });
@@ -149,10 +151,17 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
         threats: source ? (options.selected ? model.exposures.map(exposureId) : undefined) : [id] })
         + '\nHeadless authoring: write files directly. Do not ask questions or perform CLI usage discovery. Return when authoring is complete.';
       const result = await run(options.agent, prompt, options.root, dir);
+      const counters = [result.safety_stops, result.completion?.safety_stops]
+        .filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0);
+      const reportedStops = counters.length ? Math.max(...counters) : undefined;
+      completion = result.completion;
+      if (reportedStops !== undefined) {
+        completion = { ...(completion || { status: result.exitCode === 0 && !result.error ? 'completed' : 'failed' }), safety_stops: reportedStops };
+        if (reportedStops > 0) report.warnings.push({ ...identity, safety_stops: reportedStops,
+          message: `Provider reported safety_stops=${reportedStops}; this counter is telemetry, not the provider's completion outcome` });
+      }
+      for (const message of completion?.warnings || []) report.warnings.push({ ...identity, message });
       written = [...snapshotTemplates(dir)].filter(([file, hash]) => before.get(file) !== hash && (!source || /\.(js|mjs)$/i.test(file))).map(([file]) => file).sort();
-      const reportedStops = Math.max(result.safety_stops ?? 0, result.completion?.safety_stops ?? 0);
-      const completion: AgentCompletion | undefined = reportedStops > 0
-        ? { status: 'safety_stopped', safety_stops: reportedStops, reason: `Provider reported ${reportedStops} safety stops` } : result.completion;
       if (completion?.status === 'safety_stopped' || completion?.status === 'refused') {
         safetyStop = completion.reason || 'Provider reported a safety stop/refusal';
         report.failures.push({ ...identity, error: safetyStop, exit_code: result.exitCode });
@@ -185,7 +194,7 @@ export async function translateHeadless(options: TranslateHeadlessOptions, run: 
       }
     } catch (error) {
       report.failures.push({ ...identity, error: (error as Error).message, exit_code: null });
-      report.results.push({ ...identity, contract, template_dir: dir, templates: written, status: 'failed' });
+      report.results.push({ ...identity, contract, template_dir: dir, templates: written, completion, status: 'failed' });
     }
   }
   return report;

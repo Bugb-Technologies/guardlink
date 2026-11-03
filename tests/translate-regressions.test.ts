@@ -66,10 +66,12 @@ describe('translate authoring regression paths', () => {
     const { root, model } = await project();
     const report = await translateHeadless({ root, model, agent: 'codex', userPrompt: '', out: 'generated', contract: 'scanner' }, async (_agent, _prompt, _root, out) => {
       writeFileSync(join(out, 'bad.yaml'), 'id: missing-auth\nname: Missing auth\nauthor: Security Team\nseverity: high\ndescription: protected records\nlanguage: yaml\nhttp: []\n');
-      return { exitCode: 0 };
+      return { exitCode: 0, completion: { status: 'completed', safety_stops: 2 } };
     });
     expect(report.results[0].template_dir).toBe(join(root, 'generated', report.results[0].templates[0].split('/').at(-2)!));
     expect(report.results[0].status).toBe('failed');
+    expect(report.results[0].completion).toMatchObject({status:'completed',safety_stops:2});
+    expect(report.warnings[0].safety_stops).toBe(2);
     expect(report.failures[0].error).toMatch(/author.*(object|mapping|name)/i);
   });
   it('finds the default installed guide and honors a source-root override first', () => {
