@@ -2198,6 +2198,7 @@ program
   .option('--cursor', 'Open Cursor IDE with prompt on clipboard')
   .option('--windsurf', 'Open Windsurf IDE with prompt on clipboard')
   .option('--clipboard', 'Copy translation prompt to clipboard only')
+  .option('--stdout', 'Print the translation prompt to stdout and exit, launching nothing (for an agent already in session)')
   .option('--feature <names>', 'Filter to specific feature(s) (comma-separated)')
   .option('--context <file.json>', 'Version 1 per-threat authoring context pack')
   .option('--contract <contract>', 'Template output contract: scanner (default) or probe')
@@ -2213,7 +2214,7 @@ program
   .action(async (promptParts: string[], opts: {
     dir: string; project: string;
     claudeCode?: boolean; codex?: boolean; gemini?: boolean;
-    cursor?: boolean; windsurf?: boolean; clipboard?: boolean;
+    cursor?: boolean; windsurf?: boolean; clipboard?: boolean; stdout?: boolean;
     feature?: string; context?: string; contract?: TranslateContract; headless?: boolean;
     agent?: TranslateAgent; agentTimeout?: string; out?: string; threat?: string[]; format?: string; codeGraph?: boolean; codeGraphTimeout?: string; from?: string[];
   }) => {
@@ -2224,6 +2225,9 @@ program
       if (opts.agent && !opts.headless) throw new Error('--agent requires --headless; use the interactive agent flags otherwise');
       if (opts.from?.length && opts.contract !== 'probe') throw new Error('--from requires --contract probe');
       if (opts.agentTimeout !== undefined && !opts.headless) throw new Error('--agent-timeout requires --headless');
+      if (opts.stdout && (opts.headless || opts.claudeCode || opts.codex || opts.gemini || opts.cursor || opts.windsurf || opts.clipboard)) {
+        throw new Error('--stdout prints the prompt for the calling agent; it cannot be combined with --headless or an agent, IDE or clipboard flag');
+      }
       const agentTimeoutMs = opts.headless ? translateAgentTimeoutMs(opts.agentTimeout === undefined ? undefined : Number(opts.agentTimeout)) : undefined;
       const root = resolve(opts.dir);
       const sources = opts.from?.length ? loadTranslateSources(opts.from, root) : undefined;
@@ -2290,6 +2294,15 @@ program
           console.error(`  ${a.flag.padEnd(16)} ${a.name}`);
         }
         process.exit(1);
+      }
+
+      // --stdout: the calling agent does the authoring itself. Stdout carries only the prompt (diagnostics,
+      // the feature filter and graph-context status go to stderr), and nothing is launched, written or validated.
+      // @comment -- "translate --stdout: prints the generation-only template prompt for an agent already in session and launches no author; refused with --headless or any agent, IDE or clipboard flag"
+      // @flows #cli -> AgentSession via stdout -- "Filtered threat model and translate method as a prompt; the same text guardlink_translate returns"
+      if (agent.id === 'stdout') {
+        launchAgent(agent, fullPrompt, root);
+        return;
       }
 
       console.log(`Launching ${agent.name} for CXG template translation...`);

@@ -10,8 +10,8 @@ decisions that are not visible there, such as which risks a human has accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 1149 annotations · 21 assets · 16 threats · 14 controls · 169 exposures · 244 flows
-Content hash: `sha256-v3:ce936d8ff94ae5178ac84e37a7ecdc14dfd9fc1536ac4df53e149e48752d1f61` — identical hash means identical hashed annotation content, not unchanged code, anchors or agent configuration.
+Current model: 1151 annotations · 21 assets · 16 threats · 14 controls · 169 exposures · 245 flows
+Content hash: `sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673` — identical hash means identical hashed annotation content, not unchanged code, anchors or agent configuration.
 
 ---
 
@@ -190,7 +190,7 @@ reported. That is why it is the one decision a person has to sign.
 Use a fast, per-change annotate → translate → test → fix cycle for everyday developer testing. GuardLink + cxg can support scoped checks without Bravos; Bravos template authoring remains the tested authoring path, so inspect and validate standalone output against the installed cxg. A quick check is not a full pentest. For specialized, annotation-guided deep verification, `bravos auto` provides low-friction setup and real traffic; runs can take hours.
 
 1. Keep code and its annotations current in the same change, including after each test/fix round. Run `guardlink validate .` and `guardlink lint . --since <base>`.
-2. Request `guardlink_translate` with the changed paths and threats, or use `guardlink translate "<changed paths and threats>"` on older servers. The CLI launches an authoring agent; the MCP tool returns a prompt for the calling agent. Translation defaults to polyglot scanner templates; `--contract probe` selects JavaScript probes. Both are generation-only: no scan, test execution or runtime confirmation. There is no translate `--since` flag; scope the request explicitly (or use the CLI's `--feature` filter).
+2. Request `guardlink_translate` with the changed paths and threats, or run `guardlink translate --stdout "<changed paths and threats>"` without MCP; both return the prompt for you, the calling agent. A bare `guardlink translate` (or `--headless --agent`) launches a separate authoring agent instead. Translation defaults to polyglot scanner templates; `--contract probe` selects JavaScript probes. Both are generation-only: no scan, test execution or runtime confirmation. There is no translate `--since` flag; scope the request explicitly (or use the CLI's `--feature` filter).
 3. Author templates under `.guardlink/cxg-templates/` and an index mapping exposures to files, including audit-only items and gaps. Preserve unrelated templates and authored tests. Review the index against the requested change, inspect the generated code, and validate templates with the installed cxg template commands discovered through help.
 4. Execute the selected tests separately with `cxg scan` or the repository's configured runner, using its actual scope and target options. Scanner templates are distinct from browser pentest probes. Save cxg findings under `.guardlink/pentest-findings/`. Record what ran, evidence, failures, skips and prerequisites; generated files alone prove no behavior.
 5. Retain useful regression tests in the repository's durable suite. Generated templates under `.guardlink/cxg-templates/` do not automatically become curated tests in `security/`. Keep the regression after a fix: a mitigation can remove an exposure from translation's candidate list. Before opening or updating a pull request, run the entire configured `security/` suite (`security_tests_dir` in `.guardlink/config.json`, default `security`) with its configured runner. A pre-review tool's recorded complete execution satisfies this once. Report absent suites as not applicable and skipped, partial or unavailable execution as incomplete, never a pass. For live regressions, you may start a target and use already configured auth profiles: tell the user when doing so, and never fabricate credentials or authorization.
@@ -216,7 +216,7 @@ guardlink parse .                        # the whole model as JSON, on stdout
 guardlink validate .                     # syntax errors and dangling #id references
 guardlink report . --format md           # human-readable threat model report
 guardlink diff HEAD~1                    # what your change did to the model
-guardlink translate "<changed paths and threats>" # template generation only; review/validate, then execute separately
+guardlink translate --stdout "<changed paths and threats>" # the template-authoring prompt; generation only, execute separately
 guardlink paths .                        # undefended routes from an entry point to a sink
 guardlink dashboard .                    # interactive HTML view
 guardlink blame .                        # who introduced / declared / fixed each claim, and which AI co-authored it
@@ -235,7 +235,7 @@ The MCP server exposes the model as tools. The ones worth knowing by name:
 | `guardlink_diff(ref)` | After a change — did I make this worse? |
 | `guardlink_status` | Cold start on an unfamiliar repo. |
 | `guardlink_blame(file)` | Who introduced this, and did an AI co-author it. Read from git; nothing written. |
-| `guardlink_translate(prompt)` | Return a generation-only template prompt for this change; execution is separate. Older servers: `guardlink translate "<scope>"`. |
+| `guardlink_translate(prompt)` | Return a generation-only template prompt for this change; execution is separate. Without the MCP tool: `guardlink translate --stdout "<scope>"`. |
 | `guardlink_annotate_apply(file, line, annotations)` | **External mode only:** write a sidecar. In inline mode edit source comments directly. |
 
 ### Writing annotations with the MCP server

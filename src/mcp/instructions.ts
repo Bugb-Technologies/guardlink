@@ -76,7 +76,7 @@ About to change a shared component → guardlink_graph(from, depth, direction)
 A scanner reported a CWE → guardlink_lookup("cwe:CWE-89")
   Check external_id.declared: false means undeclared, not declared-and-clean.
 
-Everyday developer testing → annotate → translate → test → fix; keep existing annotations accurate after each test/fix round. guardlink_translate returns an authoring prompt. Older servers: \`guardlink translate "<changed paths and threats>"\`. Scope the quick cxg check explicitly. Generation only: review/validate templates, then execute selected tests separately. Keep durable regressions after mitigation removes candidates. The returned workflow covers standalone checks without Bravos and the tested Bravos authoring path.
+Everyday developer testing → annotate → translate → test → fix; keep existing annotations accurate after each test/fix round. guardlink_translate returns an authoring prompt; from a shell, \`guardlink translate --stdout "<changed paths and threats>"\` prints the same prompt; a bare \`guardlink translate\` launches a separate agent. Scope the quick cxg check explicitly. Generation only: review/validate templates, then execute selected tests separately. Keep durable regressions after mitigation removes candidates. The returned workflow covers standalone checks without Bravos and the tested Bravos authoring path.
 
 A quick check is not a full pentest. bravos auto is specialized, annotation-guided deep verification with low-friction setup, real traffic and runs that can take hours.
 

@@ -236,7 +236,9 @@ describe('GL-403 — end to end through sync', () => {
     });
     expect(text.indexOf('<!-- guardlink:stamp')).toBe(text.indexOf('<!-- guardlink:begin -->') + '<!-- guardlink:begin -->\n'.length);
     expect(text).toContain('everyday, per-change developer check');
-    expect(text).toContain('guardlink translate "<changed paths and threats>"');
+    expect(text).toContain('guardlink translate --stdout "<changed paths and threats>"');
+    // A bare `guardlink translate` launches an authoring agent; agent-facing text must not send an agent there.
+    expect(text).not.toMatch(/guardlink translate "</);
     expect(text).toContain('annotate → translate → test → fix');
     expect(text).toContain('Keep existing annotations accurate as the code changes, including after each test/fix round');
     expect(text).toContain('generates templates only');
