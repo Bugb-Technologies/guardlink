@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - **A `guardlink_translate` MCP tool**, mirroring `guardlink_annotate`: optional `prompt` and `feature`, returns the translation prompt for the calling agent, writes nothing.
   - The method text is factored into one source (`src/playbooks/translate.ts`) read by both the prompt builder and the skill renderer, so the CLI prompt and the skill cannot drift.
 
+### Fixed
+
+- **The translate method's CXG run instructions now match what cxg accepts.** They told agents to scan with `--scope local://.` and promised `CERT_X_GEN_PROJECT_ROOT` and `CERT_X_GEN_TARGET_TYPE`; cxg has never had a `local://` scope (it parses it as a URL with host `.`) and never set either variable. CLI and codebase templates are now run with `--scope cli:///absolute/path/to/binary` (cxg sets `CERT_X_GEN_TARGET_HOST` to the binary and `CERT_X_GEN_TARGET_KIND=cli`) plus `--context '{"project_root": ...}'`, which templates read from `CERT_X_GEN_CONTEXT`. Same fix in `docs/examples/README.md`.
+
 ## \[2.5.0\] - 2026-10-26
 
 ### Upgrading

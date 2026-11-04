@@ -43,7 +43,7 @@ For every candidate threat/exposure:
    - File system operations (symlink attacks, arbitrary writes, config tampering)
    - MCP/stdio protocol interactions (JSON-RPC tool calls with malicious payloads)
    - Process spawning behavior (canary file creation, shell metacharacter interpretation)
-2. If yes: create one or more CXG templates. For local CLI/codebase threats, templates should use \`subprocess.run()\` or \`subprocess.Popen()\` with \`cwd=target\` to invoke the tool under test.
+2. If yes: create one or more CXG templates. For local CLI/codebase threats, templates should use \`subprocess.run()\` or \`subprocess.Popen()\` with \`cwd\` set to the project root to invoke the tool under test (under a \`cli://\` scope, CXG hands the tool's absolute path over as \`CERT_X_GEN_TARGET_HOST\`).
 3. If no (pure governance/process/design gap): do NOT create a template. Instead document it as audit-only guidance:
    - Include suggested GuardLink @audit text and @comment text for the relevant asset/file.
    - Explain briefly why no pentest template is appropriate.
@@ -65,7 +65,11 @@ For every candidate threat/exposure:
 ## CXG Format Contract (from source)
 Use the project skeleton contract and examples; mirror field names and structure exactly.`;
 
-/** Quality bar, engine contract, evidence contract, boilerplate and the final response format. */
+/**
+ * Quality bar, engine contract, evidence contract, boilerplate and the final response format.
+ *
+ * @comment -- "Run instructions follow cxg 1.7.0: a CLI is scoped as cli:///absolute/path (TARGET_HOST is the binary, TARGET_KIND is cli) and the project root travels in --context as project_root; local:// was never a cxg scope and CERT_X_GEN_PROJECT_ROOT and CERT_X_GEN_TARGET_TYPE were never set"
+ */
 export const TRANSLATE_METHOD_B = `## Quality Bar
 - Each template must include clear metadata: id/name/author/severity/description/tags/references.
 - Detection logic must align to the threat and include concrete matchers/assertions.
@@ -79,10 +83,11 @@ Instead, it sets environment variables and expects JSON on stdout.
 
 ### Target resolution (in main / entry point):
 \`\`\`python
-target = os.environ.get("CERT_X_GEN_PROJECT_ROOT") or args.target or os.environ.get("CERT_X_GEN_TARGET_HOST")
+context = json.loads(os.environ.get("CERT_X_GEN_CONTEXT") or "{}")
+target = context.get("project_root") or args.target or os.environ.get("CERT_X_GEN_TARGET_HOST")
 \`\`\`
-- \`CERT_X_GEN_PROJECT_ROOT\`: set for local codebase/CLI targets (absolute path).
-- \`CERT_X_GEN_TARGET_HOST\`: set for network targets (hostname/IP).
+- \`project_root\` in \`CERT_X_GEN_CONTEXT\`: the absolute project root, passed by the operator with \`--context\`. CXG has no scope for a source tree, so this is how a local codebase/CLI template learns where the project is.
+- \`CERT_X_GEN_TARGET_HOST\`: always set — the binary's absolute path under a \`cli://\` scope, the hostname/IP under a network scope.
 - The positional \`target\` arg MUST use \`nargs="?"\` (optional) since CXG engine passes no argv.
 
 ### Output contract:
@@ -94,15 +99,17 @@ target = os.environ.get("CERT_X_GEN_PROJECT_ROOT") or args.target or os.environ.
 | Variable | Value |
 |----------|-------|
 | \`CERT_X_GEN_MODE\` | Always \`"engine"\` |
-| \`CERT_X_GEN_TARGET_HOST\` | Target address (path for local, hostname for network) |
-| \`CERT_X_GEN_TARGET_TYPE\` | \`"local"\` or \`"network"\` |
-| \`CERT_X_GEN_PROJECT_ROOT\` | Absolute path (local targets only) |
+| \`CERT_X_GEN_TARGET_HOST\` | Target address (absolute binary path for \`cli://\`, hostname/IP for network) |
+| \`CERT_X_GEN_TARGET_KIND\` | \`"cli"\` for a \`cli://\` scope; the URL scheme (\`"http"\`, \`"https"\`, \`"tcp"\`, ...) for network |
 | \`CERT_X_GEN_TARGET_PORT\` | Port number (network targets, default 80) |
+| \`CERT_X_GEN_CONTEXT\` | JSON object from \`--context\` (only when passed) — carries \`project_root\` |
+| \`CERT_X_GEN_ARGV\` / \`CERT_X_GEN_STDIN_FILE\` / \`CERT_X_GEN_INPUT_DIR\` / \`CERT_X_GEN_TARGET_ENV\` | Probe input from \`--arg\` / \`--stdin-file\` / \`--input\` / \`--target-env\` (only when passed) |
 
-### Running templates with CXG local scope:
+### Running templates against a local CLI (\`cli://\` scope):
 \`\`\`bash
-cxg scan --scope local://. --template-dir .guardlink/cxg-templates/ --output .guardlink/pentest-findings/guardlink-pentest --output-format json,sarif,html
+cxg scan --scope "cli://$(pwd)/<path/to/cli-binary>" --context "{\\"project_root\\": \\"$(pwd)\\"}" --template-dir .guardlink/cxg-templates/ --output .guardlink/pentest-findings/guardlink-pentest --output-format json,sarif,html
 \`\`\`
+There is no \`local://\` scope: CXG reads it as an ordinary URL with host \`.\`. Scope a CLI as \`cli:///absolute/path/to/binary\` and a running service by its URL.
 
 ## CXG Evidence Contract (Critical — findings MUST include rich evidence)
 CXG parses finding evidence using specific field names. If these fields are missing or empty,
@@ -207,9 +214,10 @@ def main():
     args = parser.parse_args()
 
     template = CertXGenTemplate()
-    target = os.environ.get("CERT_X_GEN_PROJECT_ROOT") or args.target or os.environ.get("CERT_X_GEN_TARGET_HOST")
+    context = json.loads(os.environ.get("CERT_X_GEN_CONTEXT") or "{}")
+    target = context.get("project_root") or args.target or os.environ.get("CERT_X_GEN_TARGET_HOST")
     if not target:
-        parser.error("target is required (positional, CERT_X_GEN_PROJECT_ROOT, or CERT_X_GEN_TARGET_HOST)")
+        parser.error("target is required (positional, project_root in CERT_X_GEN_CONTEXT, or CERT_X_GEN_TARGET_HOST)")
 
     findings = template.execute(target, args.port)
     if args.json or os.environ.get("CERT_X_GEN_MODE") == "engine":
@@ -228,7 +236,8 @@ if __name__ == "__main__":
 
 Key rules:
 - \`target\` positional arg uses \`nargs="?"\` — CXG engine does NOT pass target as argv.
-- Target resolution order: \`CERT_X_GEN_PROJECT_ROOT\` > \`args.target\` > \`CERT_X_GEN_TARGET_HOST\`.
+- Target resolution order: \`project_root\` in \`CERT_X_GEN_CONTEXT\` > \`args.target\` > \`CERT_X_GEN_TARGET_HOST\`.
+- When \`CERT_X_GEN_TARGET_KIND == "cli"\`, \`CERT_X_GEN_TARGET_HOST\` is the absolute path of the binary to invoke.
 - When \`CERT_X_GEN_MODE == "engine"\`, ALWAYS output JSON (even if \`--json\` is not set).
 - Output \`[]\` (empty JSON array) when no findings — never plain text in engine mode.
 - For local/CLI templates, use \`target\` as \`cwd\` in \`subprocess.run()\` / \`subprocess.Popen()\` calls.
@@ -241,7 +250,7 @@ After writing files, return:
 
    **Step 1 — Prerequisites:**
    \`\`\`bash
-   cxg --version          # Verify CXG is installed (expect v1.1.0+)
+   cxg --version          # Verify CXG is installed (expect v1.4.0+ for cli:// scopes)
    python3 --version      # Python 3.8+ required for template execution
    ls .guardlink/cxg-templates/*.py  # Verify templates were created
    \`\`\`
@@ -251,19 +260,23 @@ After writing files, return:
    cxg template validate .guardlink/cxg-templates/ --recursive
    \`\`\`
 
-   **Step 3 — Create output directory and run scan using local scope (for CLI/codebase targets):**
+   **Step 3 — Create output directory and run scan using a \`cli://\` scope (for CLI/codebase targets):**
    \`\`\`bash
    mkdir -p .guardlink/pentest-findings
    cxg scan \\
-     --scope local://. \\
+     --scope "cli://$(pwd)/<path/to/cli-binary>" \\
+     --context "{\\"project_root\\": \\"$(pwd)\\"}" \\
      --template-dir .guardlink/cxg-templates/ \\
      --template-language python \\
      --output .guardlink/pentest-findings/guardlink-pentest \\
      --output-format json,sarif,html
    \`\`\`
-   The \`local://.\` scope tells CXG this is a local codebase target. CXG will set
-   \`CERT_X_GEN_PROJECT_ROOT\` to the absolute path of the current directory and
-   \`CERT_X_GEN_TARGET_TYPE=local\`, so templates receive the correct project root.
+   A \`cli:///absolute/path\` scope tells CXG the target is a local binary, not a network host:
+   CXG sets \`CERT_X_GEN_TARGET_HOST\` to the binary's absolute path and
+   \`CERT_X_GEN_TARGET_KIND=cli\`. CXG has no scope for a source tree, so the project
+   root reaches templates through \`--context\`, as \`project_root\` in \`CERT_X_GEN_CONTEXT\`.
+   Do not use \`local://.\` — it is not a CXG scope (\`cxg scan --help\` lists hosts, URLs,
+   CIDRs, target files and \`cli://\`); CXG reads it as an ordinary URL with host \`.\`.
 
    Output is stored in \`.guardlink/pentest-findings/\` so that \`guardlink dashboard\`
    and \`guardlink threat-report\` automatically pick up the results.
@@ -280,7 +293,8 @@ After writing files, return:
    **Step 4 — Run with verbose output for debugging:**
    \`\`\`bash
    cxg -vv scan \\
-     --scope local://. \\
+     --scope "cli://$(pwd)/<path/to/cli-binary>" \\
+     --context "{\\"project_root\\": \\"$(pwd)\\"}" \\
      --template-dir .guardlink/cxg-templates/ \\
      --output .guardlink/pentest-findings/guardlink-pentest \\
      --output-format json,sarif,html
@@ -305,7 +319,8 @@ After writing files, return:
    | \`target is required\` error | Template is missing \`nargs="?"\` on target arg — engine uses env vars, not argv |
    | \`JSON parse error\` | Template prints non-JSON text to stdout in engine mode — wrap all output in \`json.dumps()\` |
    | \`Operation timed out\` | Template takes >30s; add \`--timeout 60s\` to scan command |
-   | All templates show 0 findings | Run with \`-vv\` to check for WARN lines; ensure \`local://.\` scope is used for CLI templates |
+   | All templates show 0 findings | Run with \`-vv\` to check for WARN lines; ensure CLI templates run under a \`cli:///absolute/path\` scope with \`--context\` carrying \`project_root\` |
+   | Template sees host \`.\` or kind \`local\` | The scan used \`local://.\`, which CXG does not support — switch to \`cli:///absolute/path\` plus \`--context\` |
    | \`guardlink CLI not found\` | Run \`npm install\` in the project root first |
    | Evidence fields are null/empty | Template is passing raw dict without CXG structure — use the \`create_finding\` helper pattern from the Evidence Contract section |
 
