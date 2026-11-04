@@ -474,9 +474,14 @@ describe('translate context schema and prompts', () => {
     vi.stubEnv('GUARDLINK_CXG_ROOT', root);
     vi.stubEnv('GUARDLINK_CXG_SKELETON_DIR', root);
     const prompt = buildTranslatePrompt('Generate templates', root, null);
-    for (const rule of ['Do NOT execute templates', 'CERT_X_GEN_PROJECT_ROOT', 'CERT_X_GEN_TARGET_HOST', 'nargs="?"',
+    for (const rule of ['Do NOT execute templates', 'CERT_X_GEN_CONTEXT', 'CERT_X_GEN_TARGET_KIND', 'CERT_X_GEN_ARGV', 'CERT_X_GEN_TARGET_HOST', 'nargs="?"',
       'JSON array', 'matched_patterns', '"request"', '"response"', 'author MUST be an AuthorInfo mapping',
       'protected resource named by the threat', '@guardlink_threat:']) expect(prompt).toContain(rule);
+    expect(prompt).toContain('--scope "cli://$(pwd)/<path/to/cli-binary>"');
+    expect(prompt).toContain('context.get("project_root")');
+    for (const retired of ['--scope local://.', 'CERT_X_GEN_PROJECT_ROOT', 'CERT_X_GEN_TARGET_TYPE']) {
+      expect(prompt).not.toContain(retired);
+    }
     expect(buildTranslatePrompt('Generate templates', root, null, { contract: 'scanner' })).toBe(prompt);
   });
 

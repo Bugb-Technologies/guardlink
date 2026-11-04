@@ -24,8 +24,10 @@ npm install && npm run build && npm link
 guardlink report . -o docs/examples/threat-model.md
 guardlink dashboard . -o docs/examples/threat-dashboard.html
 
-# Pentest scan (requires CXG installed and templates in .guardlink/cxg-templates/)
-cxg scan --scope local://. \
+# Pentest scan (requires CXG v1.4.0+ and templates in .guardlink/cxg-templates/).
+# Scope the built CLI and pass the project root to templates through --context.
+cxg scan --scope "cli://$(pwd)/dist/cli/index.js" \
+  --context "{\"project_root\": \"$(pwd)\"}" \
   --template-dir .guardlink/cxg-templates/ \
   --output docs/examples/guardlink-pentest \
   --output-format json,sarif,html
