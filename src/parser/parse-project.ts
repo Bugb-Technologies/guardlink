@@ -47,6 +47,7 @@ import { computeAnnotationHash } from './annotation-hash.js';
 import { attachAnchors } from '../structure/attach.js';
 import { onePathPerFile } from './scan-files.js';
 import { annotationScope } from './annotation-scope.js';
+import { NESTED_CHECKOUT_GLOBS, scanIgnore } from './nested-checkouts.js';
 import { parseRouteChannel } from './route.js';
 
 /** A standalone annotation sidecar, not a source file. */
@@ -250,6 +251,8 @@ export const DEFAULT_EXCLUDE = [
   // otherwise walk these: .bravos holds agent rollback backups of annotated source, so
   // re-parsing them double-counts every exposure in the original; .bugb is siete's session store.
   '**/.bravos/**', '**/.bugb/**',
+  // @comment -- "Another checkout nested in the tree: Claude Code's per-session worktrees under .claude/worktrees/, each a full copy of the repository with its own definitions, which parsed as source made every definition id a duplicate and every exposure count twice. This is the by-name half of the rule; the .git-file half cannot be a glob and is applied by scanIgnore (nested-checkouts.ts)"
+  ...NESTED_CHECKOUT_GLOBS,
   // D17 — our own generated outputs.
   ...GENERATED_OUTPUT_FILES.map(f => `**/${f}`),
 ];
@@ -279,9 +282,10 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   const config = { security_tests_dir: readSecurityTestsDir(root) };
 
   // Discover files (dot: true to include .guardlink/ definitions)
+  // @comment -- "scanIgnore adds one ignore per nested checkout found under root (a directory holding a .git FILE: a linked worktree or a submodule), so another checkout's source and definitions are never read as this repository's. The same call bounds clear, the fingerprint and init's scope, so the four walks keep one scan set"
   const scanned = await fg(include, {
     cwd: root,
-    ignore: exclude,
+    ignore: scanIgnore(root, exclude),
     absolute: true,
     dot: true,
   });

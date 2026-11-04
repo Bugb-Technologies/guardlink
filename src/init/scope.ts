@@ -20,6 +20,7 @@
 import { execFileSync } from 'node:child_process';
 import fg from 'fast-glob';
 import { DEFAULT_EXCLUDE } from '../parser/parse-project.js';
+import { scanIgnore } from '../parser/nested-checkouts.js';
 import type { ProjectLanguage } from './detect.js';
 
 /**
@@ -134,9 +135,10 @@ export interface IncludeScope {
  * with the walk, which is where the excludes are applied.
  */
 function listFiles(root: string): { files: string[]; source: 'git' | 'walk' } {
+  // @comment -- "scanIgnore adds the nested checkouts under root (a directory holding a .git file, or .claude/worktrees), so another checkout's languages do not shape this repository's include"
   const walked = fg.sync('**/*', {
     cwd: root,
-    ignore: [...DEFAULT_EXCLUDE, '.guardlink/**'],
+    ignore: [...scanIgnore(root, DEFAULT_EXCLUDE), '.guardlink/**'],
     dot: true,
     onlyFiles: true,
     followSymbolicLinks: false,

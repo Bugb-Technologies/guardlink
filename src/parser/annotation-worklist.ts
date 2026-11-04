@@ -21,6 +21,7 @@ import { execFileSync } from 'node:child_process';
 import fg from 'fast-glob';
 import type { ThreatModel } from '../types/index.js';
 import { annotationScope, type ScopeExclusionReason, type ScopeView } from './annotation-scope.js';
+import { findNestedCheckouts } from './nested-checkouts.js';
 import { DEFAULT_EXCLUDE } from './parse-project.js';
 
 export const WORKLIST_SCHEMA = 'guardlink.annotation-worklist/v1';
@@ -57,6 +58,9 @@ export interface AnnotationWorklist {
 }
 
 function repositoryFiles(root: string): string[] {
+  // @comment -- "Another checkout nested in the tree (a Claude Code worktree under .claude/worktrees, any directory holding a .git file) is not this repository's annotation work under any reason. git already takes that view — ls-files lists a nested checkout as one opaque `dir/` entry and never descends — and the walk outside a work tree is held to the same one, so the worklist neither lists nor counts it, as excluded or otherwise"
+  const nested = findNestedCheckouts(root, DEFAULT_EXCLUDE);
+  let files: string[];
   try {
     const out = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
       cwd: root,
@@ -64,17 +68,18 @@ function repositoryFiles(root: string): string[] {
       stdio: ['ignore', 'pipe', 'ignore'],
       maxBuffer: 256 * 1024 * 1024,
     });
-    return out.split('\0').filter(Boolean);
+    files = out.split('\0').filter(Boolean);
   } catch {
-    return fg.sync('**/*', {
+    files = fg.sync('**/*', {
       cwd: root,
-      ignore: ['**/node_modules/**', '**/.git/**'],
+      ignore: ['**/node_modules/**', '**/.git/**', ...nested.ignore],
       dot: true,
       onlyFiles: true,
       followSymbolicLinks: false,
       suppressErrors: true,
     });
   }
+  return files.filter(f => !nested.has(f));
 }
 
 const byPath = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);

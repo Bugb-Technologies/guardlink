@@ -30,6 +30,7 @@ import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join, relative, sep, dirname, basename } from 'node:path';
 import type { AgentConfigBundledFile } from '../types/index.js';
+import { isNestedCheckout } from '../parser/nested-checkouts.js';
 import { SKIP_DIRS, type DiscoveredFile } from './discover.js';
 
 /** A skill with more files than this lists the first ones (in directory-walk order, entries sorted by name) and says the rest were not listed. */
@@ -95,7 +96,8 @@ export function collectBundle(skill: DiscoveredFile, realRoot: string, carried: 
         continue;
       }
       if (e.isDirectory()) {
-        if (SKIP_DIRS.has(e.name)) continue;
+        // @comment -- "Another checkout nested under a skill directory (a .git-file directory) is not the skill's content; same rule as discovery and the parser's scan"
+        if (SKIP_DIRS.has(e.name) || isNestedCheckout(abs, rel)) continue;
         // Another skill: its files are listed under it.
         try { if (lstatSync(join(abs, 'SKILL.md')).isFile()) continue; } catch { /* no SKILL.md */ }
         walk(abs, rel);

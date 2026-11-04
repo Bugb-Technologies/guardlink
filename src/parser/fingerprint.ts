@@ -26,6 +26,7 @@
 import fg from 'fast-glob';
 import { createHash } from 'node:crypto';
 import { DEFAULT_INCLUDE, DEFAULT_EXCLUDE } from './parse-project.js';
+import { scanIgnore } from './nested-checkouts.js';
 
 // Control characters, so a path containing any printable byte cannot forge a
 // field or record boundary.
@@ -48,9 +49,10 @@ export async function fingerprintProject(root: string, options: FingerprintOptio
 
   // `stats: true` gets size and mtime from the walk itself — no second stat()
   // pass over the tree.
+  // @comment -- "scanIgnore skips nested checkouts (a directory holding a .git file, or .claude/worktrees) exactly as the parser does, so an edit inside another session's worktree does not invalidate this repository's cached model — and a file there is not part of what the fingerprint claims to cover"
   const entries = await fg(include, {
     cwd: root,
-    ignore: exclude,
+    ignore: scanIgnore(root, exclude),
     absolute: true,
     dot: true,
     stats: true,

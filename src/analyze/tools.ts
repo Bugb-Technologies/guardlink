@@ -24,6 +24,7 @@ import { join, relative } from 'node:path';
 import type { ToolDefinition, ToolExecutor } from './llm.js';
 import type { ThreatModel } from '../types/index.js';
 import { buildCoverageIndex } from '../parser/coverage.js';
+import { isNestedCheckout } from '../parser/nested-checkouts.js';
 
 // ─── Tool definitions ────────────────────────────────────────────────
 
@@ -303,7 +304,8 @@ function searchCodebase(
       try { stat = statSync(full); } catch { continue; }
 
       if (stat.isDirectory()) {
-        if (!skipDirs.has(entry) && !entry.startsWith('.')) walk(full);
+        // @comment -- "A nested checkout (a directory holding a .git file; .claude/worktrees is already a dot-directory) is another repository's source: a hit there would hand the analyst a line the model does not describe. Same rule as the parser's scan"
+        if (!skipDirs.has(entry) && !entry.startsWith('.') && !isNestedCheckout(full, relative(root, full))) walk(full);
       } else if (stat.isFile()) {
         if (globs && !globs.some(g => g.test(entry))) continue;
         // Skip binary / large files
