@@ -16,7 +16,7 @@ const ids = ANNOTATE_PLAYBOOKS.map(p => p.id);
 
 describe('selection', () => {
   it('is rule-based, deterministic, and defaults to the evidence-bar playbook', () => {
-    expect(ids).toEqual(['map', 'exploitable', 'chains', 'diff', 'coverage', 'verify']);
+    expect(ids).toEqual(['map', 'exploitable', 'chains', 'diff', 'coverage', 'verify', 'logic']);
     const cases: [string, string][] = [
       ['Annotate all the threats in my codebase', 'exploitable'],
       ['Annotate only real threats which can be actually exploited, find chained threats as deep as possible', 'chains'],
@@ -27,6 +27,9 @@ describe('selection', () => {
       ['trace chains in the changed files', 'diff'],
       ['cover the unannotated files', 'coverage'],
       ['check the existing annotations are still accurate', 'verify'],
+      ['check the business logic of the refund workflow', 'logic'],
+      ['annotate the tenant isolation invariants', 'logic'],
+      ['business logic in the changed files', 'diff'],
       ['', 'exploitable'],
     ];
     for (const [prompt, want] of cases) {
@@ -79,6 +82,8 @@ describe('the prompt', () => {
       expect(pb.body).toMatch(/@entitles/);
     }
     expect(getPlaybook('map').body).toMatch(/no @exposes|do not write @exposes/i);
+    expect(getPlaybook('logic').body).toMatch(/state change/);
+    expect(getPlaybook('logic').body).toMatch(/"intended\?"/);
   });
 });
 

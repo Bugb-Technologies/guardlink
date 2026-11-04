@@ -172,7 +172,7 @@ guardlink paths [dir] [--all]           # Undefended source-to-sink routes, deri
 # AI-Powered Analysis
 guardlink threat-report <fw> [focus…] [--shape full|executive|pr|audit]  # AI threat report (see frameworks below); free text is a focus, the shape is the audience
 guardlink threat-reports                # List saved threat reports
-guardlink annotate <prompt> [--playbook map|exploitable|chains|diff|coverage|verify] [--mode inline|external]  # Launch coding agent; the playbook is the method, the prompt is scope; the gate checks the result
+guardlink annotate <prompt> [--playbook map|exploitable|chains|diff|coverage|verify|logic] [--mode inline|external]  # Launch coding agent; the playbook is the method, the prompt is scope; the gate checks the result
 guardlink lint [dir] [--since <ref>] [--json]   # Check annotations against the evidence bar; --since checks only what a session added
 guardlink hypothesis list|next|refute|confirm   # What happened when an exposure was tested (see below)
 guardlink hypothesis boundaries|support|contradict   # ...and when a declared @boundary was tested
@@ -273,11 +273,22 @@ Now the tool owns the method and the prompt supplies scope and intent.
 | `diff` | Only the files this branch changed (`--since <ref>`, default HEAD). |
 | `coverage` | The unannotated files, entry points first, structure before claims. |
 | `verify` | Re-read every existing claim against the code; flag what no longer holds. |
+| `logic` | Business invariants: learn the product's intent, walk each user journey, check every state change is guarded for owner, tenant, role, state and limits. |
 
 **The evidence bar**, shared by every playbook: an `@exposes` must name the entry point, the
 attacker-controlled input, the sink and the absent control, in the code's own names. What cannot
-meet the bar is written as `@audit`. Severity never outranks the threat's declared severity.
+meet the bar is written as `@audit`. Severity never outranks the threat's declared severity;
+within the band, rate the instance by impact, reach and ease, and say why when you rate it lower
+(`lint` notes an unexplained lower rating at level `info`, `exposes-severity-unexplained`).
 `@confirmed` needs evidence in hand. `@accepts` and `@entitles` are never written by an agent.
+
+**Intent and invariants.** Pattern playbooks find dangerous calls; the `logic` playbook finds
+broken rules. It reads the product's intent first (an intent file such as `.guardlink/intent.md`,
+or the owners' README), records actors (`@actor`), the assets that matter (`@handles`), and each
+rule that must never break as a threat (`@threat Cross-tenant read (#inv-tenant-isolation) [high]`).
+For a logic claim the sink is the state change and the absent control is the missing ownership,
+tenant, role, state or limit check. Something the product does on purpose is not an exposure:
+cite the intent in an `@audit`, or ask "intended?" in one when nothing says so. The owners decide.
 
 **The gate.** When a terminal agent returns, `guardlink annotate` parses the tree, finds what the
 run added, and lints it against the bar. Violations are sent back to the agent once

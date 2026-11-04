@@ -829,7 +829,7 @@ export function createServer(): McpServer {
       root: z.string().describe('Project root directory').default('.'),
       prompt: z.string().describe('Annotation instructions (e.g., "annotate auth endpoints for OWASP Top 10")'),
       mode: z.enum(['inline', 'external']).optional().describe('Placement for an unconfigured project. Otherwise preserve the configured or observed mode; conflicts are refused. With no recorded or observed placement, use the labeled external init default.'),
-      playbook: z.enum(['map', 'exploitable', 'chains', 'diff', 'coverage', 'verify']).optional().describe('The method: map (architecture first, no exposures), exploitable (default: claim only what an attacker can reach), chains (follow flows from open exposures), diff (changed files only), coverage (unannotated files), verify (re-check existing claims). Inferred from the prompt when omitted.'),
+      playbook: z.enum(['map', 'exploitable', 'chains', 'diff', 'coverage', 'verify', 'logic']).optional().describe('The method: map (architecture first, no exposures), exploitable (default: claim only what an attacker can reach), chains (follow flows from open exposures), diff (changed files only), coverage (unannotated files), verify (re-check existing claims), logic (business invariants along user journeys). Inferred from the prompt when omitted.'),
       code_graph: z.boolean().default(true).describe('Add a ranked entry-point worklist when a code graph is installed and built for this repository (false to leave it out). Without a graph the prompt is unchanged either way.'),
     },
     async ({ root, prompt, mode, playbook, code_graph }) => {

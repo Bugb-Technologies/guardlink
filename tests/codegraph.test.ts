@@ -355,7 +355,7 @@ describe('buildAnnotatePrompt — unchanged without a graph', () => {
       loadWorklist(root, null, { env: {}, transport: { via: 'x', query: async () => { throw new Error('boom'); } } }),
       loadWorklist(root, null, { env: {}, transport: stub({ codegraph_attack_surface: { ok: false, message: 'No CodeGraph' }, codegraph_routes: { ok: false, message: 'No CodeGraph' } }) }),
     ]);
-    for (const playbook of ['map', 'exploitable', 'chains', 'diff', 'coverage', 'verify']) {
+    for (const playbook of ['map', 'exploitable', 'chains', 'diff', 'coverage', 'verify', 'logic']) {
       const without = buildAnnotatePrompt('annotate the api', root, null, 'inline', playbook);
       expect(buildAnnotatePrompt('annotate the api', root, null, 'inline', playbook, null)).toBe(without);
       for (const w of statuses) {

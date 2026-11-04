@@ -26,7 +26,8 @@ export type LintRule =
   | 'confirmed-without-evidence'
   | 'mitigates-no-control'
   | 'description-vague'
-  | 'ticket-on-mitigated';
+  | 'ticket-on-mitigated'
+  | 'exposes-severity-unexplained';
 
 export interface Violation {
   rule: LintRule;
@@ -63,6 +64,7 @@ export const RULE_FIX: Record<LintRule, string> = {
   'confirmed-without-evidence': 'Downgrade to @exposes unless you hold evidence — a request and its response, a reproduction, a scan with proof — and put that evidence in the description.',
   'mitigates-no-control': 'Name the control with `using #control-id`, adding the control to the definitions file if it does not exist.',
   'description-vague': 'Say what the code does, by name: which function, which field, which library, which check.',
+  'exposes-severity-unexplained': 'Say in the description why this instance sits below its threat\'s band: who can reach it (admin-only, internal, signed-in), what it touches, or what must already hold. A reader should see the rating was a judgment, not an omission.',
   'ticket-on-mitigated': 'Nothing is required. If the ticket is closed in the tracker, remove the @ticket line; to keep it as the record of the work, leave it — this stays an info note.',
 };
 
@@ -95,6 +97,14 @@ export const hasCodeReference = (d: string): boolean => CODE_REF.some(r => r.tes
 
 /** Words that mark evidence in hand: a request and response, a reproduction, a scan with proof. Shared with the hypothesis ledger. */
 export const hasEvidenceWords = (d: string): boolean => EVIDENCE.test(d);
+
+/**
+ * Words that give a reason for rating an instance below its threat's band: who can reach it, what it
+ * touches, what must hold first, or that the product does it on purpose.
+ *
+ * @comment -- "Only an info note: the rating stays the annotator's judgment; the lint asks that the judgment be written down"
+ */
+const SEVERITY_REASON = /(^\s*(critical|high|medium|low)\s*:)|\b(reach\w*|admins?|authenticat\w*|unauthenticat\w*|signed[- ]in|logged[- ]in|internal|public|local(host)?|loopback|by design|intended|impact|because|requires?|only|preconditions?|privileged|owner|operator)\b/i;
 
 const EVIDENCE = /\b(request|response|http|status \d{3}|payload|reproduc\w*|pentest|scan(ned|ner)?|poc|proof|observed|returned|evidence|curl|cxg|exploited|verified)\b/i;
 
@@ -155,6 +165,7 @@ export function lintAnnotations(model: ThreatModel, opts: LintOptions = {}): Vio
     const paired = coverage.isCovered(e) || transferred.has(`${canon(e.asset)}::${bare(e.threat)}`) || audited.has(canon(e.asset)) || e.hypothesis?.state === 'refuted';
     if (!paired) push('exposes-unpaired', 'error', 'exposes', e, `${e.asset} → ${e.threat} has no @mitigates, @audit, @accepts or @transfers beside it`);
     const er = sevRank(e.severity), tr = threatSev(e.threat);
+    if (er !== null && tr !== null && er < tr && !SEVERITY_REASON.test(d)) push('exposes-severity-unexplained', 'info', 'exposes', e, `severity ${e.severity} is below ${e.threat}'s band with no reason in the description`);
     if (er !== null && tr !== null && er > tr) push('exposes-severity-above-threat', 'error', 'exposes', e, `severity ${e.severity} outranks ${e.threat}'s declared severity (${model.threats.find(t => bare(t.id ?? '') === bare(e.threat) || t.name.toLowerCase() === bare(e.threat))?.severity ?? 'unset'})`);
   }
   for (const c of model.confirmed || []) {

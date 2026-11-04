@@ -30,7 +30,7 @@ const GOOD = `import x from 'x';
 /**
  * @exposes #api to #sqli [high] cwe:CWE-89 -- "req.body.email concatenated into findUser() query at db.ts:40"
  * @mitigates #api against #sqli using #enc -- "escapeSql() wraps every literal in query()"
- * @exposes #web to #xss [medium] -- "profile.bio rendered through innerHTML in render()"
+ * @exposes #web to #xss [medium] -- "signed-in users only: profile.bio rendered through innerHTML in render()"
  * @audit #web -- "bio is not encoded; needs a control or an acceptance"
  * @flows User -> #api via HTTPS -- "login"
  */
@@ -60,6 +60,26 @@ async function project(files: Record<string, string>): Promise<string> {
   for (const [name, text] of Object.entries(files)) await writeFile(join(root, 'src', name), text);
   return root;
 }
+
+describe('exposes-severity-unexplained', () => {
+  it('an instance rated below its threat band needs a reason; with one, or at the band, it is quiet', async () => {
+    const src = `import z from 'z';
+/**
+ * @exposes #api to #sqli [low] -- "req.query.id concatenated into findUser() at db.ts:9 with no parameterisation"
+ * @audit #api -- "findUser() concatenation at db.ts:9 needs a parameterised rewrite"
+ * @exposes #web to #xss [low] -- "admin-only: settings.title rendered through innerHTML in renderAdmin()"
+ */
+export function q() {}
+`;
+    const root = await project({ 'q.ts': src });
+    const { model } = await parseProject({ root, project: 'q' });
+    const v = lintAnnotations(model).filter(x => x.rule === 'exposes-severity-unexplained');
+    expect(v).toHaveLength(1);
+    expect(v[0].level).toBe('info');
+    expect(v[0].line).toBe(3);
+    expect(v[0].message).toMatch(/low is below #sqli/);
+  });
+});
 
 describe('lintAnnotations', () => {
   it('passes a well-formed file and flags every rule on a careless one', async () => {

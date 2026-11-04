@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
+    "annotation_hash": "sha256-v3:01e91b8d712cc3917779ed98f08d26cb4b3ef1aa6df756b1c16c11094ac14ed8",
     "generator": "guardlink@2.5.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 194,
-  "annotations_parsed": 1134,
+  "annotations_parsed": 1135,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agentconfig/bundle.ts",
@@ -10335,6 +10335,13 @@
       }
     },
     {
+      "description": "Only an info note: the rating stays the annotator's judgment; the lint asks that the judgment be written down",
+      "location": {
+        "file": "src/gate/lint.ts",
+        "line": 105
+      }
+    },
+    {
       "description": "The numbers are measured against a specific panel and font size, both cited above — deriving rather than guessing is the same discipline render-budget.ts applies to Mermaid's own limits",
       "location": {
         "file": "src/graph/legibility.ts",
@@ -11084,7 +11091,7 @@
       }
     },
     {
-      "description": "Order matters where prompts match several playbooks: diff preserves change scope before chains, and chains beats exploitable because a prompt that asks for chains also asks for exploitability, and diff beats coverage because a change is narrower than the tree",
+      "description": "Order matters where prompts match several playbooks: diff preserves change scope before chains, and chains beats exploitable because a prompt that asks for chains also asks for exploitability, and diff beats coverage because a change is narrower than the tree; logic comes right after diff because naming a business rule, invariant or journey asks for that method over the pattern ones",
       "location": {
         "file": "src/playbooks/select.ts",
         "line": 8
@@ -11351,7 +11358,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 1134,
+    "annotation_count": 1135,
     "coverage_percent": 92
   },
   "annotation_scope": {
@@ -11676,7 +11683,7 @@
           "line": 1,
           "stamp": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": true
+          "current": false
         },
         "hidden_unicode": []
       },
@@ -11692,7 +11699,7 @@
           "line": 7,
           "stamp": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": true
+          "current": false
         },
         "hidden_unicode": []
       },
@@ -11709,7 +11716,7 @@
           "line": 3,
           "stamp": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": true
+          "current": false
         },
         "hidden_unicode": []
       },
@@ -11726,7 +11733,7 @@
           "line": 3,
           "stamp": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": true
+          "current": false
         },
         "hidden_unicode": []
       },
@@ -11742,7 +11749,7 @@
           "line": 1,
           "stamp": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": true
+          "current": false
         },
         "hidden_unicode": []
       },
@@ -11761,7 +11768,7 @@
           "line": 3,
           "stamp": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": true
+          "current": false
         },
         "hidden_unicode": []
       },
@@ -11778,7 +11785,7 @@
           "line": 3,
           "stamp": "sha256-v3:517ecb13d33b0b7f64885214eca57a9671b41dd13a4347de22f12ac259e9a7d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": true
+          "current": false
         },
         "hidden_unicode": []
       },

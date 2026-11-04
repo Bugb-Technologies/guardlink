@@ -12,7 +12,7 @@
 
 export type PlaybookKind = 'annotate' | 'report';
 
-export type AnnotatePlaybookId = 'map' | 'exploitable' | 'chains' | 'diff' | 'coverage' | 'verify';
+export type AnnotatePlaybookId = 'map' | 'exploitable' | 'chains' | 'diff' | 'coverage' | 'verify' | 'logic';
 export type ReportShapeId = 'full' | 'executive' | 'pr' | 'audit';
 export type PlaybookId = AnnotatePlaybookId | ReportShapeId;
 

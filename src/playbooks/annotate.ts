@@ -1,11 +1,11 @@
 /**
- * The six annotate playbooks. Each body is a complete method: purpose, phases,
+ * The seven annotate playbooks. Each body is a complete method: purpose, phases,
  * what to write, what not to, and when to stop. They share the evidence bar.
  *
  * @comment -- "Bodies are markdown that lands verbatim in the agent prompt and in the SKILL.md; keep each one readable on its own"
  */
 import type { Playbook } from './types.js';
-import { EVIDENCE_BAR, WRITE_LAST, STOP_CONDITIONS } from './evidence.js';
+import { EVIDENCE_BAR, LOGIC_EVIDENCE, WRITE_LAST, STOP_CONDITIONS } from './evidence.js';
 
 const NEVER = `Never write \`@accepts\` or \`@entitles\`; preserve human-owned decisions and reproduction evidence. During an annotation-only review, flag unsupported claims with \`@audit\` for their owner; when maintaining code in the same change, correct or remove code-backed claims that the changed implementation invalidates. Preserve unchanged claims and unrelated tests. This annotation method writes no executable code.`;
 
@@ -175,6 +175,38 @@ ${EVIDENCE_BAR}
 
 ### What not to write
 ${NEVER} Explain substantive claim corrections in the change; retain evidence provenance and unrelated history.
+
+${WRITE_LAST}
+
+${STOP_CONDITIONS}`,
+  },
+  {
+    id: 'logic',
+    kind: 'annotate',
+    title: 'Logic',
+    summary: 'Business logic: the invariants the product must keep, checked along each user journey, not only dangerous calls.',
+    triggers: [/\bbusiness logic\b/, /\binvariants?\b/, /\bjourneys?\b/, /\bworkflows?\b/, /\btenan(t|cy)\b/, /\bownership\b/, /\brefunds?\b/, /\bapprovals?\b/, /\bintended\b/],
+    body: `## Method — Logic
+**Purpose.** Pattern methods find dangerous calls; this one finds broken rules. Read what the product promises its users, then check that the code keeps each promise on every path that could break it. A cross-tenant read, a self-approved refund, a skipped checkout step or a role granted above the granter's own are all ordinary calls made by the wrong caller, in the wrong state or in the wrong order.
+
+### Phase 1 — Learn the intent
+Read the product's intent before the code: an intent file if the repository has one (\`.guardlink/intent.md\`, or what the owners wrote in the README and docs), the roles and permission code, the data models and anything that moves money or other users' data. Write down: the actors (\`@actor\`), the assets that matter most and their data class (\`@handles\`), the rules that must never break, and what the product does on purpose that only looks dangerous. Add each rule as a threat in the definitions file with a stable id (\`@threat Cross-tenant read (#inv-tenant-isolation) [high]\`), reusing ids that exist. If nothing says what is intended, ask the owners before rating anything as critical.
+
+### Phase 2 — Walk the journeys
+For each rule, list the journeys that could break it — signup, invite, role change, checkout, refund, export, delete, admin action — and walk each one step by step from its entry point. At every step that changes state, ask what it assumes about the caller and the step before: that the caller owns the record, belongs to the tenant, holds the role, that the record is in the right state, that the amount or count is within limits, that the step is not repeated or raced.
+
+### Phase 3 — Check each assumption in the code
+For each assumption, find the check that enforces it on this path: an ownership or tenant filter in the query, a role check before the grant, a state guard before the transition, a limit before the write, an idempotency key or lock around it. A check on another path does not protect this one. A check that holds → \`@mitigates <Asset> against #inv-… using #<control>\`. A check that is missing or bypassable and meets the bar → \`@exposes <Asset> to #inv-…\`. A check you could not establish → \`@audit\`.
+
+### Phase 4 — Write
+Write the coupled block beside the code that makes the state change: the claim, its pair, the \`@flows\` of the journey, the \`@boundary\` the caller crossed, and a \`@comment\` naming the rule the code keeps. Where the code does something dangerous on purpose and the intent says so, write no exposure: write an \`@audit\` citing the intent and annotate the guard that should hold around it. Where it looks intended and nothing says so, write an \`@audit\` that asks "intended?" with your reason, for the owners to answer.
+
+${LOGIC_EVIDENCE}
+
+${EVIDENCE_BAR}
+
+### What not to write
+${NEVER} Do not turn a by-design feature into an exposure, or an exposure into "by design" on your own judgment: the owners decide what is intended.
 
 ${WRITE_LAST}
 
