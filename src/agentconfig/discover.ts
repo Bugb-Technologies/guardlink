@@ -30,6 +30,7 @@
 import { readdirSync, realpathSync, statSync, existsSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import type { AgentConfigScope, AgentConfigLoadedWhen } from '../types/index.js';
+import { isNestedCheckout } from '../parser/nested-checkouts.js';
 import { loadSemantics, type Semantics, type HarnessFileRule } from './semantics.js';
 
 export const SKIP_DIRS = new Set([
@@ -161,7 +162,8 @@ export function discover(root: string, sem: Semantics = loadSemantics()): Discov
         viaLink = `${rel} -> ${relative(realRoot, target).split(sep).join('/')}`;
       }
       if (isDir) {
-        if (SKIP_DIRS.has(e.name)) continue;
+        // @comment -- "Another checkout nested in the tree (a Claude Code worktree under .claude/worktrees, any directory holding a .git file) carries its own CLAUDE.md, settings and skills, which no agent loads from here. Read as this repository's configuration they were scope `root` — a copy of every instruction file, and of every reach row. Same rule as the parser's scan"
+        if (SKIP_DIRS.has(e.name) || isNestedCheckout(abs, rel)) continue;
         visit(abs, rel, viaLink, chain);
         continue;
       }
