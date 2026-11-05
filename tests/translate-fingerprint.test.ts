@@ -18,8 +18,8 @@ describe('reviewed scanner workflow fingerprint', () => {
       expect(prompt).toContain(SCANNER_SAFETY_REQUIREMENTS);
       // Change these reviewed baselines only with intentional prompt changes.
       expect(fingerprint(prompt.replace(SCANNER_SAFETY_REQUIREMENTS, '')))
-        .toBe('cabbf79346d99f114fdb7ca3e2bd19e226fc7cd55794642a93ecd4b75dc501cb');
-      expect(fingerprint(prompt)).toBe('9cfd6b5a9041ce993dceea48e017f7f6e7b4b9dce35295e550f94ceefb3ce77e');
+        .toBe('4ed3254447cab4bdf9eafdf97f2c1ab33e02e1c9f1d7064d2525495d566d3a6e');
+      expect(fingerprint(prompt)).toBe('b4543e71377a5054e58c879704676fcfc8b210ae5b98f1cf79e69be398ebe6a3');
       expect(buildTranslatePrompt('Generate templates', '/project', null, { contract: 'scanner' })).toBe(prompt);
     } finally {
       vi.unstubAllEnvs();

@@ -61,4 +61,20 @@ describe.skipIf(!help.includes('--stdout'))('translate stdout completion boundar
     expect(result.stdout).toContain('cxgProbe(cxg)');
     expect(existsSync(marker)).toBe(false);
   });
+
+  it('prints only the prompt: no launch banner and no templates written', () => {
+    const { root } = fixture();
+    const result = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/index.ts', 'translate', 'the api', '--dir', root, '--stdout', '--no-code-graph'], { encoding: 'utf8', env: { ...process.env } });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('the api');
+    expect(result.stdout).not.toMatch(/Launching|will take over this terminal|session ended|copied to clipboard/);
+    expect(existsSync(join(root, '.guardlink', 'cxg-templates'))).toBe(false);
+  });
+
+  it.each([['--headless', '--agent', 'claude'], ['--claude-code'], ['--clipboard']])('refuses --stdout with %s', (...flags) => {
+    const { root } = fixture();
+    const result = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/index.ts', 'translate', '--dir', root, '--stdout', ...flags, '--no-code-graph'], { encoding: 'utf8', env: { ...process.env } });
+    expect(result.status).toBe(1);
+    expect(result.stdout + result.stderr).toContain('--stdout prints the prompt for the calling agent');
+  });
 });

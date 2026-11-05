@@ -1,5 +1,5 @@
 <!-- guardlink:begin -->
-<!-- guardlink:stamp annotation_hash=sha256-v3:ce936d8ff94ae5178ac84e37a7ecdc14dfd9fc1536ac4df53e149e48752d1f61 agent_config_hash=sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25 -->
+<!-- guardlink:stamp annotation_hash=sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673 agent_config_hash=sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25 -->
 # GuardLink Security Annotations
 
 This project carries a [GuardLink](https://guardlink.bugb.io) threat model: security facts recorded
@@ -17,7 +17,7 @@ and `guardlink parse .` provide repo-wide summaries and records; inspect the sou
 - Code that hands an LLM agent a tool: `@agents` on the registration, `@effects` on the code that acts, `@gates` on an approval step (`@reaches` for a principal that is no agent). Syntax: the reference above.
 - **Never write `@accepts` or `@entitles`** — both are a human's decision. A risk with no control is `@exposes` + `@audit`; an entitlement is proposed with `guardlink entitle --propose`, and a human's acceptance writes it.
 - `@confirmed` needs reproduction evidence in hand; reading the code is not reproduction.
-- For an everyday, per-change developer check: `guardlink translate "<changed paths and threats>"` generates templates only; review/validate them, then run selected tests separately. Repeat annotate → translate → test → fix. See `.guardlink/README.md` for the workflow, regression retention and deep verification with Bravos.
+- For an everyday, per-change developer check: `guardlink_translate` (or `guardlink translate --stdout "<changed paths and threats>"`) generates templates only; review/validate them, then run selected tests separately. Repeat annotate → translate → test → fix. See `.guardlink/README.md` for the workflow, regression retention and deep verification with Bravos.
 - Before you finish: `guardlink validate .`, then `guardlink diff HEAD~1` — did this change add exposure?
 
 **Before you open or update a pull request**, check its annotations against the base branch and run repository security tests:

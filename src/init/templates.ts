@@ -335,7 +335,7 @@ Append after severity: \`cwe:CWE-89\`, \`owasp:A03:2021\`, \`capec:CAPEC-66\`, \
 guardlink validate .            # Check for errors
 guardlink report .              # Generate threat-model.md
 guardlink status .              # Coverage summary
-guardlink translate "<changed paths and threats>" # Generate templates only; review/validate, then run separately
+guardlink translate --stdout "<changed paths and threats>" # Print the template-authoring prompt; you write the templates, then run separately
 guardlink feature list          # List all @feature tags
 guardlink feature show "<name>" # Show model for a feature (quote names with spaces)
 guardlink entitle --propose     # File an @entitles proposal (writes nothing to source)
@@ -354,7 +354,7 @@ When connected via \`.mcp.json\`, use:
 - \`guardlink_suggest\` — get annotation suggestions for a file
 - \`guardlink_validate\` — check for syntax errors
 - \`guardlink_status\` — coverage stats
-- \`guardlink_translate\` — return a template-authoring prompt for the calling agent; generation only. Older servers: \`guardlink translate "<scope>"\`.
+- \`guardlink_translate\` — return a template-authoring prompt for the calling agent; generation only. Without the MCP tool: \`guardlink translate --stdout "<scope>"\` prints the same prompt (a bare \`guardlink translate\` launches a separate authoring agent).
 - \`guardlink_entitlement_propose\` / \`guardlink_entitlement_list\` — propose an \`@entitles\` claim and see what happened to it. There is no accept tool: a human accepts, with \`guardlink entitle\`.
 `;
 }
@@ -511,7 +511,7 @@ ${placementLine(project, mode)} Placement in full: \`.guardlink/README.md\`; syn
 - Code that hands an LLM agent a tool: \`@agents\` on the registration, \`@effects\` on the code that acts, \`@gates\` on an approval step (\`@reaches\` for a principal that is no agent). Syntax: the reference above.
 - **Never write \`@accepts\` or \`@entitles\`** — both are a human's decision. A risk with no control is \`@exposes\` + \`@audit\`; an entitlement is proposed with \`guardlink entitle --propose\`, and a human's acceptance writes it.
 - \`@confirmed\` needs reproduction evidence in hand; reading the code is not reproduction.
-- For an everyday, per-change developer check: \`guardlink translate "<changed paths and threats>"\` generates templates only; review/validate them, then run selected tests separately. Repeat annotate → translate → test → fix. See \`.guardlink/README.md\` for the workflow, regression retention and deep verification with Bravos.
+- For an everyday, per-change developer check: \`guardlink_translate\` (or \`guardlink translate --stdout "<changed paths and threats>"\`) generates templates only; review/validate them, then run selected tests separately. Repeat annotate → translate → test → fix. See \`.guardlink/README.md\` for the workflow, regression retention and deep verification with Bravos.
 - Before you finish: \`guardlink validate .\`, then \`guardlink diff HEAD~1\` — did this change add exposure?
 
 ${prePrSection(ctx.prePr ?? [], project.securityTestsDir ?? DEFAULT_SECURITY_TESTS_DIR)}
@@ -1157,7 +1157,7 @@ guardlink parse .                        # the whole model as JSON, on stdout
 guardlink validate .                     # syntax errors and dangling #id references
 guardlink report . --format md           # human-readable threat model report
 guardlink diff HEAD~1                    # what your change did to the model
-guardlink translate "<changed paths and threats>" # template generation only; review/validate, then execute separately
+guardlink translate --stdout "<changed paths and threats>" # the template-authoring prompt; generation only, execute separately
 guardlink paths .                        # undefended routes from an entry point to a sink
 guardlink dashboard .                    # interactive HTML view
 guardlink blame .                        # who introduced / declared / fixed each claim, and which AI co-authored it
@@ -1176,7 +1176,7 @@ The MCP server exposes the model as tools. The ones worth knowing by name:
 | \`guardlink_diff(ref)\` | After a change — did I make this worse? |
 | \`guardlink_status\` | Cold start on an unfamiliar repo. |
 | \`guardlink_blame(file)\` | Who introduced this, and did an AI co-author it. Read from git; nothing written. |
-| \`guardlink_translate(prompt)\` | Return a generation-only template prompt for this change; execution is separate. Older servers: \`guardlink translate "<scope>"\`. |
+| \`guardlink_translate(prompt)\` | Return a generation-only template prompt for this change; execution is separate. Without the MCP tool: \`guardlink translate --stdout "<scope>"\`. |
 | \`guardlink_annotate_apply(file, line, annotations)\` | **External mode only:** write a sidecar. In inline mode edit source comments directly. |
 
 ### Writing annotations with the MCP server

@@ -135,7 +135,7 @@ describe('GL-401 — instructions arrive at initialize', () => {
     expect(instructions).toContain('runs that can take hours');
     const sarif = (await session.client.listTools()).tools.find(t => t.name === 'guardlink_sarif');
     expect(sarif?.description).toContain('guardlink_translate');
-    expect(sarif?.description).toContain('guardlink translate "<changed paths and threats>"');
+    expect(sarif?.description).toContain('guardlink translate --stdout "<changed paths and threats>"');
     expect(sarif?.description).toContain('run selected tests separately');
   });
 

@@ -176,7 +176,7 @@ guardlink annotate <prompt> [--playbook map|exploitable|chains|diff|coverage|ver
 guardlink lint [dir] [--since <ref>] [--json]   # Check annotations against the evidence bar; --since checks only what a session added
 guardlink hypothesis list|next|refute|confirm   # What happened when an exposure was tested (see below)
 guardlink hypothesis boundaries|support|contradict   # ...and when a declared @boundary was tested
-guardlink translate "<changed paths and threats>" # Generate scanner templates only; review/validate, then run separately
+guardlink translate --stdout "<changed paths and threats>" # Print the scanner-template prompt for you to author; review/validate, then run separately
 guardlink ask <query>                   # Ask questions about the threat model and codebase
 guardlink config <show|set|clear>       # Manage LLM provider / CLI agent configuration
 
