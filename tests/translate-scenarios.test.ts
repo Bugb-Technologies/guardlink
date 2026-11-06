@@ -299,5 +299,6 @@ describe('prompt-only completion boundaries', () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain('GuardLink');
     expect(existsSync(marker)).toBe(false);
-  });
+  // It starts the CLI through tsx, which a loaded 2-CPU CI runner takes more than the 5 s default to transpile.
+  }, 30_000);
 });

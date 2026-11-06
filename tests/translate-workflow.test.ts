@@ -75,6 +75,13 @@ describe('generation-only translation', () => {
 
   it('uses a configured missing suite and selected draft output without creating either', async () => {
     const root = await mkdtemp(join(tmpdir(), 'guardlink-translate-suite-'));
+    // The probe contract reads cxg's authoring guide. Give it a fixture, so the test does not depend on
+    // whether this machine has cxg's pentest docs installed (a CI runner has none).
+    const cxg = await mkdtemp(join(tmpdir(), 'guardlink-translate-cxg-'));
+    await mkdir(join(cxg, 'pentest', 'docs'), { recursive: true });
+    await writeFile(join(cxg, 'pentest', 'docs', 'TEMPLATES.md'), '# Probe authoring guide (test fixture)\n\nWrite one probe per claim.\n');
+    vi.stubEnv('GUARDLINK_CXG_ROOT', cxg);
+    vi.stubEnv('CERT_X_GEN_HOME', cxg);
     const client = await connect();
     try {
       await mkdir(join(root, '.guardlink'));
@@ -98,6 +105,8 @@ describe('generation-only translation', () => {
       expect(await snapshot(root)).toEqual(before);
     } finally {
       await client.close();
+      vi.unstubAllEnvs();
+      await rm(cxg, { recursive: true, force: true });
       await rm(root, { recursive: true, force: true });
     }
   });
