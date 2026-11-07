@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-boundary/cli-input-boundary.mmd
 %% scope:           PARTIAL — the Trust boundary at CLI argument parsing between cli and userinput, and what flows across it
-%% annotation_hash: sha256-v3:ce936d8ff94ae5178ac84e37a7ecdc14dfd9fc1536ac4df53e149e48752d1f61
+%% annotation_hash: sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673
 %% generator:       guardlink@2.5.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -23,6 +23,7 @@ graph LR
   blame["🧩 GuardLink.Blame"]
   codegraph["🧩 GuardLink.CodeGraph"]
   gate["🧩 GuardLink.Gate"]
+  agentsession["🧩 AgentSession"]
   agentproposal["🧩 AgentProposal"]
   estate_view["🧩 Workspace.Estate"]
   merge_engine["🧩 Workspace.Merge"]
@@ -34,6 +35,7 @@ graph LR
   cli -- "📡 loadReachCheck" --> codegraph
   userinput -- "📡 verify" --> cli
   cli -- "📡 runGate" --> gate
+  cli -- "📡 stdout" --> agentsession
   codegraph -- "📡 checkBoundaries" --> cli
   codegraph -- "📡 loadReachCheck" --> cli
   agentproposal -- "📡 proposeEntitlement" --> cli

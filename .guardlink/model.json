@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:ce936d8ff94ae5178ac84e37a7ecdc14dfd9fc1536ac4df53e149e48752d1f61",
+    "annotation_hash": "sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673",
     "generator": "guardlink@2.5.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 195,
-  "annotations_parsed": 1149,
+  "annotations_parsed": 1151,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agentconfig/bundle.ts",
@@ -6435,6 +6435,17 @@
       }
     },
     {
+      "source": "#cli",
+      "target": "AgentSession",
+      "mechanism": "stdout",
+      "route": null,
+      "description": "Filtered threat model and translate method as a prompt; the same text guardlink_translate returns",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 2302
+      }
+    },
+    {
       "source": "GitRepo",
       "target": "#cli",
       "mechanism": "attachBlame",
@@ -6442,7 +6453,7 @@
       "description": "dashboard --blame; identities land in the page, so blame.identity=hash is the setting for a shared dashboard",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3359
+        "line": 3372
       }
     },
     {
@@ -6453,7 +6464,7 @@
       "description": "dashboard --since <ref>: the model at the ref, diffed against this one",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 3362
+        "line": 3375
       }
     },
     {
@@ -8955,7 +8966,7 @@
       "description": "Identity strings printed to the terminal",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 4275
+        "line": 4288
       }
     },
     {
@@ -10027,17 +10038,24 @@
       }
     },
     {
+      "description": "translate --stdout: prints the generation-only template prompt for an agent already in session and launches no author; refused with --headless or any agent, IDE or clipboard flag",
+      "location": {
+        "file": "src/cli/index.ts",
+        "line": 2301
+      }
+    },
+    {
       "description": "Displays ledger state (absent, corrupt, or counts) computed by the caller; this function performs no I/O of its own",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 4175
+        "line": 4188
       }
     },
     {
       "description": "Prints only what the payload already holds; no I/O here",
       "location": {
         "file": "src/cli/index.ts",
-        "line": 4276
+        "line": 4289
       }
     },
     {
@@ -11470,7 +11488,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 1149,
+    "annotation_count": 1151,
     "coverage_percent": 92
   },
   "annotation_scope": {
@@ -11790,10 +11808,10 @@
           "cline"
         ],
         "scope": "root",
-        "bytes": 4259,
+        "bytes": 4295,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:ce936d8ff94ae5178ac84e37a7ecdc14dfd9fc1536ac4df53e149e48752d1f61",
+          "stamp": "sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11806,10 +11824,10 @@
           "cursor"
         ],
         "scope": "root",
-        "bytes": 4342,
+        "bytes": 4378,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:ce936d8ff94ae5178ac84e37a7ecdc14dfd9fc1536ac4df53e149e48752d1f61",
+          "stamp": "sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11823,10 +11841,10 @@
           "gemini-cli"
         ],
         "scope": "root",
-        "bytes": 4296,
+        "bytes": 4332,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:ce936d8ff94ae5178ac84e37a7ecdc14dfd9fc1536ac4df53e149e48752d1f61",
+          "stamp": "sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11840,10 +11858,10 @@
           "copilot-review"
         ],
         "scope": "root",
-        "bytes": 4296,
+        "bytes": 4332,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:ce936d8ff94ae5178ac84e37a7ecdc14dfd9fc1536ac4df53e149e48752d1f61",
+          "stamp": "sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11856,10 +11874,10 @@
           "windsurf"
         ],
         "scope": "root",
-        "bytes": 4259,
+        "bytes": 4295,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:ce936d8ff94ae5178ac84e37a7ecdc14dfd9fc1536ac4df53e149e48752d1f61",
+          "stamp": "sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11875,10 +11893,10 @@
           "opencode"
         ],
         "scope": "root",
-        "bytes": 4936,
+        "bytes": 4972,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:ce936d8ff94ae5178ac84e37a7ecdc14dfd9fc1536ac4df53e149e48752d1f61",
+          "stamp": "sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11892,10 +11910,10 @@
           "copilot-review"
         ],
         "scope": "root",
-        "bytes": 4296,
+        "bytes": 4332,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:ce936d8ff94ae5178ac84e37a7ecdc14dfd9fc1536ac4df53e149e48752d1f61",
+          "stamp": "sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
