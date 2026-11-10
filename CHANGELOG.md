@@ -5,6 +5,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## \[Unreleased\]
 
+## \[2.6.0\] - 2026-11-10
+
+### Upgrading
+
+- **Run `guardlink sync`, then `guardlink artifacts .`, after upgrading.** The generated instruction blocks change (they now name `guardlink_translate` or `guardlink translate --stdout`, never a bare `guardlink translate`, which launches Claude Code), and committed artifacts carry the 2.6.0 generator stamp.
+- **Coverage numbers can drop.** Repository scans now skip nested linked checkouts: `.claude/worktrees/` and any directory holding a `.git` file. Files that were counted twice through a worktree are counted once.
+- **The reviewed scanner prompt changed,** so its pinned fingerprint changes. Callers that pin it (as `tests/translate-fingerprint.test.ts` does) need the new value.
+- **Headless authoring is stricter.** A failed or safety-stopped author completion is now an error, not a result. The output reports author outcomes and safety telemetry separately.
+- **Running probe templates needs cxg 1.8.0.** `--contract probe` writes JS probes that cxg 1.8.0 runs through plain `cxg scan` with no model calls.
+- No TypeScript union, model version, SARIF profile version or annotation-hash version changes. One new lint rule reports at `info`, which never fails the gate.
+
+### Added
+
+- **`guardlink translate --stdout`** prints the generation-only template prompt and exits. No author is launched, and nothing is written or validated. It is the CLI twin of the `guardlink_translate` MCP tool, for an agent already in session or a harness without MCP. It is refused with `--headless` or any agent, IDE or clipboard flag. Diagnostics stay on stderr.
+- **Translate selects and shapes its output:**
+  - `--threat <id>` (repeatable) picks threats or exposures.
+  - `--contract scanner|probe` chooses the template contract.
+  - `--from <path>` converts existing scanner templates into draft JS probes (with `--contract probe`).
+  - `--context <file.json>` takes a version 1 per-threat context pack.
+  - `--out <dir>` sets the output directory.
+- **Translate can run an author without a terminal:** `--headless --agent claude|codex|gemini`, `--agent-timeout` and `--format json`. Converted probes keep the exact source threat reference. Each source reports a declared engine oracle or a concrete unsupported reason.
+- **Optional code-graph facts in translate,** with `--no-code-graph` and `--code-graph-timeout` (also `GUARDLINK_CODEGRAPH_TIMEOUT_MS`).
+- **A curated security-test directory.** `security_tests_dir` in `.guardlink/config.json` (default `security`) is the one committed suite that verified templates are promoted into. The agent instructions add the duty to run it before a pull request. Reserved state roots are refused as its location.
+- **The `logic` annotation playbook** (`guardlink annotate --playbook logic`, and the MCP `guardlink_annotate` tool):
+  - It records the product's intent, actors, crown-jewel data, and each rule that must never break, as an `#inv-*` threat.
+  - It walks user journeys, checking every state change for owner, tenant, role, state and limits.
+  - By-design behaviour goes to an `@audit`, never an exposure or an acceptance.
+- **Lint rule `exposes-severity-unexplained` (info):** an instance rated below its threat's band needs a reason.
+
+### Fixed
+
+- **A source `@confirmed` now takes its `@exposes` out of `untested`.** `hypothesis next` no longer re-proposes an exposure the model already declares confirmed. A holding ledger outcome still wins.
+- **Translate uses the cxg CLI's supported scope and context options.** It finds the probe authoring guide under `CERT_X_GEN_HOME` and refuses probe authoring without one. Written YAML is validated, including the author shape older cxg validators missed. Scanner templates require protected-resource proof and AuthorInfo mappings.
+- **Codex headless authoring passes supported CLI arguments.** Author process deadlines and the completion transport are hardened.
+- **Translate tests no longer depend on the machine's cxg install or a fast runner.**
+
 ## \[2.5.0\] - 2026-10-26
 
 ### Upgrading
