@@ -32,14 +32,17 @@ run output and confirmed probes do not enter automatically. Run the configured s
 before review. Its path must stay outside the root `.bravos/`, `.guardlink/` and `.git/`
 directories; a missing suite is valid but has no tests. Details: [Agent instruction files](GUARDLINK_REFERENCE.md#agent-instruction-files).
 
-| Agent | Config file | MCP support |
-|-------|------------|-------------|
-| Claude Code | `CLAUDE.md` + `.mcp.json` | ✅ Full |
-| Cursor | `.cursorrules` + `.cursor/mcp.json` | ✅ Full |
-| Windsurf | `.windsurfrules` + `.windsurf/mcp.json` | ✅ Full |
-| Cline | `.clinerules` + `.cline/mcp.json` | ✅ Full |
-| Codex | `AGENTS.md` | Directive only |
-| GitHub Copilot | `.github/copilot-instructions.md` | Directive only |
+| Agent | Instruction file |
+|-------|------------------|
+| Claude Code | `CLAUDE.md` |
+| Cursor | `.cursor/rules/guardlink.mdc` |
+| Windsurf | `.windsurfrules` |
+| Cline | `.clinerules` |
+| Codex | `AGENTS.md` |
+| GitHub Copilot | `.github/copilot-instructions.md` |
+
+`init` also creates a root `.mcp.json` when it is absent. For client setup,
+see [Wire up the MCP server](https://docs.bugb.io/guardlink/guides/wire-up-the-mcp-server/).
 
 Every tool the server exposes, with its input schema, is at
 [docs.bugb.io/guardlink/reference/mcp/](https://docs.bugb.io/guardlink/reference/mcp/).
