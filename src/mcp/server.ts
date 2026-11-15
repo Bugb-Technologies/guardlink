@@ -1494,7 +1494,7 @@ export function createServer(): McpServer {
       root: z.string().describe('Project root directory').default('.'),
     },
     async ({ root }) => {
-      const config = loadWorkspaceConfig(root);
+      const config = loadWorkspaceConfig(root, { strict: true });
 
       if (!config) {
         return {

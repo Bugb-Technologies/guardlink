@@ -23,7 +23,7 @@ a small neighbourhood into a hairball.
 | [`agent-config.flows.mmd`](by-asset/agent-config.flows.mmd) | #agent-config and its flow neighbourhood, grown until the drawing stopped fitting — 29 neighbour(s) one hop out are not shown |
 | [`agent-launcher.flows.mmd`](by-asset/agent-launcher.flows.mmd) | #agent-launcher and its flow neighbourhood, grown until the drawing stopped fitting — 33 neighbour(s) one hop out are not shown |
 | [`blame.threats.mmd`](by-asset/blame.threats.mmd) | #blame only — its own threats and controls |
-| [`blame.flows.mmd`](by-asset/blame.flows.mmd) | #blame and its flow neighbourhood, grown until the drawing stopped fitting — 28 neighbour(s) one hop out are not shown |
+| [`blame.flows.mmd`](by-asset/blame.flows.mmd) | #blame and its flow neighbourhood, grown until the drawing stopped fitting — 29 neighbour(s) one hop out are not shown |
 | [`cli.threats.mmd`](by-asset/cli.threats.mmd) | #cli only — its own threats and controls, narrowed to high and critical (13 lower-severity claim(s) omitted to keep it readable) |
 | [`cli.flows.mmd`](by-asset/cli.flows.mmd) | #cli and its flow neighbourhood, grown until the drawing stopped fitting — 25 neighbour(s) one hop out are not shown |
 | [`codegraph.threats.mmd`](by-asset/codegraph.threats.mmd) | #codegraph only — its own threats and controls |
@@ -41,7 +41,7 @@ a small neighbourhood into a hairball.
 | [`llm-client.threats.mmd`](by-asset/llm-client.threats.mmd) | #llm-client only — its own threats and controls, narrowed to high and critical (13 lower-severity claim(s) omitted to keep it readable) |
 | [`llm-client.flows.mmd`](by-asset/llm-client.flows.mmd) | #llm-client and its flow neighbourhood, grown until the drawing stopped fitting — 16 neighbour(s) one hop out are not shown |
 | [`mcp.threats.mmd`](by-asset/mcp.threats.mmd) | #mcp only — its own threats and controls, narrowed to high and critical (13 lower-severity claim(s) omitted to keep it readable) |
-| [`mcp.flows.mmd`](by-asset/mcp.flows.mmd) | #mcp and its flow neighbourhood, grown until the drawing stopped fitting — 27 neighbour(s) one hop out are not shown |
+| [`mcp.flows.mmd`](by-asset/mcp.flows.mmd) | #mcp and its flow neighbourhood, grown until the drawing stopped fitting — 28 neighbour(s) one hop out are not shown |
 | [`merge-engine.threats.mmd`](by-asset/merge-engine.threats.mmd) | #merge-engine only — its own threats and controls |
 | [`merge-engine.flows.mmd`](by-asset/merge-engine.flows.mmd) | #merge-engine and its flow neighbourhood, grown until the drawing stopped fitting — 39 neighbour(s) one hop out are not shown |
 | [`parser.threats.mmd`](by-asset/parser.threats.mmd) | #parser only — its own threats and controls, narrowed to high and critical (47 lower-severity claim(s) omitted to keep it readable) |
@@ -55,9 +55,9 @@ a small neighbourhood into a hairball.
 | [`suggest.threats.mmd`](by-asset/suggest.threats.mmd) | #suggest only — its own threats and controls |
 | [`suggest.flows.mmd`](by-asset/suggest.flows.mmd) | #suggest and its flow neighbourhood, grown until the drawing stopped fitting — 23 neighbour(s) one hop out are not shown |
 | [`tui.threats.mmd`](by-asset/tui.threats.mmd) | #tui only — its own threats and controls |
-| [`tui.flows.mmd`](by-asset/tui.flows.mmd) | #tui and its flow neighbourhood, grown until the drawing stopped fitting — 26 neighbour(s) one hop out are not shown |
+| [`tui.flows.mmd`](by-asset/tui.flows.mmd) | #tui and its flow neighbourhood, grown until the drawing stopped fitting — 27 neighbour(s) one hop out are not shown |
 | [`workspace-config.threats.mmd`](by-asset/workspace-config.threats.mmd) | #workspace-config only — its own threats and controls |
-| [`workspace-config.flows.mmd`](by-asset/workspace-config.flows.mmd) | #workspace-config and its flow neighbourhood, grown until the drawing stopped fitting — 23 neighbour(s) one hop out are not shown |
+| [`workspace-config.flows.mmd`](by-asset/workspace-config.flows.mmd) | #workspace-config and its flow neighbourhood, grown until the drawing stopped fitting — 26 neighbour(s) one hop out are not shown |
 | [`workspace-link.flows.mmd`](by-asset/workspace-link.flows.mmd) | #workspace-link and its flow neighbourhood, grown until the drawing stopped fitting — 41 neighbour(s) one hop out are not shown |
 
 ### One trust line at a time
@@ -85,7 +85,7 @@ size so you know which you are about to open.
 | File | What it shows | Size |
 |---|---|---|
 | [`threat-graph.mmd`](threat-graph.mmd) | Every component, the threats declared on it, and the controls that answer them. | 222 edges — **past the readable size** |
-| [`dataflow.mmd`](dataflow.mmd) | Every `@flows` between components, with trust boundaries drawn as zones. | 232 edges — **past the readable size** |
+| [`dataflow.mmd`](dataflow.mmd) | Every `@flows` between components, with trust boundaries drawn as zones. | 233 edges — **past the readable size** |
 | [`attack-surface.mmd`](attack-surface.mmd) | Exposures per component, worst first. | 0 edges |
 
 ## One feature at a time
@@ -107,6 +107,6 @@ size so you know which you are about to open.
 
 ---
 
-Generated by guardlink@2.6.0 from annotation hash `sha256-v3:82bd4d4c6e8d0d0f6d158221e0571dd1545c5b391e0e8eda9da2a5a11867eedc`. If that
+Generated by guardlink@2.6.0 from annotation hash `sha256-v3:cd1e0a11df06be6aa3a89bd1b6f6a7fe1665764c1088515a6cd9213e01d2661e`. If that
 differs from what `guardlink status .` reports, everything here is stale —
 regenerate rather than trusting it.

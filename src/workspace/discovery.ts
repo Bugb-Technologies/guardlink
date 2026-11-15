@@ -5,7 +5,7 @@
  * @flows ProjectRoot -> #workspace-config via localWorkspaceMembers -- "Read immediate child manifests; never follow directory symlinks or execute member code"
  * @mitigates #workspace-config against #config-tamper using #config-validation -- "Only members named in the selected manifest and declaring the same workspace are selected; conflicting manifests fail explicitly"
  */
-import { readdirSync, existsSync, type Dirent } from 'node:fs';
+import { readdirSync, type Dirent } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { loadWorkspaceConfig } from './metadata.js';
 import type { WorkspaceConfig } from './types.js';
@@ -20,10 +20,7 @@ function childMembers(parent: string): LocalMember[] {
   return entries.filter(e => e.isDirectory() && !excluded.has(e.name))
     .sort((a, b) => a.name < b.name ? -1 : 1).flatMap(e => {
       const path = join(parent, e.name);
-      const config = loadWorkspaceConfig(path);
-      if (!config && existsSync(join(path, '.guardlink/workspace.yaml'))) {
-        throw new Error(`Unreadable or invalid linked member manifest: ${path}`);
-      }
+      const config = loadWorkspaceConfig(path, { strict: true });
       return config ? [{ name: config.this_repo, path, config }] : [];
     });
 }
@@ -39,8 +36,7 @@ export function localWorkspaceMembers(root: string, config: WorkspaceConfig): Lo
 
 /** A container is a workspace only when its immediate members agree on its selected set. */
 export function workspaceContainer(root: string): { config: WorkspaceConfig; members: LocalMember[]; missing: string[] } | null {
-  if (loadWorkspaceConfig(root)) return null;
-  if (existsSync(join(root, '.guardlink/workspace.yaml'))) throw new Error('Unreadable or invalid .guardlink/workspace.yaml');
+  if (loadWorkspaceConfig(root, { strict: true })) return null;
   const candidates = childMembers(root);
   if (candidates.length === 0) return null;
   const config = candidates[0].config;

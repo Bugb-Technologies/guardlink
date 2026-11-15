@@ -58,3 +58,16 @@ A workspace requires at least two members. To unlink a two-member workspace, del
 `.guardlink/workspace.yaml` in both members and remove each generated `## Workspace Context`
 section from agent instruction files. To choose another group, run `link-project` with
 at least two paths.
+
+## Manifest format and ownership
+
+GuardLink owns `.guardlink/workspace.yaml`. Integrations should create and update it
+through `guardlink link-project`, or emit the same YAML manifest shape; integration-specific
+state belongs in the integration's own directory. The reader accepts YAML block and flow
+collections, quoted scalars, comments, ordinary aliases, and JSON-form YAML documents.
+The writer quotes scalars when necessary. Alias expansion is bounded.
+
+A malformed or unreadable manifest produces an error naming the file and the YAML,
+shape-validation or filesystem problem. `parse` and `validate` return a nonzero exit
+status with that diagnostic, without an uncaught stack trace. An unreadable sibling is
+named and its references remain unchecked; `validate --workspace` fails the incomplete check.

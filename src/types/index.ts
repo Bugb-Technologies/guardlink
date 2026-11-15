@@ -1147,6 +1147,7 @@ export type DiagnosticCode =
   | 'dangling-ref'
   | 'linked-ref'
   | 'workspace-incomplete'
+  | 'workspace-config-invalid'
   /** A directed `@boundary from <outer> to <inner>` names a side that is no declared asset and no `@flows` endpoint. */
   | 'unresolved-boundary-side'
   /** `@entitles`, `@agents`, `@reaches` or `@gates` names an actor never declared with `@actor`. */

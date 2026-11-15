@@ -16,6 +16,7 @@
  */
 import { readSecurityTestsDir } from './security-tests.js';
 import { localWorkspaceMembers, workspaceContainer } from '../workspace/discovery.js';
+import { WorkspaceConfigError } from '../workspace/metadata.js';
 import { combineModels, buildTagRegistry } from '../workspace/merge.js';
 import { relationRecords, tagReferences, definitionIds } from './claim-key.js';
 import { readObservedState, buildReachAttestation } from '../attest/index.js';
@@ -288,7 +289,15 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
 
   const config = { security_tests_dir: readSecurityTestsDir(root) };
 
-  const container = workspaceContainer(root);
+  let container: ReturnType<typeof workspaceContainer>;
+  try { container = workspaceContainer(root); }
+  catch (error) {
+    if (!(error instanceof WorkspaceConfigError)) throw error;
+    return {
+      model: assembleModel([], 0, project, [], []),
+      diagnostics: [workspaceConfigDiagnostic(error, root)], config,
+    };
+  }
   if (container) {
     if (container.missing.length) {
       throw new Error(`Application incomplete: linked member checkouts unavailable: ${container.missing.join(', ')}.`);
@@ -897,6 +906,14 @@ export function entitlementDemotionBlockers(
 
 // ─── External ref detection ──────────────────────────────────────────
 
+/** A malformed manifest is data to diagnose, not an unhandled parser exception. */
+function workspaceConfigDiagnostic(error: WorkspaceConfigError, root: string, level: 'error' | 'warning' = 'error'): ParseDiagnostic {
+  return {
+    level, code: 'workspace-config-invalid', file: relative(root, error.file).replaceAll('\\', '/'), line: error.line,
+    message: `Cannot read workspace manifest: ${error.problem}`,
+  };
+}
+
 /** Resolve every nonlocal relationship id against readable sibling checkouts; missing data stays unchecked. */
 async function detectExternalRefs(
   model: ThreatModel, root: string, options: ParseProjectOptions, diagnostics: ParseDiagnostic[],
@@ -907,8 +924,14 @@ async function detectExternalRefs(
   const candidates = tagReferences(model).filter(r => !local.has(r.tag.slice(1)));
   if (candidates.length === 0 && !options.requireSiblings) return [];
   const siblings = config.repos.filter(r => r.name !== config.this_repo);
-  const members = options.checkSiblings === false ? [] : localWorkspaceMembers(root, config)
-    .filter(m => m.name !== config.this_repo);
+  let members: ReturnType<typeof localWorkspaceMembers> = [];
+  if (options.checkSiblings !== false) {
+    try { members = localWorkspaceMembers(root, config).filter(m => m.name !== config.this_repo); }
+    catch (error) {
+      if (!(error instanceof WorkspaceConfigError)) throw error;
+      diagnostics.push(workspaceConfigDiagnostic(error, root, options.requireSiblings ? 'error' : 'warning'));
+    }
+  }
   const definitions = new Map<string, string[]>();
   const kinds = new Map<string, Set<string>>();
   const checked: string[] = [];

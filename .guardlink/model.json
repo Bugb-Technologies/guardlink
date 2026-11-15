@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:82bd4d4c6e8d0d0f6d158221e0571dd1545c5b391e0e8eda9da2a5a11867eedc",
+    "annotation_hash": "sha256-v3:cd1e0a11df06be6aa3a89bd1b6f6a7fe1665764c1088515a6cd9213e01d2661e",
     "generator": "guardlink@2.6.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 196,
-  "annotations_parsed": 1154,
+  "annotations_parsed": 1156,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agentconfig/bundle.ts",
@@ -3017,7 +3017,7 @@
       "description": "Existence only: no read, no write, and the result reaches the model as a warning string that echoes the path the author already wrote",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 156
+        "line": 157
       }
     },
     {
@@ -3328,6 +3328,16 @@
       "location": {
         "file": "src/workspace/metadata.ts",
         "line": 12
+      }
+    },
+    {
+      "asset": "#workspace-config",
+      "threat": "#config-tamper",
+      "control": "#yaml-validation",
+      "description": "Bounded YAML alias expansion and explicit manifest shape checks; strict reads name the invalid file and its decoding or filesystem problem",
+      "location": {
+        "file": "src/workspace/metadata.ts",
+        "line": 135
       }
     },
     {
@@ -5126,7 +5136,7 @@
       "description": "`@source file:` is author-controlled text and is joined onto the project root to test existence",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 155
+        "line": 156
       }
     },
     {
@@ -7630,7 +7640,7 @@
       "description": "Declared @source paths probed for existence",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 157
+        "line": 158
       }
     },
     {
@@ -7641,7 +7651,7 @@
       "description": "Generated reach rows, actors and the agent_config block join the assembled model",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 519
+        "line": 528
       }
     },
     {
@@ -8203,6 +8213,17 @@
       "location": {
         "file": "src/workspace/metadata.ts",
         "line": 10
+      }
+    },
+    {
+      "source": "ConfigFile",
+      "target": "#workspace-config",
+      "mechanism": "loadWorkspaceConfig",
+      "route": null,
+      "description": "Decode workspace.yaml as YAML, including JSON-form documents",
+      "location": {
+        "file": "src/workspace/metadata.ts",
+        "line": 134
       }
     },
     {
@@ -11117,21 +11138,21 @@
       "description": "A traversing path is already a broken annotation and this is the diagnostic that says so; refusing to stat it would return the silence this function exists to remove",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 158
+        "line": 159
       }
     },
     {
       "description": "Another checkout nested in the tree: Claude Code's per-session worktrees under .claude/worktrees/, each a full copy of the repository with its own definitions, which parsed as source made every definition id a duplicate and every exposure count twice. This is the by-name half of the rule; the .git-file half cannot be a glob and is applied by scanIgnore (nested-checkouts.ts)",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 261
+        "line": 262
       }
     },
     {
       "description": "scanIgnore adds one ignore per nested checkout found under root (a directory holding a .git FILE: a linked worktree or a submodule), so another checkout's source and definitions are never read as this repository's. The same call bounds clear, the fingerprint and init's scope, so the four walks keep one scan set",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 328
+        "line": 337
       }
     },
     {
@@ -11521,7 +11542,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 1154,
+    "annotation_count": 1156,
     "coverage_percent": 92
   },
   "annotation_scope": {
@@ -11844,7 +11865,7 @@
         "bytes": 4295,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:82bd4d4c6e8d0d0f6d158221e0571dd1545c5b391e0e8eda9da2a5a11867eedc",
+          "stamp": "sha256-v3:cd1e0a11df06be6aa3a89bd1b6f6a7fe1665764c1088515a6cd9213e01d2661e",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11860,7 +11881,7 @@
         "bytes": 4378,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:82bd4d4c6e8d0d0f6d158221e0571dd1545c5b391e0e8eda9da2a5a11867eedc",
+          "stamp": "sha256-v3:cd1e0a11df06be6aa3a89bd1b6f6a7fe1665764c1088515a6cd9213e01d2661e",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11877,7 +11898,7 @@
         "bytes": 4332,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:82bd4d4c6e8d0d0f6d158221e0571dd1545c5b391e0e8eda9da2a5a11867eedc",
+          "stamp": "sha256-v3:cd1e0a11df06be6aa3a89bd1b6f6a7fe1665764c1088515a6cd9213e01d2661e",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11894,7 +11915,7 @@
         "bytes": 4332,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:82bd4d4c6e8d0d0f6d158221e0571dd1545c5b391e0e8eda9da2a5a11867eedc",
+          "stamp": "sha256-v3:cd1e0a11df06be6aa3a89bd1b6f6a7fe1665764c1088515a6cd9213e01d2661e",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11910,7 +11931,7 @@
         "bytes": 4295,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:82bd4d4c6e8d0d0f6d158221e0571dd1545c5b391e0e8eda9da2a5a11867eedc",
+          "stamp": "sha256-v3:cd1e0a11df06be6aa3a89bd1b6f6a7fe1665764c1088515a6cd9213e01d2661e",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11929,7 +11950,7 @@
         "bytes": 4972,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:82bd4d4c6e8d0d0f6d158221e0571dd1545c5b391e0e8eda9da2a5a11867eedc",
+          "stamp": "sha256-v3:cd1e0a11df06be6aa3a89bd1b6f6a7fe1665764c1088515a6cd9213e01d2661e",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },
@@ -11946,7 +11967,7 @@
         "bytes": 4332,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:82bd4d4c6e8d0d0f6d158221e0571dd1545c5b391e0e8eda9da2a5a11867eedc",
+          "stamp": "sha256-v3:cd1e0a11df06be6aa3a89bd1b6f6a7fe1665764c1088515a6cd9213e01d2661e",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
           "current": true
         },

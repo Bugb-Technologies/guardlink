@@ -271,3 +271,90 @@ describe('workspace CLI contracts', () => {
     expect(parsed.model.mitigations).toHaveLength(1);
   });
 });
+
+describe('workspace manifests written by other YAML clients', () => {
+  const tsx = createRequire(import.meta.url).resolve('tsx/cli');
+  const cli = join(dirname(fileURLToPath(import.meta.url)), '../src/cli/index.ts');
+
+  it('reads JSON-form YAML after linking, then parses and validates both members', async () => {
+    const { auth, orders } = linked();
+    for (const dir of [auth, orders]) {
+      const config = loadWorkspaceConfig(dir)!;
+      put(join(dir, '.guardlink/workspace.yaml'), JSON.stringify(config, null, 2));
+    }
+    expect(loadWorkspaceConfig(orders)?.this_repo).toBe('orders');
+    expect((await parse('orders')).model.external_refs?.[0].resolution).toBe('resolved');
+    for (const dir of [auth, orders]) for (const command of ['parse', 'validate']) {
+      expect(() => execFileSync(process.execPath, [tsx, cli, command, dir], { cwd: root, stdio: 'pipe' })).not.toThrow();
+    }
+  }, 30_000);
+
+  it('reads ordinary YAML flow collections, quoted scalars, comments and aliases', async () => {
+    const { parseWorkspaceYaml, serializeWorkspaceYaml } = await import('../src/workspace/metadata.js');
+    const parsed = parseWorkspaceYaml('workspace: &label "shop: #1"\nthis_repo: orders\nrepos: [{name: orders}, {name: auth, registry: "https://example.test/auth#main"}] # members\nshared_definitions: *label\n');
+    expect(parsed.workspace).toBe('shop: #1');
+    expect(parsed.repos).toHaveLength(2);
+    expect(parsed.shared_definitions).toBe('shop: #1');
+    expect(parseWorkspaceYaml(serializeWorkspaceYaml(parsed))).toEqual(parsed);
+  });
+
+  it('reports an invalid manifest with its filename and YAML problem, without an uncaught stack', async () => {
+    const { orders } = linked();
+    put(join(orders, '.guardlink/workspace.yaml'), 'workspace: [unterminated\n');
+    const parsed = await parse('orders');
+    expect(parsed.diagnostics).toContainEqual(expect.objectContaining({ code: 'workspace-config-invalid', level: 'error', file: '.guardlink/workspace.yaml' }));
+    expect(parsed.diagnostics[0].message).toMatch(/flow sequence|\]/i);
+    for (const command of ['parse', 'validate']) {
+      try {
+        execFileSync(process.execPath, [tsx, cli, command, orders], { cwd: root, stdio: 'pipe' });
+        expect.fail('invalid manifest must fail the CLI');
+      } catch (error) {
+        const result = error as { status: number; stderr: Buffer };
+        expect(result.status).toBe(1);
+        const stderr = result.stderr.toString();
+        expect(stderr).toContain('.guardlink/workspace.yaml');
+        expect(stderr).toMatch(/flow sequence|\]/i);
+        expect(stderr).not.toMatch(/\n\s+at (?:\w|file:)/);
+      }
+    }
+  }, 30_000);
+
+  it('names schema errors and keeps unreadable sibling references unchecked', async () => {
+    const { auth } = linked();
+    put(join(auth, '.guardlink/workspace.yaml'), JSON.stringify({ workspace: 'shop', this_repo: 'auth', repos: 'invalid-list' }));
+    const parsed = await parse('orders');
+    expect(parsed.model.external_refs?.[0].resolution).toBe('not_checked');
+    expect(parsed.diagnostics.some(d => d.file.endsWith('auth/.guardlink/workspace.yaml') && d.message.includes('repos'))).toBe(true);
+    const checked = await parseProject({ root: join(root, 'orders'), requireSiblings: true, anchors: false, agentConfig: false });
+    expect(checked.diagnostics.some(d => d.level === 'error' && d.code === 'workspace-config-invalid')).toBe(true);
+  });
+});
+
+describe('unreadable workspace files and bounded YAML decoding', () => {
+  it('turns a filesystem read error into a named manifest diagnostic', async () => {
+    const { orders } = linked();
+    const path = join(orders, '.guardlink/workspace.yaml');
+    rmSync(path);
+    mkdirSync(path);
+    const result = await parse('orders');
+    expect(result.diagnostics[0]).toMatchObject({ level: 'error', code: 'workspace-config-invalid', file: '.guardlink/workspace.yaml' });
+    expect(result.diagnostics[0].message).toMatch(/EISDIR|directory/i);
+    const server = createServer();
+    const client = new Client({ name: 'unreadable-workspace', version: '1' });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(b), client.connect(a)]);
+    try {
+      const response = await client.callTool({ name: 'guardlink_parse', arguments: { root: orders } });
+      expect(response.isError).toBe(true);
+      expect(JSON.stringify(response.content)).toContain('workspace.yaml');
+      expect(JSON.stringify(response.content)).toMatch(/EISDIR|directory/i);
+    } finally { await client.close(); }
+  });
+
+  it('refuses excessive alias expansion while accepting ordinary YAML aliases', async () => {
+    const { parseWorkspaceYaml } = await import('../src/workspace/metadata.js');
+    const aliases = (name: string) => Array.from({ length: 20 }, () => `*${name}`).join(', ');
+    const document = `workspace: shop\nthis_repo: orders\nrepos: [{name: orders}, {name: auth}]\na: &a [one, two, three]\nb: &b [${aliases('a')}]\nc: &c [${aliases('b')}]\nd: [${aliases('c')}]\n`;
+    expect(() => parseWorkspaceYaml(document)).toThrow(/alias/i);
+  });
+});
