@@ -47,14 +47,23 @@ export function findDanglingRefs(model: ThreatModel): ParseDiagnostic[] {
   // entitlement that closes a coding agent's reach names them.
   for (const a of model.agent_config?.assets || []) definedIds.add(a.id.replace(/^#/, ''));
 
+  const checkedRefs = new Set<string>();
   const checkRef = (ref: string, loc: { file: string; line: number }) => {
+    checkedRefs.add(`${ref}:${loc.file}:${loc.line}`);
     if (ref.startsWith('#')) {
       const id = ref.slice(1);
       if (!definedIds.has(id)) {
+        const linked = model.external_refs?.find(r => r.tag === ref && r.location.file === loc.file && r.location.line === loc.line);
+        const resolved = linked?.resolution === 'resolved';
+        const unchecked = linked && linked.resolution !== 'unresolved' && !resolved;
         diagnostics.push({
           level: 'warning',
-          code: 'dangling-ref',
-          message: `Dangling reference: #${id} is never defined`,
+          code: resolved || unchecked ? 'linked-ref' : 'dangling-ref',
+          message: resolved
+            ? `Linked reference: #${id} is defined in sibling ${linked.defined_in?.join(', ')}; resolved at merge, coverage is not checked here.`
+            : unchecked
+              ? `Linked reference: #${id} is not defined locally; sibling resolution not checked for ${linked.unchecked_members?.join(', ') || linked.inferred_repo || 'linked members'}. Run guardlink validate --workspace with sibling checkouts present.`
+              : `Dangling reference: #${id} is never defined${linked ? ' in any linked member checked' : ''}`,
           file: loc.file,
           line: loc.line,
         });
@@ -134,6 +143,9 @@ export function findDanglingRefs(model: ThreatModel): ParseDiagnostic[] {
   for (const h of model.data_handling) checkRef(h.asset, h.location);
   for (const a of model.assumptions) checkRef(a.asset, a.location);
 
+  for (const ref of model.external_refs ?? []) {
+    if (!checkedRefs.has(`${ref.tag}:${ref.location.file}:${ref.location.line}`)) checkRef(ref.tag, ref.location);
+  }
   return diagnostics;
 }
 
@@ -171,7 +183,8 @@ export function findUnresolvedBoundarySides(model: ThreatModel): ParseDiagnostic
   const resolves = (ref: string): boolean => {
     if (ref.startsWith('#')) {
       const id = ref.slice(1);
-      return id.includes('.') || assetIds.has(id.toLowerCase());
+      const external = model.external_refs?.find(r => r.tag === ref);
+      return id.includes('.') || assetIds.has(id.toLowerCase()) || !!(external && (external.resolution === 'not_checked' || (external.resolution === 'resolved' && external.definition_kinds?.includes('asset'))));
     }
     return names.has(key(ref));
   };
@@ -228,6 +241,8 @@ export function findUndeclaredActors(model: ThreatModel): ParseDiagnostic[] {
   const check = (actor: string, claim: string, location: SourceLocation) => {
     const bare = normalizeRef(actor);
     if (declared.has(bare) || declared.has(normalizeName(bare))) return;
+    const external = model.external_refs?.find(r => r.tag === actor);
+    if (external && (external.resolution === 'not_checked' || (external.resolution === 'resolved' && external.definition_kinds?.includes('actor')))) return;
     diagnostics.push({
       level: 'error',
       code: 'undeclared-actor',

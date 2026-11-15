@@ -66,7 +66,7 @@ import { z } from 'zod';
 // MERGE: union of the two parser surfaces. Ours added `findTicketDiagnostics`
 // (the @ticket verb); main added `buildAnnotationWorklist` (the annotation
 // worklist, PR #83). Keep both — the rest of the list is shared.
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findAgentReachConflicts, findTicketDiagnostics, findAgentConfigDiagnostics, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag, withReachAnalysis, buildAnnotationWorklist } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findAgentReachConflicts, findTicketDiagnostics, findAgentConfigDiagnostics, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, withReachAnalysis, buildAnnotationWorklist } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
 import { readAcceptancePolicy, acceptanceBlastRadius, formatBlastRadius, ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
 import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
@@ -381,11 +381,14 @@ export function createServer(): McpServer {
     'Check annotations for syntax errors, duplicate IDs, and dangling references. Returns structured error list. With code_graph: true, also checks each declared @boundary against an optional code graph — a boundary whose description says its inner side needs a login (or an admin check) while a route there is classified public (boundary-access-contradicted) or could not be classified (boundary-access-unknown), a route handler reaching a sink with no boundary to the outside (boundary-missing), a boundary no flow crosses and no entry point reaches (boundary-unused). It also measures the declared @agents/@reaches/@effects/@gates against the call graph: an effect the annotations call gated while the graph finds a route to it through no gate (gate-not-on-route), a declared mutating effect no agent reach leads to (effect-unreached-by-agent), a tool registration no @agents covers (agent-tool-undeclared). Those are warnings about claims to verify, never findings; boundary_checks says whether the graph was usable, and reach_checks (present only when the graph answered the reach query) says what it measured.',
     {
       root: z.string().describe('Project root directory').default('.'),
+      workspace: z.boolean().default(false).describe('Require all linked sibling checkouts and check their references'),
       code_graph: z.boolean().default(false).describe('Also check declared boundaries against a code graph, when one is installed and built for this repository'),
     },
-    async ({ root, code_graph }) => {
+    async ({ root, code_graph, workspace }) => {
       invalidateCache();
-      const { model, diagnostics } = await getModel(root);
+      const { model, diagnostics } = workspace
+        ? await parseProject({ root, requireSiblings: true })
+        : await getModel(root);
 
       // Compute dangling refs using shared validation
       const danglingDiags = findDanglingRefs(model);
@@ -1481,12 +1484,12 @@ export function createServer(): McpServer {
 
   // ── Tool: guardlink_workspace_info ──
   /**
-   * @agents #mcp-agent to guardlink_workspace_info on #workspace-config -- "Reads the workspace configuration and sibling tag prefixes"
+   * @agents #mcp-agent to guardlink_workspace_info on #workspace-config -- "Reads the workspace configuration and flat sibling ids"
    */
   registerTool(
     server, cache,
     'guardlink_workspace_info',
-    'Get workspace configuration for multi-repo threat modeling. Returns workspace name, this repo\'s identity, sibling repos, and their tag prefixes. Use this to understand cross-repo references when writing annotations. Returns null fields if the repo is not part of a workspace.',
+    'Get workspace configuration for multi-repo threat modeling. Returns workspace name, this repo\'s identity, sibling repos, and the flat globally unique id convention. Use this to understand cross-repo references when writing annotations. Returns null fields if the repo is not part of a workspace.',
     {
       root: z.string().describe('Project root directory').default('.'),
     },
@@ -1504,35 +1507,30 @@ export function createServer(): McpServer {
 
       const siblings = config.repos.filter(r => r.name !== config.this_repo);
 
-      // D19: every example here is BUILT from the parser's own tag grammar
-      // rather than typed as a string. Both rules this tool used to emit were
-      // hand-written and neither parsed — the `#a.b` form was unwritable
-      // unquoted, and the @flows example used a `from … to …` syntax the
-      // grammar has never had. The tool whose job is teaching this syntax was
-      // teaching syntax that fails.
       const sibling = siblings[0]?.name || 'sibling';
-      const ours = crossRepoTag(config.this_repo, 'component');
-      const theirs = crossRepoTag(sibling, 'endpoint');
+      const ours = `#${config.this_repo}-component`;
+      const theirs = `#${sibling}-endpoint`;
 
       return {
         content: [{ type: 'text', text: JSON.stringify({
           workspace: config.workspace,
           this_repo: config.this_repo,
-          tag_prefix: `#${config.this_repo}.`,
+          id_convention: 'flat-globally-unique',
+          legacy_tag_prefix: `#${config.this_repo}.`,
           siblings: siblings.map(r => ({
             name: r.name,
-            tag_prefix: `#${r.name}.`,
+            legacy_tag_prefix: `#${r.name}.`,
             registry: r.registry || null,
           })),
           total_repos: config.repos.length,
           cross_repo_annotation_rules: [
-            `Use ${ours} for assets defined in this repo`,
-            `Reference sibling assets, threats and controls by their tag prefix (e.g. ${theirs})`,
+            `Use flat globally unique ids, e.g. ${ours}, for definitions in this repo`,
+            `Reference sibling assets, threats and controls by the exact id they define (e.g. ${theirs}); do not prepend a repo namespace`,
             'Do not redefine assets that belong to another repo — reference by tag',
             `Cross-repo @flows are encouraged: @flows ${ours} -> ${theirs} -- "what crosses"`,
-            `Threats and controls take the same qualified form: @exposes ${ours} to ${crossRepoTag(sibling, 'injection')} [high] -- "why"`,
-            'Qualified tags need no quoting. Quote a reference only if it contains spaces.',
-            'External refs resolve during workspace merge, not local validation',
+            `Threats and controls also use flat ids: @exposes ${ours} to #${sibling}-injection [high] -- "why"`,
+            'Legacy dotted references remain readable and are reported as legacy; new annotations use flat ids.',
+            'Local validation identifies definitions in available linked siblings; validate --workspace requires all siblings. Coverage across members is computed at merge.',
           ],
         }, null, 2) }],
       };

@@ -452,11 +452,11 @@ export interface ReportParseState {
 
 /**
  * A tag reference that points to a definition in another repo.
- * Detected during parsing when a tag uses a service prefix not
- * matching any local asset/threat/control definition.
+ * Detected in linked members when a relationship references an id not defined locally.
+ * Flat ids are canonical; dotted ids remain readable as legacy references.
  */
 export interface ExternalRef {
-  /** The referenced tag (e.g. "#auth-lib.token-verify") */
+  /** The referenced tag (e.g. "#auth-token-verify") */
   tag: string;
   /** The verb context where this ref appears (e.g. "mitigates", "flows") */
   context_verb: AnnotationVerb;
@@ -464,6 +464,13 @@ export interface ExternalRef {
   location: SourceLocation;
   /** Inferred target repo from tag prefix (e.g. "auth-lib") */
   inferred_repo?: string;
+  /** Legacy dotted syntax is readable but never required. */
+  legacy?: boolean;
+  /** Resolution against available linked checkouts; absence means an older report did not check. */
+  resolution?: 'resolved' | 'unresolved' | 'not_checked';
+  defined_in?: string[];
+  definition_kinds?: string[];
+  unchecked_members?: string[];
 }
 
 // ─── Agent configuration (SPEC §5.6) ────────────────────────────────
@@ -1138,6 +1145,8 @@ export type DiagnosticCode =
   // ── Validation-time (src/parser/validate.ts) ──
   /** A `#id` reference resolves to no definition. */
   | 'dangling-ref'
+  | 'linked-ref'
+  | 'workspace-incomplete'
   /** A directed `@boundary from <outer> to <inner>` names a side that is no declared asset and no `@flows` endpoint. */
   | 'unresolved-boundary-side'
   /** `@entitles`, `@agents`, `@reaches` or `@gates` names an actor never declared with `@actor`. */

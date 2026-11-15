@@ -661,9 +661,19 @@ This section is the definition of `@flows`. Every form below is accepted by the 
 | Form | Example | Means |
 |---|---|---|
 | `#id` | `#orders` | The asset declared with that identifier (§2.3) |
-| `#repo.id` | `#billing.charge` | A repository-qualified tag: the identifier `charge` in the sibling repository `billing`. It is **not** a sub-component of `#billing`. Unresolved without a workspace, where `guardlink validate` reports it as a dangling reference |
+| `#repo.id` | `#billing.charge` | A **legacy** repository-qualified tag. Readers MUST preserve it and MAY resolve its exact definition across a workspace; it does not automatically alias `#billing-charge`. New workspace annotations use flat globally unique ids instead |
 | `Dotted.Path` | `App.API`, `api.auth` | A component path (§2.2). Resolves to the declared asset with that path when there is one; otherwise it names an undeclared component (`User`, `ConfigFile`) and is still a valid endpoint |
 | `"quoted"` | `"SQLite db"`, `"/rest/user/login"` | Free text, for endpoints containing spaces or punctuation; `\"` and `\\` escapes apply (§2.11) |
+
+**Workspace identity.** The canonical workspace reference is a flat `#id`, globally unique
+across the application's member repositories (for example `#billing-charge`). The owning
+member defines it once; siblings reference that exact id in every relationship position.
+Repository names do not create annotation namespaces. Legacy dotted `#repo.id` references
+remain readable and MUST be identified as legacy when reported as workspace references.
+Their original spelling is preserved; readers MUST NOT silently rewrite them into flat ids.
+A workspace-aware reader distinguishes a definition found in a linked sibling, an unresolved
+reference after checking all members, and an unchecked reference when a member is unavailable.
+Missing member data is incomplete, never evidence of successful resolution.
 
 A reader MUST NOT shorten, re-case or resolve an endpoint when recording it: `#billing.charge` is recorded as `#billing.charge`, and `api.auth` as `api.auth`.
 
@@ -722,7 +732,7 @@ A direction is a claim like any other. Declaring one, removing one or reversing 
 
 **Malformed lines.** `from` pairs with `to`, and `between` with `and`; the two do not mix. `@boundary from #a and #b`, `@boundary between #a to #b`, `@boundary #a to #b`, `@boundary from #a`, `@boundary from #a -> #b` and `@boundary from #a to #b to #c` are malformed (§2.12), as is any line whose arguments begin with `from` and do not parse. Prose that merely contains `from` or `to` elsewhere is not evidence.
 
-**Validation.** A directed boundary whose outer or inner side resolves to nothing is an **error** (`unresolved-boundary-side`): consumers act on the sides a direction names, so a typo there would point a test at no component. A side resolves when it is a `#id` some `@asset` defines, or another endpoint that is a declared asset's path or that some `@flows` names (an undeclared endpoint such as `Client` is how the model writes the outside — §3.2 `@flows`, Endpoints). A repository-qualified `#repo.id` is resolved across the workspace, not here. Undirected boundaries are not checked: they claim no side.
+**Validation.** A directed boundary whose outer or inner side resolves to nothing is an **error** (`unresolved-boundary-side`): consumers act on the sides a direction names, so a typo there would point a test at no component. A side resolves when it is a `#id` some `@asset` defines, or another endpoint that is a declared asset's path or that some `@flows` names (an undeclared endpoint such as `Client` is how the model writes the outside — §3.2 `@flows`, Endpoints). A legacy repository-qualified `#repo.id` is preserved; workspace-aware readers may check its exact definition in linked siblings. Undirected boundaries are not checked: they claim no side.
 
 **Records.** Each boundary becomes one entry in the model's `boundaries` array (§5.1):
 
@@ -2238,7 +2248,7 @@ A conforming implementation must keep these apart, and should name them so a cal
 
 | | Contents | Built from |
 |---|---|---|
-| `ThreatModel.external_refs` | Cross-repo tags pointing at sibling repositories | Workspace configuration; empty without one |
+| `ThreatModel.external_refs` | Nonlocal `#id` occurrences in linked members, with optional `resolution`, `defined_in`, `unchecked_members` and `legacy` fields | Workspace configuration; empty without one. A missing resolution in an older report means unchecked |
 | `threat.external_refs`, `exposure.external_refs`, `confirmed.external_refs` | `cwe:` / `owasp:` identifiers | The annotation itself |
 
 They share a name and nothing else. GuardLink exposes the first as `cross-repo refs` and the second through identifier queries, and each form's documentation names the other — a caller who picks the wrong one otherwise receives a confidently empty answer.

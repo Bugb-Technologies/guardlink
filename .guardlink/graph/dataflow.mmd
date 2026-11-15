@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673
+%% annotation_hash: sha256-v3:82bd4d4c6e8d0d0f6d158221e0571dd1545c5b391e0e8eda9da2a5a11867eedc
 %% generator:       guardlink@2.6.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 81 nodes / 230 edges, past the 12 / 16 legibility budget (81 nodes against 12, 230 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 82 nodes / 232 edges, past the 12 / 16 legibility budget (82 nodes against 12, 232 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -119,6 +119,7 @@ graph LR
   sourcefile["🧩 SourceFile"]
   exportfile["🧩 ExportFile"]
   annotations["🧩 Annotations"]
+  workspace_config["🧩 Workspace.Config"]
   annotationsource["🧩 AnnotationSource"]
   featurename["🧩 FeatureName"]
   markdown["🧩 Markdown"]
@@ -318,6 +319,7 @@ graph LR
   parser -- "📡 parseString" --> annotations
   parser -- "📡 parseString" --> parsediagnostics
   parser -- "📡 assembleModel" --> threatmodel
+  workspace_config -- "📡 localWorkspaceMembers" --> parser
   annotationsource -- "📡 existsSync" --> parser
   agent_config -- "📡 mergeAgentConfig" --> parser
   threatmodel -- "📡 findAnchorDrift" --> parser
@@ -355,6 +357,7 @@ graph LR
   rawstdin -- "📡 process.stdin" --> tui
   tui -- "📡 process.stdout" --> terminal
   packagejson -- "🗄️ readFileSync" --> cli
+  projectroot -- "📡 localWorkspaceMembers" --> workspace_config
   repoparsestate -- "📡 estateReport" --> estate_view
   mergedreportfile -- "📡 readMergedReport" --> estate_view
   estate_view -- "📡 estateReport" --> cli

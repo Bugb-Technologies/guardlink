@@ -44,7 +44,7 @@
  *
  * @asset Workspace.Merge (#merge-engine) -- "Cross-repo threat model unification"
  * @threat Tag_Collision (#tag-collision) [medium] -- "Duplicate tag definitions across repos"
- * @mitigates #merge-engine against #tag-collision using #prefix-ownership -- "Tag prefix determines owning repo"
+ * @mitigates #merge-engine against #tag-collision using #prefix-ownership -- "Definitions determine owning repo; legacy dotted collisions retain prefix ownership"
  * @exposes #merge-engine to #vacuous-pass [high] cwe:CWE-754 -- "A glob that expanded to nothing, or a report set that loaded nothing, produced a merged model with zero of everything — and the summary of an empty model is indistinguishable from the summary of a clean estate"
  * @mitigates #merge-engine against #vacuous-pass using #fail-closed -- "mergeVerdict fails on zero repos loaded and on any glob that matched no file, regardless of --strict; the count it reports is of repositories actually read"
  * @flows ReportJSON -> #merge-engine via mergeReports -- "Per-repo reports feed into merge"
@@ -60,7 +60,7 @@ import type {
   ThreatModelExposure,
 
 
-  SourceLocation, AnnotationVerb,
+  SourceLocation,
 } from '../types/index.js';
 import type {
   MergedReport, MergeTotals, MergeDiffSummary, TagOwnership, UnresolvedRef,
@@ -68,6 +68,7 @@ import type {
 } from './types.js';
 import { REPORT_SCHEMA_VERSION } from './metadata.js';
 import { buildCoverageIndex, fileCoveragePercent, annotationCount, normalizeCoverage } from '../parser/coverage.js';
+import { tagReferences, definitionIds } from '../parser/claim-key.js';
 import { canonicaliser } from '../parser/canonical-ref.js';
 import { buildOwnerScope, repoOfPath, NO_OWNER_SCOPE, type OwnerScope } from './owner-scope.js';
 
@@ -302,6 +303,9 @@ function extractTagDefinitions(model: ThreatModel, repo: string): TagOwnership[]
     }
   }
 
+  for (const [kind, rows] of [['actor', model.actors ?? []], ['boundary', model.boundaries]] as const) {
+    for (const d of rows) if (d.id) tags.push({ tag: `#${d.id.replace(/^#/, '')}`, owner_repo: repo, kind });
+  }
   return tags;
 }
 
@@ -424,7 +428,7 @@ export function resolveReferences(
   reports: LoadedReport[],
   registry: TagOwnership[],
   repoNames: Set<string>,
-): { unresolved: UnresolvedRef[]; warnings: MergeWarning[] } {
+): { unresolved: UnresolvedRef[]; warnings: MergeWarning[]; resolved: number } {
   // Build tag set with both "#tag" and "tag" forms for lookup
   const tagSet = new Set<string>();
   for (const t of registry) {
@@ -433,15 +437,24 @@ export function resolveReferences(
   }
   const unresolved: UnresolvedRef[] = [];
   const warnings: MergeWarning[] = [];
+  let resolved = 0;
 
   for (const report of reports) {
     const m = report.model;
 
-    // Gather all tag references used in relationship annotations
-    const refs = collectTagReferences(m, report.repo);
+    const refs = tagReferences(m);
+    const local = definitionIds(m);
 
     for (const ref of refs) {
-      if (tagSet.has(ref.tag) || tagSet.has(normalizeTag(ref.tag))) continue; // resolved
+      if (ref.tag.includes('.')) warnings.push({
+        level: 'info', code: 'legacy_ref', tag: ref.tag, repos: [report.repo],
+        message: `Legacy dotted reference ${ref.tag} in ${report.repo}; new annotations use flat globally unique ids. Exact spelling is preserved.`,
+      });
+      if (local.has(normalizeTag(ref.tag))) continue;
+      if (tagSet.has(ref.tag) || tagSet.has(normalizeTag(ref.tag))) {
+        resolved += 1;
+        continue;
+      }
 
       // Check if the tag prefix suggests a known repo (but definition is missing)
       const prefix = inferOwnerFromPrefix(ref.tag, repoNames);
@@ -495,67 +508,7 @@ export function resolveReferences(
     }
   }
 
-  return { unresolved, warnings };
-}
-
-/** Simple ref container used during collection */
-interface TagRef {
-  tag: string;
-  context_verb: AnnotationVerb;
-  location: SourceLocation;
-}
-
-/**
- * Collect all tag references from a ThreatModel's relationship annotations.
- * These are the tags used in mitigates, exposes, flows, etc. — NOT definitions.
- */
-function collectTagReferences(m: ThreatModel, _repo: string): TagRef[] {
-  const refs: TagRef[] = [];
-
-  // Helper: add tag ref only if it looks like a tag reference (starts with #)
-  // Plain text like "EnvVars", "FileSystem" in flows are descriptive, not cross-repo refs
-  const addRef = (tag: string | undefined, verb: AnnotationVerb, loc: SourceLocation) => {
-    if (!tag) return;
-    if (!tag.startsWith('#')) return; // not a tag reference
-    refs.push({ tag, context_verb: verb, location: loc });
-  };
-
-  for (const mit of m.mitigations) {
-    addRef(mit.asset, 'mitigates', mit.location);
-    addRef(mit.threat, 'mitigates', mit.location);
-    if (mit.control) addRef(mit.control, 'mitigates', mit.location);
-  }
-  for (const exp of m.exposures) {
-    addRef(exp.asset, 'exposes', exp.location);
-    addRef(exp.threat, 'exposes', exp.location);
-  }
-  for (const acc of m.acceptances) {
-    addRef(acc.asset, 'accepts', acc.location);
-    addRef(acc.threat, 'accepts', acc.location);
-  }
-  for (const t of m.tickets || []) {
-    addRef(t.asset, 'ticket', t.location);
-    addRef(t.threat, 'ticket', t.location);
-  }
-  for (const tr of m.transfers) {
-    addRef(tr.source, 'transfers', tr.location);
-    addRef(tr.target, 'transfers', tr.location);
-    addRef(tr.threat, 'transfers', tr.location);
-  }
-  for (const fl of m.flows) {
-    addRef(fl.source, 'flows', fl.location);
-    addRef(fl.target, 'flows', fl.location);
-  }
-  for (const b of m.boundaries) {
-    addRef(b.asset_a, 'boundary', b.location);
-    addRef(b.asset_b, 'boundary', b.location);
-  }
-  for (const v of m.validations) {
-    addRef(v.control, 'validates', v.location);
-    addRef(v.asset, 'validates', v.location);
-  }
-
-  return refs;
+  return { unresolved, warnings, resolved };
 }
 
 // ─── Model Merging ───────────────────────────────────────────────────
@@ -568,6 +521,7 @@ function prefixLocation(loc: SourceLocation, repo: string): SourceLocation {
   return {
     ...loc,
     file: `${repo}/${loc.file}`,
+    ...(loc.origin_file ? { origin_file: `${repo}/${loc.origin_file}` } : {}),
   };
 }
 
@@ -677,6 +631,11 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     combined.shields.push(...prefixAll(m.shields, repo));
     combined.features.push(...prefixAll(m.features || [], repo));
     combined.comments.push(...prefixAll(m.comments, repo));
+
+    if (m.annotation_scope) {
+      combined.annotation_scope ??= { view: m.annotation_scope.view, excluded: [] };
+      combined.annotation_scope.excluded.push(...m.annotation_scope.excluded.map(e => ({ ...e, file: `${repo}/${e.file}` })));
+    }
 
     // Aggregate coverage. Only the annotation count is additive; the percent
     // is recomputed below from the combined file totals.
@@ -970,13 +929,7 @@ export async function mergeReports(
 
   // 3. Resolve cross-repo references
   const repoNames = new Set(reports.map(r => r.repo));
-  const { unresolved, warnings: refWarnings } = resolveReferences(reports, registry, repoNames);
-
-  // Count resolved: total refs from external_refs fields minus unresolved
-  const totalExternalRefs = reports.reduce(
-    (sum, r) => sum + (r.model.external_refs?.length || 0), 0,
-  );
-  const resolvedCount = Math.max(0, totalExternalRefs - unresolved.length);
+  const { unresolved, warnings: refWarnings, resolved: resolvedCount } = resolveReferences(reports, registry, repoNames);
 
   // 4. Combine models
   const combinedModel = combineModels(reports);

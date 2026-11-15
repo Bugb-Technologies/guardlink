@@ -419,13 +419,14 @@ program
   .description('Check annotations for syntax errors and dangling references')
   .argument('[dir]', 'Project directory to scan', '.')
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('--workspace', 'Check linked sibling checkouts; fail if any sibling is unavailable or a reference is unresolved')
   .option('--strict', 'Also fail on unmitigated exposures (for CI gates)')
   .option('--artifacts', 'Also check .guardlink/graph/ artifacts against the current model; exits non-zero on drift')
   .option('--sync', 'Also refresh agent instruction files (this used to happen unasked — see D16)')
   .option('--code-graph', 'Also check declared claims against a code graph, when one is installed and built: a @boundary access level a route contradicts, a route handler with no boundary to the outside, a boundary nothing crosses, a gate the graph finds no route through, an effect no agent reaches, a tool registration with no @agents. Warnings only, each a claim to check')
-  .action(async (dir: string, opts: { project: string; strict?: boolean; artifacts?: boolean; sync?: boolean; codeGraph?: boolean }) => {
+  .action(async (dir: string, opts: { project: string; workspace?: boolean; strict?: boolean; artifacts?: boolean; sync?: boolean; codeGraph?: boolean }) => {
     const root = resolve(dir);
-    const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined, requireSiblings: opts.workspace });
 
     // Check for dangling refs
     const danglingDiags = findDanglingRefs(model);
@@ -3405,11 +3406,22 @@ program
   .argument('[repos...]', 'Repo directories to link (fresh setup: 2+ paths)')
   .option('-w, --workspace <n>', 'Workspace name (fresh link only)', 'workspace')
   .option('-r, --registry <url>', 'GitHub/GitLab org base URL (e.g. github.com/unstructured)')
+  .option('--member <name=path>', 'Explicit member name and directory (repeatable, fresh link)', (value: string, previous: string[]) => [...previous, value], [])
+  .option('--name <name>', 'Explicit member name for --add')
   .option('--add <path>', 'Add a new repo to an existing workspace (provide path to new repo)')
   .option('--remove <name>', 'Remove a repo from the workspace by name')
   .option('--from <path>', 'Existing workspace repo to read config from (used with --add or --remove)')
-  .action(async (repos: string[], opts: { workspace: string; registry?: string; add?: string; remove?: string; from?: string }) => {
+  .action(async (repos: string[], opts: { workspace: string; registry?: string; add?: string; remove?: string; from?: string; member: string[]; name?: string }) => {
     let result: LinkResult;
+    const memberNames: Record<string, string> = {};
+    for (const member of opts.member) {
+      const equal = member.indexOf('=');
+      if (equal < 1 || !member.slice(equal + 1)) throw new Error('--member requires name=path');
+      const path = resolve(member.slice(equal + 1));
+      if (memberNames[path]) throw new Error(`Duplicate --member path: ${path}`);
+      memberNames[path] = member.slice(0, equal);
+      if (!repos.some(r => resolve(r) === path)) repos.push(path);
+    }
 
     if (opts.remove) {
       // ── Remove mode: remove a repo from an existing workspace ──
@@ -3462,6 +3474,7 @@ program
 
       result = addToWorkspace({
         newRepoPath: opts.add,
+        memberName: opts.name,
         existingRepoPath: opts.from,
         registry: opts.registry,
       });
@@ -3512,6 +3525,7 @@ program
       result = linkProject({
         workspace: opts.workspace,
         repoPaths: repos,
+        memberNames,
         registry: opts.registry,
       });
 

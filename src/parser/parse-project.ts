@@ -8,13 +8,16 @@
  * @mitigates #parser against #dos using #resource-limits -- "DEFAULT_EXCLUDE skips build artifacts, tests; limits effective file count"
  * @flows ProjectRoot -> #parser via fast-glob -- "Directory traversal path"
  * @flows #parser -> ThreatModel via assembleModel -- "Aggregated threat model output"
+ * @flows #workspace-config -> #parser via localWorkspaceMembers -- "Linked member manifests select the application scan and available sibling reference checks"
  * @comment -- "Scans standalone .gal files in addition to comment-based source annotations"
  * @comment -- "Every @entitles gets its citation resolved at assembly time and carries inert:true when uncited, so no consumer can read an uncited privilege claim as an effective one by forgetting to check (actor-entitlement design §3.4)"
  * @comment -- "Same reasoning for imprecise:true when the claim omits `on <asset>` or `against <threat>`, plus canEntitlementDemote/entitlementDemotionBlockers so the cited-and-precise test is written once here rather than re-derived by every consumer — a consumer that checks only !inert would demote on an entitlement that joins nothing (actor-entitlement design §9.7)"
  * @boundary #parser and FileSystem (#fs-boundary) -- "Trust boundary between parser and disk I/O"
  */
 import { readSecurityTestsDir } from './security-tests.js';
-import { relationRecords } from './claim-key.js';
+import { localWorkspaceMembers, workspaceContainer } from '../workspace/discovery.js';
+import { combineModels, buildTagRegistry } from '../workspace/merge.js';
+import { relationRecords, tagReferences, definitionIds } from './claim-key.js';
 import { readObservedState, buildReachAttestation } from '../attest/index.js';
 
 
@@ -32,7 +35,7 @@ import type {
   HandlesAnnotation, AssumesAnnotation, ShieldAnnotation,
   FeatureAnnotation, CommentAnnotation,
   DataClassification,
-  ExternalRef, AnnotationVerb, SourceLocation,
+  ExternalRef,
   ThreatModelEntitlement, EntitlementDemotionBlocker, AnnotationScopeRecord,
 } from '../types/index.js';
 import { parseFile } from './parse-file.js';
@@ -200,6 +203,10 @@ export interface ParseProjectOptions {
    * which defaults to true; `false` here wins over the file.
    */
   agentConfig?: boolean;
+  /** Check available linked sibling checkouts (default true); false prevents recursive sibling reads. */
+  checkSiblings?: boolean;
+  /** Treat unavailable siblings and unresolved sibling refs as errors (validate --workspace). */
+  requireSiblings?: boolean;
 }
 
 /**
@@ -280,6 +287,39 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   } = options;
 
   const config = { security_tests_dir: readSecurityTestsDir(root) };
+
+  const container = workspaceContainer(root);
+  if (container) {
+    const results = await Promise.all(container.members.map(async member => ({
+      member,
+      parsed: await parseProject({ ...options, root: member.path, project: member.name, checkSiblings: false, requireSiblings: false }),
+    })));
+    const reports = results.map(({ member, parsed }) => ({
+      repo: relative(root, member.path).replaceAll('\\', '/'), model: parsed.model, source_path: member.path,
+    }));
+    const model = combineModels(reports);
+    model.project = options.project && options.project !== 'unknown' ? options.project : container.config.workspace;
+    const diagnostics = results.flatMap(({ member, parsed }) => parsed.diagnostics.map(d => ({
+      ...d, file: `${relative(root, member.path).replaceAll('\\', '/')}/${d.file}`,
+    })));
+    for (const name of container.missing) diagnostics.push({
+      level: 'error', code: 'workspace-incomplete', file: '.guardlink/workspace.yaml', line: 1,
+      message: `Application incomplete: linked member "${name}" is unavailable in this folder.`,
+    });
+    for (const warning of buildTagRegistry(reports).warnings) diagnostics.push({
+      level: 'warning', code: 'duplicate-id', file: '.guardlink/workspace.yaml', line: 1, message: warning.message,
+    });
+    // References now resolve against the combined application rather than the member's local scope.
+    model.external_refs = [];
+    if (options.requireSiblings) {
+      const defined = definitionIds(model);
+      for (const ref of tagReferences(model)) if (!defined.has(ref.tag.slice(1))) diagnostics.push({
+        level: 'error', code: 'dangling-ref', ...ref.location,
+        message: `Workspace reference ${ref.tag} is not defined in any linked member.`,
+      });
+    }
+    return { model, diagnostics, config };
+  }
 
   // Discover files (dot: true to include .guardlink/ definitions)
   // @comment -- "scanIgnore adds one ignore per nested checkout found under root (a directory holding a .git FILE: a linked worktree or a submodule), so another checkout's source and definitions are never read as this repository's. The same call bounds clear, the fingerprint and init's scope, so the four walks keep one scan set"
@@ -435,7 +475,7 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   };
 
   // Detect cross-repo tag references (requires workspace.yaml)
-  model.external_refs = detectExternalRefs(model, root);
+  model.external_refs = await detectExternalRefs(model, root, options, allDiagnostics);
 
   // Warning-level diagnostics a project has switched off in config.json.
   // Errors are never suppressible — see readDisabledDiagnostics.
@@ -854,132 +894,56 @@ export function entitlementDemotionBlockers(
 
 // ─── External ref detection ──────────────────────────────────────────
 
-/**
- * Detect tag references that point to definitions in sibling repos.
- *
- * A tag like `#auth-lib.token-verify` is external if:
- *   - It contains a dot separator
- *   - The prefix before the first dot matches a sibling repo name
- *   - The tag is not defined locally (not in this repo's assets/threats/controls)
- *
- * Requires workspace.yaml to be present — returns [] if not in a workspace.
- *
- * D19: that example is now writable. Until the tag grammar was fixed,
- * `#auth-lib.token-verify` did not parse unquoted anywhere, and never parsed at
- * all in threat or control position — while this function has always scanned
- * threat and control positions for exactly these tags. The grammar was the only
- * layer that disagreed. `tests/cross-repo-tags.test.ts` pins the six cases and
- * runs every example this codebase emits through the parser, so an example can
- * no longer describe syntax that does not exist.
- */
-function detectExternalRefs(model: ThreatModel, root: string): ExternalRef[] {
+/** Resolve every nonlocal relationship id against readable sibling checkouts; missing data stays unchecked. */
+async function detectExternalRefs(
+  model: ThreatModel, root: string, options: ParseProjectOptions, diagnostics: ParseDiagnostic[],
+): Promise<ExternalRef[]> {
   const config = loadWorkspaceConfig(root);
   if (!config) return [];
-
-  // Sibling repo names (exclude this repo)
-  const siblingNames = new Set(
-    config.repos
-      .filter(r => r.name !== config.this_repo)
-      .map(r => r.name),
-  );
-  if (siblingNames.size === 0) return [];
-
-  // Local definitions — both with and without # prefix
-  const localIds = new Set<string>();
-  for (const a of model.assets) {
-    if (a.id) { localIds.add(a.id); localIds.add(`#${a.id}`); }
+  const local = definitionIds(model);
+  const candidates = tagReferences(model).filter(r => !local.has(r.tag.slice(1)));
+  if (candidates.length === 0 && !options.requireSiblings) return [];
+  const siblings = config.repos.filter(r => r.name !== config.this_repo);
+  const members = options.checkSiblings === false ? [] : localWorkspaceMembers(root, config)
+    .filter(m => m.name !== config.this_repo);
+  const definitions = new Map<string, string[]>();
+  const kinds = new Map<string, Set<string>>();
+  const checked: string[] = [];
+  for (const member of members) {
+    const parsed = await parseProject({ root: member.path, anchors: false, agentConfig: false, checkSiblings: false });
+    if (parsed.diagnostics.some(d => d.level === 'error' || d.level === 'fatal')) continue;
+    checked.push(member.name);
+    for (const [kind, rows] of [
+      ['asset', parsed.model.assets], ['threat', parsed.model.threats], ['control', parsed.model.controls],
+      ['actor', parsed.model.actors ?? []], ['boundary', parsed.model.boundaries],
+    ] as const) {
+      for (const row of rows) if (row.id) {
+        const set = kinds.get(row.id) ?? new Set<string>();
+        set.add(kind); kinds.set(row.id, set);
+      }
+    }
+    for (const id of definitionIds(parsed.model)) {
+      definitions.set(id, [...(definitions.get(id) ?? []), member.name]);
+    }
   }
-  for (const t of model.threats) {
-    if (t.id) { localIds.add(t.id); localIds.add(`#${t.id}`); }
-  }
-  for (const c of model.controls) {
-    if (c.id) { localIds.add(c.id); localIds.add(`#${c.id}`); }
-  }
-  for (const ac of model.actors || []) {
-    if (ac.id) { localIds.add(ac.id); localIds.add(`#${ac.id}`); }
-  }
-
-  const refs: ExternalRef[] = [];
-  const seen = new Set<string>(); // dedup by tag+file+line
-
-  function checkTag(tag: string | undefined, verb: AnnotationVerb, location: SourceLocation) {
-    if (!tag) return;
-    const key = `${tag}:${location.file}:${location.line}`;
-    if (seen.has(key)) return;
-
-    // Skip if locally defined
-    if (localIds.has(tag)) return;
-
-    // Strip leading # for prefix extraction
-    const bare = tag.startsWith('#') ? tag.slice(1) : tag;
-    const dotIdx = bare.indexOf('.');
-    if (dotIdx < 1) return; // no dot or starts with dot — not a repo prefix
-
-    const prefix = bare.slice(0, dotIdx);
-    if (!siblingNames.has(prefix)) return;
-
-    seen.add(key);
-    refs.push({
-      tag,
-      context_verb: verb,
-      location,
-      inferred_repo: prefix,
+  const missing = siblings.filter(s => !checked.includes(s.name)).map(s => s.name);
+  if (options.requireSiblings && missing.length) diagnostics.push({
+    level: 'error', code: 'workspace-incomplete', file: '.guardlink/workspace.yaml', line: 1,
+    message: `Workspace check incomplete: unavailable or unreadable sibling checkouts: ${missing.join(', ')}.`,
+  });
+  return candidates.map(ref => {
+    const owners = definitions.get(ref.tag.slice(1));
+    const prefix = ref.tag.slice(1).split('.')[0];
+    const legacy = ref.tag.includes('.') && siblings.some(s => s.name === prefix);
+    const resolution = owners?.length ? 'resolved' : missing.length ? 'not_checked' : 'unresolved';
+    if (options.requireSiblings && resolution === 'unresolved') diagnostics.push({
+      level: 'error', code: 'dangling-ref', ...ref.location,
+      message: `Workspace reference ${ref.tag} is not defined in any linked member.`,
     });
-  }
-
-  // Scan all relationship annotations for cross-repo tags
-  for (const m of model.mitigations) {
-    checkTag(m.asset, 'mitigates', m.location);
-    checkTag(m.threat, 'mitigates', m.location);
-    if (m.control) checkTag(m.control, 'mitigates', m.location);
-  }
-  for (const e of model.exposures) {
-    checkTag(e.asset, 'exposes', e.location);
-    checkTag(e.threat, 'exposes', e.location);
-  }
-  for (const a of model.acceptances) {
-    checkTag(a.asset, 'accepts', a.location);
-    checkTag(a.threat, 'accepts', a.location);
-  }
-  for (const t of model.transfers) {
-    checkTag(t.source, 'transfers', t.location);
-    checkTag(t.target, 'transfers', t.location);
-    checkTag(t.threat, 'transfers', t.location);
-  }
-  for (const f of model.flows) {
-    checkTag(f.source, 'flows', f.location);
-    checkTag(f.target, 'flows', f.location);
-  }
-  for (const b of model.boundaries) {
-    checkTag(b.asset_a, 'boundary', b.location);
-    checkTag(b.asset_b, 'boundary', b.location);
-  }
-  for (const en of model.entitlements || []) {
-    checkTag(en.actor, 'entitles', en.location);
-    if (en.asset) checkTag(en.asset, 'entitles', en.location);
-    // `against <threat>` is checked like every other threat ref: a claim that
-    // names a threat nobody declared joins nothing, and a typo there is exactly
-    // the silent miss §9 is about.
-    if (en.threat) checkTag(en.threat, 'entitles', en.location);
-  }
-  for (const r of model.reaches || []) {
-    const verb = r.agent ? 'agents' : 'reaches';
-    checkTag(r.actor, verb, r.location);
-    if (r.asset) checkTag(r.asset, verb, r.location);
-    if (r.identity) checkTag(r.identity, verb, r.location);
-  }
-  for (const ef of model.effects || []) {
-    checkTag(ef.asset, 'effects', ef.location);
-    if (ef.identity) checkTag(ef.identity, 'effects', ef.location);
-  }
-  for (const g of model.gates || []) {
-    checkTag(g.asset, 'gates', g.location);
-    checkTag(g.approver, 'gates', g.location);
-  }
-  for (const t of model.tickets || []) {
-    checkTag(t.threat, 'ticket', t.location);
-    checkTag(t.asset, 'ticket', t.location);
-  }
-
-  return refs;
+    return {
+      ...ref, ...(legacy ? { legacy: true, inferred_repo: prefix } : {}),
+      ...(owners?.length ? { defined_in: owners, inferred_repo: owners[0], definition_kinds: [...(kinds.get(ref.tag.slice(1)) ?? [])] } : {}),
+      resolution, ...(missing.length ? { unchecked_members: missing } : {}),
+    };
+  });
 }

@@ -1,0 +1,34 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-asset/workspace-config.flows.mmd
+%% scope:           PARTIAL — #workspace-config and its flow neighbourhood, grown until the drawing stopped fitting — 23 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:82bd4d4c6e8d0d0f6d158221e0571dd1545c5b391e0e8eda9da2a5a11867eedc
+%% generator:       guardlink@2.6.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
+graph LR
+  parser["🧩 GuardLink.Parser"]
+  agent_launcher["🧩 GuardLink.Agent_Launcher"]
+  projectroot["🧩 ProjectRoot"]
+  init["🧩 GuardLink.Init"]
+  annotations["🧩 Annotations"]
+  workspace_config["🧩 Workspace.Config"]
+  annotationsource["🧩 AnnotationSource"]
+  agent_config["🧩 GuardLink.AgentConfig"]
+  parser -- "📡 annotation worklist" --> agent_launcher
+  projectroot -- "📡 detectProject" --> init
+  projectroot -- "📡 options.root" --> init
+  projectroot -- "📡 detectIncludeScope" --> init
+  projectroot -- "📡 annotationScope" --> parser
+  projectroot -- "📡 buildAnnotationWorklist" --> parser
+  projectroot -- "📡 fast-glob" --> parser
+  projectroot -- "📡 findNestedCheckouts" --> parser
+  parser -- "📡 parseString" --> annotations
+  workspace_config -- "📡 localWorkspaceMembers" --> parser
+  annotationsource -- "📡 existsSync" --> parser
+  agent_config -- "📡 mergeAgentConfig" --> parser
+  projectroot -- "📡 localWorkspaceMembers" --> workspace_config

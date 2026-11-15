@@ -14,10 +14,6 @@ import { writeFileSync } from 'node:fs';
 import { resolve, basename, dirname, join } from 'node:path';
 import type { WorkspaceConfig, WorkspaceRepo } from './types.js';
 import { serializeWorkspaceYaml, loadWorkspaceConfig } from './metadata.js';
-// D19/D33: cross-repo tags in emitted guidance are BUILT from the parser's tag
-// grammar, never typed as strings.
-import { crossRepoTag } from '../parser/index.js';
-
 // ─── Types ───────────────────────────────────────────────────────────
 
 export interface LinkProjectOptions {
@@ -25,6 +21,8 @@ export interface LinkProjectOptions {
   workspace: string;
   /** Repo directories (absolute or relative paths) */
   repoPaths: string[];
+  /** Explicit member identities keyed by repo path; default is the directory name. */
+  memberNames?: Record<string, string>;
   /** GitHub/GitLab org registry base URL (e.g. "github.com/unstructured") */
   registry?: string;
 }
@@ -32,6 +30,8 @@ export interface LinkProjectOptions {
 export interface AddToWorkspaceOptions {
   /** Path to the new repo being added */
   newRepoPath: string;
+  /** Explicit identity for the new member; default is its directory name. */
+  memberName?: string;
   /** Path to an existing workspace repo (to read workspace.yaml from) */
   existingRepoPath: string;
   /** GitHub/GitLab org registry base URL (optional — inherits from existing workspace) */
@@ -58,7 +58,7 @@ export interface LinkResult {
  *
  * For each repo path:
  * 1. Auto-init if not yet guardlink-initialized
- * 2. Detect repo name from git remote, package.json, or directory name
+ * 2. Use an explicit member name, otherwise the directory name
  * 3. Generate .guardlink/workspace.yaml
  * 4. Update agent instruction files with workspace context
  */
@@ -80,7 +80,10 @@ export function linkProject(options: LinkProjectOptions): LinkResult {
     const initResult = ensureInitialized(absPath);
     if (initResult) result.initialized.push(initResult);
 
-    const name = detectRepoName(absPath);
+    const explicitName = Object.entries(options.memberNames ?? {}).find(([path]) => resolve(path) === absPath)?.[1];
+    const name = explicitName ?? basename(absPath);
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(name)) throw new Error(`Invalid member name: ${name}`);
+    if (repos.some(r => r.name === name || r.path === absPath)) throw new Error(`Duplicate workspace member: ${name}`);
     const registry = options.registry
       ? `${options.registry.replace(/\/$/, '')}/${name}`
       : undefined;
@@ -136,7 +139,8 @@ export function addToWorkspace(options: AddToWorkspaceOptions): LinkResult {
   if (initResult) result.initialized.push(initResult);
 
   // 3. Detect new repo name and build its WorkspaceRepo entry
-  const newRepoName = detectRepoName(newPath);
+  const newRepoName = options.memberName ?? basename(newPath);
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(newRepoName)) throw new Error(`Invalid member name: ${newRepoName}`);
 
   // Check if already in workspace
   if (existingConfig.repos.some(r => r.name === newRepoName)) {
@@ -238,7 +242,7 @@ export function removeFromWorkspace(options: RemoveFromWorkspaceOptions): LinkRe
   if (existingConfig.repos.length <= 2) {
     result.skipped.push({
       name: options.repoName,
-      reason: 'Cannot remove — workspace must have at least 2 repos. Use fresh link-project to recreate.',
+      reason: 'Cannot remove the last partner: a workspace needs at least 2 repos. To unlink both, delete .guardlink/workspace.yaml in each repo and remove its generated ## Workspace Context section from agent instruction files. To select a different group, run link-project with 2 or more repo paths.',
     });
     return result;
   }
@@ -467,6 +471,8 @@ function discoverWorkspaceRepos(
  * Matches by: exact directory name, or git remote repo name.
  */
 function matchesRepoName(dirPath: string, dirName: string, repoName: string): boolean {
+  const manifest = loadWorkspaceConfig(dirPath);
+  if (manifest) return manifest.this_repo === repoName;
   // Direct name match
   if (dirName === repoName) return true;
 
@@ -679,18 +685,14 @@ export function buildWorkspaceContextBlock(
   lines.push('');
   lines.push('When writing GuardLink annotations in this repo:');
   lines.push('');
-  lines.push(`- **Tag prefix convention:** Use \`#${config.this_repo}.<component>\` for assets defined here.`);
+  lines.push('- **Flat ids:** Every definition has a globally unique id, such as `#orders-handler`.');
   lines.push(`- **Reference sibling repos:** You may reference assets/threats/controls from: ${siblingNames}.`);
-  lines.push(`  Use their tag prefix, e.g. \`#${siblings[0]?.name || 'other-service'}.<component>\`.`);
+  lines.push('  Use the exact id the sibling defines, such as `#auth-endpoint`; do not add a repo namespace.');
   lines.push('- **Cross-service data flows:** If this code calls or is called by another service, document it:');
-  // D19/D33: built from the parser's own tag grammar, and the verb form is the
-  // one that exists. This emitted `@flows X from A to B` — the same invented
-  // form D19 corrected in guardlink_workspace_info — from a second emitter that
-  // writes into every linked repo's agent files. `@flows A -> B` is the grammar.
-  lines.push(`  \`@flows ${crossRepoTag(config.this_repo, 'handler')} -> ${crossRepoTag(siblings[0]?.name || 'other-service', 'endpoint')} -- "what crosses"\``);
+  lines.push(`  \`@flows #${config.this_repo}-handler -> #${siblings[0]?.name || 'other-service'}-endpoint -- "what crosses"\``);
   lines.push('- **Do not redefine** assets that belong to another repo. Reference them by tag.');
-  lines.push('- **External refs are OK:** Tags referencing sibling repos will show as "external refs"');
-  lines.push('  during local validation but resolve during workspace merge.');
+  lines.push('- **Check siblings:** `guardlink validate --workspace` checks available sibling checkouts and reports missing members.');
+  lines.push('- **Legacy dotted refs:** Existing `#repo.id` references remain readable and are reported as legacy; prefer flat ids.');
   lines.push('');
   lines.push(`### Sibling Services`);
   lines.push('');
