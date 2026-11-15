@@ -71,3 +71,10 @@ A malformed or unreadable manifest produces an error naming the file and the YAM
 shape-validation or filesystem problem. `parse` and `validate` return a nonzero exit
 status with that diagnostic, without an uncaught stack trace. An unreadable sibling is
 named and its references remain unchecked; `validate --workspace` fails the incomplete check.
+
+If two sibling checkouts declare the same workspace member (for example a feature
+checkout beside its main checkout), application membership is ambiguous. GuardLink
+reports the member id, both checkout paths and the manifest to inspect, without a
+stack trace. Keep one checkout of each member in the application folder by moving
+the extra checkout outside it; if they are distinct services, relink them with
+unique `--member name=path` identities.

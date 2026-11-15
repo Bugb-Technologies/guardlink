@@ -358,3 +358,33 @@ describe('unreadable workspace files and bounded YAML decoding', () => {
     expect(() => parseWorkspaceYaml(document)).toThrow(/alias/i);
   });
 });
+
+describe('duplicate member checkouts', () => {
+  const tsx = createRequire(import.meta.url).resolve('tsx/cli');
+  const cli = join(dirname(fileURLToPath(import.meta.url)), '../src/cli/index.ts');
+
+  it('names both checkouts and a recovery action, without a stack, for member validation and container parsing', async () => {
+    const { orders } = linked();
+    const extra = member('orders-fix', 'export {};');
+    put(join(extra, '.guardlink/workspace.yaml'), readFileSync(join(orders, '.guardlink/workspace.yaml'), 'utf8'));
+    const parsed = await parseProject({ root, anchors: false, agentConfig: false });
+    expect(parsed.diagnostics).toContainEqual(expect.objectContaining({ level: 'error', code: 'workspace-config-invalid' }));
+    for (const args of [['validate', orders, '--workspace'], ['parse', root]]) {
+      try {
+        execFileSync(process.execPath, [tsx, cli, ...args], { cwd: root, encoding: 'utf8', stdio: 'pipe' });
+        expect.fail('ambiguous membership must fail');
+      } catch (error) {
+        const result = error as { status: number; stderr: string };
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain('Duplicate linked member identity "orders"');
+        expect(result.stderr).toContain(orders);
+        expect(result.stderr).toContain(extra);
+        expect(result.stderr).toMatch(/move.*outside|relink/i);
+        expect(result.stderr).not.toMatch(/\n\s+at (?:\w|file:)/);
+      }
+    }
+    // Resolving the ambiguity restores the normal read path.
+    rmSync(extra, { recursive: true });
+    expect(() => execFileSync(process.execPath, [tsx, cli, 'validate', orders, '--workspace'], { cwd: root, stdio: 'pipe' })).not.toThrow();
+  }, 30_000);
+});
