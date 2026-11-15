@@ -290,10 +290,17 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
 
   const container = workspaceContainer(root);
   if (container) {
+    if (container.missing.length) {
+      throw new Error(`Application incomplete: linked member checkouts unavailable: ${container.missing.join(', ')}.`);
+    }
     const results = await Promise.all(container.members.map(async member => ({
       member,
       parsed: await parseProject({ ...options, root: member.path, project: member.name, checkSiblings: false, requireSiblings: false }),
     })));
+    const unreadable = results.filter(({ parsed }) => parsed.diagnostics.some(d => d.level === 'error' || d.level === 'fatal'));
+    if (unreadable.length) {
+      throw new Error(`Application incomplete: linked members have parse errors: ${unreadable.map(r => r.member.name).join(', ')}. Validate each member for details.`);
+    }
     const reports = results.map(({ member, parsed }) => ({
       repo: relative(root, member.path).replaceAll('\\', '/'), model: parsed.model, source_path: member.path,
     }));
@@ -302,10 +309,6 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     const diagnostics = results.flatMap(({ member, parsed }) => parsed.diagnostics.map(d => ({
       ...d, file: `${relative(root, member.path).replaceAll('\\', '/')}/${d.file}`,
     })));
-    for (const name of container.missing) diagnostics.push({
-      level: 'error', code: 'workspace-incomplete', file: '.guardlink/workspace.yaml', line: 1,
-      message: `Application incomplete: linked member "${name}" is unavailable in this folder.`,
-    });
     for (const warning of buildTagRegistry(reports).warnings) diagnostics.push({
       level: 'warning', code: 'duplicate-id', file: '.guardlink/workspace.yaml', line: 1, message: warning.message,
     });

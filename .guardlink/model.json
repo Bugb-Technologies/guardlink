@@ -7641,7 +7641,7 @@
       "description": "Generated reach rows, actors and the agent_config block join the assembled model",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 516
+        "line": 519
       }
     },
     {
@@ -11131,7 +11131,7 @@
       "description": "scanIgnore adds one ignore per nested checkout found under root (a directory holding a .git FILE: a linked worktree or a submodule), so another checkout's source and definitions are never read as this repository's. The same call bounds clear, the fingerprint and init's scope, so the four walks keep one scan set",
       "location": {
         "file": "src/parser/parse-project.ts",
-        "line": 325
+        "line": 328
       }
     },
     {

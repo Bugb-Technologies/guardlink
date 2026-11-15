@@ -170,8 +170,20 @@ describe('incomplete and legacy workspace evidence', () => {
     expect(findDanglingRefs(partial.model).some(d => d.code === 'linked-ref' && d.message.includes('not checked'))).toBe(true);
     const checked = await parseProject({ root: join(root, 'orders'), requireSiblings: true, anchors: false, agentConfig: false });
     expect(checked.diagnostics.some(d => d.code === 'workspace-incomplete' && d.level === 'error')).toBe(true);
-    const parent = await parseProject({ root, anchors: false, agentConfig: false });
-    expect(parent.diagnostics.some(d => d.code === 'workspace-incomplete')).toBe(true);
+    await expect(parseProject({ root, anchors: false, agentConfig: false })).rejects.toThrow('Application incomplete');
+    const server = createServer();
+    const client = new Client({ name: 'incomplete-workspace', version: '1' });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(b), client.connect(a)]);
+    try {
+      const response = await client.callTool({ name: 'guardlink_parse', arguments: { root } });
+      expect(response.isError).toBe(true);
+      expect(JSON.stringify(response.content)).toContain('Application incomplete');
+    } finally { await client.close(); }
+    member('auth', '// @control Session_Check (#session-check)\n');
+    linkProject({ workspace: 'shop', repoPaths: [auth, join(root, 'orders')] });
+    put(join(root, 'orders/src/app.ts'), '// @mitigates #orders against\n');
+    await expect(parseProject({ root, anchors: false, agentConfig: false })).rejects.toThrow('Application incomplete: linked members have parse errors: orders');
   });
 
   it('preserves external sidecar origins and the member coverage denominator', async () => {

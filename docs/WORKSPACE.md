@@ -51,7 +51,7 @@ Counts represent reference occurrences per annotation (the same id twice on one 
 
 Parsing a container of linked member checkouts selects only those members and applies
 each member's own configuration and coverage scope. Paths remain relative to the
-container's actual directory layout. Missing members produce an incomplete error;
+container's actual directory layout. Missing members or members with parse errors produce a named application-incomplete error;
 conflicting member lists require reconciliation before an application can be parsed.
 
 A workspace requires at least two members. To unlink a two-member workspace, delete
