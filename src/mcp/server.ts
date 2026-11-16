@@ -59,6 +59,7 @@
  * @comment -- "Entitlement accepted by zippon on 2026-08-10 via guardlink entitle (proposal ent-mcp_agent.mcp.data_exposure)."
  */
 import { readSecurityTestsDir } from '../parser/security-tests.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { collectApplicationView, discoverApplicationManifest, applicationViewCapabilities } from '../workspace/application.js';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -123,6 +124,11 @@ function createModelCache() {
   let cachedDiagnostics: any[] = [];
   let cachedRoot = '';
   let cachedFingerprint: string | null = null;
+  // One read frame per request: concurrent clients must not exchange snapshots,
+  // and an envelope must describe the model that produced its own payload.
+  const frames = new AsyncLocalStorage<Map<string, { model: ThreatModel; diagnostics: any[] }>>();
+  const withSnapshot = <T>(run: () => Promise<T>) => frames.run(new Map(), run);
+  const remember = (root: string, value: { model: ThreatModel; diagnostics: any[] }) => { frames.getStore()?.set(root, value); return value; };
 
   /**
    * Return the parsed model, re-parsing when anything on disk has moved.
@@ -140,21 +146,24 @@ function createModelCache() {
    * agent and the writes land afterwards, outside any tool call.
    */
   async function getModel(root: string): Promise<{ model: ThreatModel; diagnostics: any[] }> {
+    const captured = frames.getStore()?.get(root);
+    if (captured) return captured;
     const application = discoverApplicationManifest(root);
     // Application currency includes git refs and ledger bytes, not only file stat metadata.
     const fingerprint = await fingerprintProject(root);
     if (!application && cachedModel && cachedRoot === root && cachedFingerprint === fingerprint) {
-      return { model: cachedModel, diagnostics: cachedDiagnostics };
+      return remember(root, { model: cachedModel, diagnostics: cachedDiagnostics });
     }
     const result = await parseProject({ root, project: 'unknown', application: true });
     cachedModel = result.model;
     cachedDiagnostics = result.diagnostics;
     cachedRoot = root;
     cachedFingerprint = fingerprint;
-    return result;
+    return remember(root, result);
   }
 
   function invalidateCache(): void {
+    frames.getStore()?.clear();
     cachedModel = null;
     cachedDiagnostics = [];
     cachedFingerprint = null;
@@ -186,13 +195,13 @@ function createModelCache() {
   async function envelopeFor(root: string) {
     try {
       const { model } = await getModel(root);
-      return buildEnvelope(root, model);
+      return { ...buildEnvelope(root, model), ...(model.application ? { application_receipt: model.application.receipt } : {}) };
     } catch (err: any) {
       return degradedEnvelope(root, err?.message ?? 'model unavailable');
     }
   }
 
-  return { getModel, invalidateCache, resourceRoot, envelopeFor };
+  return { getModel, invalidateCache, resourceRoot, envelopeFor, withSnapshot, remember };
 }
 
 type ModelCache = ReturnType<typeof createModelCache>;
@@ -216,7 +225,7 @@ function registerTool(
   schema: z.ZodRawShape,
   handler: (args: any) => Promise<{ content: TextBlock[]; isError?: boolean }>,
 ): void {
-  server.tool(name, description, schema, (async (args: any) => {
+  server.tool(name, description, schema, ((args: any) => cache.withSnapshot(async () => {
     const result = await handler(args);
     const root = typeof args?.root === 'string' && args.root ? args.root : cache.resourceRoot().root;
     if (name === 'guardlink_application_view') {
@@ -225,7 +234,7 @@ function registerTool(
       return { ...result, content: [...result.content, envelopeBlock(envelope)] };
     }
     return { ...result, content: [...result.content, envelopeBlock(await cache.envelopeFor(root))] };
-  }) as any);
+  })) as any);
 }
 
 /** Register a resource whose read always carries the envelope and names its root. */
@@ -237,7 +246,7 @@ function registerResource(
   metadata: { description: string },
   handler: (root: string) => Promise<{ contents: any[] }>,
 ): void {
-  server.resource(name, uri, metadata, (async () => {
+  server.resource(name, uri, metadata, (() => cache.withSnapshot(async () => {
     const { root, source } = cache.resourceRoot();
     const result = await handler(root);
     const envelope = { ...(await cache.envelopeFor(root)), root_source: source };
@@ -251,7 +260,7 @@ function registerResource(
         },
       ],
     };
-  }) as any);
+  })) as any);
 }
 
 // ─── Server setup ────────────────────────────────────────────────────
@@ -399,7 +408,7 @@ export function createServer(): McpServer {
     async ({ root, code_graph, workspace }) => {
       invalidateCache();
       const { model, diagnostics } = workspace
-        ? await parseProject({ root, requireSiblings: true })
+        ? cache.remember(root, await parseProject({ root, requireSiblings: true }))
         : await getModel(root);
 
       // Compute dangling refs using shared validation
@@ -1526,6 +1535,7 @@ export function createServer(): McpServer {
         const selected = discoverApplicationManifest(root);
         if (selected) {
           const view = await collectApplicationView({ root, manifest: selected, selectionProbe: () => discoverApplicationManifest(root) });
+          cache.remember(root, { model: view.model, diagnostics: view.diagnostics });
           return { content: [{ type: 'text', text: JSON.stringify({ workspace: selected.name, this_repo: null, id_convention: 'flat-globally-unique', receipt: view.receipt, members: view.receipt.members, references: view.references }) }] };
         }
         return {

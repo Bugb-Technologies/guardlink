@@ -212,6 +212,9 @@ describe('application semantic view contract', () => {
       const view = JSON.parse(content[0].text);
       expect(view.receipt.completeness).toBe('complete');
       expect(JSON.parse(content[1].text).guardlink.application_receipt.inputDigest).toBe(view.receipt.inputDigest);
+      const graph = await client.callTool({ name: 'guardlink_graph', arguments: { root, from: '#api' } });
+      const graphEnvelope = JSON.parse((graph.content as Array<{ text: string }>).at(-1)!.text).guardlink;
+      expect(graphEnvelope.application_receipt?.inputDigest).toBe(view.receipt.inputDigest);
       const workspace = await client.callTool({ name: 'guardlink_workspace_info', arguments: { root } });
       expect(JSON.parse((workspace.content as Array<{ text: string }>)[0].text)).toMatchObject({ this_repo: null, id_convention: 'flat-globally-unique' });
     } finally { await client.close(); }
