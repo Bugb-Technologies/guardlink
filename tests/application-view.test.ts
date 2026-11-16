@@ -270,4 +270,14 @@ describe('application semantic view contract', () => {
     expect(changed.receipt.currency?.reasonCodes).toContain('input-receipt-mismatch');
   });
 
+  it('rechecks native report configuration after first-run prompt migration', () => {
+    const { api } = scaffold();
+    const tsx = createRequire(import.meta.url).resolve('tsx/cli');
+    const cli = join(dirname(fileURLToPath(import.meta.url)), '../src/cli/index.ts');
+    const run = () => { execFileSync(process.execPath, [tsx, cli, 'report', api, '-f', 'json', '-o', '.guardlink/report.json'], { stdio: 'pipe' }); return JSON.parse(readFileSync(join(api, '.guardlink/report.json'), 'utf8')); };
+    const first = run();
+    expect(first.member_snapshot.mixed).toBe(true);
+    expect(run().member_snapshot.mixed).toBe(false);
+  });
+
 });

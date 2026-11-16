@@ -97,7 +97,7 @@ import {
   explicitDecider, identitySuggestion, formatProposalForReview, formatProposalLine, summarizeDecisions, proposalsPath,
   type DecisionResult, type EntitlementProposal, type ProposalStatus,
 } from '../review/entitlements.js';
-import { applicationViewCapabilities, collectApplicationView, discoverApplicationManifest, APPLICATION_MANIFEST_ENV } from '../workspace/application.js';
+import { applicationViewCapabilities, captureMemberSnapshot, collectApplicationView, discoverApplicationManifest, APPLICATION_MANIFEST_ENV } from '../workspace/application.js';
 import { loadWorkspaceConfig, populateMetadata, readVersionControl, mergeReports, resolveReportPaths, mergeVerdict, formatMergeVerdict, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace, estateReport, formatEstateReport, readMergedReport, NotAMergedReport } from '../workspace/index.js';
 import type { MergedReport, LinkResult } from '../workspace/index.js';
 import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
@@ -376,6 +376,7 @@ program
     // `reach_analysis` (SPEC §5.5) is derived here, from the model as exported,
     // and only when it declares a reach, effect or gate. The additive config
     // member exposes the resolved security-test directory without LLM secrets.
+    if (model.member_snapshot) await captureMemberSnapshot(root, model, model.member_snapshot.revision);
     const stamped = { ...withReachAnalysis(populateMetadata(model, root, diagnostics)), config };
 
     // Output model
@@ -1005,6 +1006,9 @@ program
       // No prompt file — that's fine, report will use annotation-derived overview
     }
 
+    // First-run prompt migration and optional attribution can change inputs after
+    // parsing. Recheck before exporting a native snapshot, preserving any mixed flag.
+    if (enrichedModel.member_snapshot) await captureMemberSnapshot(root, enrichedModel, enrichedModel.member_snapshot.revision);
     if (opts.diagramOnly) {
       // Just output Mermaid
       const mermaid = generateMermaid(enrichedModel);

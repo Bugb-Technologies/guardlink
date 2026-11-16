@@ -190,7 +190,7 @@ export async function collectApplicationView(options: CollectApplicationOptions)
         fail('invalid', 'member-snapshot-invalid', 'Report native snapshot is malformed or belongs to a different selected member/application. Regenerate the member report.'); continue;
       }
       receipt.revision = snapshot.revision;
-      receipt.components = { model: { state: snapshot.mixed ? 'partial' : 'present', indexedRevision: snapshot.revision }, verification: { state: snapshot.verification.ledger === 'corrupt' ? 'partial' : 'present' }, hypotheses: { state: snapshot.hypotheses.status === 'corrupt' ? 'partial' : 'present' } };
+      receipt.components = { model: { state: snapshot.mixed ? 'partial' : 'present', indexedRevision: snapshot.revision, ...(snapshot.mixed ? { reason: 'Member inputs changed while this native report was collected; regenerate the member report.' } : {}) }, verification: { state: snapshot.verification.ledger === 'corrupt' ? 'partial' : 'present' }, hypotheses: { state: snapshot.hypotheses.status === 'corrupt' ? 'partial' : 'present' } };
       if (snapshot.revision.vcs === 'git' && (snapshot.revision.commit === null || snapshot.revision.dirty === null)) receipt.components.provenance = { state: 'partial', reason: 'Historical git provenance is incomplete.' };
       if (snapshot.repositoryUri) receipt.repositoryUri = linksFromRemote(snapshot.repositoryUri)?.web;
       data.coverage = { annotatedFiles: model.annotated_files.length, sourceFiles: model.source_files, percent: model.coverage.coverage_percent, excluded: model.annotation_scope?.excluded ?? [] };
@@ -379,5 +379,5 @@ export async function captureMemberSnapshot(root: string, model: ThreatModel, be
   const config = loadWorkspaceConfig(root, { strict: true });
   if (!config || model.application) return;
   const revision = await readMemberRevision(root, {}, computeAnnotationHash(model));
-  model.member_snapshot = { schema: 'guardlink.member-snapshot/v1', id: config.this_repo, workspace: config.workspace, expectedMemberIds: config.repos.map(m => m.name).sort(), revision, verification: classifyClaims(model, readLedger(root)), hypotheses: readHypotheses(root), capturedAt: new Date().toISOString(), mixed: !!before && JSON.stringify(revisionInput(before)) !== JSON.stringify(revisionInput(revision)), ...(revision.vcs === 'git' && readVersionControl(root)?.repositoryUri ? { repositoryUri: readVersionControl(root)!.repositoryUri } : {}) };
+  model.member_snapshot = { schema: 'guardlink.member-snapshot/v1', id: config.this_repo, workspace: config.workspace, expectedMemberIds: config.repos.map(m => m.name).sort(), revision, verification: classifyClaims(model, readLedger(root)), hypotheses: readHypotheses(root), capturedAt: new Date().toISOString(), mixed: model.member_snapshot?.mixed === true || (!!before && JSON.stringify(revisionInput(before)) !== JSON.stringify(revisionInput(revision))), ...(revision.vcs === 'git' && readVersionControl(root)?.repositoryUri ? { repositoryUri: readVersionControl(root)!.repositoryUri } : {}) };
 }

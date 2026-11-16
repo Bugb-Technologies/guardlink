@@ -89,3 +89,8 @@ Cross-producer digests are not assumed to use the same algorithm. A caller recei
 `inputDigest` is retained; shared git fields are compared, and full digest comparison is used
 only for receipts declaring this GuardLink contract. `observedInputDigest` records the native
 collection digest. Capability probes read no source and perform no builds or network calls.
+
+Native exports recheck their inputs after optional attribution and first-run report setup.
+If setup created a prompt file or another input changed during generation, `member_snapshot.mixed`
+stays true and an offline merge marks that member partial. Regenerate the member report to
+collect a stable snapshot; evidence is never re-verified merely by regeneration.
