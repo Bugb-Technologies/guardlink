@@ -1,4 +1,3 @@
-import { applicationSourceLink } from '../workspace/application.js';
 /**
  * GuardLink Dashboard — the per-file annotation list behind the Code page
  * and its drawer, with a few lines of source context around each annotation.
@@ -9,6 +8,7 @@ import { applicationSourceLink } from '../workspace/application.js';
  * @comment -- "Ported unchanged from the first generate.ts; a file that cannot be read yields an empty context, never a failed page"
  */
 import { readFileSync } from 'node:fs';
+import { applicationSourceLink } from '../workspace/application.js';
 import { isAbsolute, resolve } from 'node:path';
 import type { ThreatModel } from '../types/index.js';
 import type { ExposureRow, AssetHeatmapEntry } from './data.js';

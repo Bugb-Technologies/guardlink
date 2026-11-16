@@ -273,6 +273,9 @@ describe('workspace CLI contracts', () => {
     const parsed = await parseProject({ root, anchors: false, agentConfig: false });
     expect(parsed.model.controls.some(c => c.id === 'session-check')).toBe(true);
     expect(parsed.model.mitigations).toHaveLength(1);
+    expect(parsed.model.application?.receipt.completeness).toBe('partial');
+    expect(parsed.model.application?.receipt.currency?.state).toBe('unknown');
+    expect(parsed.model.application?.receipt.members.every(m => m.revision?.vcs === 'git' && m.revision.commit === null)).toBe(true);
   });
 });
 

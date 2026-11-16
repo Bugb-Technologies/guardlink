@@ -88,8 +88,9 @@ async function inputFiles(root: string): Promise<Array<[string, string]>> {
 export async function readMemberRevision(root: string, member: ApplicationManifestMember, annotationDigest = 'unknown'): Promise<ApplicationRevision> {
   const files = await inputFiles(root);
   const top = git(root, ['rev-parse', '--show-toplevel']);
-  const isGit = !!top && resolve(top) === resolve(root);
-  if (existsSync(join(root, '.git')) && !isGit) throw new Error('Member git provenance is unreadable; commit, branch and dirty state are unknown.');
+  const isGit = (!!top && resolve(top) === resolve(root)) || existsSync(join(root, '.git'));
+  // An unreadable worktree pointer is unknown git provenance, not a non-git
+  // member and not a reason to discard otherwise readable source annotations.
   const commit = isGit ? git(root, ['rev-parse', 'HEAD']) : null;
   const branch = isGit ? git(root, ['symbolic-ref', '--quiet', '--short', 'HEAD']) : null;
   const dirtyState = isGit ? git(root, ['status', '--porcelain', '--untracked-files=normal']) : null;
@@ -190,6 +191,7 @@ export async function collectApplicationView(options: CollectApplicationOptions)
       }
       receipt.revision = snapshot.revision;
       receipt.components = { model: { state: snapshot.mixed ? 'partial' : 'present', indexedRevision: snapshot.revision }, verification: { state: snapshot.verification.ledger === 'corrupt' ? 'partial' : 'present' }, hypotheses: { state: snapshot.hypotheses.status === 'corrupt' ? 'partial' : 'present' } };
+      if (snapshot.revision.vcs === 'git' && (snapshot.revision.commit === null || snapshot.revision.dirty === null)) receipt.components.provenance = { state: 'partial', reason: 'Historical git provenance is incomplete.' };
       if (snapshot.repositoryUri) receipt.repositoryUri = linksFromRemote(snapshot.repositoryUri)?.web;
       data.coverage = { annotatedFiles: model.annotated_files.length, sourceFiles: model.source_files, percent: model.coverage.coverage_percent, excluded: model.annotation_scope?.excluded ?? [] };
       data.verification = snapshot.verification; data.hypotheses = snapshot.hypotheses;
@@ -349,13 +351,14 @@ export async function collectApplicationView(options: CollectApplicationOptions)
   const observedDigest = hash([data.receipt.scope, data.receipt.tools, manifest.members.map(m => [m.id ?? m.name, m.baseRef ?? null, m.baseCommit ?? null]), receipts.map(m => [m.id, m.guardlinkIdentity, m.service, m.relativePath, m.revision, m.state])]);
   data.receipt.inputDigest = observedDigest;
   data.receipt.observedInputDigest = observedDigest;
-  data.receipt.currency = { state: changed.length ? 'stale' : options.snapshots ? 'unknown' : 'current', reasonCodes: selectionChanged ? ['mixed-selection'] : changed.length ? ['mixed-snapshot'] : [], memberIds: changed };
+  data.receipt.currency = { state: changed.length ? 'stale' : options.snapshots || active.some(m => m.components.provenance?.state === 'partial') ? 'unknown' : 'current', reasonCodes: selectionChanged ? ['mixed-selection'] : changed.length ? ['mixed-snapshot'] : [], memberIds: changed };
   if (manifest.receipt) {
     if (manifest.receipt.schema !== APPLICATION_RECEIPT_SCHEMA || JSON.stringify([...manifest.receipt.expectedMemberIds].sort()) !== JSON.stringify(expected)) throw new Error('Supplied application receipt does not describe the selected member set');
     data.receipt.inputDigest = manifest.receipt.inputDigest;
     const guardlinkDigests = manifest.receipt.tools?.guardlink?.contractVersion === APPLICATION_VIEW_SCHEMA;
     const comparable = (r: ApplicationRevision | null | undefined) => !r ? null : guardlinkDigests ? r : { vcs: r.vcs, commit: r.commit, branch: r.branch, detached: r.detached, baseRef: r.baseRef, baseCommit: r.baseCommit, dirty: r.dirty };
-    const mismatch = expected.filter(id => JSON.stringify(comparable(manifest.receipt!.revisions[id])) !== JSON.stringify(comparable(data.receipt.revisions[id])));
+    const selector = (member: ApplicationMemberReceipt | undefined) => member && { id: member.id, guardlinkIdentity: member.guardlinkIdentity, service: member.service, relativePath: member.relativePath };
+    const mismatch = expected.filter(id => JSON.stringify(comparable(manifest.receipt!.revisions[id])) !== JSON.stringify(comparable(data.receipt.revisions[id])) || JSON.stringify(selector(manifest.receipt!.members.find(m => m.id === id))) !== JSON.stringify(selector(receipts.find(m => m.id === id))));
     if (mismatch.length) { data.receipt.currency = { state: 'stale', reasonCodes: ['input-receipt-mismatch'], memberIds: mismatch }; data.receipt.completeness = data.receipt.completeness === 'unavailable' ? 'unavailable' : 'partial'; data.coverage.overallPercent = null; }
   }
   return { schema: APPLICATION_VIEW_SCHEMA, receipt: data.receipt, model: combined, diagnostics, references: data.references, flowGroups: data.flowGroups };

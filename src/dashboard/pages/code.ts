@@ -1,4 +1,3 @@
-import { applicationSourceLink } from '../../workspace/application.js';
 /**
  * GuardLink Dashboard — Code & Annotations: every annotated file with its
  * annotations and a few lines of context, plus the two project-wide measures
@@ -14,6 +13,7 @@ import { applicationSourceLink } from '../../workspace/application.js';
  * @comment -- "No inline handlers: a file header carries data-toggle-file and an annotation data-annotation, and the page's one delegated listener acts on them"
  */
 import { esc, scopeLabel, pageHead, subHead, copyButton, plural, icon, sevBadge, stateChip, claimStateBadge } from '../html.js';
+import { applicationSourceLink } from '../../workspace/application.js';
 import type { PageContext } from './context.js';
 import { codeTables } from './tables.js';
 import type { FileRisk } from '../analytics.js';

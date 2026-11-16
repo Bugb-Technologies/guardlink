@@ -573,6 +573,13 @@ export function computeActions(input: ActionInput): DashboardAction[] {
       detail: 'Every exposure is mitigated or accepted, no claim is stale, and nothing awaits review.',
     });
   }
+  if (model.application) {
+    const ready = model.application.receipt.members.filter(m => m.state === 'available');
+    const shellArg = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
+    return out.flatMap(action => action.command?.startsWith('guardlink verify ')
+      ? ready.map(member => ({ ...action, id: `${action.id}:${member.id}`, title: `${member.id}: ${action.title}`, detail: `${action.detail} Evidence stays in this member's ledger.`, command: action.command!.replace('guardlink verify ', `guardlink verify ${shellArg(member.relativePath)} `) }))
+      : [action]);
+  }
   return out;
 }
 

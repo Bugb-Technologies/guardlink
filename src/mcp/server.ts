@@ -1,4 +1,3 @@
-import { collectApplicationView, discoverApplicationManifest, applicationViewCapabilities } from '../workspace/application.js';
 /**
  * GuardLink MCP Server — Model Context Protocol integration (§8.2).
  *
@@ -60,6 +59,7 @@ import { collectApplicationView, discoverApplicationManifest, applicationViewCap
  * @comment -- "Entitlement accepted by zippon on 2026-08-10 via guardlink entitle (proposal ent-mcp_agent.mcp.data_exposure)."
  */
 import { readSecurityTestsDir } from '../parser/security-tests.js';
+import { collectApplicationView, discoverApplicationManifest, applicationViewCapabilities } from '../workspace/application.js';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { resolve } from 'node:path';
@@ -100,7 +100,7 @@ import { detectAnnotationMode } from '../parser/annotation-mode.js';
 import { syncAgentFiles } from '../init/index.js';
 import { findPrePrDrift } from '../init/pre-pr.js';
 import { loadWorkspaceConfig, readVersionControl } from '../workspace/index.js';
-import { computeBlame, buildBlamePayload } from '../blame/index.js';
+import { computeBlame, attachBlame, buildBlamePayload } from '../blame/index.js';
 import { getPackageVersion } from '../version.js';
 import type { ThreatModel } from '../types/index.js';
 
@@ -371,7 +371,8 @@ export function createServer(): McpServer {
           file: e.location.file,
           line: e.location.line,
         })),
-        coverage: model.coverage,
+        coverage: model.application ? { ...model.coverage, coverage_percent: model.application.coverage.overallPercent, known: model.application.coverage.known } : model.coverage,
+        ...(model.application ? { application_receipt: model.application.receipt } : {}),
       };
 
       return {
@@ -1488,7 +1489,8 @@ export function createServer(): McpServer {
       }
       const { resolve } = await import('node:path');
       const abs = resolve(root);
-      const payload = buildBlamePayload(model, computeBlame(abs, model, { file: rel }), abs);
+      const assessed = model.application ? structuredClone(model) : model;
+      const payload = buildBlamePayload(assessed, assessed.application ? attachBlame(abs, assessed, { file: rel }) : computeBlame(abs, assessed, { file: rel }), abs);
       return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] };
     },
   );

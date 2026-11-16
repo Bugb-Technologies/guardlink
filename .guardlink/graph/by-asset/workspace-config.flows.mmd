@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/workspace-config.flows.mmd
-%% scope:           PARTIAL — #workspace-config and its flow neighbourhood, grown until the drawing stopped fitting — 26 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:e7483887e2b7dd4174ff2dd9b4452a38f30f9080767ffa018f3d198b9cf3cdb0
+%% scope:           PARTIAL — #workspace-config and its flow neighbourhood, grown until the drawing stopped fitting — 29 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:691c3421cd43991ae55477d751a5bbdd9e35e5e113c9098dc73737a9bc6fb1b0
 %% generator:       guardlink@2.6.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -14,23 +14,21 @@ graph LR
   configfile["🧩 ConfigFile"]
   agent_launcher["🧩 GuardLink.Agent_Launcher"]
   parser["🧩 GuardLink.Parser"]
-  mcp["🧩 GuardLink.MCP"]
   projectroot["🧩 ProjectRoot"]
   workspace_config["🧩 Workspace.Config"]
-  agent_config["🧩 GuardLink.AgentConfig"]
+  gitrepo["🧩 GitRepo"]
   configfile -- "🗄️ readFileSync" --> agent_launcher
   agent_launcher -- "🗄️ writeFileSync" --> configfile
   parser -- "📡 annotation worklist" --> agent_launcher
-  configfile -- "🗄️ readFileSync" --> mcp
-  configfile -- "📡 readConfiguredMode" --> mcp
-  mcp -- "📡 guardlink_translate" --> agent_launcher
   configfile -- "📡 readAcceptancePolicy" --> parser
   projectroot -- "📡 annotationScope" --> parser
   projectroot -- "📡 buildAnnotationWorklist" --> parser
   projectroot -- "📡 fast-glob" --> parser
   projectroot -- "📡 findNestedCheckouts" --> parser
   workspace_config -- "📡 localWorkspaceMembers" --> parser
-  agent_config -- "📡 mergeAgentConfig" --> parser
   configfile -- "📡 readSecurityTestsDir" --> parser
+  configfile -- "📡 collectApplicationView" --> workspace_config
+  projectroot -- "📡 collectApplicationView" --> parser
+  gitrepo -- "📡 readMemberRevision" --> workspace_config
   projectroot -- "📡 localWorkspaceMembers" --> workspace_config
   configfile -- "📡 loadWorkspaceConfig" --> workspace_config

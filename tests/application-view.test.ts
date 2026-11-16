@@ -89,6 +89,8 @@ describe('application semantic view contract', () => {
     expect(html.includes('application-receipt')).toBe(true);
     expect(html.includes(receipt.inputDigest)).toBe(true);
     expect(html.includes('Known subtotal')).toBe(true);
+    expect(html.includes('<span class="tn-v">unknown</span>')).toBe(true);
+    expect(html.includes('Evidence stays in this member')).toBe(true);
     expect(generateReport(model)).toContain(receipt.inputDigest);
     expect(generateMermaid(model)).toContain(receipt.inputDigest);
     const sarif = generateSarif(model);
@@ -256,6 +258,16 @@ describe('application semantic view contract', () => {
     const mixed = await collectApplicationView({ root, manifest, anchors: false, beforeRecheck: () => put(manifest, JSON.stringify({ ...spec, name: 'changed' })) });
     expect(mixed.receipt.currency?.reasonCodes).toContain('mixed-selection');
     expect(mixed.receipt.completeness).toBe('partial');
+  });
+
+  it('invalidates a frozen receipt when service mapping changes without source changes', async () => {
+    const { manifest } = scaffold(); const first = await collectApplicationView({ root, manifest, anchors: false });
+    const spec = JSON.parse(readFileSync(manifest, 'utf8')); spec.receipt = first.receipt;
+    spec.members[0].service = 'different-service';
+    const changed = await collectApplicationView({ root, manifest: spec, anchors: false });
+    expect(changed.receipt.inputDigest).toBe(first.receipt.inputDigest);
+    expect(changed.receipt.completeness).toBe('partial');
+    expect(changed.receipt.currency?.reasonCodes).toContain('input-receipt-mismatch');
   });
 
 });

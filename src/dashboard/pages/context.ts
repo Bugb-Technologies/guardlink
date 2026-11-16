@@ -1,4 +1,3 @@
-import { applicationSourceLink } from '../../workspace/application.js';
 /**
  * GuardLink Dashboard — what every page renderer receives, and the unified
  * claim view the tables and the drawer share.
@@ -14,6 +13,7 @@ import { applicationSourceLink } from '../../workspace/application.js';
  * @comment -- "Pure; every string here is raw and is escaped by the page that renders it"
  */
 import type { ReachSummary } from '../../reach/index.js';
+import { applicationSourceLink } from '../../workspace/application.js';
 import type { MeasuredRouteRow } from '../../codegraph/reach-check.js';
 import type { ExposureHypothesis, ThreatModel } from '../../types/index.js';
 import type { ClaimState, VerificationReport } from '../../parser/verification.js';

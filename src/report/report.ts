@@ -794,7 +794,7 @@ function emitScope(model: ThreatModel, lines: string[]): void {
     return;
   }
 
-  lines.push('### Coverage');
+  lines.push(model.application?.coverage.overallPercent === null ? '### Coverage — Known subtotal (overall unknown)' : '### Coverage');
   lines.push('');
   const covAnnotated = model.annotated_files.length;
   const covTotal = model.source_files;

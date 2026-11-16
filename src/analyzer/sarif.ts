@@ -1,4 +1,3 @@
-import { linksFromRemote } from '../dashboard/links.js';
 /**
  * GuardLink SARIF — Convert threat model findings to SARIF 2.1.0.
  *
@@ -63,6 +62,7 @@ import { linksFromRemote } from '../dashboard/links.js';
  */
 
 import { createHash } from 'node:crypto';
+import { linksFromRemote } from '../dashboard/links.js';
 
 import type { ThreatModel, ThreatModelExposure, ParseDiagnostic, Severity, SourceLocation } from '../types/index.js';
 import { buildCoverageIndex, ticketsForResolver } from '../parser/coverage.js';

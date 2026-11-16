@@ -420,7 +420,7 @@ program
     // @flows LedgerFile -> #cli via readHypotheses -- "status reports how many exposures were tested, and with what outcome"
     printStatus(model, classifyClaims(model, readLedger(root)), classifyHypotheses(model, readHypotheses(root)), checkHandoff(root, model));
     // @flows GitRepo -> #cli via computeBlame -- "status --blame reads attribution without touching the model"
-    if (opts.blame) printBlameSummary(buildBlamePayload(model, computeBlame(root, model), root));
+    if (opts.blame) printBlameSummary(buildBlamePayload(model, model.application ? attachBlame(root, model) : computeBlame(root, model), root));
 
     if (opts.notAnnotated) {
       printUnannotatedFiles(model);
@@ -809,7 +809,7 @@ program
     const config = readBlameConfig(root);
     if (opts.identity) config.identity = opts.identity as IdentityMode;
     const file = opts.file ? (isAbsolute(opts.file) ? relative(root, opts.file) : opts.file) : undefined;
-    const payload = buildBlamePayload(model, computeBlame(root, model, { config, file }), root);
+    const payload = buildBlamePayload(model, model.application ? attachBlame(root, model, { config, file }) : computeBlame(root, model, { config, file }), root);
     if (opts.json) console.log(JSON.stringify(payload, null, 2));
     else process.stdout.write(formatBlameText(payload));
     // Let the process end on its own: process.exit() would truncate the JSON
@@ -4216,6 +4216,11 @@ function printDiagnostics(diagnostics: ParseDiagnostic[]) {
 function printStatus(model: ThreatModel, verification?: VerificationReport, hypotheses?: HypothesisClassification, handoff?: HandoffReport) {
   console.log(`GuardLink Status: ${model.project}`);
   console.log(`${'─'.repeat(40)}`);
+  if (model.application) {
+    console.log(`Application inputs: ${model.application.receipt.completeness} (${model.application.receipt.inputDigest})`);
+    for (const member of model.application.receipt.members) console.log(`  ${member.id}: ${member.state}${member.reason ? ' — ' + member.reason : ''}`);
+    if (model.application.coverage.overallPercent === null) console.log('Overall annotation coverage: unknown. File counts below are the known subtotal.');
+  }
   console.log(`Files in scope:   ${model.source_files}`);
   console.log(`  Files annotated:    ${model.annotated_files.length}`);
   console.log(`  Files unannotated:  ${model.unannotated_files.length}`);
@@ -4231,7 +4236,7 @@ function printStatus(model: ThreatModel, verification?: VerificationReport, hypo
   if (verification) {
     const s = verification.summary;
     if (verification.ledger === 'absent') {
-      console.log('Verified claims:  none recorded (run guardlink verify --all)');
+      console.log(model.application ? 'Verified claims:  none recorded in selected member ledgers (verify in the affected member checkout)' : 'Verified claims:  none recorded (run guardlink verify --all)');
     } else if (verification.ledger === 'corrupt') {
       console.log('Verified claims:  ledger unreadable (run guardlink validate)');
     } else {

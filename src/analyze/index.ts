@@ -1,4 +1,3 @@
-import type { ApplicationReceipt } from '../workspace/application-types.js';
 /**
  * GuardLink Threat Reports — AI-powered threat model analysis.
  *
@@ -19,6 +18,7 @@ import type { ApplicationReceipt } from '../workspace/application-types.js';
  */
 
 import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from 'node:fs';
+import type { ApplicationReceipt } from '../workspace/application-types.js';
 import { join, relative } from 'node:path';
 import type { ThreatModel } from '../types/index.js';
 import { type AnalysisFramework, FRAMEWORK_LABELS, FRAMEWORK_PROMPTS, buildUserMessage } from './prompts.js';

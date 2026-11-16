@@ -18,6 +18,7 @@ export function attachBlame(root: string, model: ThreatModel, opts: ComputeBlame
   if (model.application) {
     const byRecord: BlameComputation['byRecord'] = new Map();
     for (const member of model.application.receipt.members.filter(m => m.state === 'available' && m.revision?.vcs === 'git')) {
+      if (opts.file && !opts.file.startsWith(member.relativePath + '/')) continue;
       const memberRoot = resolve(root, member.relativePath);
       const rel = relative(resolve(root), memberRoot);
       if (!rel || rel === '..' || rel.startsWith('../') || isAbsolute(rel)) continue;
@@ -29,7 +30,7 @@ export function attachBlame(root: string, model: ThreatModel, opts: ComputeBlame
           (local[field] as Array<typeof copy>).push(copy); originals.set(copy, rec);
         }
       }
-      const result = computeBlame(memberRoot, local, opts);
+      const result = computeBlame(memberRoot, local, { ...opts, file: opts.file?.slice(member.relativePath.length + 1) });
       for (const [rec, blame] of result.byRecord) {
         const original = originals.get(rec)!; (original as { blame?: RecordBlame }).blame = blame; byRecord.set(original, blame);
       }

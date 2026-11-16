@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/init.flows.mmd
-%% scope:           PARTIAL — #init and its flow neighbourhood, grown until the drawing stopped fitting — 20 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:e7483887e2b7dd4174ff2dd9b4452a38f30f9080767ffa018f3d198b9cf3cdb0
+%% scope:           PARTIAL — #init and its flow neighbourhood, grown until the drawing stopped fitting — 7 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:691c3421cd43991ae55477d751a5bbdd9e35e5e113c9098dc73737a9bc6fb1b0
 %% generator:       guardlink@2.6.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -16,7 +16,6 @@ graph LR
   agentfiles["🧩 AgentFiles"]
   configfile["🧩 ConfigFile"]
   definitionsfile["🧩 DefinitionsFile"]
-  parser["🧩 GuardLink.Parser"]
   projectroot -- "📡 detectProject" --> init
   projectroot -- "📡 options.root" --> init
   init -- "🗄️ writeFileSync" --> agentfiles
@@ -27,9 +26,3 @@ graph LR
   definitionsfile -- "📡 definitionsArePopulated" --> init
   configfile -- "📡 configIsCustomised" --> init
   projectroot -- "📡 detectIncludeScope" --> init
-  configfile -- "📡 readAcceptancePolicy" --> parser
-  projectroot -- "📡 annotationScope" --> parser
-  projectroot -- "📡 buildAnnotationWorklist" --> parser
-  projectroot -- "📡 fast-glob" --> parser
-  projectroot -- "📡 findNestedCheckouts" --> parser
-  configfile -- "📡 readSecurityTestsDir" --> parser
