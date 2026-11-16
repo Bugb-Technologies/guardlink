@@ -58,6 +58,10 @@ export interface Anchor {
 }
 
 export interface SourceLocation {
+  /** Application occurrence owner and native member-relative claim identity. */
+  memberId?: string;
+  memberFile?: string;
+  claimKey?: string;
   file: string;
   line: number;
   end_line?: number | null;
@@ -660,6 +664,8 @@ export interface AnnotationScopeRecord {
 }
 
 export interface ThreatModel {
+  /** Selected-set semantic view; absent on legacy/repository-only models. */
+  application?: import('../workspace/application-types.js').ApplicationModelData;
   version: string;
   project: string;
   generated_at: string;

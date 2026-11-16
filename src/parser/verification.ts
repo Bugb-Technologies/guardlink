@@ -70,6 +70,11 @@ export interface VerificationReport {
 }
 
 export function classifyClaims(model: ThreatModel, read: LedgerRead): VerificationReport {
+  if (model.application?.verification) {
+    const locations = new Map(relationRecords(model).map(r => [r.key, r.location]));
+    const report = model.application.verification;
+    return { ...report, claims: report.claims.map(c => ({ ...c, location: locations.get(c.key) ?? c.location })) };
+  }
   const ledger: Ledger | null = read.ledger;
   const versionMismatch = ledger !== null && ledger.anchor_hash_version !== ANCHOR_HASH_VERSION;
   const entries = new Map<string, LedgerEntry>();

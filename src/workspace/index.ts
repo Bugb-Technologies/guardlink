@@ -51,3 +51,6 @@ export type { OwnerScope } from './owner-scope.js';
 
 export { linkProject, addToWorkspace, removeFromWorkspace, buildWorkspaceContextBlock, detectRepoName } from './link.js';
 export type { LinkProjectOptions, AddToWorkspaceOptions, RemoveFromWorkspaceOptions, LinkResult } from './link.js';
+
+export { collectApplicationView, discoverApplicationManifest, applicationViewCapabilities } from './application.js';
+export type * from './application-types.js';

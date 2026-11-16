@@ -537,7 +537,7 @@ function prefixAll<T extends { location: SourceLocation }>(items: T[], repo: str
  * Relationships are kept from all repos (no dedup — same relationship
  * stated in two repos is meaningful).
  */
-export function combineModels(reports: LoadedReport[]): ThreatModel {
+export function combineModels(reports: LoadedReport[], options: { preserveConflicts?: boolean } = {}): ThreatModel {
   const seenAssetIds = new Set<string>();
   const seenThreatIds = new Set<string>();
   const seenControlIds = new Set<string>();
@@ -584,28 +584,25 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     combined.annotated_files.push(...m.annotated_files.map(f => `${repo}/${f}`));
     combined.unannotated_files.push(...m.unannotated_files.map(f => `${repo}/${f}`));
 
-    // Definitions: dedup by tag ID, keep first (registry determines owner)
-    for (const a of m.assets) {
-      if (a.id && seenAssetIds.has(a.id)) continue;
-      if (a.id) seenAssetIds.add(a.id);
-      combined.assets.push({ ...a, location: prefixLocation(a.location, repo) });
-    }
-    for (const t of m.threats) {
-      if (t.id && seenThreatIds.has(t.id)) continue;
-      if (t.id) seenThreatIds.add(t.id);
-      combined.threats.push({ ...t, location: prefixLocation(t.location, repo) });
-    }
-    for (const c of m.controls) {
-      if (c.id && seenControlIds.has(c.id)) continue;
-      if (c.id) seenControlIds.add(c.id);
-      combined.controls.push({ ...c, location: prefixLocation(c.location, repo) });
-    }
-    // The actor verb is a definition, so it dedups by tag ID like the three above.
-    for (const ac of m.actors || []) {
-      if (ac.id && seenActorIds.has(ac.id)) continue;
-      if (ac.id) seenActorIds.add(ac.id);
-      combined.actors!.push({ ...ac, location: prefixLocation(ac.location, repo) });
-    }
+    // The application contract preserves all origins and every conflicting version.
+    const addDefinitions = <T extends { id?: string; location: SourceLocation }>(rows: T[], target: T[], seen: Set<string>) => {
+      for (const row of rows) {
+        const location = prefixLocation(row.location, repo);
+        if (options.preserveConflicts) {
+          const signature = (r: T) => JSON.stringify({ ...r, location: undefined, declarations: undefined });
+          const same = row.id ? target.find(r => r.id === row.id && signature(r) === signature(row)) as (T & { declarations?: SourceLocation[] }) | undefined : undefined;
+          if (same) { same.declarations ??= [same.location]; same.declarations.push(location); continue; }
+          target.push({ ...row, location, declarations: [location] }); continue;
+        }
+        if (row.id && seen.has(row.id)) continue;
+        if (row.id) seen.add(row.id);
+        target.push({ ...row, location });
+      }
+    };
+    addDefinitions(m.assets, combined.assets, seenAssetIds);
+    addDefinitions(m.threats, combined.threats, seenThreatIds);
+    addDefinitions(m.controls, combined.controls, seenControlIds);
+    addDefinitions(m.actors ?? [], combined.actors!, seenActorIds);
 
     // Relationships: keep all (no dedup — cross-repo relationships are valuable)
     combined.mitigations.push(...prefixAll(m.mitigations, repo));

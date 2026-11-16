@@ -97,6 +97,7 @@ import {
   explicitDecider, identitySuggestion, formatProposalForReview, formatProposalLine, summarizeDecisions, proposalsPath,
   type DecisionResult, type EntitlementProposal, type ProposalStatus,
 } from '../review/entitlements.js';
+import { applicationViewCapabilities, collectApplicationView, discoverApplicationManifest, APPLICATION_MANIFEST_ENV } from '../workspace/application.js';
 import { loadWorkspaceConfig, populateMetadata, readVersionControl, mergeReports, resolveReportPaths, mergeVerdict, formatMergeVerdict, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace, estateReport, formatEstateReport, readMergedReport, NotAMergedReport } from '../workspace/index.js';
 import type { MergedReport, LinkResult } from '../workspace/index.js';
 import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
@@ -149,11 +150,14 @@ program
   .name('guardlink')
   .description('GuardLink — Security annotations for code. Threat modeling that lives in your codebase.')
   .version(getPackageVersion())
+  .option('--application-manifest <file>', 'Explicit selected application manifest for read-only projections')
   .option('--no-agent-config', "Leave the repository's coding-agent configuration out of the model (SPEC §5.6); .guardlink/config.json \"agent_config\": {\"enabled\": false} does the same per project")
   .addHelpText('before', gradient(['#00ff41', '#00d4ff'])(ASCII_LOGO));
 
 // One switch for every command that parses: parseProject reads it.
 program.hook('preAction', () => {
+  process.env.GUARDLINK_APPLICATION_VIEW = 'on';
+  if (program.opts().applicationManifest) process.env[APPLICATION_MANIFEST_ENV] = resolve(program.opts().applicationManifest);
   if (program.opts().agentConfig === false) process.env[AGENT_CONFIG_ENV] = 'off';
 });
 
@@ -318,6 +322,26 @@ program
     printDiagnostics(diagnostics);
     console.log(JSON.stringify(model.reach_attestation, null, 2));
     process.exitCode = diagnostics.some(d => d.level === 'error') ? 1 : 0;
+  });
+
+program.command('application-view')
+  .description('Collect the selected application semantic model and versioned completeness/revision receipt')
+  .argument('[dir]', 'Application root', '.')
+  .option('--manifest <file>', 'Selected member manifest (JSON)')
+  .option('--member <id>', 'Project the selected member only')
+  .option('--capabilities', 'Print contract capabilities without reading a project')
+  .option('--json', 'Print JSON (the default)')
+  .option('--strict', 'Fail if mandatory selected inputs are incomplete')
+  .action(async (dir: string, opts: { manifest?: string; member?: string; capabilities?: boolean; strict?: boolean }) => {
+    if (opts.capabilities) { console.log(JSON.stringify(applicationViewCapabilities())); return; }
+    const root = resolve(dir);
+    try {
+      const manifest = opts.manifest ?? process.env[APPLICATION_MANIFEST_ENV] ?? discoverApplicationManifest(root);
+      if (!manifest) throw new Error('No selected application manifest; supply --manifest <file>');
+      const view = await collectApplicationView({ root, manifest, memberId: opts.member });
+      console.log(JSON.stringify(view));
+      if (opts.strict && view.receipt.completeness !== 'complete') process.exitCode = 1;
+    } catch (error) { console.error(`Application view unavailable: ${(error as Error).message}`); process.exitCode = 1; }
   });
 
 // ─── parse ───────────────────────────────────────────────────────────

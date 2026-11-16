@@ -14,6 +14,8 @@
  * @comment -- "Same reasoning for imprecise:true when the claim omits `on <asset>` or `against <threat>`, plus canEntitlementDemote/entitlementDemotionBlockers so the cited-and-precise test is written once here rather than re-derived by every consumer — a consumer that checks only !inert would demote on an entitlement that joins nothing (actor-entitlement design §9.7)"
  * @boundary #parser and FileSystem (#fs-boundary) -- "Trust boundary between parser and disk I/O"
  */
+import { collectApplicationView, discoverApplicationManifest, APPLICATION_MANIFEST_ENV } from '../workspace/application.js';
+import type { ApplicationManifest } from '../workspace/application-types.js';
 import { readSecurityTestsDir } from './security-tests.js';
 import { localWorkspaceMembers, workspaceContainer } from '../workspace/discovery.js';
 import { WorkspaceConfigError } from '../workspace/metadata.js';
@@ -205,6 +207,8 @@ export interface ParseProjectOptions {
    */
   agentConfig?: boolean;
   /** Check available linked sibling checkouts (default true); false prevents recursive sibling reads. */
+  applicationManifest?: string | ApplicationManifest;
+  application?: boolean;
   checkSiblings?: boolean;
   /** Treat unavailable siblings and unresolved sibling refs as errors (validate --workspace). */
   requireSiblings?: boolean;
@@ -288,6 +292,12 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   } = options;
 
   const config = { security_tests_dir: readSecurityTestsDir(root) };
+  const selected = options.applicationManifest ?? (options.application !== false ? process.env[APPLICATION_MANIFEST_ENV] : undefined);
+  if (options.application !== false && selected) {
+    const view = await collectApplicationView({ root, manifest: selected, anchors: options.anchors, agentConfig: options.agentConfig });
+    return { model: view.model, diagnostics: view.diagnostics, config };
+  }
+
 
   let container: ReturnType<typeof workspaceContainer>;
   try { container = workspaceContainer(root); }
@@ -297,6 +307,13 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
       model: assembleModel([], 0, project, [], []),
       diagnostics: [workspaceConfigDiagnostic(error, root)], config,
     };
+  }
+  if (container && options.application !== false && (options.application === true || process.env.GUARDLINK_APPLICATION_VIEW === 'on')) {
+    const manifest = discoverApplicationManifest(root);
+    if (manifest) {
+      const view = await collectApplicationView({ root, manifest, anchors: options.anchors, agentConfig: options.agentConfig });
+      return { model: view.model, diagnostics: view.diagnostics, config };
+    }
   }
   if (container) {
     if (container.missing.length) {
