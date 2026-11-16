@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { generateDashboardHTML } from '../src/dashboard/generate.js';
+import { computeActions, computeLedgerStates } from '../src/dashboard/data.js';
 import { generateReport } from '../src/report/report.js';
 import { generateMermaid } from '../src/report/mermaid.js';
 import { generateSarif } from '../src/analyzer/sarif.js';
@@ -97,6 +98,58 @@ describe('application semantic view contract', () => {
     expect(sarif.runs[0].properties).toMatchObject({ application_receipt: receipt });
     const result = sarif.runs[0].results.find(r => r.ruleId === 'guardlink/unmitigated-exposure') ?? sarif.runs[0].results[0];
     expect(JSON.stringify(result)).toContain('GUARDLINK_MEMBER_');
+  });
+  it('shows member verification counts and commands instead of cloning the application total', async () => {
+    const counts = { api: 9, auth: 5, worker: 5, web: 5 };
+    const dirs = Object.entries(counts).map(([id, count]) => member(id, `// @asset App.${id} (#${id})\n` +
+      Array.from({ length: count }, (_, i) => `// @flows #${id} -> #${id} via step${i}`).join('\n')));
+    linkProject({ workspace: 'shop', repoPaths: dirs });
+    const { model } = await parseProject({ root, anchors: false });
+    const verification = computeLedgerStates(model).report;
+    expect(verification.summary.unverified).toBe(24);
+    const actions = computeActions({ model, verification, exposures: [], confirmed: [], attribution: null, scope: null });
+    expect(Object.fromEntries(actions.filter(a => a.id.startsWith('start-verifying:')).map(a => [a.id, a.count]))).toEqual(
+      Object.fromEntries(Object.entries(counts).map(([id, count]) => [`start-verifying:${id}`, count])));
+    const html = generateDashboardHTML(model, root);
+    for (const [id, count] of Object.entries(counts)) {
+      const action = actions.find(a => a.id === `start-verifying:${id}`)!;
+      expect(action.command).toBe(`guardlink verify '${id}' --all`);
+      expect(action.detail).toContain(`${count} claims in this model have never been checked`);
+      expect(html).toContain(action.detail);
+    }
+    expect(html).not.toContain('24 claims in this model have never been checked');
+    const manifest = { schema: 'guardlink.application-manifest/v1' as const, name: 'shop', members: Object.keys(counts).map(id => ({ id, relativePath: id })) };
+    const scoped = (await collectApplicationView({ root, manifest, memberId: 'api', anchors: false })).model;
+    const scopedActions = computeActions({ model: scoped, verification: computeLedgerStates(scoped).report, exposures: [], confirmed: [], attribution: null, scope: null });
+    expect(scopedActions.filter(a => a.id.startsWith('start-verifying:')).map(a => [a.id, a.count])).toEqual([['start-verifying:api', 9]]);
+    delete model.application!.members.find(m => m.id === 'api')!.verification;
+    const unknown = computeActions({ model, verification, exposures: [], confirmed: [], attribution: null, scope: null });
+    expect(unknown.find(a => a.id === 'verification-unknown:api')).toMatchObject({ count: 0, title: 'api: Verification state is unavailable' });
+    expect(unknown.some(a => a.id === 'start-verifying:api')).toBe(false);
+  });
+  it.each(['stale', 'corrupt', 'verified'] as const)('keeps %s ledger actions local without hiding another member missing baseline', async (state) => {
+    const { auth, manifest } = scaffold();
+    if (state === 'corrupt') put(join(auth, '.guardlink/verified.json'), '{invalid');
+    else {
+      const parsed = (await parseProject({ root: auth, application: false, checkSiblings: false })).model;
+      const ledger = emptyLedger();
+      for (const r of relationRecords(parsed)) if (r.location.anchor) ledger.entries.push({ key: r.key, file: r.location.file, verb: r.verb, claim: r.claim, anchor: { scope: r.location.anchor.scope, symbol: r.location.anchor.symbol }, hash: state === 'verified' ? r.location.anchor.hash : '0'.repeat(64), verified_by: 'human:fixture', verified_at: '2026-01-01T00:00:00Z' });
+      writeLedger(auth, ledger);
+    }
+    const { model } = await collectApplicationView({ root, manifest });
+    const actions = computeActions({ model, verification: computeLedgerStates(model).report, exposures: [], confirmed: [], attribution: null, scope: null });
+    const api = model.application!.members.find(m => m.id === 'api')!.verification!;
+    const native = model.application!.members.find(m => m.id === 'auth')!.verification!;
+    expect(actions.find(a => a.id === 'start-verifying:api')).toMatchObject({ count: api.summary.unverified, command: "guardlink verify 'api' --all" });
+    if (state === 'stale') {
+      expect(native.summary.stale).toBe(2);
+      expect(actions.find(a => a.id === 'stale-claims:auth')).toMatchObject({ count: 2, title: 'auth: 2 claims went stale', command: "guardlink verify 'auth' --stale" });
+    } else if (state === 'corrupt') expect(actions.find(a => a.id === 'ledger-corrupt:auth')).toMatchObject({ command: "guardlink validate 'auth'" });
+    else {
+      expect(native.summary.verified).toBe(2);
+      expect(actions.some(a => a.id.endsWith(':auth'))).toBe(false);
+    }
+    expect(actions.some(a => a.id === 'stale-claims:api' || a.id === 'ledger-corrupt:api' || a.id === 'start-verifying:auth')).toBe(false);
   });
   it('marks concurrent member edits and selection edits as mixed snapshots', async () => {
     const { api, manifest } = scaffold();

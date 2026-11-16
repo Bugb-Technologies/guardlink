@@ -424,6 +424,38 @@ const sevKey = (s: string): string => {
 };
 const plural = (n: number, one: string, many = `${one}s`): string => (n === 1 ? one : many);
 
+/** A ledger action describes exactly the report it will act on. */
+function verificationActions(verification: VerificationReport | null, scope: string[] | null): DashboardAction[] {
+  const out: DashboardAction[] = [];
+  if (verification && verification.ledger === 'corrupt') {
+    out.push({
+      id: 'ledger-corrupt', level: 'high', count: 0,
+      title: 'The verification ledger is unreadable',
+      detail: '.guardlink/verified.json does not parse, so every claim reads as unverified. Validate, then rebuild it with a whole-repository verify.',
+      command: 'guardlink validate .',
+    });
+  } else if (verification && verification.ledger !== 'absent' && verification.summary.stale > 0) {
+    const s = verification.summary;
+    out.push({
+      id: 'stale-claims', level: s.demotable_stale > 0 ? 'high' : 'medium', count: s.stale,
+      title: `${s.stale} ${plural(s.stale, 'claim')} went stale`,
+      detail: `The code beneath ${s.stale === 1 ? 'it' : 'them'} changed since ${s.stale === 1 ? 'it was' : 'they were'} verified; ${s.demotable_stale} of them ${s.demotable_stale === 1 ? 'is a' : 'are'} ${plural(s.demotable_stale, 'mitigation or acceptance', 'mitigations or acceptances')} that may no longer hold. Re-check the code, then re-lock.`,
+      href: '#exposures?state=stale',
+      command: 'guardlink verify --stale',
+    });
+  } else if (verification && verification.ledger === 'absent' && !scope) {
+    const n = verification.summary.unverified;
+    out.push({
+      id: 'start-verifying', level: 'medium', count: n,
+      title: 'No claim has been verified yet',
+      detail: `${n} ${plural(n, 'claim')} in this model ${n === 1 ? 'has' : 'have'} never been checked against the code beneath ${n === 1 ? 'it' : 'them'}. A first whole-repository verify records the baseline; from then on a stale claim stands out.`,
+      command: 'guardlink verify --all',
+    });
+  }
+
+  return out;
+}
+
 /**
  * The ordered list of things a reader should do, computed from what the page
  * already knows. Urgency first: confirmed findings, then open critical/high
@@ -432,7 +464,7 @@ const plural = (n: number, one: string, many = `${one}s`): string => (n === 1 ? 
  * then repository coverage. A slice withholds the project-wide measures
  * (coverage, first-verify) that only mean something for the whole repository.
  *
- * @comment -- "Every item points somewhere: a hash route into the filtered view, a guardlink command, or both. Nothing here is a bare number"
+ * @comment -- "Every item points somewhere: a hash route into the filtered view, a guardlink command, or both. Application verification actions use each selected member report and ledger path, never a cloned aggregate count"
  */
 export function computeActions(input: ActionInput): DashboardAction[] {
   const { model, exposures, confirmed, verification, attribution, scope } = input;
@@ -460,30 +492,27 @@ export function computeActions(input: ActionInput): DashboardAction[] {
     });
   }
 
-  if (verification && verification.ledger === 'corrupt') {
-    out.push({
-      id: 'ledger-corrupt', level: 'high', count: 0,
-      title: 'The verification ledger is unreadable',
-      detail: '.guardlink/verified.json does not parse, so every claim reads as unverified. Validate, then rebuild it with a whole-repository verify.',
-      command: 'guardlink validate .',
-    });
-  } else if (verification && verification.ledger !== 'absent' && verification.summary.stale > 0) {
-    const s = verification.summary;
-    out.push({
-      id: 'stale-claims', level: s.demotable_stale > 0 ? 'high' : 'medium', count: s.stale,
-      title: `${s.stale} ${plural(s.stale, 'claim')} went stale`,
-      detail: `The code beneath ${s.stale === 1 ? 'it' : 'them'} changed since ${s.stale === 1 ? 'it was' : 'they were'} verified; ${s.demotable_stale} of them ${s.demotable_stale === 1 ? 'is a' : 'are'} ${plural(s.demotable_stale, 'mitigation or acceptance', 'mitigations or acceptances')} that may no longer hold. Re-check the code, then re-lock.`,
-      href: '#exposures?state=stale',
-      command: 'guardlink verify --stale',
-    });
-  } else if (verification && verification.ledger === 'absent' && !scope) {
-    const n = verification.summary.unverified;
-    out.push({
-      id: 'start-verifying', level: 'medium', count: n,
-      title: 'No claim has been verified yet',
-      detail: `${n} ${plural(n, 'claim')} in this model ${n === 1 ? 'has' : 'have'} never been checked against the code beneath ${n === 1 ? 'it' : 'them'}. A first whole-repository verify records the baseline; from then on a stale claim stands out.`,
-      command: 'guardlink verify --all',
-    });
+  if (!model.application) out.push(...verificationActions(verification, scope));
+  else {
+    const application = model.application;
+    const selection = application.receipt.scope;
+    const ready = application.receipt.members.filter(m => m.state === 'available' &&
+      (selection.kind === 'application' || m.id === selection.memberId));
+    const shellArg = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
+    for (const member of ready) {
+      const report = application.members.find(m => m.id === member.id)?.verification;
+      const actions: DashboardAction[] = report ? verificationActions(report, scope) : [{
+        id: 'verification-unknown', level: 'medium', count: 0,
+        title: 'Verification state is unavailable',
+        detail: 'This snapshot has no member verification report. Regenerate it from the member checkout before drawing a verification conclusion.',
+      }];
+      for (const action of actions) out.push({
+        ...action, id: `${action.id}:${member.id}`, title: `${member.id}: ${action.title}`,
+        detail: `${action.detail} Evidence stays in this member's ledger.`,
+        command: action.command?.replace('guardlink verify ', `guardlink verify ${shellArg(member.relativePath)} `)
+          .replace('guardlink validate .', `guardlink validate ${shellArg(member.relativePath)}`),
+      });
+    }
   }
 
   if (attribution) {
@@ -572,13 +601,6 @@ export function computeActions(input: ActionInput): DashboardAction[] {
       title: 'Nothing urgent',
       detail: 'Every exposure is mitigated or accepted, no claim is stale, and nothing awaits review.',
     });
-  }
-  if (model.application) {
-    const ready = model.application.receipt.members.filter(m => m.state === 'available');
-    const shellArg = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
-    return out.flatMap(action => action.command?.startsWith('guardlink verify ')
-      ? ready.map(member => ({ ...action, id: `${action.id}:${member.id}`, title: `${member.id}: ${action.title}`, detail: `${action.detail} Evidence stays in this member's ledger.`, command: action.command!.replace('guardlink verify ', `guardlink verify ${shellArg(member.relativePath)} `) }))
-      : [action]);
   }
   return out;
 }
