@@ -78,7 +78,7 @@ body) so `guardlink init` can ship the same method under `.claude/skills/guardli
 | `exposes-unpaired` | error | no `@mitigates` for the pair, no `@audit` on the asset, no `@transfers` from it, no `@accepts` |
 | `exposes-severity-above-threat` | error | the exposure's severity outranks the threat's declared severity |
 | `accepts-written` | error | an `@accepts` among the claims under check (the run wrote one) |
-| `entitles-written` | error | an `@entitles` among the claims under check |
+| `entitles-written` | error | an `@entitles` among the claims under check without matching named human acceptance supplied by the caller; CLI `lint --since` reads that evidence from the proposal ledger |
 | `confirmed-without-evidence` | error | `@confirmed` whose description carries no evidence word |
 | `exposes-unrated` | warn | no severity |
 | `mitigates-no-control` | warn | `@mitigates` naming no control |

@@ -42,7 +42,10 @@ is normalized relative to the manifest's declared `root`. No absolute checkout p
 credentials, service credentials or graph-store addresses enter the public receipt.
 Stable member ids and the declared GuardLink identity are separate: aliases are
 explicit, never inferred from tag prefixes. The selection adapter validates containment,
-symlinks and duplicate identities before reading member data. Embedded old models are
+symlinks and duplicate identities before reading member data. Registry member ids and
+resolved GuardLink identities are each unique: distinct registry ids do not permit two
+selected checkouts to claim the same GuardLink identity. Every claiming checkout is
+marked ambiguous with both paths named; no source or evidence from that group is merged. Embedded old models are
 not silently treated as current source.
 
 The receipt preserves `scope`, `generatedAt`, `inputDigest`, `expectedMemberIds`,
@@ -94,3 +97,9 @@ Native exports recheck their inputs after optional attribution and first-run rep
 If setup created a prompt file or another input changed during generation, `member_snapshot.mixed`
 stays true and an offline merge marks that member partial. Regenerate the member report to
 collect a stable snapshot; evidence is never re-verified merely by regeneration.
+
+A maintainer-approved read capability is proposed and accepted through `guardlink entitle`.
+`lint --since` recognizes an entitlement only when the proposal ledger records a named
+accepted decision for the same actor, capability, asset and threat. A standalone annotation,
+pending proposal or missing decision is not an approval; unreadable decision data fails the
+check. This does not authorize an annotating agent to approve its own grants.

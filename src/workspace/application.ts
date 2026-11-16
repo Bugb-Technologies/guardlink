@@ -3,7 +3,7 @@
  *
  * @flows ConfigFile -> #workspace-config via collectApplicationView -- "The explicit expected set and aliases bind the application receipt"
  * @flows ProjectRoot -> #parser via collectApplicationView -- "Parse each selected checkout with its own configuration and preserve member evidence"
- * @mitigates #workspace-config against #config-tamper using #config-validation -- "Selection shapes, duplicate ids, containment and symlinks are checked before member data is read; missing and mixed snapshots are explicit partial receipts"
+ * @mitigates #workspace-config against #config-tamper using #config-validation -- "Selection shapes, duplicate member ids and GuardLink identities, containment and symlinks are checked before member data is read; missing and mixed snapshots are explicit partial receipts"
  * @mitigates #parser against #path-traversal using #path-validation -- "Real selected checkout paths must remain under the application root; private absolute paths are not emitted in public receipts"
  * @flows GitRepo -> #workspace-config via readMemberRevision -- "Fixed argv read-only git queries capture branch, commit, base and dirty state"
  */
@@ -144,6 +144,31 @@ function prefixConfig(config: AgentConfigBlock, prefix: string): AgentConfigBloc
   return c;
 }
 
+function selectedRelativePath(root: string, manifest: ApplicationManifest, member: ApplicationManifestMember): string {
+  const path = member.relativePath ?? member.path ?? '';
+  return posix(isAbsolute(path) ? relative(manifest.root ? resolve(manifest.root) : root, path) : path);
+}
+
+/** Resolve only selection metadata, before parsing any member source or evidence. */
+function selectedIdentities(root: string, manifest: ApplicationManifest, snapshots: boolean): Map<ApplicationManifestMember, string> {
+  const identities = new Map<ApplicationManifestMember, string>();
+  for (const member of manifest.members) {
+    const id = member.id ?? member.name;
+    if (manifest.members.filter(m => (m.id ?? m.name) === id).length !== 1) continue;
+    const path = resolve(root, selectedRelativePath(root, manifest, member));
+    if (!within(root, path)) continue;
+    let identity = member.guardlinkIdentity ?? member.id ?? member.name!;
+    if (!snapshots) {
+      try {
+        if (!lstatSync(path).isDirectory() || lstatSync(path).isSymbolicLink() || realpathSync(path) !== path) continue;
+        if (!member.guardlinkIdentity) identity = loadWorkspaceConfig(path)?.this_repo ?? identity;
+      } catch { continue; } // Strict member validation reports missing/unreadable metadata below.
+    }
+    identities.set(member, identity);
+  }
+  return identities;
+}
+
 export interface CollectApplicationOptions { root: string; manifest: string | ApplicationManifest; memberId?: string; anchors?: boolean; agentConfig?: boolean; snapshots?: Array<{ model: ThreatModel; identity: string }>; selectionProbe?: () => ApplicationManifest | null; beforeRecheck?: () => void | Promise<void> }
 export async function collectApplicationView(options: CollectApplicationOptions): Promise<ApplicationView> {
   const requestedRoot = resolve(options.root);
@@ -161,24 +186,30 @@ export async function collectApplicationView(options: CollectApplicationOptions)
   const native = new Map<string, { model: ThreatModel; root: string; verification: VerificationReport; hypotheses: HypothesesRead; revision: ApplicationRevision; member: ApplicationManifestMember }>();
   const diagnostics: ParseDiagnostic[] = [];
   const paths = new Set<string>();
+  const identities = selectedIdentities(root, manifest, !!options.snapshots);
+  const identitiesToMembers = new Map<string, ApplicationManifestMember[]>();
+  for (const [member, identity] of identities) identitiesToMembers.set(identity, [...(identitiesToMembers.get(identity) ?? []), member]);
   for (const id of expected) {
     const choices = manifest.members.filter(m => (m.id ?? m.name) === id);
     const spec = choices[0];
-    let rel = spec.relativePath ?? spec.path ?? '';
-    if (isAbsolute(rel)) rel = relative(manifest.root ? resolve(manifest.root) : root, rel);
-    rel = posix(rel);
+    const rel = selectedRelativePath(root, manifest, spec);
     const path = resolve(root, rel);
-    let identity = spec.guardlinkIdentity ?? id;
+    let identity = identities.get(spec) ?? spec.guardlinkIdentity ?? id;
     const receipt: ApplicationMemberReceipt = { id, guardlinkIdentity: identity, service: spec.service ?? id, relativePath: rel, revision: null, state: 'available', components: {} };
     receipts.push(receipt);
     const data: ApplicationMemberData = { id, coverage: null, generatedIdentities: {}, diagnostics: [] }; details.push(data);
     const fail = (state: ApplicationMemberReceipt['state'], reasonCode: string, reason: string) => {
       receipt.state = state; receipt.reasonCode = reasonCode; receipt.reason = reason;
       receipt.components.model = { state: state === 'missing' ? 'missing' : 'failed', reason };
-      const diagnostic: ParseDiagnostic = { level: 'error', code: reasonCode === 'ambiguous-member' ? 'workspace-config-invalid' : 'workspace-incomplete', file: `${rel}/.guardlink/workspace.yaml`, line: 1, message: `${id}: ${reason}` };
+      const diagnostic: ParseDiagnostic = { level: 'error', code: reasonCode === 'ambiguous-member' || reasonCode === 'ambiguous-guardlink-identity' ? 'workspace-config-invalid' : 'workspace-incomplete', file: `${rel}/.guardlink/workspace.yaml`, line: 1, message: `${id}: ${reason}` };
       data.diagnostics.push(diagnostic); diagnostics.push(diagnostic);
     };
     if (choices.length > 1) { fail('invalid', 'ambiguous-member', `Duplicate linked member identity "${id}": ${choices.map(m => { const p = m.relativePath ?? m.path; return !p ? '(no path)' : isAbsolute(p) ? posix(relative(manifest.root ? resolve(manifest.root) : root, p)) : p; }).join(', ')}. Keep one checkout, move the other outside this application, or relink distinct services with distinct member names.`); continue; }
+    const sharingIdentity = identitiesToMembers.get(identity) ?? [];
+    if (sharingIdentity.length > 1) {
+      fail('invalid', 'ambiguous-guardlink-identity', `Duplicate GuardLink identity "${identity}": ${sharingIdentity.map(m => `${m.id ?? m.name} (${selectedRelativePath(root, manifest, m)})`).join(', ')}. Select one checkout for this identity, or relink distinct members with distinct GuardLink identities.`);
+      continue;
+    }
     if (!rel || !within(root, path) || paths.has(path)) { fail('invalid', 'member-out-of-root', 'Selected checkout is outside the application root, duplicated, or is the root itself.'); continue; }
     paths.add(path);
     if (options.snapshots) {
@@ -204,14 +235,15 @@ export async function collectApplicationView(options: CollectApplicationOptions)
     if (!existsSync(path)) { fail('missing', 'member-missing', `Selected checkout ${rel} is missing.`); continue; }
     try {
       if (!lstatSync(path).isDirectory() || lstatSync(path).isSymbolicLink() || realpathSync(path) !== path || !within(realpathSync(root), realpathSync(path))) { fail('invalid', 'member-symlink', 'Selected checkout must be a real contained directory, not a symlink.'); continue; }
+      const before = await readMemberRevision(path, spec);
       const linked = loadWorkspaceConfig(path, { strict: true });
       identity = spec.guardlinkIdentity ?? linked?.this_repo ?? id;
+      if (identity !== identities.get(spec)) { fail('invalid', 'member-identity-changed', `GuardLink identity at ${rel} changed during selection validation. Retry with stable member manifests.`); continue; }
       receipt.guardlinkIdentity = identity;
       if (!linked || linked.workspace !== manifest.name || linked.this_repo !== identity) {
         // A selected standalone checkout is valid only when its identity was explicitly supplied.
         if (existsSync(join(path, '.guardlink/workspace.yaml')) || !spec.guardlinkIdentity) { fail('invalid', 'member-manifest-invalid', `Manifest ${rel}/.guardlink/workspace.yaml is unreadable or does not match the selected identity/application.`); continue; }
       }
-      const before = await readMemberRevision(path, spec);
       const parsed = await parseProject({ root: path, project: id, anchors: options.anchors, agentConfig: options.agentConfig, checkSiblings: false, application: false });
       data.diagnostics.push(...parsed.diagnostics.map(d => ({ ...d, file: `${rel}/${d.file}` })));
       diagnostics.push(...data.diagnostics);

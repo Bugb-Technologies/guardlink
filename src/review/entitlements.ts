@@ -36,6 +36,7 @@
  * @flows ProposalLedger -> #cli via readFile -- "Proposal artifact input"
  * @flows #cli -> SourceFiles via applyProposalDecision -- "Accepted entitlement lands as an @entitles annotation"
  * @handles internal on #cli -- "Processes actor/capability claims, authz citations, and the name of the accepting human"
+ * @flows LedgerFile -> #gate via acceptedEntitlements -- "Exact grants with named accepted decisions supply provenance to new-claim lint; missing, malformed and undecided records are not approvals"
  * @audit #cli -- "Every acceptance records who accepted, when, and where the annotation landed; an inert or ownership-class acceptance records the acknowledgement that was required to make it"
  * @comment -- "There is no MCP accept tool and no agent-callable accept path: the only writer of an accepted entitlement is a human at `guardlink entitle`, which is why the CLI is the surface and this module refuses a decision with no name on it"
  */
@@ -48,7 +49,7 @@ import { normalizeName } from '../parser/normalize.js';
 import { parseLine } from '../parser/parse-line.js';
 import { escapeDesc, insertAnnotationsAt, oneLine, type CommentStyle } from './index.js';
 import type {
-  EntitlementCitation, EntitlesAnnotation, ParseDiagnostic, ThreatModel,
+  EntitlementCitation, EntitlesAnnotation, ParseDiagnostic, ThreatModel, ThreatModelEntitlement,
 } from '../types/index.js';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -874,6 +875,20 @@ export function findUnacceptedEntitlements(
     });
   }
   return diagnostics;
+}
+
+/**
+ * Current model records backed by the same named human decision and exact grant.
+ * New-claim lint must not stretch an imprecise proposal key to another asset,
+ * threat or capability; a proposed/deferred/rejected claim is not an approval.
+ */
+export function acceptedEntitlements(model: ThreatModel, ledger: ProposalLedger): ThreatModelEntitlement[] {
+  const ref = (value?: string) => value ? normalizeName(bareRef(value)) : '';
+  return (model.entitlements ?? []).filter(en => ledger.proposals.some(p =>
+    p.status === 'accepted' && p.decision?.status === 'accepted' && !!p.decision.by.trim()
+    && ref(p.actor) === ref(en.actor) && normalizeName(p.capability) === normalizeName(en.capability)
+    && ref(p.asset) === ref(en.asset) && ref(p.threat) === ref(en.threat),
+  ));
 }
 
 /** Convenience wrapper: load the ledger and run the §3.6 check, or nothing. */

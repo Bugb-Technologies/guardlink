@@ -283,4 +283,65 @@ describe('application semantic view contract', () => {
     expect(run().member_snapshot.mixed).toBe(false);
   });
 
+  it.each(['explicit', 'mixed', 'inferred'] as const)('B6: rejects duplicate GuardLink identities with %s selection metadata', async (kind) => {
+    const { api, auth, manifest } = scaffold();
+    put(join(auth, '.guardlink/workspace.yaml'), readFileSync(join(api, '.guardlink/workspace.yaml'), 'utf8'));
+    const selected = JSON.parse(readFileSync(manifest, 'utf8'));
+    selected.members[1].guardlinkIdentity = 'api';
+    if (kind !== 'explicit') delete selected.members[1].guardlinkIdentity;
+    if (kind === 'inferred') delete selected.members[0].guardlinkIdentity;
+    const view = await collectApplicationView({ root, manifest: selected, anchors: false });
+    expect(view.receipt.completeness).toBe('unavailable');
+    expect(view.receipt.members).toHaveLength(2);
+    for (const member of view.receipt.members) {
+      expect(member).toMatchObject({ state: 'invalid', reasonCode: 'ambiguous-guardlink-identity', guardlinkIdentity: 'api', revision: null });
+      expect(member.reason).toContain('api (api)');
+      expect(member.reason).toContain('auth (auth)');
+    }
+    expect(view.model.assets).toHaveLength(0);
+    expect(view.model.application?.coverage.overallPercent).toBeNull();
+    expect(JSON.stringify(view.receipt).includes(root)).toBe(false);
+  });
+
+  it('B6: retains a ready member while all duplicate identity selections are ambiguous', async () => {
+    const { api, auth, manifest } = scaffold();
+    const billing = member('billing', '// @asset Shop.Billing (#billing)');
+    linkProject({ workspace: 'shop', repoPaths: [api, auth, billing] });
+    put(join(auth, '.guardlink/workspace.yaml'), readFileSync(join(api, '.guardlink/workspace.yaml'), 'utf8'));
+    const selected = JSON.parse(readFileSync(manifest, 'utf8'));
+    selected.members[1].guardlinkIdentity = 'api';
+    selected.members.push({ id: 'billing', guardlinkIdentity: 'billing', relativePath: 'billing' });
+    const view = await collectApplicationView({ root, manifest: selected, anchors: false });
+    expect(view.receipt.completeness).toBe('partial');
+    expect(view.receipt.members.filter(m => m.reasonCode === 'ambiguous-guardlink-identity').map(m => m.id)).toEqual(['api', 'auth']);
+    expect(view.model.assets.map(a => a.id)).toEqual(['billing']);
+    expect(view.model.application?.coverage.overallPercent).toBeNull();
+  });
+  it('B6: refuses to project one historical member identity twice under different registry ids', async () => {
+    const { api, manifest } = scaffold();
+    const parsed = await parseProject({ root: api, application: false, checkSiblings: false, memberSnapshot: true });
+    const selected = JSON.parse(readFileSync(manifest, 'utf8')); selected.members[1].guardlinkIdentity = 'api';
+    const view = await collectApplicationView({ root, manifest: selected, snapshots: [{ identity: 'api', model: parsed.model }], anchors: false });
+    expect(view.receipt.completeness).toBe('unavailable');
+    expect(view.receipt.members.every(m => m.reasonCode === 'ambiguous-guardlink-identity')).toBe(true);
+    expect(view.model.assets).toHaveLength(0);
+  });
+  it('B6: the real CLI names both paths and fails strict collection', () => {
+    const { api, auth, manifest } = scaffold();
+    put(join(auth, '.guardlink/workspace.yaml'), readFileSync(join(api, '.guardlink/workspace.yaml'), 'utf8'));
+    const selected = JSON.parse(readFileSync(manifest, 'utf8')); selected.members[1].guardlinkIdentity = 'api'; put(manifest, JSON.stringify(selected));
+    const tsx = createRequire(import.meta.url).resolve('tsx/cli');
+    const cli = join(dirname(fileURLToPath(import.meta.url)), '../src/cli/index.ts');
+    try {
+      execFileSync(process.execPath, [tsx, cli, 'application-view', root, '--manifest', manifest, '--strict'], { encoding: 'utf8', stdio: 'pipe' });
+      expect.fail('duplicate GuardLink identity must fail strict collection');
+    } catch (error) {
+      const result = error as { status: number; stdout: string };
+      expect(result.status).toBe(1);
+      const view = JSON.parse(result.stdout);
+      expect(view.receipt.members.every((m: { reasonCode: string }) => m.reasonCode === 'ambiguous-guardlink-identity')).toBe(true);
+      expect(result.stdout).toContain('api (api), auth (auth)');
+    }
+  });
+
 });

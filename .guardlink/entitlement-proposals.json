@@ -657,6 +657,45 @@
       "status": "proposed",
       "warnings": [],
       "history": []
+    },
+    {
+      "id": "ent-mcp_agent.guardlink_application_view",
+      "actor": "#mcp-agent",
+      "capability": "guardlink_application_view",
+      "canonical_capability": "guardlink_application_view",
+      "asset": "#workspace-config",
+      "rationale": "By design: the connected coding agent may read the selected application model and member evidence. Authorization is the operator-launched stdio channel at src/mcp/index.ts:30; the read-only collector is registered at src/mcp/server.ts:1510 and never builds or executes member code.",
+      "citation": {
+        "file": "src/mcp/index.ts",
+        "line": 30,
+        "raw": "src/mcp/index.ts:30"
+      },
+      "inert": false,
+      "target": {
+        "file": "src/mcp/server.ts",
+        "line": 1508
+      },
+      "proposed_by": "coding agent",
+      "proposed_at": "2026-11-16",
+      "updated_at": "2026-11-16",
+      "status": "accepted",
+      "warnings": [],
+      "decision": {
+        "status": "accepted",
+        "by": "Animesh Srivastava",
+        "at": "2026-11-16",
+        "note": "Explicit maintainer approval: \"grant the read option for agents to use guardlink - approve\". Approves only the connected MCP agent reading selected application semantics and member evidence; no write or execution capability is granted.",
+        "written_to": "src/mcp/server.ts:1508"
+      },
+      "history": [
+        {
+          "status": "accepted",
+          "by": "Animesh Srivastava",
+          "at": "2026-11-16",
+          "note": "Explicit maintainer approval: \"grant the read option for agents to use guardlink - approve\". Approves only the connected MCP agent reading selected application semantics and member evidence; no write or execution capability is granted.",
+          "written_to": "src/mcp/server.ts:1508"
+        }
+      ]
     }
   ]
 }

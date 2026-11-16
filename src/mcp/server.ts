@@ -1506,6 +1506,8 @@ export function createServer(): McpServer {
 
   /**
    * @agents #mcp-agent to guardlink_application_view on #workspace-config -- "Reads selected member checkouts and returns a provenance-bound semantic application snapshot; never builds or executes member code"
+   * @entitles #mcp-agent to guardlink_application_view on #workspace-config -- "By design: the connected coding agent may read the selected application model and member evidence. Authorization is the operator-launched stdio channel at src/mcp/index.ts:30; the read-only collector is registered at src/mcp/server.ts:1510 and never builds or executes member code."
+   * @comment -- "Entitlement accepted by Animesh Srivastava on 2026-11-16 via guardlink entitle (proposal ent-mcp_agent.guardlink_application_view). Note: Explicit maintainer approval: \"grant the read option for agents to use guardlink - approve\". Approves only the connected MCP agent reading selected application semantics and member evidence; no write or execution capability is granted."
    */
   registerTool(server, cache, 'guardlink_application_view', 'Read a selected application semantic view with member evidence, references, flow declarations and a shared receipt. Missing members remain explicit partial results.', {
     root: z.string().default('.'), manifest: z.string().optional(), member: z.string().optional(), capabilities: z.boolean().default(false),

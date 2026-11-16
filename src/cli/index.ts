@@ -93,7 +93,7 @@ import {
   type ReviewResult, type ReviewAction, type ReviewableExposure, type ScriptedDecision,
 } from '../review/index.js';
 import {
-  proposeEntitlement, proposeFromConfig, listProposals, findProposal, applyProposalDecision, checkEntitlementProvenance,
+  proposeEntitlement, proposeFromConfig, listProposals, loadProposals, acceptedEntitlements, findProposal, applyProposalDecision, checkEntitlementProvenance,
   explicitDecider, identitySuggestion, formatProposalForReview, formatProposalLine, summarizeDecisions, proposalsPath,
   type DecisionResult, type EntitlementProposal, type ProposalStatus,
 } from '../review/entitlements.js';
@@ -1946,7 +1946,7 @@ program
 
 program
   .command('lint')
-  .description('Check annotations against the evidence bar: exposures that name code and are paired, severities within band, evidence on @confirmed; --since <ref> checks only what a session added, including that it wrote no @accepts or @entitles')
+  .description('Check annotations against the evidence bar: exposures that name code and are paired, severities within band, evidence on @confirmed; --since <ref> checks only what a session added, including no @accepts or unapproved @entitles')
   .argument('[dir]', 'Project directory', '.')
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--since <ref>', 'Only claims added since a git ref (what an agent session wrote)')
@@ -1973,7 +1973,16 @@ program
     // A refuted exposure counts as paired: the ledger is the evidence.
     attachHypotheses(model, classifyHypotheses(model, readHypotheses(root)));
     // Without --since a person may have written the @accepts in the tree; only a session's additions are held to the no-governance rule.
-    const violations = lintAnnotations(model, { only, governance: opts.since ? 'error' : 'ignore' });
+    let approved: Set<import('../types/index.js').ThreatModelEntitlement> | undefined;
+    if (opts.since && model.entitlements?.length) {
+      try { approved = new Set(acceptedEntitlements(model, await loadProposals(root))); }
+      catch (error) {
+        console.error(`Entitlement approvals unavailable: ${(error as Error).message}`);
+        process.exitCode = 1;
+        return;
+      }
+    }
+    const violations = lintAnnotations(model, { only, governance: opts.since ? 'error' : 'ignore', acceptedEntitlements: approved });
     const errors = violations.filter(v => v.level === 'error').length;
     const warnings = violations.filter(v => v.level === 'warn').length;
     const infos = violations.length - errors - warnings;
