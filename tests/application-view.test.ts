@@ -15,7 +15,7 @@ import { generateMermaid } from '../src/report/mermaid.js';
 import { generateSarif } from '../src/analyzer/sarif.js';
 import { collectApplicationView } from '../src/workspace/application.js';
 import { parseProject } from '../src/parser/parse-project.js';
-import { recordOutcome } from '../src/hypothesis/index.js';
+import { recordOutcome, emptyHypotheses, writeHypotheses } from '../src/hypothesis/index.js';
 import { classifyClaims } from '../src/parser/verification.js';
 import { emptyLedger, writeLedger } from '../src/parser/ledger.js';
 import { relationRecords } from '../src/parser/claim-key.js';
@@ -342,6 +342,30 @@ describe('application semantic view contract', () => {
       expect(view.receipt.members.every((m: { reasonCode: string }) => m.reasonCode === 'ambiguous-guardlink-identity')).toBe(true);
       expect(result.stdout).toContain('api (api), auth (auth)');
     }
+  });
+
+  it.each(['live', 'historical'] as const)('M1: reports missing evidence ledgers as absent in %s views', async (mode) => {
+    const { api, auth, manifest } = scaffold();
+    const snapshots = mode === 'historical' ? await Promise.all([api, auth].map(async (path, index) => ({ identity: index === 0 ? 'api' : 'auth', model: (await parseProject({ root: path, application: false, checkSiblings: false, memberSnapshot: true, anchors: false })).model }))) : undefined;
+    const view = await collectApplicationView({ root, manifest, snapshots, anchors: false });
+    for (const member of view.receipt.members) {
+      expect(member.components.hypotheses.state).toBe('absent');
+      expect(member.components.verification.state).toBe('absent');
+      expect(member.components.model.state).toBe('present');
+    }
+    expect(view.receipt.completeness).toBe('complete');
+    expect(view.model.application?.verification?.summary.verified).toBe(0);
+    expect(view.model.application?.verification?.summary.unverified).toBeGreaterThan(0);
+    expect(view.model.application?.hypotheses?.status).toBe('absent');
+  });
+  it('M1: distinguishes present empty ledgers from missing ledgers', async () => {
+    const { api, manifest } = scaffold();
+    writeLedger(api, emptyLedger()); writeHypotheses(api, emptyHypotheses());
+    const view = await collectApplicationView({ root, manifest, anchors: false });
+    expect(view.receipt.members.find(m => m.id === 'api')?.components).toMatchObject({ hypotheses: { state: 'present' }, verification: { state: 'present' } });
+    expect(view.receipt.members.find(m => m.id === 'auth')?.components).toMatchObject({ hypotheses: { state: 'absent' }, verification: { state: 'absent' } });
+    expect(view.receipt.completeness).toBe('complete');
+    expect(view.model.application?.verification?.summary.verified).toBe(0);
   });
 
 });

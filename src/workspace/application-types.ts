@@ -15,7 +15,7 @@ export interface ApplicationMemberReceipt {
   revision: ApplicationRevision | null;
   state: 'available' | 'missing' | 'unreadable' | 'invalid'; reason?: string; reasonCode?: string;
   repositoryUri?: string;
-  components: Record<string, { state: 'present' | 'partial' | 'missing' | 'failed' | 'unsupported'; indexedRevision?: ApplicationRevision; reason?: string }>;
+  components: Record<string, { state: 'present' | 'absent' | 'partial' | 'missing' | 'failed' | 'unsupported'; indexedRevision?: ApplicationRevision; reason?: string }>;
 }
 export interface ApplicationReceipt {
   schema: 'bravos.application-view/v1'; scope: ApplicationScope; generatedAt: string; inputDigest: string;

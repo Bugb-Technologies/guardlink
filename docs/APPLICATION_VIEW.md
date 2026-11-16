@@ -103,3 +103,8 @@ A maintainer-approved read capability is proposed and accepted through `guardlin
 accepted decision for the same actor, capability, asset and threat. A standalone annotation,
 pending proposal or missing decision is not an approval; unreadable decision data fails the
 check. This does not authorize an annotating agent to approve its own grants.
+
+Missing optional hypothesis/verification ledger files have component state `absent`,
+including in historical views. An existing empty ledger is `present`; a corrupt ledger
+is `partial`. Known absence contributes no verified or tested evidence and does not make
+the semantic source census incomplete. Missing required member/model data still does.

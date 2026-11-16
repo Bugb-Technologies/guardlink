@@ -221,7 +221,7 @@ export async function collectApplicationView(options: CollectApplicationOptions)
         fail('invalid', 'member-snapshot-invalid', 'Report native snapshot is malformed or belongs to a different selected member/application. Regenerate the member report.'); continue;
       }
       receipt.revision = snapshot.revision;
-      receipt.components = { model: { state: snapshot.mixed ? 'partial' : 'present', indexedRevision: snapshot.revision, ...(snapshot.mixed ? { reason: 'Member inputs changed while this native report was collected; regenerate the member report.' } : {}) }, verification: { state: snapshot.verification.ledger === 'corrupt' ? 'partial' : 'present' }, hypotheses: { state: snapshot.hypotheses.status === 'corrupt' ? 'partial' : 'present' } };
+      receipt.components = { model: { state: snapshot.mixed ? 'partial' : 'present', indexedRevision: snapshot.revision, ...(snapshot.mixed ? { reason: 'Member inputs changed while this native report was collected; regenerate the member report.' } : {}) }, verification: { state: snapshot.verification.ledger === 'corrupt' ? 'partial' : snapshot.verification.ledger }, hypotheses: { state: snapshot.hypotheses.status === 'corrupt' ? 'partial' : snapshot.hypotheses.status } };
       if (snapshot.revision.vcs === 'git' && (snapshot.revision.commit === null || snapshot.revision.dirty === null)) receipt.components.provenance = { state: 'partial', reason: 'Historical git provenance is incomplete.' };
       if (snapshot.repositoryUri) receipt.repositoryUri = linksFromRemote(snapshot.repositoryUri)?.web;
       data.coverage = { annotatedFiles: model.annotated_files.length, sourceFiles: model.source_files, percent: model.coverage.coverage_percent, excluded: model.annotation_scope?.excluded ?? [] };
@@ -258,8 +258,8 @@ export async function collectApplicationView(options: CollectApplicationOptions)
       receipt.components.model = { state: 'present', indexedRevision: before };
       if (before.vcs === 'git' && (before.commit === null || before.dirty === null)) receipt.components.provenance = { state: 'partial', reason: 'Git commit or dirty state is unavailable; snapshot provenance is incomplete.' };
       if ((spec.baseRef || spec.baseCommit) && !before.baseCommit) receipt.components.baseline = { state: 'partial', reason: `Requested base ${spec.baseRef ?? spec.baseCommit} cannot be resolved locally; fetch or supply the assessed base commit.` };
-      receipt.components.hypotheses = { state: hypotheses.status === 'corrupt' ? 'partial' : 'present', reason: hypotheses.error ?? `Member ledger is ${hypotheses.status}` };
-      receipt.components.verification = { state: verification.ledger === 'corrupt' ? 'partial' : 'present', reason: `Member ledger is ${verification.ledger}` };
+      receipt.components.hypotheses = { state: hypotheses.status === 'corrupt' ? 'partial' : hypotheses.status, reason: hypotheses.error ?? `Member ledger is ${hypotheses.status}` };
+      receipt.components.verification = { state: verification.ledger === 'corrupt' ? 'partial' : verification.ledger, reason: `Member ledger is ${verification.ledger}` };
       data.coverage = { annotatedFiles: model.annotated_files.length, sourceFiles: model.source_files, percent: model.coverage.coverage_percent, excluded: model.annotation_scope?.excluded ?? [] };
       data.verification = verification; data.hypotheses = hypotheses;
       native.set(id, { model, root: path, verification, hypotheses, revision: before, member: spec });
@@ -370,7 +370,9 @@ export async function collectApplicationView(options: CollectApplicationOptions)
     try { after = await readMemberRevision(n.root, n.member, n.revision.annotationDigest); } catch { changed.push(id); const m = receipts.find(m => m.id === id)!; m.components.model = { state: 'partial', reason: 'Member provenance became unavailable during collection.' }; continue; }
     if (JSON.stringify(revisionInput(after)) !== JSON.stringify(revisionInput(n.revision))) { changed.push(id); const m = receipts.find(m => m.id === id)!; m.components.model.state = 'partial'; m.components.model.reason = 'Member changed during collection; model may contain a mixed snapshot.'; }
   }
-  const incomplete = active.some(m => m.state !== 'available' || Object.values(m.components).some(c => c.state !== 'present')) || data.conflicts.length > 0 || data.references.some(r => r.state === 'ambiguous');
+  // An optional ledger can be known absent without making the source census
+  // incomplete. Corrupt evidence and missing required components still do.
+  const incomplete = active.some(m => m.state !== 'available' || Object.entries(m.components).some(([name, c]) => c.state !== 'present' && !(c.state === 'absent' && (name === 'hypotheses' || name === 'verification')))) || data.conflicts.length > 0 || data.references.some(r => r.state === 'ambiguous');
   data.receipt.completeness = active.every(m => m.state !== 'available') ? 'unavailable' : incomplete ? 'partial' : 'complete';
   data.coverage.overallPercent = incomplete ? null : data.coverage.known.percent;
   let selectionChanged = false;
