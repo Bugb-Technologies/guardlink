@@ -1,3 +1,4 @@
+import type { ApplicationReceipt } from '../workspace/application-types.js';
 /**
  * GuardLink Threat Reports — AI-powered threat model analysis.
  *
@@ -353,6 +354,7 @@ export function serializeModel(model: ThreatModel): string {
     source_files: model.source_files,
   };
 
+  if (model.application) compact.application = model.application;
   // Only include non-empty sections
   if (model.assets.length) compact.assets = model.assets.map(a => ({
     path: a.path.join('.'), id: a.id, description: a.description,
@@ -528,6 +530,7 @@ export function serializeModelCompact(model: ThreatModel): string {
     severity_breakdown: sevCounts,
   };
 
+  if (model.application) compact.application = { receipt: model.application.receipt, coverage: model.application.coverage, references: model.application.references, conflicts: model.application.conflicts, occurrences: model.application.occurrences };
   // Assets — just path + id, no descriptions
   if (model.assets.length) {
     compact.assets = model.assets.map(a => a.id || a.path.join('.'));
@@ -539,7 +542,7 @@ export function serializeModelCompact(model: ThreatModel): string {
     for (const e of unmitigated) {
       const key = e.asset;
       if (!byAsset[key]) byAsset[key] = [];
-      const entry: Record<string, any> = { threat: e.threat, severity: e.severity };
+      const entry: Record<string, any> = { threat: e.threat, severity: e.severity, ...(model.application ? { location: e.location } : {}) };
       if (e.external_refs.length) entry.refs = e.external_refs;
       if (e.description) entry.desc = cap(e.description);
       byAsset[key].push(entry);
@@ -596,10 +599,11 @@ export async function generateThreatReport(opts: ThreatReportOptions): Promise<T
   const snippetBudget = opts.snippetBudget ?? 40_000;
 
   const modelJson = serializeModel(model);
-  const projectContext = buildProjectContext(root);
+  const selectedMembers = model.application?.receipt.members.filter(m => m.state === 'available') ?? [];
+  const projectContext = model.application ? selectedMembers.map(m => `## Member ${m.id} (${m.guardlinkIdentity})\nRevision: ${JSON.stringify(m.revision)}\n${buildProjectContext(join(root, m.relativePath))}`).join('\n\n') : buildProjectContext(root);
   const codeSnippets = extractCodeSnippets(root, model, snippetContext, snippetBudget);
   const pentestData = loadPentestData(root);
-  const pentestContext = serializePentestFindings(pentestData);
+  const pentestContext = model.application ? selectedMembers.map(m => `## Member ${m.id}\n${serializePentestFindings(loadPentestData(join(root, m.relativePath)))}`).join('\n\n') : serializePentestFindings(pentestData);
   const systemPrompt = FRAMEWORK_PROMPTS[framework];
   const userMessage = buildUserMessage(modelJson, framework, customPrompt, projectContext || undefined, codeSnippets || undefined, pentestContext || undefined, opts.shape);
 
@@ -643,7 +647,7 @@ input_tokens: ${response.inputTokens || 'unknown'}
 output_tokens: ${response.outputTokens || 'unknown'}
 project: ${model.project}
 annotations: ${model.annotations_parsed}
----
+${model.application ? `application_receipt: ${JSON.stringify(model.application.receipt)}\n` : ''}---
 
 # ${FRAMEWORK_LABELS[framework]}
 
@@ -678,6 +682,9 @@ annotations: ${model.annotations_parsed}
 
 export interface SavedThreatReport {
   filename: string;
+  assessedReceipt?: ApplicationReceipt;
+  memberId?: string;
+  currency?: 'current' | 'stale' | 'unknown';
   framework: string;
   timestamp: string;
   label: string;
@@ -697,10 +704,13 @@ function readReportsFromDir(dirPath: string, dirName: string): SavedThreatReport
       const timestamp = match?.[1]?.replace(/T/, ' ').replace(/-/g, (m, offset) => offset > 9 ? ':' : '-') || filename;
 
       let model: string | undefined;
+      let assessedReceipt: ApplicationReceipt | undefined;
       try {
         const content = readFileSync(join(dirPath, filename), 'utf-8');
         const modelMatch = content.match(/^model:\s*(.+)$/m);
         if (modelMatch) model = modelMatch[1].trim();
+        const receiptMatch = content.match(/^application_receipt:\s*(.+)$/m);
+        if (receiptMatch) assessedReceipt = JSON.parse(receiptMatch[1]);
       } catch { /* ignore */ }
 
       return {
@@ -710,6 +720,7 @@ function readReportsFromDir(dirPath: string, dirName: string): SavedThreatReport
         label: FRAMEWORK_LABELS[framework as AnalysisFramework] || framework,
         model,
         dirName,
+        ...(assessedReceipt ? { assessedReceipt } : {}),
       };
     });
 }
@@ -742,21 +753,28 @@ export interface ThreatReportWithContent extends SavedThreatReport {
 
 const MAX_REPORTS_IN_DASHBOARD = 50;
 
-export function loadThreatReportsForDashboard(root: string): ThreatReportWithContent[] {
-  const entries = listThreatReports(root).slice(0, MAX_REPORTS_IN_DASHBOARD);
+export function loadThreatReportsForDashboard(root: string, model?: ThreatModel): ThreatReportWithContent[] {
+  const members = model?.application?.receipt.members.filter(m => m.state === 'available') ?? [];
+  const all = [
+    ...listThreatReports(root).map(e => ({ ...e, ownerRoot: root })),
+    ...members.flatMap(m => listThreatReports(join(root, m.relativePath)).map(e => ({ ...e, memberId: m.id, ownerRoot: join(root, m.relativePath) }))),
+  ].sort((a,b) => b.filename.localeCompare(a.filename));
+  const entries = all.slice(0, MAX_REPORTS_IN_DASHBOARD);
+  if (model?.application) model.application.reportLibrary = { total: all.length, loaded: 0, omitted: Math.max(0, all.length - entries.length), unreadable: [] };
   const result: ThreatReportWithContent[] = [];
 
   for (const entry of entries) {
-    const dir = join(root, '.guardlink', entry.dirName || THREAT_REPORTS_DIR);
+    const { ownerRoot, ...publicEntry } = entry;
+    const dir = join(ownerRoot, '.guardlink', entry.dirName || THREAT_REPORTS_DIR);
     try {
       const raw = readFileSync(join(dir, entry.filename), 'utf-8');
       const body = raw.replace(/^---[\s\S]*?---\n*/, '').trim();
       if (!body) continue;
       const parsed = parseFindingsBlock(body);
-      result.push({ ...entry, content: stripFindingsBlock(body).trim(), findings: parsed.findings });
-    } catch { /* skip unreadable files */ }
+      result.push({ ...publicEntry, ...(model?.application ? { currency: entry.assessedReceipt ? entry.assessedReceipt.inputDigest === model.application.receipt.inputDigest ? 'current' : 'stale' : 'unknown' } as const : {}), content: stripFindingsBlock(body).trim(), findings: parsed.findings });
+    } catch { model?.application?.reportLibrary?.unreadable.push(`${entry.memberId ?? 'application'}:${entry.filename}`); }
   }
-
+  if (model?.application?.reportLibrary) model.application.reportLibrary.loaded = result.length;
   return result;
 }
 

@@ -596,8 +596,8 @@ export interface LedgerStates {
   entryByLocation: Map<object, { verified_by: string; verified_at: string }>;
 }
 
-export function computeLedgerStates(model: ThreatModel, root: string): LedgerStates {
-  const read = readLedger(root);
+export function computeLedgerStates(model: ThreatModel, root?: string): LedgerStates {
+  const read = root && !model.application ? readLedger(root) : { status: 'absent' as const, ledger: null };
   const report = classifyClaims(model, read);
   const byLocation = new Map<object, ClaimState>();
   const entryByLocation = new Map<object, { verified_by: string; verified_at: string }>();

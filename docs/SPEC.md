@@ -2683,3 +2683,16 @@ This grammar is informative. In cases of ambiguity between this grammar and the 
 ---
 
 *This specification is published under CC-BY-4.0. You are free to share and adapt this material for any purpose, including commercial, provided you give appropriate credit. Reference implementations and conformance tests are published under the MIT license.*
+
+### Selected application semantic view
+
+An application view carries `guardlink.application-view/v1` and the shared
+`bravos.application-view/v1` receipt. Selection is an explicit expected roster, with
+member ids separate from stored GuardLink identities. Each member contributes its own
+configuration, revision, source-relative claim keys and evidence ledgers. Semantic ids
+remain flat. Identical shared definitions retain all origins; conflicting definitions
+remain ambiguous. Every flow declaration survives grouping. Coverage is the sum of
+annotated and source file counts; unavailable inputs withhold the overall percentage.
+Missing or invalid members remain visible in a partial result. Saved reports retain
+their assessed receipt; offline exports never imply present checkout freshness.
+The detailed contract and capability probe are in [APPLICATION_VIEW.md](APPLICATION_VIEW.md).

@@ -44,6 +44,7 @@ export interface ApplicationReference {
 }
 export interface ApplicationFlowGroup {
   id: string; source: string; target: string; mechanism: string; route: unknown;
+  sourceMemberIds?: string[]; targetMemberIds?: string[]; crossMember?: boolean;
   declarations: Array<{ memberId: string; file: string; line: number; claimKey?: string }>;
 }
 export interface ApplicationMemberData {
@@ -64,4 +65,11 @@ export interface ApplicationModelData {
 export interface ApplicationView {
   schema: 'guardlink.application-view/v1'; receipt: ApplicationReceipt; model: ThreatModel;
   diagnostics: ParseDiagnostic[]; references: ApplicationReference[]; flowGroups: ApplicationFlowGroup[];
+}
+
+/** Historical native report input: never refreshed from a checkout during an offline merge. */
+export interface ApplicationMemberSnapshot {
+  schema: 'guardlink.member-snapshot/v1'; id: string; workspace: string; expectedMemberIds: string[];
+  revision: ApplicationRevision; verification: VerificationReport; hypotheses: HypothesesRead;
+  mixed: boolean; capturedAt: string; repositoryUri?: string;
 }

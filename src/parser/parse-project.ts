@@ -14,7 +14,7 @@
  * @comment -- "Same reasoning for imprecise:true when the claim omits `on <asset>` or `against <threat>`, plus canEntitlementDemote/entitlementDemotionBlockers so the cited-and-precise test is written once here rather than re-derived by every consumer — a consumer that checks only !inert would demote on an entitlement that joins nothing (actor-entitlement design §9.7)"
  * @boundary #parser and FileSystem (#fs-boundary) -- "Trust boundary between parser and disk I/O"
  */
-import { collectApplicationView, discoverApplicationManifest, APPLICATION_MANIFEST_ENV } from '../workspace/application.js';
+import { captureMemberSnapshot, readMemberRevision, collectApplicationView, discoverApplicationManifest, APPLICATION_MANIFEST_ENV } from '../workspace/application.js';
 import type { ApplicationManifest } from '../workspace/application-types.js';
 import { readSecurityTestsDir } from './security-tests.js';
 import { localWorkspaceMembers, workspaceContainer } from '../workspace/discovery.js';
@@ -209,6 +209,7 @@ export interface ParseProjectOptions {
   /** Check available linked sibling checkouts (default true); false prevents recursive sibling reads. */
   applicationManifest?: string | ApplicationManifest;
   application?: boolean;
+  memberSnapshot?: boolean;
   checkSiblings?: boolean;
   /** Treat unavailable siblings and unresolved sibling refs as errors (validate --workspace). */
   requireSiblings?: boolean;
@@ -295,10 +296,16 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
   const selected = options.applicationManifest ?? (options.application !== false ? process.env[APPLICATION_MANIFEST_ENV] : undefined);
   if (options.application !== false && selected) {
     const view = await collectApplicationView({ root, manifest: selected, anchors: options.anchors, agentConfig: options.agentConfig });
-    return { model: view.model, diagnostics: view.diagnostics, config };
+    return { model: view.model, diagnostics: [...view.diagnostics, ...(options.requireSiblings ? view.references.filter(r => r.state !== 'resolved').map(r => ({ level: 'error' as const, code: 'dangling-ref' as const, file: `${view.receipt.members.find(m => m.id === r.memberId)?.relativePath ?? r.memberId}/${r.file}`, line: r.line, message: `Workspace reference ${r.tag} is ${r.state} in the selected member set.` })) : [])], config };
   }
 
-
+  if (options.application !== false) {
+    const manifest = discoverApplicationManifest(root);
+    if (manifest) {
+      const view = await collectApplicationView({ root, manifest, anchors: options.anchors, agentConfig: options.agentConfig, selectionProbe: () => discoverApplicationManifest(root) });
+      return { model: view.model, diagnostics: [...view.diagnostics, ...(options.requireSiblings ? view.references.filter(r => r.state !== 'resolved').map(r => ({ level: 'error' as const, code: 'dangling-ref' as const, file: `${view.receipt.members.find(m => m.id === r.memberId)?.relativePath ?? r.memberId}/${r.file}`, line: r.line, message: `Workspace reference ${r.tag} is ${r.state} in the selected member set.` })) : [])], config };
+    }
+  }
   let container: ReturnType<typeof workspaceContainer>;
   try { container = workspaceContainer(root); }
   catch (error) {
@@ -307,13 +314,6 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
       model: assembleModel([], 0, project, [], []),
       diagnostics: [workspaceConfigDiagnostic(error, root)], config,
     };
-  }
-  if (container && options.application !== false && (options.application === true || process.env.GUARDLINK_APPLICATION_VIEW === 'on')) {
-    const manifest = discoverApplicationManifest(root);
-    if (manifest) {
-      const view = await collectApplicationView({ root, manifest, anchors: options.anchors, agentConfig: options.agentConfig });
-      return { model: view.model, diagnostics: view.diagnostics, config };
-    }
   }
   if (container) {
     if (container.missing.length) {
@@ -349,6 +349,8 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     }
     return { model, diagnostics, config };
   }
+
+  const memberBefore = options.memberSnapshot && loadWorkspaceConfig(root) ? await readMemberRevision(root, {}) : undefined;
 
   // Discover files (dot: true to include .guardlink/ definitions)
   // @comment -- "scanIgnore adds one ignore per nested checkout found under root (a directory holding a .git FILE: a linked worktree or a submodule), so another checkout's source and definitions are never read as this repository's. The same call bounds clear, the fingerprint and init's scope, so the four walks keep one scan set"
@@ -526,6 +528,7 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     ? allDiagnostics
     : allDiagnostics.filter(d => !(d.level === 'warning' && d.code && disabled.has(d.code)));
 
+  if (options.memberSnapshot) await captureMemberSnapshot(root, model, memberBefore);
   return { model, diagnostics, config };
 }
 

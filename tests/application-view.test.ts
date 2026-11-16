@@ -1,11 +1,27 @@
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { createServer } from '../src/mcp/server.js';
+import { applicationSourceLink } from '../src/workspace/application.js';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { generateDashboardHTML } from '../src/dashboard/generate.js';
+import { generateReport } from '../src/report/report.js';
+import { generateMermaid } from '../src/report/mermaid.js';
+import { generateSarif } from '../src/analyzer/sarif.js';
+import { collectApplicationView } from '../src/workspace/application.js';
 import { parseProject } from '../src/parser/parse-project.js';
+import { recordOutcome } from '../src/hypothesis/index.js';
+import { classifyClaims } from '../src/parser/verification.js';
+import { emptyLedger, writeLedger } from '../src/parser/ledger.js';
+import { relationRecords } from '../src/parser/claim-key.js';
+import { loadThreatReportsForDashboard, serializeModelCompact } from '../src/analyze/index.js';
+import { mergeReports } from '../src/workspace/merge.js';
+import { populateMetadata } from '../src/workspace/metadata.js';
 import { linkProject } from '../src/workspace/link.js';
 
 let root: string;
@@ -65,4 +81,181 @@ describe('application semantic view contract', () => {
     expect(model.application?.members.every(m => m.agentConfig?.files.length)).toBe(true);
     expect(model.reaches?.filter(r => r.origin === 'agent-config').every(r => r.location.memberId)).toBe(true);
   });
+  it('shares its receipt and member-owned source paths across offline projections', async () => {
+    const { auth, manifest } = scaffold(); rmSync(auth, { recursive: true });
+    const { model } = await collect(manifest);
+    const receipt = model.application!.receipt;
+    const html = generateDashboardHTML(model, root);
+    expect(html.includes('application-receipt')).toBe(true);
+    expect(html.includes(receipt.inputDigest)).toBe(true);
+    expect(html.includes('Known subtotal')).toBe(true);
+    expect(generateReport(model)).toContain(receipt.inputDigest);
+    expect(generateMermaid(model)).toContain(receipt.inputDigest);
+    const sarif = generateSarif(model);
+    expect(sarif.runs[0].properties).toMatchObject({ application_receipt: receipt });
+    const result = sarif.runs[0].results.find(r => r.ruleId === 'guardlink/unmitigated-exposure') ?? sarif.runs[0].results[0];
+    expect(JSON.stringify(result)).toContain('GUARDLINK_MEMBER_');
+  });
+  it('marks concurrent member edits and selection edits as mixed snapshots', async () => {
+    const { api, manifest } = scaffold();
+    const view = await collectApplicationView({ root, manifest, anchors: false, beforeRecheck: () => put(join(api, 'app.ts'), '// @asset Changed (#changed)') });
+    expect(view.receipt.completeness).toBe('partial');
+    expect(view.receipt.currency?.reasonCodes).toContain('mixed-snapshot');
+  });
+  it('keeps conflicting definitions and marks references ambiguous rather than suppressing exposures', async () => {
+    const { auth, manifest } = scaffold();
+    put(join(auth, 'app.ts'), '// @asset Different.API (#api)\n// @mitigates #api against #injection using #guard');
+    const { model } = await collect(manifest);
+    expect(model.application?.conflicts.some(c => c.id === 'api')).toBe(true);
+    expect(model.application?.references.some(r => r.tag === '#api' && r.state === 'ambiguous')).toBe(true);
+    expect(generateSarif(model).runs[0].results.length).toBeGreaterThan(0);
+  });
+
+  it('echoes a frozen caller receipt without comparing incompatible producer digests', async () => {
+    const { manifest } = scaffold();
+    const first = await collectApplicationView({ root, manifest, anchors: false });
+    const selected = JSON.parse(readFileSync(manifest, 'utf8'));
+    const receipt = structuredClone(first.receipt);
+    receipt.tools = { bravos: { version: 'test', contractVersion: '1' } };
+    receipt.inputDigest = 'caller-frozen-digest';
+    for (const r of Object.values(receipt.revisions)) if (r) { r.contentDigest = 'different-algorithm'; r.annotationDigest = 'different-algorithm'; r.configDigest = 'different-algorithm'; }
+    selected.receipt = receipt;
+    const next = await collectApplicationView({ root, manifest: selected, anchors: false });
+    expect(next.receipt.inputDigest).toBe('caller-frozen-digest');
+    expect(next.receipt.completeness).toBe('complete');
+    expect(next.receipt.currency?.state).toBe('current');
+  });
+
+  it('preserves native verification and refutation evidence without a root ledger', async () => {
+    const { api, manifest } = scaffold();
+    const parsed = (await parseProject({ root: api, application: false, checkSiblings: false })).model;
+    const ledger = emptyLedger();
+    for (const r of relationRecords(parsed)) if (r.location.anchor) ledger.entries.push({ key: r.key, file: r.location.file, verb: r.verb, claim: r.claim, anchor: { scope: r.location.anchor.scope, symbol: r.location.anchor.symbol }, hash: r.location.anchor.hash, verified_by: 'human:fixture', verified_at: '2026-01-01T00:00:00Z' });
+    writeLedger(api, ledger);
+    recordOutcome(api, parsed, 'app.ts:4', 'refuted', { evidence: 'Synthetic fixture result', by: 'human:fixture', at: '2026-01-01T00:00:00Z' });
+    const view = await collectApplicationView({ root, manifest });
+    expect(view.model.exposures[0].hypothesis?.state).toBe('refuted');
+    const verification = classifyClaims(view.model, { status: 'absent', ledger: null });
+    expect(verification.summary.verified).toBeGreaterThan(0);
+    expect(verification.claims.find(c => c.verb === 'exposes')?.location).toMatchObject({ memberId: 'api', file: 'api/app.ts' });
+    const sarif = generateSarif(view.model, [], [], { profile: 'pentest' });
+    expect(JSON.stringify(sarif).includes('refuted')).toBe(true);
+    expect(JSON.parse(serializeModelCompact(view.model)).application.receipt.inputDigest).toBe(view.receipt.inputDigest);
+  });
+  it('detects branch-only, base and untracked configuration changes independently of source bytes', async () => {
+    const { api, manifest } = scaffold();
+    const git = (...args: string[]) => execFileSync('git', ['-C', api, ...args], { stdio: 'pipe', encoding: 'utf8' });
+    git('init', '-b', 'main'); git('add', '.'); git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'fixture');
+    const first = await collectApplicationView({ root, manifest, anchors: false });
+    git('checkout', '-b', 'same-files');
+    const branch = await collectApplicationView({ root, manifest, anchors: false });
+    expect(branch.receipt.revisions.api?.commit).toBe(first.receipt.revisions.api?.commit);
+    expect(branch.receipt.inputDigest).not.toBe(first.receipt.inputDigest);
+    const selection = JSON.parse(readFileSync(manifest, 'utf8')); selection.members[0].baseRef = 'main';
+    const base = await collectApplicationView({ root, manifest: selection, anchors: false });
+    expect(base.receipt.revisions.api?.baseCommit).toBe(first.receipt.revisions.api?.commit);
+    expect(base.receipt.inputDigest).not.toBe(branch.receipt.inputDigest);
+    put(join(api, '.guardlink/prompt.md'), 'changed context');
+    const changed = await collectApplicationView({ root, manifest, anchors: false });
+    expect(changed.receipt.revisions.api?.configDigest).not.toBe(branch.receipt.revisions.api?.configDigest);
+  });
+  it('retains invalid roster entries for duplicate, outside and symlink selections', async () => {
+    const { manifest } = scaffold(); const selection = JSON.parse(readFileSync(manifest, 'utf8'));
+    selection.members.push({ id: 'outside', guardlinkIdentity: 'outside', relativePath: '../outside' });
+    selection.members.push({ id: 'api', relativePath: 'auth' });
+    symlinkSync(join(root, 'auth'), join(root, 'alias'));
+    selection.members.push({ id: 'alias', guardlinkIdentity: 'auth', relativePath: 'alias' });
+    const view = await collectApplicationView({ root, manifest: selection, anchors: false });
+    expect(view.receipt.members.filter(m => m.state === 'invalid').map(m => m.id).sort()).toEqual(['alias', 'api', 'outside']);
+    expect(view.receipt.completeness).toBe('partial');
+    expect(JSON.stringify(view.receipt).includes(root)).toBe(false);
+  });
+  it('keeps per-member saved reports and their historical assessed receipt', async () => {
+    const { api, manifest } = scaffold();
+    const { model } = await collect(manifest);
+    const dir = join(api, '.guardlink/threat-reports'); mkdirSync(dir, { recursive: true });
+    put(join(dir, '2026-01-01T00-00-00-stride.md'), '---\nmodel: fixture\napplication_receipt: ' + JSON.stringify({ ...model.application!.receipt, inputDigest: 'old-assessment' }) + '\n---\n# Prior report\nHistorical analysis');
+    const reports = loadThreatReportsForDashboard(root, model);
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatchObject({ memberId: 'api', currency: 'stale', assessedReceipt: { inputDigest: 'old-assessment' } });
+    expect(model.application?.reportLibrary).toMatchObject({ loaded: 1, total: 1, omitted: 0 });
+  });
+
+  it('projects native report snapshots offline without replacing their historical revisions', async () => {
+    const { api, auth, manifest } = scaffold();
+    const direct = await collectApplicationView({ root, manifest });
+    const files = [];
+    for (const dir of [api, auth]) {
+      const parsed = await parseProject({ root: dir, application: false, checkSiblings: false, memberSnapshot: true });
+      const path = join(root, dir === api ? 'api.json' : 'auth.json');
+      put(path, JSON.stringify(populateMetadata(parsed.model, dir, parsed.diagnostics))); files.push(path);
+    }
+    put(join(api, 'app.ts'), '// @asset Changed (#changed)');
+    const merged = await mergeReports(files, { applicationManifest: JSON.parse(readFileSync(manifest, 'utf8')) });
+    expect(merged.model.assets.some(a => a.id === 'changed')).toBe(false);
+    expect(merged.model.application?.receipt.inputDigest).toBe(direct.receipt.inputDigest);
+    expect(merged.model.application?.receipt.currency?.state).toBe('unknown');
+    expect(merged.model.application?.receipt.completeness).toBe('complete');
+    expect(merged.model.flows).toHaveLength(direct.model.flows.length);
+  });
+
+  it('serves the explicit selected receipt through MCP without a different-root envelope', async () => {
+    const { manifest } = scaffold(); const server = createServer();
+    const client = new Client({ name: 'fixture', version: '1' });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(st), client.connect(ct)]);
+    try {
+      const response = await client.callTool({ name: 'guardlink_application_view', arguments: { root, manifest } });
+      const content = response.content as Array<{ text: string }>;
+      const view = JSON.parse(content[0].text);
+      expect(view.receipt.completeness).toBe('complete');
+      expect(JSON.parse(content[1].text).guardlink.application_receipt.inputDigest).toBe(view.receipt.inputDigest);
+      const workspace = await client.callTool({ name: 'guardlink_workspace_info', arguments: { root } });
+      expect(JSON.parse((workspace.content as Array<{ text: string }>)[0].text)).toMatchObject({ this_repo: null, id_convention: 'flat-globally-unique' });
+    } finally { await client.close(); }
+  });
+  it('pins source links to each assessed member commit and strips remote credentials', async () => {
+    const { api, manifest } = scaffold();
+    const git = (...args: string[]) => execFileSync('git', ['-C', api, ...args], { stdio: 'pipe', encoding: 'utf8' });
+    git('init', '-b', 'main'); git('add', '.'); git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'fixture');
+    git('remote', 'add', 'origin', 'https://user:secret@github.com/example/api.git');
+    const view = await collectApplicationView({ root, manifest, anchors: false });
+    const sha = view.receipt.revisions.api!.commit;
+    expect(applicationSourceLink(view.model, 'api/app.ts', 4)).toBe(`https://github.com/example/api/blob/${sha}/app.ts#L4`);
+    expect(JSON.stringify(view.receipt).includes('secret')).toBe(false);
+    expect(applicationSourceLink(view.model, 'auth/app.ts', 1)).toBeNull();
+  });
+
+  it('reports corrupt member evidence as partial while retaining readable siblings', async () => {
+    const { api, manifest } = scaffold(); put(join(api, '.guardlink/hypotheses.json'), '{broken');
+    const view = await collectApplicationView({ root, manifest, anchors: false });
+    expect(view.receipt.completeness).toBe('partial');
+    expect(view.model.application?.hypotheses?.status).toBe('corrupt');
+    expect(view.model.assets).toHaveLength(2);
+    expect(view.model.application?.coverage.overallPercent).toBeNull();
+  });
+  it('uses weighted file counts and keeps repository projection counts scoped', async () => {
+    const { api, manifest } = scaffold();
+    put(join(api, '.guardlink/config.json'), JSON.stringify({ include: ['*.ts'] }));
+    put(join(api, 'second.ts'), 'export const second = true;');
+    put(join(api, 'third.ts'), 'export const third = true;');
+    const app = await collectApplicationView({ root, manifest, anchors: false });
+    expect(app.model.application?.coverage.known).toEqual({ annotatedFiles: 2, sourceFiles: 4, percent: 50 });
+    const repo = await collectApplicationView({ root, manifest, memberId: 'auth', anchors: false });
+    expect(repo.receipt.scope).toMatchObject({ kind: 'repository', memberId: 'auth' });
+    expect(repo.model.exposures).toHaveLength(0);
+    expect(repo.model.application?.coverage.known).toEqual({ annotatedFiles: 1, sourceFiles: 1, percent: 100 });
+    expect(repo.references.every(r => r.state === 'resolved')).toBe(true);
+    expect(repo.model.application?.occurrences.every(o => o.memberId === 'auth')).toBe(true);
+  });
+  it('marks an edited selection manifest and unresolved requested base explicitly', async () => {
+    const { manifest } = scaffold(); const spec = JSON.parse(readFileSync(manifest, 'utf8')); spec.members[0].baseRef = 'missing-base';
+    const base = await collectApplicationView({ root, manifest: spec, anchors: false });
+    expect(base.receipt.completeness).toBe('partial');
+    expect(base.receipt.members[0].components.baseline.state).toBe('partial');
+    const mixed = await collectApplicationView({ root, manifest, anchors: false, beforeRecheck: () => put(manifest, JSON.stringify({ ...spec, name: 'changed' })) });
+    expect(mixed.receipt.currency?.reasonCodes).toContain('mixed-selection');
+    expect(mixed.receipt.completeness).toBe('partial');
+  });
+
 });

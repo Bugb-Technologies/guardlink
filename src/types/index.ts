@@ -665,6 +665,7 @@ export interface AnnotationScopeRecord {
 
 export interface ThreatModel {
   /** Selected-set semantic view; absent on legacy/repository-only models. */
+  member_snapshot?: import('../workspace/application-types.js').ApplicationMemberSnapshot;
   application?: import('../workspace/application-types.js').ApplicationModelData;
   version: string;
   project: string;

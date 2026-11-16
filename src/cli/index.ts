@@ -338,9 +338,9 @@ program.command('application-view')
     try {
       const manifest = opts.manifest ?? process.env[APPLICATION_MANIFEST_ENV] ?? discoverApplicationManifest(root);
       if (!manifest) throw new Error('No selected application manifest; supply --manifest <file>');
-      const view = await collectApplicationView({ root, manifest, memberId: opts.member });
+      const view = await collectApplicationView({ root, manifest, memberId: opts.member, ...(typeof manifest === 'string' ? {} : { selectionProbe: () => discoverApplicationManifest(root) }) });
       console.log(JSON.stringify(view));
-      if (opts.strict && view.receipt.completeness !== 'complete') process.exitCode = 1;
+      if (opts.strict && (view.receipt.completeness !== 'complete' || view.references.some(r => r.state !== 'resolved'))) process.exitCode = 1;
     } catch (error) { console.error(`Application view unavailable: ${(error as Error).message}`); process.exitCode = 1; }
   });
 
@@ -357,7 +357,7 @@ program
   .option('--blame', 'Attach git attribution to each exposure, confirmed and mitigation: who introduced, declared and fixed it, and which AI co-authored those commits')
   .action(async (dir: string, opts: { project: string; output?: string; pretty: boolean; blame?: boolean }) => {
     const root = resolve(dir);
-    const { model, diagnostics, config } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    const { model, diagnostics, config } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined, memberSnapshot: true });
 
     // Print diagnostics to stderr
     printDiagnostics(diagnostics);
@@ -715,6 +715,7 @@ program
     }
 
     const { model } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    if (model.application) { console.error('Application evidence is member-owned. Run guardlink verify in the selected member checkout; the application view will collect its ledger.'); process.exitCode = 1; return; }
     const report = classifyClaims(model, read);
 
     const mode = targets.length > 0
@@ -963,7 +964,7 @@ program
       process.exit(1);
     }
 
-    let { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    let { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined, memberSnapshot: true });
 
     // Apply feature filter if specified
     if (opts.feature) {
@@ -2115,6 +2116,7 @@ const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: strin
     }
     if (!target) { console.error('Name the exposure as file:line, or pass --from-scan <report.json>.'); process.exitCode = 1; return; }
     if (!opts.evidence) { console.error(`--evidence is required: say what was tried and what came back. A ${outcome === 'refuted' ? 'refutation' : 'confirmation'} without it is a guess.`); process.exitCode = 1; return; }
+    if (model.application) { console.error('Application evidence is member-owned. Record this outcome from the affected member checkout.'); process.exitCode = 1; return; }
     const { record, entry } = recordOutcome(root, model, target, outcome, { evidence: opts.evidence, by, at });
     const offered = outcome === 'confirmed' ? confirmedLine(record, entry) : undefined;
     console.log(formatOutcome(record, entry, opts.write ? undefined : offered));
@@ -3401,6 +3403,7 @@ program
     let since: SinceInput | undefined;
     if (opts.since) {
       try {
+        if (model.application) throw new Error('Application comparison requires per-member base revisions in the selected manifest; a single repository --since ref cannot describe the application.');
         since = await loadSince(root, opts.since, project, model);
         console.error(`Compared against ${opts.since}: ${since.diff.summary.newUnmitigated} new unmitigated, ${since.diff.summary.resolvedUnmitigated} resolved`);
       } catch (e) {
@@ -3410,7 +3413,7 @@ program
       }
     }
 
-    const analyses = loadThreatReportsForDashboard(root);
+    const analyses = loadThreatReportsForDashboard(root, model);
     const measured = await loadMeasured(root, opts.codeGraph);
     // The page follows the OS light/dark preference; --light pins light.
     const html = generateDashboardHTML(model, root, analyses, { since, theme: opts.light ? 'light' : undefined, measured });
@@ -3620,6 +3623,7 @@ program
     // Run merge
     const merged = await mergeReports(resolvedFiles, {
       workspace: opts.workspace,
+      ...(process.env[APPLICATION_MANIFEST_ENV] ? { applicationManifest: discoverApplicationManifest(process.cwd(), process.env[APPLICATION_MANIFEST_ENV]) ?? undefined } : {}),
     });
 
     // One verdict, decided before anything is written, so the exit code and the

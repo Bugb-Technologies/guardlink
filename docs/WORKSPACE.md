@@ -78,3 +78,13 @@ reports the member id, both checkout paths and the manifest to inspect, without 
 stack trace. Keep one checkout of each member in the application folder by moving
 the extra checkout outside it; if they are distinct services, relink them with
 unique `--member name=path` identities.
+
+## Selected application snapshots
+
+Parent-folder reads retain the expected member roster and readable member content when
+another member is unavailable. The application receipt marks the result partial and file
+coverage labels its known subtotal. Use `application-view --strict` to require complete
+inputs and resolved references. Explicit manifests reconcile registry names with stored
+GuardLink identities; duplicate or out-of-root selections are rejected. See
+[Application semantic views](APPLICATION_VIEW.md) for the versioned CLI, MCP, saved-report,
+SARIF and offline-merge contract.

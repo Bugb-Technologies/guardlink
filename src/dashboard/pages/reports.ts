@@ -48,7 +48,7 @@ export function findingsTable(findings: Finding[]): string {
 }
 
 function reportLabel(r: PageContext['analyses'][number]): string {
-  return `${r.label || r.framework || 'Analysis'} (${r.timestamp || ''})${r.model ? ` — ${r.model}` : ''}`;
+  return `${r.memberId ? r.memberId + ': ' : ''}${r.label || r.framework || 'Analysis'} (${r.timestamp || ''})${r.model ? ` — ${r.model}` : ''}`;
 }
 
 export function renderReportsPage(ctx: PageContext): string {
@@ -58,6 +58,7 @@ export function renderReportsPage(ctx: PageContext): string {
 <section id="sec-reports" class="section-content" aria-label="Reports">
   ${pageHead('Reports', null, `Reports written by <code>guardlink threat-report</code> (STRIDE, DREAD, PASTA, attacker, rapid, general or a custom prompt). ${has ? 'Pick one to read it here; copy or download it to share.' : 'None saved yet — copy a command below to write the first.'}`, `<span class="muted">${analyses.length} saved</span>`)}
 ${scope ? `  <p class="scope-note">These reports are <strong>whole-project</strong> documents. Unlike the rest of this page they are not narrowed to ${esc(scopeLabel(scope))}, and they may discuss assets outside it.</p>` : ''}
+  ${ctx.model.application?.reportLibrary ? `<p class="scope-note">Report library: ${ctx.model.application.reportLibrary.loaded}/${ctx.model.application.reportLibrary.total} loaded; ${ctx.model.application.reportLibrary.omitted} omitted by display limit; ${ctx.model.application.reportLibrary.unreadable.length} unreadable.</p>` : ''}
   ${has ? `
   <div class="panel">
     <div class="report-toolbar">
@@ -65,7 +66,7 @@ ${scope ? `  <p class="scope-note">These reports are <strong>whole-project</stro
       <button class="btn" data-copy-report title="Copy the whole report as markdown">${icon('copy')} Copy report</button>
       <button class="btn ghost" data-download-report title="Save the report as a .md file">${icon('download')} Download .md</button>
     </div>
-    ${analyses.map((r, i) => `<article class="md-content" data-report="${i}"${i === 0 ? '' : ' hidden'}>${findingsTable(r.findings || [])}${r.content && r.content.trim() ? renderMarkdown(r.content) : '<p class="empty-state">This report has no prose.</p>'}</article>`).join('')}
+    ${analyses.map((r, i) => `<article class="md-content" data-report="${i}"${i === 0 ? '' : ' hidden'}>${ctx.model.application ? `<p class="scope-note">Assessed snapshot: ${esc(r.assessedReceipt?.inputDigest ?? 'unknown (legacy report)')} · ${esc(r.currency ?? 'unknown')}. Saved analysis is not reverified when this dashboard is rebuilt.</p>` : ''}${findingsTable(r.findings || [])}${r.content && r.content.trim() ? renderMarkdown(r.content) : '<p class="empty-state">This report has no prose.</p>'}</article>`).join('')}
   </div>
   <p class="guide">Write another:</p>
   ${commandChips()}` : `

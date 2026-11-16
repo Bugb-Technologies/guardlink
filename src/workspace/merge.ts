@@ -53,6 +53,8 @@
  */
 
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { getPackageVersion } from '../version.js';
 import { basename, dirname, resolve as resolvePath } from 'node:path';
 import fg from 'fast-glob';
 import type {
@@ -542,6 +544,7 @@ export function combineModels(reports: LoadedReport[], options: { preserveConfli
   const seenThreatIds = new Set<string>();
   const seenControlIds = new Set<string>();
   const seenActorIds = new Set<string>();
+  const seenBoundaryIds = new Set<string>();
 
   const combined: ThreatModel = {
     version: REPORT_SCHEMA_VERSION,
@@ -619,7 +622,8 @@ export function combineModels(reports: LoadedReport[], options: { preserveConfli
     combined.gates!.push(...prefixAll(m.gates || [], repo));
     combined.transfers.push(...prefixAll(m.transfers, repo));
     combined.flows.push(...prefixAll(m.flows, repo));
-    combined.boundaries.push(...prefixAll(m.boundaries, repo));
+    if (options.preserveConflicts) addDefinitions(m.boundaries, combined.boundaries, seenBoundaryIds);
+    else combined.boundaries.push(...prefixAll(m.boundaries, repo));
     combined.validations.push(...prefixAll(m.validations, repo));
     combined.audits.push(...prefixAll(m.audits, repo));
     combined.ownership.push(...prefixAll(m.ownership, repo));
@@ -889,6 +893,8 @@ export function formatMergeVerdict(verdict: MergeVerdict, totals?: MergeTotals):
 // ─── Top-Level Merge Orchestrator ────────────────────────────────────
 
 export interface MergeOptions {
+  applicationManifest?: import('./application-types.js').ApplicationManifest;
+
   /** Workspace name (used in output if no report carries workspace metadata) */
   workspace?: string;
   /** Expected repo names (from workspace.yaml). Missing repos generate warnings. */
@@ -929,7 +935,27 @@ export async function mergeReports(
   const { unresolved, warnings: refWarnings, resolved: resolvedCount } = resolveReferences(reports, registry, repoNames);
 
   // 4. Combine models
-  const combinedModel = combineModels(reports);
+  let combinedModel = combineModels(reports);
+  if (options.applicationManifest || reports.some(r => r.model.member_snapshot)) {
+    const { collectApplicationView } = await import('./application.js');
+    const first = reports.find(r => r.model.member_snapshot)?.model.member_snapshot;
+    const manifest = options.applicationManifest ?? { schema: 'guardlink.application-manifest/v1' as const, name: options.workspace ?? first!.workspace, members: [...new Set(reports.flatMap(r => r.model.member_snapshot?.expectedMemberIds ?? [r.repo]))].map(id => ({ id, guardlinkIdentity: id, relativePath: id })) };
+    const view = await collectApplicationView({ root: '/', manifest, snapshots: reports.map(r => ({ model: r.model, identity: r.model.member_snapshot?.id ?? r.repo })) });
+    combinedModel = view.model;
+  }
+
+  if (!combinedModel.application) {
+    // Older reports have a usable census but do not contain native evidence or
+    // revision digests. Never promote those absent inputs to a coherent snapshot.
+    const ids = statuses.map(s => s.name).sort();
+    const members = ids.map(id => ({ id, guardlinkIdentity: id, service: id, relativePath: id, revision: null, state: statuses.find(s => s.name === id)?.loaded ? 'available' as const : 'missing' as const, components: { model: { state: 'partial' as const, reason: 'Legacy report has no native member snapshot; revision, evidence and full declaration provenance are unknown. Regenerate it with the current CLI.' } } }));
+    combinedModel.application = {
+      receipt: { schema: 'bravos.application-view/v1', scope: { kind: 'application', applicationId: options.workspace ?? reports[0].model.metadata?.workspace ?? 'workspace', memberIds: ids }, generatedAt: new Date().toISOString(), inputDigest: `sha256-v1:${createHash('sha256').update(JSON.stringify(reports.map(r => [r.repo, r.model]))).digest('hex')}`, expectedMemberIds: ids, members, completeness: 'partial', revisions: Object.fromEntries(ids.map(id => [id, null])), tools: { guardlink: { version: getPackageVersion(), contractVersion: 'guardlink.application-view/v1' } }, currency: { state: 'unknown', reasonCodes: ['legacy-provenance-missing'], memberIds: ids } },
+      members: reports.map(r => ({ id: r.repo, coverage: { annotatedFiles: r.model.annotated_files.length, sourceFiles: r.model.source_files, percent: r.model.coverage.coverage_percent, excluded: [] }, generatedIdentities: {}, diagnostics: [] })),
+      occurrences: [], definitions: [], conflicts: [], references: [], flowGroups: [],
+      coverage: { kind: 'annotation-files', known: { annotatedFiles: combinedModel.annotated_files.length, sourceFiles: combinedModel.source_files, percent: combinedModel.coverage.coverage_percent }, overallPercent: null, unknownMemberIds: ids },
+    };
+  }
 
   // 4a. Mark 8 — the join is scoped by the ownership the registry already
   // resolved. Without this a `@mitigates` on orders-api's `#listing` covers

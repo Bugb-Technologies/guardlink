@@ -35,6 +35,13 @@ import { ticketStatusResolver } from './coverage.js';
  */
 export function findDanglingRefs(model: ThreatModel): ParseDiagnostic[] {
   const diagnostics: ParseDiagnostic[] = [];
+  if (model.application && !model.application.receipt.currency?.reasonCodes.includes('legacy-provenance-missing')) {
+    return model.application.references.filter(r => r.state !== 'resolved').map(r => ({
+      level: r.state === 'ambiguous' ? 'error' : 'warning', code: r.state === 'unchecked' ? 'linked-ref' : 'dangling-ref',
+      file: `${model.application!.receipt.members.find(m => m.id === r.memberId)?.relativePath ?? r.memberId}/${r.file}`, line: r.line,
+      message: r.state === 'unchecked' ? `Linked reference ${r.tag}: not checked because selected member data is unavailable.` : r.state === 'ambiguous' ? `Ambiguous reference ${r.tag}: conflicting declarations in ${r.owners.join(', ')}; no definition was selected.` : `Dangling reference ${r.tag}: not defined in any selected member.`,
+    }));
+  }
 
   // Collect all defined IDs
   const definedIds = new Set<string>();

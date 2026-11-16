@@ -1,3 +1,4 @@
+import { linksFromRemote } from '../dashboard/links.js';
 /**
  * GuardLink SARIF — Convert threat model findings to SARIF 2.1.0.
  *
@@ -108,6 +109,8 @@ interface SarifRun {
    * which exposures got tested.
    */
   properties: {
+    application_receipt?: import('../workspace/application-types.js').ApplicationReceipt;
+    application_artifact?: string;
     annotation_hash: string;
     annotation_hash_version: number;
     generator: string;
@@ -140,6 +143,7 @@ interface SarifRun {
     baseline?: { compared: number; absent: number };
   };
   /** Keeps GuardLink results in their own GitHub code scanning category. */
+  originalUriBaseIds?: Record<string, { uri: string }>;
   automationDetails: { id: string };
   /** Present only when the caller knows the repository's web-hosted origin. */
   versionControlProvenance?: { repositoryUri: string; revisionId?: string; branch?: string }[];
@@ -538,7 +542,7 @@ export function generateSarif(
   let pentestProperties: Pick<SarifRun['properties'], 'sarif_profile' | 'hypothesis_ledger' | 'baseline'> = {};
   if (pentest) {
     const appendix = buildPentestAppendix({
-      model, context, coverage, hypotheses: options.hypotheses,
+      model, context, coverage, hypotheses: model.application?.hypotheses ?? options.hypotheses,
       exposureResult: e => exposureResult(e, { ruleId: MITIGATED_RULE_ID, level: 'note' }),
     });
     for (const [result, location] of claimOf) appendix.stamp(result, location);
@@ -547,9 +551,36 @@ export function generateSarif(
     if (options.baseline !== undefined) pentestProperties.baseline = applyBaseline(results, options.baseline);
   }
 
-  const vcs = options.versionControl;
   const taxonomies = context.taxonomies();
   const graph = context.graph();
+  const vcs = model.application ? null : options.versionControl;
+  const bases: Record<string, { uri: string }> = {};
+  if (model.application) {
+    const members = model.application.receipt.members;
+    for (const m of members) bases[`GUARDLINK_MEMBER_${Buffer.from(m.id).toString('hex')}`] = { uri: m.repositoryUri && m.revision?.commit ? (linksFromRemote(m.repositoryUri)?.file('__guardlink_member_base__').replace('/HEAD/', `/${m.revision.commit}/`).replace('__guardlink_member_base__', '') ?? `guardlink-member://${encodeURIComponent(m.id)}/`) : `guardlink-member://${encodeURIComponent(m.id)}/` };
+    const rebase = (value: unknown): void => {
+      if (!value || typeof value !== 'object') return;
+      if (Array.isArray(value)) { value.forEach(rebase); return; }
+      const obj = value as Record<string, unknown>;
+      if (typeof obj.uri === 'string') {
+        const matches = members.filter(m => (obj.uri as string).startsWith(m.relativePath + '/'));
+        if (matches.length === 1) { const m = matches[0]; obj.uri = obj.uri.slice(m.relativePath.length + 1); obj.uriBaseId = `GUARDLINK_MEMBER_${Buffer.from(m.id).toString('hex')}`; }
+      }
+      Object.values(obj).forEach(rebase);
+    };
+    for (const result of results) {
+      const location = result.locations?.[0]?.physicalLocation?.artifactLocation?.uri;
+      const owner = location ? members.find(m => location.startsWith(m.relativePath + '/')) : undefined;
+      if (owner) {
+        const line = result.locations?.[0]?.physicalLocation?.region?.startLine;
+        const native = relationRecords(model).find(r => r.location.file === location && r.location.line === line);
+        result.properties = { ...result.properties, member_id: owner.id, member_revision: owner.revision, native_claim_key: native?.location.claimKey ?? null };
+        if (result.partialFingerprints) for (const key of Object.keys(result.partialFingerprints)) result.partialFingerprints[key] = `${owner.id}:${result.partialFingerprints[key]}`;
+      }
+      rebase(result);
+    }
+    rebase(graph);
+  }
 
   return {
     $schema: 'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json',
@@ -574,8 +605,11 @@ export function generateSarif(
         acceptance_register: ACCEPTANCE_REGISTER_ID,
         sarif_profile_version: SARIF_PROFILE_VERSION,
         ...pentestProperties,
+        ...(model.application ? { application_receipt: model.application.receipt, application_artifact: 'Application snapshot; upload member-scoped exports separately to repository code scanning.' } : {}),
       },
+      ...(model.application ? { originalUriBaseIds: bases } : {}),
       automationDetails: { id: SARIF_AUTOMATION_ID },
+      ...(model.application ? { versionControlProvenance: model.application.receipt.members.filter(m => m.repositoryUri).map(m => ({ repositoryUri: m.repositoryUri!, ...(m.revision?.commit ? { revisionId: m.revision.commit } : {}), ...(m.revision?.branch ? { branch: m.revision.branch } : {}) })) } : {}),
       ...(vcs?.repositoryUri ? {
         versionControlProvenance: [{
           repositoryUri: vcs.repositoryUri,

@@ -1,3 +1,4 @@
+import { applicationSourceLink } from '../../workspace/application.js';
 /**
  * GuardLink Dashboard — Code & Annotations: every annotated file with its
  * annotations and a few lines of context, plus the two project-wide measures
@@ -47,7 +48,7 @@ export function renderCodePage(ctx: PageContext): string {
       ${fileRiskBadges(fileRisk.get(f.file))}
       <span class="file-kinds">${[...kinds].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => `<span>${esc(k)} ${n}</span>`).join('')}</span>
       <span class="file-end">
-        ${links ? `<a class="loc-link" href="${esc(links.file(f.file))}" target="_blank" rel="noopener" title="Open on host">${icon('external')} open</a>` : ''}
+        ${(ctx.model.application ? applicationSourceLink(ctx.model, f.file) : links?.file(f.file)) ? `<a class="loc-link" href="${esc(ctx.model.application ? applicationSourceLink(ctx.model, f.file)! : links!.file(f.file))}" target="_blank" rel="noopener" title="Open on host">${icon('external')} open</a>` : ''}
         <span class="file-count">${f.annotations.length}</span>
         <span class="chevron">${icon('chevron')}</span>
       </span>
@@ -56,7 +57,7 @@ export function renderCodePage(ctx: PageContext): string {
       ${f.annotations.map((ann, ai) => `
       <div class="ann-entry" data-annotation="${fi}:${ai}" role="button" tabindex="0">
         <div class="ann-header">
-          <span class="ann-line">${links ? `<a class="loc-link" href="${esc(links.file(f.file, ann.line))}" target="_blank" rel="noopener">L${ann.line}</a>` : `L${ann.line}`}</span>
+          <span class="ann-line">${ann.url ? `<a class="loc-link" href="${esc(ann.url)}" target="_blank" rel="noopener">L${ann.line}</a>` : `L${ann.line}`}</span>
           <span class="ann-badge ann-${esc(ann.kind)}">${esc(ann.kind)}</span>
           <span class="ann-summary">${esc(ann.summary)}</span>
         </div>
@@ -85,7 +86,7 @@ export function renderCodePage(ctx: PageContext): string {
     Run <code>guardlink dashboard .</code> without <code>--feature</code>, or <code>guardlink status .</code>, for those numbers.
   </p>
   ` : `
-  ${subHead('File Coverage')}
+  ${subHead(model.application?.coverage.overallPercent === null ? 'File Coverage — Known subtotal' : 'File Coverage')}
   <div class="cov-line">
     <b>${annotatedCount} of ${totalFiles} files</b>
     <span class="muted">have GuardLink annotations</span>
@@ -98,8 +99,8 @@ export function renderCodePage(ctx: PageContext): string {
     Source files with no GuardLink annotations. Not all files need annotations — only those touching security boundaries.
   </p>
   <div class="unannotated" data-list="unannotated">
-    ${unannotated.map(f => `<div class="unann-row mono" data-search="unannotated ${esc(f.toLowerCase())}">${links ? `<a class="loc-link" href="${esc(links.file(f))}" target="_blank" rel="noopener">${esc(f)}</a>` : esc(f)}${copyButton(f, 'Copy path')}</div>`).join('')}
-  </div>` : `<p class="guide">${stateChip('mitigated', 'All source files have annotations.')}</p>`}
+    ${unannotated.map(f => `<div class="unann-row mono" data-search="unannotated ${esc(f.toLowerCase())}">${(model.application ? applicationSourceLink(model, f) : links?.file(f)) ? `<a class="loc-link" href="${esc(model.application ? applicationSourceLink(model, f)! : links!.file(f))}" target="_blank" rel="noopener">${esc(f)}</a>` : esc(f)}${copyButton(f, 'Copy path')}</div>`).join('')}
+  </div>` : `<p class="guide">${stateChip('mitigated', model.application?.coverage.overallPercent === null ? 'All known source files have annotations; selected members are incomplete.' : 'All source files have annotations.')}</p>`}
   `}
   ${codeTables(ctx)}
 </section>`;

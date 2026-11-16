@@ -30,3 +30,6 @@ export type { WorkspaceConfig, WorkspaceRepo, MergedReport, MergeTotals, MergeDi
 export { generateAiBom } from './bom/index.js';
 export { buildReachAttestation, parseObservedReach, parseToolPins } from './attest/index.js';
 export type * from './attest/types.js';
+
+export { collectApplicationView, discoverApplicationManifest, applicationViewCapabilities } from './workspace/application.js';
+export type * from './workspace/application-types.js';

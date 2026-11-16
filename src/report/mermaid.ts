@@ -314,6 +314,7 @@ export function generateMermaid(rawModel: ThreatModel): string {
     }
   }
 
+  if (model.application) lines.push(`%% Application receipt ${JSON.stringify(model.application.receipt).replace(/[\r\n]/g, ' ')}`);
   return lines.join('\n');
 }
 

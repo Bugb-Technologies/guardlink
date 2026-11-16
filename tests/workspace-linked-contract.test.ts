@@ -170,7 +170,9 @@ describe('incomplete and legacy workspace evidence', () => {
     expect(findDanglingRefs(partial.model).some(d => d.code === 'linked-ref' && d.message.includes('not checked'))).toBe(true);
     const checked = await parseProject({ root: join(root, 'orders'), requireSiblings: true, anchors: false, agentConfig: false });
     expect(checked.diagnostics.some(d => d.code === 'workspace-incomplete' && d.level === 'error')).toBe(true);
-    await expect(parseProject({ root, anchors: false, agentConfig: false })).rejects.toThrow('Application incomplete');
+    const app = await parseProject({ root, anchors: false, agentConfig: false });
+    expect(app.model.application?.receipt).toMatchObject({ completeness: 'partial', expectedMemberIds: ['auth', 'orders'] });
+    expect(app.model.assets.length).toBeGreaterThan(0);
     const server = createServer();
     const client = new Client({ name: 'incomplete-workspace', version: '1' });
     const [a, b] = InMemoryTransport.createLinkedPair();
@@ -183,7 +185,9 @@ describe('incomplete and legacy workspace evidence', () => {
     member('auth', '// @control Session_Check (#session-check)\n');
     linkProject({ workspace: 'shop', repoPaths: [auth, join(root, 'orders')] });
     put(join(root, 'orders/src/app.ts'), '// @mitigates #orders against\n');
-    await expect(parseProject({ root, anchors: false, agentConfig: false })).rejects.toThrow('Application incomplete: linked members have parse errors: orders');
+    const invalid = await parseProject({ root, anchors: false, agentConfig: false });
+    expect(invalid.model.application?.receipt.members.find(m => m.id === 'orders')).toMatchObject({ state: 'invalid', reasonCode: 'member-parse-failed' });
+    expect(invalid.model.application?.receipt.completeness).toBe('partial');
   });
 
   it('preserves external sidecar origins and the member coverage denominator', async () => {
@@ -377,8 +381,8 @@ describe('duplicate member checkouts', () => {
         const result = error as { status: number; stderr: string };
         expect(result.status).toBe(1);
         expect(result.stderr).toContain('Duplicate linked member identity "orders"');
-        expect(result.stderr).toContain(orders);
-        expect(result.stderr).toContain(extra);
+        expect(result.stderr).toContain(args[0] === 'parse' ? 'orders' : orders);
+        expect(result.stderr).toContain(args[0] === 'parse' ? 'orders-fix' : extra);
         expect(result.stderr).toMatch(/move.*outside|relink/i);
         expect(result.stderr).not.toMatch(/\n\s+at (?:\w|file:)/);
       }

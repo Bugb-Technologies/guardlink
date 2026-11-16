@@ -5,7 +5,7 @@
  * @flows ProjectRoot -> #parser via collectApplicationView -- "Parse each selected checkout with its own configuration and preserve member evidence"
  * @mitigates #workspace-config against #config-tamper using #config-validation -- "Selection shapes, duplicate ids, containment and symlinks are checked before member data is read; missing and mixed snapshots are explicit partial receipts"
  * @mitigates #parser against #path-traversal using #path-validation -- "Real selected checkout paths must remain under the application root; private absolute paths are not emitted in public receipts"
- * @flows GitRepo -> #workspace-config via readRevision -- "Fixed argv read-only git queries capture branch, commit, base and dirty state"
+ * @flows GitRepo -> #workspace-config via readMemberRevision -- "Fixed argv read-only git queries capture branch, commit, base and dirty state"
  */
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -13,7 +13,7 @@ import { existsSync, readFileSync, realpathSync, lstatSync, readdirSync } from '
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import fg from 'fast-glob';
 import type { ThreatModel, SourceLocation, ParseDiagnostic, AgentConfigBlock } from '../types/index.js';
-import type { ApplicationManifest, ApplicationManifestMember, ApplicationMemberData, ApplicationMemberReceipt, ApplicationModelData, ApplicationReceipt, ApplicationReference, ApplicationRevision, ApplicationView } from './application-types.js';
+import type { ApplicationManifest, ApplicationManifestMember, ApplicationMemberData, ApplicationMemberReceipt, ApplicationModelData, ApplicationRevision, ApplicationView } from './application-types.js';
 import { loadWorkspaceConfig, readVersionControl } from './metadata.js';
 import { combineModels } from './merge.js';
 import { parseProject, DEFAULT_EXCLUDE, DEFAULT_INCLUDE } from '../parser/parse-project.js';
@@ -45,6 +45,7 @@ export function discoverApplicationManifest(root: string, explicit?: string | Ap
     if (!raw || typeof raw !== 'object') throw new Error('Application manifest must be an object');
     const m = raw as ApplicationManifest;
     if (!['guardlink.application-manifest/v1', 'bravos.workspace-consumer/v1'].includes(m.schema) || typeof m.name !== 'string' || !Array.isArray(m.members)) throw new Error('Unsupported or invalid selected application manifest');
+    if (!m.members.length || m.members.some(member => !member || typeof member !== 'object' || typeof (member.id ?? member.name) !== 'string' || typeof (member.relativePath ?? member.path) !== 'string')) throw new Error('Application manifest members require string ids and checkout paths');
     return m;
   }
   if (loadWorkspaceConfig(root)) return null;
@@ -60,6 +61,7 @@ export function discoverApplicationManifest(root: string, explicit?: string | Ap
   } catch { return null; }
   if (!found.length) return null;
   found.sort((a, b) => a.path.localeCompare(b.path));
+  if (new Set(found.map(f => f.config.workspace)).size > 1) throw new Error('Conflicting linked workspace manifests: multiple applications are present. Supply an explicit selected application manifest.');
   const config = found[0].config;
   const members: ApplicationManifestMember[] = [];
   for (const repo of config.repos) {
@@ -73,6 +75,7 @@ export function discoverApplicationManifest(root: string, explicit?: string | Ap
 async function inputFiles(root: string): Promise<Array<[string, string]>> {
   const extra = ['.guardlink/**', '.claude/**', '.agents/**', '.codex/**', '.cursor/**', '.mcp.json', 'AGENTS.md', 'CLAUDE.md', '.gitignore', '.gitattributes', 'package.json', '*lock*', 'requirements*.txt', 'pyproject.toml', 'Cargo.toml', 'go.mod'];
   const files = await fg([...DEFAULT_INCLUDE, ...extra], { cwd: root, dot: true, onlyFiles: true, ignore: [...DEFAULT_EXCLUDE, '.guardlink/graph/**', '.guardlink/model.json', '.guardlink/report.json', '.guardlink/threat-reports/**', '.guardlink/analyses/**'] });
+  files.push(...await fg(['.guardlink/annotations/**/*.[gG][aA][lL]'], { cwd: root, dot: true, onlyFiles: true, ignore: ['**/node_modules/**', '**/.git/**'] }));
   const result: Array<[string, string]> = [];
   for (const file of [...new Set(files)].sort()) {
     try {
@@ -82,17 +85,19 @@ async function inputFiles(root: string): Promise<Array<[string, string]>> {
   }
   return result;
 }
-async function readRevision(root: string, member: ApplicationManifestMember, annotationDigest = 'unknown'): Promise<ApplicationRevision> {
+export async function readMemberRevision(root: string, member: ApplicationManifestMember, annotationDigest = 'unknown'): Promise<ApplicationRevision> {
   const files = await inputFiles(root);
   const top = git(root, ['rev-parse', '--show-toplevel']);
   const isGit = !!top && resolve(top) === resolve(root);
+  if (existsSync(join(root, '.git')) && !isGit) throw new Error('Member git provenance is unreadable; commit, branch and dirty state are unknown.');
   const commit = isGit ? git(root, ['rev-parse', 'HEAD']) : null;
   const branch = isGit ? git(root, ['symbolic-ref', '--quiet', '--short', 'HEAD']) : null;
+  const dirtyState = isGit ? git(root, ['status', '--porcelain', '--untracked-files=normal']) : null;
   const baseRef = isGit && typeof member.baseRef === 'string' ? member.baseRef : null;
   const baseInput = baseRef ?? (typeof member.baseCommit === 'string' ? member.baseCommit : null);
   const baseCommit = isGit && baseInput ? git(root, ['rev-parse', '--verify', '--end-of-options', `${baseInput}^{commit}`]) : null;
   return { vcs: isGit ? 'git' : 'none', commit, branch, detached: isGit ? !branch : null, baseRef, baseCommit,
-    dirty: isGit ? !!git(root, ['status', '--porcelain', '--untracked-files=normal']) : null,
+    dirty: dirtyState === null ? null : !!dirtyState,
     contentDigest: hash(files), annotationDigest,
     configDigest: hash([files.filter(([f]) => f.startsWith('.') || /(?:json|lock|toml|mod|requirements.*txt)$/.test(f)), { baseRef: member.baseRef ?? null, baseCommit: member.baseCommit ?? null }]),
   };
@@ -138,11 +143,11 @@ function prefixConfig(config: AgentConfigBlock, prefix: string): AgentConfigBloc
   return c;
 }
 
-export interface CollectApplicationOptions { root: string; manifest: string | ApplicationManifest; memberId?: string; anchors?: boolean; agentConfig?: boolean; beforeRecheck?: () => void | Promise<void> }
+export interface CollectApplicationOptions { root: string; manifest: string | ApplicationManifest; memberId?: string; anchors?: boolean; agentConfig?: boolean; snapshots?: Array<{ model: ThreatModel; identity: string }>; selectionProbe?: () => ApplicationManifest | null; beforeRecheck?: () => void | Promise<void> }
 export async function collectApplicationView(options: CollectApplicationOptions): Promise<ApplicationView> {
   const requestedRoot = resolve(options.root);
   const root = existsSync(requestedRoot) ? realpathSync(requestedRoot) : requestedRoot;
-  const selectionSnapshot = () => hash(typeof options.manifest === 'string' ? readFileSync(resolve(options.manifest), 'utf8') : options.manifest);
+  const selectionSnapshot = () => hash(options.selectionProbe ? options.selectionProbe() : typeof options.manifest === 'string' ? readFileSync(resolve(options.manifest), 'utf8') : options.manifest);
   const selectionBefore = selectionSnapshot();
   const manifest = structuredClone(discoverApplicationManifest(root, options.manifest)!);
   const generatedAt = new Date().toISOString();
@@ -169,12 +174,31 @@ export async function collectApplicationView(options: CollectApplicationOptions)
     const fail = (state: ApplicationMemberReceipt['state'], reasonCode: string, reason: string) => {
       receipt.state = state; receipt.reasonCode = reasonCode; receipt.reason = reason;
       receipt.components.model = { state: state === 'missing' ? 'missing' : 'failed', reason };
-      const diagnostic: ParseDiagnostic = { level: 'error', code: 'workspace-incomplete', file: `${rel}/.guardlink/workspace.yaml`, line: 1, message: `${id}: ${reason}` };
+      const diagnostic: ParseDiagnostic = { level: 'error', code: reasonCode === 'ambiguous-member' ? 'workspace-config-invalid' : 'workspace-incomplete', file: `${rel}/.guardlink/workspace.yaml`, line: 1, message: `${id}: ${reason}` };
       data.diagnostics.push(diagnostic); diagnostics.push(diagnostic);
     };
-    if (choices.length > 1) { fail('invalid', 'ambiguous-member', `Duplicate selected member identity ${id}: ${choices.map(m => m.relativePath ?? m.path ?? '(no path)').join(', ')}. Select exactly one checkout.`); continue; }
+    if (choices.length > 1) { fail('invalid', 'ambiguous-member', `Duplicate linked member identity "${id}": ${choices.map(m => { const p = m.relativePath ?? m.path; return !p ? '(no path)' : isAbsolute(p) ? posix(relative(manifest.root ? resolve(manifest.root) : root, p)) : p; }).join(', ')}. Keep one checkout, move the other outside this application, or relink distinct services with distinct member names.`); continue; }
     if (!rel || !within(root, path) || paths.has(path)) { fail('invalid', 'member-out-of-root', 'Selected checkout is outside the application root, duplicated, or is the root itself.'); continue; }
     paths.add(path);
+    if (options.snapshots) {
+      const candidates = options.snapshots.filter(s => s.identity === identity);
+      if (candidates.length !== 1 || !candidates[0].model.member_snapshot) { fail(candidates.length ? 'invalid' : 'missing', 'member-snapshot-unavailable', 'Exactly one report with native revision and evidence provenance is required for this selected member.'); continue; }
+      const model = structuredClone(candidates[0].model);
+      const snapshot = model.member_snapshot!;
+      if (snapshot.schema !== 'guardlink.member-snapshot/v1' || snapshot.id !== identity || snapshot.workspace !== manifest.name || !snapshot.revision || !['git', 'none'].includes(snapshot.revision.vcs) || ![snapshot.revision.contentDigest, snapshot.revision.configDigest, snapshot.revision.annotationDigest].every(d => typeof d === 'string') || !snapshot.verification?.summary || !Array.isArray(snapshot.verification.claims) || !snapshot.hypotheses || (snapshot.hypotheses.ledger && !Array.isArray(snapshot.hypotheses.ledger.entries))) {
+        fail('invalid', 'member-snapshot-invalid', 'Report native snapshot is malformed or belongs to a different selected member/application. Regenerate the member report.'); continue;
+      }
+      receipt.revision = snapshot.revision;
+      receipt.components = { model: { state: snapshot.mixed ? 'partial' : 'present', indexedRevision: snapshot.revision }, verification: { state: snapshot.verification.ledger === 'corrupt' ? 'partial' : 'present' }, hypotheses: { state: snapshot.hypotheses.status === 'corrupt' ? 'partial' : 'present' } };
+      if (snapshot.repositoryUri) receipt.repositoryUri = linksFromRemote(snapshot.repositoryUri)?.web;
+      data.coverage = { annotatedFiles: model.annotated_files.length, sourceFiles: model.source_files, percent: model.coverage.coverage_percent, excluded: model.annotation_scope?.excluded ?? [] };
+      data.verification = snapshot.verification; data.hypotheses = snapshot.hypotheses;
+      native.set(id, { model, root: path, verification: snapshot.verification, hypotheses: snapshot.hypotheses, revision: snapshot.revision, member: spec });
+      provenance(model, id); data.generatedIdentities = scopeGenerated(model, id);
+      if (model.agent_config) data.agentConfig = prefixConfig(model.agent_config, rel);
+      if (!options.memberId || options.memberId === id) reports.push({ repo: rel, model, source_path: rel });
+      continue;
+    }
     if (!existsSync(path)) { fail('missing', 'member-missing', `Selected checkout ${rel} is missing.`); continue; }
     try {
       if (!lstatSync(path).isDirectory() || lstatSync(path).isSymbolicLink() || realpathSync(path) !== path || !within(realpathSync(root), realpathSync(path))) { fail('invalid', 'member-symlink', 'Selected checkout must be a real contained directory, not a symlink.'); continue; }
@@ -185,7 +209,7 @@ export async function collectApplicationView(options: CollectApplicationOptions)
         // A selected standalone checkout is valid only when its identity was explicitly supplied.
         if (existsSync(join(path, '.guardlink/workspace.yaml')) || !spec.guardlinkIdentity) { fail('invalid', 'member-manifest-invalid', `Manifest ${rel}/.guardlink/workspace.yaml is unreadable or does not match the selected identity/application.`); continue; }
       }
-      const before = await readRevision(path, spec);
+      const before = await readMemberRevision(path, spec);
       const parsed = await parseProject({ root: path, project: id, anchors: options.anchors, agentConfig: options.agentConfig, checkSiblings: false, application: false });
       data.diagnostics.push(...parsed.diagnostics.map(d => ({ ...d, file: `${rel}/${d.file}` })));
       diagnostics.push(...data.diagnostics);
@@ -198,8 +222,10 @@ export async function collectApplicationView(options: CollectApplicationOptions)
       receipt.revision = before;
       const vcs = before.vcs === 'git' ? readVersionControl(path) : null; if (vcs) receipt.repositoryUri = vcs.repositoryUri;
       receipt.components.model = { state: 'present', indexedRevision: before };
-      receipt.components.hypotheses = { state: hypotheses.status === 'corrupt' ? 'partial' : 'present', ...(hypotheses.error ? { reason: hypotheses.error } : {}) };
-      receipt.components.verification = { state: verification.ledger === 'corrupt' ? 'partial' : 'present' };
+      if (before.vcs === 'git' && (before.commit === null || before.dirty === null)) receipt.components.provenance = { state: 'partial', reason: 'Git commit or dirty state is unavailable; snapshot provenance is incomplete.' };
+      if ((spec.baseRef || spec.baseCommit) && !before.baseCommit) receipt.components.baseline = { state: 'partial', reason: `Requested base ${spec.baseRef ?? spec.baseCommit} cannot be resolved locally; fetch or supply the assessed base commit.` };
+      receipt.components.hypotheses = { state: hypotheses.status === 'corrupt' ? 'partial' : 'present', reason: hypotheses.error ?? `Member ledger is ${hypotheses.status}` };
+      receipt.components.verification = { state: verification.ledger === 'corrupt' ? 'partial' : 'present', reason: `Member ledger is ${verification.ledger}` };
       data.coverage = { annotatedFiles: model.annotated_files.length, sourceFiles: model.source_files, percent: model.coverage.coverage_percent, excluded: model.annotation_scope?.excluded ?? [] };
       data.verification = verification; data.hypotheses = hypotheses;
       native.set(id, { model, root: path, verification, hypotheses, revision: before, member: spec });
@@ -229,12 +255,32 @@ export async function collectApplicationView(options: CollectApplicationOptions)
       if (conflicting) data.conflicts.push({ kind, id, memberIds: [...new Set(declarations.map(d => d.memberId!))], declarations });
     }
   }
-  for (const [memberId, n] of native) {
-    for (const record of relationRecords(n.model)) data.occurrences.push({ id: hash([memberId, record.location.claimKey ?? record.key]), memberId, file: record.location.memberFile ?? record.location.file, line: record.location.line, verb: record.verb, claimKey: record.location.claimKey ?? record.key, location: { ...record.location } });
+  for (const record of relationRecords(combined)) {
+    const memberId = record.location.memberId!;
+    data.occurrences.push({ id: hash([memberId, record.location.claimKey ?? record.key]), memberId, file: record.location.memberFile ?? record.location.file, line: record.location.line, verb: record.verb, claimKey: record.location.claimKey ?? record.key, ...(record.location.origin_file ? { origin: record.location.origin_file } : {}), location: { ...record.location } });
+  }
+  for (const id of new Set(data.definitions.map(d => d.id))) {
+    const kinds = data.definitions.filter(d => d.id === id);
+    if (kinds.length > 1) data.conflicts.push({ kind: 'mixed-definition-kinds', id, memberIds: [...new Set(kinds.flatMap(d => d.declarations.map(l => l.memberId!)))], declarations: kinds.flatMap(d => d.declarations) });
   }
   const definitions = new Map<string, { owners: string[]; ambiguous: boolean }>();
-  for (const d of data.definitions) definitions.set(d.id, { owners: [...new Set(d.declarations.map(s => s.memberId!))], ambiguous: d.conflicting });
+  for (const d of data.definitions) definitions.set(d.id, { owners: [...new Set(d.declarations.map(s => s.memberId!))], ambiguous: d.conflicting || data.conflicts.some(c => c.id === d.id) });
+  if (options.memberId) {
+    for (const [memberId, n] of native) if (memberId !== options.memberId) {
+      for (const rows of [n.model.assets, n.model.threats, n.model.controls, n.model.actors ?? [], n.model.boundaries]) for (const row of rows) if (row.id) {
+        const known = definitions.get(row.id);
+        if (!known) definitions.set(row.id, { owners: [memberId], ambiguous: false });
+        else if (!known.owners.includes(memberId)) known.owners.push(memberId);
+      }
+    }
+  }
   for (const member of details) for (const asset of member.agentConfig?.assets ?? []) definitions.set(asset.id.replace(/^#/, ''), { owners: [member.id], ambiguous: false });
+  const versionsById = new Map<string, Set<string>>();
+  for (const n of native.values()) for (const [kind, rows] of [['asset', n.model.assets], ['threat', n.model.threats], ['control', n.model.controls], ['actor', n.model.actors ?? []], ['boundary', n.model.boundaries]] as const) for (const row of rows) if (row.id) {
+    const signatures = versionsById.get(row.id) ?? new Set<string>();
+    signatures.add(JSON.stringify({ ...row, location: undefined, declarations: undefined, kind })); versionsById.set(row.id, signatures);
+  }
+  for (const [id, versions] of versionsById) if (versions.size > 1 && definitions.has(id)) definitions.get(id)!.ambiguous = true;
   const hasUnknown = active.some(m => m.state !== 'available');
   for (const ref of tagReferences(combined)) {
     const def = definitions.get(ref.tag.slice(1));
@@ -246,6 +292,11 @@ export async function collectApplicationView(options: CollectApplicationOptions)
     const group = flowGroups.get(key) ?? { id: key, source: flow.source, target: flow.target, mechanism: flow.mechanism ?? '', route: flow.route ?? null, declarations: [] };
     group.declarations.push({ memberId: flow.location.memberId!, file: flow.location.memberFile ?? flow.location.file, line: flow.location.line, claimKey: flow.location.claimKey }); flowGroups.set(key, group);
   }
+  for (const group of flowGroups.values()) {
+    group.sourceMemberIds = definitions.get(group.source.replace(/^#/, ''))?.owners ?? [];
+    group.targetMemberIds = definitions.get(group.target.replace(/^#/, ''))?.owners ?? [];
+    group.crossMember = group.sourceMemberIds.length === 1 && group.targetMemberIds.length === 1 && group.sourceMemberIds[0] !== group.targetMemberIds[0];
+  }
   data.flowGroups = [...flowGroups.values()].sort((a, b) => a.id.localeCompare(b.id));
   // Rebind each member's original ledger keys to application occurrences without changing on-disk evidence.
   const combinedRecords = relationRecords(combined);
@@ -253,6 +304,7 @@ export async function collectApplicationView(options: CollectApplicationOptions)
   const hypotheses = emptyHypotheses();
   const verification: VerificationReport = { ledger: 'absent', claims: [], orphans: [], hash_version_mismatch: false, summary: { verified: 0, stale: 0, unverified: 0, orphans: 0, stale_by_verb: {}, demotable_stale: 0 } };
   let anyHypotheses = false;
+  const corruptHypotheses: string[] = [];
   for (const [memberId, n] of native) {
     if (options.memberId && options.memberId !== memberId) continue;
     if (n.verification.ledger !== 'absent') verification.ledger = n.verification.ledger === 'corrupt' ? 'corrupt' : verification.ledger === 'corrupt' ? 'corrupt' : 'present';
@@ -266,23 +318,25 @@ export async function collectApplicationView(options: CollectApplicationOptions)
       if (claim.state === 'stale') { verification.summary.stale_by_verb[claim.verb] = (verification.summary.stale_by_verb[claim.verb] ?? 0) + 1; if (claim.demotable) verification.summary.demotable_stale++; }
     }
     if (n.hypotheses.status === 'present') anyHypotheses = true;
+    if (n.hypotheses.status === 'corrupt') corruptHypotheses.push(memberId);
     for (const entry of n.hypotheses.ledger?.entries ?? []) {
       const rec = byNative.get(`${memberId}:${entry.key}`); if (rec) hypotheses.entries.push({ ...entry, key: rec.key, file: rec.location.file });
     }
   }
   data.verification = verification;
-  data.hypotheses = { status: anyHypotheses ? 'present' : 'absent', ledger: anyHypotheses ? hypotheses : null };
+  data.hypotheses = { status: corruptHypotheses.length ? 'corrupt' : anyHypotheses ? 'present' : 'absent', ledger: anyHypotheses ? hypotheses : null, ...(corruptHypotheses.length ? { error: `Corrupt hypothesis ledger in: ${corruptHypotheses.join(', ')}` } : {}) };
   attachHypotheses(combined, classifyHypotheses(combined, data.hypotheses));
   // Agent configuration inventory is preserved alongside the correctly scoped generated rows.
   const configs = details.flatMap(d => d.agentConfig ? [d.agentConfig] : []);
   if (configs.length) combined.agent_config = { version: 1, agent_config_hash: hash(configs.map(c => c.agent_config_hash)), semantics: Object.assign({}, ...configs.map(c => c.semantics)), files: configs.flatMap(c => c.files), mcp_servers: configs.flatMap(c => c.mcp_servers), hooks: configs.flatMap(c => c.hooks), instruction_files: configs.flatMap(c => c.instruction_files), assets: configs.flatMap(c => c.assets), denies: configs.flatMap(c => c.denies), untrusted_sources: configs.flatMap(c => c.untrusted_sources), unreadable: configs.flatMap(c => c.unreadable), surfaces: configs.flatMap(c => c.surfaces ?? []) };
   await options.beforeRecheck?.();
   const changed: string[] = [];
-  for (const [id, n] of native) {
-    const after = await readRevision(n.root, n.member, n.revision.annotationDigest);
+  for (const [id, n] of options.snapshots ? [] : native) {
+    let after: ApplicationRevision;
+    try { after = await readMemberRevision(n.root, n.member, n.revision.annotationDigest); } catch { changed.push(id); const m = receipts.find(m => m.id === id)!; m.components.model = { state: 'partial', reason: 'Member provenance became unavailable during collection.' }; continue; }
     if (JSON.stringify(revisionInput(after)) !== JSON.stringify(revisionInput(n.revision))) { changed.push(id); const m = receipts.find(m => m.id === id)!; m.components.model.state = 'partial'; m.components.model.reason = 'Member changed during collection; model may contain a mixed snapshot.'; }
   }
-  const incomplete = active.some(m => m.state !== 'available' || Object.values(m.components).some(c => c.state !== 'present')) || data.conflicts.length > 0;
+  const incomplete = active.some(m => m.state !== 'available' || Object.values(m.components).some(c => c.state !== 'present')) || data.conflicts.length > 0 || data.references.some(r => r.state === 'ambiguous');
   data.receipt.completeness = active.every(m => m.state !== 'available') ? 'unavailable' : incomplete ? 'partial' : 'complete';
   data.coverage.overallPercent = incomplete ? null : data.coverage.known.percent;
   let selectionChanged = false;
@@ -295,11 +349,13 @@ export async function collectApplicationView(options: CollectApplicationOptions)
   const observedDigest = hash([data.receipt.scope, data.receipt.tools, manifest.members.map(m => [m.id ?? m.name, m.baseRef ?? null, m.baseCommit ?? null]), receipts.map(m => [m.id, m.guardlinkIdentity, m.service, m.relativePath, m.revision, m.state])]);
   data.receipt.inputDigest = observedDigest;
   data.receipt.observedInputDigest = observedDigest;
-  data.receipt.currency = { state: changed.length ? 'stale' : 'current', reasonCodes: selectionChanged ? ['mixed-selection'] : changed.length ? ['mixed-snapshot'] : [], memberIds: changed };
+  data.receipt.currency = { state: changed.length ? 'stale' : options.snapshots ? 'unknown' : 'current', reasonCodes: selectionChanged ? ['mixed-selection'] : changed.length ? ['mixed-snapshot'] : [], memberIds: changed };
   if (manifest.receipt) {
     if (manifest.receipt.schema !== APPLICATION_RECEIPT_SCHEMA || JSON.stringify([...manifest.receipt.expectedMemberIds].sort()) !== JSON.stringify(expected)) throw new Error('Supplied application receipt does not describe the selected member set');
     data.receipt.inputDigest = manifest.receipt.inputDigest;
-    const mismatch = expected.filter(id => JSON.stringify(manifest.receipt!.revisions[id]) !== JSON.stringify(data.receipt.revisions[id]));
+    const guardlinkDigests = manifest.receipt.tools?.guardlink?.contractVersion === APPLICATION_VIEW_SCHEMA;
+    const comparable = (r: ApplicationRevision | null | undefined) => !r ? null : guardlinkDigests ? r : { vcs: r.vcs, commit: r.commit, branch: r.branch, detached: r.detached, baseRef: r.baseRef, baseCommit: r.baseCommit, dirty: r.dirty };
+    const mismatch = expected.filter(id => JSON.stringify(comparable(manifest.receipt!.revisions[id])) !== JSON.stringify(comparable(data.receipt.revisions[id])));
     if (mismatch.length) { data.receipt.currency = { state: 'stale', reasonCodes: ['input-receipt-mismatch'], memberIds: mismatch }; data.receipt.completeness = data.receipt.completeness === 'unavailable' ? 'unavailable' : 'partial'; data.coverage.overallPercent = null; }
   }
   return { schema: APPLICATION_VIEW_SCHEMA, receipt: data.receipt, model: combined, diagnostics, references: data.references, flowGroups: data.flowGroups };
@@ -313,4 +369,12 @@ export function applicationSourceLink(model: ThreatModel, file: string, line?: n
   const member = matches[0]; if (!member.repositoryUri || !member.revision?.commit) return null;
   const links = linksFromRemote(member.repositoryUri); if (!links) return null;
   return links.file(file.slice(member.relativePath.length + 1), line).replace('/HEAD/', `/${member.revision.commit}/`);
+}
+
+/** Capture evidence from this member only; no inferred application root or sibling ledger. */
+export async function captureMemberSnapshot(root: string, model: ThreatModel, before?: ApplicationRevision): Promise<void> {
+  const config = loadWorkspaceConfig(root, { strict: true });
+  if (!config || model.application) return;
+  const revision = await readMemberRevision(root, {}, computeAnnotationHash(model));
+  model.member_snapshot = { schema: 'guardlink.member-snapshot/v1', id: config.this_repo, workspace: config.workspace, expectedMemberIds: config.repos.map(m => m.name).sort(), revision, verification: classifyClaims(model, readLedger(root)), hypotheses: readHypotheses(root), capturedAt: new Date().toISOString(), mixed: !!before && JSON.stringify(revisionInput(before)) !== JSON.stringify(revisionInput(revision)), ...(revision.vcs === 'git' && readVersionControl(root)?.repositoryUri ? { repositoryUri: readVersionControl(root)!.repositoryUri } : {}) };
 }

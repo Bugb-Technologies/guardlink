@@ -1,3 +1,4 @@
+import { applicationSourceLink } from '../workspace/application.js';
 /**
  * GuardLink Dashboard — the per-file annotation list behind the Code page
  * and its drawer, with a few lines of source context around each annotation.
@@ -104,7 +105,7 @@ export function buildFileAnnotations(model: ThreatModel, root?: string, join: An
       refs: Array.isArray(item.external_refs) ? item.external_refs.filter((r): r is string => typeof r === 'string') : [],
       claimIdx: claim ? claim.idx : null,
       assetIdx: assetRef ? tileOf.get(assetRef.trim().toLowerCase()) ?? null : null,
-      url: join.links ? join.links.file(file, item.location.line) : null,
+      url: model.application ? applicationSourceLink(model, file, item.location.line) : join.links ? join.links.file(file, item.location.line) : null,
     });
   };
 

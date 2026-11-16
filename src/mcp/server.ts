@@ -1,3 +1,4 @@
+import { collectApplicationView, discoverApplicationManifest, applicationViewCapabilities } from '../workspace/application.js';
 /**
  * GuardLink MCP Server — Model Context Protocol integration (§8.2).
  *
@@ -139,11 +140,13 @@ function createModelCache() {
    * agent and the writes land afterwards, outside any tool call.
    */
   async function getModel(root: string): Promise<{ model: ThreatModel; diagnostics: any[] }> {
+    const application = discoverApplicationManifest(root);
+    // Application currency includes git refs and ledger bytes, not only file stat metadata.
     const fingerprint = await fingerprintProject(root);
-    if (cachedModel && cachedRoot === root && cachedFingerprint === fingerprint) {
+    if (!application && cachedModel && cachedRoot === root && cachedFingerprint === fingerprint) {
       return { model: cachedModel, diagnostics: cachedDiagnostics };
     }
-    const result = await parseProject({ root, project: 'unknown' });
+    const result = await parseProject({ root, project: 'unknown', application: true });
     cachedModel = result.model;
     cachedDiagnostics = result.diagnostics;
     cachedRoot = root;
@@ -216,6 +219,11 @@ function registerTool(
   server.tool(name, description, schema, (async (args: any) => {
     const result = await handler(args);
     const root = typeof args?.root === 'string' && args.root ? args.root : cache.resourceRoot().root;
+    if (name === 'guardlink_application_view') {
+      const payload = JSON.parse(result.content[0].text);
+      const envelope = payload.receipt ? { ...buildEnvelope(root, payload.model), application_receipt: payload.receipt } : degradedEnvelope(root, 'Capability probe: no application snapshot was read.');
+      return { ...result, content: [...result.content, envelopeBlock(envelope)] };
+    }
     return { ...result, content: [...result.content, envelopeBlock(await cache.envelopeFor(root))] };
   }) as any);
 }
@@ -286,8 +294,10 @@ export function createServer(): McpServer {
       // The derived reach_analysis block (SPEC §5.5), as `guardlink parse` writes it.
       const model = { ...withReachAnalysis(parsed), config: { security_tests_dir: readSecurityTestsDir(root) } };
 
+      const incomplete = !!model.application && model.application.receipt.completeness !== 'complete';
+      const applicationStatus = incomplete ? { application_status: 'Application incomplete; available member content follows with its partial receipt.' } : {};
       if (compact) {
-        return { content: [{ type: 'text', text: JSON.stringify({ ...JSON.parse(serializeModelCompact(model)), config: model.config }) }] };
+        return { ...(incomplete ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify({ ...JSON.parse(serializeModelCompact(model)), ...applicationStatus, config: model.config }) }] };
       }
 
       // The one non-additive change in this epic: the default payload drops a
@@ -296,7 +306,7 @@ export function createServer(): McpServer {
       // model in it. Model content does not scale with repo size; the file
       // inventory does.
       if (include_unannotated) {
-        return { content: [{ type: 'text', text: JSON.stringify(model, null, 2) }] };
+        return { ...(incomplete ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify({ ...model, ...applicationStatus }, null, 2) }] };
       }
       const { unannotated_files, annotation_scope, ...rest } = model;
       // Say the key was dropped. Absent-because-omitted and absent-because-empty
@@ -306,6 +316,7 @@ export function createServer(): McpServer {
       // goes with it.
       const payload = {
         ...rest,
+        ...applicationStatus,
         unannotated_files_omitted: {
           count: unannotated_files.length,
           reason: 'Omitted by default — call guardlink_unannotated, or pass include_unannotated: true.',
@@ -317,7 +328,7 @@ export function createServer(): McpServer {
           },
         } : {}),
       };
-      return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] };
+      return { ...(incomplete ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] };
     },
   );
 
@@ -999,7 +1010,7 @@ export function createServer(): McpServer {
       }
       const { writeFile } = await import('node:fs/promises');
       const { resolve } = await import('node:path');
-      const analyses = loadThreatReportsForDashboard(root);
+      const analyses = loadThreatReportsForDashboard(root, model);
       const html = generateDashboardHTML(model, root, analyses);
       await writeFile(resolve(root, output), html);
       // `.html` is in the parser's DEFAULT_INCLUDE, so the file just written
@@ -1482,6 +1493,19 @@ export function createServer(): McpServer {
     },
   );
 
+  /**
+   * @agents #mcp-agent to guardlink_application_view on #workspace-config -- "Reads selected member checkouts and returns a provenance-bound semantic application snapshot; never builds or executes member code"
+   */
+  registerTool(server, cache, 'guardlink_application_view', 'Read a selected application semantic view with member evidence, references, flow declarations and a shared receipt. Missing members remain explicit partial results.', {
+    root: z.string().default('.'), manifest: z.string().optional(), member: z.string().optional(), capabilities: z.boolean().default(false),
+  }, async ({ root, manifest, member, capabilities }) => {
+    if (capabilities) return { content: [{ type: 'text', text: JSON.stringify(applicationViewCapabilities()) }] };
+    const selected = discoverApplicationManifest(root, manifest);
+    if (!selected) throw new Error('No selected application manifest; supply manifest or link member checkouts.');
+    const view = await collectApplicationView({ root, manifest: manifest ?? selected, memberId: member, ...(!manifest ? { selectionProbe: () => discoverApplicationManifest(root) } : {}) });
+    return { content: [{ type: 'text', text: JSON.stringify(view) }] };
+  });
+
   // ── Tool: guardlink_workspace_info ──
   /**
    * @agents #mcp-agent to guardlink_workspace_info on #workspace-config -- "Reads the workspace configuration and flat sibling ids"
@@ -1497,6 +1521,11 @@ export function createServer(): McpServer {
       const config = loadWorkspaceConfig(root, { strict: true });
 
       if (!config) {
+        const selected = discoverApplicationManifest(root);
+        if (selected) {
+          const view = await collectApplicationView({ root, manifest: selected, selectionProbe: () => discoverApplicationManifest(root) });
+          return { content: [{ type: 'text', text: JSON.stringify({ workspace: selected.name, this_repo: null, id_convention: 'flat-globally-unique', receipt: view.receipt, members: view.receipt.members, references: view.references }) }] };
+        }
         return {
           content: [{ type: 'text', text: JSON.stringify({
             workspace: null,
