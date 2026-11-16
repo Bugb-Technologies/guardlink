@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { delimiter, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { parseProject } from '../src/parser/index.js';
 import { readAgentCompletion } from '../src/agents/translate-completion.js';
 import { runTranslateAgent, translateHeadless } from '../src/agents/translate-headless.js';
@@ -99,12 +100,32 @@ function executable(root: string, name: string, body: string) {
 describe('author process scenarios', () => {
   it('times out even when the child ignores graceful termination', async () => {
     const root = directory();
-    executable(root, 'claude', `process.on('SIGTERM',()=>fs.writeFileSync(${JSON.stringify(join(root,'ignored-term'))},'ignored'));setTimeout(()=>{console.log(${JSON.stringify(json(claude()))});process.exit(0)},10000);`);
-    const result = await runTranslateAgent('claude', 'Author', root, root, { timeoutMs: 1000 });
-    expect(result.timedOut).toBe(true);
-    if (process.platform !== 'win32') expect(existsSync(join(root, 'ignored-term'))).toBe(true);
-    expect(result.error).toContain('timed out');
-  });
+    const ready = join(root, 'ready'), ignored = join(root, 'ignored-term');
+    executable(root, 'claude', `process.on('SIGTERM',()=>fs.writeFileSync(${JSON.stringify(ignored)},'ignored'));fs.writeFileSync(${JSON.stringify(ready)},'ready');setInterval(()=>{},1000);`);
+    // Advance only the parent's deadline after the real child installs its handler.
+    // Real I/O polling leaves child startup independent of the simulated clock.
+    const signal = AbortSignal.timeout(15000);
+    const waitForFile = async (file: string) => {
+      while (!existsSync(file)) await delay(10, undefined, { signal });
+    };
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const run = runTranslateAgent('claude', 'Author', root, root, { timeoutMs: 1000 });
+    try {
+      await waitForFile(ready);
+      await vi.advanceTimersByTimeAsync(1000);
+      if (process.platform !== 'win32') await waitForFile(ignored);
+      await vi.advanceTimersByTimeAsync(1000);
+      const result = await run;
+      expect(result.timedOut).toBe(true);
+      expect(result.error).toContain('timed out');
+      if (process.platform !== 'win32') expect(result.error).toContain('Agent output did not close after termination');
+    } finally {
+      // Also terminate the fixture if readiness or an assertion fails.
+      await vi.runAllTimersAsync();
+      await run;
+      vi.useRealTimers();
+    }
+  }, 20000);
   it('rejects a killed process even after a valid terminal was written', async () => {
     const root = directory();
     executable(root, 'claude', `process.stdout.write(${JSON.stringify(json(claude({ safety_stops: 2 })))},()=>process.kill(process.pid,'SIGTERM'));`);
