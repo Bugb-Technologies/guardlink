@@ -62,6 +62,35 @@ export interface ExposureRow {
   refuted: boolean;
   /** The tested state when the ledger was attached, else null. */
   hypothesis: ExposureHypothesis | null;
+  /** The ledger state a pre-PR gate blocks on, which no declared control or acceptance closes (see `gateState`). */
+  gate: GateState;
+  /** Still open work: gate-blocked, or neither mitigated, accepted nor refuted. */
+  open: boolean;
+}
+
+/**
+ * The hypothesis-ledger state a pre-PR gate blocks on, or null.
+ *
+ * `retest`: the claim was confirmed exploitable and the code beneath it has
+ * changed since; nothing has refuted the exploit yet. `confirmed`: a ledger
+ * confirmation that still holds. Neither is closed by a `@mitigates` or an
+ * `@accepts` written beside it: a declared control is not evidence that a
+ * confirmed exploit is gone, and a gate reading the ledger stays blocked until a
+ * retest refutes it. A ledger confirmation on a pair that also carries a source
+ * `@confirmed` is left to that `@confirmed`, which is counted on its own.
+ */
+export type GateState = 'retest' | 'confirmed' | null;
+
+export function gateState(hypothesis: ExposureHypothesis | null | undefined, sourceConfirmed: boolean): GateState {
+  if (hypothesis?.state === 'retest') return 'retest';
+  // A source @confirmed alone also stamps 'confirmed' onto its @exposes, with no ledger entry behind it.
+  if (hypothesis?.state === 'confirmed' && hypothesis.at !== null && !sourceConfirmed) return 'confirmed';
+  return null;
+}
+
+/** The (asset, threat) pairs a source `@confirmed` names, as the hypothesis classifier joins them. */
+export function sourceConfirmedPairs(model: ThreatModel): Set<string> {
+  return new Set((model.confirmed ?? []).map(r => `${r.asset}\u0000${r.threat}`));
 }
 
 export interface ConfirmedRow {
@@ -158,8 +187,13 @@ export function computeExposures(model: ThreatModel): ExposureRow[] {
   // D57: this normalised `#` but still keyed on the pair alone, so the dashboard
   // exposure table showed a same-file-different-symbol exposure as mitigated.
   const coverage = buildCoverageIndex(model);
+  const confirmedPairs = sourceConfirmedPairs(model);
 
   return model.exposures.map(e => {
+    const mitigated = coverage.isMitigated(e);
+    const accepted = coverage.isAccepted(e);
+    const refuted = e.hypothesis?.state === 'refuted';
+    const gate = gateState(e.hypothesis, confirmedPairs.has(`${e.asset}\u0000${e.threat}`));
     return {
       asset: e.asset,
       threat: e.threat,
@@ -167,10 +201,12 @@ export function computeExposures(model: ThreatModel): ExposureRow[] {
       description: e.description || '',
       file: e.location.file,
       line: e.location.line,
-      mitigated: coverage.isMitigated(e),
-      accepted: coverage.isAccepted(e),
-      refuted: e.hypothesis?.state === 'refuted',
+      mitigated,
+      accepted,
+      refuted,
       hypothesis: e.hypothesis ?? null,
+      gate,
+      open: gate !== null || (!mitigated && !accepted && !refuted),
     };
   });
 }
@@ -469,17 +505,32 @@ function verificationActions(verification: VerificationReport | null, scope: str
 export function computeActions(input: ActionInput): DashboardAction[] {
   const { model, exposures, confirmed, verification, attribution, scope } = input;
   const out: DashboardAction[] = [];
+  const ledgerConfirmed = exposures.filter(e => e.gate === 'confirmed').length;
+  const proven = confirmed.length + ledgerConfirmed;
 
-  if (confirmed.length > 0) {
+  if (proven > 0) {
     out.push({
-      id: 'confirmed', level: 'critical', count: confirmed.length,
-      title: `${confirmed.length} confirmed exploitable ${plural(confirmed.length, 'finding')}`,
+      id: 'confirmed', level: 'critical', count: proven,
+      title: `${proven} confirmed exploitable ${plural(proven, 'finding')}`,
       detail: 'Verified by test, scan or reproduction — not theoretical. Fix, or accept with explicit security sign-off, before anything else.',
       href: '#exposures?status=confirmed',
     });
   }
 
-  const open = exposures.filter(e => !e.mitigated && !e.accepted && !e.refuted);
+  const retest = exposures.filter(e => e.gate === 'retest');
+  if (retest.length > 0) {
+    const crit = retest.filter(e => sevKey(e.severity) === 'critical').length;
+    out.push({
+      id: 'retest', level: crit > 0 ? 'critical' : 'high', count: retest.length,
+      title: `${retest.length} confirmed ${plural(retest.length, 'finding needs', 'findings need')} a retest`,
+      detail: `${retest.length === 1 ? 'It was' : 'They were'} confirmed exploitable, then the code beneath ${retest.length === 1 ? 'it' : 'them'} changed. A declared control is not evidence the exploit is gone: re-run the test that confirmed ${retest.length === 1 ? 'it' : 'each'} and record the outcome. Until a retest refutes ${retest.length === 1 ? 'it' : 'them'}, ${retest.length === 1 ? 'it stays' : 'they stay'} open and a pre-PR gate reading the ledger stays blocked.`,
+      href: '#exposures?q=retest',
+      command: 'guardlink hypothesis next .',
+    });
+  }
+
+  // Gate-blocked rows have their own actions above; "add a @mitigates" is the wrong advice for them.
+  const open = exposures.filter(e => e.open && !e.gate);
   const severe = open.filter(e => sevKey(e.severity) === 'critical' || sevKey(e.severity) === 'high');
   if (severe.length > 0) {
     const crit = severe.filter(e => sevKey(e.severity) === 'critical').length;

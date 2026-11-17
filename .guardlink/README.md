@@ -10,8 +10,8 @@ decisions that are not visible there, such as which risks a human has accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 1166 annotations · 21 assets · 16 threats · 14 controls · 169 exposures · 252 flows
-Content hash: `sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1` — identical hash means identical hashed annotation content, not unchanged code, anchors or agent configuration.
+Current model: 1167 annotations · 21 assets · 16 threats · 14 controls · 169 exposures · 252 flows
+Content hash: `sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915` — identical hash means identical hashed annotation content, not unchanged code, anchors or agent configuration.
 
 ---
 

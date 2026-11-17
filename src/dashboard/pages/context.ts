@@ -24,6 +24,7 @@ import { linksFromRemote, type RepoLinks } from '../links.js';
 import { buildAssetIndex } from '../analytics.js';
 import type { ChangeSummary, FileRisk } from '../analytics.js';
 import type { DashboardStats, SeverityBreakdown, ExposureRow, ConfirmedRow, AssetHeatmapEntry, AttributionData, DashboardAction, TicketRow } from '../data.js';
+import { gateState, sourceConfirmedPairs } from '../data.js';
 import type { FileAnnotationGroup } from '../annotations.js';
 
 export type ClaimStatus = 'open' | 'mitigated' | 'accepted' | 'confirmed' | 'control' | 'refuted';
@@ -161,14 +162,19 @@ export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger:
     return member?.repositoryUri ? linksFromRemote(member.repositoryUri) : null;
   };
   const push = (c: Omit<ClaimView, 'idx' | 'search'>): void => {
-    const search = [c.verb, c.status, c.asset, c.threat, c.severity, c.description, c.control ?? '', c.file, c.state ?? '', c.change ?? '', ...c.owners, ...c.handles, ...c.who, ...c.refs].join(' ').toLowerCase();
+    const search = [c.verb, c.status, c.hypothesis?.state ?? '', c.asset, c.threat, c.severity, c.description, c.control ?? '', c.file, c.state ?? '', c.change ?? '', ...c.owners, ...c.handles, ...c.who, ...c.refs].join(' ').toLowerCase();
     const occurrence = model.application?.occurrences.find(o => o.location.file === c.file && o.line === c.line && o.verb === c.verb);
     claims.push({ ...c, ...(occurrence ? { memberId: occurrence.memberId, nativeClaimKey: occurrence.claimKey } : {}), idx: claims.length, search });
   };
 
+  const confirmedPairs = sourceConfirmedPairs(model);
   for (const e of model.exposures) {
-    // Tested and not exploitable outranks 'open': the ledger holds the evidence. It never outranks a control or an acceptance.
-    const status: ClaimStatus = coverage.isMitigated(e) ? 'mitigated' : coverage.isAccepted(e) ? 'accepted' : e.hypothesis?.state === 'refuted' ? 'refuted' : 'open';
+    // A claim the ledger holds confirmed, or due a retest, is open work whatever control or acceptance is declared
+    // beside it: a pre-PR gate reading the ledger blocks on it. Otherwise tested and not exploitable outranks
+    // 'open': the ledger holds the evidence. It never outranks a control or an acceptance.
+    const gate = gateState(e.hypothesis, confirmedPairs.has(`${e.asset}\u0000${e.threat}`));
+    const status: ClaimStatus = gate === 'confirmed' ? 'confirmed' : gate === 'retest' ? 'open'
+      : coverage.isMitigated(e) ? 'mitigated' : coverage.isAccepted(e) ? 'accepted' : e.hypothesis?.state === 'refuted' ? 'refuted' : 'open';
     const b = e.blame;
     push({
       verb: 'exposes', status,
@@ -179,7 +185,9 @@ export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger:
       // comes from an @accepts comment whose signer is free text nobody
       // verified. A reader who cannot tell them apart reads the weaker one as
       // the stronger.
-      statusLabel: status === 'open' ? 'Open — no mitigation'
+      statusLabel: gate === 'confirmed' ? 'Confirmed exploitable (hypothesis ledger); a declared control does not close it until a retest refutes it'
+        : gate === 'retest' ? 'Open — retest due: confirmed exploitable, then the code changed; not yet re-tested'
+        : status === 'open' ? 'Open — no mitigation'
         : status === 'mitigated' ? 'Mitigated'
         : status === 'refuted' ? 'Refuted — tested, not exploitable (evidence in the hypothesis ledger)'
         : 'Accepted (@accepts in code)',

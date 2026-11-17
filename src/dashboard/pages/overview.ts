@@ -145,7 +145,7 @@ export function renderOverviewPage(ctx: PageContext, variants: OverviewVariant[]
   const claimIdx = new Map(ctx.claims.filter(c => c.verb === 'exposes').map(c => [`${c.file}:${c.line}:${c.asset}:${c.threat}`, c.idx]));
   const live = actions.filter(a => a.id !== 'none');
   // The marker is warm only when the action is about an open threat claim.
-  const warm = new Set(['confirmed', 'open-severe']);
+  const warm = new Set(['confirmed', 'retest', 'open-severe']);
 
   return `
 <section id="sec-overview" class="section-content active" aria-label="Overview">

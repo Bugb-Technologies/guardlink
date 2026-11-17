@@ -1,12 +1,12 @@
 {
   "provenance": {
-    "annotation_hash": "sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1",
+    "annotation_hash": "sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915",
     "generator": "guardlink@2.6.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
   "source_files": 198,
-  "annotations_parsed": 1166,
+  "annotations_parsed": 1167,
   "annotated_files": [
     ".guardlink/definitions.ts",
     "src/agentconfig/bundle.ts",
@@ -2679,7 +2679,7 @@
       "description": "callers pass join(root, ...) constrained paths",
       "location": {
         "file": "src/init/index.ts",
-        "line": 690
+        "line": 722
       }
     },
     {
@@ -4630,7 +4630,7 @@
       "description": "Creates directories for agent-file writes",
       "location": {
         "file": "src/init/index.ts",
-        "line": 689
+        "line": 721
       }
     },
     {
@@ -6646,7 +6646,7 @@
       "description": "@ticket rows and each pair's coverage state for the Tickets page",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 262
+        "line": 298
       }
     },
     {
@@ -6657,7 +6657,7 @@
       "description": "Claim states for the badges and the stale-claims action",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 618
+        "line": 669
       }
     },
     {
@@ -9144,7 +9144,7 @@
       "description": "Author identities from git, already in the configured identity mode",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 334
+        "line": 370
       }
     },
     {
@@ -10278,28 +10278,28 @@
       "description": "Stats mirror the model's own scope: on a --feature model these are the feature's numbers, and the dashboard suppresses the ones that only mean something project-wide",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 100
+        "line": 129
       }
     },
     {
       "description": "Pure projection of record.blame; the summariser is shared with the CLI and the report so every surface agrees on the numbers",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 335
+        "line": 371
       }
     },
     {
       "description": "Every item points somewhere: a hash route into the filtered view, a guardlink command, or both. Application verification actions use each selected member report and ledger path, never a cloned aggregate count",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 467
+        "line": 503
       }
     },
     {
       "description": "Reads .guardlink/verified.json once; the classification itself is the parser's, not re-derived here",
       "location": {
         "file": "src/dashboard/data.ts",
-        "line": 619
+        "line": 670
       }
     },
     {
@@ -10734,6 +10734,13 @@
       "location": {
         "file": "src/init/detect.ts",
         "line": 8
+      }
+    },
+    {
+      "description": "Copies only text already inside this file's own GuardLink block, after the footer, back into the same file; it reads no other file and adds no text of its own",
+      "location": {
+        "file": "src/init/index.ts",
+        "line": 669
       }
     },
     {
@@ -11655,7 +11662,7 @@
     }
   ],
   "coverage": {
-    "annotation_count": 1166,
+    "annotation_count": 1167,
     "coverage_percent": 92
   },
   "annotation_scope": {
@@ -11980,7 +11987,7 @@
           "line": 1,
           "stamp": "sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": true
+          "current": false
         },
         "hidden_unicode": []
       },
@@ -11996,7 +12003,7 @@
           "line": 7,
           "stamp": "sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": true
+          "current": false
         },
         "hidden_unicode": []
       },
@@ -12013,7 +12020,7 @@
           "line": 3,
           "stamp": "sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": true
+          "current": false
         },
         "hidden_unicode": []
       },
@@ -12030,7 +12037,7 @@
           "line": 3,
           "stamp": "sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": true
+          "current": false
         },
         "hidden_unicode": []
       },
@@ -12046,7 +12053,7 @@
           "line": 1,
           "stamp": "sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": true
+          "current": false
         },
         "hidden_unicode": []
       },
@@ -12065,7 +12072,7 @@
           "line": 3,
           "stamp": "sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": true
+          "current": false
         },
         "hidden_unicode": []
       },
@@ -12082,7 +12089,7 @@
           "line": 3,
           "stamp": "sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": true
+          "current": false
         },
         "hidden_unicode": []
       },

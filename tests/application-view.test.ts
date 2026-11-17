@@ -181,6 +181,21 @@ describe('application semantic view contract', () => {
     expect(next.receipt.currency?.state).toBe('current');
   });
 
+  it('counts a member claim due a retest as open work on the application dashboard, though a sibling control covers it', async () => {
+    const { api, manifest } = scaffold();
+    const parsed = (await parseProject({ root: api, application: false, checkSiblings: false })).model;
+    recordOutcome(api, parsed, 'app.ts:4', 'confirmed', { evidence: 'GET /items?id=1 OR 1=1 returned HTTP 200 and every row (synthetic fixture)', by: 'human:fixture', at: '2026-01-01T00:00:00Z' });
+    // The fix lands in the member: the code beneath the confirmed claim changes.
+    put(join(api, 'app.ts'), readFileSync(join(api, 'app.ts'), 'utf8') + 'export const query = (id: string) => db.prepare("select 1 where id = ?").get(id);\n');
+    const view = await collectApplicationView({ root, manifest });
+    expect(view.model.exposures[0].hypothesis?.state).toBe('retest');
+    const html = generateDashboardHTML(view.model, root);
+    expect(html).toMatch(/data-stat="headline"><span class="num">1<\/span> of <span class="num">1<\/span> exposure is open/);
+    expect(html).not.toMatch(/<span class="grade g-a"/);
+    expect(html).toContain('1 confirmed finding needs a retest');
+    expect(html).not.toContain('Every exposure is mitigated or accepted');
+  });
+
   it('preserves native verification and refutation evidence without a root ledger', async () => {
     const { api, manifest } = scaffold();
     const parsed = (await parseProject({ root: api, application: false, checkSiblings: false })).model;

@@ -128,11 +128,12 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   const ledgerRead = root || model.application ? computeLedgerStates(model, root) : null;
   const ledger = ledgerRead && ledgerRead.report.ledger !== 'absent' ? ledgerRead : null;
   const featureNames = listFeatures(model);
-  const unmitigated = exposures.filter(e => !e.mitigated && !e.accepted && !e.refuted);
-  const mitigatedCount = exposures.filter(e => e.mitigated).length;
+  // Open includes a claim the ledger still holds confirmed or due a retest, whatever control is declared beside it.
+  const unmitigated = exposures.filter(e => e.open);
+  const mitigatedCount = exposures.filter(e => e.mitigated && !e.gate).length;
   const mitigationCoveragePercent = exposures.length > 0 ? Math.round((mitigatedCount / exposures.length) * 100) : 0;
   // The grade counts what is still open: a mitigated critical is not a critical risk.
-  const risk = computeRiskGrade(computeSeverityOf(unmitigated), unmitigated.length, exposures.length, confirmed.length);
+  const risk = computeRiskGrade(computeSeverityOf(unmitigated), unmitigated.length, exposures.length, confirmed.length + exposures.filter(e => e.gate === 'confirmed').length);
   // Files actually carrying one of the scoped @feature tags. `annotated_files`
   // is not the same thing: definitions the feature references live in
   // `.guardlink/definitions.*`, which carries no tag.

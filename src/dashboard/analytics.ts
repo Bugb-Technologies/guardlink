@@ -46,6 +46,8 @@ export interface ClaimLike {
   handles: string[];
   /** 'new' when the claim was added since the --since ref. */
   change: 'new' | null;
+  /** The hypothesis-ledger state, when a ledger was attached. */
+  hypothesis?: { state: string } | null;
   blame: { introduced: { date: string; author: string; co: string[]; ai: string[] } | null } | null;
 }
 
@@ -278,7 +280,17 @@ export function computeChanges(since: SinceInput, claims: ClaimLike[]): ChangeSu
     return { asset: e.asset, threat: e.threat, severity: e.severity || 'unset', file: e.location.file, line: e.location.line, open: cur ? isOpen(cur) : false };
   };
   const newExposures = since.diff.exposures.filter(c => c.kind === 'added').map(c => toChanged(c.item, 'exposes'));
-  const resolved = since.diff.resolvedExposures.map(e => ({ ...toChanged(e, 'exposes'), open: false }));
+  // An exposure the diff reads as resolved (a @mitigates was added) is not resolved while the ledger keeps it open:
+  // confirmed and not yet re-tested.
+  const resolved = since.diff.resolvedExposures.map(e => toChanged(e, 'exposes')).filter(e => !e.open).map(e => ({ ...e, open: false }));
+  const addedConfirmed = since.diff.confirmed.filter(c => c.kind === 'added');
+  const confirmedPair = new Set(addedConfirmed.map(c => `${c.item.asset}\u0000${c.item.threat}`));
+  // A new exposure the ledger holds confirmed, or confirmed and now due a retest, was proven exploitable since the
+  // ref too, though no @confirmed line was written; one whose pair gained a @confirmed is counted by that line.
+  const ledgerConfirmed = since.diff.exposures.filter(c => c.kind === 'added').filter(c => {
+    const cur = now.get(claimKey('exposes', c.item.location.file, c.item.location.line));
+    return cur && !confirmedPair.has(`${c.item.asset}\u0000${c.item.threat}`) && (cur.status === 'confirmed' || cur.hypothesis?.state === 'retest');
+  }).length;
   const changed = new Set(since.changedFiles);
   const wentStale = claims.filter(c => c.state === 'stale' && changed.has(c.file))
     .map(c => ({ asset: c.asset, threat: c.threat, severity: c.severity, file: c.file, line: c.line, open: isOpen(c) }));
@@ -290,7 +302,7 @@ export function computeChanges(since: SinceInput, claims: ClaimLike[]): ChangeSu
     newOpen: newExposures.filter(e => e.open).length,
     resolved,
     removed: since.diff.exposures.filter(c => c.kind === 'removed').length,
-    newConfirmed: since.diff.confirmed.filter(c => c.kind === 'added').length,
+    newConfirmed: addedConfirmed.length + ledgerConfirmed,
     newMitigations: since.diff.mitigations.filter(c => c.kind === 'added').length,
     wentStale,
     riskDelta: since.diff.summary.riskDelta,
