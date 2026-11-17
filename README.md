@@ -97,7 +97,7 @@ verified by running it, which is why they are not duplicated here.
 | Wire up the MCP server | <https://docs.bugb.io/guardlink/guides/wire-up-the-mcp-server/> |
 | Review and accept risk | <https://docs.bugb.io/guardlink/guides/review-and-accept-risk/> |
 | Link repositories into a workspace | <https://docs.bugb.io/guardlink/guides/link-repositories-into-a-workspace/> |
-| View linked repositories as one application (`guardlink application-view`) | [docs/APPLICATION_VIEW.md](docs/APPLICATION_VIEW.md) |
+| View selected repositories as one application (`guardlink application-view --manifest`) | [docs/APPLICATION_VIEW.md](docs/APPLICATION_VIEW.md) |
 | Use GuardLink as a library | <https://docs.bugb.io/guardlink/guides/use-guardlink-as-a-library/> |
 | Every GAL verb | <https://docs.bugb.io/guardlink/reference/gal/> |
 | Every command and flag | <https://docs.bugb.io/guardlink/reference/cli/> |
