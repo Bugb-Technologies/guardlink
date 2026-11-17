@@ -17,7 +17,7 @@
 import { captureMemberSnapshot, readMemberRevision, collectApplicationView, discoverApplicationManifest, APPLICATION_MANIFEST_ENV } from '../workspace/application.js';
 import type { ApplicationManifest } from '../workspace/application-types.js';
 import { readSecurityTestsDir } from './security-tests.js';
-import { localWorkspaceMembers, workspaceContainer } from '../workspace/discovery.js';
+import { isGuardLinkRepository, localWorkspaceMembers, unreadableChildManifests, workspaceContainer } from '../workspace/discovery.js';
 import { WorkspaceConfigError } from '../workspace/metadata.js';
 import { combineModels, buildTagRegistry } from '../workspace/merge.js';
 import { relationRecords, tagReferences, definitionIds } from './claim-key.js';
@@ -299,21 +299,43 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     return { model: view.model, diagnostics: [...view.diagnostics, ...(options.requireSiblings ? view.references.filter(r => r.state !== 'resolved').map(r => ({ level: 'error' as const, code: 'dangling-ref' as const, file: `${view.receipt.members.find(m => m.id === r.memberId)?.relativePath ?? r.memberId}/${r.file}`, line: r.line, message: `Workspace reference ${r.tag} is ${r.state} in the selected member set.` })) : [])], config };
   }
 
-  if (options.application !== false) {
-    const manifest = discoverApplicationManifest(root);
+  // A manifest that cannot be decoded is reported, never a reason to answer with an empty model:
+  // the root is then parsed as the repository it is, so diff, lint and ci still count what it holds.
+  const workspaceDiagnostics: ParseDiagnostic[] = [];
+  // A container of linked checkouts is inferred even when application selection is off (as before).
+  let inferContainer = !isGuardLinkRepository(root);
+  if (!inferContainer) {
+    try { loadWorkspaceConfig(root, { strict: true }); }
+    catch (error) {
+      if (!(error instanceof WorkspaceConfigError)) throw error;
+      workspaceDiagnostics.push(workspaceConfigDiagnostic(error, root));
+    }
+    // Child manifests do not select anything here; one that cannot be read is still named.
+    for (const error of unreadableChildManifests(root)) {
+      const diagnostic = workspaceConfigDiagnostic(error, root, 'warning');
+      workspaceDiagnostics.push({ ...diagnostic, message: `${diagnostic.message} (not used: this root is a GuardLink repository, so a linked child folder selects nothing)` });
+    }
+  }
+  if (inferContainer && options.application !== false) {
+    let manifest: ApplicationManifest | null = null;
+    try { manifest = discoverApplicationManifest(root); }
+    catch (error) {
+      if (!(error instanceof WorkspaceConfigError)) throw error;
+      workspaceDiagnostics.push(workspaceConfigDiagnostic(error, root));
+      inferContainer = false;
+    }
     if (manifest) {
       const view = await collectApplicationView({ root, manifest, anchors: options.anchors, agentConfig: options.agentConfig, selectionProbe: () => discoverApplicationManifest(root) });
       return { model: view.model, diagnostics: [...view.diagnostics, ...(options.requireSiblings ? view.references.filter(r => r.state !== 'resolved').map(r => ({ level: 'error' as const, code: 'dangling-ref' as const, file: `${view.receipt.members.find(m => m.id === r.memberId)?.relativePath ?? r.memberId}/${r.file}`, line: r.line, message: `Workspace reference ${r.tag} is ${r.state} in the selected member set.` })) : [])], config };
     }
   }
-  let container: ReturnType<typeof workspaceContainer>;
-  try { container = workspaceContainer(root); }
-  catch (error) {
-    if (!(error instanceof WorkspaceConfigError)) throw error;
-    return {
-      model: assembleModel([], 0, project, [], []),
-      diagnostics: [workspaceConfigDiagnostic(error, root)], config,
-    };
+  let container: ReturnType<typeof workspaceContainer> = null;
+  if (inferContainer) {
+    try { container = workspaceContainer(root); }
+    catch (error) {
+      if (!(error instanceof WorkspaceConfigError)) throw error;
+      workspaceDiagnostics.push(workspaceConfigDiagnostic(error, root));
+    }
   }
   if (container) {
     if (container.missing.length) {
@@ -350,7 +372,8 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     return { model, diagnostics, config };
   }
 
-  const memberBefore = options.memberSnapshot && loadWorkspaceConfig(root) ? await readMemberRevision(root, {}) : undefined;
+  const rootManifestValid = !workspaceDiagnostics.some(d => d.level === 'error' && d.file === '.guardlink/workspace.yaml');
+  const memberBefore = options.memberSnapshot && rootManifestValid && loadWorkspaceConfig(root) ? await readMemberRevision(root, {}) : undefined;
 
   // Discover files (dot: true to include .guardlink/ definitions)
   // @comment -- "scanIgnore adds one ignore per nested checkout found under root (a directory holding a .git FILE: a linked worktree or a submodule), so another checkout's source and definitions are never read as this repository's. The same call bounds clear, the fingerprint and init's scope, so the four walks keep one scan set"
@@ -523,12 +546,13 @@ export async function parseProject(options: ParseProjectOptions): Promise<{
     model.reach_attestation = buildReachAttestation(model, observedState.observed, observedState.pins);
   }
 
+  allDiagnostics.unshift(...workspaceDiagnostics);
   const disabled = readDisabledDiagnostics(root);
   const diagnostics = disabled.size === 0
     ? allDiagnostics
     : allDiagnostics.filter(d => !(d.level === 'warning' && d.code && disabled.has(d.code)));
 
-  if (options.memberSnapshot) await captureMemberSnapshot(root, model, memberBefore);
+  if (options.memberSnapshot && rootManifestValid) await captureMemberSnapshot(root, model, memberBefore);
   return { model, diagnostics, config };
 }
 

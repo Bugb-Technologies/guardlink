@@ -4,25 +4,78 @@
  *
  * @flows ProjectRoot -> #workspace-config via localWorkspaceMembers -- "Read immediate child manifests; never follow directory symlinks or execute member code"
  * @mitigates #workspace-config against #config-tamper using #config-validation -- "Only members named in the selected manifest and declaring the same workspace are selected; conflicting manifests fail explicitly; duplicate identities report every checkout path and how to select one"
+ * @mitigates #parser against #vacuous-pass using #fail-closed -- "A root with its own .guardlink/config.json, definitions or workspace.yaml is a repository and is never replaced by an application inferred from its child folders, so its own exposures stay in validate, lint, diff, sarif and ci; child discovery reads only folders the scan set would read"
  */
-import { readdirSync, type Dirent } from 'node:fs';
+import { existsSync, readdirSync, type Dirent } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { loadWorkspaceConfig, WorkspaceConfigError } from './metadata.js';
 import type { WorkspaceConfig } from './types.js';
+import { DEFAULT_EXCLUDE } from '../parser/parse-project.js';
+import { hasCheckoutMarker, prunedNames } from '../parser/nested-checkouts.js';
 
 export interface LocalMember { name: string; path: string; config: WorkspaceConfig }
+
+const byName = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
+
+function membersIn(parent: string, names: string[]): LocalMember[] {
+  return names.flatMap(name => {
+    const path = join(parent, name);
+    const config = loadWorkspaceConfig(path, { strict: true });
+    return config ? [{ name: config.this_repo, path, config }] : [];
+  });
+}
 
 function childMembers(parent: string): LocalMember[] {
   let entries: Dirent<string>[];
   try { entries = readdirSync(parent, { withFileTypes: true, encoding: 'utf8' }); }
   catch { return []; }
   const excluded = new Set(['node_modules', 'dist', 'build', 'target', 'vendor', '.git', '.bravos', '.bugb']);
-  return entries.filter(e => e.isDirectory() && !excluded.has(e.name))
-    .sort((a, b) => a.name < b.name ? -1 : 1).flatMap(e => {
-      const path = join(parent, e.name);
-      const config = loadWorkspaceConfig(path, { strict: true });
-      return config ? [{ name: config.this_repo, path, config }] : [];
-    });
+  return membersIn(parent, entries.filter(e => e.isDirectory() && !excluded.has(e.name)).map(e => e.name).sort(byName));
+}
+
+/**
+ * Whether `root` is a GuardLink repository rather than a folder of linked checkouts: it carries its own
+ * `.guardlink/config.json`, a `.guardlink/definitions.*` file or its own `.guardlink/workspace.yaml`.
+ * Such a root's own model is what every command reports. Linked child folders never turn it into an
+ * application view by inference; only an explicit selection (`--application-manifest`,
+ * `GUARDLINK_APPLICATION_MANIFEST`, `application-view --manifest`) does.
+ */
+export function isGuardLinkRepository(root: string): boolean {
+  if (existsSync(join(root, '.guardlink', 'config.json')) || existsSync(join(root, '.guardlink', 'workspace.yaml'))) return true;
+  try { return readdirSync(join(root, '.guardlink')).some(name => /^definitions\.[^.]+$/.test(name)); }
+  catch { return false; }
+}
+
+/**
+ * The direct child folders of `root` whose linked manifest may select an application: the folders a
+ * scan of `root` would read. Hidden folders and the names DEFAULT_EXCLUDE prunes (node_modules, vendor,
+ * tests, …) are skipped. When `root` is itself a git checkout, a child holding a `.git` FILE — a
+ * submodule or a linked worktree — is another checkout and is skipped, exactly as scanIgnore skips it;
+ * a plain folder of checkouts is something people point GuardLink at on purpose, so there it is read.
+ */
+export function manifestCandidates(root: string): string[] {
+  let entries: Dirent<string>[];
+  try { entries = readdirSync(root, { withFileTypes: true, encoding: 'utf8' }); }
+  catch { return []; }
+  const pruned = prunedNames(DEFAULT_EXCLUDE);
+  const insideGit = existsSync(join(root, '.git'));
+  return entries
+    .filter(e => e.isDirectory() && !e.name.startsWith('.') && !pruned.has(e.name)
+      && !(insideGit && hasCheckoutMarker(join(root, e.name))))
+    .map(e => e.name).sort(byName);
+}
+
+/**
+ * Direct child manifests a repository root ignores but cannot decode, as named errors for a warning:
+ * the repository's own model stands, and the broken manifest is still reported rather than silent.
+ */
+export function unreadableChildManifests(root: string): WorkspaceConfigError[] {
+  const errors: WorkspaceConfigError[] = [];
+  for (const name of manifestCandidates(root)) {
+    try { loadWorkspaceConfig(join(root, name), { strict: true }); }
+    catch (error) { if (error instanceof WorkspaceConfigError) errors.push(error); else throw error; }
+  }
+  return errors;
 }
 
 /** Reject ambiguous membership with the manifests and checkout paths needed to fix it. */
@@ -56,8 +109,8 @@ export function localWorkspaceMembers(root: string, config: WorkspaceConfig): Lo
 
 /** A container is a workspace only when its immediate members agree on its selected set. */
 export function workspaceContainer(root: string): { config: WorkspaceConfig; members: LocalMember[]; missing: string[] } | null {
-  if (loadWorkspaceConfig(root, { strict: true })) return null;
-  const candidates = childMembers(root);
+  if (isGuardLinkRepository(root)) return null;
+  const candidates = membersIn(root, manifestCandidates(root));
   if (candidates.length === 0) return null;
   assertUniqueMembers(candidates);
   const config = candidates[0].config;

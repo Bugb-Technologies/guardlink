@@ -8,4 +8,4 @@
 
 export { diffModels, type ThreatModelDiff, type DiffSummary, type Change, type ChangeKind, type DiffOptions, type StaleEntitlement } from './engine.js';
 export { formatDiff, formatDiffMarkdown } from './format.js';
-export { parseAtRef, getCurrentRef, getChangedFiles, resolveCommit, REF_SHAPE } from './git.js';
+export { parseAtRef, getCurrentRef, getChangedFiles, resolveCommit, readFileAtRef, REF_SHAPE } from './git.js';

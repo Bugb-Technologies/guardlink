@@ -170,6 +170,8 @@ export const PROPOSALS_FILE = 'entitlement-proposals.json';
 
 /** A ledger is a review queue for a dozen role/capability pairs (§3.6), not a database. */
 const MAX_LEDGER_BYTES = 512 * 1024;
+/** The same bound, for a caller reading the ledger from somewhere other than the working tree. */
+export const ENTITLEMENT_LEDGER_MAX_BYTES = MAX_LEDGER_BYTES;
 
 /** Mirrors the CAPABILITY fragment in parse-line.ts — the capability is a join key, not prose. */
 const CAPABILITY_RE = /^[A-Za-z][A-Za-z0-9_.\-]*$/;
@@ -377,6 +379,18 @@ export async function loadProposals(root: string): Promise<ProposalLedger> {
     throw new Error(`${PROPOSALS_FILE} is larger than ${MAX_LEDGER_BYTES} bytes — refusing to parse`);
   }
   return parseLedger(raw, path);
+}
+
+/**
+ * The ledger as committed at a base ref (`raw` is null when the file did not exist there): the
+ * decisions a human had already accepted before the change under check.
+ */
+export function parseLedgerAtRef(raw: string | null, where: string): ProposalLedger {
+  if (raw === null) return emptyLedger();
+  if (raw.length > MAX_LEDGER_BYTES) {
+    throw new Error(`${where} is larger than ${MAX_LEDGER_BYTES} bytes — refusing to parse`);
+  }
+  return parseLedger(raw, where);
 }
 
 export function parseLedger(raw: string, where: string): ProposalLedger {

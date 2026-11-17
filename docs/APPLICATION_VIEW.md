@@ -100,9 +100,11 @@ collect a stable snapshot; evidence is never re-verified merely by regeneration.
 
 A maintainer-approved read capability is proposed and accepted through `guardlink entitle`.
 `lint --since` recognizes an entitlement only when the proposal ledger records a named
-accepted decision for the same actor, capability, asset and threat. A standalone annotation,
-pending proposal or missing decision is not an approval; unreadable decision data fails the
-check. This does not authorize an annotating agent to approve its own grants.
+accepted decision for the same actor, capability, asset and threat, and that decision was
+already in the ledger at the `--since` commit and is still accepted. A standalone annotation,
+pending proposal, missing decision or acceptance written in the change under check is not an
+approval; unreadable decision data fails the check. This does not authorize an annotating
+agent to approve its own grants.
 
 Missing optional hypothesis/verification ledger files have component state `absent`,
 including in historical views. An existing empty ledger is `present`; a corrupt ledger

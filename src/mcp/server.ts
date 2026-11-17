@@ -148,8 +148,10 @@ function createModelCache() {
   async function getModel(root: string): Promise<{ model: ThreatModel; diagnostics: any[] }> {
     const captured = frames.getStore()?.get(root);
     if (captured) return captured;
-    const application = discoverApplicationManifest(root);
-    // Application currency includes git refs and ledger bytes, not only file stat metadata.
+    // Application currency includes git refs and ledger bytes, not only file stat metadata. An
+    // undecodable selection is parseProject's diagnostic to report; it is simply never cached.
+    let application: unknown;
+    try { application = discoverApplicationManifest(root); } catch { application = true; }
     const fingerprint = await fingerprintProject(root);
     if (!application && cachedModel && cachedRoot === root && cachedFingerprint === fingerprint) {
       return remember(root, { model: cachedModel, diagnostics: cachedDiagnostics });
@@ -299,12 +301,18 @@ export function createServer(): McpServer {
     },
     async ({ root, compact, include_unannotated }) => {
       invalidateCache();
-      const { model: parsed } = await getModel(root);
+      const { model: parsed, diagnostics } = await getModel(root);
       // The derived reach_analysis block (SPEC §5.5), as `guardlink parse` writes it.
       const model = { ...withReachAnalysis(parsed), config: { security_tests_dir: readSecurityTestsDir(root) } };
 
-      const incomplete = !!model.application && model.application.receipt.completeness !== 'complete';
-      const applicationStatus = incomplete ? { application_status: 'Application incomplete; available member content follows with its partial receipt.' } : {};
+      // A workspace manifest that could not be read fails the call, as it fails `guardlink parse`; the model read without it follows.
+      const manifestErrors = diagnostics.filter(d => d.level === 'error' && d.code === 'workspace-config-invalid')
+        .map(d => ({ file: d.file, line: d.line, message: d.message }));
+      const incomplete = (!!model.application && model.application.receipt.completeness !== 'complete') || manifestErrors.length > 0;
+      const applicationStatus = {
+        ...(model.application && model.application.receipt.completeness !== 'complete' ? { application_status: 'Application incomplete; available member content follows with its partial receipt.' } : {}),
+        ...(manifestErrors.length ? { workspace_errors: manifestErrors } : {}),
+      };
       if (compact) {
         return { ...(incomplete ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify({ ...JSON.parse(serializeModelCompact(model)), ...applicationStatus, config: model.config }) }] };
       }

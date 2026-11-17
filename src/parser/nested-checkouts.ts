@@ -89,7 +89,7 @@ export interface NestedCheckouts {
 }
 
 /** Directory names an exclude glob of the form `**\/name/**` prunes at any depth. */
-function prunedNames(exclude: readonly string[]): Set<string> {
+export function prunedNames(exclude: readonly string[]): Set<string> {
   const names = new Set<string>();
   for (const glob of exclude) {
     const m = /^\*\*\/([^*?[\]{}()!/\\]+)\/\*\*$/.exec(glob);
