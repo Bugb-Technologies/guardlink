@@ -1,7 +1,7 @@
 {
   "provenance": {
     "annotation_hash": "sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915",
-    "generator": "guardlink@2.6.0"
+    "generator": "guardlink@2.7.0"
   },
   "version": "1.2.0",
   "project": "guardlink",
@@ -11985,9 +11985,9 @@
         "bytes": 4295,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1",
+          "stamp": "sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": false
+          "current": true
         },
         "hidden_unicode": []
       },
@@ -12001,9 +12001,9 @@
         "bytes": 4378,
         "guardlink_block": {
           "line": 7,
-          "stamp": "sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1",
+          "stamp": "sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": false
+          "current": true
         },
         "hidden_unicode": []
       },
@@ -12018,9 +12018,9 @@
         "bytes": 4332,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1",
+          "stamp": "sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": false
+          "current": true
         },
         "hidden_unicode": []
       },
@@ -12035,9 +12035,9 @@
         "bytes": 4332,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1",
+          "stamp": "sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": false
+          "current": true
         },
         "hidden_unicode": []
       },
@@ -12051,9 +12051,9 @@
         "bytes": 4295,
         "guardlink_block": {
           "line": 1,
-          "stamp": "sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1",
+          "stamp": "sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": false
+          "current": true
         },
         "hidden_unicode": []
       },
@@ -12070,9 +12070,9 @@
         "bytes": 4972,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1",
+          "stamp": "sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": false
+          "current": true
         },
         "hidden_unicode": []
       },
@@ -12087,9 +12087,9 @@
         "bytes": 4332,
         "guardlink_block": {
           "line": 3,
-          "stamp": "sha256-v3:043cc5a2a1b89edbeb165638dbdf49a72c09b1eb821fc8538db79be5c94071d1",
+          "stamp": "sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915",
           "agent_config_stamp": "sha256-v1:8f2ce3fa1530ad95a97dc18a67880c540362808b95d3b0cb79f5c973e6427d25",
-          "current": false
+          "current": true
         },
         "hidden_unicode": []
       },

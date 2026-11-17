@@ -5,6 +5,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## \[Unreleased\]
 
+## \[2.7.0\] - 2026-11-17
+
+### Upgrading
+
+- **Regenerate committed artifacts after upgrading** with `guardlink artifacts .` so their generator stamps match 2.7.0. `guardlink sync` is only needed if your blocks are already stale; it now keeps text another tool appended after the block's footer.
+- **There are TypeScript and JSON-output additions since 2.6.0.** `DiagnosticCode` gains `'linked-ref'`, `'workspace-incomplete'` and `'workspace-config-invalid'`. `MergeWarningCode` gains `'legacy_ref'`, and `TagOwnership.kind` widens to include `'actor'` and `'boundary'`. Consumers with exhaustive switches over these unions must handle the new members. `ExternalRef` gains optional `legacy`, `resolution`, `defined_in`, `definition_kinds` and `unchecked_members`; `SourceLocation` gains optional `memberId`, `memberFile` and `claimKey`; `ThreatModel` gains optional `member_snapshot` and `application`. The model version (`1.2.0`), SARIF profile version and annotation-hash version are unchanged, and a repository with no selected application exports the same shapes as before.
+- **Workspace ids are flat.** Cross-member references use the same flat, globally unique `#id` as a local one. Dotted references (`#auth-lib.token-verify`) still parse and merge, keep their spelling, and are reported as `legacy_ref`; they never silently alias a flat definition.
+- **A parent workspace parse reads only linked members,** each with its own `.guardlink/config.json`. Folders that are not members no longer appear in its model or coverage, and file counts can change.
+- **New link names default to the directory name.** Existing `workspace.yaml` manifests keep the identities they store, including names that differ from their directories.
+
+### Added
+
+- **Application semantic views.** `guardlink application-view [dir] --manifest <file>` collects the selected members of an application into one semantic model with a versioned completeness and revision receipt (`guardlink.application-view/v1`). `--member <id>` projects one member, `--strict` fails an incomplete collection or an unresolved, ambiguous or unchecked reference, and `--capabilities` prints the contract without reading a project. The global `--application-manifest <file>` selects the same inputs for `parse`, `dashboard`, `report` and `sarif`. The library exports `collectApplicationView`, `discoverApplicationManifest` and `applicationViewCapabilities`. See `docs/APPLICATION_VIEW.md`.
+  - **One model behind every projection.** The dashboard, Markdown and Mermaid reports, SARIF and MCP read the same collection and carry the same receipt. Missing, unreadable or invalid members stay in the expected roster with a reason, ready members stay available, and coverage over an incomplete set is labelled a known subtotal rather than an overall figure.
+  - **The receipt records each member's revision:** commit, branch, base, dirty state and source, annotation and configuration digests (null outside git, never invented). Inputs are rechecked after collection; a supplied frozen receipt is echoed and compared only against comparable provenance. Mixed or unreadable inputs read as partial, stale or unknown.
+  - **Evidence stays with its member.** Verification actions point at the owning member's ledgers and count per member, application attribution reads member history, and a single application-wide `--since` ref is refused with guidance. SARIF carries application and member provenance and URI bases. Saved reports keep the receipt they were assessed under, and offline merge never reparses current checkouts.
+- **MCP `guardlink_application_view`** returns the same view to an agent, read-only. Every MCP projection reply is now bound to its request snapshot, and an incomplete parse reply carries `isError` with its receipt. This read capability is recorded as a maintainer-approved entitlement.
+- **`guardlink validate --workspace`** checks references against the available sibling checkouts by stored identity and tells sibling definitions, undefined references and unchecked members apart. It fails when a sibling is unavailable or a reference is unresolved. The MCP `guardlink_validate` tool takes `workspace: true` for the same check.
+- **`guardlink link-project --member name=path`** (repeatable) names members explicitly on a fresh link, and `--name <name>` names the member `--add` adds.
+- **Strict lint recognises an entitlement a human accepted.** An `@entitles` line under check passes when it exactly matches the actor, capability, asset and threat of a proposal with a named accepted decision. A raw, merely proposed, rescoped or undecided grant is still an error.
+
+### Fixed
+
+- **The dashboard no longer hides a gate-blocking retest.** An exposure the hypothesis ledger holds confirmed, or confirmed and now due a retest, is open work whatever `@mitigates` or `@accepts` sits beside it, because a declared control is not evidence the exploit is gone. The Overview headline and grade count it (a retest by its severity, a holding confirmation as confirmed exploitable), "What to do next" lists it as needing a retest with `guardlink hypothesis next .`, and the since strip no longer calls it resolved and counts an exposure newly confirmed on the branch. A retest that refutes the exploit closes it again. Repository and application dashboards share this path.
+- **Application dashboard verification actions count per member.** Each action is built from its owning member's verification report, so totals are no longer repeated under every member (an uneven fixture read 24 everywhere; it now reads 9/5/5/5). Member report data that is unavailable stays explicitly unknown.
+- **`guardlink sync` keeps notes after the GuardLink block's footer.** Workspace tooling appends a one-line member note inside the block after its footer, and sync used to drop it. Text there is now carried into the rewritten block verbatim and is byte-stable across both tools' rewrites; everything before the footer is still rewritten.
+- **Duplicate GuardLink identities are rejected.** Two selected checkouts that resolve to the same stored identity are both marked ambiguous, each path named, before any source or evidence is read; independent ready members stay available. Live and historical inputs are covered, and strict CLI runs fail with recovery guidance instead of a stack trace.
+- **Workspace merge counts resolved references.** Counts come from every relationship reference field (controls, threats, actors, lifecycle records), so sibling references no longer read as zero resolved, and older reports need no populated `external_refs`. A renamed sibling control names every member that references it.
+- **Workspace manifests are read as YAML.** The line-based reader is replaced with real YAML decoding, including JSON-form documents and bounded aliases, with explicit shape checks. Syntax, schema and filesystem failures each get their own message.
+- **Duplicate member checkouts get an actionable error** naming every claiming path and how to select one or relink distinct services. Removing the last partner of a workspace explains the two-member minimum and how to unlink both manifests and their Workspace Context sections.
+- **Absent evidence ledgers report as `absent`** in live and historical views, distinct from present-but-empty (`present`) and corrupt (`partial`). Known optional absence no longer invalidates a complete source census.
+- **MCP cache validity includes sibling and configuration changes** in a workspace.
+
 ## \[2.6.0\] - 2026-11-10
 
 ### Upgrading
