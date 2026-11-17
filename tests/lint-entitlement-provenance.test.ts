@@ -54,4 +54,5 @@ it('lint since a base accepts the human decision but rejects unapproved and mere
   const unreadable = run('lint', '.', '--since', 'HEAD', '--json');
   expect(unreadable.code).toBe(1);
   expect(unreadable.stderr).toContain('entitlement');
-});
+  // Seven CLI processes through tsx: well over vitest's 5 s default on a shared CI runner.
+}, 60_000);
