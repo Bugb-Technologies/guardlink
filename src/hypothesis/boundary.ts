@@ -54,6 +54,7 @@ export interface BoundaryClaimClassification {
 }
 
 export function classifyBoundaryClaims(model: ThreatModel, read: HypothesesRead): BoundaryClaimClassification {
+  read = model.application?.hypotheses ?? read;
   const entries = new Map<string, BoundaryEntry>();
   for (const e of read.ledger?.entries ?? []) if (isBoundaryEntry(e)) entries.set(e.key, e);
   const byLocation = new Map((model.boundaries ?? []).map(b => [b.location, b]));

@@ -93,10 +93,11 @@ import {
   type ReviewResult, type ReviewAction, type ReviewableExposure, type ScriptedDecision,
 } from '../review/index.js';
 import {
-  proposeEntitlement, proposeFromConfig, listProposals, findProposal, applyProposalDecision, checkEntitlementProvenance,
+  proposeEntitlement, proposeFromConfig, listProposals, loadProposals, acceptedEntitlements, findProposal, applyProposalDecision, checkEntitlementProvenance,
   explicitDecider, identitySuggestion, formatProposalForReview, formatProposalLine, summarizeDecisions, proposalsPath,
   type DecisionResult, type EntitlementProposal, type ProposalStatus,
 } from '../review/entitlements.js';
+import { applicationViewCapabilities, captureMemberSnapshot, collectApplicationView, discoverApplicationManifest, APPLICATION_MANIFEST_ENV } from '../workspace/application.js';
 import { loadWorkspaceConfig, populateMetadata, readVersionControl, mergeReports, resolveReportPaths, mergeVerdict, formatMergeVerdict, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace, estateReport, formatEstateReport, readMergedReport, NotAMergedReport } from '../workspace/index.js';
 import type { MergedReport, LinkResult } from '../workspace/index.js';
 import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
@@ -149,11 +150,14 @@ program
   .name('guardlink')
   .description('GuardLink — Security annotations for code. Threat modeling that lives in your codebase.')
   .version(getPackageVersion())
+  .option('--application-manifest <file>', 'Explicit selected application manifest for read-only projections')
   .option('--no-agent-config', "Leave the repository's coding-agent configuration out of the model (SPEC §5.6); .guardlink/config.json \"agent_config\": {\"enabled\": false} does the same per project")
   .addHelpText('before', gradient(['#00ff41', '#00d4ff'])(ASCII_LOGO));
 
 // One switch for every command that parses: parseProject reads it.
 program.hook('preAction', () => {
+  process.env.GUARDLINK_APPLICATION_VIEW = 'on';
+  if (program.opts().applicationManifest) process.env[APPLICATION_MANIFEST_ENV] = resolve(program.opts().applicationManifest);
   if (program.opts().agentConfig === false) process.env[AGENT_CONFIG_ENV] = 'off';
 });
 
@@ -320,6 +324,26 @@ program
     process.exitCode = diagnostics.some(d => d.level === 'error') ? 1 : 0;
   });
 
+program.command('application-view')
+  .description('Collect the selected application semantic model and versioned completeness/revision receipt')
+  .argument('[dir]', 'Application root', '.')
+  .option('--manifest <file>', 'Selected member manifest (JSON)')
+  .option('--member <id>', 'Project the selected member only')
+  .option('--capabilities', 'Print contract capabilities without reading a project')
+  .option('--json', 'Print JSON (the default)')
+  .option('--strict', 'Fail if mandatory selected inputs are incomplete')
+  .action(async (dir: string, opts: { manifest?: string; member?: string; capabilities?: boolean; strict?: boolean }) => {
+    if (opts.capabilities) { console.log(JSON.stringify(applicationViewCapabilities())); return; }
+    const root = resolve(dir);
+    try {
+      const manifest = opts.manifest ?? process.env[APPLICATION_MANIFEST_ENV] ?? discoverApplicationManifest(root);
+      if (!manifest) throw new Error('No selected application manifest; supply --manifest <file>');
+      const view = await collectApplicationView({ root, manifest, memberId: opts.member, ...(typeof manifest === 'string' ? {} : { selectionProbe: () => discoverApplicationManifest(root) }) });
+      console.log(JSON.stringify(view));
+      if (opts.strict && (view.receipt.completeness !== 'complete' || view.references.some(r => r.state !== 'resolved'))) process.exitCode = 1;
+    } catch (error) { console.error(`Application view unavailable: ${(error as Error).message}`); process.exitCode = 1; }
+  });
+
 // ─── parse ───────────────────────────────────────────────────────────
 
 program
@@ -333,7 +357,7 @@ program
   .option('--blame', 'Attach git attribution to each exposure, confirmed and mitigation: who introduced, declared and fixed it, and which AI co-authored those commits')
   .action(async (dir: string, opts: { project: string; output?: string; pretty: boolean; blame?: boolean }) => {
     const root = resolve(dir);
-    const { model, diagnostics, config } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    const { model, diagnostics, config } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined, memberSnapshot: true });
 
     // Print diagnostics to stderr
     printDiagnostics(diagnostics);
@@ -352,6 +376,7 @@ program
     // `reach_analysis` (SPEC §5.5) is derived here, from the model as exported,
     // and only when it declares a reach, effect or gate. The additive config
     // member exposes the resolved security-test directory without LLM secrets.
+    if (model.member_snapshot) await captureMemberSnapshot(root, model, model.member_snapshot.revision);
     const stamped = { ...withReachAnalysis(populateMetadata(model, root, diagnostics)), config };
 
     // Output model
@@ -396,7 +421,7 @@ program
     // @flows LedgerFile -> #cli via readHypotheses -- "status reports how many exposures were tested, and with what outcome"
     printStatus(model, classifyClaims(model, readLedger(root)), classifyHypotheses(model, readHypotheses(root)), checkHandoff(root, model));
     // @flows GitRepo -> #cli via computeBlame -- "status --blame reads attribution without touching the model"
-    if (opts.blame) printBlameSummary(buildBlamePayload(model, computeBlame(root, model), root));
+    if (opts.blame) printBlameSummary(buildBlamePayload(model, model.application ? attachBlame(root, model) : computeBlame(root, model), root));
 
     if (opts.notAnnotated) {
       printUnannotatedFiles(model);
@@ -419,13 +444,14 @@ program
   .description('Check annotations for syntax errors and dangling references')
   .argument('[dir]', 'Project directory to scan', '.')
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
+  .option('--workspace', 'Check linked sibling checkouts; fail if any sibling is unavailable or a reference is unresolved')
   .option('--strict', 'Also fail on unmitigated exposures (for CI gates)')
   .option('--artifacts', 'Also check .guardlink/graph/ artifacts against the current model; exits non-zero on drift')
   .option('--sync', 'Also refresh agent instruction files (this used to happen unasked — see D16)')
   .option('--code-graph', 'Also check declared claims against a code graph, when one is installed and built: a @boundary access level a route contradicts, a route handler with no boundary to the outside, a boundary nothing crosses, a gate the graph finds no route through, an effect no agent reaches, a tool registration with no @agents. Warnings only, each a claim to check')
-  .action(async (dir: string, opts: { project: string; strict?: boolean; artifacts?: boolean; sync?: boolean; codeGraph?: boolean }) => {
+  .action(async (dir: string, opts: { project: string; workspace?: boolean; strict?: boolean; artifacts?: boolean; sync?: boolean; codeGraph?: boolean }) => {
     const root = resolve(dir);
-    const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    const { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined, requireSiblings: opts.workspace });
 
     // Check for dangling refs
     const danglingDiags = findDanglingRefs(model);
@@ -690,6 +716,7 @@ program
     }
 
     const { model } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    if (model.application) { console.error('Application evidence is member-owned. Run guardlink verify in the selected member checkout; the application view will collect its ledger.'); process.exitCode = 1; return; }
     const report = classifyClaims(model, read);
 
     const mode = targets.length > 0
@@ -783,7 +810,7 @@ program
     const config = readBlameConfig(root);
     if (opts.identity) config.identity = opts.identity as IdentityMode;
     const file = opts.file ? (isAbsolute(opts.file) ? relative(root, opts.file) : opts.file) : undefined;
-    const payload = buildBlamePayload(model, computeBlame(root, model, { config, file }), root);
+    const payload = buildBlamePayload(model, model.application ? attachBlame(root, model, { config, file }) : computeBlame(root, model, { config, file }), root);
     if (opts.json) console.log(JSON.stringify(payload, null, 2));
     else process.stdout.write(formatBlameText(payload));
     // Let the process end on its own: process.exit() would truncate the JSON
@@ -938,7 +965,7 @@ program
       process.exit(1);
     }
 
-    let { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined });
+    let { model, diagnostics } = await parseProject({ root, project: opts.project ?? readConfiguredProject(root) ?? undefined, memberSnapshot: true });
 
     // Apply feature filter if specified
     if (opts.feature) {
@@ -979,6 +1006,9 @@ program
       // No prompt file — that's fine, report will use annotation-derived overview
     }
 
+    // First-run prompt migration and optional attribution can change inputs after
+    // parsing. Recheck before exporting a native snapshot, preserving any mixed flag.
+    if (enrichedModel.member_snapshot) await captureMemberSnapshot(root, enrichedModel, enrichedModel.member_snapshot.revision);
     if (opts.diagramOnly) {
       // Just output Mermaid
       const mermaid = generateMermaid(enrichedModel);
@@ -1916,7 +1946,7 @@ program
 
 program
   .command('lint')
-  .description('Check annotations against the evidence bar: exposures that name code and are paired, severities within band, evidence on @confirmed; --since <ref> checks only what a session added, including that it wrote no @accepts or @entitles')
+  .description('Check annotations against the evidence bar: exposures that name code and are paired, severities within band, evidence on @confirmed; --since <ref> checks only what a session added, including no @accepts or unapproved @entitles')
   .argument('[dir]', 'Project directory', '.')
   .option('-p, --project <n>', 'Project name (default: the name in .guardlink/config.json)')
   .option('--since <ref>', 'Only claims added since a git ref (what an agent session wrote)')
@@ -1943,7 +1973,16 @@ program
     // A refuted exposure counts as paired: the ledger is the evidence.
     attachHypotheses(model, classifyHypotheses(model, readHypotheses(root)));
     // Without --since a person may have written the @accepts in the tree; only a session's additions are held to the no-governance rule.
-    const violations = lintAnnotations(model, { only, governance: opts.since ? 'error' : 'ignore' });
+    let approved: Set<import('../types/index.js').ThreatModelEntitlement> | undefined;
+    if (opts.since && model.entitlements?.length) {
+      try { approved = new Set(acceptedEntitlements(model, await loadProposals(root))); }
+      catch (error) {
+        console.error(`Entitlement approvals unavailable: ${(error as Error).message}`);
+        process.exitCode = 1;
+        return;
+      }
+    }
+    const violations = lintAnnotations(model, { only, governance: opts.since ? 'error' : 'ignore', acceptedEntitlements: approved });
     const errors = violations.filter(v => v.level === 'error').length;
     const warnings = violations.filter(v => v.level === 'warn').length;
     const infos = violations.length - errors - warnings;
@@ -2090,6 +2129,7 @@ const outcomeAction = (outcome: 'refuted' | 'confirmed') => async (target: strin
     }
     if (!target) { console.error('Name the exposure as file:line, or pass --from-scan <report.json>.'); process.exitCode = 1; return; }
     if (!opts.evidence) { console.error(`--evidence is required: say what was tried and what came back. A ${outcome === 'refuted' ? 'refutation' : 'confirmation'} without it is a guess.`); process.exitCode = 1; return; }
+    if (model.application) { console.error('Application evidence is member-owned. Record this outcome from the affected member checkout.'); process.exitCode = 1; return; }
     const { record, entry } = recordOutcome(root, model, target, outcome, { evidence: opts.evidence, by, at });
     const offered = outcome === 'confirmed' ? confirmedLine(record, entry) : undefined;
     console.log(formatOutcome(record, entry, opts.write ? undefined : offered));
@@ -3376,6 +3416,7 @@ program
     let since: SinceInput | undefined;
     if (opts.since) {
       try {
+        if (model.application) throw new Error('Application comparison requires per-member base revisions in the selected manifest; a single repository --since ref cannot describe the application.');
         since = await loadSince(root, opts.since, project, model);
         console.error(`Compared against ${opts.since}: ${since.diff.summary.newUnmitigated} new unmitigated, ${since.diff.summary.resolvedUnmitigated} resolved`);
       } catch (e) {
@@ -3385,7 +3426,7 @@ program
       }
     }
 
-    const analyses = loadThreatReportsForDashboard(root);
+    const analyses = loadThreatReportsForDashboard(root, model);
     const measured = await loadMeasured(root, opts.codeGraph);
     // The page follows the OS light/dark preference; --light pins light.
     const html = generateDashboardHTML(model, root, analyses, { since, theme: opts.light ? 'light' : undefined, measured });
@@ -3405,11 +3446,22 @@ program
   .argument('[repos...]', 'Repo directories to link (fresh setup: 2+ paths)')
   .option('-w, --workspace <n>', 'Workspace name (fresh link only)', 'workspace')
   .option('-r, --registry <url>', 'GitHub/GitLab org base URL (e.g. github.com/unstructured)')
+  .option('--member <name=path>', 'Explicit member name and directory (repeatable, fresh link)', (value: string, previous: string[]) => [...previous, value], [])
+  .option('--name <name>', 'Explicit member name for --add')
   .option('--add <path>', 'Add a new repo to an existing workspace (provide path to new repo)')
   .option('--remove <name>', 'Remove a repo from the workspace by name')
   .option('--from <path>', 'Existing workspace repo to read config from (used with --add or --remove)')
-  .action(async (repos: string[], opts: { workspace: string; registry?: string; add?: string; remove?: string; from?: string }) => {
+  .action(async (repos: string[], opts: { workspace: string; registry?: string; add?: string; remove?: string; from?: string; member: string[]; name?: string }) => {
     let result: LinkResult;
+    const memberNames: Record<string, string> = {};
+    for (const member of opts.member) {
+      const equal = member.indexOf('=');
+      if (equal < 1 || !member.slice(equal + 1)) throw new Error('--member requires name=path');
+      const path = resolve(member.slice(equal + 1));
+      if (memberNames[path]) throw new Error(`Duplicate --member path: ${path}`);
+      memberNames[path] = member.slice(0, equal);
+      if (!repos.some(r => resolve(r) === path)) repos.push(path);
+    }
 
     if (opts.remove) {
       // ── Remove mode: remove a repo from an existing workspace ──
@@ -3462,6 +3514,7 @@ program
 
       result = addToWorkspace({
         newRepoPath: opts.add,
+        memberName: opts.name,
         existingRepoPath: opts.from,
         registry: opts.registry,
       });
@@ -3512,6 +3565,7 @@ program
       result = linkProject({
         workspace: opts.workspace,
         repoPaths: repos,
+        memberNames,
         registry: opts.registry,
       });
 
@@ -3582,6 +3636,7 @@ program
     // Run merge
     const merged = await mergeReports(resolvedFiles, {
       workspace: opts.workspace,
+      ...(process.env[APPLICATION_MANIFEST_ENV] ? { applicationManifest: discoverApplicationManifest(process.cwd(), process.env[APPLICATION_MANIFEST_ENV]) ?? undefined } : {}),
     });
 
     // One verdict, decided before anything is written, so the exit code and the
@@ -4174,6 +4229,11 @@ function printDiagnostics(diagnostics: ParseDiagnostic[]) {
 function printStatus(model: ThreatModel, verification?: VerificationReport, hypotheses?: HypothesisClassification, handoff?: HandoffReport) {
   console.log(`GuardLink Status: ${model.project}`);
   console.log(`${'─'.repeat(40)}`);
+  if (model.application) {
+    console.log(`Application inputs: ${model.application.receipt.completeness} (${model.application.receipt.inputDigest})`);
+    for (const member of model.application.receipt.members) console.log(`  ${member.id}: ${member.state}${member.reason ? ' — ' + member.reason : ''}`);
+    if (model.application.coverage.overallPercent === null) console.log('Overall annotation coverage: unknown. File counts below are the known subtotal.');
+  }
   console.log(`Files in scope:   ${model.source_files}`);
   console.log(`  Files annotated:    ${model.annotated_files.length}`);
   console.log(`  Files unannotated:  ${model.unannotated_files.length}`);
@@ -4189,7 +4249,7 @@ function printStatus(model: ThreatModel, verification?: VerificationReport, hypo
   if (verification) {
     const s = verification.summary;
     if (verification.ledger === 'absent') {
-      console.log('Verified claims:  none recorded (run guardlink verify --all)');
+      console.log(model.application ? 'Verified claims:  none recorded in selected member ledgers (verify in the affected member checkout)' : 'Verified claims:  none recorded (run guardlink verify --all)');
     } else if (verification.ledger === 'corrupt') {
       console.log('Verified claims:  ledger unreadable (run guardlink validate)');
     } else {

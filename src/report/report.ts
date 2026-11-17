@@ -117,6 +117,11 @@ export function generateReport(rawModel: ThreatModel, measured?: ReachCheck | nu
   const model = canonicalizeModelOrder(rawModel);
   const slice = sliceOf(model);
   const lines: string[] = [];
+  if (model.application) {
+    const app = model.application;
+    lines.push(`> Application snapshot: **${app.receipt.completeness}**, gathered ${app.receipt.generatedAt}; currency: ${app.receipt.currency?.state ?? 'unknown'}.`, `> Input digest: ${app.receipt.inputDigest}`, `> ${app.coverage.overallPercent === null ? 'Known subtotal' : 'Application annotation coverage'}: ${app.coverage.known.annotatedFiles}/${app.coverage.known.sourceFiles} files. Overall coverage: ${app.coverage.overallPercent === null ? 'unknown' : app.coverage.overallPercent + '%'}.`, '');
+    lines.push('```json', JSON.stringify(app.receipt, null, 2), '```', '');
+  }
 
   // ── Pre-compute shared data ──
   // D57: raw pair set. The headline "Unmitigated exposures | N (…critical…)"
@@ -789,7 +794,7 @@ function emitScope(model: ThreatModel, lines: string[]): void {
     return;
   }
 
-  lines.push('### Coverage');
+  lines.push(model.application?.coverage.overallPercent === null ? '### Coverage — Known subtotal (overall unknown)' : '### Coverage');
   lines.push('');
   const covAnnotated = model.annotated_files.length;
   const covTotal = model.source_files;

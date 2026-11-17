@@ -111,7 +111,7 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   const model = canonicalizeModelOrder(rawModel);
   // The tested state of every exposure, when a ledger exists: a refuted claim is not open.
   // @flows LedgerFile -> #dashboard via readHypotheses -- "Outcomes for the badges, the drawer and the open count"
-  const hypothesesRead = root ? readHypotheses(root) : null;
+  const hypothesesRead = model.application?.hypotheses ?? (root ? readHypotheses(root) : null);
   const hypotheses = hypothesesRead ? classifyHypotheses(model, hypothesesRead) : null;
   if (hypotheses) attachHypotheses(model, hypotheses);
   // Read from rawModel: canonicalisation reorders, it does not add fields.
@@ -124,15 +124,16 @@ export function generateDashboardHTML(rawModel: ThreatModel, root?: string, anal
   const exposures = computeExposures(model);
   const confirmed = computeConfirmed(model);
   const heatmap = computeAssetHeatmap(model);
-  const links = root ? detectRepoLinks(root) : null;
-  const ledgerRead = root ? computeLedgerStates(model, root) : null;
+  const links = !model.application && root ? detectRepoLinks(root) : null;
+  const ledgerRead = root || model.application ? computeLedgerStates(model, root) : null;
   const ledger = ledgerRead && ledgerRead.report.ledger !== 'absent' ? ledgerRead : null;
   const featureNames = listFeatures(model);
-  const unmitigated = exposures.filter(e => !e.mitigated && !e.accepted && !e.refuted);
-  const mitigatedCount = exposures.filter(e => e.mitigated).length;
+  // Open includes a claim the ledger still holds confirmed or due a retest, whatever control is declared beside it.
+  const unmitigated = exposures.filter(e => e.open);
+  const mitigatedCount = exposures.filter(e => e.mitigated && !e.gate).length;
   const mitigationCoveragePercent = exposures.length > 0 ? Math.round((mitigatedCount / exposures.length) * 100) : 0;
   // The grade counts what is still open: a mitigated critical is not a critical risk.
-  const risk = computeRiskGrade(computeSeverityOf(unmitigated), unmitigated.length, exposures.length, confirmed.length);
+  const risk = computeRiskGrade(computeSeverityOf(unmitigated), unmitigated.length, exposures.length, confirmed.length + exposures.filter(e => e.gate === 'confirmed').length);
   // Files actually carrying one of the scoped @feature tags. `annotated_files`
   // is not the same thing: definitions the feature references live in
   // `.guardlink/definitions.*`, which carries no tag.
@@ -228,7 +229,7 @@ ${scope
     // Repository file coverage means nothing on a slice (see the code page);
     // a slice reports the one coverage it can defend.
     ? `    <div class="tn-stat" title="Exposures mitigated within this feature. Project file coverage is not shown on a slice."><span class="tn-k">Mitigated</span> <span class="tn-v">${mitigationCoveragePercent}%</span></div>`
-    : `    <div class="tn-stat"><span class="tn-k">Coverage</span> <span class="tn-v">${stats.coveragePercent}%</span></div>`}
+    : `    <div class="tn-stat"><span class="tn-k">Coverage</span> <span class="tn-v">${model.application?.coverage.overallPercent === null ? 'unknown' : stats.coveragePercent + '%'}</span></div>`}
   </div>
   <div class="search-wrap"><span class="search-icon">${icon('search')}</span><input id="search" type="search" placeholder="Search this page…" autocomplete="off" aria-label="Search this page"><kbd>/</kbd></div>
 ${featureNames.length > 0 ? `  <select id="featureFilter" class="feature-filter-select" aria-label="Filter by feature" title="${scope ? 'Narrow further within this slice — the page already excludes everything outside it' : 'Filter by feature'}">
@@ -240,6 +241,18 @@ ${featureNames.map(f => `    <option value="${esc(f)}">${esc(f)}</option>`).join
   </button>
 </header>
 
+${model.application ? `<section id="application-receipt" class="scope-banner" role="note">
+<div><strong>${esc(model.application.receipt.scope.kind)} snapshot: ${esc(model.application.receipt.completeness)}</strong>
+<p>Currency is assessed at collection time; this offline snapshot cannot observe subsequent checkout changes.</p>
+<p>Gathered ${esc(model.application.receipt.generatedAt)} · ${esc(model.application.receipt.currency?.state ?? 'unknown')} · <code>${esc(model.application.receipt.inputDigest)}</code></p>
+<p>${model.application.coverage.overallPercent === null ? 'Known subtotal' : 'Application annotation coverage'}: ${model.application.coverage.known.annotatedFiles}/${model.application.coverage.known.sourceFiles} files (${model.application.coverage.known.percent}%). ${model.application.coverage.overallPercent === null ? 'Overall coverage is unknown until every selected member is available and coherent.' : ''}</p>
+<details><summary>Selected members and provenance</summary><table><tr><th>Member</th><th>GuardLink identity</th><th>State</th><th>Revision</th><th>Evidence</th></tr>${model.application.receipt.members.map(m => `<tr><td>${esc(m.id)}</td><td>${esc(m.guardlinkIdentity)}</td><td>${esc(m.state)} ${esc(m.reason ?? '')}</td><td>${esc(m.revision?.branch ?? 'no branch')} ${esc(m.revision?.commit ?? 'non-git')} ${m.revision?.dirty ? 'dirty' : ''}</td><td>${Object.entries(m.components).map(([k,v]) => `${esc(k)}: ${esc(v.state)}`).join(', ')}</td></tr>`).join('')}</table>
+<p>${model.application.conflicts.length} conflicting definitions; ${model.application.references.filter(r => r.state !== 'resolved').length} unresolved, ambiguous or unchecked references. Member folders describe ownership; trust zones come from declared boundaries.</p>
+${model.application.conflicts.length ? `<ul>${model.application.conflicts.map(c => `<li>Conflicting #${esc(c.id)}: ${c.declarations.map(d => `${esc(d.memberId ?? '')} ${esc(d.file)}:${d.line}`).join('; ')}</li>`).join('')}</ul>` : ''}
+${model.application.references.some(r => r.state !== 'resolved') ? `<ul>${model.application.references.filter(r => r.state !== 'resolved').map(r => `<li>${esc(r.state)} ${esc(r.tag)} in ${esc(r.memberId)} · ${esc(r.file)}:${r.line}</li>`).join('')}</ul>` : ''}
+<p>Cross-member declared flows: ${model.application.flowGroups.filter(g => g.crossMember).length} groups, ${model.application.flowGroups.filter(g => g.crossMember).reduce((n,g) => n + g.declarations.length, 0)} declaration sites. Grouping preserves direction, endpoints, mechanism and route.</p>
+${model.application.flowGroups.map(g => `<details><summary>${esc(g.source)} → ${esc(g.target)} via ${esc(g.mechanism)} (${g.declarations.length} declarations)</summary><ul>${g.declarations.map(d => `<li>${esc(d.memberId)} · ${esc(d.file)}:${d.line} · <code>${esc(d.claimKey ?? 'unknown native key')}</code></li>`).join('')}</ul></details>`).join('')}
+<pre>${esc(JSON.stringify(model.application.receipt, null, 2))}</pre></details></div></section>` : ''}
 <!-- Generation-time scope banner. Static, always visible, never dismissible:
      a screenshot of this page must not be mistakable for the whole model. -->
 ${scope ? `<div id="scope-banner" class="scope-banner" role="note">
@@ -268,7 +281,7 @@ ${scope ? `<div id="scope-banner" class="scope-banner" role="note">
   <div class="rail-foot">
     ${scope
       ? `<div>${scopeFiles} tagged file(s)</div><div class="subtle">Scope: ${esc(scopeLabel(scope))}</div>`
-      : `<div>${filesAnnotated} of ${filesTotal} files annotated</div><div class="gauge"><i class="g-structure" style="width:${filesTotal ? Math.max(1, Math.round((filesAnnotated / filesTotal) * 100)) : 0}%"></i></div><div class="subtle">Scope: all features</div>`}
+      : `<div>${model.application?.coverage.overallPercent === null ? 'Known subtotal: ' : ''}${filesAnnotated} of ${filesTotal} files annotated</div><div class="gauge"><i class="g-structure" style="width:${filesTotal ? Math.max(1, Math.round((filesAnnotated / filesTotal) * 100)) : 0}%"></i></div><div class="subtle">Scope: all features</div>`}
   </div>
 </nav>
 

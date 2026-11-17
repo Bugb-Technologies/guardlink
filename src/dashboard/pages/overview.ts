@@ -130,7 +130,7 @@ export function overviewBody(input: OverviewInput, featureFiles?: number): strin
       <div class="panel-b tiles2">
         ${scope
           ? statTile('Files in this slice', featureFiles ?? scopeFiles, `tagged @feature ${scopeLabel(scope)}`, { href: '#code' })
-          : statTile('Files annotated', files, filesTotal ? `of ${filesTotal} · ${Math.round((files / filesTotal) * 100)}%` : 'no source files', { href: '#code' })}
+          : statTile(model.application?.coverage.overallPercent === null ? 'Files annotated (known subtotal)' : 'Files annotated', files, filesTotal ? `of ${filesTotal} · ${Math.round((files / filesTotal) * 100)}%` : 'no source files', { href: '#code' })}
         ${statTile('Controls', stats.controls, `${model.mitigations.length} ${plural(model.mitigations.length, 'mitigation')}`, { href: '#diagrams?tab=threat' })}
         ${statTile('Trust boundaries', stats.boundaries, 'declared @boundary', { href: '#diagrams?tab=system' })}
         ${statTile('Flows', stats.flows, `${crossing} cross a trust boundary`, { href: '#diagrams?tab=flow' })}
@@ -145,7 +145,7 @@ export function renderOverviewPage(ctx: PageContext, variants: OverviewVariant[]
   const claimIdx = new Map(ctx.claims.filter(c => c.verb === 'exposes').map(c => [`${c.file}:${c.line}:${c.asset}:${c.threat}`, c.idx]));
   const live = actions.filter(a => a.id !== 'none');
   // The marker is warm only when the action is about an open threat claim.
-  const warm = new Set(['confirmed', 'open-severe']);
+  const warm = new Set(['confirmed', 'retest', 'open-severe']);
 
   return `
 <section id="sec-overview" class="section-content active" aria-label="Overview">

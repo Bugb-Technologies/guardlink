@@ -10,8 +10,8 @@ decisions that are not visible there, such as which risks a human has accepted.
 
 This file is generated. Run `guardlink sync` to refresh it; do not edit it by hand.
 
-Current model: 1151 annotations · 21 assets · 16 threats · 14 controls · 169 exposures · 245 flows
-Content hash: `sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673` — identical hash means identical hashed annotation content, not unchanged code, anchors or agent configuration.
+Current model: 1167 annotations · 21 assets · 16 threats · 14 controls · 169 exposures · 252 flows
+Content hash: `sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915` — identical hash means identical hashed annotation content, not unchanged code, anchors or agent configuration.
 
 ---
 
@@ -140,11 +140,12 @@ Assets are referenced as `#id` or as a `Dotted.Path`; both resolve to the same n
 One note that catches people out: `@confirmed` and `@exposes` take their arguments in
 **opposite orders** — exposes is asset-then-threat, confirmed is threat-then-asset.
 
-Cross-repo tags are written qualified and unquoted, in any reference position —
-`@flows #other-repo.tokens -> #api via header`, and equally
-`@exposes #api to #other-repo.injection [high] -- "why"`. Quoting is
-only for a reference containing spaces. (This used to require quotes because the grammar
-would not accept a dot after `#`; that was D19, and it is fixed.)
+Cross-repo references use flat globally unique ids, unquoted in any reference position:
+`@flows #other-repo-tokens -> #api via header`, and equally
+`@exposes #api to #other-repo-injection [high] -- "why"`. Use the exact id declared
+by the sibling, without adding a repository namespace. Legacy dotted references remain
+readable and are reported as legacy. Quote only references containing spaces.
+
 
 Write coupled blocks, not lone facts: a risk plus the control or audit that answers it, plus
 the flow that gives it context.

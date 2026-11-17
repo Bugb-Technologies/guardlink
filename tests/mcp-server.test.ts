@@ -213,7 +213,7 @@ describe('MCP server — freshness envelope (GL-102)', () => {
     'guardlink_lookup', 'guardlink_threat_report', 'guardlink_annotate', 'guardlink_report', 'guardlink_translate',
     'guardlink_dashboard', 'guardlink_sarif', 'guardlink_diff', 'guardlink_threat_reports',
     'guardlink_sync', 'guardlink_clear', 'guardlink_unannotated', 'guardlink_review_list',
-    'guardlink_review_accept', 'guardlink_workspace_info',
+    'guardlink_review_accept', 'guardlink_workspace_info', 'guardlink_application_view',
     'guardlink_entitlement_propose', 'guardlink_entitlement_list',
     'guardlink_blame', 'guardlink_worklist', 'guardlink_reach',
   ];
@@ -225,6 +225,7 @@ describe('MCP server — freshness envelope (GL-102)', () => {
 
   it('every registered tool returns the envelope', async () => {
     const args: Record<string, any> = {
+      guardlink_application_view: { capabilities: true },
       guardlink_lookup: { query: 'unmitigated' },
       guardlink_annotate: { prompt: 'annotate auth' },
       guardlink_clear: { dry_run: true },

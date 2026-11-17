@@ -1,0 +1,34 @@
+%% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
+%% artifact:        by-asset/workspace-config.flows.mmd
+%% scope:           PARTIAL — #workspace-config and its flow neighbourhood, grown until the drawing stopped fitting — 29 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915
+%% generator:       guardlink@2.6.0
+%% ---
+%% This diagram is derived from the annotations in this repository. If
+%% annotation_hash above differs from what `guardlink status .` reports, the
+%% diagram is STALE — regenerate rather than trusting it.
+%% When it was generated and at which commit: ask git. Those move for reasons
+%% unrelated to the diagram, so they are reported at emission time, not stored.
+%%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
+graph LR
+  configfile["🧩 ConfigFile"]
+  agent_launcher["🧩 GuardLink.Agent_Launcher"]
+  parser["🧩 GuardLink.Parser"]
+  projectroot["🧩 ProjectRoot"]
+  workspace_config["🧩 Workspace.Config"]
+  gitrepo["🧩 GitRepo"]
+  configfile -- "🗄️ readFileSync" --> agent_launcher
+  agent_launcher -- "🗄️ writeFileSync" --> configfile
+  parser -- "📡 annotation worklist" --> agent_launcher
+  configfile -- "📡 readAcceptancePolicy" --> parser
+  projectroot -- "📡 annotationScope" --> parser
+  projectroot -- "📡 buildAnnotationWorklist" --> parser
+  projectroot -- "📡 fast-glob" --> parser
+  projectroot -- "📡 findNestedCheckouts" --> parser
+  workspace_config -- "📡 localWorkspaceMembers" --> parser
+  configfile -- "📡 readSecurityTestsDir" --> parser
+  configfile -- "📡 collectApplicationView" --> workspace_config
+  projectroot -- "📡 collectApplicationView" --> parser
+  gitrepo -- "📡 readMemberRevision" --> workspace_config
+  projectroot -- "📡 localWorkspaceMembers" --> workspace_config
+  configfile -- "📡 loadWorkspaceConfig" --> workspace_config

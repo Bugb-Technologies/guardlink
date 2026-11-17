@@ -13,16 +13,18 @@
  * @comment -- "Pure; every string here is raw and is escaped by the page that renders it"
  */
 import type { ReachSummary } from '../../reach/index.js';
+import { applicationSourceLink } from '../../workspace/application.js';
 import type { MeasuredRouteRow } from '../../codegraph/reach-check.js';
 import type { ExposureHypothesis, ThreatModel } from '../../types/index.js';
 import type { ClaimState, VerificationReport } from '../../parser/verification.js';
 import { buildCoverageIndex } from '../../parser/coverage.js';
 import type { CommitRef, IntroducedBy } from '../../blame/types.js';
 import type { ThreatReportWithContent } from '../../analyze/index.js';
-import type { RepoLinks } from '../links.js';
+import { linksFromRemote, type RepoLinks } from '../links.js';
 import { buildAssetIndex } from '../analytics.js';
 import type { ChangeSummary, FileRisk } from '../analytics.js';
 import type { DashboardStats, SeverityBreakdown, ExposureRow, ConfirmedRow, AssetHeatmapEntry, AttributionData, DashboardAction, TicketRow } from '../data.js';
+import { gateState, sourceConfirmedPairs } from '../data.js';
 import type { FileAnnotationGroup } from '../annotations.js';
 
 export type ClaimStatus = 'open' | 'mitigated' | 'accepted' | 'confirmed' | 'control' | 'refuted';
@@ -49,6 +51,8 @@ export interface DrawerBlame {
 
 export interface ClaimView {
   idx: number;
+  memberId?: string;
+  nativeClaimKey?: string;
   verb: 'exposes' | 'confirmed' | 'mitigates';
   status: ClaimStatus;
   statusLabel: string;
@@ -150,16 +154,27 @@ export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger:
     const e = ledger?.entryByLocation.get(loc);
     return { verifiedBy: e?.verified_by ?? null, verifiedAt: e?.verified_at ?? null };
   };
-  const url = (file: string, line: number): string | null => (links ? links.file(file, line) : null);
+  const url = (file: string, line: number): string | null => (model.application ? applicationSourceLink(model, file, line) : links ? links.file(file, line) : null);
 
+  const ownerLinks = (file: string): RepoLinks | null => {
+    if (!model.application) return links;
+    const member = model.application.receipt.members.find(m => file.startsWith(m.relativePath + '/'));
+    return member?.repositoryUri ? linksFromRemote(member.repositoryUri) : null;
+  };
   const push = (c: Omit<ClaimView, 'idx' | 'search'>): void => {
-    const search = [c.verb, c.status, c.asset, c.threat, c.severity, c.description, c.control ?? '', c.file, c.state ?? '', c.change ?? '', ...c.owners, ...c.handles, ...c.who, ...c.refs].join(' ').toLowerCase();
-    claims.push({ ...c, idx: claims.length, search });
+    const search = [c.verb, c.status, c.hypothesis?.state ?? '', c.asset, c.threat, c.severity, c.description, c.control ?? '', c.file, c.state ?? '', c.change ?? '', ...c.owners, ...c.handles, ...c.who, ...c.refs].join(' ').toLowerCase();
+    const occurrence = model.application?.occurrences.find(o => o.location.file === c.file && o.line === c.line && o.verb === c.verb);
+    claims.push({ ...c, ...(occurrence ? { memberId: occurrence.memberId, nativeClaimKey: occurrence.claimKey } : {}), idx: claims.length, search });
   };
 
+  const confirmedPairs = sourceConfirmedPairs(model);
   for (const e of model.exposures) {
-    // Tested and not exploitable outranks 'open': the ledger holds the evidence. It never outranks a control or an acceptance.
-    const status: ClaimStatus = coverage.isMitigated(e) ? 'mitigated' : coverage.isAccepted(e) ? 'accepted' : e.hypothesis?.state === 'refuted' ? 'refuted' : 'open';
+    // A claim the ledger holds confirmed, or due a retest, is open work whatever control or acceptance is declared
+    // beside it: a pre-PR gate reading the ledger blocks on it. Otherwise tested and not exploitable outranks
+    // 'open': the ledger holds the evidence. It never outranks a control or an acceptance.
+    const gate = gateState(e.hypothesis, confirmedPairs.has(`${e.asset}\u0000${e.threat}`));
+    const status: ClaimStatus = gate === 'confirmed' ? 'confirmed' : gate === 'retest' ? 'open'
+      : coverage.isMitigated(e) ? 'mitigated' : coverage.isAccepted(e) ? 'accepted' : e.hypothesis?.state === 'refuted' ? 'refuted' : 'open';
     const b = e.blame;
     push({
       verb: 'exposes', status,
@@ -170,7 +185,9 @@ export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger:
       // comes from an @accepts comment whose signer is free text nobody
       // verified. A reader who cannot tell them apart reads the weaker one as
       // the stronger.
-      statusLabel: status === 'open' ? 'Open — no mitigation'
+      statusLabel: gate === 'confirmed' ? 'Confirmed exploitable (hypothesis ledger); a declared control does not close it until a retest refutes it'
+        : gate === 'retest' ? 'Open — retest due: confirmed exploitable, then the code changed; not yet re-tested'
+        : status === 'open' ? 'Open — no mitigation'
         : status === 'mitigated' ? 'Mitigated'
         : status === 'refuted' ? 'Refuted — tested, not exploitable (evidence in the hypothesis ledger)'
         : 'Accepted (@accepts in code)',
@@ -179,7 +196,7 @@ export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger:
       refs: e.external_refs || [], file: e.location.file, line: e.location.line, url: url(e.location.file, e.location.line),
       state: state(e.location), ...entry(e.location), owners: ix.ownersOf(e.asset), handles: ix.handlesOf(e.asset), change: change('exposes', e.location.file, e.location.line),
       who: b ? whoTokens([b.introduced_by, b.found_by, b.fixed_by]) : [],
-      blame: b ? { status: b.status, introduced: toRef(b.introduced_by, links), declared: toRef(b.found_by, links), fixed: toRef(b.fixed_by, links), days: b.time_to_fix_days, lowerBound: b.introduced_by?.lower_bound === true } : null,
+      blame: b ? { status: b.status, introduced: toRef(b.introduced_by, ownerLinks(e.location.file)), declared: toRef(b.found_by, ownerLinks(e.location.file)), fixed: toRef(b.fixed_by, ownerLinks(e.location.file)), days: b.time_to_fix_days, lowerBound: b.introduced_by?.lower_bound === true } : null,
     });
   }
   for (const c of model.confirmed || []) {
@@ -190,7 +207,7 @@ export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger:
       refs: c.external_refs || [], file: c.location.file, line: c.location.line, url: url(c.location.file, c.location.line),
       state: state(c.location), ...entry(c.location), owners: ix.ownersOf(c.asset), handles: ix.handlesOf(c.asset), change: change('confirmed', c.location.file, c.location.line),
       who: b ? whoTokens([b.introduced_by, b.found_by, b.fixed_by]) : [],
-      blame: b ? { status: b.status, introduced: toRef(b.introduced_by, links), declared: toRef(b.found_by, links), fixed: toRef(b.fixed_by, links), days: b.time_to_fix_days, lowerBound: b.introduced_by?.lower_bound === true } : null,
+      blame: b ? { status: b.status, introduced: toRef(b.introduced_by, ownerLinks(c.location.file)), declared: toRef(b.found_by, ownerLinks(c.location.file)), fixed: toRef(b.fixed_by, ownerLinks(c.location.file)), days: b.time_to_fix_days, lowerBound: b.introduced_by?.lower_bound === true } : null,
     });
   }
   for (const m of model.mitigations) {
@@ -201,7 +218,7 @@ export function buildClaims(model: ThreatModel, links: RepoLinks | null, ledger:
       refs: [], file: m.location.file, line: m.location.line, url: url(m.location.file, m.location.line),
       state: state(m.location), ...entry(m.location), owners: ix.ownersOf(m.asset), handles: ix.handlesOf(m.asset), change: null,
       who: b ? whoTokens([b.declared_by]) : [],
-      blame: b ? { status: b.status, introduced: null, declared: toRef(b.declared_by, links), fixed: null, days: null, lowerBound: false } : null,
+      blame: b ? { status: b.status, introduced: null, declared: toRef(b.declared_by, ownerLinks(m.location.file)), fixed: null, days: null, lowerBound: false } : null,
     });
   }
   return claims;

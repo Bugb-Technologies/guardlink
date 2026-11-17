@@ -18,12 +18,14 @@
  * file does not, so nothing incidental signals that the model moved.
  *
  * @exposes #parser to #dos [low] cwe:CWE-400 -- "Fingerprint globs the project tree on every call"
- * @mitigates #parser against #dos using #resource-limits -- "Reuses DEFAULT_EXCLUDE; stats come from the glob walk, no extra stat() calls, no file reads"
+ * @mitigates #parser against #dos using #resource-limits -- "Reuses DEFAULT_EXCLUDE; stats come from the glob walk, no extra stat() calls; linked membership reads only workspace manifests"
  * @flows ProjectRoot -> #parser via fast-glob -- "Directory metadata scan for cache validity"
- * @comment -- "Metadata only: path, size, mtime. File contents are never read."
+ * @comment -- "Source metadata only: path, size, mtime. Linked workspace manifests are read to include the selected members and sibling definitions in cache validity."
  */
 
 import fg from 'fast-glob';
+import { loadWorkspaceConfig } from '../workspace/metadata.js';
+import { localWorkspaceMembers, workspaceContainer } from '../workspace/discovery.js';
 import { createHash } from 'node:crypto';
 import { DEFAULT_INCLUDE, DEFAULT_EXCLUDE } from './parse-project.js';
 import { scanIgnore } from './nested-checkouts.js';
@@ -36,6 +38,8 @@ const RECORD_SEP = String.fromCharCode(2);
 export interface FingerprintOptions {
   include?: string[];
   exclude?: string[];
+  /** Internal recursion guard: a member fingerprint includes each sibling once. */
+  workspace?: boolean;
 }
 
 /**
@@ -50,7 +54,7 @@ export async function fingerprintProject(root: string, options: FingerprintOptio
   // `stats: true` gets size and mtime from the walk itself — no second stat()
   // pass over the tree.
   // @comment -- "scanIgnore skips nested checkouts (a directory holding a .git file, or .claude/worktrees) exactly as the parser does, so an edit inside another session's worktree does not invalidate this repository's cached model — and a file there is not part of what the fingerprint claims to cover"
-  const entries = await fg(include, {
+  const entries = await fg([...include, '.guardlink/config.json', '.guardlink/workspace.yaml'], {
     cwd: root,
     ignore: scanIgnore(root, exclude),
     absolute: true,
@@ -63,5 +67,12 @@ export async function fingerprintProject(root: string, options: FingerprintOptio
     .map(e => [e.path, e.stats?.size ?? 0, Math.trunc(e.stats?.mtimeMs ?? 0)].join(FIELD_SEP))
     .sort();
 
+  if (options.workspace !== false) {
+    const config = loadWorkspaceConfig(root);
+    const members = config ? localWorkspaceMembers(root, config) : workspaceContainer(root)?.members ?? [];
+    for (const member of members) {
+      parts.push(`${member.name}${FIELD_SEP}${member.path}${FIELD_SEP}${await fingerprintProject(member.path, { ...options, workspace: false })}`);
+    }
+  }
   return createHash('sha256').update(parts.join(RECORD_SEP)).digest('hex');
 }

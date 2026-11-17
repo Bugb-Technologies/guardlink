@@ -652,8 +652,8 @@ function applyFeatureFilter(name) {
     var c = $('[data-copy]', n); if (c) c.setAttribute('data-copy', 'guardlink dashboard . --feature "' + _activeFeature + '"');
   });
   var vis = exposuresData.filter(function (e) { return !on || files[e.file]; });
-  var open = vis.filter(function (e) { return !e.mitigated && !e.accepted && !e.refuted; }).length;
-  var mit = vis.filter(function (e) { return e.mitigated; }).length;
+  var open = vis.filter(function (e) { return e.open; }).length;
+  var mit = vis.filter(function (e) { return e.mitigated && !e.gate; }).length;
   var pct = vis.length ? Math.round((mit / vis.length) * 100) : 0;
   $$('.tn-stat').forEach(function (s) {
     var k = $('.tn-k', s), v = $('.tn-v', s); if (!k || !v) return;

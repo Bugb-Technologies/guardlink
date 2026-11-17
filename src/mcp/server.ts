@@ -59,6 +59,8 @@
  * @comment -- "Entitlement accepted by zippon on 2026-08-10 via guardlink entitle (proposal ent-mcp_agent.mcp.data_exposure)."
  */
 import { readSecurityTestsDir } from '../parser/security-tests.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { collectApplicationView, discoverApplicationManifest, applicationViewCapabilities } from '../workspace/application.js';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { resolve } from 'node:path';
@@ -66,7 +68,7 @@ import { z } from 'zod';
 // MERGE: union of the two parser surfaces. Ours added `findTicketDiagnostics`
 // (the @ticket verb); main added `buildAnnotationWorklist` (the annotation
 // worklist, PR #83). Keep both — the rest of the list is shared.
-import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findAgentReachConflicts, findTicketDiagnostics, findAgentConfigDiagnostics, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, crossRepoTag, withReachAnalysis, buildAnnotationWorklist } from '../parser/index.js';
+import { parseProject, findDanglingRefs, findUnmitigatedExposures, findUndeclaredActors, findAgentReachConflicts, findTicketDiagnostics, findAgentConfigDiagnostics, findInertEntitlements, findImpreciseEntitlements, findUnresolvedBoundarySides, clearAnnotations, applyAnnotations, findAnchorDrift, applyReanchor, withReachAnalysis, buildAnnotationWorklist } from '../parser/index.js';
 import { fingerprintProject } from '../parser/fingerprint.js';
 import { readAcceptancePolicy, acceptanceBlastRadius, formatBlastRadius, ACCEPTANCE_REGISTER_ID, ACCEPTANCE_REGISTER_NOTE } from '../parser/acceptance.js';
 import { buildEnvelope, degradedEnvelope, envelopeBlock } from './freshness.js';
@@ -99,7 +101,7 @@ import { detectAnnotationMode } from '../parser/annotation-mode.js';
 import { syncAgentFiles } from '../init/index.js';
 import { findPrePrDrift } from '../init/pre-pr.js';
 import { loadWorkspaceConfig, readVersionControl } from '../workspace/index.js';
-import { computeBlame, buildBlamePayload } from '../blame/index.js';
+import { computeBlame, attachBlame, buildBlamePayload } from '../blame/index.js';
 import { getPackageVersion } from '../version.js';
 import type { ThreatModel } from '../types/index.js';
 
@@ -122,6 +124,11 @@ function createModelCache() {
   let cachedDiagnostics: any[] = [];
   let cachedRoot = '';
   let cachedFingerprint: string | null = null;
+  // One read frame per request: concurrent clients must not exchange snapshots,
+  // and an envelope must describe the model that produced its own payload.
+  const frames = new AsyncLocalStorage<Map<string, { model: ThreatModel; diagnostics: any[] }>>();
+  const withSnapshot = <T>(run: () => Promise<T>) => frames.run(new Map(), run);
+  const remember = (root: string, value: { model: ThreatModel; diagnostics: any[] }) => { frames.getStore()?.set(root, value); return value; };
 
   /**
    * Return the parsed model, re-parsing when anything on disk has moved.
@@ -139,19 +146,24 @@ function createModelCache() {
    * agent and the writes land afterwards, outside any tool call.
    */
   async function getModel(root: string): Promise<{ model: ThreatModel; diagnostics: any[] }> {
+    const captured = frames.getStore()?.get(root);
+    if (captured) return captured;
+    const application = discoverApplicationManifest(root);
+    // Application currency includes git refs and ledger bytes, not only file stat metadata.
     const fingerprint = await fingerprintProject(root);
-    if (cachedModel && cachedRoot === root && cachedFingerprint === fingerprint) {
-      return { model: cachedModel, diagnostics: cachedDiagnostics };
+    if (!application && cachedModel && cachedRoot === root && cachedFingerprint === fingerprint) {
+      return remember(root, { model: cachedModel, diagnostics: cachedDiagnostics });
     }
-    const result = await parseProject({ root, project: 'unknown' });
+    const result = await parseProject({ root, project: 'unknown', application: true });
     cachedModel = result.model;
     cachedDiagnostics = result.diagnostics;
     cachedRoot = root;
     cachedFingerprint = fingerprint;
-    return result;
+    return remember(root, result);
   }
 
   function invalidateCache(): void {
+    frames.getStore()?.clear();
     cachedModel = null;
     cachedDiagnostics = [];
     cachedFingerprint = null;
@@ -183,13 +195,13 @@ function createModelCache() {
   async function envelopeFor(root: string) {
     try {
       const { model } = await getModel(root);
-      return buildEnvelope(root, model);
+      return { ...buildEnvelope(root, model), ...(model.application ? { application_receipt: model.application.receipt } : {}) };
     } catch (err: any) {
       return degradedEnvelope(root, err?.message ?? 'model unavailable');
     }
   }
 
-  return { getModel, invalidateCache, resourceRoot, envelopeFor };
+  return { getModel, invalidateCache, resourceRoot, envelopeFor, withSnapshot, remember };
 }
 
 type ModelCache = ReturnType<typeof createModelCache>;
@@ -213,11 +225,16 @@ function registerTool(
   schema: z.ZodRawShape,
   handler: (args: any) => Promise<{ content: TextBlock[]; isError?: boolean }>,
 ): void {
-  server.tool(name, description, schema, (async (args: any) => {
+  server.tool(name, description, schema, ((args: any) => cache.withSnapshot(async () => {
     const result = await handler(args);
     const root = typeof args?.root === 'string' && args.root ? args.root : cache.resourceRoot().root;
+    if (name === 'guardlink_application_view') {
+      const payload = JSON.parse(result.content[0].text);
+      const envelope = payload.receipt ? { ...buildEnvelope(root, payload.model), application_receipt: payload.receipt } : degradedEnvelope(root, 'Capability probe: no application snapshot was read.');
+      return { ...result, content: [...result.content, envelopeBlock(envelope)] };
+    }
     return { ...result, content: [...result.content, envelopeBlock(await cache.envelopeFor(root))] };
-  }) as any);
+  })) as any);
 }
 
 /** Register a resource whose read always carries the envelope and names its root. */
@@ -229,7 +246,7 @@ function registerResource(
   metadata: { description: string },
   handler: (root: string) => Promise<{ contents: any[] }>,
 ): void {
-  server.resource(name, uri, metadata, (async () => {
+  server.resource(name, uri, metadata, (() => cache.withSnapshot(async () => {
     const { root, source } = cache.resourceRoot();
     const result = await handler(root);
     const envelope = { ...(await cache.envelopeFor(root)), root_source: source };
@@ -243,7 +260,7 @@ function registerResource(
         },
       ],
     };
-  }) as any);
+  })) as any);
 }
 
 // ─── Server setup ────────────────────────────────────────────────────
@@ -286,8 +303,10 @@ export function createServer(): McpServer {
       // The derived reach_analysis block (SPEC §5.5), as `guardlink parse` writes it.
       const model = { ...withReachAnalysis(parsed), config: { security_tests_dir: readSecurityTestsDir(root) } };
 
+      const incomplete = !!model.application && model.application.receipt.completeness !== 'complete';
+      const applicationStatus = incomplete ? { application_status: 'Application incomplete; available member content follows with its partial receipt.' } : {};
       if (compact) {
-        return { content: [{ type: 'text', text: JSON.stringify({ ...JSON.parse(serializeModelCompact(model)), config: model.config }) }] };
+        return { ...(incomplete ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify({ ...JSON.parse(serializeModelCompact(model)), ...applicationStatus, config: model.config }) }] };
       }
 
       // The one non-additive change in this epic: the default payload drops a
@@ -296,7 +315,7 @@ export function createServer(): McpServer {
       // model in it. Model content does not scale with repo size; the file
       // inventory does.
       if (include_unannotated) {
-        return { content: [{ type: 'text', text: JSON.stringify(model, null, 2) }] };
+        return { ...(incomplete ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify({ ...model, ...applicationStatus }, null, 2) }] };
       }
       const { unannotated_files, annotation_scope, ...rest } = model;
       // Say the key was dropped. Absent-because-omitted and absent-because-empty
@@ -306,6 +325,7 @@ export function createServer(): McpServer {
       // goes with it.
       const payload = {
         ...rest,
+        ...applicationStatus,
         unannotated_files_omitted: {
           count: unannotated_files.length,
           reason: 'Omitted by default — call guardlink_unannotated, or pass include_unannotated: true.',
@@ -317,7 +337,7 @@ export function createServer(): McpServer {
           },
         } : {}),
       };
-      return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] };
+      return { ...(incomplete ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] };
     },
   );
 
@@ -360,7 +380,8 @@ export function createServer(): McpServer {
           file: e.location.file,
           line: e.location.line,
         })),
-        coverage: model.coverage,
+        coverage: model.application ? { ...model.coverage, coverage_percent: model.application.coverage.overallPercent, known: model.application.coverage.known } : model.coverage,
+        ...(model.application ? { application_receipt: model.application.receipt } : {}),
       };
 
       return {
@@ -381,11 +402,14 @@ export function createServer(): McpServer {
     'Check annotations for syntax errors, duplicate IDs, and dangling references. Returns structured error list. With code_graph: true, also checks each declared @boundary against an optional code graph — a boundary whose description says its inner side needs a login (or an admin check) while a route there is classified public (boundary-access-contradicted) or could not be classified (boundary-access-unknown), a route handler reaching a sink with no boundary to the outside (boundary-missing), a boundary no flow crosses and no entry point reaches (boundary-unused). It also measures the declared @agents/@reaches/@effects/@gates against the call graph: an effect the annotations call gated while the graph finds a route to it through no gate (gate-not-on-route), a declared mutating effect no agent reach leads to (effect-unreached-by-agent), a tool registration no @agents covers (agent-tool-undeclared). Those are warnings about claims to verify, never findings; boundary_checks says whether the graph was usable, and reach_checks (present only when the graph answered the reach query) says what it measured.',
     {
       root: z.string().describe('Project root directory').default('.'),
+      workspace: z.boolean().default(false).describe('Require all linked sibling checkouts and check their references'),
       code_graph: z.boolean().default(false).describe('Also check declared boundaries against a code graph, when one is installed and built for this repository'),
     },
-    async ({ root, code_graph }) => {
+    async ({ root, code_graph, workspace }) => {
       invalidateCache();
-      const { model, diagnostics } = await getModel(root);
+      const { model, diagnostics } = workspace
+        ? cache.remember(root, await parseProject({ root, requireSiblings: true }))
+        : await getModel(root);
 
       // Compute dangling refs using shared validation
       const danglingDiags = findDanglingRefs(model);
@@ -996,7 +1020,7 @@ export function createServer(): McpServer {
       }
       const { writeFile } = await import('node:fs/promises');
       const { resolve } = await import('node:path');
-      const analyses = loadThreatReportsForDashboard(root);
+      const analyses = loadThreatReportsForDashboard(root, model);
       const html = generateDashboardHTML(model, root, analyses);
       await writeFile(resolve(root, output), html);
       // `.html` is in the parser's DEFAULT_INCLUDE, so the file just written
@@ -1474,26 +1498,48 @@ export function createServer(): McpServer {
       }
       const { resolve } = await import('node:path');
       const abs = resolve(root);
-      const payload = buildBlamePayload(model, computeBlame(abs, model, { file: rel }), abs);
+      const assessed = model.application ? structuredClone(model) : model;
+      const payload = buildBlamePayload(assessed, assessed.application ? attachBlame(abs, assessed, { file: rel }) : computeBlame(abs, assessed, { file: rel }), abs);
       return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] };
     },
   );
 
+  /**
+   * @agents #mcp-agent to guardlink_application_view on #workspace-config -- "Reads selected member checkouts and returns a provenance-bound semantic application snapshot; never builds or executes member code"
+   * @entitles #mcp-agent to guardlink_application_view on #workspace-config -- "By design: the connected coding agent may read the selected application model and member evidence. Authorization is the operator-launched stdio channel at src/mcp/index.ts:30; the read-only collector is registered at src/mcp/server.ts:1510 and never builds or executes member code."
+   * @comment -- "Entitlement accepted by Animesh Srivastava on 2026-11-16 via guardlink entitle (proposal ent-mcp_agent.guardlink_application_view). Note: Explicit maintainer approval: \"grant the read option for agents to use guardlink - approve\". Approves only the connected MCP agent reading selected application semantics and member evidence; no write or execution capability is granted."
+   */
+  registerTool(server, cache, 'guardlink_application_view', 'Read a selected application semantic view with member evidence, references, flow declarations and a shared receipt. Missing members remain explicit partial results.', {
+    root: z.string().default('.'), manifest: z.string().optional(), member: z.string().optional(), capabilities: z.boolean().default(false),
+  }, async ({ root, manifest, member, capabilities }) => {
+    if (capabilities) return { content: [{ type: 'text', text: JSON.stringify(applicationViewCapabilities()) }] };
+    const selected = discoverApplicationManifest(root, manifest);
+    if (!selected) throw new Error('No selected application manifest; supply manifest or link member checkouts.');
+    const view = await collectApplicationView({ root, manifest: manifest ?? selected, memberId: member, ...(!manifest ? { selectionProbe: () => discoverApplicationManifest(root) } : {}) });
+    return { content: [{ type: 'text', text: JSON.stringify(view) }] };
+  });
+
   // ── Tool: guardlink_workspace_info ──
   /**
-   * @agents #mcp-agent to guardlink_workspace_info on #workspace-config -- "Reads the workspace configuration and sibling tag prefixes"
+   * @agents #mcp-agent to guardlink_workspace_info on #workspace-config -- "Reads the workspace configuration and flat sibling ids"
    */
   registerTool(
     server, cache,
     'guardlink_workspace_info',
-    'Get workspace configuration for multi-repo threat modeling. Returns workspace name, this repo\'s identity, sibling repos, and their tag prefixes. Use this to understand cross-repo references when writing annotations. Returns null fields if the repo is not part of a workspace.',
+    'Get workspace configuration for multi-repo threat modeling. Returns workspace name, this repo\'s identity, sibling repos, and the flat globally unique id convention. Use this to understand cross-repo references when writing annotations. Returns null fields if the repo is not part of a workspace.',
     {
       root: z.string().describe('Project root directory').default('.'),
     },
     async ({ root }) => {
-      const config = loadWorkspaceConfig(root);
+      const config = loadWorkspaceConfig(root, { strict: true });
 
       if (!config) {
+        const selected = discoverApplicationManifest(root);
+        if (selected) {
+          const view = await collectApplicationView({ root, manifest: selected, selectionProbe: () => discoverApplicationManifest(root) });
+          cache.remember(root, { model: view.model, diagnostics: view.diagnostics });
+          return { content: [{ type: 'text', text: JSON.stringify({ workspace: selected.name, this_repo: null, id_convention: 'flat-globally-unique', receipt: view.receipt, members: view.receipt.members, references: view.references }) }] };
+        }
         return {
           content: [{ type: 'text', text: JSON.stringify({
             workspace: null,
@@ -1504,35 +1550,30 @@ export function createServer(): McpServer {
 
       const siblings = config.repos.filter(r => r.name !== config.this_repo);
 
-      // D19: every example here is BUILT from the parser's own tag grammar
-      // rather than typed as a string. Both rules this tool used to emit were
-      // hand-written and neither parsed — the `#a.b` form was unwritable
-      // unquoted, and the @flows example used a `from … to …` syntax the
-      // grammar has never had. The tool whose job is teaching this syntax was
-      // teaching syntax that fails.
       const sibling = siblings[0]?.name || 'sibling';
-      const ours = crossRepoTag(config.this_repo, 'component');
-      const theirs = crossRepoTag(sibling, 'endpoint');
+      const ours = `#${config.this_repo}-component`;
+      const theirs = `#${sibling}-endpoint`;
 
       return {
         content: [{ type: 'text', text: JSON.stringify({
           workspace: config.workspace,
           this_repo: config.this_repo,
-          tag_prefix: `#${config.this_repo}.`,
+          id_convention: 'flat-globally-unique',
+          legacy_tag_prefix: `#${config.this_repo}.`,
           siblings: siblings.map(r => ({
             name: r.name,
-            tag_prefix: `#${r.name}.`,
+            legacy_tag_prefix: `#${r.name}.`,
             registry: r.registry || null,
           })),
           total_repos: config.repos.length,
           cross_repo_annotation_rules: [
-            `Use ${ours} for assets defined in this repo`,
-            `Reference sibling assets, threats and controls by their tag prefix (e.g. ${theirs})`,
+            `Use flat globally unique ids, e.g. ${ours}, for definitions in this repo`,
+            `Reference sibling assets, threats and controls by the exact id they define (e.g. ${theirs}); do not prepend a repo namespace`,
             'Do not redefine assets that belong to another repo — reference by tag',
             `Cross-repo @flows are encouraged: @flows ${ours} -> ${theirs} -- "what crosses"`,
-            `Threats and controls take the same qualified form: @exposes ${ours} to ${crossRepoTag(sibling, 'injection')} [high] -- "why"`,
-            'Qualified tags need no quoting. Quote a reference only if it contains spaces.',
-            'External refs resolve during workspace merge, not local validation',
+            `Threats and controls also use flat ids: @exposes ${ours} to #${sibling}-injection [high] -- "why"`,
+            'Legacy dotted references remain readable and are reported as legacy; new annotations use flat ids.',
+            'Local validation identifies definitions in available linked siblings; validate --workspace requires all siblings. Coverage across members is computed at merge.',
           ],
         }, null, 2) }],
       };

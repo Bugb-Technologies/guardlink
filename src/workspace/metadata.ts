@@ -12,8 +12,9 @@
  * @mitigates #report-metadata against #data-exposure using #key-redaction -- "readVersionControl keeps only linksFromRemote().web, rebuilt from hostname and path; userinfo is dropped, and a remote that is not http(s)/ssh yields no provenance at all"
  */
 
+import { LineCounter, parseDocument, stringify } from 'yaml';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { computeAnnotationHash } from '../parser/annotation-hash.js';
 import { getPackageVersion } from '../version.js';
@@ -118,107 +119,78 @@ export function readVersionControl(root: string): { repositoryUri: string; revis
   return { repositoryUri: links.web, revisionId: getCommitSha(root), branch: getBranch(root) };
 }
 
-/**
- * Try to load workspace.yaml from the project's .guardlink/ directory.
- * Returns null if not found or invalid.
- */
-export function loadWorkspaceConfig(root: string): WorkspaceConfig | null {
-  const yamlPath = join(root, '.guardlink', 'workspace.yaml');
-  if (!existsSync(yamlPath)) return null;
+/** A present manifest that could not be read or decoded, with its actionable cause. */
+export class WorkspaceConfigError extends Error {
+  constructor(readonly file: string, readonly problem: string, readonly line = 1) {
+    super(`${file}:${line}: ${problem}`);
+    this.name = 'WorkspaceConfigError';
+  }
+}
 
+/**
+ * Read the GuardLink-owned YAML manifest. JSON is a supported YAML representation.
+ * Legacy callers get null for an invalid file; discovery asks for a named error.
+ *
+ * @flows ConfigFile -> #workspace-config via loadWorkspaceConfig -- "Decode workspace.yaml as YAML, including JSON-form documents"
+ * @mitigates #workspace-config against #config-tamper using #yaml-validation -- "Bounded YAML alias expansion and explicit manifest shape checks; strict reads name the invalid file and its decoding or filesystem problem"
+ */
+export function loadWorkspaceConfig(root: string, options: { strict?: boolean } = {}): WorkspaceConfig | null {
+  const yamlPath = join(root, '.guardlink', 'workspace.yaml');
   try {
-    const content = readFileSync(yamlPath, 'utf-8');
-    return parseWorkspaceYaml(content);
-  } catch {
+    return parseWorkspaceYaml(readFileSync(yamlPath, 'utf-8'));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    if (options.strict) {
+      const cause = error as Error & { line?: number };
+      throw new WorkspaceConfigError(yamlPath, cause.message, cause.line ?? 1);
+    }
     return null;
   }
 }
 
-/**
- * Parse workspace.yaml content (simple YAML subset — no dependency needed).
- * Supports the flat structure we define; falls back gracefully on malformed input.
- */
+/** Decode any YAML document with the workspace manifest shape, without executing tags. */
 export function parseWorkspaceYaml(content: string): WorkspaceConfig {
-  const lines = content.split('\n').map(l => l.trimEnd());
-  const config: Partial<WorkspaceConfig> = { repos: [] };
-
-  let inRepos = false;
-  let currentRepo: Partial<{ name: string; registry: string }> | null = null;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-
-    // Top-level scalar fields
-    if (!line.startsWith(' ') && !line.startsWith('\t') && trimmed.includes(':')) {
-      // Flush pending repo
-      if (currentRepo?.name) {
-        config.repos!.push({ name: currentRepo.name, registry: currentRepo.registry });
-        currentRepo = null;
-      }
-
-      const [key, ...rest] = trimmed.split(':');
-      const value = rest.join(':').trim().replace(/^["']|["']$/g, '');
-
-      if (key === 'workspace') config.workspace = value;
-      else if (key === 'this_repo') config.this_repo = value;
-      else if (key === 'shared_definitions' && value && value !== 'null') config.shared_definitions = value;
-      else if (key === 'repos') { inRepos = true; continue; }
-      else inRepos = false;
-      continue;
-    }
-
-    // Inside repos list
-    if (inRepos && trimmed.startsWith('- ')) {
-      // Flush pending repo
-      if (currentRepo?.name) {
-        config.repos!.push({ name: currentRepo.name, registry: currentRepo.registry });
-      }
-      currentRepo = {};
-      // Handle "- name: value" shorthand
-      const afterDash = trimmed.slice(2).trim();
-      if (afterDash.startsWith('name:')) {
-        currentRepo.name = afterDash.slice(5).trim().replace(/^["']|["']$/g, '');
-      }
-      continue;
-    }
-
-    // Repo sub-fields (indented under - )
-    if (inRepos && currentRepo && (line.startsWith('    ') || line.startsWith('\t\t'))) {
-      const [key, ...rest] = trimmed.split(':');
-      const value = rest.join(':').trim().replace(/^["']|["']$/g, '');
-      if (key === 'name') currentRepo.name = value;
-      else if (key === 'registry') currentRepo.registry = value;
-    }
+  const lineCounter = new LineCounter();
+  const doc = parseDocument(content, { lineCounter, prettyErrors: false });
+  if (doc.errors.length) {
+    const error = doc.errors[0];
+    throw Object.assign(new Error(error.message), { line: lineCounter.linePos(error.pos[0]).line });
   }
-
-  // Flush last repo
-  if (currentRepo?.name) {
-    config.repos!.push({ name: currentRepo.name, registry: currentRepo.registry });
-  }
-
-  if (!config.workspace) throw new Error('workspace.yaml missing "workspace" field');
-  if (!config.this_repo) throw new Error('workspace.yaml missing "this_repo" field');
-
-  return config as WorkspaceConfig;
+  const value: unknown = doc.toJS({ maxAliasCount: 100 });
+  const mapping = (v: unknown, field: string): Record<string, unknown> => {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error(`${field} must be a mapping`);
+    return v as Record<string, unknown>;
+  };
+  const text = (v: unknown, field: string): string => {
+    if (typeof v !== 'string' || !v.trim()) throw new Error(`${field} must be a non-empty string`);
+    return v;
+  };
+  const data = mapping(value, 'workspace manifest');
+  const workspace = text(data.workspace, 'workspace');
+  const this_repo = text(data.this_repo, 'this_repo');
+  if (!Array.isArray(data.repos)) throw new Error('repos must be a list of member mappings');
+  const repos = data.repos.map((value, i) => {
+    const repo = mapping(value, `repos[${i}]`);
+    return {
+      name: text(repo.name, `repos[${i}].name`),
+      ...(repo.registry != null ? { registry: text(repo.registry, `repos[${i}].registry`) } : {}),
+    };
+  });
+  if (new Set(repos.map(r => r.name)).size !== repos.length) throw new Error('repos must have unique member names');
+  return {
+    workspace, this_repo, repos,
+    ...(data.shared_definitions != null ? { shared_definitions: text(data.shared_definitions, 'shared_definitions') } : {}),
+  };
 }
 
-/**
- * Generate workspace.yaml content from a WorkspaceConfig.
- */
+/** Emit the canonical GuardLink-owned YAML format, quoting scalars when necessary. */
 export function serializeWorkspaceYaml(config: WorkspaceConfig): string {
-  const lines: string[] = [];
-  lines.push(`workspace: ${config.workspace}`);
-  lines.push(`this_repo: ${config.this_repo}`);
-  lines.push('repos:');
-  for (const repo of config.repos) {
-    lines.push(`  - name: ${repo.name}`);
-    if (repo.registry) lines.push(`    registry: ${repo.registry}`);
-  }
-  if (config.shared_definitions) {
-    lines.push(`shared_definitions: ${config.shared_definitions}`);
-  }
-  return lines.join('\n') + '\n';
+  return stringify({
+    workspace: config.workspace,
+    this_repo: config.this_repo,
+    repos: config.repos.map(repo => ({ name: repo.name, ...(repo.registry ? { registry: repo.registry } : {}) })),
+    ...(config.shared_definitions ? { shared_definitions: config.shared_definitions } : {}),
+  }, { lineWidth: 0 });
 }
 
 /**

@@ -15,7 +15,7 @@ import type { ThreatModel, ExternalRef, ReportParseState } from '../types/index.
 
 /** A single repo in the workspace */
 export interface WorkspaceRepo {
-  /** Short name used as tag prefix (e.g. "payment-service") */
+  /** Member identity, independent of annotation ids (e.g. "payment-service") */
   name: string;
   /** Remote registry URL (e.g. "github.com/unstructured/payment-service") */
   registry?: string;
@@ -44,7 +44,7 @@ export interface TagOwnership {
   /** Repo that defines this tag */
   owner_repo: string;
   /** What it defines: asset, threat, or control */
-  kind: 'asset' | 'threat' | 'control';
+  kind: 'asset' | 'threat' | 'control' | 'actor' | 'boundary';
   /**
    * The OTHER repos that also define this tag — the ones the `duplicate_tag`
    * warning names after "and also in:". Absent when the tag is unambiguous.
@@ -96,6 +96,7 @@ export interface MergeWarning {
 
 export type MergeWarningCode =
   | 'duplicate_tag'       // Same tag defined in multiple repos
+  | 'legacy_ref'         // Readable dotted reference; canonical workspace ids are flat
   | 'unresolved_ref'      // Tag referenced but not defined anywhere
   | 'missing_repo'        // Workspace repo has no report (stale/missing)
   | 'schema_mismatch'     // Report schema_version differs across repos

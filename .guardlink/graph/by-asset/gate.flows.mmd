@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/gate.flows.mmd
-%% scope:           PARTIAL — #gate and its flow neighbourhood, grown until the drawing stopped fitting — 25 neighbour(s) one hop out are not shown
-%% annotation_hash: sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673
+%% scope:           PARTIAL — #gate and its flow neighbourhood, grown until the drawing stopped fitting — 20 neighbour(s) one hop out are not shown
+%% annotation_hash: sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915
 %% generator:       guardlink@2.6.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -11,24 +11,22 @@
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %%{init: {"flowchart": {"nodeSpacing": 44, "rankSpacing": 58, "curve": "basis", "htmlLabels": false}}}%%
 graph LR
-  threatmodel["🧩 ThreatModel"]
-  cli["🧩 GuardLink.CLI"]
   sourcefiles["🧩 SourceFiles"]
+  cli["🧩 GuardLink.CLI"]
+  ledgerfile["🧩 LedgerFile"]
   gate["🧩 GuardLink.Gate"]
   agentprompt["🧩 AgentPrompt"]
-  threatmodel -- "📡 runCiChecks" --> cli
   sourcefiles -- "📡 findAnchorDrift" --> cli
-  threatmodel -- "📡 findExpiringAcceptances" --> cli
+  ledgerfile -- "📡 readLedger" --> cli
+  ledgerfile -- "📡 readHypotheses" --> cli
   cli -- "📡 runGate" --> gate
-  threatmodel -- "📡 findUnmitigatedPaths" --> cli
-  threatmodel -- "📡 runGate" --> gate
+  ledgerfile -- "📡 classifyBoundaryClaims" --> cli
   gate -- "📡 buildGateFollowUp" --> agentprompt
   gate -- "📡 stripViolations" --> sourcefiles
-  threatmodel -- "📡 lintAnnotations" --> gate
-  threatmodel -- "📡 classifyBoundaryClaims" --> cli
-  threatmodel -- "📡 classifyHypotheses" --> cli
-  cli -- "📡 attachHypotheses" --> threatmodel
   cli -- "📡 writeConfirmedLine" --> sourcefiles
+  cli -- "📡 writeHypotheses" --> ledgerfile
+  cli -- "📡 writeLedger" --> ledgerfile
+  cli -- "📡 applyVerification" --> ledgerfile
   cli -- "📡 applyProposalDecision" --> sourcefiles
-  threatmodel -- "📡 getReviewableExposures" --> cli
+  ledgerfile -- "📡 acceptedEntitlements" --> gate
   cli -- "🗄️ writeFile" --> sourcefiles

@@ -44,7 +44,7 @@
  *
  * @asset Workspace.Merge (#merge-engine) -- "Cross-repo threat model unification"
  * @threat Tag_Collision (#tag-collision) [medium] -- "Duplicate tag definitions across repos"
- * @mitigates #merge-engine against #tag-collision using #prefix-ownership -- "Tag prefix determines owning repo"
+ * @mitigates #merge-engine against #tag-collision using #prefix-ownership -- "Definitions determine owning repo; legacy dotted collisions retain prefix ownership"
  * @exposes #merge-engine to #vacuous-pass [high] cwe:CWE-754 -- "A glob that expanded to nothing, or a report set that loaded nothing, produced a merged model with zero of everything — and the summary of an empty model is indistinguishable from the summary of a clean estate"
  * @mitigates #merge-engine against #vacuous-pass using #fail-closed -- "mergeVerdict fails on zero repos loaded and on any glob that matched no file, regardless of --strict; the count it reports is of repositories actually read"
  * @flows ReportJSON -> #merge-engine via mergeReports -- "Per-repo reports feed into merge"
@@ -53,6 +53,8 @@
  */
 
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { getPackageVersion } from '../version.js';
 import { basename, dirname, resolve as resolvePath } from 'node:path';
 import fg from 'fast-glob';
 import type {
@@ -60,7 +62,7 @@ import type {
   ThreatModelExposure,
 
 
-  SourceLocation, AnnotationVerb,
+  SourceLocation,
 } from '../types/index.js';
 import type {
   MergedReport, MergeTotals, MergeDiffSummary, TagOwnership, UnresolvedRef,
@@ -68,6 +70,7 @@ import type {
 } from './types.js';
 import { REPORT_SCHEMA_VERSION } from './metadata.js';
 import { buildCoverageIndex, fileCoveragePercent, annotationCount, normalizeCoverage } from '../parser/coverage.js';
+import { tagReferences, definitionIds } from '../parser/claim-key.js';
 import { canonicaliser } from '../parser/canonical-ref.js';
 import { buildOwnerScope, repoOfPath, NO_OWNER_SCOPE, type OwnerScope } from './owner-scope.js';
 
@@ -302,6 +305,9 @@ function extractTagDefinitions(model: ThreatModel, repo: string): TagOwnership[]
     }
   }
 
+  for (const [kind, rows] of [['actor', model.actors ?? []], ['boundary', model.boundaries]] as const) {
+    for (const d of rows) if (d.id) tags.push({ tag: `#${d.id.replace(/^#/, '')}`, owner_repo: repo, kind });
+  }
   return tags;
 }
 
@@ -424,7 +430,7 @@ export function resolveReferences(
   reports: LoadedReport[],
   registry: TagOwnership[],
   repoNames: Set<string>,
-): { unresolved: UnresolvedRef[]; warnings: MergeWarning[] } {
+): { unresolved: UnresolvedRef[]; warnings: MergeWarning[]; resolved: number } {
   // Build tag set with both "#tag" and "tag" forms for lookup
   const tagSet = new Set<string>();
   for (const t of registry) {
@@ -433,15 +439,24 @@ export function resolveReferences(
   }
   const unresolved: UnresolvedRef[] = [];
   const warnings: MergeWarning[] = [];
+  let resolved = 0;
 
   for (const report of reports) {
     const m = report.model;
 
-    // Gather all tag references used in relationship annotations
-    const refs = collectTagReferences(m, report.repo);
+    const refs = tagReferences(m);
+    const local = definitionIds(m);
 
     for (const ref of refs) {
-      if (tagSet.has(ref.tag) || tagSet.has(normalizeTag(ref.tag))) continue; // resolved
+      if (ref.tag.includes('.')) warnings.push({
+        level: 'info', code: 'legacy_ref', tag: ref.tag, repos: [report.repo],
+        message: `Legacy dotted reference ${ref.tag} in ${report.repo}; new annotations use flat globally unique ids. Exact spelling is preserved.`,
+      });
+      if (local.has(normalizeTag(ref.tag))) continue;
+      if (tagSet.has(ref.tag) || tagSet.has(normalizeTag(ref.tag))) {
+        resolved += 1;
+        continue;
+      }
 
       // Check if the tag prefix suggests a known repo (but definition is missing)
       const prefix = inferOwnerFromPrefix(ref.tag, repoNames);
@@ -495,67 +510,7 @@ export function resolveReferences(
     }
   }
 
-  return { unresolved, warnings };
-}
-
-/** Simple ref container used during collection */
-interface TagRef {
-  tag: string;
-  context_verb: AnnotationVerb;
-  location: SourceLocation;
-}
-
-/**
- * Collect all tag references from a ThreatModel's relationship annotations.
- * These are the tags used in mitigates, exposes, flows, etc. — NOT definitions.
- */
-function collectTagReferences(m: ThreatModel, _repo: string): TagRef[] {
-  const refs: TagRef[] = [];
-
-  // Helper: add tag ref only if it looks like a tag reference (starts with #)
-  // Plain text like "EnvVars", "FileSystem" in flows are descriptive, not cross-repo refs
-  const addRef = (tag: string | undefined, verb: AnnotationVerb, loc: SourceLocation) => {
-    if (!tag) return;
-    if (!tag.startsWith('#')) return; // not a tag reference
-    refs.push({ tag, context_verb: verb, location: loc });
-  };
-
-  for (const mit of m.mitigations) {
-    addRef(mit.asset, 'mitigates', mit.location);
-    addRef(mit.threat, 'mitigates', mit.location);
-    if (mit.control) addRef(mit.control, 'mitigates', mit.location);
-  }
-  for (const exp of m.exposures) {
-    addRef(exp.asset, 'exposes', exp.location);
-    addRef(exp.threat, 'exposes', exp.location);
-  }
-  for (const acc of m.acceptances) {
-    addRef(acc.asset, 'accepts', acc.location);
-    addRef(acc.threat, 'accepts', acc.location);
-  }
-  for (const t of m.tickets || []) {
-    addRef(t.asset, 'ticket', t.location);
-    addRef(t.threat, 'ticket', t.location);
-  }
-  for (const tr of m.transfers) {
-    addRef(tr.source, 'transfers', tr.location);
-    addRef(tr.target, 'transfers', tr.location);
-    addRef(tr.threat, 'transfers', tr.location);
-  }
-  for (const fl of m.flows) {
-    addRef(fl.source, 'flows', fl.location);
-    addRef(fl.target, 'flows', fl.location);
-  }
-  for (const b of m.boundaries) {
-    addRef(b.asset_a, 'boundary', b.location);
-    addRef(b.asset_b, 'boundary', b.location);
-  }
-  for (const v of m.validations) {
-    addRef(v.control, 'validates', v.location);
-    addRef(v.asset, 'validates', v.location);
-  }
-
-  return refs;
+  return { unresolved, warnings, resolved };
 }
 
 // ─── Model Merging ───────────────────────────────────────────────────
@@ -568,6 +523,7 @@ function prefixLocation(loc: SourceLocation, repo: string): SourceLocation {
   return {
     ...loc,
     file: `${repo}/${loc.file}`,
+    ...(loc.origin_file ? { origin_file: `${repo}/${loc.origin_file}` } : {}),
   };
 }
 
@@ -583,11 +539,12 @@ function prefixAll<T extends { location: SourceLocation }>(items: T[], repo: str
  * Relationships are kept from all repos (no dedup — same relationship
  * stated in two repos is meaningful).
  */
-export function combineModels(reports: LoadedReport[]): ThreatModel {
+export function combineModels(reports: LoadedReport[], options: { preserveConflicts?: boolean } = {}): ThreatModel {
   const seenAssetIds = new Set<string>();
   const seenThreatIds = new Set<string>();
   const seenControlIds = new Set<string>();
   const seenActorIds = new Set<string>();
+  const seenBoundaryIds = new Set<string>();
 
   const combined: ThreatModel = {
     version: REPORT_SCHEMA_VERSION,
@@ -630,28 +587,25 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     combined.annotated_files.push(...m.annotated_files.map(f => `${repo}/${f}`));
     combined.unannotated_files.push(...m.unannotated_files.map(f => `${repo}/${f}`));
 
-    // Definitions: dedup by tag ID, keep first (registry determines owner)
-    for (const a of m.assets) {
-      if (a.id && seenAssetIds.has(a.id)) continue;
-      if (a.id) seenAssetIds.add(a.id);
-      combined.assets.push({ ...a, location: prefixLocation(a.location, repo) });
-    }
-    for (const t of m.threats) {
-      if (t.id && seenThreatIds.has(t.id)) continue;
-      if (t.id) seenThreatIds.add(t.id);
-      combined.threats.push({ ...t, location: prefixLocation(t.location, repo) });
-    }
-    for (const c of m.controls) {
-      if (c.id && seenControlIds.has(c.id)) continue;
-      if (c.id) seenControlIds.add(c.id);
-      combined.controls.push({ ...c, location: prefixLocation(c.location, repo) });
-    }
-    // The actor verb is a definition, so it dedups by tag ID like the three above.
-    for (const ac of m.actors || []) {
-      if (ac.id && seenActorIds.has(ac.id)) continue;
-      if (ac.id) seenActorIds.add(ac.id);
-      combined.actors!.push({ ...ac, location: prefixLocation(ac.location, repo) });
-    }
+    // The application contract preserves all origins and every conflicting version.
+    const addDefinitions = <T extends { id?: string; location: SourceLocation }>(rows: T[], target: T[], seen: Set<string>) => {
+      for (const row of rows) {
+        const location = prefixLocation(row.location, repo);
+        if (options.preserveConflicts) {
+          const signature = (r: T) => JSON.stringify({ ...r, location: undefined, declarations: undefined });
+          const same = row.id ? target.find(r => r.id === row.id && signature(r) === signature(row)) as (T & { declarations?: SourceLocation[] }) | undefined : undefined;
+          if (same) { same.declarations ??= [same.location]; same.declarations.push(location); continue; }
+          target.push({ ...row, location, declarations: [location] }); continue;
+        }
+        if (row.id && seen.has(row.id)) continue;
+        if (row.id) seen.add(row.id);
+        target.push({ ...row, location });
+      }
+    };
+    addDefinitions(m.assets, combined.assets, seenAssetIds);
+    addDefinitions(m.threats, combined.threats, seenThreatIds);
+    addDefinitions(m.controls, combined.controls, seenControlIds);
+    addDefinitions(m.actors ?? [], combined.actors!, seenActorIds);
 
     // Relationships: keep all (no dedup — cross-repo relationships are valuable)
     combined.mitigations.push(...prefixAll(m.mitigations, repo));
@@ -668,7 +622,8 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     combined.gates!.push(...prefixAll(m.gates || [], repo));
     combined.transfers.push(...prefixAll(m.transfers, repo));
     combined.flows.push(...prefixAll(m.flows, repo));
-    combined.boundaries.push(...prefixAll(m.boundaries, repo));
+    if (options.preserveConflicts) addDefinitions(m.boundaries, combined.boundaries, seenBoundaryIds);
+    else combined.boundaries.push(...prefixAll(m.boundaries, repo));
     combined.validations.push(...prefixAll(m.validations, repo));
     combined.audits.push(...prefixAll(m.audits, repo));
     combined.ownership.push(...prefixAll(m.ownership, repo));
@@ -677,6 +632,11 @@ export function combineModels(reports: LoadedReport[]): ThreatModel {
     combined.shields.push(...prefixAll(m.shields, repo));
     combined.features.push(...prefixAll(m.features || [], repo));
     combined.comments.push(...prefixAll(m.comments, repo));
+
+    if (m.annotation_scope) {
+      combined.annotation_scope ??= { view: m.annotation_scope.view, excluded: [] };
+      combined.annotation_scope.excluded.push(...m.annotation_scope.excluded.map(e => ({ ...e, file: `${repo}/${e.file}` })));
+    }
 
     // Aggregate coverage. Only the annotation count is additive; the percent
     // is recomputed below from the combined file totals.
@@ -933,6 +893,8 @@ export function formatMergeVerdict(verdict: MergeVerdict, totals?: MergeTotals):
 // ─── Top-Level Merge Orchestrator ────────────────────────────────────
 
 export interface MergeOptions {
+  applicationManifest?: import('./application-types.js').ApplicationManifest;
+
   /** Workspace name (used in output if no report carries workspace metadata) */
   workspace?: string;
   /** Expected repo names (from workspace.yaml). Missing repos generate warnings. */
@@ -970,16 +932,30 @@ export async function mergeReports(
 
   // 3. Resolve cross-repo references
   const repoNames = new Set(reports.map(r => r.repo));
-  const { unresolved, warnings: refWarnings } = resolveReferences(reports, registry, repoNames);
-
-  // Count resolved: total refs from external_refs fields minus unresolved
-  const totalExternalRefs = reports.reduce(
-    (sum, r) => sum + (r.model.external_refs?.length || 0), 0,
-  );
-  const resolvedCount = Math.max(0, totalExternalRefs - unresolved.length);
+  const { unresolved, warnings: refWarnings, resolved: resolvedCount } = resolveReferences(reports, registry, repoNames);
 
   // 4. Combine models
-  const combinedModel = combineModels(reports);
+  let combinedModel = combineModels(reports);
+  if (options.applicationManifest || reports.some(r => r.model.member_snapshot)) {
+    const { collectApplicationView } = await import('./application.js');
+    const first = reports.find(r => r.model.member_snapshot)?.model.member_snapshot;
+    const manifest = options.applicationManifest ?? { schema: 'guardlink.application-manifest/v1' as const, name: options.workspace ?? first!.workspace, members: [...new Set(reports.flatMap(r => r.model.member_snapshot?.expectedMemberIds ?? [r.repo]))].map(id => ({ id, guardlinkIdentity: id, relativePath: id })) };
+    const view = await collectApplicationView({ root: '/', manifest, snapshots: reports.map(r => ({ model: r.model, identity: r.model.member_snapshot?.id ?? r.repo })) });
+    combinedModel = view.model;
+  }
+
+  if (!combinedModel.application) {
+    // Older reports have a usable census but do not contain native evidence or
+    // revision digests. Never promote those absent inputs to a coherent snapshot.
+    const ids = statuses.map(s => s.name).sort();
+    const members = ids.map(id => ({ id, guardlinkIdentity: id, service: id, relativePath: id, revision: null, state: statuses.find(s => s.name === id)?.loaded ? 'available' as const : 'missing' as const, components: { model: { state: 'partial' as const, reason: 'Legacy report has no native member snapshot; revision, evidence and full declaration provenance are unknown. Regenerate it with the current CLI.' } } }));
+    combinedModel.application = {
+      receipt: { schema: 'bravos.application-view/v1', scope: { kind: 'application', applicationId: options.workspace ?? reports[0].model.metadata?.workspace ?? 'workspace', memberIds: ids }, generatedAt: new Date().toISOString(), inputDigest: `sha256-v1:${createHash('sha256').update(JSON.stringify(reports.map(r => [r.repo, r.model]))).digest('hex')}`, expectedMemberIds: ids, members, completeness: 'partial', revisions: Object.fromEntries(ids.map(id => [id, null])), tools: { guardlink: { version: getPackageVersion(), contractVersion: 'guardlink.application-view/v1' } }, currency: { state: 'unknown', reasonCodes: ['legacy-provenance-missing'], memberIds: ids } },
+      members: reports.map(r => ({ id: r.repo, coverage: { annotatedFiles: r.model.annotated_files.length, sourceFiles: r.model.source_files, percent: r.model.coverage.coverage_percent, excluded: [] }, generatedIdentities: {}, diagnostics: [] })),
+      occurrences: [], definitions: [], conflicts: [], references: [], flowGroups: [],
+      coverage: { kind: 'annotation-files', known: { annotatedFiles: combinedModel.annotated_files.length, sourceFiles: combinedModel.source_files, percent: combinedModel.coverage.coverage_percent }, overallPercent: null, unknownMemberIds: ids },
+    };
+  }
 
   // 4a. Mark 8 — the join is scoped by the ownership the registry already
   // resolved. Without this a `@mitigates` on orders-api's `#listing` covers

@@ -8,6 +8,7 @@
  * @comment -- "Ported unchanged from the first generate.ts; a file that cannot be read yields an empty context, never a failed page"
  */
 import { readFileSync } from 'node:fs';
+import { applicationSourceLink } from '../workspace/application.js';
 import { isAbsolute, resolve } from 'node:path';
 import type { ThreatModel } from '../types/index.js';
 import type { ExposureRow, AssetHeatmapEntry } from './data.js';
@@ -104,7 +105,7 @@ export function buildFileAnnotations(model: ThreatModel, root?: string, join: An
       refs: Array.isArray(item.external_refs) ? item.external_refs.filter((r): r is string => typeof r === 'string') : [],
       claimIdx: claim ? claim.idx : null,
       assetIdx: assetRef ? tileOf.get(assetRef.trim().toLowerCase()) ?? null : null,
-      url: join.links ? join.links.file(file, item.location.line) : null,
+      url: model.application ? applicationSourceLink(model, file, item.location.line) : join.links ? join.links.file(file, item.location.line) : null,
     });
   };
 
@@ -143,8 +144,8 @@ export function buildFileAnnotations(model: ThreatModel, root?: string, join: An
 /** The three exposure subsets the legacy drawer and feature filter index into. */
 export function buildAnalysisData(exposures: ExposureRow[]): { openExposures: ExposureRow[]; mitigatedExposures: ExposureRow[]; acceptedExposures: ExposureRow[] } {
   return {
-    openExposures: exposures.filter(e => !e.mitigated && !e.accepted && !e.refuted),
-    mitigatedExposures: exposures.filter(e => e.mitigated),
+    openExposures: exposures.filter(e => e.open),
+    mitigatedExposures: exposures.filter(e => e.mitigated && !e.gate),
     acceptedExposures: exposures.filter(e => e.accepted),
   };
 }

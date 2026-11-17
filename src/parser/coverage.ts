@@ -276,7 +276,9 @@ export function buildCoverageIndex(model: ThreatModel, opts: CoverageOptions = {
   const matching = <T extends SitedRelation>(index: Map<string, T[]>, e: SitedRelation): T[] => {
     const bucket = index.get(pairKey(e, assetKey, scope));
     if (!bucket) return [];
-    return bucket.filter(c => !anchorsContradict(c, e));
+    const ambiguous = new Set((model.application?.conflicts ?? []).map(c => c.id.toLowerCase()));
+    if ([e.asset, e.threat].some(ref => ambiguous.has(normalizeRef(ref)))) return [];
+    return bucket.filter(c => !anchorsContradict(c, e) && !('control' in c && typeof c.control === 'string' && ambiguous.has(normalizeRef(c.control))));
   };
 
   const isMitigated = (e: SitedRelation) => matching(mitigations, e).length > 0;

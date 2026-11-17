@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        by-asset/workspace-config.threats.mmd
 %% scope:           PARTIAL — #workspace-config only — its own threats and controls
-%% annotation_hash: sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673
+%% annotation_hash: sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915
 %% generator:       guardlink@2.6.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -13,7 +13,10 @@
 graph LR
   workspace_config["🔷 Workspace.Config"]
   config_tamper["🟡 Config_Tampering (cwe:CWE-15)"]:::threat
+  config_validation["🛡️ Config_Validation"]:::control
   yaml_validation["🛡️ YAML_Validation"]:::control
+  config_validation -- mitigates --> config_tamper
+  config_validation -. protects .-> workspace_config
   yaml_validation -- mitigates --> config_tamper
   yaml_validation -. protects .-> workspace_config
   classDef threat fill:#3a1010,stroke:#ea1d1d,color:#f0f0f0,stroke-width:1.3px

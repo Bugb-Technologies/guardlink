@@ -1,7 +1,7 @@
 {
   "summary": {
-    "reaches": 30,
-    "agent_reaches": 30,
+    "reaches": 31,
+    "agent_reaches": 31,
     "unentitled_reaches": 30,
     "effects": 26,
     "mutating_effects": 24,
@@ -20,6 +20,11 @@
       "actor": "#mcp-agent",
       "capability": "guardlink_annotate_apply",
       "asset": "#mcp"
+    },
+    {
+      "actor": "#mcp-agent",
+      "capability": "guardlink_application_view",
+      "asset": "#workspace-config"
     },
     {
       "actor": "#mcp-agent",

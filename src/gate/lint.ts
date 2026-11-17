@@ -6,11 +6,11 @@
  * an agent that ignored the bar is caught by the same words it ignored.
  *
  * @flows ThreatModel -> #gate via lintAnnotations -- "Claims and their descriptions"
- * @comment -- "Errors are what the gate rejects; warnings are what it reports. Governance verbs (@accepts, @entitles) are errors only for claims under check, because a human may legitimately have written the others"
+ * @comment -- "Errors are what the gate rejects; warnings are what it reports. Governance verbs (@accepts, @entitles) are errors only for claims under check; an entitlement matched to a named accepted proposal is a human decision, while unchecked or merely proposed grants remain errors"
  * @comment -- "ticket-on-mitigated is the one info-level rule: a @ticket whose pair is now covered is a question for the developer (close it, or keep it as the record), never a failure"
  * @comment -- "@agents, @reaches, @effects and @gates are observations an agent may write, so no rule rejects them. A @gates that does not say what the approval step is gets the vague-description warning, because a gate claim is what a reviewer reads to decide a route is held"
  */
-import type { ThreatModel, ThreatModelExposure, ThreatModelConfirmed } from '../types/index.js';
+import type { ThreatModel, ThreatModelExposure, ThreatModelConfirmed, ThreatModelEntitlement } from '../types/index.js';
 import { relationRecords } from '../parser/claim-key.js';
 import { buildCoverageIndex, ticketStatusResolver } from '../parser/coverage.js';
 
@@ -52,6 +52,8 @@ export interface LintOptions {
    * `ignore` is for a standalone lint over a tree a person may have edited.
    */
   governance?: 'error' | 'ignore';
+  /** Records in this model matched to a named accepted proposal by the caller. */
+  acceptedEntitlements?: ReadonlySet<ThreatModelEntitlement>;
 }
 
 /** What a rule asks the agent to do instead. Used by the follow-up prompt. */
@@ -175,7 +177,7 @@ export function lintAnnotations(model: ThreatModel, opts: LintOptions = {}): Vio
   }
   if (governance === 'error') {
     for (const a of model.acceptances) if (under(a.location)) push('accepts-written', 'error', 'accepts', a, `@accepts ${a.threat} on ${a.asset} is a human decision`);
-    for (const en of model.entitlements || []) if (under(en.location)) push('entitles-written', 'error', 'entitles', en, `@entitles ${en.actor} is proposed, never written`);
+    for (const en of model.entitlements || []) if (under(en.location) && !opts.acceptedEntitlements?.has(en)) push('entitles-written', 'error', 'entitles', en, `@entitles ${en.actor} is proposed, never written`);
   }
   for (const m of model.mitigations) {
     if (!under(m.location)) continue;

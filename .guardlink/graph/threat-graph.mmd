@@ -1,6 +1,6 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        threat-graph.mmd
-%% annotation_hash: sha256-v3:5e2636010a3c2c8308f452d1706ad4cedd96ee30bd2a04732f64cd6618e50673
+%% annotation_hash: sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915
 %% generator:       guardlink@2.6.0
 %% ---
 %% This diagram is derived from the annotations in this repository. If
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 49 nodes / 220 edges, past the 12 / 16 legibility budget (49 nodes against 12, 220 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. threat-graph.mmd is 49 nodes / 222 edges, past the 12 / 16 legibility budget (49 nodes against 12, 222 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -270,6 +270,7 @@ graph LR
   path_validation -. protects .-> tui
   key_redaction -. protects .-> tui
   resource_limits -. protects .-> tui
+  config_validation -. protects .-> workspace_config
   fail_closed -. protects .-> estate_view
   config_validation -. protects .-> estate_view
   prefix_ownership -. protects .-> merge_engine
@@ -303,6 +304,7 @@ graph LR
   mcp -- "📡 guardlink_worklist" --> codegraph
   mcp -- "📡 guardlink_reach" --> codegraph
   mcp -- "📡 guardlink_translate" --> agent_launcher
+  workspace_config -- "📡 localWorkspaceMembers" --> parser
   agent_config -- "📡 mergeAgentConfig" --> parser
   tui -- "📡 launchAgent" --> agent_launcher
   tui -- "📡 chatCompletion" --> llm_client

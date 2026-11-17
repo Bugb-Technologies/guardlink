@@ -255,3 +255,36 @@ export function relationRecords(model: ThreatModel): ClaimSource[] {
     demotable: DEMOTABLE_VERBS.has(rec[0]),
   }));
 }
+
+/** Every explicit #id in a relationship, excluding prose, capabilities and generated configuration. */
+export function tagReferences(model: ThreatModel): Array<{ tag: string; context_verb: AnnotationVerb; location: SourceLocation }> {
+  return allRecords(model).flatMap(([verb, r]) => {
+    if ('origin' in r && r.origin) return [];
+    let values: Array<string | undefined>;
+    switch (verb) {
+      case 'mitigates': values = [r.asset, r.threat, r.control]; break;
+      case 'exposes': case 'confirmed': case 'accepts': case 'ticket': values = [r.asset, r.threat]; break;
+      case 'transfers': values = [r.source, r.target, r.threat]; break;
+      case 'flows': values = [r.source, r.target]; break;
+      case 'boundary': values = [r.asset_a, r.asset_b]; break;
+      case 'validates': values = [r.asset, r.control]; break;
+      case 'owns': values = [r.asset, r.owner]; break;
+      case 'audit': case 'handles': case 'assumes': values = [r.asset]; break;
+      case 'entitles': values = [r.actor, r.asset, r.threat]; break;
+      case 'agents': case 'reaches': values = [r.actor, r.asset, r.identity]; break;
+      case 'effects': values = [r.asset, r.identity]; break;
+      case 'gates': values = [r.asset, r.approver]; break;
+      default: values = [];
+    }
+    return [...new Set(values.filter((v): v is string => !!v?.startsWith('#')))]
+      .map(tag => ({ tag, context_verb: verb, location: r.location }));
+  });
+}
+
+/** Flat definition identities, shared by member validation and workspace merge. */
+export function definitionIds(model: ThreatModel): Set<string> {
+  return new Set([
+    ...model.assets, ...model.threats, ...model.controls, ...model.boundaries, ...(model.actors ?? []),
+    ...(model.agent_config?.assets ?? []),
+  ].flatMap(r => r.id ? [r.id.replace(/^#/, '')] : []));
+}

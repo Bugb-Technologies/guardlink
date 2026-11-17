@@ -46,6 +46,7 @@ export interface HypothesisClassification {
 }
 
 export function classifyHypotheses(model: ThreatModel, read: HypothesesRead): HypothesisClassification {
+  read = model.application?.hypotheses ?? read;
   const entries = new Map<string, HypothesisEntry>();
   for (const e of read.ledger?.entries ?? []) if (isExposureEntry(e)) entries.set(e.key, e);
   const records: HypothesisRecord[] = [];
