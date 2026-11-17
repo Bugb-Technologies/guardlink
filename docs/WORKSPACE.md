@@ -81,6 +81,14 @@ unique `--member name=path` identities.
 
 ## Selected application snapshots
 
+A folder is read as an application of its linked child folders only when it is not itself a
+GuardLink repository: no `.guardlink/config.json`, definitions file or `workspace.yaml` of its
+own. A repository root keeps its own model whatever its children declare; select their
+application explicitly with `--application-manifest` or `application-view --manifest`. Child
+discovery reads only folders the scan reads (hidden, excluded and, inside a git checkout,
+submodule or worktree folders are skipped). A child manifest that cannot be decoded is an
+error for a folder of checkouts and a warning for a repository.
+
 Parent-folder reads retain the expected member roster and readable member content when
 another member is unavailable. The application receipt marks the result partial and file
 coverage labels its known subtotal. Use `application-view --strict` to require complete

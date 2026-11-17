@@ -61,6 +61,17 @@ export function resolveCommit(root: string, ref: string): string {
 }
 
 /**
+ * One file's text as committed at `ref`, its path relative to `root`; null when that commit has no
+ * such file. The ref goes through resolveCommit and both git calls take the sha, never the ref.
+ */
+export function readFileAtRef(root: string, ref: string, path: string, maxBytes: number): string | null {
+  const commit = resolveCommit(root, ref);
+  // ls-tree and `<sha>:./path` both resolve the path against the working directory, as the caller gave it.
+  if (!git(root, ['ls-tree', '--name-only', commit, '--', path]).trim()) return null;
+  return gitBytes(root, ['show', `${commit}:./${path}`], maxBytes + 1).toString('utf-8');
+}
+
+/**
  * Parse the threat model at a specific git ref (commit, branch, tag, HEAD~1, etc.)
  * by extracting annotated files at that revision into a temp directory.
  */

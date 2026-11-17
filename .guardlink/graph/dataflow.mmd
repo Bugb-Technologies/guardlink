@@ -1,7 +1,7 @@
 %% GENERATED FILE — do not edit. Regenerate with: guardlink artifacts .
 %% artifact:        dataflow.mmd
-%% annotation_hash: sha256-v3:dbd7b4e61d31ea3721a8448dd815b3ae12f2dda9d104cf52383fb14041a7a915
-%% generator:       guardlink@2.7.0
+%% annotation_hash: sha256-v3:150058c8b0a3d4422ad6410964fab2e70689aa3d56ae3fc6a72f1db7f0ce26f5
+%% generator:       guardlink@2.7.1
 %% ---
 %% This diagram is derived from the annotations in this repository. If
 %% annotation_hash above differs from what `guardlink status .` reports, the
@@ -9,7 +9,7 @@
 %% When it was generated and at which commit: ask git. Those move for reasons
 %% unrelated to the diagram, so they are reported at emission time, not stored.
 %% ---
-%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 82 nodes / 237 edges, past the 12 / 16 legibility budget (82 nodes against 12, 237 edges against 16).
+%% DRAWS, BUT IS TOO BIG TO READ. dataflow.mmd is 82 nodes / 238 edges, past the 12 / 16 legibility budget (82 nodes against 12, 238 edges against 16).
 %% 12 nodes and 16 edges is what fits a dashboard diagram panel at its
 %% label size; past it a layered layout grows taller than the panel and
 %% fitting it shrinks the labels below reading size. Mermaid will draw this
@@ -99,13 +99,13 @@ graph LR
   sourcefiles["🧩 SourceFiles"]
   userargs["👤 UserArgs"]
   gate["🧩 GuardLink.Gate"]
+  gitref["🧩 GitRef"]
   scanreport["🧩 ScanReport"]
   agentsession["🧩 AgentSession"]
   gitconfig["🧩 GitConfig"]
   html["🧩 HTML"]
   dashboardhtml["🧩 DashboardHTML"]
   diagramsource["🧩 DiagramSource"]
-  gitref["🧩 GitRef"]
   tempdir["🧩 TempDir"]
   changedfilelist["🧩 ChangedFileList"]
   projectroot["🧩 ProjectRoot"]
@@ -220,6 +220,7 @@ graph LR
   cli -- "📡 loadReachCheck" --> codegraph
   userinput -- "📡 verify" --> cli
   cli -- "📡 runGate" --> gate
+  gitref -- "🗄️ readFileAtRef" --> gate
   threatmodel -- "📡 findUnmitigatedPaths" --> cli
   scanreport -- "📡 importScan" --> cli
   ledgerfile -- "📡 classifyBoundaryClaims" --> cli

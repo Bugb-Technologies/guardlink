@@ -24,8 +24,8 @@
  */
 
 import fg from 'fast-glob';
-import { loadWorkspaceConfig } from '../workspace/metadata.js';
-import { localWorkspaceMembers, workspaceContainer } from '../workspace/discovery.js';
+import { loadWorkspaceConfig, WorkspaceConfigError } from '../workspace/metadata.js';
+import { localWorkspaceMembers, workspaceContainer, type LocalMember } from '../workspace/discovery.js';
 import { createHash } from 'node:crypto';
 import { DEFAULT_INCLUDE, DEFAULT_EXCLUDE } from './parse-project.js';
 import { scanIgnore } from './nested-checkouts.js';
@@ -69,7 +69,13 @@ export async function fingerprintProject(root: string, options: FingerprintOptio
 
   if (options.workspace !== false) {
     const config = loadWorkspaceConfig(root);
-    const members = config ? localWorkspaceMembers(root, config) : workspaceContainer(root)?.members ?? [];
+    // @comment -- "An ambiguous or unreadable sibling manifest is the parse's diagnostic to report, not a reason for every MCP call in every member to fail: the error text joins the fingerprint so fixing it still invalidates the cache"
+    let members: LocalMember[] = [];
+    try { members = config ? localWorkspaceMembers(root, config) : workspaceContainer(root)?.members ?? []; }
+    catch (error) {
+      if (!(error instanceof WorkspaceConfigError)) throw error;
+      parts.push(`workspace-error${FIELD_SEP}${error.message}`);
+    }
     for (const member of members) {
       parts.push(`${member.name}${FIELD_SEP}${member.path}${FIELD_SEP}${await fingerprintProject(member.path, { ...options, workspace: false })}`);
     }

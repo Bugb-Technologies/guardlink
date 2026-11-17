@@ -59,7 +59,7 @@ import { initProject, detectProject, describeScope, promptAgentSelection, syncAg
 import { findPrePrDrift } from '../init/pre-pr.js';
 import { ensurePromptMd } from '../init/migrate.js';
 import { generateReport, generateMermaid, generateAgentReachReport } from '../report/index.js';
-import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getChangedFiles } from '../diff/index.js';
+import { diffModels, formatDiff, formatDiffMarkdown, parseAtRef, getChangedFiles, readFileAtRef } from '../diff/index.js';
 import { findUnmitigatedPaths, classifyEndpoints } from '../paths/index.js';
 import { formatPaths, pathsPayload } from '../paths/format.js';
 import { generateSarif, isSarifProfile, SARIF_PROFILES, MITIGATED_RULE_ID, BOUNDARY_CLAIM_RULE_ID, AGENT_REACH_RULE_ID } from '../analyzer/index.js';
@@ -93,14 +93,14 @@ import {
   type ReviewResult, type ReviewAction, type ReviewableExposure, type ScriptedDecision,
 } from '../review/index.js';
 import {
-  proposeEntitlement, proposeFromConfig, listProposals, loadProposals, acceptedEntitlements, findProposal, applyProposalDecision, checkEntitlementProvenance,
+  proposeEntitlement, proposeFromConfig, listProposals, loadProposals, acceptedEntitlements, parseLedgerAtRef, PROPOSALS_FILE, ENTITLEMENT_LEDGER_MAX_BYTES, findProposal, applyProposalDecision, checkEntitlementProvenance,
   explicitDecider, identitySuggestion, formatProposalForReview, formatProposalLine, summarizeDecisions, proposalsPath,
   type DecisionResult, type EntitlementProposal, type ProposalStatus,
 } from '../review/entitlements.js';
 import { applicationViewCapabilities, captureMemberSnapshot, collectApplicationView, discoverApplicationManifest, APPLICATION_MANIFEST_ENV } from '../workspace/application.js';
 import { loadWorkspaceConfig, populateMetadata, readVersionControl, mergeReports, resolveReportPaths, mergeVerdict, formatMergeVerdict, formatMergeSummary, diffMergedReports, formatDiffSummary, linkProject, addToWorkspace, removeFromWorkspace, estateReport, formatEstateReport, readMergedReport, NotAMergedReport } from '../workspace/index.js';
 import type { MergedReport, LinkResult } from '../workspace/index.js';
-import type { ThreatModel, ParseDiagnostic, Severity } from '../types/index.js';
+import type { ThreatModel, ParseDiagnostic, Severity, ThreatModelEntitlement } from '../types/index.js';
 import type { VerificationReport, HandoffReport } from '../parser/index.js';
 import gradient from 'gradient-string';
 import { readConfiguredProject } from '../parser/annotation-mode.js';
@@ -1973,9 +1973,16 @@ program
     // A refuted exposure counts as paired: the ledger is the evidence.
     attachHypotheses(model, classifyHypotheses(model, readHypotheses(root)));
     // Without --since a person may have written the @accepts in the tree; only a session's additions are held to the no-governance rule.
-    let approved: Set<import('../types/index.js').ThreatModelEntitlement> | undefined;
+    let approved: Set<ThreatModelEntitlement> | undefined;
+    // @mitigates #gate against #config-tamper using #config-validation -- "An @entitles counts as approved only when its accepted decision was already in .guardlink/entitlement-proposals.json at the --since commit and is still accepted now; a ledger record written on the branch under check, whose decision.by is free text, cannot approve that branch's own grant"
+    // @flows GitRef -> #gate via readFileAtRef -- "The proposal ledger as committed at the --since commit"
     if (opts.since && model.entitlements?.length) {
-      try { approved = new Set(acceptedEntitlements(model, await loadProposals(root))); }
+      try {
+        const ledgerPath = `.guardlink/${PROPOSALS_FILE}`;
+        const atBase = new Set(acceptedEntitlements(model, parseLedgerAtRef(
+          readFileAtRef(root, opts.since, ledgerPath, ENTITLEMENT_LEDGER_MAX_BYTES), `${opts.since}:${ledgerPath}`)));
+        approved = new Set(acceptedEntitlements(model, await loadProposals(root)).filter(en => atBase.has(en)));
+      }
       catch (error) {
         console.error(`Entitlement approvals unavailable: ${(error as Error).message}`);
         process.exitCode = 1;

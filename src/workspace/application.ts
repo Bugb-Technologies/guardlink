@@ -9,12 +9,13 @@
  */
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, realpathSync, lstatSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, lstatSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import fg from 'fast-glob';
 import type { ThreatModel, SourceLocation, ParseDiagnostic, AgentConfigBlock } from '../types/index.js';
 import type { ApplicationManifest, ApplicationManifestMember, ApplicationMemberData, ApplicationMemberReceipt, ApplicationModelData, ApplicationRevision, ApplicationView } from './application-types.js';
-import { loadWorkspaceConfig, readVersionControl } from './metadata.js';
+import { loadWorkspaceConfig, readVersionControl, WorkspaceConfigError } from './metadata.js';
+import { isGuardLinkRepository, manifestCandidates } from './discovery.js';
 import { combineModels } from './merge.js';
 import { parseProject, DEFAULT_EXCLUDE, DEFAULT_INCLUDE } from '../parser/parse-project.js';
 import { relationRecords, tagReferences } from '../parser/claim-key.js';
@@ -36,7 +37,11 @@ const posix = (value: string): string => value.replaceAll('\\', '/');
 const within = (root: string, path: string): boolean => { const r = relative(root, path); return !!r && !r.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && r !== '..' && !isAbsolute(r); };
 const git = (root: string, args: string[]): string | null => { try { return execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe', timeout: 10000 }).trim(); } catch { return null; } };
 
-/** Resolve selection only; a repository stays a repository unless application input was supplied. */
+/**
+ * Resolve selection only; a repository stays a repository unless application input was supplied.
+ * Inference (a consumer manifest, linked child folders) applies only to a root that is not itself a
+ * GuardLink repository, and an undecodable consumer manifest is a named WorkspaceConfigError.
+ */
 export function discoverApplicationManifest(root: string, explicit?: string | ApplicationManifest): ApplicationManifest | null {
   if (explicit) {
     const content = typeof explicit === 'string' ? readFileSync(resolve(explicit), 'utf8') : undefined;
@@ -48,17 +53,18 @@ export function discoverApplicationManifest(root: string, explicit?: string | Ap
     if (!m.members.length || m.members.some(member => !member || typeof member !== 'object' || typeof (member.id ?? member.name) !== 'string' || typeof (member.relativePath ?? member.path) !== 'string')) throw new Error('Application manifest members require string ids and checkout paths');
     return m;
   }
-  if (loadWorkspaceConfig(root)) return null;
+  // A repository (own config, definitions or workspace.yaml) is never replaced by an inferred application.
+  if (isGuardLinkRepository(root)) return null;
   const consumer = join(root, '.bravos/workspace/consumer-manifest.json');
-  if (existsSync(consumer)) return discoverApplicationManifest(root, consumer);
+  if (existsSync(consumer)) {
+    try { return discoverApplicationManifest(root, consumer); }
+    catch (error) { throw new WorkspaceConfigError(consumer, (error as Error).message); }
+  }
   const found: Array<{ path: string; config: NonNullable<ReturnType<typeof loadWorkspaceConfig>> }> = [];
-  try {
-    for (const e of readdirSync(root, { withFileTypes: true })) {
-      if (!e.isDirectory() || e.name.startsWith('.') || ['node_modules', 'dist', 'build', 'vendor'].includes(e.name)) continue;
-      const config = loadWorkspaceConfig(join(root, e.name));
-      if (config) found.push({ path: e.name, config });
-    }
-  } catch { return null; }
+  for (const name of manifestCandidates(root)) {
+    const config = loadWorkspaceConfig(join(root, name));
+    if (config) found.push({ path: name, config });
+  }
   if (!found.length) return null;
   found.sort((a, b) => a.path.localeCompare(b.path));
   if (new Set(found.map(f => f.config.workspace)).size > 1) throw new Error('Conflicting linked workspace manifests: multiple applications are present. Supply an explicit selected application manifest.');

@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## \[Unreleased\]
 
+## \[2.7.1\] - 2026-11-17
+
+### Upgrading
+
+- **`lint --since` needs the acceptance in the base.** An `@entitles` under check passes only when its accepted decision is already in `.guardlink/entitlement-proposals.json` at the `--since` commit. Merge the human's acceptance first, then the grant.
+- **A repository root is never an inferred application.** If the root has its own `.guardlink/config.json`, definitions or `workspace.yaml`, use `--application-manifest <file>` or `application-view --manifest <file>` to get its children's application view.
+
+### Fixed
+
+- **A repository with linked child folders keeps its own threat model.** A root with its own `.guardlink/config.json`, definitions or `workspace.yaml` is no longer replaced by an application view of its children, so `validate`, `lint`, `diff`, `sarif`, `ci` and `status` report its exposures again, as in 2.6.0. Child-manifest discovery now skips folders the scan skips. Explicit application selection is unchanged.
+- **An unreadable workspace manifest no longer empties the model.** A malformed root or member `workspace.yaml` is an error reported beside the full model. A malformed child manifest in a repository is a warning. `diff`, `lint` and `ci` no longer report zero, and `parse -o` no longer writes an empty `report.json`.
+- **A malformed `.bravos/workspace/consumer-manifest.json` is a named diagnostic, not a stack trace.** A repository root never reads it. The MCP `guardlink_parse` tool reports manifest errors as `workspace_errors` and sets `isError`.
+- **`lint --since` no longer accepts a self-attested `@entitles`.** An accepted ledger record written in the same change no longer clears `entitles-written`. A decision revoked since the base no longer approves the grant either.
+- **A duplicate member checkout no longer breaks MCP in its siblings.** The MCP cache fingerprint records the duplicate-identity error instead of throwing, so tool calls in other members answer again.
+
 ## \[2.7.0\] - 2026-11-17
 
 ### Upgrading
